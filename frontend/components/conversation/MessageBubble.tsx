@@ -2,7 +2,7 @@ import { Bot, Phone, User2 } from "lucide-react";
 import type { Message } from "@/lib/api";
 import { exactTime } from "@/lib/format";
 
-const STATUS_LABEL: Record<Message["wa_status"], string> = {
+const STATUS_LABEL: Record<Message["delivery_status"], string> = {
   pending: "Pendiente",
   sent: "Enviado",
   delivered: "Entregado",
@@ -53,7 +53,7 @@ export function MessageBubble({ msg }: { msg: Message }) {
         </div>
         {!isInbound && (
           <div className="text-[10px] text-gray-600 mt-0.5 text-right">
-            {STATUS_LABEL[msg.wa_status]}
+            {STATUS_LABEL[msg.delivery_status]}
           </div>
         )}
       </div>

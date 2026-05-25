@@ -27,8 +27,11 @@ class Conversation(Base):
     lead_id: Mapped[int] = mapped_column(
         ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    channel: Mapped[str] = mapped_column(String(20), default="whatsapp", nullable=False)
-    wa_thread_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    # Channel: "whatsapp" | "email" | "sms" | "voice" | …
+    channel: Mapped[str] = mapped_column(String(20), default="whatsapp", nullable=False, index=True)
+    # Channel-agnostic thread id (email uses In-Reply-To / Message-ID, WhatsApp uses
+    # Meta thread id, SMS conversations have no thread so it's null).
+    external_thread_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     status: Mapped[ConversationStatus] = mapped_column(
         pg_enum(ConversationStatus, name="conversation_status"),

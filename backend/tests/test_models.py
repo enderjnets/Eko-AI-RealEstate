@@ -63,16 +63,16 @@ async def test_lead_conversation_message_roundtrip(database_url: str) -> None:
                         direction=MessageDirection.INBOUND,
                         sender=MessageSender.LEAD,
                         content="Hola, busco piso en alquiler en Madrid centro.",
-                        wa_message_id=f"wamid.test_in_{suffix}",
-                        wa_status=MessageStatus.DELIVERED,
+                        external_id=f"wamid.test_in_{suffix}",
+                        delivery_status=MessageStatus.DELIVERED,
                     ),
                     Message(
                         conversation_id=conv.id,
                         direction=MessageDirection.OUTBOUND,
                         sender=MessageSender.AGENT,
                         content="¡Hola! ¿Qué presupuesto manejas?",
-                        wa_message_id=f"wamid.test_out_{suffix}",
-                        wa_status=MessageStatus.SENT,
+                        external_id=f"wamid.test_out_{suffix}",
+                        delivery_status=MessageStatus.SENT,
                         llm_provider="kimi",
                         llm_model="kimi-for-coding",
                     ),
@@ -100,7 +100,7 @@ async def test_lead_conversation_message_roundtrip(database_url: str) -> None:
             assert inbound.content.startswith("Hola")
             assert outbound.sender == MessageSender.AGENT
             assert outbound.llm_provider == "kimi"
-            assert outbound.wa_status == MessageStatus.SENT
+            assert outbound.delivery_status == MessageStatus.SENT
     finally:
         # ── cleanup (cascade drops conv + messages) ─────────────────
         async with Session() as s:

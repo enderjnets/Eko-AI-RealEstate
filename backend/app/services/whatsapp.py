@@ -3,8 +3,8 @@
 Inbound flow:
   Meta POSTs the webhook → we verify HMAC-SHA256 with WHATSAPP_APP_SECRET →
   parse_inbound_message() flattens the entry/changes/value/messages tree into
-  ParsedMessage dataclasses → the orchestrator (`app/services/conversation.py`)
-  takes it from there.
+  ParsedMessage dataclasses (channel="whatsapp") → the orchestrator
+  (`app/services/conversation.py`) takes it from there.
 
 Outbound flow:
   send_text_message(to_phone, text) POSTs to Graph API and returns the wamid.
@@ -18,23 +18,21 @@ import hashlib
 import hmac
 import logging
 import time
-from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
 from app.config import get_settings
+from app.services._common import ParsedMessage  # re-export below for backwards-compat
 
 log = logging.getLogger(__name__)
 
-
-@dataclass(frozen=True)
-class ParsedMessage:
-    wa_message_id: str
-    from_phone: str
-    from_name: str | None
-    text: str
-    msg_type: str  # "text" | "image" | "audio" | "video" | "document" | "location" | ...
+__all__ = [
+    "ParsedMessage",
+    "verify_signature",
+    "parse_inbound_message",
+    "send_text_message",
+]
 
 
 # ── Signature verification ─────────────────────────────────────────────
@@ -104,10 +102,11 @@ def parse_inbound_message(payload: dict[str, Any]) -> list[ParsedMessage]:
 
                 out.append(
                     ParsedMessage(
-                        wa_message_id=msg_id,
-                        from_phone=from_phone,
+                        channel="whatsapp",
+                        external_id=msg_id,
+                        from_identifier=from_phone,
                         from_name=contacts_by_id.get(from_phone),
-                        text=text,
+                        content=text,
                         msg_type=msg_type,
                     )
                 )
