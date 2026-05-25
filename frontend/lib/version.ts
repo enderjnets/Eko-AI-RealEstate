@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.2.0";
+export const CURRENT_VERSION = "0.3.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,25 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.3.0",
+    date: "2026-05-25",
+    title: "Phase 3 — Multichannel + Email (Resend) + Bilingual (USA pivot)",
+    changes: [
+      "Pivote estratégico USA: el target de clientes pasa de inmobiliarias EU (WhatsApp-first) a realtors USA donde dominan SMS, Email y llamadas. WhatsApp queda como canal opcional para clientes internacionales.",
+      "Multichannel refactor: schema agnóstico al canal. Renames messages.wa_message_id→external_id, wa_status→delivery_status, conversations.wa_thread_id→external_thread_id. + messages.subject (email). leads.phone widened 32→254 chars (acepta emails como identifier). Alembic migration 002_phase3_multichannel preserva rows existentes.",
+      "ParsedMessage común en services/_common.py — dataclass con channel, external_id, from_identifier, content, subject, thread_id. Cada canal (WhatsApp / Email / SMS / Voice) emite el mismo tipo.",
+      "Orchestrator con dispatcher: handle_inbound_message ahora rutea outbound a whatsapp_send / email_send según conversation.channel. Lazy imports — un deploy puede no tener Resend SDK si no usa email.",
+      "Email channel (Resend): services/email.py con send_email (threading via In-Reply-To + References), parse_inbound_email (Resend payload + HTML fallback), verify_resend_signature (Svix-style HMAC con multi-sig support). EMAIL_SIMULATED=true en dev (loguea outbound, no requiere cuenta Resend ni DNS).",
+      "Webhook nuevo: POST /api/v1/webhooks/email — mismo contrato que WhatsApp (200 + UNIQUE external_id catches retries).",
+      "Bilingüe: services/i18n.py con detect_language (langdetect, seed determinista) + pick_supported_language (whitelist AgentSettings.languages) + language_instruction (steering line ES/EN para el system prompt). Detecta del último inbound, NO bias en réplicas históricas del agente. Classifier acepta language_hint opcional.",
+      "Dashboard: MessageBubble muestra channel icon (envelope email, message-circle WhatsApp, message-square SMS, phone voice) + asunto del email visible cuando applies. LeadsTable muestra heuristic-based glyph al lado del identificador (email vs phone).",
+      "Backend: PATCH lead endpoint Phase 2 sigue funcionando. Pydantic schemas en conversations.py actualizados al naming nuevo (external_id / delivery_status / subject / external_thread_id).",
+      "Tests: 55 total (45 + 10 nuevos = 8 email service + 9 i18n - 7 duplicados/colectados). E2E email crea Lead via address, Conversation(channel=email), 2 Messages con subject + threading.",
+      "Frontend lib/api.ts: Message + Conversation interfaces alineadas al backend nuevo (external_id, delivery_status, subject, external_thread_id).",
+      "Roadmap reordenado post-pivote USA: Phase 4=SMS (Twilio), Phase 5=Voice (VAPI/Retell), Phase 6=Calendar (movido desde Phase 3), Phase 7=MLS/IDX (USA equivalente Idealista), Phase 8=installer + demo subdomain.",
+    ],
+  },
   {
     version: "0.2.0",
     date: "2026-05-25",

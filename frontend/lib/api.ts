@@ -48,8 +48,9 @@ export interface Message {
   direction: MessageDirection;
   sender: MessageSender;
   content: string;
-  wa_message_id: string | null;
-  wa_status: MessageStatus;
+  external_id: string | null;
+  delivery_status: MessageStatus;
+  subject: string | null;
   llm_provider: string | null;
   llm_model: string | null;
   created_at: string;
@@ -59,6 +60,7 @@ export interface Conversation {
   id: number;
   lead_id: number;
   channel: string;
+  external_thread_id: string | null;
   status: "active" | "archived";
   summary: string | null;
   started_at: string;

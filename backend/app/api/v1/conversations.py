@@ -29,8 +29,9 @@ class MessageOut(BaseModel):
     direction: MessageDirection
     sender: MessageSender
     content: str
-    wa_message_id: str | None
-    wa_status: MessageStatus
+    external_id: str | None
+    delivery_status: MessageStatus
+    subject: str | None
     llm_provider: str | None
     llm_model: str | None
     created_at: datetime
@@ -42,6 +43,7 @@ class ConversationOut(BaseModel):
     id: int
     lead_id: int
     channel: str
+    external_thread_id: str | None
     status: ConversationStatus
     summary: str | None
     started_at: datetime
@@ -76,6 +78,7 @@ async def get_conversation_for_lead(
         id=conv.id,
         lead_id=conv.lead_id,
         channel=conv.channel,
+        external_thread_id=conv.external_thread_id,
         status=conv.status,
         summary=conv.summary,
         started_at=conv.started_at,

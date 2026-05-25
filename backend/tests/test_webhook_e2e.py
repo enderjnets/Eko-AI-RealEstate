@@ -27,8 +27,8 @@ from app.models import (
     MessageSender,
     MessageStatus,
 )
-from app.services.classifier import IntentEntities, IntentResult
-from app.services.llm import LLMResult
+from app.services.classifier import IntentEntities, IntentResult  # noqa: F401 — used in tests
+from app.services.llm import LLMResult  # noqa: F401 — used in tests
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "whatsapp_payloads"
@@ -153,13 +153,13 @@ async def test_inbound_text_creates_lead_and_replies(database_url: str) -> None:
             assert len(msgs) == 2
             assert msgs[0].direction == MessageDirection.INBOUND
             assert msgs[0].sender == MessageSender.LEAD
-            assert msgs[0].wa_message_id == test_msg_id
+            assert msgs[0].external_id == test_msg_id
             assert msgs[1].direction == MessageDirection.OUTBOUND
             assert msgs[1].sender == MessageSender.AGENT
-            assert msgs[1].wa_status == MessageStatus.SENT
+            assert msgs[1].delivery_status == MessageStatus.SENT
             assert msgs[1].llm_provider == "kimi"
-            assert msgs[1].wa_message_id is not None
-            assert msgs[1].wa_message_id.startswith("wamid.SIMULATED_")
+            assert msgs[1].external_id is not None
+            assert msgs[1].external_id.startswith("wamid.SIMULATED_")
         await engine.dispose()
     finally:
         await _cleanup_lead(database_url, test_phone)

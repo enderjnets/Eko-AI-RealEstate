@@ -49,14 +49,22 @@ class Message(Base):
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # WhatsApp metadata. wa_message_id is unique to enforce idempotency against
-    # Meta's retried webhook deliveries (see CLAUDE.md anti-pattern #6).
-    wa_message_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    wa_status: Mapped[MessageStatus] = mapped_column(
+    # Channel-agnostic external identifier. Populated by:
+    #   whatsapp → Meta wamid (e.g., "wamid.HBgM...")
+    #   email    → Resend message id or RFC 822 Message-ID
+    #   sms      → Twilio MessageSid (e.g., "SM…")
+    #   voice    → Provider call_id
+    # UNIQUE constraint enforces webhook idempotency (any provider may retry).
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    delivery_status: Mapped[MessageStatus] = mapped_column(
         pg_enum(MessageStatus, name="message_status"),
         default=MessageStatus.PENDING,
         nullable=False,
     )
+
+    # Email-only (NULL for other channels).
+    subject: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Provenance for outbound messages — which LLM generated this reply.
     llm_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -71,7 +79,7 @@ class Message(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("wa_message_id", name="uq_messages_wa_message_id"),
+        UniqueConstraint("external_id", name="uq_messages_external_id"),
     )
 
     def __repr__(self) -> str:
