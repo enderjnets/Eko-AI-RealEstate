@@ -1,12 +1,24 @@
+# Web framework
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+
+# Config / validation
 pydantic==2.9.2
 pydantic-settings==2.5.2
+
+# DB
 sqlalchemy[asyncio]==2.0.34
 asyncpg==0.29.0
 alembic==1.13.2
+greenlet==3.1.0  # required transitively by sqlalchemy[asyncio]; pin so wheels land
+
+# Queue / cache
 redis==5.0.8
+
+# HTTP + LLM client
 httpx==0.27.2
-ollama==0.3.3
-python-multipart==0.0.9
+anthropic==0.45.0  # Used with custom base_url for Kimi + MiniMax (anthropic-messages protocol)
+
+# Misc
 python-dateutil==2.9.0
