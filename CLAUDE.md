@@ -170,11 +170,12 @@ ingress to be added when we go to first pilot).
 - ✅ **Phase 1** — CORE WhatsApp + LLM + Lead capture (`v0.1.0`, 2026-05-25). 25/25 tests.
 - ✅ **Phase 2** — Realtor dashboard (`v0.2.0`, 2026-05-25). 33/33 tests.
 - ✅ **Phase 3** — Multichannel + Email (Resend) + Bilingual (`v0.3.0`, 2026-05-25). USA pivot. 55/55 tests. WhatsApp keeps working as `channel="whatsapp"`; email is now `channel="email"`. Agent auto-detects ES/EN and replies in same language.
-- 🔨 **Phase 4** — SMS (Twilio) — branch `phase-4-sms` next
-- ⏳ **Phase 5** — Voice agent (VAPI / Retell)
-- ⏳ **Phase 6** — Calendar booking (moved from old Phase 3)
-- ⏳ **Phase 7** — MLS / IDX integration (USA listings equivalent of Idealista/Fotocasa)
-- ⏳ **Phase 8** — Single-customer installer + public demo subdomain
+- 🔨 **Phase 4** — Manual reply composer + AI reply suggestions (completes the human-takeover loop in the dashboard). No external account needed.
+- ⏳ **Phase 5** — Calendar booking (Cal.com / Google)
+- ⏳ **Phase 6** — Single-customer installer + public demo subdomain (so we can sell with a live URL)
+- ⏳ **Phase 7** — MLS / IDX integration (USA listings)
+- ⏳ **Phase 8** — SMS (Twilio) — deferred until Twilio account is set up
+- ⏳ **Phase 9** — Voice agent (VAPI / Retell) — deferred until provider account is set up
 
 For per-phase details see [`docs/roadmap.md`](docs/roadmap.md).
 
