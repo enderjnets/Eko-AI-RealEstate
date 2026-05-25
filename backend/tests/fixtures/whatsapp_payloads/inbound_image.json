@@ -1,0 +1,39 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "16505551234",
+              "phone_number_id": "PHONE_NUMBER_ID"
+            },
+            "contacts": [
+              {
+                "profile": {"name": "María López"},
+                "wa_id": "34666SAMPLE02"
+              }
+            ],
+            "messages": [
+              {
+                "from": "34666SAMPLE02",
+                "id": "wamid.HBgM_sample_image_001",
+                "timestamp": "1735066800",
+                "type": "image",
+                "image": {
+                  "mime_type": "image/jpeg",
+                  "sha256": "fakesha256value",
+                  "id": "MEDIA_ID_PLACEHOLDER"
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

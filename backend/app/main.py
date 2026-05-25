@@ -1,21 +1,30 @@
-"""Eko AI Inmobiliario — FastAPI entrypoint."""
+"""Eko AI Realtors — FastAPI entrypoint."""
+from __future__ import annotations
+
 import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import health
+from app.api.v1 import conversations, health, leads
+from app.api.v1.webhooks import whatsapp as whatsapp_webhook
 from app.config import get_settings
 
-logger = logging.getLogger(__name__)
 settings = get_settings()
+
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description=(
-        "Backend for Eko AI Inmobiliario — the on-prem AI agent for real-estate offices. "
-        "WhatsApp + local LLM (Ollama) + lead capture + intent classification."
+        "Backend for Eko AI Realtors — the on-prem AI agent for real-estate offices. "
+        "WhatsApp 24/7 + lead capture + intent classification + visit booking."
     ),
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url=None,
@@ -32,6 +41,23 @@ app.add_middleware(
 
 # Routers
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
+app.include_router(whatsapp_webhook.router, prefix="/api/v1/webhooks", tags=["webhooks"])
+app.include_router(leads.router, prefix="/api/v1/leads", tags=["leads"])
+app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["conversations"])
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    logger.info(
+        "Eko AI Realtors %s starting · env=%s · LLM primary=%s fallback=%s",
+        settings.APP_VERSION, settings.APP_ENV, settings.LLM_PRIMARY, settings.LLM_FALLBACK,
+    )
+    if settings.is_production and settings.WHATSAPP_SIMULATED:
+        logger.warning(
+            "⚠️  WHATSAPP_SIMULATED=true AND APP_ENV=production — outbound messages will only "
+            "be LOGGED, not sent to Meta. Set WHATSAPP_SIMULATED=false before serving real "
+            "customer traffic."
+        )
 
 
 @app.get("/")
