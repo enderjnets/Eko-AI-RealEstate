@@ -166,9 +166,9 @@ ingress to be added when we go to first pilot).
 
 ## Phase status
 
-- ✅ **Phase 0** — Bootstrap (`v0.0.1`, commit `66b7d7d`)
-- 🔨 **Phase 1** — CORE WhatsApp + LLM + Lead capture (target `v0.1.0`, branch `phase-1-core`)
-- ⏳ **Phase 2** — Realtor dashboard
+- ✅ **Phase 0** — Bootstrap (`v0.0.1`, commit `66b7d7d`, 2026-05-25)
+- ✅ **Phase 1** — CORE WhatsApp + LLM + Lead capture (`v0.1.0`, merge commit `95fa5ec`, 2026-05-25). PR #1 closed. GitHub Release latest. 25/25 tests passing on live ROG Postgres. Kimi 2.6 + MiniMax 2.7 A/B validated against 5 Spanish realtor prompts.
+- 🔨 **Phase 2** — Realtor dashboard (Next.js list + chat view + manual takeover). To start in branch `phase-2-dashboard`.
 - ⏳ **Phase 3** — Calendar booking
 - ⏳ **Phase 4** — Listings scrapers + post-visit follow-up
 - ⏳ **Phase 5** — Single-customer installer + public demo subdomain
