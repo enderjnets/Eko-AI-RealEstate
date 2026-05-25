@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend (ruff + pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff pytest pytest-asyncio
+
+      - name: Lint (ruff)
+        working-directory: backend
+        run: ruff check app
+
+      - name: Tests (pytest)
+        working-directory: backend
+        env:
+          # CI-only: dummy values so config.py validates. Real values come from .env at runtime.
+          DATABASE_URL: "postgresql+asyncpg://eko:eko@localhost:5432/test"
+          REDIS_URL: "redis://localhost:6379/0"
+          KIMI_API_KEY: "ci-dummy"
+          MINIMAX_API_KEY: "ci-dummy"
+          WHATSAPP_APP_SECRET: "ci-dummy"
+          WHATSAPP_VERIFY_TOKEN: "ci-dummy"
+          WHATSAPP_SIMULATED: "true"
+          APP_ENV: "test"
+        run: pytest -v
+
+  frontend:
+    name: Frontend (tsc + lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+
+      - name: Type-check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint

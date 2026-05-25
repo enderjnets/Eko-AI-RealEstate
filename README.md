@@ -41,17 +41,26 @@ A small, focused product for real-estate agencies:
 git clone git@github.com:enderjnets/Eko-AI-RealEstate.git
 cd Eko-AI-RealEstate
 cp .env.example .env
-# Edit .env — at minimum set WHATSAPP_* and CALCOM_API_KEY
+# Edit .env — at minimum set KIMI_API_KEY + MINIMAX_API_KEY
+# Leave WHATSAPP_SIMULATED=true for dev (logs outbound instead of sending)
 docker compose up -d
-# Pull the LLM (first time, ~9 GB)
-docker compose exec ollama ollama pull qwen2.5:14b
-# Frontend: http://localhost:3001
-# Backend:  http://localhost:8000/docs (OpenAPI)
+docker compose exec backend alembic upgrade head
+# Frontend: http://localhost:3004
+# Backend:  http://localhost:8011/docs (OpenAPI)
+# Run the LLM A/B test to validate provider quality:
+docker compose exec backend python scripts/llm_ab_test.py
+# Simulate a WhatsApp inbound message end-to-end:
+docker compose exec backend python scripts/simulate_inbound.py \
+    "+34666123456" "Hola, busco piso de 2 habitaciones en Malasaña por 1200€"
 ```
 
 ## Production install (single customer)
 
-See [`docs/deployment.md`](docs/deployment.md) — short version: one customer = one workstation running the full Docker Compose stack. Each customer is fully isolated.
+See [`docs/setup-whatsapp.md`](docs/setup-whatsapp.md) for the Meta Business
+App setup (real WhatsApp number) and [`docs/roadmap.md`](docs/roadmap.md)
+Phase 5 for the customer-hardware installer (planned). Short version: one
+customer = one workstation running the full Docker Compose stack. Each
+customer is fully isolated.
 
 ## Project roadmap
 
@@ -59,9 +68,9 @@ See [`docs/roadmap.md`](docs/roadmap.md) for the phased plan.
 
 | Phase | Status |
 |---|---|
-| 0. Bootstrap (this commit) | ✅ done |
-| 1. WhatsApp + LLM + lead capture + classification | 🔄 next |
-| 2. Realtor dashboard (Next.js) | ⏳ |
+| 0. Bootstrap | ✅ done (`v0.0.1`) |
+| 1. WhatsApp + LLM + lead capture + classification | ✅ done (`v0.1.0`) |
+| 2. Realtor dashboard (Next.js) | 🔄 next |
 | 3. Calendar booking | ⏳ |
 | 4. Listings scraper + post-visit follow-up | ⏳ |
 

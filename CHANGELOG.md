@@ -1,21 +1,139 @@
 # CHANGELOG
 
-All notable changes to Eko AI Inmobiliario.
+All notable changes to **Eko AI Realtors**.
+
+## [0.1.0] — 2026-05-25
+
+### Phase 1 CORE — WhatsApp 24/7 + Kimi/MiniMax fallback + Lead capture
+
+The product is now functional end-to-end at the protocol layer: an inbound
+WhatsApp message → upsert Lead → save inbound message → classify intent →
+generate AI reply → save outbound message → send. Frontend dashboard is still
+Phase 2 (next).
+
+#### Identity & infrastructure
+
+- `CLAUDE.md` at repo root: anti-patterns ("never touch sales platform repos
+  or containers"), port map across all 4 stacks on the ROG, brand name
+  "Eko AI Realtors" vs repo name `Eko-AI-RealEstate`, LLM decisions
+  (Kimi+MiniMax, NOT Anthropic OAuth for customer traffic), phase status.
+- `docker-compose.yml` port remap to `5434/6381/8011/3004` (no collisions with
+  sales prod, sales main dev, or pricing-v2 preview).
+- Container rename `eko-realestate-*` for unambiguous identity.
+- `.github/workflows/ci.yml`: ruff + pytest (backend) + tsc + lint (frontend)
+  on every PR to main.
+- GitHub repo: 10 topics, milestones for Phases 1–5, brand-aligned description.
+- Memory file `project_eko_ai_realestate.md` + MEMORY.md pointer for
+  cross-session continuity.
+
+#### Database (SQLAlchemy 2 async + Alembic)
+
+- `backend/app/db/base.py` — async engine + sessionmaker + get_db() FastAPI dep
+  + `pg_enum()` helper (uses `.value` lowercase for Postgres enum members, not
+  Python NAME).
+- 5 models in `backend/app/models/`:
+  - `Lead` — phone (UNIQUE), name, status enum (7 states), intent enum
+    (rent/buy/valuation/other), budget_min/max, zone, property_type, urgency,
+    last_message_at, human_takeover, meta (JSON), timestamps.
+  - `Conversation` — lead_id FK CASCADE, channel, wa_thread_id, status, summary,
+    started_at/last_at.
+  - `Message` — conversation_id FK CASCADE, direction (inbound/outbound), sender
+    (lead/agent/human), content, **UNIQUE wa_message_id** (webhook idempotency),
+    wa_status, llm_provider, llm_model, created_at.
+  - `Property` — placeholder for Phase 4 (Idealista/Fotocasa scrapers).
+  - `AgentSettings` — singleton (id=1) with Spanish defaults for agent_persona,
+    greeting_template, languages, business_hours.
+- Baseline migration `20260525_1200_phase1_baseline.py` creates the 5 tables
+  + indices + FK cascades + enum types.
+
+#### LLM client (Kimi primary + MiniMax fallback)
+
+- `backend/app/services/llm.py` — single entry `generate_reply()`. Inline
+  fallback per request: if Kimi times out / 429 / 5xx, retries against MiniMax
+  in the same request before raising `LLMUnavailable`.
+- Both providers use the `anthropic` Python SDK with custom `base_url`
+  (Anthropic-messages protocol).
+- `json_mode=True` appends a "return JSON only" steer for the classifier.
+- A/B test script (`backend/scripts/llm_ab_test.py`) ran 5 representative
+  Spanish realtor prompts through both providers; results:
+  - Kimi: avg 3,371 ms / 5/5 OK / more concise
+  - MiniMax: avg 5,626 ms / 5/5 OK / more conversational
+  - Decision: keep Kimi primary, MiniMax fallback (both produce natural ES).
+
+#### Intent classifier
+
+- `backend/app/services/classifier.py` — `classify_intent(messages)` returns
+  `IntentResult` Pydantic schema (intent + confidence 0-1 + entities).
+- Entities extracted: zone, budget_min, budget_max, property_type, urgency.
+- Coerces `"1.500€"` strings to `1500.0` floats.
+- Three failure modes degrade gracefully to `intent=OTHER + raw_response`:
+  LLMUnavailable, JSON not parseable, JSON valid but schema mismatch.
+
+#### WhatsApp webhook + orchestrator
+
+- `backend/app/services/whatsapp.py`:
+  - `verify_signature()` — HMAC-SHA256 with `WHATSAPP_APP_SECRET`,
+    constant-time compare.
+  - `parse_inbound_message()` — flattens Meta's nested
+    entry/changes/value/messages tree; non-text types persisted as
+    `[imagen]/[audio]/[video]/...` placeholders.
+  - `send_text_message()` — POSTs to Meta Graph API; LOGS instead when
+    `WHATSAPP_SIMULATED=true` (dev default).
+- `backend/app/services/conversation.py` — `handle_inbound_message()`
+  orchestrates the full 10-step turn: lead upsert → conv get-or-create →
+  idempotency check → save inbound → human_takeover bypass → build history →
+  classify intent (apply if confidence ≥ 0.55, never overwrite existing values)
+  → load AgentSettings → generate reply → save outbound (PENDING) → send →
+  update status (SENT/FAILED).
+- `backend/app/api/v1/webhooks/whatsapp.py`:
+  - `GET /api/v1/webhooks/whatsapp` — Meta verification handshake.
+  - `POST /api/v1/webhooks/whatsapp` — signature verify (skipped in SIMULATED)
+    → parse → orchestrator per message; always returns 200 unless body is
+    malformed (Meta retries non-200; idempotency handles retries cleanly).
+- Startup log warning if `WHATSAPP_SIMULATED=true` AND `APP_ENV=production`.
+
+#### API routes
+
+- `GET /api/v1/leads` — paginated list with `?status=` + `?intent=` filters.
+- `GET /api/v1/leads/{id}` — detail.
+- `GET /api/v1/conversations/{lead_id}` — most recent conversation + full
+  message history ordered chronologically.
+
+#### Tests (23 total, all passing on live ROG Postgres)
+
+- `test_signature.py` (7) — HMAC valid, invalid, missing, wrong-prefix,
+  body-tampered, wrong-secret, empty-secret.
+- `test_llm_fallback.py` (4) — primary OK no fallback, primary timeout →
+  fallback, both fail → LLMUnavailable, primary unconfigured → skip to fallback.
+- `test_classifier.py` (7) — clean JSON, confidence clamp, prose-wrapped JSON,
+  invalid JSON degrades, invalid enum degrades, LLMUnavailable degrades,
+  budget coercion.
+- `test_webhook_e2e.py` (4) — GET handshake accept, GET handshake reject,
+  inbound text creates lead + reply, duplicate wa_message_id is idempotent
+  (only 2 messages persist after 2 POSTs).
+- `test_models.py` (2) — Lead/Conversation/Message roundtrip,
+  AgentSettings singleton defaults.
+- `test_health.py` (1) — health endpoint contract.
+
+#### Scripts & docs
+
+- `backend/scripts/simulate_inbound.py` — CLI to POST a simulated WhatsApp
+  payload to the webhook for manual testing.
+- `backend/scripts/llm_ab_test.py` — side-by-side LLM A/B with 5 Spanish
+  realtor prompts.
+- `docs/setup-whatsapp.md` — full production setup walkthrough (Meta App
+  creation, secrets, webhook registration, troubleshooting matrix).
+- `docs/architecture.md` — trust boundary + stack rationale (Postgres,
+  Ollama-as-option, port choices).
+- `docs/roadmap.md` — Phase 1 ✅ done, Phase 2-5 status.
 
 ## [0.0.1] — 2026-05-25
 
 ### Bootstrap
 
-- Repo initialized with project skeleton (FastAPI + Next.js + Postgres + Redis + Ollama)
+- Repo initialized with project skeleton (FastAPI + Next.js + Postgres + Redis)
 - `docker-compose.yml` brings up the full stack locally
 - Health endpoint at `GET /api/v1/health`
 - Placeholder landing page on the frontend
 - README + architecture + roadmap docs
 - `.env.example` with the env vars required for Phase 1 (WhatsApp + LLM + DB)
-
-### Out of scope this commit (planned for Phase 1)
-
-- WhatsApp webhook receiver
-- Ollama client with conversation streaming
-- Lead / Conversation / Message models + migration
-- Intent classifier (rent / buy / valuation)

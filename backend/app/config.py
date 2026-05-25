@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # App
-    APP_NAME: str = "Eko AI Inmobiliario"
+    APP_NAME: str = "Eko AI Realtors"
     APP_VERSION: str = "0.0.1"
     APP_ENV: str = "development"
     DEBUG: bool = True
@@ -20,24 +20,44 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://redis:6379/0"
 
-    # Local LLM (Ollama)
-    OLLAMA_BASE_URL: str = "http://ollama:11434"
-    OLLAMA_MODEL: str = "qwen2.5:14b"
-    OLLAMA_EMBEDDING_MODEL: str = "nomic-embed-text"
+    # ─── LLM (Phase 1) ──────────────────────────────────────────────────
+    # Both providers speak the `anthropic-messages` HTTP protocol → we use the
+    # `anthropic` Python SDK with a custom `base_url` per provider. Fallback is
+    # INLINE per request: if PRIMARY times out or errors, the same request
+    # retries against FALLBACK before erroring out.
+    LLM_PRIMARY: str = "kimi"  # "kimi" | "minimax"
+    LLM_FALLBACK: str = "minimax"
+    LLM_TIMEOUT_SECONDS: float = 30.0
+    LLM_MAX_TOKENS_DEFAULT: int = 600
 
-    # WhatsApp Business Cloud API
+    KIMI_API_KEY: str = ""
+    KIMI_BASE_URL: str = "https://api.kimi.com/coding"
+    KIMI_MODEL: str = "kimi-for-coding"
+
+    MINIMAX_API_KEY: str = ""
+    MINIMAX_BASE_URL: str = "https://api.minimax.io/anthropic"
+    MINIMAX_MODEL: str = "MiniMax-M2.7"
+
+    # ─── WhatsApp Business Cloud API (Phase 1) ──────────────────────────
+    # SIMULATED=true (default) means whatsapp.send_text_message() LOGS the
+    # outbound payload instead of POSTing to Meta. Required for dev/test
+    # without a registered Meta Business app. Backend logs a WARN at startup
+    # if SIMULATED=true AND APP_ENV=production.
+    WHATSAPP_SIMULATED: bool = True
     WHATSAPP_VERIFY_TOKEN: str = "change-me"
+    WHATSAPP_APP_SECRET: str = ""  # HMAC-SHA256 secret for inbound signature
     WHATSAPP_ACCESS_TOKEN: str = ""
     WHATSAPP_PHONE_NUMBER_ID: str = ""
     WHATSAPP_BUSINESS_ACCOUNT_ID: str = ""
+    WHATSAPP_GRAPH_API_VERSION: str = "v20.0"
 
-    # Calendar
+    # ─── Calendar (Phase 3) ─────────────────────────────────────────────
     CALENDAR_PROVIDER: str = "calcom"  # calcom | google
     CALCOM_API_KEY: str = ""
     CALCOM_EVENT_TYPE_ID: str = ""
 
-    # CORS
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3003"
+    # ─── CORS ───────────────────────────────────────────────────────────
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3004"
 
     @property
     def cors_origins_list(self) -> list[str]:

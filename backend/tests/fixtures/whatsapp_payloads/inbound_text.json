@@ -1,0 +1,37 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "16505551234",
+              "phone_number_id": "PHONE_NUMBER_ID"
+            },
+            "contacts": [
+              {
+                "profile": {"name": "Juan García"},
+                "wa_id": "34666SAMPLE01"
+              }
+            ],
+            "messages": [
+              {
+                "from": "34666SAMPLE01",
+                "id": "wamid.HBgM_sample_text_001",
+                "timestamp": "1735066800",
+                "text": {
+                  "body": "Hola, busco piso en alquiler en Malasaña, 2 habitaciones, presupuesto 1200€"
+                },
+                "type": "text"
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

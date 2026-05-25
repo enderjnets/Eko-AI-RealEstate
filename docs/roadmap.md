@@ -1,28 +1,35 @@
-# Roadmap — Eko AI Inmobiliario
+# Roadmap — Eko AI Realtors
 
-## Phase 0 · Bootstrap (this commit)
+## Phase 0 · Bootstrap — ✅ done (`v0.0.1`, 2026-05-25)
 
-- ✅ Repo created, project structure laid out.
-- ✅ Docker Compose stack: Postgres + Redis + Ollama + backend + frontend.
-- ✅ Health endpoint.
-- ✅ Landing placeholder.
+- Repo created, project structure laid out.
+- Docker Compose stack: Postgres + Redis + backend + frontend.
+- Health endpoint.
+- Landing placeholder.
 
-## Phase 1 · CORE (next session)
+## Phase 1 · CORE — ✅ done (`v0.1.0`, 2026-05-25)
 
-The differentiator: a WhatsApp agent that answers inbound, captures and classifies leads, with a local LLM.
+The differentiator: a WhatsApp agent that answers inbound 24/7, captures and classifies leads, with hosted LLMs (Kimi 2.6 primary + MiniMax M2.7 fallback). All on one Docker Compose stack ready to deploy to the customer's hardware (or VPS) when piloting starts.
 
-- Webhook receiver for Meta WhatsApp Business Cloud API.
-  - Verify token handshake (`GET /webhooks/whatsapp` with `hub.challenge`).
-  - Message receiver (`POST /webhooks/whatsapp`) with signature verification (`X-Hub-Signature-256`).
-- Ollama client (`app/services/llm.py`) with conversation streaming.
-- Models: `Lead`, `Conversation`, `Message`, `Property`.
-- Alembic baseline migration.
-- Intent classifier (`rent | buy | valuation`) — zero-shot prompt against the local model.
-- Auto-response loop:
-  1. Receive WhatsApp message
-  2. Find or create the Lead (by phone number)
-  3. Append Message to Conversation
-  4. Generate reply with Ollama (using conversation history + intent + agency profile prompt)
+- ✅ Webhook receiver for Meta WhatsApp Business Cloud API:
+  - GET handshake with `hub.challenge` echo.
+  - POST inbound with HMAC-SHA256 signature verification (`X-Hub-Signature-256`).
+- ✅ LLM client (`app/services/llm.py`): Kimi primary + MiniMax fallback **inline per request** (no separate watchdog). Uses the `anthropic` SDK with custom `base_url`.
+- ✅ Models: `Lead`, `Conversation`, `Message`, `Property`, `AgentSettings` (singleton).
+- ✅ Alembic baseline migration.
+- ✅ Intent classifier (`rent | buy | valuation | other`) + entity extraction (zone, budget, property_type, urgency). Pydantic schema validated; graceful degradation to OTHER on bad LLM output.
+- ✅ Auto-response orchestrator (`app/services/conversation.py`):
+  1. Receive WhatsApp message → verify signature → parse.
+  2. Find or create Lead by phone (idempotency via UNIQUE `wa_message_id`).
+  3. Persist inbound Message + update `Lead.last_message_at`.
+  4. Honor `human_takeover` flag (skip AI reply when on).
+  5. Classify intent → apply to Lead if confidence ≥ 0.55.
+  6. Generate reply with Kimi/MiniMax + agency persona.
+  7. Persist outbound Message → send via Graph API (or LOG in SIMULATED mode).
+- ✅ Tests: 23 total (signature/HMAC + LLM fallback + classifier + webhook E2E + models + health).
+- ✅ A/B script `scripts/llm_ab_test.py` validated both providers against 5 realtor prompts in Spanish.
+- ✅ Simulator `scripts/simulate_inbound.py` for manual CLI smoke testing.
+- ✅ Doc `docs/setup-whatsapp.md` for the production Meta Business App registration.
   5. Send via WhatsApp Cloud API
 - Unit tests with simulated WhatsApp payloads (no real Meta calls).
 
