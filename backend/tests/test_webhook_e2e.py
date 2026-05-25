@@ -17,6 +17,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.config import get_settings
 from app.main import app
 from app.models import (
     Conversation,
@@ -50,17 +51,19 @@ async def _http_client() -> AsyncClient:
 
 @pytest.mark.asyncio
 async def test_verify_handshake_accepts_correct_token() -> None:
-    # The default WHATSAPP_VERIFY_TOKEN is "change-me" in config.py.
+    # Read the live env value rather than hardcoding; the dev .env on the ROG
+    # sets a longer token than the config.py default.
+    token = get_settings().WHATSAPP_VERIFY_TOKEN
     async with await _http_client() as client:
         resp = await client.get(
             "/api/v1/webhooks/whatsapp",
             params={
                 "hub.mode": "subscribe",
-                "hub.verify_token": "change-me",
+                "hub.verify_token": token,
                 "hub.challenge": "12345",
             },
         )
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.text
     assert resp.text == "12345"
 
 
@@ -181,10 +184,12 @@ async def test_inbound_same_message_id_is_idempotent(database_url: str) -> None:
                     r1 = await client.post("/api/v1/webhooks/whatsapp", json=payload)
                     r2 = await client.post("/api/v1/webhooks/whatsapp", json=payload)
 
-        assert r1.status_code == 200
-        assert r2.status_code == 200
-        assert r1.json()["results"][0]["status"] == "ok"
-        assert r2.json()["results"][0]["status"] == "duplicate"
+        assert r1.status_code == 200, r1.text
+        assert r2.status_code == 200, r2.text
+        body1 = r1.json()
+        body2 = r2.json()
+        assert body1["results"][0]["status"] == "ok", f"first POST not ok: {body1}"
+        assert body2["results"][0]["status"] == "duplicate", f"second POST not duplicate: {body2}"
 
         # Verify only ONE inbound message + ONE outbound message exist.
         engine = create_async_engine(database_url, echo=False, future=True)
