@@ -13,6 +13,7 @@ from app.db.base import Base, pg_enum
 
 if TYPE_CHECKING:
     from app.models.conversation import Conversation
+    from app.models.visit import Visit
 
 
 class LeadStatus(str, enum.Enum):
@@ -81,6 +82,13 @@ class Lead(Base):
         "Conversation",
         back_populates="lead",
         cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    visits: Mapped[list["Visit"]] = relationship(
+        "Visit",
+        back_populates="lead",
+        cascade="all, delete-orphan",
+        order_by="Visit.scheduled_at",
         lazy="selectin",
     )
 

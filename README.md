@@ -73,8 +73,8 @@ See [`docs/roadmap.md`](docs/roadmap.md) for the phased plan.
 | 2. Realtor dashboard (Next.js) | ✅ done (`v0.2.0`) |
 | 3. Multichannel + Email (Resend) + bilingual (USA pivot) | ✅ done (`v0.3.0`) |
 | 4. Manual reply composer + AI reply suggestions | ✅ done (`v0.4.0`) |
-| 5. Calendar booking (Cal.com / Google) | 🔄 next |
-| 6. Single-customer installer + public demo subdomain | ⏳ |
+| 5. Calendar booking (Cal.com / Google) | ✅ done (`v0.5.0`) |
+| 6. Single-customer installer + public demo subdomain | 🔄 next |
 | 7. MLS / IDX integration | ⏳ |
 | 8. SMS (Twilio) — defer until Twilio account ready | ⏳ |
 | 9. Voice agent (VAPI / Retell) — defer until provider account ready | ⏳ |

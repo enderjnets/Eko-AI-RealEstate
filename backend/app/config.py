@@ -59,8 +59,14 @@ class Settings(BaseSettings):
     RESEND_FROM: str = "Eko AI Realtors <noreply@realtor-demo.ekoaiautomation.com>"
     RESEND_WEBHOOK_SECRET: str = ""  # Svix-style HMAC secret, may start with `whsec_`
 
-    # ─── Calendar (Phase 6 — moved from Phase 3) ────────────────────────
-    CALENDAR_PROVIDER: str = "calcom"  # calcom | google
+    # ─── Calendar (Phase 5) ─────────────────────────────────────────────
+    # When SIMULATED=true (dev default), list_slots returns generated weekday
+    # slots and create_booking returns synthetic calcom-sim-<uuid> ids — no
+    # Cal.com account needed. Production: set CALCOM_API_KEY + EVENT_TYPE_ID,
+    # flip SIMULATED to false.
+    CALENDAR_SIMULATED: bool = True
+    CALENDAR_PROVIDER: str = "calcom"  # calcom | google (only calcom in Phase 5)
+    CALCOM_BASE_URL: str = "https://api.cal.com"
     CALCOM_API_KEY: str = ""
     CALCOM_EVENT_TYPE_ID: str = ""
 

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.4.0";
+export const CURRENT_VERSION = "0.5.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,21 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.5.0",
+    date: "2026-05-25",
+    title: "Phase 5 — Calendar booking (Cal.com) con SIMULATED + dashboard VisitsSection",
+    changes: [
+      "Visit model (id, lead_id FK CASCADE, calendar_provider, external_booking_id UNIQUE, status enum scheduled/confirmed/cancelled/completed/no_show, scheduled_at indexed, duration_minutes, timezone, property_address, meeting_url, notes, timestamps). Alembic migration 003_phase5_visits.",
+      "services/calendar_cal.py — Cal.com v2 API wrapper: list_available_slots, create_booking, cancel_booking. SIMULATED mode genera slots weekday 10/11/14/15/16 in-memory + IDs calcom-sim-<uuid>; producción hace HTTP a api.cal.com con cal-api-version 2024-08-13 header.",
+      "4 endpoints nuevos: GET /leads/{id}/calendar/slots?days=N&timezone=, POST /leads/{id}/calendar/book, GET /leads/{id}/visits, POST /visits/{id}/cancel. Slots filtra busy_starts del lead (no double-booking en la misma conversación).",
+      "Auto-pick email vs phone para attendee: si lead.phone contiene '@' → email para Cal.com; sino phone. Lead sin email + producción real → 503 con mensaje claro.",
+      "Frontend: VisitsSection en LeadDetail muestra upcoming + past visits con cards (VisitStatusBadge, fecha localizada ES, dirección, notas, cancel button). BookingDialog modal con date-grouped slot picker, dirección opcional, notas, confirm.",
+      "Dashboard URLs: /leads/{id} ahora muestra (top→bottom): Header con metadata + TakeoverToggle (Phase 2), Conversación chat (Phase 1-3), Composer + Sugerir (Phase 4), VisitsSection + Agendar visita (Phase 5).",
+      "Tests +13 (total 77): test_calendar_service.py (7 — weekday-only, hours match, busy filter, simulated mode, booking sim id, cancel sim, calcom-sim-* always-local-cancel) + test_visits_api.py (6 — slots endpoint, slots 404, book creates Visit, list visits, cancel flips + rejects re-cancel, no double-booking).",
+      "docs/setup-calcom.md producción walkthrough (Cal.com account + event type + API key + DNS-less). CALENDAR_SIMULATED env var (default true) + CALCOM_BASE_URL (default api.cal.com).",
+    ],
+  },
   {
     version: "0.4.0",
     date: "2026-05-25",

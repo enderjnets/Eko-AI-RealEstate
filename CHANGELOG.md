@@ -2,6 +2,71 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.5.0] — 2026-05-25
+
+### Phase 5 — Calendar booking (Cal.com) + dashboard VisitsSection
+
+The realtor can now book property visits from the dashboard. `/leads/[id]`
+shows a **Visitas** section under the conversation with upcoming + past
+visits, an **Agendar visita** button that opens a slot picker (next 7 weekdays,
+groups by day, click slot + optional address/notes → Confirm), and a per-card
+cancel.
+
+#### Backend
+
+- **`Visit` model** + Alembic migration `003_phase5_visits` (5 columns +
+  `external_booking_id` UNIQUE for idempotency + status enum).
+- **`services/calendar_cal.py`** — Cal.com v2 API wrapper:
+  - `list_available_slots(start, end, timezone, busy_starts)` —
+    SIMULATED returns weekday slots at 10/11/14/15/16 in-memory; production
+    calls Cal.com `/v2/slots/available` with `cal-api-version: 2024-08-13`.
+  - `create_booking(start_time, attendee_name, email, phone, notes, tz, duration)`
+    — SIMULATED returns `calcom-sim-<uuid>` ids no-network; real Cal.com
+    `POST /v2/bookings` otherwise.
+  - `cancel_booking(external_id)` — IDs starting with `calcom-sim-` always
+    cancel locally even in production mode (lets you clean up dev data).
+- **Endpoints**:
+  - `GET /api/v1/leads/{id}/calendar/slots?days=7&timezone=UTC`
+  - `POST /api/v1/leads/{id}/calendar/book` → `Visit`
+  - `GET /api/v1/leads/{id}/visits`
+  - `POST /api/v1/visits/{id}/cancel` `{reason?}`
+- Slots **excludes already-booked starts** for the same lead (`busy_starts`
+  set built from active visits) so no double-booking.
+- Attendee email/phone auto-picked from `lead.phone` (email if it contains `@`,
+  phone otherwise). Real Cal.com requires email; SIMULATED accepts phone-only.
+
+#### Frontend
+
+- **`VisitsSection`** — lists upcoming + past visits with status badges,
+  formatted ES dates, address, notes, per-card cancel button.
+- **`BookingDialog`** — modal slot picker grouped by day, optional address +
+  notes, real-time validation, `router.refresh()` style update via
+  `onBooked()` callback.
+- **`VisitStatusBadge`** — color-coded badge for the 5 visit statuses.
+- `lib/api.ts` — `calendarApi.slots/book` + `visitsApi.list/cancel` + types.
+
+#### Config
+
+- + `CALENDAR_SIMULATED=true` (dev default — no Cal.com account required)
+- + `CALCOM_BASE_URL=https://api.cal.com`
+- `CALCOM_API_KEY` + `CALCOM_EVENT_TYPE_ID` from Phase 0 now actually used.
+
+#### Tests (+13, total 77)
+
+- `test_calendar_service.py` (7): simulated slots weekday-only, hours match
+  the constant, busy_starts filter, list_available_slots simulated branch,
+  create_booking returns `calcom-sim-` id, cancel_booking returns True,
+  `calcom-sim-` id cancels locally even when SIMULATED=false.
+- `test_visits_api.py` (6): /slots returns weekday slots, /slots 404 on
+  missing lead, /book persists Visit with `calcom-sim-` id, /visits lists
+  inserted, cancel flips status + rejects re-cancel, /slots excludes
+  already-booked starts (no double-booking).
+
+#### Docs
+
+- `docs/setup-calcom.md` — Cal.com account + event type + API key + smoke
+  test + troubleshooting matrix.
+
 ## [0.4.0] — 2026-05-25
 
 ### Phase 4 — Composer manual + AI reply suggestions
