@@ -99,22 +99,33 @@ def _extract_json(text: str) -> dict[str, Any] | None:
         return None
 
 
-async def classify_intent(message_history: list[dict[str, str]]) -> IntentResult:
+async def classify_intent(
+    message_history: list[dict[str, str]],
+    *,
+    language_hint: str | None = None,
+) -> IntentResult:
     """Run the classifier against the given conversation history.
 
     Args:
         message_history: list of {"role": "user"|"assistant", "content": str} —
             the same shape the orchestrator passes to the LLM for reply generation.
+        language_hint: optional 2-letter language code (es/en/…) of the inbound
+            message. Helps the LLM disambiguate (e.g., "rent" in English vs
+            "renta" in Spanish that could mean income).
 
     Returns:
         IntentResult. On any error (LLMUnavailable, invalid JSON, schema mismatch),
         returns IntentResult(intent=OTHER, confidence=0.0, raw_response=<diagnostic>)
         so the caller can persist *something* and move on.
     """
+    system_prompt = _SYSTEM_PROMPT
+    if language_hint:
+        system_prompt += f"\n\nNOTA: el mensaje del usuario está en idioma `{language_hint}`. Esto NO cambia el formato del JSON ni los valores válidos del campo intent — sigue devolviendo rent/buy/valuation/other en inglés."
+
     try:
         result = await generate_reply(
             messages=message_history,
-            system=_SYSTEM_PROMPT,
+            system=system_prompt,
             max_tokens=300,
             temperature=0.0,
             json_mode=True,

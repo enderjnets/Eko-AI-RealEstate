@@ -22,6 +22,7 @@ anthropic==0.45.0  # Used with custom base_url for Kimi + MiniMax (anthropic-mes
 
 # Misc
 python-dateutil==2.9.0
+langdetect==1.0.9  # bilingual detection (es/en) for inbound messages
 
 # Test (kept in primary requirements so the image is self-sufficient for `docker exec pytest`)
 pytest==8.3.3

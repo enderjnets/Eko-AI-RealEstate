@@ -38,6 +38,7 @@ from app.models import (
 )
 from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
+from app.services.i18n import detect_language, language_instruction, pick_supported_language
 from app.services.llm import LLMUnavailable, generate_reply
 from app.services.whatsapp import send_text_message as whatsapp_send
 
@@ -183,8 +184,16 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         for m in history
     ]
 
-    # ── 7. Intent classification ──────────────────────────────────────
-    intent_result = await classify_intent(llm_messages)
+    # ── 7. Language detection + intent classification ─────────────────
+    # Detect on the latest inbound only (avoid letting historical AI replies
+    # bias the result). Pick the closest supported language from agent settings.
+    settings_row_pre = await db.execute(select(AgentSettings).where(AgentSettings.id == 1))
+    agent_cfg = settings_row_pre.scalar_one_or_none()
+    supported_languages = (agent_cfg.languages if agent_cfg else ["es", "en"]) or ["es", "en"]
+    detected_lang = detect_language(parsed.content)
+    target_lang = pick_supported_language(detected_lang, supported_languages)
+
+    intent_result = await classify_intent(llm_messages, language_hint=target_lang)
     if intent_result.confidence >= INTENT_CONFIDENCE_THRESHOLD:
         lead.intent = intent_result.intent
         e = intent_result.entities
@@ -200,15 +209,16 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
             lead.urgency = e.urgency
 
     # ── 8. Reply generation ────────────────────────────────────────────
-    settings_row = await db.execute(select(AgentSettings).where(AgentSettings.id == 1))
-    agent_cfg = settings_row.scalar_one_or_none()
     if agent_cfg is None:
         # Bootstrap the singleton on first real interaction.
         agent_cfg = AgentSettings(id=1)
         db.add(agent_cfg)
         await db.flush()
 
+    # Persona is authored in Spanish; the language steering line tells the LLM
+    # which language to actually answer in (detected from the inbound message).
     system_prompt = agent_cfg.agent_persona.replace("{agency_name}", agent_cfg.agency_name)
+    system_prompt += language_instruction(target_lang, persona_locale="es")
 
     try:
         reply = await generate_reply(messages=llm_messages, system=system_prompt, max_tokens=400)
