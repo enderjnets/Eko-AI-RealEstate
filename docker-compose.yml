@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: eko-re-db
+    container_name: eko-realestate-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-eko}
@@ -15,52 +15,60 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "127.0.0.1:5433:5432"  # 5433 to avoid colliding with Eko-AI-Business-Automation's :5432
+      # 5434 — coexist with eko-db :5432 (sales prod) and eko-db-main :5433 (sales main dev)
+      - "127.0.0.1:5434:5432"
 
   redis:
     image: redis:7-alpine
-    container_name: eko-re-redis
+    container_name: eko-realestate-redis
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
+    ports:
+      # 6381 — coexist with eko-redis :6379 (sales prod) and eko-redis-main :6380 (sales main dev)
+      - "127.0.0.1:6381:6379"
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: eko-re-ollama
-    restart: unless-stopped
-    volumes:
-      - ollama-models:/root/.ollama
-    # GPU is wired in docker-compose.override.yml on hosts that have it.
-    # First-time setup: docker compose exec ollama ollama pull qwen2.5:14b
+  # Ollama service is intentionally omitted by default — we use Kimi + MiniMax via HTTPS API
+  # (anthropic-messages protocol). If a future deploy wants on-prem LLM, uncomment and pull
+  # qwen2.5:14b. See docs/roadmap.md Phase 5 (single-customer install) for the rationale.
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: eko-re-backend
+    container_name: eko-realestate-backend
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-      ollama:
-        condition: service_started
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
-      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      # LLM
+      LLM_PRIMARY: ${LLM_PRIMARY:-kimi}
+      LLM_FALLBACK: ${LLM_FALLBACK:-minimax}
+      KIMI_API_KEY: ${KIMI_API_KEY}
+      KIMI_BASE_URL: ${KIMI_BASE_URL:-https://api.kimi.com/coding}
+      KIMI_MODEL: ${KIMI_MODEL:-kimi-for-coding}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY}
+      MINIMAX_BASE_URL: ${MINIMAX_BASE_URL:-https://api.minimax.io/anthropic}
+      MINIMAX_MODEL: ${MINIMAX_MODEL:-MiniMax-M2.7}
+      # WhatsApp Business Cloud API
+      WHATSAPP_SIMULATED: ${WHATSAPP_SIMULATED:-true}
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET}
       WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN}
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
       APP_ENV: ${APP_ENV:-development}
       DEBUG: ${DEBUG:-true}
     ports:
-      - "8001:8000"  # 8001 to avoid colliding with Eko-AI-Business-Automation's :8000
+      # 8011 — coexist with eko-backend :8000 (sales prod), eko-pipeline :8002, eko-backend-main :8010 (sales main dev)
+      - "8011:8000"
 
   frontend:
     build:
@@ -68,13 +76,13 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:8000}
-    container_name: eko-re-frontend
+    container_name: eko-realestate-frontend
     restart: unless-stopped
     depends_on:
       - backend
     ports:
-      - "3003:3000"  # 3003 — prod uses 3001, pricing-v2 preview uses 3002
+      # 3004 — coexist with eko-frontend :3001, eko-frontend-pricing-v2 :3002, eko-frontend-main :3003
+      - "3004:3000"
 
 volumes:
   postgres-data:
-  ollama-models:
