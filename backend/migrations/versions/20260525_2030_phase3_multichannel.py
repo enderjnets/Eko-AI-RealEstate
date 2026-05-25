@@ -35,6 +35,20 @@ def upgrade() -> None:
     op.create_unique_constraint("uq_messages_external_id", "messages", ["external_id"])
     op.add_column("messages", sa.Column("subject", sa.String(length=500), nullable=True))
 
+    # ── leads.phone widened 32 → 254 (emails as identifiers in multichannel) ──
+    op.alter_column(
+        "leads",
+        "phone",
+        type_=sa.String(length=254),
+        existing_type=sa.String(length=32),
+    )
+    op.alter_column(
+        "leads",
+        "name",
+        type_=sa.String(length=160),
+        existing_type=sa.String(length=120),
+    )
+
     # ── conversations ──────────────────────────────────────────────────
     op.drop_index("ix_conversations_wa_thread_id", table_name="conversations")
     op.alter_column(
@@ -76,3 +90,16 @@ def downgrade() -> None:
     )
     op.alter_column("messages", "delivery_status", new_column_name="wa_status")
     op.create_unique_constraint("uq_messages_wa_message_id", "messages", ["wa_message_id"])
+
+    op.alter_column(
+        "leads",
+        "name",
+        type_=sa.String(length=120),
+        existing_type=sa.String(length=160),
+    )
+    op.alter_column(
+        "leads",
+        "phone",
+        type_=sa.String(length=32),
+        existing_type=sa.String(length=254),
+    )

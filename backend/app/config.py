@@ -51,7 +51,15 @@ class Settings(BaseSettings):
     WHATSAPP_BUSINESS_ACCOUNT_ID: str = ""
     WHATSAPP_GRAPH_API_VERSION: str = "v20.0"
 
-    # ─── Calendar (Phase 3) ─────────────────────────────────────────────
+    # ─── Email channel (Phase 3) ────────────────────────────────────────
+    # Resend transactional API for outbound + Resend inbound webhook (Svix-signed).
+    # When SIMULATED=true (dev default), outbound is LOGGED instead of sent.
+    EMAIL_SIMULATED: bool = True
+    RESEND_API_KEY: str = ""
+    RESEND_FROM: str = "Eko AI Realtors <noreply@realtor-demo.ekoaiautomation.com>"
+    RESEND_WEBHOOK_SECRET: str = ""  # Svix-style HMAC secret, may start with `whsec_`
+
+    # ─── Calendar (Phase 6 — moved from Phase 3) ────────────────────────
     CALENDAR_PROVIDER: str = "calcom"  # calcom | google
     CALCOM_API_KEY: str = ""
     CALCOM_EVENT_TYPE_ID: str = ""

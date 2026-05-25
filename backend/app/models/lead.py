@@ -36,8 +36,12 @@ class Lead(Base):
     __tablename__ = "leads"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    phone: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
-    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # `phone` historically held a phone number, but Phase 3 multichannel uses it
+    # as a generic identifier: phone numbers for whatsapp/sms/voice, email
+    # addresses for email. Widened to 254 chars (RFC 5321 max email length).
+    # A future migration will rename it to `identifier`.
+    phone: Mapped[str] = mapped_column(String(254), unique=True, nullable=False, index=True)
+    name: Mapped[str | None] = mapped_column(String(160), nullable=True)
 
     status: Mapped[LeadStatus] = mapped_column(
         pg_enum(LeadStatus, name="lead_status"),
