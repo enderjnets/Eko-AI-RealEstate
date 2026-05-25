@@ -3,10 +3,15 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Loader2, MessageCircle, User2 } from "lucide-react";
+import { Loader2, Mail, MessageCircle, MessageSquare, Phone, User2 } from "lucide-react";
 import { type Lead, type LeadIntent, type LeadStatus, leadsApi } from "@/lib/api";
 import { formatBudget, relativeTime } from "@/lib/format";
 import { IntentBadge, StatusBadge } from "@/components/ui/Badge";
+
+function channelGlyph(identifier: string): typeof MessageCircle {
+  // Heuristic: email addresses contain "@", phone numbers don't.
+  return identifier.includes("@") ? Mail : MessageCircle;
+}
 
 export function LeadsTable() {
   const params = useSearchParams();
@@ -81,7 +86,11 @@ export function LeadsTable() {
                       <span className="font-medium text-white text-sm">
                         {lead.name || "Sin nombre"}
                       </span>
-                      <span className="text-xs text-gray-500 font-mono">{lead.phone}</span>
+                      {(() => {
+                        const Glyph = channelGlyph(lead.phone);
+                        return <Glyph className="w-3 h-3 text-gray-600" aria-hidden />;
+                      })()}
+                      <span className="text-xs text-gray-500 font-mono truncate max-w-[260px]">{lead.phone}</span>
                       {lead.human_takeover && (
                         <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
                           Humano

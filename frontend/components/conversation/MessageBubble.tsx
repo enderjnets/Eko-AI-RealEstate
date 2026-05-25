@@ -1,6 +1,13 @@
-import { Bot, Phone, User2 } from "lucide-react";
+import { Bot, MessageCircle, Mail, MessageSquare, Phone, User2 } from "lucide-react";
 import type { Message } from "@/lib/api";
 import { exactTime } from "@/lib/format";
+
+const CHANNEL_ICON: Record<string, typeof MessageCircle> = {
+  whatsapp: MessageCircle,
+  email: Mail,
+  sms: MessageSquare,
+  voice: Phone,
+};
 
 const STATUS_LABEL: Record<Message["delivery_status"], string> = {
   pending: "Pendiente",
@@ -10,7 +17,7 @@ const STATUS_LABEL: Record<Message["delivery_status"], string> = {
   failed: "Fallo",
 };
 
-export function MessageBubble({ msg }: { msg: Message }) {
+export function MessageBubble({ msg, channel }: { msg: Message; channel?: string }) {
   const isInbound = msg.direction === "inbound";
   const isHuman = msg.sender === "human";
   const isAgent = msg.sender === "agent";
@@ -28,6 +35,10 @@ export function MessageBubble({ msg }: { msg: Message }) {
       <div className={`max-w-[78%] ${isInbound ? "" : "items-end"}`}>
         <div className="flex items-center gap-1.5 mb-0.5 text-[10px] text-gray-500">
           <span>{senderLabel}</span>
+          {channel && (() => {
+            const Ch = CHANNEL_ICON[channel] ?? MessageCircle;
+            return <Ch className="w-3 h-3 text-gray-600" aria-hidden />;
+          })()}
           {isAgent && msg.llm_provider && (
             <span className="text-[10px] px-1 rounded bg-eko-violet/10 text-eko-violet border border-eko-violet/20">
               {msg.llm_provider}
@@ -40,6 +51,11 @@ export function MessageBubble({ msg }: { msg: Message }) {
           )}
           <span>· {exactTime(msg.created_at)}</span>
         </div>
+        {channel === "email" && msg.subject && (
+          <div className="text-[11px] text-gray-400 mb-1 truncate" title={msg.subject}>
+            <span className="text-gray-600">Asunto:</span> {msg.subject}
+          </div>
+        )}
         <div
           className={`px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed ${
             isInbound

@@ -164,14 +164,17 @@ when an AI session helped write it.
 `inmo-demo.ekoaiautomation.com` is reserved for Phase 5 (Cloudflare tunnel
 ingress to be added when we go to first pilot).
 
-## Phase status
+## Phase status (post-USA-pivot 2026-05-25)
 
 - ✅ **Phase 0** — Bootstrap (`v0.0.1`, commit `66b7d7d`, 2026-05-25)
-- ✅ **Phase 1** — CORE WhatsApp + LLM + Lead capture (`v0.1.0`, merge commit `95fa5ec`, 2026-05-25). 25/25 tests passing.
-- ✅ **Phase 2** — Realtor dashboard (`v0.2.0`, 2026-05-25). `/leads` list with filters + `/leads/[id]` chat view + human_takeover toggle. PATCH endpoint. 33/33 tests passing. Dashboard accesible en `http://<host>:3004/leads`.
-- 🔨 **Phase 3** — Calendar booking (Cal.com / Google). To start in branch `phase-3-calendar`.
-- ⏳ **Phase 4** — Listings scrapers + post-visit follow-up
-- ⏳ **Phase 5** — Single-customer installer + public demo subdomain
+- ✅ **Phase 1** — CORE WhatsApp + LLM + Lead capture (`v0.1.0`, 2026-05-25). 25/25 tests.
+- ✅ **Phase 2** — Realtor dashboard (`v0.2.0`, 2026-05-25). 33/33 tests.
+- ✅ **Phase 3** — Multichannel + Email (Resend) + Bilingual (`v0.3.0`, 2026-05-25). USA pivot. 55/55 tests. WhatsApp keeps working as `channel="whatsapp"`; email is now `channel="email"`. Agent auto-detects ES/EN and replies in same language.
+- 🔨 **Phase 4** — SMS (Twilio) — branch `phase-4-sms` next
+- ⏳ **Phase 5** — Voice agent (VAPI / Retell)
+- ⏳ **Phase 6** — Calendar booking (moved from old Phase 3)
+- ⏳ **Phase 7** — MLS / IDX integration (USA listings equivalent of Idealista/Fotocasa)
+- ⏳ **Phase 8** — Single-customer installer + public demo subdomain
 
 For per-phase details see [`docs/roadmap.md`](docs/roadmap.md).
 

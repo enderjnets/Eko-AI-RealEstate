@@ -2,6 +2,84 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.3.0] — 2026-05-25
+
+### Phase 3 — Multichannel + Email (Resend) + Bilingual (USA pivot)
+
+**Strategic pivot**: target customers shift from EU real-estate offices
+(WhatsApp-first) to USA realtors where SMS, Email and phone calls dominate.
+WhatsApp remains an optional channel for international clients. Roadmap
+reordered: Phase 4=SMS (Twilio), Phase 5=Voice (VAPI/Retell), Phase 6=Calendar
+booking (moved from Phase 3), Phase 7=MLS/IDX, Phase 8=installer.
+
+#### Multichannel refactor
+
+- Schema rename to channel-agnostic names:
+  - `messages.wa_message_id` → `external_id` (120 → 255 chars)
+  - `messages.wa_status` → `delivery_status`
+  - `conversations.wa_thread_id` → `external_thread_id` (80 → 255)
+  - `leads.phone` widened 32 → 254 chars (RFC 5321 max email length — same
+    column doubles as identifier for whatsapp/sms/voice and email)
+- New `messages.subject` column (nullable, email-only).
+- New `conversations.channel` index (queries filter on it constantly).
+- `ParsedMessage` moved to `app/services/_common.py` with `channel`,
+  `external_id`, `from_identifier`, `content`, `subject`, `thread_id` —
+  single shared type emitted by every channel parser.
+- Orchestrator routes outbound through `_dispatch_send(channel, ...)` →
+  `whatsapp_send` / `email_send` (lazy imports). One conversation per
+  `(lead, channel)`: a lead writing via both WhatsApp AND email gets two
+  active conversations.
+
+#### Email channel (Resend)
+
+- `services/email.py`:
+  - `send_email(to, subject, body_text, in_reply_to)` POSTs to
+    `api.resend.com/emails` with threading headers.
+  - `parse_inbound_email(payload)` returns `ParsedMessage(channel="email")`
+    with subject + `thread_id` from In-Reply-To/References/Message-ID.
+  - `verify_resend_signature(...)` Svix-style HMAC-SHA256 with multi-sig
+    header support (key rotation).
+  - `EMAIL_SIMULATED=true` (dev default) logs outbound instead of POSTing —
+    no Resend account or domain DNS required.
+- `POST /api/v1/webhooks/email` — same idempotency contract as the WhatsApp
+  webhook (200 + UNIQUE `external_id` catches retries).
+- New env vars: `EMAIL_SIMULATED`, `RESEND_API_KEY`, `RESEND_FROM`,
+  `RESEND_WEBHOOK_SECRET`.
+
+#### Bilingual agent
+
+- `services/i18n.py` — `detect_language()` (langdetect, deterministic seed) +
+  `pick_supported_language()` (clamps to AgentSettings.languages whitelist) +
+  `language_instruction()` (steering line for the system prompt).
+- Orchestrator detects on the **latest inbound only** (no bias from historical
+  AI replies), picks `target_lang`, appends an "IDIOMA: el cliente escribe
+  en X. Responde EXCLUSIVAMENTE en X" line to the system prompt.
+- Classifier accepts optional `language_hint` so it disambiguates words like
+  "rent" (EN) vs "renta" (ES, can mean income). JSON output values still
+  English (rent/buy/valuation/other) regardless of input language.
+
+#### Dashboard
+
+- `MessageBubble` renders a channel icon next to the sender label (envelope
+  email / message-circle WhatsApp / message-square SMS / phone voice) +
+  shows the email subject above the bubble when channel="email".
+- `LeadsTable` shows a heuristic glyph (email vs phone) next to the
+  identifier so the realtor knows at a glance which channel the lead used.
+- API client (`lib/api.ts`) interfaces updated to new field names.
+
+#### Tests
+
+- **55 passing** on live ROG Postgres (+10 new):
+  - `test_email_service.py` (8) — signature accept/reject/missing/wrong-secret/
+    multi-sig-one-matches + parser minimal/threading/html-fallback/non-received
+    skipped/missing-from-skipped + send_email SIMULATED.
+  - `test_i18n.py` (9) — detect ES/EN, short-text fallback, pick_supported,
+    language_instruction both personas, unknown lang fallback.
+  - `test_email_webhook_e2e.py` (1) — end-to-end POST → Lead (email
+    identifier), Conversation(channel="email"), 2 Messages with subject +
+    threading.
+- Existing tests updated to use `external_id` / `delivery_status`.
+
 ## [0.2.0] — 2026-05-25
 
 ### Phase 2 — Realtor dashboard (UI for the Phase 1 backend)
