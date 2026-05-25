@@ -254,17 +254,25 @@ async def generate_reply_suggestions(
     )
     target_lang = pick_supported_language(detect_language(last_user_content), supported)
 
-    persona = agent_cfg.agent_persona if agent_cfg else "Eres el asistente de una inmobiliaria."
+    # IMPORTANT: do NOT reuse the inmobiliario persona here. The LLM gets
+    # confused between "I am the assistant chatting with the user" and "I am
+    # a draft generator" — the persona wins and it ignores the JSON instruction.
+    # Use a task-only prompt that explicitly identifies as a draft generator.
     agency_name = agent_cfg.agency_name if agent_cfg else "Inmobiliaria"
     system_prompt = (
-        persona.replace("{agency_name}", agency_name)
+        "Sos un generador de borradores de respuesta. NO estás conversando con el cliente. "
+        "Recibís el historial de WhatsApp/email entre un cliente potencial y la inmobiliaria, "
+        "y producís varias respuestas posibles que el agente humano puede usar tal cual o "
+        "editar antes de enviar."
+        f"\n\nAGENCIA: {agency_name}"
         + language_instruction(target_lang, persona_locale="es")
         + (
-            f"\n\nTAREA: el agente HUMANO está revisando la conversación y quiere "
-            f"varias opciones de respuesta para elegir. Genera EXACTAMENTE {count} "
-            "respuestas posibles, distintas entre sí (diferentes tonos / enfoques), "
-            "cortas (1-3 frases cada una). Devuelve un array JSON de strings, sin "
-            "claves adicionales. Ejemplo: [\"opción 1\", \"opción 2\", \"opción 3\"]."
+            f"\n\nTAREA: generá EXACTAMENTE {count} borradores DISTINTOS entre sí "
+            "(diferentes tonos / enfoques / preguntas), CORTOS (1-3 frases cada uno)."
+            "\n\nFORMATO DE SALIDA OBLIGATORIO: un único array JSON de strings. SIN texto antes "
+            "o después. SIN markdown. SIN claves. SIN explicación. SOLO el array."
+            f"\n\nEjemplo de salida válida (formato literal, contenido distinto al tuyo):\n"
+            f'[\"opción 1 corta\", \"opción 2 diferente\", \"opción 3 con pregunta\"]'
         )
     )
 
