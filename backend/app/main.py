@@ -6,7 +6,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import conversations, health, leads
+from app.api.v1 import conversations, health, leads, visits
 from app.api.v1.webhooks import email as email_webhook
 from app.api.v1.webhooks import whatsapp as whatsapp_webhook
 from app.config import get_settings
@@ -46,6 +46,8 @@ app.include_router(whatsapp_webhook.router, prefix="/api/v1/webhooks", tags=["we
 app.include_router(email_webhook.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(leads.router, prefix="/api/v1/leads", tags=["leads"])
 app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["conversations"])
+app.include_router(visits.leads_calendar_router, prefix="/api/v1", tags=["calendar"])
+app.include_router(visits.visits_router, prefix="/api/v1", tags=["visits"])
 
 
 @app.on_event("startup")

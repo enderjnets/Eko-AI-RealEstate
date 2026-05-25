@@ -12,6 +12,7 @@ from app.models.message import (
     MessageStatus,
 )
 from app.models.property import Property, PropertySource
+from app.models.visit import Visit, VisitStatus
 
 __all__: list[str] = [
     "AgentSettings",
@@ -26,4 +27,6 @@ __all__: list[str] = [
     "MessageStatus",
     "Property",
     "PropertySource",
+    "Visit",
+    "VisitStatus",
 ]
