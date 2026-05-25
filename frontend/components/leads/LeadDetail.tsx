@@ -9,6 +9,7 @@ import {
   leadsApi,
 } from "@/lib/api";
 import { IntentBadge, StatusBadge } from "@/components/ui/Badge";
+import { Composer } from "@/components/conversation/Composer";
 import { MessageBubble } from "@/components/conversation/MessageBubble";
 import { TakeoverToggle } from "@/components/conversation/TakeoverToggle";
 import { exactTime, formatBudget, relativeTime } from "@/lib/format";
@@ -118,6 +119,8 @@ export function LeadDetail({ leadId }: { leadId: number }) {
           </div>
         )}
       </section>
+
+      {conv && <Composer leadId={lead.id} channel={conv.channel} />}
     </>
   );
 }

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.3.0";
+export const CURRENT_VERSION = "0.4.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.4.0",
+    date: "2026-05-25",
+    title: "Phase 4 — Composer manual + AI reply suggestions (completa el loop de takeover)",
+    changes: [
+      "Composer box en /leads/[id]: el realtor escribe una respuesta y la envía vía el canal del lead (WhatsApp/Email). Se persiste como Message(sender=HUMAN, direction=OUTBOUND) y se rutea por el dispatcher multichannel existente.",
+      "Botón 'Sugerir respuestas': genera 3 borradores de respuesta vía LLM (Kimi/MiniMax). Cada sugerencia es clickeable y llena el textarea del composer — el realtor puede editarla antes de enviar.",
+      "Backend nuevo: POST /api/v1/leads/{id}/messages (human send con auto-pick del canal de la última conversación activa; threading email via In-Reply-To del último inbound) + POST /api/v1/leads/{id}/suggestions (genera N respuestas en formato JSON array, degrada a [] + error en caso de LLM fail o JSON inválido).",
+      "Orchestrator: 2 funciones nuevas — send_human_message + generate_reply_suggestions. Usan el dispatcher existente, la detección de idioma del Phase 3, y AgentSettings.languages.",
+      "Auto-pick canal: si el lead tiene múltiples conversaciones activas (multichannel), el composer usa la última activa. Para email auto-prepende 'Re:' + In-Reply-To header.",
+      "UX: 'count' clampado a [1, 5]. Composer muestra contador 0/4000 chars. Errores in-line (no toast/modal). router.refresh() tras send → nueva burbuja aparece en el chat sin recargar.",
+      "Tests +8: human-send happy path (WhatsApp simulated routing), lead-not-found error, empty text 400, lead-without-conversation error, suggestions happy path, suggestions con prose alrededor del JSON, suggestions LLM fail degrade graceful, suggestions count clamp 99→5.",
+    ],
+  },
   {
     version: "0.3.0",
     date: "2026-05-25",

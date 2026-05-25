@@ -2,6 +2,66 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.4.0] — 2026-05-25
+
+### Phase 4 — Composer manual + AI reply suggestions
+
+Completes the human-takeover loop. Phase 2 added the toggle that pauses the AI
+agent; Phase 4 adds the UI to actually reply from the dashboard, plus an AI
+helper that drafts 3 options the realtor can pick / edit / send.
+
+#### Frontend
+
+- **`Composer`** component below the chat in `/leads/[id]`: textarea +
+  character counter (0/4000) + Send button. Sends via the lead's last-active
+  channel — no channel picker needed for the common case.
+- **"Sugerir respuestas"** button generates 3 alternative replies from the
+  LLM. Each suggestion is a clickable card that fills the textarea — the
+  realtor can edit before sending. Powered by the same Kimi + MiniMax fallback
+  used by the agent itself.
+- `router.refresh()` after a successful send → the new outbound bubble appears
+  immediately, no page reload.
+- Errors render inline below the composer (no toast/modal), keeping the
+  realtor's attention on the conversation.
+
+#### Backend
+
+- **`POST /api/v1/leads/{id}/messages`** — accepts `{ "text": ..., "subject"?: ... }`.
+  Auto-picks the channel from the most recently-active Conversation. For email,
+  derives `Re: <subject>` from the last inbound + threads via `In-Reply-To`
+  header. Persists as `Message(sender=HUMAN, direction=OUTBOUND)` and routes
+  through the existing `_dispatch_send()` dispatcher.
+- **`POST /api/v1/leads/{id}/suggestions`** — accepts `{ "count": int }`
+  (clamped to `[1, 5]`). Builds a system prompt asking for a JSON array of N
+  diverse short replies + the language-steering line from Phase 3. Parses the
+  array tolerantly (matches first `[...]` block, drops empties, coerces to
+  strings).
+- **Degrades gracefully**: any LLM failure / invalid JSON / missing lead /
+  empty conversation returns `{"suggestions": [], "error": "..."}` with HTTP
+  200 so the UI shows an empty state instead of crashing.
+
+#### Orchestrator
+
+- Two new functions in `app/services/conversation.py`:
+  - `send_human_message(lead_id, text, db, subject?)` — dispatches via the
+    existing channel dispatcher and persists with `sender=HUMAN`.
+  - `generate_reply_suggestions(lead_id, db, count=3)` — re-uses the same
+    history-build + language-detection pipeline as the auto-reply, but with a
+    "give me 3 options as a JSON array" prompt.
+
+#### Tests
+
+- **63 passing** on live ROG Postgres (+8 new):
+  - human-send happy path (WhatsApp SIMULATED → outbound persists SENT
+    with synthetic wamid).
+  - human-send lead not found → `{status: error, error: lead_not_found}`.
+  - human-send empty text → HTTP 400.
+  - human-send lead without any Conversation → `error: no_active_conversation`.
+  - suggestions happy path (3 quoted in valid JSON).
+  - suggestions with prose around the JSON (parser extracts the array).
+  - suggestions LLM returns non-JSON → empty list + error field.
+  - suggestions count=99 clamps to 5.
+
 ## [0.3.0] — 2026-05-25
 
 ### Phase 3 — Multichannel + Email (Resend) + Bilingual (USA pivot)
