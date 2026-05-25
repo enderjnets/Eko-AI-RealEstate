@@ -2,6 +2,63 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.2.0] — 2026-05-25
+
+### Phase 2 — Realtor dashboard (UI for the Phase 1 backend)
+
+What was protocol-only after v0.1.0 now has a face. The realtor can open
+`http://<host>:3004/leads` and see the leads the AI captured, drill into
+any conversation, and click one button to take over from the agent.
+
+#### Frontend (Next.js 14 App Router)
+
+- **`/leads`** — paginated list with status + intent filters (querystring-based,
+  Suspense-wrapped so SSR works). Each row shows name, phone, status badge,
+  intent badge, zone, budget range, relative time of last message, and a "Humano"
+  pill when human_takeover is on.
+- **`/leads/[id]`** — detail page with:
+  - Lead header (avatar, name, phone, status + intent badges, last activity).
+  - Metadata grid (zona, presupuesto, tipo, urgencia, created/updated timestamps).
+  - **Takeover toggle** (top-right of header) — one-click PATCH to flip
+    `human_takeover`. While ON, the orchestrator skips AI auto-reply (Phase 1
+    already enforces this).
+  - Conversation thread (chat-style bubbles, inbound left/outbound right,
+    per-message LLM provider badge + Meta delivery status + timestamps).
+- **`/about`** — public-facing landing kept (the Phase 0 placeholder) for
+  sharing the product link. `/` redirects to `/leads`.
+- **API client** — typed in `frontend/lib/api.ts` (Lead, Conversation, Message
+  interfaces + `leadsApi.list/get/patch` + `conversationsApi.get`). All requests
+  go through same-origin `/api/...`, which `next.config.js` rewrites to the
+  backend container — works identically from LAN, Tailscale, or future
+  Cloudflare tunnel without per-env URLs.
+- **Components**: `Nav`, `StatusBadge`, `IntentBadge`, `FilterBar`, `LeadsTable`,
+  `MessageBubble`, `LeadDetail`, `TakeoverToggle`. All Tailwind, Eko-violet
+  palette, lucide-react icons.
+
+#### Backend
+
+- **`PATCH /api/v1/leads/{id}`** — partial update endpoint. Accepts any subset
+  of `name | status | intent | zone | budget_min | budget_max | property_type |
+  urgency | human_takeover`. Empty body → 400. Unknown field → 422 (Pydantic
+  `extra='forbid'`). Missing lead → 404.
+
+#### docker-compose
+
+- Frontend now reads `INTERNAL_API_URL` at runtime for the rewrite (defaults
+  to `http://backend:8000`). Build arg `NEXT_PUBLIC_API_URL` defaulted to `/api`
+  since client JS no longer touches an absolute backend URL.
+
+#### Tests
+
+- `test_leads_api.py` (+8): list envelope, get 404, PATCH takeover roundtrip,
+  PATCH partial update preserves untouched fields, PATCH empty 400, PATCH
+  unknown field 422, PATCH invalid enum 422, PATCH 404. Total **33 passing**.
+
+#### Brand
+
+- Final rename Inmobiliario → **Eko AI Realtors** in `<title>`, landing copy,
+  README, CLAUDE.md.
+
 ## [0.1.0] — 2026-05-25
 
 ### Phase 1 CORE — WhatsApp 24/7 + Kimi/MiniMax fallback + Lead capture

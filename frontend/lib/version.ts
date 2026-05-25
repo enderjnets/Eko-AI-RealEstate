@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.1.0";
+export const CURRENT_VERSION = "0.2.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,23 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.2.0",
+    date: "2026-05-25",
+    title: "Phase 2 — Realtor dashboard (lista leads + chat view + human takeover)",
+    changes: [
+      "Dashboard frontend funcional en Next.js 14 App Router. Reemplaza el landing placeholder en `/` (que ahora redirige a `/leads`). La landing vieja queda accesible en `/about`.",
+      "`/leads` — tabla de leads con filtros por status (Nuevo/Cualificado/Visitando/Post-visita/Cerrado/Perdido/Pausado) e intent (Alquiler/Compra/Tasación/Otro). Click en un lead → vista detalle.",
+      "`/leads/[id]` — vista detalle con metadata del lead (nombre, teléfono, zona, presupuesto, tipo, urgencia, timestamps) + conversación completa estilo chat (burbujas inbound/outbound, indicador de provider LLM, status de envío Meta) + toggle de control humano.",
+      "Toggle 'Humano vs IA' — botón que llama `PATCH /api/v1/leads/{id}` con `{human_takeover: true|false}`. Cuando está ON, el orchestrator NO genera respuesta automática para el siguiente mensaje entrante (Phase 1 ya respeta esta flag).",
+      "Componentes: `Nav` (top bar con branding + links), `StatusBadge` + `IntentBadge` (paleta por categoría), `FilterBar` (querystring-based, Suspense para SSR), `LeadsTable` (lista con virtualización ligera), `MessageBubble` (chat-style con sender icons), `LeadDetail`, `TakeoverToggle`.",
+      "API client tipado en `lib/api.ts` — interfaces TypeScript para Lead, Conversation, Message + funciones `leadsApi.list/get/patch` y `conversationsApi.get`. Helper `format.ts` con tiempos relativos en castellano + formato de presupuesto.",
+      "Backend: nuevo endpoint `PATCH /api/v1/leads/{id}` con schema `LeadPatch` (partial update, `extra='forbid'` rechaza campos desconocidos con 422). Acepta name, status, intent, zone, budget_min/max, property_type, urgency, human_takeover.",
+      "`next.config.js` proxya `/api/*` a `INTERNAL_API_URL` (default `http://backend:8000`) — cliente JS siempre habla same-origin, funciona desde LAN/Tailscale/futuro Cloudflare sin reconfigurar URLs.",
+      "Tests +8: `test_leads_api.py` cubre list envelope, get 404, PATCH takeover toggle, PATCH partial update (status+zone sin tocar name), PATCH body vacío 400, PATCH campo desconocido 422, PATCH status inválido 422, PATCH 404. Total ahora: 33 tests.",
+      "Brand rename completo Inmobiliario → Realtors en `<title>`, landing copy, README.",
+    ],
+  },
   {
     version: "0.1.0",
     date: "2026-05-25",
