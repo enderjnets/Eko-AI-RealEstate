@@ -1,0 +1,13 @@
+[project]
+name = "eko-ai-realestate-backend"
+version = "0.0.1"
+description = "Eko AI Inmobiliario — backend (FastAPI)"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+ignore = ["E501"]  # line length handled by formatter

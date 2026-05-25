@@ -1,0 +1,80 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: eko-re-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-eko}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eko_local_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-eko_realestate}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-eko}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "127.0.0.1:5433:5432"  # 5433 to avoid colliding with Eko-AI-Business-Automation's :5432
+
+  redis:
+    image: redis:7-alpine
+    container_name: eko-re-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: eko-re-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    # GPU is wired in docker-compose.override.yml on hosts that have it.
+    # First-time setup: docker compose exec ollama ollama pull qwen2.5:14b
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: eko-re-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
+      APP_ENV: ${APP_ENV:-development}
+      DEBUG: ${DEBUG:-true}
+    ports:
+      - "8001:8000"  # 8001 to avoid colliding with Eko-AI-Business-Automation's :8000
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:8000}
+    container_name: eko-re-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3003:3000"  # 3003 — prod uses 3001, pricing-v2 preview uses 3002
+
+volumes:
+  postgres-data:
+  ollama-models:
