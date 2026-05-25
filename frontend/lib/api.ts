@@ -103,6 +103,22 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+export interface HumanMessageResult {
+  status: "ok" | "error";
+  lead_id: number | null;
+  channel: string | null;
+  outbound_id: number | null;
+  outbound_status: string | null;
+  error: string | null;
+}
+
+export interface SuggestionsResult {
+  suggestions: string[];
+  provider: string | null;
+  model: string | null;
+  error: string | null;
+}
+
 export const leadsApi = {
   list: (params?: { status?: LeadStatus; intent?: LeadIntent; limit?: number; offset?: number }) => {
     const q = new URLSearchParams();
@@ -116,6 +132,16 @@ export const leadsApi = {
   get: (id: number) => api<Lead>(`/v1/leads/${id}`),
   patch: (id: number, body: LeadPatch) =>
     api<Lead>(`/v1/leads/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  sendMessage: (id: number, text: string, subject?: string) =>
+    api<HumanMessageResult>(`/v1/leads/${id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text, subject }),
+    }),
+  suggestions: (id: number, count: number = 3) =>
+    api<SuggestionsResult>(`/v1/leads/${id}/suggestions`, {
+      method: "POST",
+      body: JSON.stringify({ count }),
+    }),
 };
 
 export const conversationsApi = {

@@ -11,6 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_db
 from app.models import Lead, LeadIntent, LeadStatus
+from app.services.conversation import (
+    generate_reply_suggestions,
+    send_human_message,
+)
 
 router = APIRouter()
 
@@ -92,6 +96,76 @@ async def get_lead(lead_id: int, db: AsyncSession = Depends(get_db)) -> LeadOut:
     if row is None:
         raise HTTPException(status_code=404, detail="Lead not found")
     return LeadOut.model_validate(row)
+
+
+class HumanMessageIn(BaseModel):
+    """Body for POST /leads/{id}/messages — the human realtor sending a reply."""
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    subject: str | None = None  # email-only override; otherwise inferred from last inbound
+
+
+class HumanMessageResult(BaseModel):
+    status: str
+    lead_id: int | None = None
+    channel: str | None = None
+    outbound_id: int | None = None
+    outbound_status: str | None = None
+    error: str | None = None
+
+
+@router.post("/{lead_id}/messages", response_model=HumanMessageResult)
+async def post_human_message(
+    lead_id: int,
+    body: HumanMessageIn,
+    db: AsyncSession = Depends(get_db),
+) -> HumanMessageResult:
+    """Send a human-authored reply via the lead's last-active channel.
+
+    Phase 4 dashboard composer endpoint. Auto-picks channel from the most
+    recently-active Conversation. Returns 200 with `status="error"` body when
+    the lead is missing or has no active conversation (lets the UI surface a
+    friendly error without parsing HTTP status codes).
+    """
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="`text` is required")
+    result = await send_human_message(lead_id, text, db, subject=body.subject)
+    return HumanMessageResult(**result)  # type: ignore[arg-type]
+
+
+class SuggestionsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    count: int = 3
+
+
+class SuggestionsOut(BaseModel):
+    suggestions: list[str]
+    provider: str | None = None
+    model: str | None = None
+    error: str | None = None
+
+
+@router.post("/{lead_id}/suggestions", response_model=SuggestionsOut)
+async def post_suggestions(
+    lead_id: int,
+    body: SuggestionsIn | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> SuggestionsOut:
+    """Generate N alternative reply texts the human can pick / edit / send.
+
+    Degrades gracefully: an LLM failure returns `{"suggestions": [], "error": "..."}`
+    so the UI shows an empty state instead of crashing.
+    """
+    count = max(1, min(5, body.count if body else 3))
+    result = await generate_reply_suggestions(lead_id, db, count=count)
+    return SuggestionsOut(
+        suggestions=result.get("suggestions") or [],
+        provider=result.get("provider"),
+        model=result.get("model"),
+        error=result.get("error"),
+    )
 
 
 @router.patch("/{lead_id}", response_model=LeadOut)

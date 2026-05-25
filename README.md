@@ -72,8 +72,8 @@ See [`docs/roadmap.md`](docs/roadmap.md) for the phased plan.
 | 1. WhatsApp + LLM + lead capture + classification | ✅ done (`v0.1.0`) |
 | 2. Realtor dashboard (Next.js) | ✅ done (`v0.2.0`) |
 | 3. Multichannel + Email (Resend) + bilingual (USA pivot) | ✅ done (`v0.3.0`) |
-| 4. Manual reply composer + AI reply suggestions (UI completes takeover loop) | 🔄 next |
-| 5. Calendar booking (Cal.com / Google) | ⏳ |
+| 4. Manual reply composer + AI reply suggestions | ✅ done (`v0.4.0`) |
+| 5. Calendar booking (Cal.com / Google) | 🔄 next |
 | 6. Single-customer installer + public demo subdomain | ⏳ |
 | 7. MLS / IDX integration | ⏳ |
 | 8. SMS (Twilio) — defer until Twilio account ready | ⏳ |

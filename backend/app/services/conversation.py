@@ -85,6 +85,225 @@ MAX_HISTORY_TURNS = 20
 INTENT_CONFIDENCE_THRESHOLD = 0.55
 
 
+async def _latest_active_conversation(lead_id: int, db: AsyncSession) -> Conversation | None:
+    """Return the most recently-active conversation for the lead, any channel."""
+    row = await db.execute(
+        select(Conversation)
+        .where(
+            Conversation.lead_id == lead_id,
+            Conversation.status == ConversationStatus.ACTIVE,
+        )
+        .order_by(Conversation.last_at.desc())
+        .limit(1)
+    )
+    return row.scalar_one_or_none()
+
+
+async def send_human_message(
+    lead_id: int,
+    text: str,
+    db: AsyncSession,
+    *,
+    subject: str | None = None,
+) -> dict[str, object]:
+    """Send a human-authored reply to a lead via their last-active channel.
+
+    Returns a small status dict with the new outbound Message id + delivery_status.
+    Used by Phase 4's dashboard composer (the realtor types a reply and clicks
+    Send). Channel is auto-picked from the conversation's `channel` field; if the
+    lead has multiple active conversations (multichannel), the most recently
+    active one wins.
+    """
+    lead_row = await db.execute(select(Lead).where(Lead.id == lead_id))
+    lead = lead_row.scalar_one_or_none()
+    if lead is None:
+        return {"status": "error", "error": "lead_not_found"}
+
+    conv = await _latest_active_conversation(lead_id, db)
+    if conv is None:
+        return {"status": "error", "error": "no_active_conversation"}
+
+    # Build subject: for email, default to "Re: <last inbound subject>"; for
+    # other channels, ignore the param.
+    reply_subject: str | None = None
+    if conv.channel == "email":
+        if subject:
+            reply_subject = subject
+        else:
+            last_inbound_row = await db.execute(
+                select(Message)
+                .where(
+                    Message.conversation_id == conv.id,
+                    Message.direction == MessageDirection.INBOUND,
+                )
+                .order_by(Message.created_at.desc())
+                .limit(1)
+            )
+            last_inbound = last_inbound_row.scalar_one_or_none()
+            src_subj = (last_inbound.subject or "").strip() if last_inbound else ""
+            if src_subj.lower().startswith("re:"):
+                reply_subject = src_subj
+            elif src_subj:
+                reply_subject = f"Re: {src_subj}"
+            else:
+                reply_subject = "Tu consulta"
+
+    outbound = Message(
+        conversation_id=conv.id,
+        direction=MessageDirection.OUTBOUND,
+        sender=MessageSender.HUMAN,
+        content=text,
+        delivery_status=MessageStatus.PENDING,
+        subject=reply_subject,
+    )
+    db.add(outbound)
+    await db.flush()
+
+    try:
+        # For email threading, find the last inbound external_id to put in In-Reply-To.
+        in_reply_to: str | None = None
+        if conv.channel == "email":
+            last_in_row = await db.execute(
+                select(Message)
+                .where(
+                    Message.conversation_id == conv.id,
+                    Message.direction == MessageDirection.INBOUND,
+                )
+                .order_by(Message.created_at.desc())
+                .limit(1)
+            )
+            last_in = last_in_row.scalar_one_or_none()
+            in_reply_to = last_in.external_id if last_in else None
+
+        external_id, _ = await _dispatch_send(
+            conv.channel,
+            to=lead.phone,
+            text=text,
+            subject=reply_subject,
+            in_reply_to=in_reply_to,
+        )
+        outbound.external_id = external_id
+        outbound.delivery_status = MessageStatus.SENT
+    except Exception as exc:  # noqa: BLE001
+        log.error("Human-send dispatch failed for lead %d: %s", lead_id, exc)
+        outbound.delivery_status = MessageStatus.FAILED
+
+    lead.last_message_at = datetime.now(timezone.utc)
+    await db.commit()
+    log.info(
+        "Human send: lead=%d channel=%s outbound=%d status=%s",
+        lead_id, conv.channel, outbound.id, outbound.delivery_status.value,
+    )
+    return {
+        "status": "ok",
+        "lead_id": lead_id,
+        "channel": conv.channel,
+        "outbound_id": outbound.id,
+        "outbound_status": outbound.delivery_status.value,
+    }
+
+
+async def generate_reply_suggestions(
+    lead_id: int,
+    db: AsyncSession,
+    *,
+    count: int = 3,
+) -> dict[str, object]:
+    """Generate N alternative reply texts the human can pick/edit/send.
+
+    The LLM is asked for a JSON array of strings; on any failure we return an
+    empty list + an `error` field so the UI degrades gracefully.
+    """
+    import json
+    import re
+
+    lead_row = await db.execute(select(Lead).where(Lead.id == lead_id))
+    lead = lead_row.scalar_one_or_none()
+    if lead is None:
+        return {"suggestions": [], "error": "lead_not_found"}
+
+    conv = await _latest_active_conversation(lead_id, db)
+    if conv is None:
+        return {"suggestions": [], "error": "no_active_conversation"}
+
+    hist_row = await db.execute(
+        select(Message)
+        .where(Message.conversation_id == conv.id)
+        .order_by(Message.created_at.desc())
+        .limit(MAX_HISTORY_TURNS)
+    )
+    history = list(reversed(hist_row.scalars().all()))
+    if not history:
+        return {"suggestions": [], "error": "empty_conversation"}
+
+    llm_messages = [
+        {
+            "role": "user" if m.direction == MessageDirection.INBOUND else "assistant",
+            "content": m.content,
+        }
+        for m in history
+    ]
+
+    # Language steering from the latest inbound.
+    settings_row = await db.execute(select(AgentSettings).where(AgentSettings.id == 1))
+    agent_cfg = settings_row.scalar_one_or_none()
+    supported = (agent_cfg.languages if agent_cfg else ["es", "en"]) or ["es", "en"]
+    last_user_content = next(
+        (m.content for m in reversed(history) if m.direction == MessageDirection.INBOUND),
+        history[-1].content,
+    )
+    target_lang = pick_supported_language(detect_language(last_user_content), supported)
+
+    persona = agent_cfg.agent_persona if agent_cfg else "Eres el asistente de una inmobiliaria."
+    agency_name = agent_cfg.agency_name if agent_cfg else "Inmobiliaria"
+    system_prompt = (
+        persona.replace("{agency_name}", agency_name)
+        + language_instruction(target_lang, persona_locale="es")
+        + (
+            f"\n\nTAREA: el agente HUMANO está revisando la conversación y quiere "
+            f"varias opciones de respuesta para elegir. Genera EXACTAMENTE {count} "
+            "respuestas posibles, distintas entre sí (diferentes tonos / enfoques), "
+            "cortas (1-3 frases cada una). Devuelve un array JSON de strings, sin "
+            "claves adicionales. Ejemplo: [\"opción 1\", \"opción 2\", \"opción 3\"]."
+        )
+    )
+
+    try:
+        result = await generate_reply(
+            messages=llm_messages,
+            system=system_prompt,
+            max_tokens=500,
+            temperature=0.7,
+            json_mode=True,
+        )
+    except LLMUnavailable as exc:
+        log.error("Suggestions failed — LLM unavailable: %s", exc)
+        return {"suggestions": [], "error": f"llm_unavailable: {exc}"}
+
+    # Parse the JSON array, tolerating prose around it.
+    match = re.search(r"\[.*\]", result.text, re.DOTALL)
+    if not match:
+        log.warning("Suggestions: could not find JSON array in response: %r", result.text[:200])
+        return {"suggestions": [], "error": "no_json_array", "raw": result.text[:200]}
+
+    try:
+        parsed = json.loads(match.group(0))
+    except json.JSONDecodeError as exc:
+        log.warning("Suggestions: invalid JSON: %s — raw: %r", exc, result.text[:200])
+        return {"suggestions": [], "error": "invalid_json", "raw": result.text[:200]}
+
+    if not isinstance(parsed, list):
+        return {"suggestions": [], "error": "not_a_list"}
+
+    # Coerce items to strings + drop empties + trim.
+    suggestions = [str(s).strip() for s in parsed if isinstance(s, (str, int, float)) and str(s).strip()]
+    return {
+        "suggestions": suggestions[:count],
+        "provider": result.provider,
+        "model": result.model,
+    }
+
+
 async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dict[str, int | str | bool]:
     """Process one inbound message (any channel) end-to-end. Returns a small status dict.
 
