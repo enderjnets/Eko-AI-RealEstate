@@ -119,6 +119,72 @@ export interface SuggestionsResult {
   error: string | null;
 }
 
+export type VisitStatus =
+  | "scheduled"
+  | "confirmed"
+  | "cancelled"
+  | "completed"
+  | "no_show";
+
+export interface Slot {
+  start: string; // ISO datetime
+  end: string;
+}
+
+export interface SlotsResponse {
+  slots: Slot[];
+  timezone: string;
+  days: number;
+}
+
+export interface Visit {
+  id: number;
+  lead_id: number;
+  calendar_provider: string;
+  external_booking_id: string;
+  status: VisitStatus;
+  scheduled_at: string;
+  duration_minutes: number;
+  timezone: string;
+  property_address: string | null;
+  meeting_url: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BookingIn {
+  start_time: string;
+  duration_minutes?: number;
+  property_address?: string;
+  notes?: string;
+  timezone?: string;
+}
+
+export const calendarApi = {
+  slots: (leadId: number, opts?: { days?: number; timezone?: string }) => {
+    const q = new URLSearchParams();
+    if (opts?.days) q.set("days", String(opts.days));
+    if (opts?.timezone) q.set("timezone", opts.timezone);
+    const qs = q.toString();
+    return api<SlotsResponse>(`/v1/leads/${leadId}/calendar/slots${qs ? `?${qs}` : ""}`);
+  },
+  book: (leadId: number, body: BookingIn) =>
+    api<Visit>(`/v1/leads/${leadId}/calendar/book`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+};
+
+export const visitsApi = {
+  list: (leadId: number) => api<Visit[]>(`/v1/leads/${leadId}/visits`),
+  cancel: (visitId: number, reason?: string) =>
+    api<Visit>(`/v1/visits/${visitId}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+};
+
 export const leadsApi = {
   list: (params?: { status?: LeadStatus; intent?: LeadIntent; limit?: number; offset?: number }) => {
     const q = new URLSearchParams();
