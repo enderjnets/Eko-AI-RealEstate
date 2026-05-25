@@ -70,7 +70,8 @@ See [`docs/roadmap.md`](docs/roadmap.md) for the phased plan.
 |---|---|
 | 0. Bootstrap | ✅ done (`v0.0.1`) |
 | 1. WhatsApp + LLM + lead capture + classification | ✅ done (`v0.1.0`) |
-| 2. Realtor dashboard (Next.js) | 🔄 next |
+| 2. Realtor dashboard (Next.js) | ✅ done (`v0.2.0`) |
+| 3. Calendar booking | 🔄 next |
 | 3. Calendar booking | ⏳ |
 | 4. Listings scraper + post-visit follow-up | ⏳ |
 

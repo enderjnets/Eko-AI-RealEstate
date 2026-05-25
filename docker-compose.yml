@@ -75,11 +75,16 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:8000}
+        # Client JS never hits this directly — it talks to a same-origin /api/...
+        # which next.config.js rewrites to INTERNAL_API_URL below.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
     container_name: eko-realestate-frontend
     restart: unless-stopped
     depends_on:
       - backend
+    environment:
+      # next.config.js reads this at server startup for its /api/* rewrite.
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8000}
     ports:
       # 3004 — coexist with eko-frontend :3001, eko-frontend-pricing-v2 :3002, eko-frontend-main :3003
       - "3004:3000"
