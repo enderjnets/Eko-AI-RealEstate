@@ -9,10 +9,10 @@ import enum
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, DateTime, Enum, Integer, Numeric, String, UniqueConstraint, func
+from sqlalchemy import JSON, DateTime, Integer, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base
+from app.db.base import Base, pg_enum
 
 
 class PropertySource(str, enum.Enum):
@@ -26,7 +26,7 @@ class Property(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     source: Mapped[PropertySource] = mapped_column(
-        Enum(PropertySource, name="property_source"), nullable=False, index=True
+        pg_enum(PropertySource, name="property_source"), nullable=False, index=True
     )
     external_id: Mapped[str] = mapped_column(String(120), nullable=False)
     title: Mapped[str] = mapped_column(String(280), nullable=False)

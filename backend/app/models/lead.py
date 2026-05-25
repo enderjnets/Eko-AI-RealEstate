@@ -6,10 +6,10 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, Index, Numeric, String, func
+from sqlalchemy import JSON, Boolean, DateTime, Index, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base
+from app.db.base import Base, pg_enum
 
 if TYPE_CHECKING:
     from app.models.conversation import Conversation
@@ -40,13 +40,13 @@ class Lead(Base):
     name: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
     status: Mapped[LeadStatus] = mapped_column(
-        Enum(LeadStatus, name="lead_status"),
+        pg_enum(LeadStatus, name="lead_status"),
         default=LeadStatus.NEW,
         nullable=False,
         index=True,
     )
     intent: Mapped[LeadIntent | None] = mapped_column(
-        Enum(LeadIntent, name="lead_intent"),
+        pg_enum(LeadIntent, name="lead_intent"),
         nullable=True,
     )
 

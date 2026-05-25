@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any
 
+from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -23,6 +24,16 @@ class Base(DeclarativeBase):
     """Declarative base for all ORM models. Alembic autogenerate scans Base.metadata."""
 
     pass
+
+
+def pg_enum(enum_cls: type, *, name: str) -> SqlEnum:
+    """SQLAlchemy Enum column that uses the enum members' `.value` (lowercase)
+    as the Postgres enum members, NOT the Python NAME (which is UPPERCASE by
+    convention). Without this, SQLAlchemy serializes `LeadStatus.NEW` as `"NEW"`
+    but the Postgres type only accepts `"new"` (the value we declared in the
+    migration). Always wrap str-enums with this helper.
+    """
+    return SqlEnum(enum_cls, name=name, values_callable=lambda x: [e.value for e in x])
 
 
 _engine: AsyncEngine | None = None
@@ -76,7 +87,14 @@ async def dispose_engine() -> None:
     _SessionLocal = None
 
 
-__all__: list[str] = ["Base", "get_engine", "get_session_factory", "get_db", "dispose_engine"]
+__all__: list[str] = [
+    "Base",
+    "get_engine",
+    "get_session_factory",
+    "get_db",
+    "dispose_engine",
+    "pg_enum",
+]
 
 
 _ = Any  # keep typing imports stable across editors

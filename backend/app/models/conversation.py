@@ -5,10 +5,10 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base
+from app.db.base import Base, pg_enum
 
 if TYPE_CHECKING:
     from app.models.lead import Lead
@@ -31,7 +31,7 @@ class Conversation(Base):
     wa_thread_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
 
     status: Mapped[ConversationStatus] = mapped_column(
-        Enum(ConversationStatus, name="conversation_status"),
+        pg_enum(ConversationStatus, name="conversation_status"),
         default=ConversationStatus.ACTIVE,
         nullable=False,
     )

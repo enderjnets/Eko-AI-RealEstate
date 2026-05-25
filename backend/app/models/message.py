@@ -5,10 +5,10 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base
+from app.db.base import Base, pg_enum
 
 if TYPE_CHECKING:
     from app.models.conversation import Conversation
@@ -42,10 +42,10 @@ class Message(Base):
     )
 
     direction: Mapped[MessageDirection] = mapped_column(
-        Enum(MessageDirection, name="message_direction"), nullable=False
+        pg_enum(MessageDirection, name="message_direction"), nullable=False
     )
     sender: Mapped[MessageSender] = mapped_column(
-        Enum(MessageSender, name="message_sender"), nullable=False
+        pg_enum(MessageSender, name="message_sender"), nullable=False
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -53,7 +53,7 @@ class Message(Base):
     # Meta's retried webhook deliveries (see CLAUDE.md anti-pattern #6).
     wa_message_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     wa_status: Mapped[MessageStatus] = mapped_column(
-        Enum(MessageStatus, name="message_status"),
+        pg_enum(MessageStatus, name="message_status"),
         default=MessageStatus.PENDING,
         nullable=False,
     )
