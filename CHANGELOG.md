@@ -2,6 +2,41 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.12.0] — 2026-05-26
+
+### Phase 11 — Pilot hardening: dashboard auth + analytics
+
+Makes the product safe and measurable to hand to a paying office.
+
+#### Dashboard auth (one office = one shared password)
+
+- **`/login`** page + **`AuthGuard`** (redirects to login when the session is
+  missing). HMAC-signed session token in an httpOnly cookie (no new dependency).
+  **Sign-out** in the nav.
+- **`require_auth`** gate on the data API (leads / conversations / visits /
+  settings / properties / analytics); webhooks + health stay open. Gated by
+  **`AUTH_ENABLED`** — default **off** (dev + the public demo stay open); the
+  installer turns it on with a password. Startup **WARN** if `APP_ENV=production`
+  and `AUTH_ENABLED=false`.
+- `config` + `.env.example` + compose: `AUTH_ENABLED` / `DASHBOARD_PASSWORD` /
+  `AUTH_SECRET` / `AUTH_TTL_HOURS`. `scripts/install.sh` now prompts for a
+  dashboard password and enables auth.
+
+#### Analytics
+
+- **`GET /api/v1/analytics`** + **`/analytics`** page: funnel by status,
+  conversion rate, leads by channel, by score tier (🔥/🟡/⚪), average first-
+  response time, and new leads per day (14d). No chart library (div bars).
+
+#### Tests
+
+- **+6 (132 total)**: auth service (password / token / tamper / expiry) + the
+  gate (open when disabled; 401 → login → cookie when enabled) + analytics envelope.
+
+#### Roadmap
+
+- Voice (VAPI/Retell) renumbered to **Phase 12**.
+
 ## [0.11.0] — 2026-05-26
 
 ### Phase 10 — Autonomous nurture + in-conversation listing offers

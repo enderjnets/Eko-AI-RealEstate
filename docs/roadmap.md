@@ -94,6 +94,14 @@ dev); production via `CALCOM_API_KEY` + `CALCOM_EVENT_TYPE_ID`.
 - **In-conversation listings**: the orchestrator injects real matched listings
   into the system prompt for buy/rent leads with a zone, so the agent offers them.
 
-## Phase 11 · Voice agent (VAPI / Retell) — ⏳ deferred
+## Phase 11 · Pilot hardening — auth + analytics — ✅ done (`v0.12.0`)
+
+- **Dashboard auth**: single shared password (`DASHBOARD_PASSWORD`), HMAC-signed
+  cookie, `/login` + `AuthGuard`, `require_auth` gate on the data API (gated by
+  `AUTH_ENABLED`; off for dev/demo, on for customer installs via the installer).
+- **Analytics** (`/analytics` + `GET /api/v1/analytics`): funnel, conversion,
+  by channel, by score tier, avg first-response, new leads per day.
+
+## Phase 12 · Voice agent (VAPI / Retell) — ⏳ deferred
 
 Inbound/outbound voice. Deferred until a provider account is set up.
