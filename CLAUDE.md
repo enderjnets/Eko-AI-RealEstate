@@ -176,8 +176,9 @@ ingress to be added when we go to first pilot).
 - ✅ **Phase 5** — Calendar booking via Cal.com (`v0.5.0`, 2026-05-25). 77/77 tests passing. `VisitsSection` + `BookingDialog` in `/leads/[id]`. SIMULATED mode default (no Cal.com account needed in dev); production wiring via `CALCOM_API_KEY` + `CALCOM_EVENT_TYPE_ID`. Endpoints under `/api/v1/leads/{id}/calendar/*` and `/api/v1/visits/*`.
 - ✅ **Phase 6** — Single-customer installer + branding panel + public demo (`v0.6.0`, 2026-05-25). 84/84 tests passing. `GET/PUT /api/v1/settings` + `/settings` branding page; `scripts/install.sh` one-command installer; `scripts/seed_demo.py` demo dataset; `deploy/cloudflared/` + `docs/setup-demo.md` for `inmo-demo.ekoaiautomation.com`. **CI green for the first time** (Postgres service + migrations + ruff config + frontend npm-cache fix).
 - ✅ **Phase 7** — MLS / IDX listings (RESO) + per-lead matching (`v0.7.0`, 2026-05-25). 96/96 tests. `Property` reworked for USA (RESO/IDX/MLS source, status, beds/baths/sqft, address/photos); Alembic `004`. `services/listings.py` (SIMULATED Miami set / real RESO Web API OData) + `match_properties_for_lead`. Endpoints `/properties*` + `/leads/{id}/matches`. Frontend `/properties` + MatchesSection. `LISTINGS_SIMULATED=true` default; prod via `docs/setup-mls.md`.
-- ⏳ **Phase 8** — SMS (Twilio) — deferred until Twilio account is set up
-- ⏳ **Phase 9** — Voice agent (VAPI / Retell) — deferred until provider account is set up
+- ✅ **Phase 8** — Lead intelligence (`v0.8.0`, 2026-05-26). 107/107 tests. `leads.score` (0-100) + `score_breakdown`; Alembic `005`. `services/scoring.py` deterministic `compute_lead_score` (intent/budget/engagement/urgency/zone/recency/visit + WON/LOST/PAUSED gate), recomputed after each inbound turn. Endpoints `sort=score|recent`, `GET /leads/digest`, `POST /leads/rescore-all`. Frontend `ScoreBadge` (🔥/🟡/⚪) + `HotLeadsPanel`. `scripts/daily_digest.py`.
+- ⏳ **Phase 9** — SMS (Twilio) — deferred until Twilio account is set up
+- ⏳ **Phase 10** — Voice agent (VAPI / Retell) — deferred until provider account is set up
 
 For per-phase details see [`docs/roadmap.md`](docs/roadmap.md).
 
