@@ -3,16 +3,9 @@
 import { useEffect, useState } from "react";
 import { Building2, Check, Loader2, RotateCcw } from "lucide-react";
 import { type AgencySettings, settingsApi } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 
-const DAYS: { key: string; label: string }[] = [
-  { key: "monday", label: "Lunes" },
-  { key: "tuesday", label: "Martes" },
-  { key: "wednesday", label: "Miércoles" },
-  { key: "thursday", label: "Jueves" },
-  { key: "friday", label: "Viernes" },
-  { key: "saturday", label: "Sábado" },
-  { key: "sunday", label: "Domingo" },
-];
+const DAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
 const KNOWN_LANGS: { code: string; label: string }[] = [
   { code: "es", label: "Español" },
@@ -24,6 +17,7 @@ const KNOWN_LANGS: { code: string; label: string }[] = [
 type Hours = Record<string, { open: string; close: string } | null>;
 
 export function SettingsForm() {
+  const { t } = useI18n();
   const [data, setData] = useState<AgencySettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -81,7 +75,7 @@ export function SettingsForm() {
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-gray-500 text-sm">
-        <Loader2 className="w-4 h-4 animate-spin" /> Cargando configuración…
+        <Loader2 className="w-4 h-4 animate-spin" /> {t("settings.loading")}
       </div>
     );
   }
@@ -89,7 +83,7 @@ export function SettingsForm() {
   if (!data) {
     return (
       <div className="text-sm text-red-300 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
-        No se pudo cargar la configuración{error ? `: ${error}` : ""}.
+        {t("settings.loadError")}{error ? `: ${error}` : ""}.
       </div>
     );
   }
@@ -101,14 +95,14 @@ export function SettingsForm() {
       {/* Identidad */}
       <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
         <h2 className="text-sm font-semibold text-white mb-1 flex items-center gap-2">
-          <Building2 className="w-4 h-4 text-eko-violet" /> Identidad de la inmobiliaria
+          <Building2 className="w-4 h-4 text-eko-violet" /> {t("settings.identity")}
         </h2>
         <p className="text-xs text-gray-500 mb-4">
-          El nombre y teléfono que tu agente IA usa al presentarse.
+          {t("settings.identityHint")}
         </p>
         <div className="grid sm:grid-cols-2 gap-4">
           <label className="block">
-            <span className="text-xs text-gray-400">Nombre de la agencia</span>
+            <span className="text-xs text-gray-400">{t("settings.agencyName")}</span>
             <input
               value={data.agency_name}
               onChange={(e) => set("agency_name", e.target.value)}
@@ -117,7 +111,7 @@ export function SettingsForm() {
             />
           </label>
           <label className="block">
-            <span className="text-xs text-gray-400">Teléfono (opcional)</span>
+            <span className="text-xs text-gray-400">{t("settings.agencyPhone")}</span>
             <input
               value={data.agency_phone ?? ""}
               onChange={(e) => set("agency_phone", e.target.value || null)}
@@ -131,14 +125,12 @@ export function SettingsForm() {
 
       {/* Persona + saludo */}
       <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-        <h2 className="text-sm font-semibold text-white mb-1">Personalidad del agente</h2>
+        <h2 className="text-sm font-semibold text-white mb-1">{t("settings.persona")}</h2>
         <p className="text-xs text-gray-500 mb-4">
-          Instrucciones de sistema que guían el tono y el comportamiento de las respuestas
-          automáticas. Usá <code className="text-eko-violet">{"{agency_name}"}</code> y se
-          reemplaza por el nombre de la agencia.
+          {t("settings.personaHint", { token: "{agency_name}" })}
         </p>
         <label className="block mb-4">
-          <span className="text-xs text-gray-400">Persona (system prompt)</span>
+          <span className="text-xs text-gray-400">{t("settings.personaLabel")}</span>
           <textarea
             value={data.agent_persona}
             onChange={(e) => set("agent_persona", e.target.value)}
@@ -147,7 +139,7 @@ export function SettingsForm() {
           />
         </label>
         <label className="block">
-          <span className="text-xs text-gray-400">Saludo inicial</span>
+          <span className="text-xs text-gray-400">{t("settings.greeting")}</span>
           <textarea
             value={data.greeting_template}
             onChange={(e) => set("greeting_template", e.target.value)}
@@ -159,9 +151,9 @@ export function SettingsForm() {
 
       {/* Idiomas */}
       <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-        <h2 className="text-sm font-semibold text-white mb-1">Idiomas</h2>
+        <h2 className="text-sm font-semibold text-white mb-1">{t("settings.languages")}</h2>
         <p className="text-xs text-gray-500 mb-4">
-          El agente detecta el idioma del cliente y responde en el más cercano de esta lista.
+          {t("settings.languagesHint")}
         </p>
         <div className="flex flex-wrap gap-2">
           {KNOWN_LANGS.map(({ code, label }) => {
@@ -187,18 +179,17 @@ export function SettingsForm() {
 
       {/* Horario */}
       <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-        <h2 className="text-sm font-semibold text-white mb-1">Horario de atención</h2>
+        <h2 className="text-sm font-semibold text-white mb-1">{t("settings.hours")}</h2>
         <p className="text-xs text-gray-500 mb-4">
-          Informativo: el agente responde 24/7, pero usa este horario para fijar expectativas
-          (&ldquo;te contacta un agente humano mañana a las 9&rdquo;).
+          {t("settings.hoursHint")}
         </p>
         <div className="space-y-2">
-          {DAYS.map(({ key, label }) => {
+          {DAY_KEYS.map((key) => {
             const v = hours?.[key] ?? null;
             const open = v !== null;
             return (
               <div key={key} className="flex items-center gap-3 text-sm">
-                <span className="w-24 text-gray-300">{label}</span>
+                <span className="w-24 text-gray-300">{t(`day.${key}`)}</span>
                 <button
                   type="button"
                   onClick={() => setDay(key, open ? null : { open: "09:00", close: "19:00" })}
@@ -208,7 +199,7 @@ export function SettingsForm() {
                       : "bg-gray-500/15 text-gray-400 border-gray-500/30"
                   }`}
                 >
-                  {open ? "Abierto" : "Cerrado"}
+                  {open ? t("settings.open") : t("settings.closed")}
                 </button>
                 {open && (
                   <>
@@ -242,7 +233,7 @@ export function SettingsForm() {
         )}
         {saved && !error && (
           <span className="text-[11px] text-eko-green flex items-center gap-1">
-            <Check className="w-3.5 h-3.5" /> Guardado
+            <Check className="w-3.5 h-3.5" /> {t("settings.saved")}
           </span>
         )}
         <button
@@ -252,7 +243,7 @@ export function SettingsForm() {
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-eko-violet text-white hover:bg-eko-violet-dark disabled:opacity-50 shadow-lg shadow-eko-violet/20"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-          Guardar cambios
+          {t("settings.saveChanges")}
         </button>
       </div>
     </div>

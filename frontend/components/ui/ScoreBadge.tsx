@@ -1,3 +1,7 @@
+"use client";
+
+import { useI18n } from "@/lib/i18n";
+
 export type ScoreTier = "hot" | "warm" | "cold";
 
 export function tierFor(score: number): ScoreTier {
@@ -13,7 +17,6 @@ const TIER_STYLE: Record<ScoreTier, string> = {
 };
 
 const TIER_ICON: Record<ScoreTier, string> = { hot: "🔥", warm: "🟡", cold: "⚪" };
-const TIER_LABEL: Record<ScoreTier, string> = { hot: "Caliente", warm: "Tibio", cold: "Frío" };
 
 export function ScoreBadge({
   score,
@@ -24,16 +27,18 @@ export function ScoreBadge({
   showLabel?: boolean;
   size?: "sm" | "lg";
 }) {
+  const { t } = useI18n();
   const tier = tierFor(score);
+  const label = t(`score.${tier}`);
   const pad = size === "lg" ? "px-2.5 py-1 text-sm" : "px-1.5 py-0.5 text-[11px]";
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-md border font-semibold tabular-nums ${pad} ${TIER_STYLE[tier]}`}
-      title={`Score ${score}/100 · ${TIER_LABEL[tier]}`}
+      title={`Score ${score}/100 · ${label}`}
     >
       <span aria-hidden>{TIER_ICON[tier]}</span>
       {score}
-      {showLabel && <span className="font-normal opacity-80">· {TIER_LABEL[tier]}</span>}
+      {showLabel && <span className="font-normal opacity-80">· {label}</span>}
     </span>
   );
 }

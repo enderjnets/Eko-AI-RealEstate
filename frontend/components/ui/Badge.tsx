@@ -1,14 +1,7 @@
-import type { LeadIntent, LeadStatus } from "@/lib/api";
+"use client";
 
-const STATUS_LABEL: Record<LeadStatus, string> = {
-  new: "Nuevo",
-  qualified: "Cualificado",
-  visiting: "Visitando",
-  post_visit: "Post-visita",
-  won: "Cerrado",
-  lost: "Perdido",
-  paused: "Pausado",
-};
+import type { LeadIntent, LeadStatus } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 
 const STATUS_COLOR: Record<LeadStatus, string> = {
   new: "bg-eko-violet/15 text-eko-violet border-eko-violet/30",
@@ -21,21 +14,15 @@ const STATUS_COLOR: Record<LeadStatus, string> = {
 };
 
 export function StatusBadge({ status }: { status: LeadStatus }) {
+  const { t } = useI18n();
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border ${STATUS_COLOR[status]}`}
     >
-      {STATUS_LABEL[status]}
+      {t(`status.${status}`)}
     </span>
   );
 }
-
-const INTENT_LABEL: Record<LeadIntent, string> = {
-  rent: "Alquiler",
-  buy: "Compra",
-  valuation: "Tasación",
-  other: "Otro",
-};
 
 const INTENT_COLOR: Record<LeadIntent, string> = {
   rent: "bg-eko-magenta/15 text-eko-magenta border-eko-magenta/30",
@@ -45,12 +32,13 @@ const INTENT_COLOR: Record<LeadIntent, string> = {
 };
 
 export function IntentBadge({ intent }: { intent: LeadIntent | null }) {
+  const { t } = useI18n();
   if (!intent) return <span className="text-gray-600 text-[11px]">—</span>;
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border ${INTENT_COLOR[intent]}`}
     >
-      {INTENT_LABEL[intent]}
+      {t(`intent.${intent}`)}
     </span>
   );
 }

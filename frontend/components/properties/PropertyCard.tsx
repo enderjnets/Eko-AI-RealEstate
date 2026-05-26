@@ -1,11 +1,14 @@
+"use client";
+
 import { Bath, BedDouble, ExternalLink, MapPin, Ruler } from "lucide-react";
 import type { Property } from "@/lib/api";
+import { type Lang, useI18n } from "@/lib/i18n";
 
-export function formatPrice(price: string | null): string {
+export function formatPrice(price: string | null, lang: Lang = "en"): string {
   if (price === null) return "—";
   const n = Number(price);
   if (Number.isNaN(n)) return "—";
-  const formatted = new Intl.NumberFormat("en-US", {
+  const formatted = new Intl.NumberFormat(lang === "es" ? "es-ES" : "en-US", {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 0,
@@ -14,16 +17,9 @@ export function formatPrice(price: string | null): string {
   return n < 10000 ? `${formatted}/mo` : formatted;
 }
 
-const TYPE_LABEL: Record<string, string> = {
-  condo: "Condo",
-  single_family: "Casa",
-  townhouse: "Townhouse",
-  apartment: "Apartamento",
-  loft: "Loft",
-  multi_unit: "Multi-unidad",
-};
-
 export function PropertyCard({ p, compact = false }: { p: Property; compact?: boolean }) {
+  const { t, lang } = useI18n();
+  const typeLabel = p.property_type ? t(`propType.${p.property_type}`) : null;
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden hover:border-eko-violet/30 transition-colors">
       <div className={`bg-gradient-to-br from-eko-violet/20 to-eko-magenta/10 flex items-center justify-center ${compact ? "h-20" : "h-32"}`}>
@@ -37,14 +33,14 @@ export function PropertyCard({ p, compact = false }: { p: Property; compact?: bo
       <div className="p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="text-sm font-semibold text-white leading-snug line-clamp-2">{p.title}</div>
-          <div className="text-sm font-bold text-eko-green whitespace-nowrap">{formatPrice(p.price)}</div>
+          <div className="text-sm font-bold text-eko-green whitespace-nowrap">{formatPrice(p.price, lang)}</div>
         </div>
         <div className="mt-1 flex items-center gap-1.5 text-[11px] text-gray-500">
           <MapPin className="w-3 h-3" />
           <span>{[p.zone, p.city].filter(Boolean).join(", ") || "—"}</span>
-          {p.property_type && (
+          {typeLabel && (
             <span className="ml-auto px-1.5 py-0.5 rounded bg-eko-violet/10 text-eko-violet border border-eko-violet/20">
-              {TYPE_LABEL[p.property_type] || p.property_type}
+              {typeLabel}
             </span>
           )}
         </div>

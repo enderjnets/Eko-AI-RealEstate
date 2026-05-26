@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, RefreshCw, Search } from "lucide-react";
 import { type Property, type PropertyFilters, propertiesApi } from "@/lib/api";
 import { PropertyCard } from "@/components/properties/PropertyCard";
+import { useI18n } from "@/lib/i18n";
 
 export function PropertiesGrid() {
+  const { t } = useI18n();
   const [items, setItems] = useState<Property[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -53,7 +55,7 @@ export function PropertiesGrid() {
     <>
       <div className="flex flex-wrap items-end gap-3 mb-5">
         <label className="block">
-          <span className="text-[10px] uppercase tracking-wider text-gray-600">Zona</span>
+          <span className="text-[10px] uppercase tracking-wider text-gray-600">{t("properties.zone")}</span>
           <input
             value={zone}
             onChange={(e) => setZone(e.target.value)}
@@ -62,7 +64,7 @@ export function PropertiesGrid() {
           />
         </label>
         <label className="block">
-          <span className="text-[10px] uppercase tracking-wider text-gray-600">Precio máx.</span>
+          <span className="text-[10px] uppercase tracking-wider text-gray-600">{t("properties.maxPrice")}</span>
           <input
             value={maxPrice}
             onChange={(e) => setMaxPrice(e.target.value.replace(/[^0-9]/g, ""))}
@@ -75,17 +77,17 @@ export function PropertiesGrid() {
           onClick={load}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 text-gray-300 hover:bg-white/5"
         >
-          <Search className="w-3.5 h-3.5" /> Filtrar
+          <Search className="w-3.5 h-3.5" /> {t("properties.filter")}
         </button>
         <button
           type="button"
           onClick={handleSync}
           disabled={syncing}
           className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-eko-violet/30 bg-eko-violet/10 text-eko-violet hover:bg-eko-violet/20 disabled:opacity-60"
-          title="Importar listings del feed MLS/IDX configurado"
+          title={t("properties.syncTitle")}
         >
           {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-          Sincronizar MLS
+          {t("properties.sync")}
         </button>
       </div>
 
@@ -97,15 +99,15 @@ export function PropertiesGrid() {
 
       {loading ? (
         <div className="flex items-center gap-2 text-gray-500 text-sm py-12 justify-center">
-          <Loader2 className="w-4 h-4 animate-spin" /> Cargando propiedades…
+          <Loader2 className="w-4 h-4 animate-spin" /> {t("properties.loading")}
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-xl border border-white/5 bg-white/[0.02] p-12 text-center text-gray-500 text-sm">
-          No hay propiedades. Pulsá <strong className="text-gray-300">Sincronizar MLS</strong> para importar listings.
+          {t("properties.empty.pre")} <strong className="text-gray-300">{t("properties.sync")}</strong> {t("properties.empty.post")}
         </div>
       ) : (
         <>
-          <div className="text-[11px] text-gray-600 mb-3">{total} propiedades activas</div>
+          <div className="text-[11px] text-gray-600 mb-3">{total} {t("properties.activeCount")}</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {items.map((p) => (
               <PropertyCard key={p.id} p={p} />

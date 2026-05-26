@@ -5,8 +5,10 @@ import { useEffect, useState } from "react";
 import { Flame } from "lucide-react";
 import { type Lead, leadsApi } from "@/lib/api";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
+import { useI18n } from "@/lib/i18n";
 
 export function HotLeadsPanel() {
+  const { t } = useI18n();
   const [leads, setLeads] = useState<Lead[] | null>(null);
 
   useEffect(() => {
@@ -26,7 +28,7 @@ export function HotLeadsPanel() {
     <section className="mb-6 rounded-xl border border-eko-violet/20 bg-gradient-to-br from-eko-violet/[0.06] to-transparent p-4">
       <h2 className="text-xs uppercase tracking-wider text-eko-violet mb-3 flex items-center gap-1.5">
         <Flame className="w-3.5 h-3.5" />
-        Leads calientes — a quién llamar primero
+        {t("hot.title")}
       </h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         {leads.map((lead) => (

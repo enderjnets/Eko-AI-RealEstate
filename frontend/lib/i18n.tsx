@@ -1,0 +1,432 @@
+"use client";
+
+/**
+ * Lightweight client-side i18n for the dashboard.
+ *
+ * Default language is English; Spanish is the second option. The choice is
+ * persisted to localStorage and reflected on <html lang>. `t(key)` looks the
+ * key up in the active dictionary, falls back to English, then to the key
+ * itself. Most of the dashboard is client-rendered, so a React context is the
+ * simplest fit (no routing/middleware needed).
+ */
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
+
+export type Lang = "en" | "es";
+
+const STORAGE_KEY = "eko-lang";
+
+const EN: Record<string, string> = {
+  // nav
+  "nav.subtitle": "Dashboard",
+  "nav.leads": "Leads",
+  "nav.properties": "Properties",
+  "nav.settings": "Settings",
+  "nav.api": "API",
+  "lang.label": "Language",
+  // common
+  "common.loading": "Loading…",
+  "common.cancel": "Cancel",
+  "common.save": "Save",
+  "common.optional": "optional",
+  "common.noName": "No name",
+  "common.back_to_leads": "Back to leads",
+  "common.invalid_lead": "Invalid lead ID.",
+  // leads list
+  "leads.title": "Leads",
+  "leads.subtitle": "WhatsApp, email and SMS conversations with automatic classification. Click one to see the history and take over manually if needed.",
+  "leads.loading": "Loading leads…",
+  "leads.error": "Error loading leads",
+  "leads.empty.title": "No leads match the filters.",
+  "leads.empty.hint": "Leads appear here automatically when a message comes in.",
+  "leads.count.one": "lead",
+  "leads.count.other": "leads",
+  "leads.sortedByPriority": "sorted by priority",
+  "leads.lastActivity": "Last activity",
+  "leads.human": "Human",
+  "leads.lastMessage": "Last message",
+  // hot leads
+  "hot.title": "Hot leads — who to call first",
+  // filters
+  "filter.allStatuses": "All statuses",
+  "filter.allIntents": "All intents",
+  "filter.clear": "Clear filters",
+  // lead detail
+  "lead.loading": "Loading lead…",
+  "lead.notFound": "Lead not found",
+  "lead.conversation": "Conversation",
+  "lead.messages": "messages",
+  "lead.channel": "channel",
+  "lead.noMessages": "No messages in this conversation yet.",
+  "lead.field.zone": "Zone",
+  "lead.field.budget": "Budget",
+  "lead.field.type": "Type",
+  "lead.field.urgency": "Urgency",
+  "lead.created": "Created",
+  "lead.updated": "Updated",
+  // takeover
+  "takeover.human": "Human (AI paused)",
+  "takeover.ai": "AI agent active",
+  "takeover.titleOn": "You are replying manually. The AI agent is paused for this lead.",
+  "takeover.titleOff": "The AI agent replies automatically. Click to take over manually.",
+  // composer
+  "composer.title": "Reply as human · {channel} channel",
+  "composer.suggest": "Suggest replies",
+  "composer.suggestTitle": "Generate 3 AI drafts — you can edit before sending",
+  "composer.suggestError": "Could not generate suggestions:",
+  "composer.useSuggestion": "Click to use as a base in the reply box",
+  "composer.placeholder": "Write your reply… (you can also take a suggestion and edit it)",
+  "composer.chars": "characters",
+  "composer.send": "Send",
+  "composer.unknownError": "Unknown error",
+  // matches
+  "matches.title": "Suggested properties",
+  "matches.searching": "Searching properties…",
+  "matches.empty": "No listings match this lead's zone / budget / intent.",
+  "matches.send": "Send to lead",
+  "matches.sent": "Sent to lead",
+  "matches.sending": "Sending…",
+  "matches.blurb": "Here's a property that may fit:",
+  "matches.sendError": "Could not send",
+  // visits
+  "visits.title": "Visits",
+  "visits.upcoming": "upcoming",
+  "visits.archived": "archived",
+  "visits.book": "Book visit",
+  "visits.loading": "Loading visits…",
+  "visits.empty.pre": "No visits scheduled yet. Click",
+  "visits.empty.post": "to schedule the first one.",
+  "visits.minutes": "min",
+  "visits.cancelTitle": "Cancel visit",
+  "visits.confirmCancel": "Cancel this visit?",
+  "visits.cancelReason": "Cancelled from dashboard",
+  "visits.cancelFailed": "Could not cancel:",
+  // booking
+  "booking.title": "Book visit",
+  "booking.close": "Close",
+  "booking.loadingSlots": "Loading available slots…",
+  "booking.noSlots": "No slots available in the next 7 days.",
+  "booking.selected": "Selected:",
+  "booking.address": "Address / property",
+  "booking.addressPlaceholder": "1300 Brickell Bay Dr, Miami",
+  "booking.notes": "Notes",
+  "booking.notesPlaceholder": "Info for the visit…",
+  "booking.confirm": "Confirm visit",
+  // properties
+  "properties.title": "Properties",
+  "properties.subtitle": "Listings imported from the MLS/IDX feed (RESO). The agent matches them to leads by zone, budget, and intent.",
+  "properties.zone": "Zone",
+  "properties.maxPrice": "Max price",
+  "properties.filter": "Filter",
+  "properties.sync": "Sync MLS",
+  "properties.syncTitle": "Import listings from the configured MLS/IDX feed",
+  "properties.loading": "Loading properties…",
+  "properties.empty.pre": "No properties. Click",
+  "properties.empty.post": "to import listings.",
+  "properties.activeCount": "active properties",
+  // property card types
+  "propType.condo": "Condo",
+  "propType.single_family": "House",
+  "propType.townhouse": "Townhouse",
+  "propType.apartment": "Apartment",
+  "propType.loft": "Loft",
+  "propType.multi_unit": "Multi-unit",
+  // settings
+  "settings.title": "Settings",
+  "settings.subtitle": "Customize how your AI agent introduces itself: agency name, personality, greeting, languages, and hours. Changes apply to replies immediately.",
+  "settings.loading": "Loading settings…",
+  "settings.loadError": "Could not load settings",
+  "settings.identity": "Agency identity",
+  "settings.identityHint": "The name and phone your AI agent uses to introduce itself.",
+  "settings.agencyName": "Agency name",
+  "settings.agencyPhone": "Phone (optional)",
+  "settings.persona": "Agent personality",
+  "settings.personaHint": "System instructions that guide the tone and behavior of automatic replies. Use {token} and it's replaced with the agency name.",
+  "settings.personaLabel": "Persona (system prompt)",
+  "settings.greeting": "Initial greeting",
+  "settings.languages": "Languages",
+  "settings.languagesHint": "The agent detects the client's language and replies in the closest one from this list.",
+  "settings.hours": "Business hours",
+  "settings.hoursHint": "Informational: the agent answers 24/7, but uses this to set expectations (\"a human agent will contact you tomorrow at 9\").",
+  "settings.open": "Open",
+  "settings.closed": "Closed",
+  "settings.saved": "Saved",
+  "settings.saveChanges": "Save changes",
+  // days
+  "day.monday": "Monday",
+  "day.tuesday": "Tuesday",
+  "day.wednesday": "Wednesday",
+  "day.thursday": "Thursday",
+  "day.friday": "Friday",
+  "day.saturday": "Saturday",
+  "day.sunday": "Sunday",
+  // message bubble
+  "msg.sender.lead": "Client",
+  "msg.sender.agent": "AI agent",
+  "msg.sender.human": "You",
+  "msg.manual": "manual",
+  "msg.subject": "Subject:",
+  "msg.status.pending": "Pending",
+  "msg.status.sent": "Sent",
+  "msg.status.delivered": "Delivered",
+  "msg.status.read": "Read",
+  "msg.status.failed": "Failed",
+  // status badge
+  "status.new": "New",
+  "status.qualified": "Qualified",
+  "status.visiting": "Visiting",
+  "status.post_visit": "Post-visit",
+  "status.won": "Won",
+  "status.lost": "Lost",
+  "status.paused": "Paused",
+  // intent badge
+  "intent.rent": "Rent",
+  "intent.buy": "Buy",
+  "intent.valuation": "Valuation",
+  "intent.other": "Other",
+  // score badge
+  "score.hot": "Hot",
+  "score.warm": "Warm",
+  "score.cold": "Cold",
+  // visit status
+  "visitStatus.scheduled": "Scheduled",
+  "visitStatus.confirmed": "Confirmed",
+  "visitStatus.cancelled": "Cancelled",
+  "visitStatus.completed": "Completed",
+  "visitStatus.no_show": "No-show",
+  // relative time
+  "time.now": "just now",
+  "time.minAgo": "{n} min ago",
+  "time.hAgo": "{n} h ago",
+  "time.dAgo": "{n} d ago",
+  "time.wAgo": "{n} w ago",
+};
+
+const ES: Record<string, string> = {
+  "nav.subtitle": "Dashboard",
+  "nav.leads": "Leads",
+  "nav.properties": "Propiedades",
+  "nav.settings": "Configuración",
+  "nav.api": "API",
+  "lang.label": "Idioma",
+  "common.loading": "Cargando…",
+  "common.cancel": "Cancelar",
+  "common.save": "Guardar",
+  "common.optional": "opcional",
+  "common.noName": "Sin nombre",
+  "common.back_to_leads": "Volver a leads",
+  "common.invalid_lead": "ID de lead inválido.",
+  "leads.title": "Leads",
+  "leads.subtitle": "Conversaciones de WhatsApp, email y SMS con clasificación automática. Click en una para ver el historial y tomar control manual si hace falta.",
+  "leads.loading": "Cargando leads…",
+  "leads.error": "Error al cargar leads",
+  "leads.empty.title": "No hay leads que coincidan con los filtros.",
+  "leads.empty.hint": "Los leads aparecen aquí automáticamente cuando entra un mensaje.",
+  "leads.count.one": "lead",
+  "leads.count.other": "leads",
+  "leads.sortedByPriority": "ordenados por prioridad",
+  "leads.lastActivity": "Última actividad",
+  "leads.human": "Humano",
+  "leads.lastMessage": "Último mensaje",
+  "hot.title": "Leads calientes — a quién llamar primero",
+  "filter.allStatuses": "Todos los estados",
+  "filter.allIntents": "Todas las intenciones",
+  "filter.clear": "Limpiar filtros",
+  "lead.loading": "Cargando lead…",
+  "lead.notFound": "Lead no encontrado",
+  "lead.conversation": "Conversación",
+  "lead.messages": "mensajes",
+  "lead.channel": "canal",
+  "lead.noMessages": "Todavía no hay mensajes en esta conversación.",
+  "lead.field.zone": "Zona",
+  "lead.field.budget": "Presupuesto",
+  "lead.field.type": "Tipo",
+  "lead.field.urgency": "Urgencia",
+  "lead.created": "Creado",
+  "lead.updated": "Actualizado",
+  "takeover.human": "Humano (IA pausada)",
+  "takeover.ai": "Agente IA activo",
+  "takeover.titleOn": "Estás respondiendo manualmente. El agente IA está pausado para este lead.",
+  "takeover.titleOff": "El agente IA responde automáticamente. Click para tomar control humano.",
+  "composer.title": "Responder como humano · canal {channel}",
+  "composer.suggest": "Sugerir respuestas",
+  "composer.suggestTitle": "Generar 3 borradores con IA — los podés editar antes de enviar",
+  "composer.suggestError": "No se pudieron generar sugerencias:",
+  "composer.useSuggestion": "Click para usar como base en el cuadro de respuesta",
+  "composer.placeholder": "Escribí tu respuesta… (también podés tomar una sugerencia y editarla)",
+  "composer.chars": "caracteres",
+  "composer.send": "Enviar",
+  "composer.unknownError": "Error desconocido",
+  "matches.title": "Propiedades sugeridas",
+  "matches.searching": "Buscando propiedades…",
+  "matches.empty": "No hay listings que encajen con la zona / presupuesto / intención de este lead.",
+  "matches.send": "Enviar al lead",
+  "matches.sent": "Enviado al lead",
+  "matches.sending": "Enviando…",
+  "matches.blurb": "Te comparto una propiedad que puede encajar:",
+  "matches.sendError": "No se pudo enviar",
+  "visits.title": "Visitas",
+  "visits.upcoming": "próximas",
+  "visits.archived": "archivadas",
+  "visits.book": "Agendar visita",
+  "visits.loading": "Cargando visitas…",
+  "visits.empty.pre": "Aún no hay visitas agendadas. Click en",
+  "visits.empty.post": "para programar la primera.",
+  "visits.minutes": "min",
+  "visits.cancelTitle": "Cancelar visita",
+  "visits.confirmCancel": "¿Cancelar esta visita?",
+  "visits.cancelReason": "Cancelada desde dashboard",
+  "visits.cancelFailed": "No se pudo cancelar:",
+  "booking.title": "Agendar visita",
+  "booking.close": "Cerrar",
+  "booking.loadingSlots": "Cargando slots disponibles…",
+  "booking.noSlots": "No hay slots disponibles en los próximos 7 días.",
+  "booking.selected": "Seleccionado:",
+  "booking.address": "Dirección / propiedad",
+  "booking.addressPlaceholder": "1300 Brickell Bay Dr, Miami",
+  "booking.notes": "Notas",
+  "booking.notesPlaceholder": "Información para la visita…",
+  "booking.confirm": "Confirmar visita",
+  "properties.title": "Propiedades",
+  "properties.subtitle": "Listings importados del feed MLS/IDX (RESO). El agente los empareja con los leads según zona, presupuesto e intención.",
+  "properties.zone": "Zona",
+  "properties.maxPrice": "Precio máx.",
+  "properties.filter": "Filtrar",
+  "properties.sync": "Sincronizar MLS",
+  "properties.syncTitle": "Importar listings del feed MLS/IDX configurado",
+  "properties.loading": "Cargando propiedades…",
+  "properties.empty.pre": "No hay propiedades. Pulsá",
+  "properties.empty.post": "para importar listings.",
+  "properties.activeCount": "propiedades activas",
+  "propType.condo": "Condo",
+  "propType.single_family": "Casa",
+  "propType.townhouse": "Townhouse",
+  "propType.apartment": "Apartamento",
+  "propType.loft": "Loft",
+  "propType.multi_unit": "Multi-unidad",
+  "settings.title": "Configuración",
+  "settings.subtitle": "Personalizá cómo se presenta tu agente IA: nombre de la agencia, personalidad, saludo, idiomas y horario. Los cambios aplican de inmediato a las respuestas.",
+  "settings.loading": "Cargando configuración…",
+  "settings.loadError": "No se pudo cargar la configuración",
+  "settings.identity": "Identidad de la inmobiliaria",
+  "settings.identityHint": "El nombre y teléfono que tu agente IA usa al presentarse.",
+  "settings.agencyName": "Nombre de la agencia",
+  "settings.agencyPhone": "Teléfono (opcional)",
+  "settings.persona": "Personalidad del agente",
+  "settings.personaHint": "Instrucciones de sistema que guían el tono y el comportamiento de las respuestas automáticas. Usá {token} y se reemplaza por el nombre de la agencia.",
+  "settings.personaLabel": "Persona (system prompt)",
+  "settings.greeting": "Saludo inicial",
+  "settings.languages": "Idiomas",
+  "settings.languagesHint": "El agente detecta el idioma del cliente y responde en el más cercano de esta lista.",
+  "settings.hours": "Horario de atención",
+  "settings.hoursHint": "Informativo: el agente responde 24/7, pero usa este horario para fijar expectativas (\"te contacta un agente humano mañana a las 9\").",
+  "settings.open": "Abierto",
+  "settings.closed": "Cerrado",
+  "settings.saved": "Guardado",
+  "settings.saveChanges": "Guardar cambios",
+  "day.monday": "Lunes",
+  "day.tuesday": "Martes",
+  "day.wednesday": "Miércoles",
+  "day.thursday": "Jueves",
+  "day.friday": "Viernes",
+  "day.saturday": "Sábado",
+  "day.sunday": "Domingo",
+  "msg.sender.lead": "Cliente",
+  "msg.sender.agent": "Agente IA",
+  "msg.sender.human": "Tú",
+  "msg.manual": "manual",
+  "msg.subject": "Asunto:",
+  "msg.status.pending": "Pendiente",
+  "msg.status.sent": "Enviado",
+  "msg.status.delivered": "Entregado",
+  "msg.status.read": "Leído",
+  "msg.status.failed": "Fallo",
+  "status.new": "Nuevo",
+  "status.qualified": "Cualificado",
+  "status.visiting": "Visitando",
+  "status.post_visit": "Post-visita",
+  "status.won": "Cerrado",
+  "status.lost": "Perdido",
+  "status.paused": "Pausado",
+  "intent.rent": "Alquiler",
+  "intent.buy": "Compra",
+  "intent.valuation": "Tasación",
+  "intent.other": "Otro",
+  "score.hot": "Caliente",
+  "score.warm": "Tibio",
+  "score.cold": "Frío",
+  "visitStatus.scheduled": "Agendada",
+  "visitStatus.confirmed": "Confirmada",
+  "visitStatus.cancelled": "Cancelada",
+  "visitStatus.completed": "Completada",
+  "visitStatus.no_show": "No-show",
+  "time.now": "ahora mismo",
+  "time.minAgo": "hace {n} min",
+  "time.hAgo": "hace {n} h",
+  "time.dAgo": "hace {n} d",
+  "time.wAgo": "hace {n} sem",
+};
+
+const DICTS: Record<Lang, Record<string, string>> = { en: EN, es: ES };
+
+interface I18nContextValue {
+  lang: Lang;
+  setLang: (l: Lang) => void;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+  locale: string;
+}
+
+const I18nContext = createContext<I18nContextValue | null>(null);
+
+export function LanguageProvider({ children }: { children: React.ReactNode }) {
+  const [lang, setLangState] = useState<Lang>("en"); // default English
+
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
+    if (saved === "en" || saved === "es") setLangState(saved);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document !== "undefined") document.documentElement.lang = lang;
+  }, [lang]);
+
+  const setLang = useCallback((l: Lang) => {
+    setLangState(l);
+    if (typeof window !== "undefined") window.localStorage.setItem(STORAGE_KEY, l);
+  }, []);
+
+  const t = useCallback(
+    (key: string, vars?: Record<string, string | number>) => {
+      let s = DICTS[lang][key] ?? EN[key] ?? key;
+      if (vars) {
+        for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, String(v));
+      }
+      return s;
+    },
+    [lang],
+  );
+
+  const locale = lang === "es" ? "es-ES" : "en-US";
+
+  return (
+    <I18nContext.Provider value={{ lang, setLang, t, locale }}>{children}</I18nContext.Provider>
+  );
+}
+
+export function useI18n(): I18nContextValue {
+  const ctx = useContext(I18nContext);
+  if (!ctx) {
+    // Safe fallback if a component renders outside the provider (e.g. tests):
+    // English, no persistence.
+    return {
+      lang: "en",
+      setLang: () => {},
+      t: (key, vars) => {
+        let s = EN[key] ?? key;
+        if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, String(v));
+        return s;
+      },
+      locale: "en-US",
+    };
+  }
+  return ctx;
+}

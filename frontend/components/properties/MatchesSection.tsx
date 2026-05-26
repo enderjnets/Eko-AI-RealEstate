@@ -5,22 +5,27 @@ import { useRouter } from "next/navigation";
 import { Check, Home, Loader2, Send } from "lucide-react";
 import { type Property, leadsApi } from "@/lib/api";
 import { PropertyCard, formatPrice } from "@/components/properties/PropertyCard";
-
-function propertyBlurb(p: Property): string {
-  const bits = [
-    p.title,
-    formatPrice(p.price),
-    [p.bedrooms ? `${p.bedrooms} hab` : null, p.bathrooms ? `${Number(p.bathrooms)} baños` : null]
-      .filter(Boolean)
-      .join(" · "),
-    p.address,
-    p.url,
-  ].filter(Boolean);
-  return `Te comparto una propiedad que puede encajar:\n\n${bits.join("\n")}`;
-}
+import { useI18n } from "@/lib/i18n";
 
 export function MatchesSection({ leadId }: { leadId: number }) {
   const router = useRouter();
+  const { t, lang } = useI18n();
+
+  function propertyBlurb(p: Property): string {
+    const bedLabel = lang === "es" ? "hab" : "bd";
+    const bathLabel = lang === "es" ? "baños" : "ba";
+    const bits = [
+      p.title,
+      formatPrice(p.price, lang),
+      [p.bedrooms ? `${p.bedrooms} ${bedLabel}` : null, p.bathrooms ? `${Number(p.bathrooms)} ${bathLabel}` : null]
+        .filter(Boolean)
+        .join(" · "),
+      p.address,
+      p.url,
+    ].filter(Boolean);
+    return `${t("matches.blurb")}\n\n${bits.join("\n")}`;
+  }
+
   const [matches, setMatches] = useState<Property[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [sendingId, setSendingId] = useState<number | null>(null);
@@ -46,7 +51,7 @@ export function MatchesSection({ leadId }: { leadId: number }) {
     try {
       const res = await leadsApi.sendMessage(leadId, propertyBlurb(p));
       if (res.status === "error") {
-        setError(res.error || "No se pudo enviar");
+        setError(res.error || t("matches.sendError"));
         return;
       }
       setSentIds((prev) => new Set(prev).add(p.id));
@@ -63,7 +68,7 @@ export function MatchesSection({ leadId }: { leadId: number }) {
       <section className="mt-6">
         <SectionHeader />
         <div className="flex items-center gap-2 text-gray-500 text-sm py-4">
-          <Loader2 className="w-4 h-4 animate-spin" /> Buscando propiedades…
+          <Loader2 className="w-4 h-4 animate-spin" /> {t("matches.searching")}
         </div>
       </section>
     );
@@ -79,7 +84,7 @@ export function MatchesSection({ leadId }: { leadId: number }) {
       )}
       {!matches || matches.length === 0 ? (
         <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6 text-center text-gray-500 text-sm">
-          No hay listings que encajen con la zona / presupuesto / intención de este lead.
+          {t("matches.empty")}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -93,11 +98,11 @@ export function MatchesSection({ leadId }: { leadId: number }) {
                 className="mt-1.5 w-full inline-flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-medium border border-eko-violet/30 bg-eko-violet/10 text-eko-violet hover:bg-eko-violet/20 disabled:opacity-60"
               >
                 {sentIds.has(p.id) ? (
-                  <><Check className="w-3 h-3" /> Enviado al lead</>
+                  <><Check className="w-3 h-3" /> {t("matches.sent")}</>
                 ) : sendingId === p.id ? (
-                  <><Loader2 className="w-3 h-3 animate-spin" /> Enviando…</>
+                  <><Loader2 className="w-3 h-3 animate-spin" /> {t("matches.sending")}</>
                 ) : (
-                  <><Send className="w-3 h-3" /> Enviar al lead</>
+                  <><Send className="w-3 h-3" /> {t("matches.send")}</>
                 )}
               </button>
             </div>
@@ -109,10 +114,11 @@ export function MatchesSection({ leadId }: { leadId: number }) {
 }
 
 function SectionHeader({ count }: { count?: number }) {
+  const { t } = useI18n();
   return (
     <h2 className="text-sm uppercase tracking-wider text-gray-500 mb-3 flex items-center gap-2">
       <Home className="w-3.5 h-3.5" />
-      Propiedades sugeridas
+      {t("matches.title")}
       {count != null && (
         <span className="text-[10px] text-gray-600 normal-case tracking-normal">({count})</span>
       )}

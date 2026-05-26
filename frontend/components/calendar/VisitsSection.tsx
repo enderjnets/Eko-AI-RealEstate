@@ -5,11 +5,12 @@ import { CalendarCheck, CalendarPlus, Loader2, MapPin, X } from "lucide-react";
 import { type Visit, visitsApi } from "@/lib/api";
 import { VisitStatusBadge } from "@/components/ui/VisitStatusBadge";
 import { BookingDialog } from "@/components/calendar/BookingDialog";
+import { useI18n } from "@/lib/i18n";
 
 const TZ = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
 
-function fmtDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("es-ES", {
+function fmtDateTime(iso: string, locale: string): string {
+  return new Date(iso).toLocaleString(locale, {
     weekday: "short",
     day: "2-digit",
     month: "short",
@@ -24,6 +25,7 @@ function isPast(iso: string): boolean {
 }
 
 export function VisitsSection({ leadId }: { leadId: number }) {
+  const { t, locale } = useI18n();
   const [visits, setVisits] = useState<Visit[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,13 +47,13 @@ export function VisitsSection({ leadId }: { leadId: number }) {
   }, [refresh]);
 
   async function handleCancel(visitId: number) {
-    if (!confirm("¿Cancelar esta visita?")) return;
+    if (!confirm(t("visits.confirmCancel"))) return;
     setCancellingId(visitId);
     try {
-      await visitsApi.cancel(visitId, "Cancelada desde dashboard");
+      await visitsApi.cancel(visitId, t("visits.cancelReason"));
       refresh();
     } catch (e: unknown) {
-      alert(`No se pudo cancelar: ${(e as Error)?.message || e}`);
+      alert(`${t("visits.cancelFailed")} ${(e as Error)?.message || e}`);
     } finally {
       setCancellingId(null);
     }
@@ -69,10 +71,10 @@ export function VisitsSection({ leadId }: { leadId: number }) {
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm uppercase tracking-wider text-gray-500 flex items-center gap-2">
           <CalendarCheck className="w-3.5 h-3.5" />
-          Visitas
+          {t("visits.title")}
           {visits && (
             <span className="text-[10px] text-gray-600 normal-case tracking-normal">
-              ({upcoming.length} próximas · {past.length} archivadas)
+              ({upcoming.length} {t("visits.upcoming")} · {past.length} {t("visits.archived")})
             </span>
           )}
         </h2>
@@ -82,14 +84,14 @@ export function VisitsSection({ leadId }: { leadId: number }) {
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border border-eko-violet/30 bg-eko-violet/10 text-eko-violet hover:bg-eko-violet/20"
         >
           <CalendarPlus className="w-3 h-3" />
-          Agendar visita
+          {t("visits.book")}
         </button>
       </div>
 
       {loading && !visits && (
         <div className="flex items-center gap-2 text-sm text-gray-500 py-6 justify-center">
           <Loader2 className="w-4 h-4 animate-spin" />
-          Cargando visitas…
+          {t("visits.loading")}
         </div>
       )}
       {error && (
@@ -99,8 +101,8 @@ export function VisitsSection({ leadId }: { leadId: number }) {
       )}
       {visits && visits.length === 0 && (
         <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6 text-center text-gray-500 text-sm">
-          Aún no hay visitas agendadas. Click en{" "}
-          <span className="text-eko-violet">Agendar visita</span> para programar la primera.
+          {t("visits.empty.pre")}{" "}
+          <span className="text-eko-violet">{t("visits.book")}</span> {t("visits.empty.post")}
         </div>
       )}
 
@@ -123,10 +125,10 @@ export function VisitsSection({ leadId }: { leadId: number }) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-white">
-                      {fmtDateTime(v.scheduled_at)}
+                      {fmtDateTime(v.scheduled_at, locale)}
                     </span>
                     <VisitStatusBadge status={v.status} />
-                    <span className="text-[10px] text-gray-600">{v.duration_minutes} min</span>
+                    <span className="text-[10px] text-gray-600">{v.duration_minutes} {t("visits.minutes")}</span>
                   </div>
                   {v.property_address && (
                     <div className="text-xs text-gray-400 mt-1 flex items-center gap-1">
@@ -147,7 +149,7 @@ export function VisitsSection({ leadId }: { leadId: number }) {
                     onClick={() => handleCancel(v.id)}
                     disabled={cancellingId === v.id}
                     className="p-1 rounded-md text-gray-500 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-50"
-                    title="Cancelar visita"
+                    title={t("visits.cancelTitle")}
                   >
                     {cancellingId === v.id ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />

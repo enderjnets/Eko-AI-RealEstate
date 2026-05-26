@@ -3,20 +3,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarPlus, Loader2, X } from "lucide-react";
 import { type Slot, calendarApi } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 
 const DEFAULT_TZ =
   typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
 
-function fmtTime(iso: string, tz: string): string {
-  return new Date(iso).toLocaleTimeString("es-ES", {
+function fmtTime(iso: string, tz: string, locale: string): string {
+  return new Date(iso).toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: tz,
   });
 }
 
-function fmtDateKey(iso: string, tz: string): string {
-  return new Date(iso).toLocaleDateString("es-ES", {
+function fmtDateKey(iso: string, tz: string, locale: string): string {
+  return new Date(iso).toLocaleDateString(locale, {
     weekday: "long",
     day: "2-digit",
     month: "long",
@@ -35,6 +36,7 @@ export function BookingDialog({
   onClose: () => void;
   onBooked: () => void;
 }) {
+  const { t, locale } = useI18n();
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [selected, setSelected] = useState<Slot | null>(null);
   const [address, setAddress] = useState("");
@@ -60,11 +62,11 @@ export function BookingDialog({
   const byDay = useMemo(() => {
     const grouped: Record<string, Slot[]> = {};
     for (const s of slots ?? []) {
-      const key = fmtDateKey(s.start, tz);
+      const key = fmtDateKey(s.start, tz, locale);
       (grouped[key] ||= []).push(s);
     }
     return grouped;
-  }, [slots, tz]);
+  }, [slots, tz, locale]);
 
   async function handleBook() {
     if (!selected || booking) return;
@@ -102,13 +104,13 @@ export function BookingDialog({
         <header className="flex items-center justify-between px-5 py-4 border-b border-white/5">
           <div className="flex items-center gap-2">
             <CalendarPlus className="w-4 h-4 text-eko-violet" />
-            <h2 className="text-base font-semibold text-white">Agendar visita</h2>
+            <h2 className="text-base font-semibold text-white">{t("booking.title")}</h2>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="p-1 rounded-md text-gray-400 hover:text-white hover:bg-white/5"
-            aria-label="Cerrar"
+            aria-label={t("booking.close")}
           >
             <X className="w-4 h-4" />
           </button>
@@ -118,7 +120,7 @@ export function BookingDialog({
           {loading && (
             <div className="flex items-center gap-2 text-sm text-gray-400 py-8 justify-center">
               <Loader2 className="w-4 h-4 animate-spin" />
-              Cargando slots disponibles…
+              {t("booking.loadingSlots")}
             </div>
           )}
           {error && (
@@ -128,7 +130,7 @@ export function BookingDialog({
           )}
           {!loading && slots && slots.length === 0 && (
             <p className="text-sm text-gray-500 text-center py-8">
-              No hay slots disponibles en los próximos 7 días.
+              {t("booking.noSlots")}
             </p>
           )}
 
@@ -152,7 +154,7 @@ export function BookingDialog({
                             : "bg-white/[0.03] text-gray-300 border-white/10 hover:bg-eko-violet/10 hover:border-eko-violet/30"
                         }`}
                       >
-                        {fmtTime(s.start, tz)}
+                        {fmtTime(s.start, tz, locale)}
                       </button>
                     );
                   })}
@@ -163,30 +165,30 @@ export function BookingDialog({
           {selected && (
             <div className="pt-3 border-t border-white/5 space-y-3">
               <div className="rounded-md bg-eko-violet/10 border border-eko-violet/20 px-3 py-2 text-sm text-white">
-                <span className="text-eko-violet font-medium">Seleccionado:</span>{" "}
-                {fmtDateKey(selected.start, tz)} · {fmtTime(selected.start, tz)} ({tz})
+                <span className="text-eko-violet font-medium">{t("booking.selected")}</span>{" "}
+                {fmtDateKey(selected.start, tz, locale)} · {fmtTime(selected.start, tz, locale)} ({tz})
               </div>
               <label className="block">
                 <span className="text-[10px] uppercase tracking-wider text-gray-500 block mb-1">
-                  Dirección / propiedad (opcional)
+                  {t("booking.address")} ({t("common.optional")})
                 </span>
                 <input
                   type="text"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Calle Fuencarral 100, Madrid"
+                  placeholder={t("booking.addressPlaceholder")}
                   className="w-full px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-eko-violet/50"
                 />
               </label>
               <label className="block">
                 <span className="text-[10px] uppercase tracking-wider text-gray-500 block mb-1">
-                  Notas (opcional)
+                  {t("booking.notes")} ({t("common.optional")})
                 </span>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value.slice(0, 800))}
                   rows={2}
-                  placeholder="Información para la visita…"
+                  placeholder={t("booking.notesPlaceholder")}
                   className="w-full px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-eko-violet/50 resize-y"
                 />
               </label>
@@ -200,7 +202,7 @@ export function BookingDialog({
             onClick={onClose}
             className="px-3 py-1.5 rounded-lg text-xs text-gray-400 hover:text-white border border-white/10 hover:bg-white/5"
           >
-            Cancelar
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -209,7 +211,7 @@ export function BookingDialog({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-eko-violet text-white hover:bg-eko-violet-dark disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {booking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CalendarPlus className="w-3.5 h-3.5" />}
-            Confirmar visita
+            {t("booking.confirm")}
           </button>
         </footer>
       </div>
