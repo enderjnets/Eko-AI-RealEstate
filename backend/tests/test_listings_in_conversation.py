@@ -60,7 +60,7 @@ async def test_agent_gets_real_listings_in_system_prompt(database_url: str) -> N
                          model="kimi-for-coding", input_tokens=50, output_tokens=20)
 
     try:
-        async with await AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             await c.post("/api/v1/properties/sync")  # ensure listings exist
             with patch("app.services.conversation.classify_intent", AsyncMock(return_value=fake_intent)):
                 with patch("app.services.conversation.generate_reply", side_effect=_capture):
