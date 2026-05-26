@@ -1,0 +1,29 @@
+# Eko AI Realtors — dedicated Cloudflare Tunnel config for the PUBLIC DEMO.
+#
+# This exposes the demo dashboard at https://inmo-demo.ekoaiautomation.com WITHOUT
+# touching the sales-platform tunnel (`eko-landing`). Use a SEPARATE named tunnel
+# so the two never interfere.
+#
+# One-time setup on the host (ROG):
+#   cloudflared tunnel login
+#   cloudflared tunnel create eko-realtors-demo
+#   #   → writes <TUNNEL_UUID>.json credentials to ~/.cloudflared/
+#   cloudflared tunnel route dns eko-realtors-demo inmo-demo.ekoaiautomation.com
+#   cp deploy/cloudflared/config.example.yml ~/.cloudflared/eko-realtors-demo.yml
+#   #   → edit the two <PLACEHOLDER> values below
+#   cloudflared tunnel --config ~/.cloudflared/eko-realtors-demo.yml run
+#   #   (or install as a service: cloudflared --config … service install)
+#
+# The demo MUST run with all channels SIMULATED (.env: *_SIMULATED=true) so a
+# public visitor can never trigger a real WhatsApp/email send. Seed it with:
+#   docker compose exec backend python scripts/seed_demo.py
+
+tunnel: <TUNNEL_UUID>
+credentials-file: /home/enderj/.cloudflared/<TUNNEL_UUID>.json
+
+ingress:
+  - hostname: inmo-demo.ekoaiautomation.com
+    # The Realtors frontend (Next.js) — see docker-compose.yml port 3004.
+    service: http://localhost:3004
+  # Everything else 404s (required catch-all).
+  - service: http_status:404

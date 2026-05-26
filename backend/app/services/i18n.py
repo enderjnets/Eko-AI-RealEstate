@@ -11,7 +11,7 @@ is a one-line change in `_LANG_NAMES`.
 from __future__ import annotations
 
 import logging
-from typing import Iterable
+from collections.abc import Iterable
 
 from langdetect import DetectorFactory, LangDetectException, detect
 

@@ -185,6 +185,35 @@ export const visitsApi = {
     }),
 };
 
+export interface AgencySettings {
+  agency_name: string;
+  agency_phone: string | null;
+  agent_persona: string;
+  greeting_template: string;
+  languages: string[];
+  business_hours: Record<string, { open: string; close: string } | null>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgencySettingsPatch {
+  agency_name?: string;
+  agency_phone?: string | null;
+  agent_persona?: string;
+  greeting_template?: string;
+  languages?: string[];
+  business_hours?: Record<string, { open: string; close: string } | null>;
+}
+
+export const settingsApi = {
+  get: () => api<AgencySettings>(`/v1/settings`),
+  update: (body: AgencySettingsPatch) =>
+    api<AgencySettings>(`/v1/settings`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+};
+
 export const leadsApi = {
   list: (params?: { status?: LeadStatus; intent?: LeadIntent; limit?: number; offset?: number }) => {
     const q = new URLSearchParams();

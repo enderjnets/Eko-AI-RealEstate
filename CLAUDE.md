@@ -172,8 +172,7 @@ ingress to be added when we go to first pilot).
 - ✅ **Phase 3** — Multichannel + Email (Resend) + Bilingual (`v0.3.0`, 2026-05-25). USA pivot. 55/55 tests. WhatsApp keeps working as `channel="whatsapp"`; email is now `channel="email"`. Agent auto-detects ES/EN and replies in same language.
 - ✅ **Phase 4** — Manual reply composer + AI reply suggestions (`v0.4.0`, 2026-05-25). 64/64 tests passing. `Composer` in `/leads/[id]` with "Sugerir respuestas" button (3 LLM-generated drafts the realtor can edit + send).
 - ✅ **Phase 5** — Calendar booking via Cal.com (`v0.5.0`, 2026-05-25). 77/77 tests passing. `VisitsSection` + `BookingDialog` in `/leads/[id]`. SIMULATED mode default (no Cal.com account needed in dev); production wiring via `CALCOM_API_KEY` + `CALCOM_EVENT_TYPE_ID`. Endpoints under `/api/v1/leads/{id}/calendar/*` and `/api/v1/visits/*`.
-- 🔨 **Phase 6** — Single-customer installer + public demo subdomain
-- ⏳ **Phase 6** — Single-customer installer + public demo subdomain (so we can sell with a live URL)
+- ✅ **Phase 6** — Single-customer installer + branding panel + public demo (`v0.6.0`, 2026-05-25). 84/84 tests passing. `GET/PUT /api/v1/settings` + `/settings` branding page; `scripts/install.sh` one-command installer; `scripts/seed_demo.py` demo dataset; `deploy/cloudflared/` + `docs/setup-demo.md` for `inmo-demo.ekoaiautomation.com`. **CI green for the first time** (Postgres service + migrations + ruff config + frontend npm-cache fix).
 - ⏳ **Phase 7** — MLS / IDX integration (USA listings)
 - ⏳ **Phase 8** — SMS (Twilio) — deferred until Twilio account is set up
 - ⏳ **Phase 9** — Voice agent (VAPI / Retell) — deferred until provider account is set up

@@ -8,8 +8,7 @@ Endpoints mounted at /api/v1:
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Literal
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -110,7 +109,7 @@ async def list_slots(
     db: AsyncSession = Depends(get_db),
 ) -> SlotsResponse:
     await _get_lead_or_404(lead_id, db)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     start = now.replace(minute=0, second=0, microsecond=0)
     end = start + timedelta(days=days)
     busy = await _busy_starts_for_lead(lead_id, db)
