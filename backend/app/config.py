@@ -70,6 +70,16 @@ class Settings(BaseSettings):
     CALCOM_API_KEY: str = ""
     CALCOM_EVENT_TYPE_ID: str = ""
 
+    # ─── Listings / MLS (Phase 7) ───────────────────────────────────────
+    # When SIMULATED=true (dev default), the listings service returns a curated
+    # Miami dataset and sync_listings upserts it as MANUAL — no MLS feed needed.
+    # Production: set RESO_BASE_URL + RESO_ACCESS_TOKEN (RESO Web API / OData,
+    # the USA MLS standard) and flip SIMULATED to false.
+    LISTINGS_SIMULATED: bool = True
+    LISTINGS_PROVIDER: str = "reso"  # reso | idx | mls
+    RESO_BASE_URL: str = ""
+    RESO_ACCESS_TOKEN: str = ""
+
     # ─── CORS ───────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3004"
 

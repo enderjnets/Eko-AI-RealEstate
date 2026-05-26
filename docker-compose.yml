@@ -64,6 +64,11 @@ services:
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET}
       WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN}
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
+      # Listings / MLS (Phase 7) — SIMULATED by default; set RESO_* for a real feed.
+      LISTINGS_SIMULATED: ${LISTINGS_SIMULATED:-true}
+      LISTINGS_PROVIDER: ${LISTINGS_PROVIDER:-reso}
+      RESO_BASE_URL: ${RESO_BASE_URL:-}
+      RESO_ACCESS_TOKEN: ${RESO_ACCESS_TOKEN:-}
       APP_ENV: ${APP_ENV:-development}
       DEBUG: ${DEBUG:-true}
     ports:
