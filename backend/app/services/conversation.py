@@ -40,6 +40,7 @@ from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
 from app.services.i18n import detect_language, language_instruction, pick_supported_language
 from app.services.llm import LLMUnavailable, generate_reply
+from app.services.scoring import rescore_lead
 from app.services.whatsapp import send_text_message as whatsapp_send
 
 log = logging.getLogger(__name__)
@@ -391,6 +392,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
 
     # ── 5. Human takeover check ────────────────────────────────────────
     if lead.human_takeover:
+        await rescore_lead(lead, db, commit=False)
         await db.commit()
         log.info("Lead %d on human_takeover — skipping AI reply", lead.id)
         return {"status": "human_takeover", "lead_id": lead.id, "inbound_id": inbound.id}
@@ -451,6 +453,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         reply = await generate_reply(messages=llm_messages, system=system_prompt, max_tokens=400)
     except LLMUnavailable as exc:
         log.error("All LLMs failed for lead %d: %s", lead.id, exc)
+        await rescore_lead(lead, db, commit=False)
         await db.commit()
         return {
             "status": "llm_unavailable",
@@ -499,6 +502,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         log.error("Channel %s send failed for outbound msg %d: %s", parsed.channel, outbound.id, exc)
         outbound.delivery_status = MessageStatus.FAILED
 
+    await rescore_lead(lead, db, commit=False)
     await db.commit()
     log.info(
         "Turn done: lead=%d channel=%s inbound=%d outbound=%d intent=%s provider=%s status=%s",

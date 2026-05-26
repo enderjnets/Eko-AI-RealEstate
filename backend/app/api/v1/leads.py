@@ -15,6 +15,7 @@ from app.services.conversation import (
     generate_reply_suggestions,
     send_human_message,
 )
+from app.services.scoring import rescore_all
 
 router = APIRouter()
 
@@ -53,6 +54,8 @@ class LeadOut(BaseModel):
     property_type: str | None
     urgency: str | None
     human_takeover: bool
+    score: int
+    score_breakdown: dict
     last_message_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -63,10 +66,15 @@ class LeadListOut(BaseModel):
     items: list[LeadOut]
 
 
+class RescoreResult(BaseModel):
+    rescored: int
+
+
 @router.get("", response_model=LeadListOut)
 async def list_leads(
     status_filter: LeadStatus | None = Query(default=None, alias="status"),
     intent: LeadIntent | None = Query(default=None),
+    sort: str = Query(default="score", pattern="^(score|recent)$"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -77,17 +85,49 @@ async def list_leads(
     if intent is not None:
         where.append(Lead.intent == intent)
 
+    if sort == "recent":
+        order = (Lead.last_message_at.desc().nullslast(), Lead.id.desc())
+    else:  # score (default) — hottest first, then most recent
+        order = (Lead.score.desc(), Lead.last_message_at.desc().nullslast(), Lead.id.desc())
+
     total = (await db.execute(select(func.count()).select_from(Lead).where(*where))).scalar_one()
     rows = (
         await db.execute(
-            select(Lead)
-            .where(*where)
-            .order_by(Lead.last_message_at.desc().nullslast(), Lead.id.desc())
-            .limit(limit)
-            .offset(offset)
+            select(Lead).where(*where).order_by(*order).limit(limit).offset(offset)
         )
     ).scalars().all()
     return LeadListOut(total=total, items=[LeadOut.model_validate(r) for r in rows])
+
+
+@router.get("/digest", response_model=list[LeadOut])
+async def lead_digest(
+    limit: int = Query(default=5, ge=1, le=20),
+    db: AsyncSession = Depends(get_db),
+) -> list[LeadOut]:
+    """Top hot/active leads by score — the 'who to call first' list.
+
+    Excludes closed/paused leads (status gate already zeroes WON/LOST), and only
+    returns leads scoring in the warm/hot range so the digest stays actionable.
+    """
+    rows = (
+        await db.execute(
+            select(Lead)
+            .where(
+                Lead.status.notin_([LeadStatus.WON, LeadStatus.LOST, LeadStatus.PAUSED]),
+                Lead.score > 0,
+            )
+            .order_by(Lead.score.desc(), Lead.last_message_at.desc().nullslast())
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [LeadOut.model_validate(r) for r in rows]
+
+
+@router.post("/rescore-all", response_model=RescoreResult)
+async def rescore_all_leads(db: AsyncSession = Depends(get_db)) -> RescoreResult:
+    """Recompute every lead's score (admin / backfill / after a scoring change)."""
+    n = await rescore_all(db)
+    return RescoreResult(rescored=n)
 
 
 @router.get("/{lead_id}", response_model=LeadOut)
