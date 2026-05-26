@@ -70,6 +70,18 @@ class Settings(BaseSettings):
     CALCOM_API_KEY: str = ""
     CALCOM_EVENT_TYPE_ID: str = ""
 
+    # ─── SMS (Phase 9 — Twilio) ─────────────────────────────────────────
+    # When SMS_SIMULATED=true (dev default), send_sms() LOGS instead of calling
+    # Twilio and the webhook accepts unsigned requests. Production: set the
+    # TWILIO_* values and flip SIMULATED to false. TWILIO_WEBHOOK_URL is the exact
+    # public URL configured in the Twilio console (used for signature validation
+    # behind a proxy); if blank we reconstruct it from forwarded headers.
+    SMS_SIMULATED: bool = True
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_PHONE_NUMBER: str = ""  # E.164, e.g. +13055551234
+    TWILIO_WEBHOOK_URL: str = ""
+
     # ─── Listings / MLS (Phase 7) ───────────────────────────────────────
     # When SIMULATED=true (dev default), the listings service returns a curated
     # Miami dataset and sync_listings upserts it as MANUAL — no MLS feed needed.
