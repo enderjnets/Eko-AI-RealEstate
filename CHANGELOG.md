@@ -2,6 +2,41 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.9.0] — 2026-05-26
+
+### Phase 9 — SMS channel (Twilio)
+
+A third channel: SMS via Twilio, on the same multichannel architecture as
+WhatsApp and email. SIMULATED-first, so it works without an account.
+
+#### Backend
+
+- **`services/sms.py`** — `send_sms` (SIMULATED logs / real Twilio REST API),
+  `verify_twilio_signature` (HMAC-SHA1 over the request URL + sorted POST params,
+  keyed by the auth token), `parse_inbound_sms` → `ParsedMessage(channel="sms")`.
+- **`POST /api/v1/webhooks/sms`** — parses Twilio's form, validates the signature
+  (unless SIMULATED), hands off to the orchestrator, returns empty TwiML (the
+  reply is sent asynchronously via REST). Signature URL comes from
+  `TWILIO_WEBHOOK_URL` or is rebuilt from forwarded headers.
+- Dispatcher gains an `sms` branch; idempotency via UNIQUE `messages.external_id`
+  (the `MessageSid`).
+- `config.py` + `.env.example` + compose: `SMS_SIMULATED` (default true) +
+  `TWILIO_ACCOUNT_SID` / `AUTH_TOKEN` / `PHONE_NUMBER` / `WEBHOOK_URL`.
+- `scripts/simulate_inbound_sms.py` for smoke testing.
+
+#### Docs
+
+- **`docs/setup-twilio.md`** — account + number + webhook + signature + cost/safety
+  notes.
+
+#### Tests
+
+- **+9 (116 total)**: `test_sms_service.py` (7) + `test_sms_webhook_e2e.py` (2).
+
+#### Roadmap
+
+- Voice (VAPI/Retell) remains **Phase 10**, deferred until a provider account exists.
+
 ## [0.8.0] — 2026-05-26
 
 ### Phase 8 — Lead intelligence (scoring + prioritization + digest)

@@ -77,10 +77,13 @@ dev); production via `CALCOM_API_KEY` + `CALCOM_EVENT_TYPE_ID`.
 - **Frontend**: `ScoreBadge` (🔥/🟡/⚪) in the table + lead detail; **HotLeadsPanel**
   on `/leads`.
 
-## Phase 9 · SMS (Twilio) — ⏳ deferred
+## Phase 9 · SMS channel (Twilio) — ✅ done (`v0.9.0`)
 
-SMS as a first-class channel via Twilio. Deferred until a Twilio account is set
-up. The multichannel architecture (Phase 3) already accommodates it.
+- **`services/sms.py`** — `send_sms` (SIMULATED / real Twilio REST API),
+  `verify_twilio_signature` (HMAC-SHA1), `parse_inbound_sms`.
+- **`POST /api/v1/webhooks/sms`** — signature-validated inbound → orchestrator →
+  empty TwiML; reply sent async via REST. Same multichannel path as WhatsApp/email.
+- `SMS_SIMULATED=true` default; production via [`setup-twilio.md`](setup-twilio.md).
 
 ## Phase 10 · Voice agent (VAPI / Retell) — ⏳ deferred
 
