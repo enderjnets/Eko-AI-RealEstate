@@ -214,6 +214,63 @@ export const settingsApi = {
     }),
 };
 
+export type PropertySource = "reso" | "idx" | "mls" | "manual";
+export type PropertyStatus = "active" | "pending" | "sold" | "off_market";
+
+export interface Property {
+  id: number;
+  source: PropertySource;
+  external_id: string;
+  status: PropertyStatus;
+  title: string;
+  description: string | null;
+  property_type: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  zone: string | null;
+  price: string | null; // Decimal serializes as string
+  bedrooms: number | null;
+  bathrooms: string | null;
+  sqft: number | null;
+  url: string | null;
+  photos: string[];
+  listed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PropertyList {
+  total: number;
+  items: Property[];
+}
+
+export interface PropertyFilters {
+  status?: PropertyStatus;
+  source?: PropertySource;
+  city?: string;
+  zone?: string;
+  property_type?: string;
+  min_price?: number;
+  max_price?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export const propertiesApi = {
+  list: (params?: PropertyFilters) => {
+    const q = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+    });
+    const qs = q.toString();
+    return api<PropertyList>(`/v1/properties${qs ? `?${qs}` : ""}`);
+  },
+  get: (id: number) => api<Property>(`/v1/properties/${id}`),
+  sync: () => api<{ created: number; updated: number; total: number }>(`/v1/properties/sync`, { method: "POST" }),
+};
+
 export const leadsApi = {
   list: (params?: { status?: LeadStatus; intent?: LeadIntent; limit?: number; offset?: number }) => {
     const q = new URLSearchParams();
@@ -237,6 +294,8 @@ export const leadsApi = {
       method: "POST",
       body: JSON.stringify({ count }),
     }),
+  matches: (id: number, limit: number = 6) =>
+    api<Property[]>(`/v1/leads/${id}/matches?limit=${limit}`),
 };
 
 export const conversationsApi = {
