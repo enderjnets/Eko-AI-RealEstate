@@ -128,7 +128,9 @@ async def test_agent_settings_singleton(database_url: str) -> None:
 
         async with Session() as s:
             settings_row = (await s.execute(select(AgentSettings).where(AgentSettings.id == 1))).scalar_one()
-            assert settings_row.agency_name in ("Test Agency", "Inmobiliaria")
+            # agency_name is editable via the settings API (and the demo seed sets
+            # it), so just assert a non-empty value — not a specific string.
+            assert settings_row.agency_name
             assert "es" in settings_row.languages
             assert settings_row.agent_persona  # non-empty default applied
             assert settings_row.business_hours.get("monday", {}).get("open") == "09:00"
