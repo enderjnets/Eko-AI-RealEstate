@@ -20,7 +20,7 @@ on partial failures):
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -188,7 +188,7 @@ async def send_human_message(
         log.error("Human-send dispatch failed for lead %d: %s", lead_id, exc)
         outbound.delivery_status = MessageStatus.FAILED
 
-    lead.last_message_at = datetime.now(timezone.utc)
+    lead.last_message_at = datetime.now(UTC)
     await db.commit()
     log.info(
         "Human send: lead=%d channel=%s outbound=%d status=%s",
@@ -381,7 +381,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         subject=parsed.subject,
     )
     db.add(inbound)
-    lead.last_message_at = datetime.now(timezone.utc)
+    lead.last_message_at = datetime.now(UTC)
     try:
         await db.flush()
     except IntegrityError:

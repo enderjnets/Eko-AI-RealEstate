@@ -71,7 +71,7 @@ def verify_resend_signature(
         # If the secret isn't valid base64, fall back to raw bytes.
         key = key_material.encode("utf-8")
 
-    signed_payload = f"{svix_id}.{svix_timestamp}.{body.decode('utf-8', errors='replace')}".encode("utf-8")
+    signed_payload = f"{svix_id}.{svix_timestamp}.{body.decode('utf-8', errors='replace')}".encode()
     expected = hmac.new(key, signed_payload, hashlib.sha256).digest()
 
     import base64

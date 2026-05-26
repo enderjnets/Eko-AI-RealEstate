@@ -6,7 +6,8 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import conversations, health, leads, settings as settings_api, visits
+from app.api.v1 import conversations, health, leads, visits
+from app.api.v1 import settings as settings_api
 from app.api.v1.webhooks import email as email_webhook
 from app.api.v1.webhooks import whatsapp as whatsapp_webhook
 from app.config import get_settings
