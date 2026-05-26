@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.5.0";
+export const CURRENT_VERSION = "0.6.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,21 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.6.0",
+    date: "2026-05-25",
+    title: "Phase 6 — Single-customer installer + branding panel + public demo",
+    changes: [
+      "Settings API: GET/PUT /api/v1/settings sobre el singleton AgentSettings (auto-creado con defaults). PUT hace partial update con normalización/dedupe de languages (lowercase, sin vacíos). Cada oficina puede brandear su propia instancia.",
+      "Frontend /settings — panel de branding: nombre + teléfono de la agencia, persona del agente (system prompt), saludo, idiomas (chips es/en/pt/fr), horario de atención (por día, open/close o cerrado). Link 'Configuración' en el Nav. Cambios aplican de inmediato a las respuestas.",
+      "scripts/install.sh — instalador single-customer interactivo: chequea prereqs (docker/compose/daemon), genera .env con secretos aleatorios fuertes (POSTGRES_PASSWORD, WHATSAPP_VERIFY_TOKEN) mode 600 nunca impresos, build+up, espera health, alembic upgrade head, fija branding vía API. Canales quedan SIMULATED salvo opt-in explícito. --no-prompt para provisioning.",
+      "backend/scripts/seed_demo.py — dataset demo idempotente (Sunset Realty Group, Miami): 6 leads bilingües EN/ES + conversaciones realistas + 2 visitas (scheduled/completed). Marca meta.demo=true; --reset borra solo filas demo; --keep-settings preserva branding. Para que inmo-demo.ekoaiautomation.com luzca vivo.",
+      "deploy/cloudflared/config.example.yml + docs/setup-demo.md — tunnel DEDICADO para inmo-demo.ekoaiautomation.com (aislado del tunnel eko-landing de la sales platform). Modelo de seguridad: todos los canales SIMULATED (un visitante nunca dispara un envío real), datos seed (sin PII real), opcional Cloudflare Access.",
+      "docs/install.md — guía completa de instalación single-office + enable de canales (WhatsApp/Resend/Cal.com) + upgrade. Sin GPU (LLM en la nube Kimi+MiniMax).",
+      "CI verde por primera vez desde Phase 1: backend agrega servicio Postgres + alembic upgrade head (los tests con DB ahora corren de verdad) + ruff config ignora 3 reglas que chocan con idioms intencionales (B008 FastAPI Depends, UP042 str-Enum, UP037 SQLAlchemy forward-refs) + auto-fix del resto. Frontend quita cache npm (no había package-lock.json → abortaba el job).",
+      "Tests +7 (total 84): test_settings_api.py (GET auto-create defaults, PUT update + persiste, partial update no toca otros campos, languages normalize/dedupe, body vacío 400, campo desconocido 422, languages vacío 422). test_models singleton hecho robusto (no acopla agency_name a un valor fijo).",
+    ],
+  },
   {
     version: "0.5.0",
     date: "2026-05-25",

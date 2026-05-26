@@ -2,6 +2,63 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.6.0] — 2026-05-25
+
+### Phase 6 — Single-customer installer + branding panel + public demo
+
+The product is now installable by a single office in one command, brandable
+from the dashboard, and demoable from a live public URL — and CI is green for
+the first time since Phase 1.
+
+#### Branding panel (Settings API + `/settings` page)
+
+- **`GET/PUT /api/v1/settings`** over the `AgentSettings` singleton (auto-created
+  with defaults). `PUT` is a partial update; `languages` is normalized to
+  lowercase + de-duped. Empty body → 400, unknown field → 422.
+- **`/settings`** dashboard page: agency name + phone, agent persona (system
+  prompt), greeting template, languages (es/en/pt/fr chips), and business hours
+  (per-day open/close or closed). A **Configuración** link is in the nav.
+  Changes apply immediately to new auto-replies.
+
+#### Single-customer installer
+
+- **`scripts/install.sh`** — interactive installer: checks prerequisites
+  (Docker/Compose/daemon), generates a `.env` with **strong random secrets**
+  (`POSTGRES_PASSWORD`, `WHATSAPP_VERIFY_TOKEN`, mode `600`, never printed),
+  builds + starts the stack, waits for the health check, runs
+  `alembic upgrade head`, and sets the agency branding via the API. Channels stay
+  **SIMULATED** unless explicitly opted in. `--no-prompt` for provisioning scripts.
+- **`docs/install.md`** — full single-office install + channel-enable + upgrade
+  guide (no GPU — the LLM is cloud-hosted Kimi + MiniMax).
+
+#### Public demo
+
+- **`backend/scripts/seed_demo.py`** — idempotent demo dataset (*Sunset Realty
+  Group*, Miami): 6 bilingual EN/ES leads + realistic conversations + 2 visits
+  (scheduled / completed). Every row is tagged `meta.demo=true`; `--reset` wipes
+  only the demo rows, `--keep-settings` preserves branding.
+- **`deploy/cloudflared/config.example.yml`** + **`docs/setup-demo.md`** — a
+  **dedicated** Cloudflare Tunnel for `inmo-demo.ekoaiautomation.com`, isolated
+  from the sales-platform tunnel. Safety model: all channels SIMULATED (a visitor
+  can never trigger a real send), seed data only, optional Cloudflare Access.
+
+#### CI (green for the first time since Phase 1)
+
+- **Backend**: added a real Postgres service + `alembic upgrade head` so the
+  DB-backed tests actually run instead of erroring on a missing server. Ruff now
+  ignores the 3 rules that conflict with intentional idioms (`B008` FastAPI
+  `Depends`/`Query` defaults, `UP042` `str`+`Enum` for pg_enum, `UP037`
+  SQLAlchemy quoted forward-refs) and auto-fixes the rest.
+- **Frontend**: dropped `cache: npm` (there's no `package-lock.json`, so the
+  cache step was aborting the whole job before tsc/lint).
+
+#### Tests
+
+- **+7 (84 total)**: `test_settings_api.py` (GET auto-create, PUT update +
+  persistence, partial update, languages normalize/dedupe, empty-body 400,
+  unknown-field 422, empty-languages 422). The singleton model test no longer
+  couples to a specific `agency_name`.
+
 ## [0.5.0] — 2026-05-25
 
 ### Phase 5 — Calendar booking (Cal.com) + dashboard VisitsSection
