@@ -33,6 +33,14 @@ export interface Lead {
   property_type: string | null;
   urgency: string | null;
   human_takeover: boolean;
+  score: number;
+  score_breakdown: {
+    components?: Record<string, number>;
+    base?: number;
+    status_gate?: number;
+    status?: string;
+    tier?: "hot" | "warm" | "cold";
+  };
   last_message_at: string | null;
   created_at: string;
   updated_at: string;
@@ -272,15 +280,17 @@ export const propertiesApi = {
 };
 
 export const leadsApi = {
-  list: (params?: { status?: LeadStatus; intent?: LeadIntent; limit?: number; offset?: number }) => {
+  list: (params?: { status?: LeadStatus; intent?: LeadIntent; sort?: "score" | "recent"; limit?: number; offset?: number }) => {
     const q = new URLSearchParams();
     if (params?.status) q.set("status", params.status);
     if (params?.intent) q.set("intent", params.intent);
+    if (params?.sort) q.set("sort", params.sort);
     if (params?.limit) q.set("limit", String(params.limit));
     if (params?.offset) q.set("offset", String(params.offset));
     const qs = q.toString();
     return api<LeadList>(`/v1/leads${qs ? `?${qs}` : ""}`);
   },
+  digest: (limit: number = 5) => api<Lead[]>(`/v1/leads/digest?limit=${limit}`),
   get: (id: number) => api<Lead>(`/v1/leads/${id}`),
   patch: (id: number, body: LeadPatch) =>
     api<Lead>(`/v1/leads/${id}`, { method: "PATCH", body: JSON.stringify(body) }),

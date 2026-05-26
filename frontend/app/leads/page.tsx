@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { Nav } from "@/components/ui/Nav";
 import { FilterBar } from "@/components/leads/FilterBar";
+import { HotLeadsPanel } from "@/components/leads/HotLeadsPanel";
 import { LeadsTable } from "@/components/leads/LeadsTable";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,8 @@ export default function LeadsPage() {
             historial y tomar control manual si hace falta.
           </p>
         </header>
+
+        <HotLeadsPanel />
 
         <Suspense fallback={null}>
           <FilterBar />
