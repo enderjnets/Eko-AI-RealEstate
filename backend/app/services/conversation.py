@@ -31,6 +31,7 @@ from app.models import (
     Conversation,
     ConversationStatus,
     Lead,
+    LeadIntent,
     Message,
     MessageDirection,
     MessageSender,
@@ -453,6 +454,32 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # which language to actually answer in (detected from the inbound message).
     system_prompt = agent_cfg.agent_persona.replace("{agency_name}", agent_cfg.agency_name)
     system_prompt += language_instruction(target_lang, persona_locale="es")
+
+    # Phase 10: if the lead is property-shopping and we know the zone, give the
+    # LLM the REAL matching listings so it can offer them (and never invent any).
+    if lead.intent in (LeadIntent.BUY, LeadIntent.RENT) and lead.zone:
+        try:
+            from app.services.listings import match_properties_for_lead  # lazy import
+            matches = await match_properties_for_lead(lead, db, limit=3)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Listings match failed for lead %d: %s", lead.id, exc)
+            matches = []
+        if matches:
+            lines = []
+            for p in matches:
+                price = f"${int(p.price):,}" if p.price is not None else "price on request"
+                beds = f"{p.bedrooms}bd" if p.bedrooms else ""
+                baths = f"{float(p.bathrooms):g}ba" if p.bathrooms is not None else ""
+                specs = " ".join(x for x in (beds, baths) if x)
+                lines.append(
+                    f"- {p.title} — {price}{(' · ' + specs) if specs else ''}"
+                    f"{(' · ' + p.address) if p.address else ''}{(' · ' + p.url) if p.url else ''}"
+                )
+            system_prompt += (
+                "\n\nLISTINGS DISPONIBLES QUE PUEDES OFRECER (usa SOLO estas, NO inventes "
+                "ni cites otras; si encajan con lo que pide, ofrécelas con naturalidad):\n"
+                + "\n".join(lines)
+            )
 
     try:
         reply = await generate_reply(messages=llm_messages, system=system_prompt, max_tokens=400)

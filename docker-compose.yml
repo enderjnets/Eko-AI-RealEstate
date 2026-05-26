@@ -72,6 +72,9 @@ services:
       TWILIO_WEBHOOK_URL: ${TWILIO_WEBHOOK_URL:-}
       TWILIO_MESSAGING_SERVICE_SID: ${TWILIO_MESSAGING_SERVICE_SID:-}
       TWILIO_STATUS_CALLBACK_URL: ${TWILIO_STATUS_CALLBACK_URL:-}
+      # Follow-ups / nurture (Phase 10) — in-process worker for post-visit + reminders.
+      FOLLOWUPS_ENABLED: ${FOLLOWUPS_ENABLED:-true}
+      FOLLOWUPS_INTERVAL_SECONDS: ${FOLLOWUPS_INTERVAL_SECONDS:-300}
       # Listings / MLS (Phase 7) — SIMULATED by default; set RESO_* for a real feed.
       LISTINGS_SIMULATED: ${LISTINGS_SIMULATED:-true}
       LISTINGS_PROVIDER: ${LISTINGS_PROVIDER:-reso}
