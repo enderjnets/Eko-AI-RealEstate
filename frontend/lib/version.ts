@@ -19,7 +19,7 @@ export const CHANGELOG: VersionEntry[] = [
       "config.py + .env.example + compose: TWILIO_MESSAGING_SERVICE_SID + TWILIO_STATUS_CALLBACK_URL.",
       "docs/setup-twilio.md ampliado: registro A2P 10DLC (Sole Proprietor vs Standard), gotcha del webhook del Messaging Service (anula el del número), y opt-out STOP/HELP (Twilio lo maneja por default).",
       "Webhook inbound: log de fallo de firma más limpio (sin el diagnóstico verbose temporal).",
-      "Tests +6 (total 122): mapper de estado (1) + status callback e2e (delivered, undelivered/30034→failed, sid desconocido = no-op).",
+      "Tests +4 (total 120): mapper de estado (1) + status callback e2e (delivered, undelivered/30034→failed, sid desconocido = no-op).",
     ],
   },
   {

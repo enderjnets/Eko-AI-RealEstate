@@ -22,7 +22,7 @@ Two production improvements to the SMS channel, surfaced by reading Twilio's API
 - **`docs/setup-twilio.md`** expanded: A2P 10DLC registration (Sole Proprietor vs
   Standard), the Messaging Service webhook override gotcha, and STOP/HELP opt-out
   (handled by Twilio's default Advanced Opt-Out).
-- Tests **+6 (122 total)**: status mapper + status-callback e2e.
+- Tests **+4 (120 total)**: status mapper + status-callback e2e.
 
 ## [0.9.0] — 2026-05-26
 
