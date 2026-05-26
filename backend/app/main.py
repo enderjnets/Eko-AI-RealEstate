@@ -1,6 +1,8 @@
 """Eko AI Realtors — FastAPI entrypoint."""
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 
 from fastapi import FastAPI
@@ -56,6 +58,27 @@ app.include_router(properties.router, prefix="/api/v1/properties", tags=["proper
 app.include_router(properties.lead_matches_router, prefix="/api/v1", tags=["properties"])
 
 
+_followups_task: asyncio.Task | None = None
+
+
+async def _followups_loop() -> None:
+    """Background worker: periodically send due nurture follow-ups (Phase 10)."""
+    from app.db.base import get_session_factory
+    from app.services.followups import process_due_followups
+
+    interval = max(30, settings.FOLLOWUPS_INTERVAL_SECONDS)
+    Session = get_session_factory()
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            async with Session() as session:
+                await process_due_followups(session)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Follow-ups worker tick failed: %s", exc)
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     logger.info(
@@ -68,6 +91,18 @@ async def _startup() -> None:
             "be LOGGED, not sent to Meta. Set WHATSAPP_SIMULATED=false before serving real "
             "customer traffic."
         )
+    if settings.FOLLOWUPS_ENABLED:
+        global _followups_task
+        _followups_task = asyncio.create_task(_followups_loop())
+        logger.info("Follow-ups worker started (every %ds)", settings.FOLLOWUPS_INTERVAL_SECONDS)
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    if _followups_task is not None:
+        _followups_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await _followups_task
 
 
 @app.get("/")

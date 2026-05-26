@@ -2,6 +2,43 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.11.0] — 2026-05-26
+
+### Phase 10 — Autonomous nurture + in-conversation listing offers
+
+The agent now works leads **while you sleep**, and offers real inventory in chat.
+
+#### Autonomous follow-ups
+
+- **`FollowUp` model** + Alembic `006` (lead / visit / kind / status /
+  `scheduled_for`, UNIQUE(visit, kind) → idempotent enqueue).
+- **`services/followups.py`** — `enqueue_for_visit` schedules a 24h-before
+  **reminder** + a post-visit sequence (**24h** "how was it?", **72h** nudge,
+  **7d** "new similar listings"). `process_due_followups` sends the due ones,
+  **skipping** human takeover, cancelled visits, and the 72h nudge if the lead
+  already replied. Bilingual templates, sent as the AI agent via the lead's channel.
+- **In-process worker** (`main.py` asyncio loop, `FOLLOWUPS_ENABLED` +
+  `FOLLOWUPS_INTERVAL_SECONDS`) + **`scripts/run_followups.py`** for cron. Booking
+  a visit enqueues the sequence.
+
+#### Agent offers listings in-conversation
+
+- When a lead is buy/rent with a known zone, the orchestrator injects the **real
+  matched listings** into the system prompt (only those, never invented) so the
+  agent offers them naturally — closing the Phase 7 loop (matching was
+  dashboard-only before).
+- **Fix**: the matcher crashed on `float * Decimal` when the budget came fresh
+  from the classifier (swallowed → empty matches). Normalized with `Decimal(str())`.
+
+#### Tests
+
+- **+6 (126 total)**: follow-up scheduling / due-processing / skip rules +
+  agent-gets-real-listings-in-prompt.
+
+#### Roadmap
+
+- Voice (VAPI/Retell) renumbered to **Phase 11** (still deferred).
+
 ## [0.10.0] — 2026-05-26
 
 ### Multilingual dashboard (English default + Spanish) with a language switcher

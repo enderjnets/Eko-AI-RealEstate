@@ -100,6 +100,12 @@ class Settings(BaseSettings):
     RESO_BASE_URL: str = ""
     RESO_ACCESS_TOKEN: str = ""
 
+    # ─── Follow-ups / nurture (Phase 10) ────────────────────────────────
+    # In-process background worker that sends scheduled post-visit follow-ups +
+    # visit reminders. Disable to run them only via scripts/run_followups.py (cron).
+    FOLLOWUPS_ENABLED: bool = True
+    FOLLOWUPS_INTERVAL_SECONDS: int = 300
+
     # ─── CORS ───────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3004"
 

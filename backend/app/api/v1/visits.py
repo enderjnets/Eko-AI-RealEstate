@@ -8,6 +8,7 @@ Endpoints mounted at /api/v1:
 """
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,6 +24,8 @@ from app.services.calendar_cal import (
     create_booking,
     list_available_slots,
 )
+
+log = logging.getLogger(__name__)
 
 leads_calendar_router = APIRouter()
 visits_router = APIRouter()
@@ -165,6 +168,14 @@ async def book_slot(
     db.add(visit)
     await db.commit()
     await db.refresh(visit)
+
+    # Phase 10: schedule the reminder + post-visit nurture sequence.
+    try:
+        from app.services.followups import enqueue_for_visit
+        await enqueue_for_visit(visit, db)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Could not enqueue follow-ups for visit %d: %s", visit.id, exc)
+
     return VisitOut.model_validate(visit)
 
 

@@ -306,12 +306,13 @@ async def match_properties_for_lead(lead: Lead, db: AsyncSession, *, limit: int 
         if lead.property_type and p.property_type:
             if lead.property_type.lower() not in p.property_type.lower():
                 continue
+        # budget_* may be float (freshly set from the classifier) or Decimal (from
+        # the DB) — normalize so we never do float * Decimal.
         if lead.budget_max is not None and p.price is not None:
-            # 10% headroom over the stated max.
-            if p.price > lead.budget_max * Decimal("1.10"):
+            if p.price > Decimal(str(lead.budget_max)) * Decimal("1.10"):  # 10% headroom
                 continue
         if lead.budget_min is not None and p.price is not None:
-            if p.price < lead.budget_min * Decimal("0.90"):
+            if p.price < Decimal(str(lead.budget_min)) * Decimal("0.90"):
                 continue
         out.append(p)
 

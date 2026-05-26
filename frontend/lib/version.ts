@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.10.0";
+export const CURRENT_VERSION = "0.11.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.11.0",
+    date: "2026-05-26",
+    title: "Phase 10 — Nurture autónomo + el agente ofrece listings en la conversación",
+    changes: [
+      "Seguimiento autónomo post-visita: al agendar una visita se encola un recordatorio 24h antes + secuencia post-visita (24h '¿qué te pareció?', 72h nudge si no respondió, 7d 'nuevas similares'). Mensajes bilingües enviados como el agente IA por el canal del lead.",
+      "Modelo FollowUp + Alembic 006 (lead/visit/kind/status/scheduled_for, UNIQUE visit+kind → enqueue idempotente). services/followups.py: enqueue_for_visit + process_due_followups (se salta si human_takeover, visita cancelada, o el 72h si el lead ya respondió tras la visita).",
+      "Worker in-process (loop asyncio en main.py, FOLLOWUPS_ENABLED + FOLLOWUPS_INTERVAL_SECONDS) que procesa los vencidos; scripts/run_followups.py para cron. El booking de visita encola la secuencia.",
+      "El agente ahora OFRECE listings en la conversación: si el lead es buy/rent y tiene zona, el orquestador inyecta los listings emparejados REALES en el system prompt (solo esos, sin inventar) y el LLM los ofrece naturalmente. Cierra el loop de Phase 7 (antes el matching era solo dashboard).",
+      "Fix: el matcher coercía mal el presupuesto (float del classifier * Decimal → crash silencioso); normalizado con Decimal(str()). Sin esto la inyección fallaba en vivo.",
+      "Tests +6 (total 126): followups (enqueue secuencia + idempotente, past-visit sin reminder, envía vencido, human_takeover skip, cancelada no encola) + agente recibe listings reales en el system prompt.",
+      "Voz (VAPI/Retell) renumerado a Phase 11.",
+    ],
+  },
   {
     version: "0.10.0",
     date: "2026-05-26",
