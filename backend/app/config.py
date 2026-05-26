@@ -81,6 +81,14 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_PHONE_NUMBER: str = ""  # E.164, e.g. +13055551234
     TWILIO_WEBHOOK_URL: str = ""
+    # A2P 10DLC: when a number is registered under a Messaging Service, Twilio
+    # recommends sending via the service SID (uses the registered campaign + sender
+    # pool). If set, send_sms uses MessagingServiceSid instead of From.
+    TWILIO_MESSAGING_SERVICE_SID: str = ""
+    # Public URL for delivery status callbacks. When set, send_sms asks Twilio to
+    # POST status updates (sent→delivered/undelivered/failed + ErrorCode) here, and
+    # the backend reflects the final status on the outbound Message.
+    TWILIO_STATUS_CALLBACK_URL: str = ""
 
     # ─── Listings / MLS (Phase 7) ───────────────────────────────────────
     # When SIMULATED=true (dev default), the listings service returns a curated

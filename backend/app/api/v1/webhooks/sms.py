@@ -1,22 +1,30 @@
-"""SMS inbound webhook (Twilio).
+"""SMS webhooks (Twilio): inbound messages + delivery status callbacks.
 
-Twilio POSTs an `application/x-www-form-urlencoded` body when an SMS arrives at
-our number. We validate the `X-Twilio-Signature`, parse, hand off to the
-orchestrator, and return empty TwiML (the actual reply is sent asynchronously via
-the Twilio REST API once the LLM responds).
+Inbound (`POST /sms`): Twilio POSTs a form when an SMS arrives at our number. We
+validate `X-Twilio-Signature`, parse, hand off to the orchestrator, and return
+empty TwiML (the reply is sent asynchronously via the REST API once the LLM
+responds).
+
+Status (`POST /sms/status`): when `TWILIO_STATUS_CALLBACK_URL` is configured,
+Twilio POSTs delivery updates (sent → delivered / undelivered / failed + an
+ErrorCode). We reflect the final state on the outbound Message so the dashboard
+shows real delivery status (and we log carrier errors like 30034 = A2P 10DLC
+unregistered).
 """
 from __future__ import annotations
 
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.base import get_db
+from app.models import Message, MessageStatus
 from app.services.conversation import handle_inbound_message
-from app.services.sms import parse_inbound_sms, verify_twilio_signature
+from app.services.sms import parse_inbound_sms, twilio_status_to_delivery, verify_twilio_signature
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -25,8 +33,8 @@ _EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
 
 
 def _public_url(request: Request, configured: str) -> str:
-    """The URL Twilio signed against. Prefer the configured public webhook URL;
-    otherwise rebuild from forwarded headers (proxy/tunnel), else the raw URL."""
+    """The URL Twilio signed against. Prefer the configured public URL; otherwise
+    rebuild from forwarded headers (proxy/tunnel), else the raw request URL."""
     if configured:
         return configured
     proto = request.headers.get("x-forwarded-proto")
@@ -47,7 +55,11 @@ async def sms_inbound(request: Request, db: AsyncSession = Depends(get_db)) -> R
             url, form, request.headers.get("X-Twilio-Signature"), auth_token=s.TWILIO_AUTH_TOKEN
         )
         if not ok:
-            log.warning("Twilio signature verification failed (url=%s)", url)
+            log.warning(
+                "Twilio inbound signature failed (url=%s, params=%s) — check TWILIO_WEBHOOK_URL "
+                "matches the console webhook exactly and the auth token is the account's primary.",
+                url, sorted(form),
+            )
             raise HTTPException(status_code=403, detail="Invalid signature")
 
     parsed = parse_inbound_sms(form)
@@ -64,4 +76,40 @@ async def sms_inbound(request: Request, db: AsyncSession = Depends(get_db)) -> R
         log.exception("Error processing SMS %s: %s", parsed.external_id, exc)
 
     # Always 200 + empty TwiML so Twilio doesn't retry; reply goes out via REST.
+    return Response(content=_EMPTY_TWIML, media_type="application/xml")
+
+
+@router.post("/sms/status")
+async def sms_status_callback(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
+    """Reflect Twilio's delivery status on the outbound Message (matched by SID)."""
+    s = get_settings()
+    form = {k: str(v) for k, v in (await request.form()).items()}
+
+    if not s.SMS_SIMULATED:
+        url = _public_url(request, s.TWILIO_STATUS_CALLBACK_URL)
+        ok = verify_twilio_signature(
+            url, form, request.headers.get("X-Twilio-Signature"), auth_token=s.TWILIO_AUTH_TOKEN
+        )
+        if not ok:
+            log.warning("Twilio status callback signature failed (url=%s)", url)
+            raise HTTPException(status_code=403, detail="Invalid signature")
+
+    sid = form.get("MessageSid") or form.get("SmsSid")
+    twilio_status = form.get("MessageStatus") or form.get("SmsStatus") or ""
+    error_code = form.get("ErrorCode")
+    mapped = twilio_status_to_delivery(twilio_status)
+
+    if sid and mapped:
+        row = (await db.execute(select(Message).where(Message.external_id == sid))).scalar_one_or_none()
+        if row is not None:
+            row.delivery_status = MessageStatus(mapped)
+            await db.commit()
+            log.info(
+                "SMS status: sid=%s twilio=%s → %s%s",
+                sid, twilio_status, mapped,
+                f" error={error_code}" if error_code and error_code != "0" else "",
+            )
+        else:
+            log.info("SMS status callback for unknown sid=%s (status=%s)", sid, twilio_status)
+
     return Response(content=_EMPTY_TWIML, media_type="application/xml")

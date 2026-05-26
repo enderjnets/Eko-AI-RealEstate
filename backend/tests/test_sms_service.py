@@ -7,7 +7,12 @@ import hmac
 
 import pytest
 
-from app.services.sms import parse_inbound_sms, send_sms, verify_twilio_signature
+from app.services.sms import (
+    parse_inbound_sms,
+    send_sms,
+    twilio_status_to_delivery,
+    verify_twilio_signature,
+)
 
 _TOKEN = "test_auth_token_xyz"
 _URL = "https://inmo-demo.ekoaiautomation.com/api/v1/webhooks/sms"
@@ -63,3 +68,13 @@ async def test_send_sms_simulated_returns_sid() -> None:
     result = await send_sms(to="+13055550123", body="Hola desde Eko")
     assert result["simulated"] is True
     assert result["sid"].startswith("SM_SIMULATED_")
+
+
+def test_twilio_status_mapping() -> None:
+    assert twilio_status_to_delivery("delivered") == "delivered"
+    assert twilio_status_to_delivery("undelivered") == "failed"
+    assert twilio_status_to_delivery("failed") == "failed"
+    assert twilio_status_to_delivery("sent") == "sent"
+    assert twilio_status_to_delivery("queued") == "pending"
+    assert twilio_status_to_delivery("DELIVERED") == "delivered"  # case-insensitive
+    assert twilio_status_to_delivery("bogus") is None

@@ -27,9 +27,27 @@ from app.services._common import ParsedMessage
 
 log = logging.getLogger(__name__)
 
-__all__ = ["verify_twilio_signature", "parse_inbound_sms", "send_sms"]
+__all__ = ["verify_twilio_signature", "parse_inbound_sms", "send_sms", "twilio_status_to_delivery"]
 
 _TWILIO_API_ROOT = "https://api.twilio.com/2010-04-01"
+
+# Twilio MessageStatus → our MessageStatus enum VALUE (lowercase string).
+_STATUS_MAP = {
+    "queued": "pending",
+    "sending": "pending",
+    "accepted": "pending",
+    "scheduled": "pending",
+    "sent": "sent",
+    "delivered": "delivered",
+    "read": "read",
+    "undelivered": "failed",
+    "failed": "failed",
+}
+
+
+def twilio_status_to_delivery(twilio_status: str) -> str | None:
+    """Map a Twilio MessageStatus to our delivery_status value (or None if unknown)."""
+    return _STATUS_MAP.get((twilio_status or "").lower())
 
 
 # ── Signature verification ─────────────────────────────────────────────────
@@ -94,20 +112,34 @@ async def send_sms(*, to: str, body: str) -> dict[str, Any]:
         log.info("SMS SIMULATED outbound to=%s body_len=%d (would-be sid=%s)", to, len(body), fake_sid)
         return {"sid": fake_sid, "simulated": True}
 
-    if not (s.TWILIO_ACCOUNT_SID and s.TWILIO_AUTH_TOKEN and s.TWILIO_PHONE_NUMBER):
+    # Need a sender: either a Messaging Service (A2P) or a From number.
+    if not (s.TWILIO_ACCOUNT_SID and s.TWILIO_AUTH_TOKEN) or not (
+        s.TWILIO_MESSAGING_SERVICE_SID or s.TWILIO_PHONE_NUMBER
+    ):
         raise RuntimeError(
             "SMS not configured: TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + "
-            "TWILIO_PHONE_NUMBER must be set, or set SMS_SIMULATED=true for dev."
+            "(TWILIO_MESSAGING_SERVICE_SID or TWILIO_PHONE_NUMBER) must be set, "
+            "or set SMS_SIMULATED=true for dev."
         )
+
+    data: dict[str, str] = {"To": to, "Body": body}
+    # Prefer the Messaging Service (A2P 10DLC): Twilio picks the sender from the
+    # registered pool. Fall back to the bare From number.
+    if s.TWILIO_MESSAGING_SERVICE_SID:
+        data["MessagingServiceSid"] = s.TWILIO_MESSAGING_SERVICE_SID
+    else:
+        data["From"] = s.TWILIO_PHONE_NUMBER
+    if s.TWILIO_STATUS_CALLBACK_URL:
+        data["StatusCallback"] = s.TWILIO_STATUS_CALLBACK_URL
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         resp = await client.post(
             f"{_TWILIO_API_ROOT}/Accounts/{s.TWILIO_ACCOUNT_SID}/Messages.json",
-            data={"From": s.TWILIO_PHONE_NUMBER, "To": to, "Body": body},
+            data=data,
             auth=(s.TWILIO_ACCOUNT_SID, s.TWILIO_AUTH_TOKEN),
         )
         if resp.status_code >= 400:
             log.error("Twilio send failed: status=%d body=%s", resp.status_code, resp.text[:400])
         resp.raise_for_status()
-        data = resp.json()
-    return {"sid": data.get("sid"), "simulated": False}
+        payload = resp.json()
+    return {"sid": payload.get("sid"), "status": payload.get("status"), "simulated": False}
