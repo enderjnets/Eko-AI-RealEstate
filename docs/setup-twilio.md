@@ -24,11 +24,16 @@ On the host running the stack, set (never commit these — `.env` is gitignored)
 ```bash
 SMS_SIMULATED=false
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=your-auth-token
+TWILIO_AUTH_TOKEN=your-auth-token            # account's PRIMARY auth token (signs webhooks)
 TWILIO_PHONE_NUMBER=+13055551234
 # The exact public URL Twilio will call (must match what you set in step 3),
 # used to validate X-Twilio-Signature behind a proxy/tunnel:
 TWILIO_WEBHOOK_URL=https://your-domain.example.com/api/v1/webhooks/sms
+# A2P 10DLC: once registered under a Messaging Service, set its SID so outbound
+# goes through the registered campaign (recommended for US delivery):
+TWILIO_MESSAGING_SERVICE_SID=MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# Track delivery status (delivered/undelivered + carrier error in the dashboard):
+TWILIO_STATUS_CALLBACK_URL=https://your-domain.example.com/api/v1/webhooks/sms/status
 ```
 
 Then `docker compose up -d` to pick them up.
@@ -72,6 +77,36 @@ docker compose logs -f backend | grep -iE "sms|twilio|turn done"
   returns empty TwiML; the reply is sent asynchronously after the LLM responds.
 - **Idempotency**: Twilio retries on timeout; the UNIQUE constraint on
   `messages.external_id` (the `MessageSid`) dedupes.
+
+## US A2P 10DLC registration (required for US delivery)
+
+US carriers **filter/block** SMS from unregistered 10-digit long codes — messages
+show `sent` on Twilio's side but never arrive (`undelivered`, error **30034**).
+To deliver to US phones you must register **A2P 10DLC**:
+
+1. Console → **Messaging → Regulatory Compliance → Onboarding**.
+2. **Sole Proprietor** package (no EIN needed): cheapest/fastest for a single
+   agent (~$4.50 brand + $15 campaign vetting + $2/mo, ~3,000 segments/day,
+   1 msg/sec). Standard Brand needs an EIN but allows higher throughput.
+3. Register the **Brand** (name, address, email, mobile for OTP) → **Campaign**
+   (use case, sample messages, opt-in description) → attach your number to the
+   resulting **Messaging Service**.
+
+### ⚠️ Messaging Service webhook override
+
+Once the number belongs to a **Messaging Service**, Twilio **ignores the
+per-number webhook** and uses the Messaging Service's instead. Set the inbound
+URL there: **Messaging → Services → (your service) → Integration → "Send a
+webhook"** → `https://your-domain.example.com/api/v1/webhooks/sms` (POST). Also
+set `TWILIO_MESSAGING_SERVICE_SID` in `.env` so outbound uses the campaign.
+
+## Opt-out (STOP / HELP)
+
+Twilio handles **STOP/UNSUBSCRIBE** (opt-out) and **HELP** keywords automatically
+at the account / Messaging Service level (Advanced Opt-Out). When a lead texts
+STOP, Twilio blocks further messages to them; our `send_sms` will then get an
+error from Twilio (surfaced as a `failed` Message) rather than delivering. No
+extra code needed, but keep default opt-out enabled for compliance.
 
 ## Cost & safety notes
 

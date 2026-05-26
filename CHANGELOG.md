@@ -2,6 +2,28 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.9.1] — 2026-05-26
+
+### SMS hardening — A2P `MessagingServiceSid` + delivery status callbacks
+
+Two production improvements to the SMS channel, surfaced by reading Twilio's API docs:
+
+- **`send_sms` via `MessagingServiceSid`** — when `TWILIO_MESSAGING_SERVICE_SID`
+  is set, outbound goes through the A2P 10DLC-registered Messaging Service (the
+  Twilio-recommended path for US delivery) instead of the bare `From` number.
+  Falls back to `TWILIO_PHONE_NUMBER`.
+- **Delivery status callbacks** — new `POST /api/v1/webhooks/sms/status`. With
+  `TWILIO_STATUS_CALLBACK_URL` set, `send_sms` asks Twilio to POST status updates
+  (`sent` → `delivered`/`undelivered`/`failed` + `ErrorCode`); the backend
+  reflects the final state on the outbound `Message` so the dashboard shows real
+  delivery (and logs carrier errors like **30034** = A2P 10DLC unregistered).
+- `config.py` + `.env.example` + compose: `TWILIO_MESSAGING_SERVICE_SID` +
+  `TWILIO_STATUS_CALLBACK_URL`.
+- **`docs/setup-twilio.md`** expanded: A2P 10DLC registration (Sole Proprietor vs
+  Standard), the Messaging Service webhook override gotcha, and STOP/HELP opt-out
+  (handled by Twilio's default Advanced Opt-Out).
+- Tests **+6 (122 total)**: status mapper + status-callback e2e.
+
 ## [0.9.0] — 2026-05-26
 
 ### Phase 9 — SMS channel (Twilio)

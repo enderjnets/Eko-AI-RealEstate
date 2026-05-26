@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.9.0";
+export const CURRENT_VERSION = "0.9.1";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.9.1",
+    date: "2026-05-26",
+    title: "SMS hardening — A2P MessagingServiceSid + delivery status callbacks",
+    changes: [
+      "Tras leer la doc oficial de Twilio, dos mejoras de producción del canal SMS: (1) envío vía MessagingServiceSid para A2P 10DLC, (2) tracking de entrega real vía StatusCallback.",
+      "send_sms: si TWILIO_MESSAGING_SERVICE_SID está seteado, envía con MessagingServiceSid (usa la campaña/pool A2P registrado) en vez del From crudo — recomendado por Twilio para entrega US. Fallback a TWILIO_PHONE_NUMBER.",
+      "StatusCallback: nuevo endpoint POST /api/v1/webhooks/sms/status. Si TWILIO_STATUS_CALLBACK_URL está seteado, send_sms pide a Twilio que postee actualizaciones (sent→delivered/undelivered/failed + ErrorCode). El backend refleja el estado final en el Message → el dashboard muestra entrega real (y loguea errores de carrier como 30034 = A2P sin registrar). Mapper twilio_status_to_delivery.",
+      "config.py + .env.example + compose: TWILIO_MESSAGING_SERVICE_SID + TWILIO_STATUS_CALLBACK_URL.",
+      "docs/setup-twilio.md ampliado: registro A2P 10DLC (Sole Proprietor vs Standard), gotcha del webhook del Messaging Service (anula el del número), y opt-out STOP/HELP (Twilio lo maneja por default).",
+      "Webhook inbound: log de fallo de firma más limpio (sin el diagnóstico verbose temporal).",
+      "Tests +6 (total 122): mapper de estado (1) + status callback e2e (delivered, undelivered/30034→failed, sid desconocido = no-op).",
+    ],
+  },
   {
     version: "0.9.0",
     date: "2026-05-26",
