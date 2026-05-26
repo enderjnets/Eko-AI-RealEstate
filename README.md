@@ -15,7 +15,8 @@ EU/LATAM):
    structured lead, auto-tagged `rent | buy | valuation`, with zone, budget,
    property type, and urgency extracted.
 3. **Bilingual** — Detects the lead's language and replies in kind (English /
-   Spanish), configurable per deployment.
+   Spanish), configurable per deployment. The **dashboard UI is also bilingual**
+   (English default + Spanish) with a language switcher on every page.
 4. **Realtor dashboard** — Monitor conversations, **take over** from the AI,
    compose replies (with **AI-suggested drafts**), and manage visits.
 5. **Visit booking** — Cal.com integration (slots → booking → confirmation),

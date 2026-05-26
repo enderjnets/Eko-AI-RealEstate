@@ -70,7 +70,10 @@ For the full port map across all four stacks, see
 ## Stack
 
 - **Backend**: FastAPI 0.115 + SQLAlchemy 2 (async) + Alembic + Postgres 16 + Redis 7 + `anthropic` SDK
-- **Frontend**: Next.js 14 (App Router) + TailwindCSS + lucide-react
+- **Frontend**: Next.js 14 (App Router) + TailwindCSS + lucide-react. **i18n** is
+  a lightweight client context (`lib/i18n.tsx`, `useI18n().t(key)`) — English
+  default + Spanish, switcher in the Nav. All UI strings go through `t()`; add
+  new strings to BOTH the EN and ES dictionaries.
 - **LLM provider (this product)**: **Kimi 2.6 `kimi-for-coding`** primary,
   **MiniMax M2.7** fallback. Both use the `anthropic-messages` HTTP protocol,
   so we use the `anthropic` Python SDK with custom `base_url`. Fallback is
