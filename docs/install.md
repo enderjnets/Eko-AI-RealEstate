@@ -75,6 +75,15 @@ Channels are off (SIMULATED) by default. To go live, fill the relevant keys in
 > customer. The backend logs a warning at startup if it sees that combination —
 > outbound messages would only be logged, not actually sent.
 
+## Dashboard login (auth)
+
+The installer asks for a **dashboard password**. If you set one, it enables auth
+(`AUTH_ENABLED=true`) and the dashboard + data API require login at `/login`
+(one shared password for the office; session is an httpOnly cookie). Leave it
+blank for an open dashboard (dev / public demo only). To change it later, edit
+`DASHBOARD_PASSWORD` in `.env` and `docker compose up -d`. The backend logs a
+warning at startup if `APP_ENV=production` with auth off.
+
 ## Branding
 
 Open **`/settings`** in the dashboard to configure:

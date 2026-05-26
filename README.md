@@ -106,7 +106,8 @@ See [`docs/roadmap.md`](docs/roadmap.md) for the phased plan.
 | 8. Lead intelligence (scoring + prioritization + digest) | ✅ done (`v0.8.0`) |
 | 9. SMS channel (Twilio) | ✅ done (`v0.9.0`) |
 | 10. Autonomous follow-ups + in-conversation listing offers | ✅ done (`v0.11.0`) |
-| 11. Voice agent (VAPI / Retell) — deferred until provider account ready | ⏳ |
+| 11. Pilot hardening — dashboard auth + analytics | ✅ done (`v0.12.0`) |
+| 12. Voice agent (VAPI / Retell) — deferred until provider account ready | ⏳ |
 
 ## Relationship to other Eko AI projects
 

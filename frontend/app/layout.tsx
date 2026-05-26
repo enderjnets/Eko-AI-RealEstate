@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { LanguageProvider } from "@/lib/i18n";
+import { AuthGuard } from "@/components/ui/AuthGuard";
 
 export const metadata: Metadata = {
   title: "Eko AI Realtors — Dashboard",
@@ -11,7 +12,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="font-display">
-        <LanguageProvider>{children}</LanguageProvider>
+        <LanguageProvider>
+          <AuthGuard>{children}</AuthGuard>
+        </LanguageProvider>
       </body>
     </html>
   );

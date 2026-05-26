@@ -100,6 +100,16 @@ class Settings(BaseSettings):
     RESO_BASE_URL: str = ""
     RESO_ACCESS_TOKEN: str = ""
 
+    # ─── Dashboard auth (Phase 11) ──────────────────────────────────────
+    # One deploy = one office → a single shared dashboard password. When
+    # AUTH_ENABLED=true, the data API + dashboard require login. Default false so
+    # dev + the public demo stay open; the installer turns it on with a password.
+    # Backend logs a WARN at startup if APP_ENV=production AND AUTH_ENABLED=false.
+    AUTH_ENABLED: bool = False
+    DASHBOARD_PASSWORD: str = ""
+    AUTH_SECRET: str = ""  # token signing key; derived from the password if empty
+    AUTH_TTL_HOURS: int = 168  # 7 days
+
     # ─── Follow-ups / nurture (Phase 10) ────────────────────────────────
     # In-process background worker that sends scheduled post-visit follow-ups +
     # visit reminders. Disable to run them only via scripts/run_followups.py (cron).

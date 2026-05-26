@@ -311,3 +311,32 @@ export const leadsApi = {
 export const conversationsApi = {
   get: (leadId: number) => api<Conversation>(`/v1/conversations/${leadId}`),
 };
+
+export interface MeResult {
+  authenticated: boolean;
+  auth_enabled: boolean;
+}
+
+export const authApi = {
+  me: () => api<MeResult>(`/v1/auth/me`),
+  login: (password: string) =>
+    api<{ ok: boolean; auth_enabled?: boolean }>(`/v1/auth/login`, {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+  logout: () => api<{ ok: boolean }>(`/v1/auth/logout`, { method: "POST" }),
+};
+
+export interface Analytics {
+  total_leads: number;
+  funnel: Record<string, number>;
+  conversion_rate: number;
+  by_channel: Record<string, number>;
+  by_score_tier: Record<string, number>;
+  leads_per_day: { date: string; count: number }[];
+  avg_first_response_seconds: number | null;
+}
+
+export const analyticsApi = {
+  get: () => api<Analytics>(`/v1/analytics`),
+};

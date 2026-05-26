@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.11.0";
+export const CURRENT_VERSION = "0.12.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.12.0",
+    date: "2026-05-26",
+    title: "Phase 11 — Hardening para 1er cliente: auth del dashboard + analíticas",
+    changes: [
+      "Login del dashboard (una oficina = un password compartido): página /login + AuthGuard que redirige si la sesión falta. Token de sesión firmado con HMAC (cookie httpOnly, sin dependencia nueva). Botón de salir en el Nav.",
+      "Gate por `AUTH_ENABLED`: el data API (leads/conversations/visits/settings/properties/analytics) requiere login cuando está activo; webhooks + health quedan abiertos. Default OFF (dev + demo público abiertos); el instalador lo activa con un password. WARN al startup si APP_ENV=production y AUTH_ENABLED=false.",
+      "Página /analytics: funnel por status, tasa de conversión, leads por canal, por tier de score (🔥/🟡/⚪), tiempo de primera respuesta promedio, y nuevos leads por día (14d). Endpoint GET /api/v1/analytics (solo lectura). Sin librería de charts (barras div).",
+      "config + .env.example + compose: AUTH_ENABLED/DASHBOARD_PASSWORD/AUTH_SECRET/AUTH_TTL_HOURS. El instalador (scripts/install.sh) pregunta el password del dashboard y activa auth + genera AUTH_SECRET.",
+      "i18n EN/ES para login + analytics; link Analytics en el Nav.",
+      "Tests +6 (total 132): auth service (password/token/tamper/expiry) + gate (abierto si disabled, 401/login/cookie si enabled) + envelope de analytics.",
+      "Voz (VAPI/Retell) renumerado a Phase 12.",
+    ],
+  },
   {
     version: "0.11.0",
     date: "2026-05-26",

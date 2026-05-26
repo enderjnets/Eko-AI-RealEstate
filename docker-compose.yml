@@ -72,6 +72,11 @@ services:
       TWILIO_WEBHOOK_URL: ${TWILIO_WEBHOOK_URL:-}
       TWILIO_MESSAGING_SERVICE_SID: ${TWILIO_MESSAGING_SERVICE_SID:-}
       TWILIO_STATUS_CALLBACK_URL: ${TWILIO_STATUS_CALLBACK_URL:-}
+      # Dashboard auth (Phase 11) — off by default (open demo); installer turns it on.
+      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      AUTH_TTL_HOURS: ${AUTH_TTL_HOURS:-168}
       # Follow-ups / nurture (Phase 10) — in-process worker for post-visit + reminders.
       FOLLOWUPS_ENABLED: ${FOLLOWUPS_ENABLED:-true}
       FOLLOWUPS_INTERVAL_SECONDS: ${FOLLOWUPS_INTERVAL_SECONDS:-300}
