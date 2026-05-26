@@ -23,7 +23,9 @@ EU/LATAM):
    with a SIMULATED mode for dev.
 6. **Listings + matching** — Ingest MLS/IDX inventory via a RESO Web API feed,
    browse it at `/properties`, and auto-match listings to each lead's intent,
-   zone, and budget (SIMULATED dataset in dev).
+   zone, and budget — the agent even **offers matching listings in the chat**.
+6b. **Autonomous follow-ups** — Post-visit nurture (24h / 72h / 7d) + visit
+   reminders sent automatically, skipped on human takeover. Works 24/7.
 7. **Lead intelligence** — Every lead gets a 0-100 priority score (🔥/🟡/⚪) from
    intent, budget, engagement, urgency, recency, and visits, so the realtor sees
    who to call first; plus a daily "hot leads" digest.
@@ -103,7 +105,8 @@ See [`docs/roadmap.md`](docs/roadmap.md) for the phased plan.
 | 7. MLS / IDX listings (RESO) + per-lead matching | ✅ done (`v0.7.0`) |
 | 8. Lead intelligence (scoring + prioritization + digest) | ✅ done (`v0.8.0`) |
 | 9. SMS channel (Twilio) | ✅ done (`v0.9.0`) |
-| 10. Voice agent (VAPI / Retell) — deferred until provider account ready | ⏳ |
+| 10. Autonomous follow-ups + in-conversation listing offers | ✅ done (`v0.11.0`) |
+| 11. Voice agent (VAPI / Retell) — deferred until provider account ready | ⏳ |
 
 ## Relationship to other Eko AI projects
 

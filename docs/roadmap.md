@@ -85,6 +85,15 @@ dev); production via `CALCOM_API_KEY` + `CALCOM_EVENT_TYPE_ID`.
   empty TwiML; reply sent async via REST. Same multichannel path as WhatsApp/email.
 - `SMS_SIMULATED=true` default; production via [`setup-twilio.md`](setup-twilio.md).
 
-## Phase 10 · Voice agent (VAPI / Retell) — ⏳ deferred
+## Phase 10 · Autonomous nurture + in-conversation listings — ✅ done (`v0.11.0`)
+
+- **Follow-ups**: `FollowUp` model + Alembic `006`. Booking a visit enqueues a
+  24h reminder + post-visit sequence (24h / 72h / 7d). `process_due_followups`
+  (in-process worker + `scripts/run_followups.py`) sends due ones, skipping human
+  takeover / cancelled visits / the 72h nudge if the lead replied.
+- **In-conversation listings**: the orchestrator injects real matched listings
+  into the system prompt for buy/rent leads with a zone, so the agent offers them.
+
+## Phase 11 · Voice agent (VAPI / Retell) — ⏳ deferred
 
 Inbound/outbound voice. Deferred until a provider account is set up.
