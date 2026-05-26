@@ -66,11 +66,22 @@ dev); production via `CALCOM_API_KEY` + `CALCOM_EVENT_TYPE_ID`.
 - SIMULATED by default; production via [`setup-mls.md`](setup-mls.md). Post-visit
   follow-up sequences (24h/72h/7d) will ride on this in a later iteration.
 
-## Phase 8 · SMS (Twilio) — ⏳ deferred
+## Phase 8 · Lead intelligence — ✅ done (`v0.8.0`)
+
+- **`leads.score`** (0-100) + **`score_breakdown`**; Alembic `005`.
+- **`services/scoring.py`** — deterministic `compute_lead_score` (intent, budget,
+  engagement, urgency, zone, recency, visit + WON/LOST/PAUSED status gate) with an
+  explainable breakdown + tier. Recomputed after each inbound turn.
+- **Endpoints**: `sort=score|recent` on the list, `GET /leads/digest`,
+  `POST /leads/rescore-all`. `scripts/daily_digest.py` for cron.
+- **Frontend**: `ScoreBadge` (🔥/🟡/⚪) in the table + lead detail; **HotLeadsPanel**
+  on `/leads`.
+
+## Phase 9 · SMS (Twilio) — ⏳ deferred
 
 SMS as a first-class channel via Twilio. Deferred until a Twilio account is set
 up. The multichannel architecture (Phase 3) already accommodates it.
 
-## Phase 9 · Voice agent (VAPI / Retell) — ⏳ deferred
+## Phase 10 · Voice agent (VAPI / Retell) — ⏳ deferred
 
 Inbound/outbound voice. Deferred until a provider account is set up.

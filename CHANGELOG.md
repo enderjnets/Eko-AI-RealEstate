@@ -2,6 +2,42 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.8.0] — 2026-05-26
+
+### Phase 8 — Lead intelligence (scoring + prioritization + digest)
+
+Leads are now scored and ranked so the realtor knows who to call first — no
+external accounts needed (it scores signals the pipeline already produced).
+
+#### Backend
+
+- **`leads.score`** (0-100, indexed) + **`score_breakdown`** (JSON) — Alembic `005`.
+- **`services/scoring.py`** — `compute_lead_score` is deterministic and cheap:
+  intent (20) · budget (15) · engagement (15) · urgency (12) · zone (10) ·
+  recency (10) · visit (10) · property_type (8), then a **status gate**
+  (WON/LOST → 0, PAUSED → ½). Returns an explainable breakdown + tier. No
+  per-lead LLM call. `rescore_lead` / `rescore_all` (grouped queries).
+- The orchestrator **recomputes the score after every inbound turn**.
+- **API**: `score`/`score_breakdown` in `LeadOut`; `sort=score|recent` (default
+  `score`); `GET /leads/digest` (top hot/active leads); `POST /leads/rescore-all`.
+- **`scripts/daily_digest.py`** — cron-friendly hot-leads digest.
+
+#### Frontend
+
+- **`ScoreBadge`** — 🔥 hot (≥67) / 🟡 warm (≥34) / ⚪ cold, in the leads table
+  (now score-sorted) and the lead detail header.
+- **`HotLeadsPanel`** — "Leads calientes — a quién llamar primero" on `/leads`,
+  fed by `/leads/digest`.
+
+#### Tests
+
+- **+11 (107 total)**: `test_scoring.py` (8 pure) + `test_lead_digest.py` (3 API).
+
+#### Roadmap
+
+- SMS (Twilio) → **Phase 9**, Voice (VAPI/Retell) → **Phase 10** — both still
+  deferred until the external accounts exist.
+
 ## [0.7.0] — 2026-05-25
 
 ### Phase 7 — MLS / IDX listings (RESO) + per-lead property matching

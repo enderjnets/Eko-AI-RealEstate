@@ -9,6 +9,7 @@ import {
   leadsApi,
 } from "@/lib/api";
 import { IntentBadge, StatusBadge } from "@/components/ui/Badge";
+import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { VisitsSection } from "@/components/calendar/VisitsSection";
 import { MatchesSection } from "@/components/properties/MatchesSection";
 import { Composer } from "@/components/conversation/Composer";
@@ -71,6 +72,7 @@ export function LeadDetail({ leadId }: { leadId: number }) {
               <h1 className="text-xl font-semibold text-white">
                 {lead.name || "Sin nombre"}
               </h1>
+              <ScoreBadge score={lead.score} showLabel size="lg" />
               <StatusBadge status={lead.status} />
               <IntentBadge intent={lead.intent} />
             </div>

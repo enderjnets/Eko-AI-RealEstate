@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, Boolean, DateTime, Index, Numeric, String, func
+from sqlalchemy import JSON, Boolean, DateTime, Index, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, pg_enum
@@ -65,6 +65,11 @@ class Lead(Base):
         DateTime(timezone=True), nullable=True, index=True
     )
     human_takeover: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Lead intelligence (Phase 8): 0-100 priority score + an explainable breakdown
+    # of the signals that produced it. Recomputed after each inbound turn.
+    score: Mapped[int] = mapped_column(Integer, default=0, nullable=False, index=True)
+    score_breakdown: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     meta: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.7.0";
+export const CURRENT_VERSION = "0.8.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.8.0",
+    date: "2026-05-26",
+    title: "Phase 8 — Lead intelligence (scoring + priorización + digest)",
+    changes: [
+      "Lead scoring 0-100 determinista y explicable: services/scoring.py puntúa señales que el pipeline ya produjo (intent LLM + entidades extraídas + engagement + recency + visita) SIN llamadas LLM extra por lead, así la lista rankea rápido y barato. Componentes: intent 20 · budget 15 · engagement 15 · urgency 12 · zone 10 · recency 10 · visit 10 · property_type 8. Status gate: WON/LOST→0, PAUSED→mitad.",
+      "Columnas leads.score (Int indexado) + score_breakdown (JSON con desglose por componente + tier). Alembic 005. El orquestador recomputa el score tras cada turno inbound; POST /leads/rescore-all para backfill.",
+      "Tiers 🔥 hot (≥67) / 🟡 warm (≥34) / ⚪ cold. ScoreBadge en cada fila de la tabla de leads; la lista ahora ordena por score por defecto (sort=score|recent).",
+      "GET /leads/digest — top leads calientes/activos (excluye won/lost/paused, score>0) → panel 'Leads calientes — a quién llamar primero' arriba de /leads. scripts/daily_digest.py para cron (imprime el digest, pipe-able a email/Telegram).",
+      "Lead detail muestra el ScoreBadge con label en el header. score + score_breakdown expuestos en LeadOut.",
+      "Tests +11 (total 107): test_scoring.py (8 — lead vacío 0, fully-qualified=100 hot, won/lost zeroed, paused halved, engagement escala, recency decae, clamp 0-100, umbrales de tier) + test_lead_digest.py (3 — rescore+digest rankea y excluye cerrados, list default sort=score, LeadOut tiene score).",
+      "Sin cuentas externas. SMS (Twilio) renumerado a Phase 9, Voz (VAPI/Retell) a Phase 10 — siguen diferidas hasta tener cuentas.",
+    ],
+  },
   {
     version: "0.7.0",
     date: "2026-05-25",

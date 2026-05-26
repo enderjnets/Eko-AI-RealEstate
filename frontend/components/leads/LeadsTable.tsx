@@ -7,6 +7,7 @@ import { Loader2, Mail, MessageCircle, MessageSquare, Phone, User2 } from "lucid
 import { type Lead, type LeadIntent, type LeadStatus, leadsApi } from "@/lib/api";
 import { formatBudget, relativeTime } from "@/lib/format";
 import { IntentBadge, StatusBadge } from "@/components/ui/Badge";
+import { ScoreBadge } from "@/components/ui/ScoreBadge";
 
 function channelGlyph(identifier: string): typeof MessageCircle {
   // Heuristic: email addresses contain "@", phone numbers don't.
@@ -65,7 +66,7 @@ export function LeadsTable() {
   return (
     <div className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden">
       <div className="px-4 py-2 border-b border-white/5 text-[10px] uppercase tracking-wider text-gray-500 flex justify-between">
-        <span>{data.total} {data.total === 1 ? "lead" : "leads"}</span>
+        <span>{data.total} {data.total === 1 ? "lead" : "leads"} · ordenados por prioridad</span>
         <span>Última actividad</span>
       </div>
       <ul className="divide-y divide-white/5">
@@ -78,6 +79,9 @@ export function LeadsTable() {
                 className="block px-4 py-3 hover:bg-white/[0.03] transition-colors"
               >
                 <div className="flex items-center gap-3">
+                  <div className="shrink-0 w-12 flex justify-center">
+                    <ScoreBadge score={lead.score} />
+                  </div>
                   <div className="w-9 h-9 rounded-full bg-eko-violet/10 border border-eko-violet/20 flex items-center justify-center shrink-0">
                     <User2 className="w-4 h-4 text-eko-violet" />
                   </div>

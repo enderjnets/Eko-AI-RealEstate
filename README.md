@@ -23,7 +23,10 @@ EU/LATAM):
 6. **Listings + matching** — Ingest MLS/IDX inventory via a RESO Web API feed,
    browse it at `/properties`, and auto-match listings to each lead's intent,
    zone, and budget (SIMULATED dataset in dev).
-7. **Brandable** — Set the agency name, agent persona, greeting, languages, and
+7. **Lead intelligence** — Every lead gets a 0-100 priority score (🔥/🟡/⚪) from
+   intent, budget, engagement, urgency, recency, and visits, so the realtor sees
+   who to call first; plus a daily "hot leads" digest.
+8. **Brandable** — Set the agency name, agent persona, greeting, languages, and
    business hours from a **Settings** page; one-command installer for a new office.
 
 ## Why a dedicated deployment
@@ -97,8 +100,9 @@ See [`docs/roadmap.md`](docs/roadmap.md) for the phased plan.
 | 5. Calendar booking (Cal.com) | ✅ done (`v0.5.0`) |
 | 6. Single-customer installer + branding panel + public demo | ✅ done (`v0.6.0`) |
 | 7. MLS / IDX listings (RESO) + per-lead matching | ✅ done (`v0.7.0`) |
-| 8. SMS (Twilio) — deferred until Twilio account ready | ⏳ |
-| 9. Voice agent (VAPI / Retell) — deferred until provider account ready | ⏳ |
+| 8. Lead intelligence (scoring + prioritization + digest) | ✅ done (`v0.8.0`) |
+| 9. SMS (Twilio) — deferred until Twilio account ready | ⏳ |
+| 10. Voice agent (VAPI / Retell) — deferred until provider account ready | ⏳ |
 
 ## Relationship to other Eko AI projects
 
