@@ -5,11 +5,12 @@ import asyncio
 import contextlib
 import logging
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import conversations, health, leads, properties, visits
+from app.api.v1 import analytics, auth, conversations, health, leads, properties, visits
 from app.api.v1 import settings as settings_api
+from app.api.v1.auth import require_auth
 from app.api.v1.webhooks import email as email_webhook
 from app.api.v1.webhooks import sms as sms_webhook
 from app.api.v1.webhooks import whatsapp as whatsapp_webhook
@@ -45,17 +46,23 @@ app.add_middleware(
 )
 
 # Routers
+# Public / unauthenticated: health, webhooks (own signature auth), auth itself.
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(whatsapp_webhook.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(email_webhook.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(sms_webhook.router, prefix="/api/v1/webhooks", tags=["webhooks"])
-app.include_router(leads.router, prefix="/api/v1/leads", tags=["leads"])
-app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["conversations"])
-app.include_router(visits.leads_calendar_router, prefix="/api/v1", tags=["calendar"])
-app.include_router(visits.visits_router, prefix="/api/v1", tags=["visits"])
-app.include_router(settings_api.router, prefix="/api/v1/settings", tags=["settings"])
-app.include_router(properties.router, prefix="/api/v1/properties", tags=["properties"])
-app.include_router(properties.lead_matches_router, prefix="/api/v1", tags=["properties"])
+
+# Protected data API — require_auth is a no-op unless AUTH_ENABLED.
+_auth = [Depends(require_auth)]
+app.include_router(leads.router, prefix="/api/v1/leads", tags=["leads"], dependencies=_auth)
+app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["conversations"], dependencies=_auth)
+app.include_router(visits.leads_calendar_router, prefix="/api/v1", tags=["calendar"], dependencies=_auth)
+app.include_router(visits.visits_router, prefix="/api/v1", tags=["visits"], dependencies=_auth)
+app.include_router(settings_api.router, prefix="/api/v1/settings", tags=["settings"], dependencies=_auth)
+app.include_router(properties.router, prefix="/api/v1/properties", tags=["properties"], dependencies=_auth)
+app.include_router(properties.lead_matches_router, prefix="/api/v1", tags=["properties"], dependencies=_auth)
+app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"], dependencies=_auth)
 
 
 _followups_task: asyncio.Task | None = None
@@ -90,6 +97,11 @@ async def _startup() -> None:
             "⚠️  WHATSAPP_SIMULATED=true AND APP_ENV=production — outbound messages will only "
             "be LOGGED, not sent to Meta. Set WHATSAPP_SIMULATED=false before serving real "
             "customer traffic."
+        )
+    if settings.is_production and not settings.AUTH_ENABLED:
+        logger.warning(
+            "⚠️  AUTH_ENABLED=false AND APP_ENV=production — the dashboard + data API are OPEN "
+            "(no login). Set AUTH_ENABLED=true + DASHBOARD_PASSWORD before exposing customer data."
         )
     if settings.FOLLOWUPS_ENABLED:
         global _followups_task
