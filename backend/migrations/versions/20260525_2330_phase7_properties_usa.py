@@ -4,6 +4,10 @@ The Phase 1 `properties` table was an EU placeholder (idealista/fotocasa, rooms,
 m2) and is never populated before Phase 7, so we drop + recreate it with the
 USA-oriented schema (RESO source, status, beds/baths/sqft, address, photos…).
 
+Enum types are created explicitly with `checkfirst` and referenced with
+`create_type=False` — robust across SQLAlchemy versions when dropping +
+recreating a type of the same name in one migration.
+
 Revision ID: 004_phase7_properties
 Revises: 003_phase5_visits
 Create Date: 2026-05-25 23:30:00.000000
@@ -14,28 +18,36 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "004_phase7_properties"
 down_revision: Union[str, None] = "003_phase5_visits"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+_SOURCE_VALUES = ("reso", "idx", "mls", "manual")
+_STATUS_VALUES = ("active", "pending", "sold", "off_market")
+
 
 def upgrade() -> None:
+    bind = op.get_bind()
+
     # Placeholder table is empty before Phase 7 — safe to drop + recreate.
     op.drop_table("properties")
     op.execute("DROP TYPE IF EXISTS property_source")
+    op.execute("DROP TYPE IF EXISTS property_status")
+
+    property_source = postgresql.ENUM(*_SOURCE_VALUES, name="property_source")
+    property_status = postgresql.ENUM(*_STATUS_VALUES, name="property_status")
+    property_source.create(bind, checkfirst=True)
+    property_status.create(bind, checkfirst=True)
 
     op.create_table(
         "properties",
         sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("source", sa.Enum("reso", "idx", "mls", "manual", name="property_source"), nullable=False),
+        sa.Column("source", postgresql.ENUM(*_SOURCE_VALUES, name="property_source", create_type=False), nullable=False),
         sa.Column("external_id", sa.String(length=120), nullable=False),
-        sa.Column(
-            "status",
-            sa.Enum("active", "pending", "sold", "off_market", name="property_status"),
-            nullable=False,
-        ),
+        sa.Column("status", postgresql.ENUM(*_STATUS_VALUES, name="property_status", create_type=False), nullable=False),
         sa.Column("title", sa.String(length=280), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("property_type", sa.String(length=60), nullable=True),
@@ -68,6 +80,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+
     op.drop_index("ix_properties_price", table_name="properties")
     op.drop_index("ix_properties_zone", table_name="properties")
     op.drop_index("ix_properties_city", table_name="properties")
@@ -78,11 +92,13 @@ def downgrade() -> None:
     op.execute("DROP TYPE IF EXISTS property_status")
     op.execute("DROP TYPE IF EXISTS property_source")
 
-    # Recreate the original EU placeholder table so downgrade is reversible.
+    # Recreate the original EU placeholder so downgrade is reversible.
+    eu_source = postgresql.ENUM("idealista", "fotocasa", "manual", name="property_source")
+    eu_source.create(bind, checkfirst=True)
     op.create_table(
         "properties",
         sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("source", sa.Enum("idealista", "fotocasa", "manual", name="property_source"), nullable=False),
+        sa.Column("source", postgresql.ENUM("idealista", "fotocasa", "manual", name="property_source", create_type=False), nullable=False),
         sa.Column("external_id", sa.String(length=120), nullable=False),
         sa.Column("title", sa.String(length=280), nullable=False),
         sa.Column("zone", sa.String(length=160), nullable=True),
