@@ -2,6 +2,52 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.7.0] — 2026-05-25
+
+### Phase 7 — MLS / IDX listings (RESO) + per-lead property matching
+
+The agent now works against real-estate inventory: listings are ingested from a
+RESO Web API feed (SIMULATED in dev), browsable at `/properties`, and matched to
+each lead's intent / zone / budget on the lead detail.
+
+#### Backend
+
+- **`Property` model reworked for the USA**: `source` (`reso`/`idx`/`mls`/`manual`),
+  `status` (`active`/`pending`/`sold`/`off_market`), `bedrooms`, `bathrooms`
+  (half-baths, `2.5`), `sqft`, `property_type`, `address`/`city`/`state`/`zip_code`,
+  `zone` (neighborhood), `latitude`/`longitude`, `photos`, `description`,
+  `listed_at`. Alembic `004` drops + recreates the (empty) EU placeholder table.
+- **`services/listings.py`**:
+  - `fetch_listings` — SIMULATED returns a curated 9-listing Miami set; real mode
+    queries a **RESO Web API** (OData) feed and maps the RESO Data Dictionary
+    fields. Configured via `RESO_BASE_URL` + `RESO_ACCESS_TOKEN`.
+  - `sync_listings` — idempotent upsert by `(source, external_id)`.
+  - `match_properties_for_lead` — intent gate (rent vs sale) + zone + budget
+    (±10%) + property type, ranked by price.
+- **Endpoints**: `GET /properties` (filters), `POST /properties/sync`,
+  `GET /properties/{id}`, `GET /leads/{id}/matches`.
+- **`scripts/sync_listings.py`** ingest CLI (cron-friendly). Config + `.env.example`
+  + compose env (`LISTINGS_SIMULATED` default true, `RESO_*` for prod).
+
+#### Frontend
+
+- **`/properties`** — grid of listing cards with zone / max-price filters and a
+  **Sincronizar MLS** button.
+- **`MatchesSection`** on the lead detail — "Propiedades sugeridas" matched to the
+  lead, each with **Enviar al lead** (sends a formatted blurb via the composer).
+- **Propiedades** nav link.
+
+#### Docs
+
+- **`docs/setup-mls.md`** — connecting a real RESO Web API / IDX feed + the
+  matching rules + an IDX-compliance note (why the public demo stays SIMULATED).
+
+#### Tests
+
+- **+12 (96 total)**: `test_listings_service.py` (5) + `test_properties_api.py`
+  (7 — idempotent sync, filters, 404s, buy-lead matches sale-only, rent-lead
+  matches rentals-only).
+
 ## [0.6.0] — 2026-05-25
 
 ### Phase 6 — Single-customer installer + branding panel + public demo

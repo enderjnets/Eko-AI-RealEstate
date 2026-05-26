@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.6.0";
+export const CURRENT_VERSION = "0.7.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.7.0",
+    date: "2026-05-25",
+    title: "Phase 7 — MLS/IDX listings (RESO) + per-lead property matching",
+    changes: [
+      "Property model reworked para USA: source enum reso/idx/mls/manual + status enum (active/pending/sold/off_market), bedrooms/bathrooms (half-baths 2.5)/sqft/property_type/address/city/state/zip/zone/lat-lng/photos/description/listed_at. Alembic 004 dropea+recrea la tabla placeholder EU (estaba vacía).",
+      "services/listings.py: fetch_listings (SIMULATED = set curado de 9 listings Miami / real = RESO Web API OData con RESO_BASE_URL+RESO_ACCESS_TOKEN), sync_listings (upsert idempotente por source+external_id), match_properties_for_lead (gate de intención rent/sale + zona + presupuesto ±10% + tipo).",
+      "Endpoints: GET /properties (filtros status/source/city/zone/type/min-max price + paginado), POST /properties/sync (ingest), GET /properties/{id}, GET /leads/{id}/matches (listings que encajan con el lead).",
+      "Frontend: página /properties con grid de PropertyCard + filtros zona/precio + botón 'Sincronizar MLS'. MatchesSection en el detalle del lead muestra 'Propiedades sugeridas' con botón 'Enviar al lead' (manda blurb formateado vía composer). Link 'Propiedades' en el Nav.",
+      "Listings SIMULATED por default (LISTINGS_SIMULATED=true) — el dashboard + matching funcionan sin cuenta MLS; producción vía docs/setup-mls.md. Las zonas del set demo coinciden con los leads demo (Brickell/Coral Gables/Doral/Wynwood/Edgewater/Little Havana).",
+      "scripts/sync_listings.py ingest CLI (idempotente, cron-friendly). config.py + .env.example + docker-compose env (LISTINGS_SIMULATED/PROVIDER/RESO_*).",
+      "Tests +12 (total 96): test_listings_service.py (5 — fetch simulado, sale+rent, filtro ciudad, ciudad inexistente vacía, limit) + test_properties_api.py (7 — sync idempotente, list+filtros, filtro precio, get 404, matches 404, buy-lead Brickell sale-only, rent-lead solo rentals).",
+    ],
+  },
   {
     version: "0.6.0",
     date: "2026-05-25",

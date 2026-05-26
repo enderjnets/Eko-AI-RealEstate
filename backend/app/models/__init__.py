@@ -11,7 +11,7 @@ from app.models.message import (
     MessageSender,
     MessageStatus,
 )
-from app.models.property import Property, PropertySource
+from app.models.property import Property, PropertySource, PropertyStatus
 from app.models.visit import Visit, VisitStatus
 
 __all__: list[str] = [
@@ -27,6 +27,7 @@ __all__: list[str] = [
     "MessageStatus",
     "Property",
     "PropertySource",
+    "PropertyStatus",
     "Visit",
     "VisitStatus",
 ]

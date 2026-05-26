@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import { IntentBadge, StatusBadge } from "@/components/ui/Badge";
 import { VisitsSection } from "@/components/calendar/VisitsSection";
+import { MatchesSection } from "@/components/properties/MatchesSection";
 import { Composer } from "@/components/conversation/Composer";
 import { MessageBubble } from "@/components/conversation/MessageBubble";
 import { TakeoverToggle } from "@/components/conversation/TakeoverToggle";
@@ -122,6 +123,8 @@ export function LeadDetail({ leadId }: { leadId: number }) {
       </section>
 
       {conv && <Composer leadId={lead.id} channel={conv.channel} />}
+
+      <MatchesSection leadId={lead.id} />
 
       <VisitsSection leadId={lead.id} />
     </>

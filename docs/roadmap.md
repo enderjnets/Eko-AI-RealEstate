@@ -52,11 +52,19 @@ dev); production via `CALCOM_API_KEY` + `CALCOM_EVENT_TYPE_ID`.
 - **CI green** for the first time since Phase 1 (Postgres service + migrations,
   ruff config, frontend npm-cache fix).
 
-## Phase 7 · MLS / IDX integration — ⏳ planned
+## Phase 7 · MLS / IDX listings + matching — ✅ done (`v0.7.0`)
 
-USA listings ingest (the USA equivalent of Idealista/Fotocasa): pull listings
-into the local DB so the agent can recommend properties and a `/properties`
-dashboard view. Post-visit follow-up sequences (24h / 72h / 7d) ride on top.
+- **`Property` model reworked for the USA** (RESO source, status, beds/baths/sqft,
+  address, photos…); Alembic `004`.
+- **`services/listings.py`**: `fetch_listings` (SIMULATED Miami set / real **RESO
+  Web API** OData), `sync_listings` (idempotent upsert), `match_properties_for_lead`
+  (intent rent/sale + zone + budget + type).
+- **Endpoints**: `GET /properties` (filters), `POST /properties/sync`,
+  `GET /properties/{id}`, `GET /leads/{id}/matches`.
+- **Frontend**: `/properties` grid + filters + sync button; **Propiedades
+  sugeridas** on the lead detail with send-to-lead.
+- SIMULATED by default; production via [`setup-mls.md`](setup-mls.md). Post-visit
+  follow-up sequences (24h/72h/7d) will ride on this in a later iteration.
 
 ## Phase 8 · SMS (Twilio) — ⏳ deferred
 

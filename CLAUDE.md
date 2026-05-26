@@ -81,8 +81,10 @@ For the full port map across all four stacks, see
   `WHATSAPP_APP_SECRET`.
 - **Calendar (Phase 3)**: Cal.com by default, Google Calendar as alternative
   (toggle via `CALENDAR_PROVIDER`).
-- **Scraping (Phase 4)**: Playwright (Idealista + Fotocasa have anti-bot, so
-  no `requests`-based scraping).
+- **Listings (Phase 7)**: RESO Web API (OData) — the USA MLS/IDX standard — via
+  `app/services/listings.py`. SIMULATED Miami set in dev; real feed via
+  `RESO_BASE_URL` + `RESO_ACCESS_TOKEN`. (The earlier EU plan of scraping
+  Idealista/Fotocasa was dropped in the USA pivot.)
 - **Container**: Docker Compose. **Ollama is intentionally NOT in the default
   stack** — it is documented as an option for Phase 5 single-customer installs
   that want full on-prem LLM, but day-to-day dev + MVP uses the hosted LLM
@@ -173,7 +175,7 @@ ingress to be added when we go to first pilot).
 - ✅ **Phase 4** — Manual reply composer + AI reply suggestions (`v0.4.0`, 2026-05-25). 64/64 tests passing. `Composer` in `/leads/[id]` with "Sugerir respuestas" button (3 LLM-generated drafts the realtor can edit + send).
 - ✅ **Phase 5** — Calendar booking via Cal.com (`v0.5.0`, 2026-05-25). 77/77 tests passing. `VisitsSection` + `BookingDialog` in `/leads/[id]`. SIMULATED mode default (no Cal.com account needed in dev); production wiring via `CALCOM_API_KEY` + `CALCOM_EVENT_TYPE_ID`. Endpoints under `/api/v1/leads/{id}/calendar/*` and `/api/v1/visits/*`.
 - ✅ **Phase 6** — Single-customer installer + branding panel + public demo (`v0.6.0`, 2026-05-25). 84/84 tests passing. `GET/PUT /api/v1/settings` + `/settings` branding page; `scripts/install.sh` one-command installer; `scripts/seed_demo.py` demo dataset; `deploy/cloudflared/` + `docs/setup-demo.md` for `inmo-demo.ekoaiautomation.com`. **CI green for the first time** (Postgres service + migrations + ruff config + frontend npm-cache fix).
-- ⏳ **Phase 7** — MLS / IDX integration (USA listings)
+- ✅ **Phase 7** — MLS / IDX listings (RESO) + per-lead matching (`v0.7.0`, 2026-05-25). 96/96 tests. `Property` reworked for USA (RESO/IDX/MLS source, status, beds/baths/sqft, address/photos); Alembic `004`. `services/listings.py` (SIMULATED Miami set / real RESO Web API OData) + `match_properties_for_lead`. Endpoints `/properties*` + `/leads/{id}/matches`. Frontend `/properties` + MatchesSection. `LISTINGS_SIMULATED=true` default; prod via `docs/setup-mls.md`.
 - ⏳ **Phase 8** — SMS (Twilio) — deferred until Twilio account is set up
 - ⏳ **Phase 9** — Voice agent (VAPI / Retell) — deferred until provider account is set up
 
