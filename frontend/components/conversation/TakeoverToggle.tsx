@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, UserCheck, Loader2 } from "lucide-react";
 import { leadsApi } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 
 export function TakeoverToggle({
   leadId,
@@ -13,6 +14,7 @@ export function TakeoverToggle({
   initial: boolean;
 }) {
   const router = useRouter();
+  const { t } = useI18n();
   const [value, setValue] = useState(initial);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -43,11 +45,7 @@ export function TakeoverToggle({
             ? "bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25"
             : "bg-eko-violet/15 text-eko-violet border-eko-violet/30 hover:bg-eko-violet/25"
         } disabled:opacity-60 disabled:cursor-wait`}
-        title={
-          value
-            ? "Estás respondiendo manualmente. El agente IA está pausado para este lead."
-            : "El agente IA responde automáticamente. Click para tomar control humano."
-        }
+        title={value ? t("takeover.titleOn") : t("takeover.titleOff")}
       >
         {pending ? (
           <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -56,7 +54,7 @@ export function TakeoverToggle({
         ) : (
           <Bot className="w-3.5 h-3.5" />
         )}
-        {value ? "Humano (IA pausada)" : "Agente IA activo"}
+        {value ? t("takeover.human") : t("takeover.ai")}
       </button>
       {error && <span className="text-[10px] text-red-400">{error}</span>}
     </div>

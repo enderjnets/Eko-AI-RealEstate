@@ -1,12 +1,7 @@
-import type { VisitStatus } from "@/lib/api";
+"use client";
 
-const LABEL: Record<VisitStatus, string> = {
-  scheduled: "Agendada",
-  confirmed: "Confirmada",
-  cancelled: "Cancelada",
-  completed: "Completada",
-  no_show: "No-show",
-};
+import type { VisitStatus } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 
 const COLOR: Record<VisitStatus, string> = {
   scheduled: "bg-eko-violet/15 text-eko-violet border-eko-violet/30",
@@ -17,9 +12,10 @@ const COLOR: Record<VisitStatus, string> = {
 };
 
 export function VisitStatusBadge({ status }: { status: VisitStatus }) {
+  const { t } = useI18n();
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border ${COLOR[status]}`}>
-      {LABEL[status]}
+      {t(`visitStatus.${status}`)}
     </span>
   );
 }

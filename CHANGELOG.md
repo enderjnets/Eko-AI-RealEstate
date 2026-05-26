@@ -2,6 +2,27 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.10.0] — 2026-05-26
+
+### Multilingual dashboard (English default + Spanish) with a language switcher
+
+The realtor dashboard is now multilingual: **English by default, Spanish second**,
+with a **language switcher** (globe + EN/ES) in the nav on **every page**.
+
+- **`lib/i18n.tsx`** — client `LanguageProvider` + `useI18n` hook + full EN/ES
+  dictionaries. The choice persists to `localStorage` and syncs `<html lang>`.
+  `t(key)` falls back to English, then the key.
+- **Every UI string** goes through `t()`: nav, pages, badges (status / intent /
+  score / visit), leads table + detail, composer, suggestions, property matches,
+  visits, booking dialog, properties grid, settings, takeover toggle, messages.
+- **Locale-aware formatters** — `relativeTime` / `exactTime` / `formatBudget`
+  (USD, en/es) + visit & booking dates follow the active language.
+- Pages use a client `PageHeader`; the lead-detail page is now a client component.
+  `/about` landing copy refreshed (MLS matching).
+
+This pairs with the agent already replying in the lead's language (Phase 3) — now
+the realtor's interface is bilingual too.
+
 ## [0.9.1] — 2026-05-26
 
 ### SMS hardening — A2P `MessagingServiceSid` + delivery status callbacks

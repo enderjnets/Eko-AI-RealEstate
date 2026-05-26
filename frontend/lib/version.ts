@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.9.1";
+export const CURRENT_VERSION = "0.10.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.10.0",
+    date: "2026-05-26",
+    title: "Dashboard multilingüe (EN default + ES) con selector de idioma",
+    changes: [
+      "El dashboard ahora es multilingüe: inglés por defecto, español como segunda opción, con un selector de idioma (globo + EN/ES) en el Nav, visible en TODAS las páginas.",
+      "lib/i18n.tsx: LanguageProvider client + hook useI18n + diccionarios completos EN/ES. La elección persiste en localStorage y sincroniza <html lang>. t(key) con fallback a EN y a la propia key.",
+      "Todos los strings de UI pasan por t(): Nav, páginas (leads/propiedades/settings/detalle), badges (status/intent/score/visit), tabla y detalle de leads, composer, sugerencias, matches, visitas, booking, propiedades, settings, takeover, mensajes.",
+      "Formatters locale-aware: relativeTime/exactTime/formatBudget (USD, en/es) + fechas de visitas/booking según el idioma activo.",
+      "PageHeader client para los títulos; la página de detalle de lead es client. Landing /about con copy refrescado (MLS matching).",
+      "Default English alineado con el pivote USA; el agente backend ya respondía en el idioma del lead (Phase 3) — esto hace bilingüe también la interfaz del realtor.",
+    ],
+  },
   {
     version: "0.9.1",
     date: "2026-05-26",

@@ -34,8 +34,8 @@ export default function About() {
           />
           <Feature
             icon={Building2}
-            title="Listings ingest"
-            body="Idealista & Fotocasa scraped daily. Nothing leaves your office."
+            title="Listings matching"
+            body="MLS/IDX listings (RESO) matched to every lead by zone, budget, and intent."
           />
         </div>
 
@@ -43,7 +43,7 @@ export default function About() {
           href="/leads"
           className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-eko-violet text-white font-semibold hover:bg-eko-violet-dark transition-colors"
         >
-          Entrar al dashboard
+          Enter dashboard
           <ArrowRight className="w-4 h-4" />
         </Link>
       </div>

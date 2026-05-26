@@ -1,6 +1,9 @@
+"use client";
+
 import { Bot, MessageCircle, Mail, MessageSquare, Phone, User2 } from "lucide-react";
 import type { Message } from "@/lib/api";
 import { exactTime } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
 
 const CHANNEL_ICON: Record<string, typeof MessageCircle> = {
   whatsapp: MessageCircle,
@@ -9,21 +12,18 @@ const CHANNEL_ICON: Record<string, typeof MessageCircle> = {
   voice: Phone,
 };
 
-const STATUS_LABEL: Record<Message["delivery_status"], string> = {
-  pending: "Pendiente",
-  sent: "Enviado",
-  delivered: "Entregado",
-  read: "Leído",
-  failed: "Fallo",
-};
-
 export function MessageBubble({ msg, channel }: { msg: Message; channel?: string }) {
+  const { t, lang } = useI18n();
   const isInbound = msg.direction === "inbound";
   const isHuman = msg.sender === "human";
   const isAgent = msg.sender === "agent";
 
   const Icon = isInbound ? User2 : isAgent ? Bot : Phone;
-  const senderLabel = isInbound ? "Cliente" : isAgent ? "Agente IA" : "Tú";
+  const senderLabel = isInbound
+    ? t("msg.sender.lead")
+    : isAgent
+    ? t("msg.sender.agent")
+    : t("msg.sender.human");
 
   return (
     <div className={`flex ${isInbound ? "justify-start" : "justify-end"} gap-2`}>
@@ -46,14 +46,14 @@ export function MessageBubble({ msg, channel }: { msg: Message; channel?: string
           )}
           {isHuman && (
             <span className="text-[10px] px-1 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              manual
+              {t("msg.manual")}
             </span>
           )}
-          <span>· {exactTime(msg.created_at)}</span>
+          <span>· {exactTime(msg.created_at, lang)}</span>
         </div>
         {channel === "email" && msg.subject && (
           <div className="text-[11px] text-gray-400 mb-1 truncate" title={msg.subject}>
-            <span className="text-gray-600">Asunto:</span> {msg.subject}
+            <span className="text-gray-600">{t("msg.subject")}</span> {msg.subject}
           </div>
         )}
         <div
@@ -69,7 +69,7 @@ export function MessageBubble({ msg, channel }: { msg: Message; channel?: string
         </div>
         {!isInbound && (
           <div className="text-[10px] text-gray-600 mt-0.5 text-right">
-            {STATUS_LABEL[msg.delivery_status]}
+            {t(`msg.status.${msg.delivery_status}`)}
           </div>
         )}
       </div>

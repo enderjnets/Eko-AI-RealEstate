@@ -2,31 +2,20 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import type { LeadIntent, LeadStatus } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 
-const STATUSES: { value: LeadStatus | ""; label: string }[] = [
-  { value: "", label: "Todos los estados" },
-  { value: "new", label: "Nuevo" },
-  { value: "qualified", label: "Cualificado" },
-  { value: "visiting", label: "Visitando" },
-  { value: "post_visit", label: "Post-visita" },
-  { value: "won", label: "Cerrado" },
-  { value: "lost", label: "Perdido" },
-  { value: "paused", label: "Pausado" },
-];
-
-const INTENTS: { value: LeadIntent | ""; label: string }[] = [
-  { value: "", label: "Todas las intenciones" },
-  { value: "rent", label: "Alquiler" },
-  { value: "buy", label: "Compra" },
-  { value: "valuation", label: "Tasación" },
-  { value: "other", label: "Otro" },
-];
+const STATUS_VALUES: (LeadStatus | "")[] = ["", "new", "qualified", "visiting", "post_visit", "won", "lost", "paused"];
+const INTENT_VALUES: (LeadIntent | "")[] = ["", "rent", "buy", "valuation", "other"];
 
 export function FilterBar() {
   const router = useRouter();
   const params = useSearchParams();
+  const { t } = useI18n();
   const currentStatus = params.get("status") ?? "";
   const currentIntent = params.get("intent") ?? "";
+
+  const statusLabel = (v: LeadStatus | "") => (v === "" ? t("filter.allStatuses") : t(`status.${v}`));
+  const intentLabel = (v: LeadIntent | "") => (v === "" ? t("filter.allIntents") : t(`intent.${v}`));
 
   function update(key: string, value: string) {
     const next = new URLSearchParams(params.toString());
@@ -42,9 +31,9 @@ export function FilterBar() {
         onChange={(e) => update("status", e.target.value)}
         className="px-3 py-1.5 rounded-md bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-eko-violet/50"
       >
-        {STATUSES.map((o) => (
-          <option key={o.value} value={o.value} className="bg-eko-noir">
-            {o.label}
+        {STATUS_VALUES.map((v) => (
+          <option key={v} value={v} className="bg-eko-noir">
+            {statusLabel(v)}
           </option>
         ))}
       </select>
@@ -53,9 +42,9 @@ export function FilterBar() {
         onChange={(e) => update("intent", e.target.value)}
         className="px-3 py-1.5 rounded-md bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-eko-violet/50"
       >
-        {INTENTS.map((o) => (
-          <option key={o.value} value={o.value} className="bg-eko-noir">
-            {o.label}
+        {INTENT_VALUES.map((v) => (
+          <option key={v} value={v} className="bg-eko-noir">
+            {intentLabel(v)}
           </option>
         ))}
       </select>
@@ -65,7 +54,7 @@ export function FilterBar() {
           onClick={() => router.push("/leads")}
           className="px-3 py-1.5 rounded-md text-xs text-gray-400 hover:text-white border border-white/10 hover:bg-white/5"
         >
-          Limpiar filtros
+          {t("filter.clear")}
         </button>
       )}
     </div>
