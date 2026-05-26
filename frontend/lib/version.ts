@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.8.0";
+export const CURRENT_VERSION = "0.9.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,21 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.9.0",
+    date: "2026-05-26",
+    title: "Phase 9 — Canal SMS (Twilio)",
+    changes: [
+      "Tercer canal: SMS vía Twilio Programmable Messaging, sobre la misma arquitectura multicanal de Phase 3 (ParsedMessage + dispatcher + channel='sms'). El agente captura, clasifica, scorea y responde igual que WhatsApp/Email.",
+      "services/sms.py: send_sms (SIMULATED loguea / real POST a la REST API de Twilio con basic auth), verify_twilio_signature (HMAC-SHA1 sobre URL + params POST ordenados, keyed por el auth token), parse_inbound_sms(form)->ParsedMessage.",
+      "Webhook POST /api/v1/webhooks/sms: parsea el form de Twilio, valida X-Twilio-Signature (salvo SIMULATED), delega al orquestador, responde TwiML vacío (la respuesta sale async vía REST). La URL para la firma es TWILIO_WEBHOOK_URL o se reconstruye de los forwarded headers (proxy/tunnel).",
+      "Idempotencia vía UNIQUE messages.external_id (MessageSid) — los reintentos de Twilio no duplican.",
+      "config.py + .env.example + compose: SMS_SIMULATED (default true), TWILIO_ACCOUNT_SID/AUTH_TOKEN/PHONE_NUMBER/WEBHOOK_URL. scripts/simulate_inbound_sms.py para smoke testing.",
+      "docs/setup-twilio.md: cuenta + número + webhook + firma + notas de costo/seguridad.",
+      "Tests +9 (total 116): test_sms_service.py (7 — firma válida/tampered/wrong-token/missing, parse ok/missing, send simulated) + test_sms_webhook_e2e.py (2 — inbound crea lead+conversation channel=sms, idempotencia en reintento).",
+      "Voz (VAPI/Retell) sigue diferida como Phase 10 hasta tener cuenta de proveedor.",
+    ],
+  },
   {
     version: "0.8.0",
     date: "2026-05-26",

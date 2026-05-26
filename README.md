@@ -8,8 +8,8 @@
 A small, focused product for real-estate agencies (target: USA realtors, also
 EU/LATAM):
 
-1. **24/7 multichannel agent** — Inbound leads arrive via **WhatsApp** or
-   **Email**; the AI answers, qualifies, and helps book visits. (SMS + voice are
+1. **24/7 multichannel agent** — Inbound leads arrive via **WhatsApp**, **Email**,
+   or **SMS** (Twilio); the AI answers, qualifies, and helps book visits. (Voice is
    on the roadmap.)
 2. **Lead capture + intent classification** — Every conversation creates a
    structured lead, auto-tagged `rent | buy | valuation`, with zone, budget,
@@ -50,7 +50,7 @@ EU/LATAM):
 | Queue / cache | Redis 7 |
 | LLM | Kimi 2.6 (`kimi-for-coding`) primary + MiniMax M2.7 fallback (cloud, anthropic protocol). Ollama optional. |
 | Frontend | Next.js 14 (App Router) + TailwindCSS |
-| Channels | WhatsApp Business Cloud API + Email (Resend). SMS/Voice planned. |
+| Channels | WhatsApp Business Cloud API + Email (Resend) + SMS (Twilio). Voice planned. |
 | Calendar | Cal.com (Google Calendar planned) |
 | Listings | RESO Web API (OData) — the USA MLS/IDX standard |
 | Container | Docker Compose |
@@ -101,7 +101,7 @@ See [`docs/roadmap.md`](docs/roadmap.md) for the phased plan.
 | 6. Single-customer installer + branding panel + public demo | ✅ done (`v0.6.0`) |
 | 7. MLS / IDX listings (RESO) + per-lead matching | ✅ done (`v0.7.0`) |
 | 8. Lead intelligence (scoring + prioritization + digest) | ✅ done (`v0.8.0`) |
-| 9. SMS (Twilio) — deferred until Twilio account ready | ⏳ |
+| 9. SMS channel (Twilio) | ✅ done (`v0.9.0`) |
 | 10. Voice agent (VAPI / Retell) — deferred until provider account ready | ⏳ |
 
 ## Relationship to other Eko AI projects

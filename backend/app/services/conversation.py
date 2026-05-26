@@ -75,6 +75,11 @@ async def _dispatch_send(
         )
         return result.get("id"), subject
 
+    if channel == "sms":
+        from app.services.sms import send_sms  # lazy import
+        result = await send_sms(to=to, body=text)
+        return result.get("sid"), None
+
     raise ValueError(f"Unsupported channel for outbound send: {channel}")
 
 # How many recent messages we feed back into the LLM as context. Plenty for
