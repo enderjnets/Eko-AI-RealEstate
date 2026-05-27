@@ -91,6 +91,9 @@ services:
       GOOGLE_ADMIN_EMAILS: ${GOOGLE_ADMIN_EMAILS:-}
       GOOGLE_ALLOWED_EMAILS: ${GOOGLE_ALLOWED_EMAILS:-}
       GOOGLE_ALLOWED_DOMAIN: ${GOOGLE_ALLOWED_DOMAIN:-}
+      # Sign in with Apple — APPLE_CLIENT_ID is the Services ID, also the token
+      # `aud` the backend validates. Shares the same allow-list as Google.
+      APPLE_CLIENT_ID: ${APPLE_CLIENT_ID:-}
       # Follow-ups / nurture (Phase 10) — in-process worker for post-visit + reminders.
       FOLLOWUPS_ENABLED: ${FOLLOWUPS_ENABLED:-true}
       FOLLOWUPS_INTERVAL_SECONDS: ${FOLLOWUPS_INTERVAL_SECONDS:-300}
@@ -118,6 +121,10 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
         # Google Sign In client ID (public) — inlined into the bundle at build.
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
+        # Sign in with Apple — Services ID + the return URL (popup origin must
+        # match the site origin). Both public; inlined into the bundle at build.
+        NEXT_PUBLIC_APPLE_CLIENT_ID: ${NEXT_PUBLIC_APPLE_CLIENT_ID:-}
+        NEXT_PUBLIC_APPLE_REDIRECT_URI: ${NEXT_PUBLIC_APPLE_REDIRECT_URI:-}
     container_name: eko-realestate-frontend
     restart: unless-stopped
     depends_on:

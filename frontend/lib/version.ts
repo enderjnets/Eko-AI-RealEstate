@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.18.0";
+export const CURRENT_VERSION = "0.19.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.19.0",
+    date: "2026-05-27",
+    title: "Sign in with Apple — login con Apple (además de Google + contraseña)",
+    changes: [
+      "Nuevo botón 'Entrar con Apple' en /login, debajo del de Google bajo el mismo separador 'o'. Convive con la contraseña y con Google — ninguno reemplaza al otro.",
+      "Usa Sign in with Apple JS en modo popup: Apple autentica en una ventana emergente y devuelve el id_token en la misma página; el frontend lo manda a POST /api/v1/auth/login/apple.",
+      "Backend: verify_apple_id_token valida la firma RS256 del identity token contra las llaves públicas de Apple (appleid.apple.com/auth/keys), + iss=https://appleid.apple.com, aud=APPLE_CLIENT_ID (el Services ID) y expiración. Reutiliza la MISMA lista de acceso que Google (resolve_email_access) — la lista se llava por email, no por proveedor — así un correo ya autorizado entra por Apple con el mismo rol.",
+      "El flujo popup devuelve el id_token directo, así que NO requiere client secret ni llave .p8: solo el Services ID público. Los correos ocultos de Apple (@privaterelay.appleid.com) solo entran si se autorizan explícitamente.",
+      "Config: APPLE_CLIENT_ID (backend) + NEXT_PUBLIC_APPLE_CLIENT_ID + NEXT_PUBLIC_APPLE_REDIRECT_URI (frontend, inlined en build). Pasados por docker-compose + Dockerfile como los de Google. /api/v1/auth/me ahora reporta apple_signin_enabled.",
+      "Dependencia nueva: pyjwt[crypto] (PyJWKClient para traer las llaves de Apple + verificación RSA). docs/setup-apple-signin.md con el alta de App ID/Services ID en developer.apple.com + troubleshooting.",
+      "Tests +4: verify_apple_id_token (happy path con JWKS+decode mockeados → email verificado; rechaza no-configurado y email no verificado), /me reporta apple_signin_enabled, y los flujos de login Apple (admin fijado + member de DB + denegado fuera de la lista) reutilizando la lista de Google.",
+    ],
+  },
   {
     version: "0.18.0",
     date: "2026-05-27",

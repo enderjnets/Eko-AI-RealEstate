@@ -2,6 +2,35 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.19.0] — 2026-05-27
+
+### Sign in with Apple
+
+Adds a **"Sign in with Apple"** button on `/login`, below Google under the same
+"or" divider. Coexists with the password and Google flows — none replaces the
+others. It reuses the **same office allow-list as Google** (the list is keyed on
+the email, not the provider), so an already-allowed email signs in via Apple with
+the same role.
+
+- **Web popup flow** (Sign in with Apple JS, `usePopup: true`): Apple authenticates
+  in a popup and returns the `id_token` in-page; the frontend POSTs it to
+  `POST /api/v1/auth/login/apple`.
+- **Backend verification**: `verify_apple_id_token` validates the identity token's
+  **RS256** signature against Apple's public keys (`appleid.apple.com/auth/keys`),
+  plus `iss == https://appleid.apple.com`, `aud == APPLE_CLIENT_ID` (the Services
+  ID), expiry and `email_verified`. Role resolved via the shared
+  `resolve_email_access`. No client secret / `.p8` key needed — only the public
+  Services ID. Apple Private Relay emails (`@privaterelay.appleid.com`) log in only
+  if explicitly allow-listed.
+- **Config**: `APPLE_CLIENT_ID` (backend) + `NEXT_PUBLIC_APPLE_CLIENT_ID` +
+  `NEXT_PUBLIC_APPLE_REDIRECT_URI` (frontend, inlined at build), wired through
+  `docker-compose.yml` + `frontend/Dockerfile` like Google. `GET /api/v1/auth/me`
+  now reports `apple_signin_enabled`. New dependency `pyjwt[crypto]`.
+- New component `frontend/components/ui/AppleSignInButton.tsx`; `docs/setup-apple-signin.md`.
+- **Tests +4**: `verify_apple_id_token` (happy path with mocked JWKS + decode;
+  rejects not-configured + unverified email), `/me` reports the flag, and the Apple
+  login flows (pinned admin + DB member + denied) reusing the Google allow-list.
+
 ## [0.18.0] — 2026-05-27
 
 ### Version button + changelog viewer in the dashboard

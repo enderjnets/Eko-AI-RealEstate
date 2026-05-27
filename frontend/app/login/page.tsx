@@ -7,8 +7,10 @@ import { GoogleOAuthProvider, GoogleLogin, type CredentialResponse } from "@reac
 import { authApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
+import { AppleSignInButton } from "@/components/ui/AppleSignInButton";
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+const APPLE_CLIENT_ID = process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || "";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,12 +20,19 @@ export default function LoginPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [appleEnabled, setAppleEnabled] = useState(false);
 
   useEffect(() => {
     authApi
       .me()
-      .then((m) => setGoogleEnabled(Boolean(m.google_signin_enabled) && Boolean(GOOGLE_CLIENT_ID)))
-      .catch(() => setGoogleEnabled(false));
+      .then((m) => {
+        setGoogleEnabled(Boolean(m.google_signin_enabled) && Boolean(GOOGLE_CLIENT_ID));
+        setAppleEnabled(Boolean(m.apple_signin_enabled) && Boolean(APPLE_CLIENT_ID));
+      })
+      .catch(() => {
+        setGoogleEnabled(false);
+        setAppleEnabled(false);
+      });
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -103,28 +112,32 @@ export default function LoginPage() {
           {loading ? t("auth.signingIn") : t("auth.signIn")}
         </button>
 
-        {googleEnabled && (
+        {(googleEnabled || appleEnabled) && (
           <>
             <div className="flex items-center gap-3 my-5">
               <div className="flex-1 h-px bg-white/10" />
               <span className="text-[10px] uppercase tracking-wider text-gray-500">{t("auth.or")}</span>
               <div className="flex-1 h-px bg-white/10" />
             </div>
-            <div className="flex justify-center">
-              {googleLoading ? (
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  {t("auth.googleSigningIn")}
-                </div>
-              ) : (
-                <GoogleLogin
-                  onSuccess={handleGoogleCredential}
-                  onError={() => setError(t("auth.googleFailed"))}
-                  text="signin_with"
-                  theme="filled_black"
-                  shape="rectangular"
-                  width="280"
-                />
+            <div className="flex flex-col items-center gap-3">
+              {googleEnabled &&
+                (googleLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    {t("auth.googleSigningIn")}
+                  </div>
+                ) : (
+                  <GoogleLogin
+                    onSuccess={handleGoogleCredential}
+                    onError={() => setError(t("auth.googleFailed"))}
+                    text="signin_with"
+                    theme="filled_black"
+                    shape="rectangular"
+                    width="280"
+                  />
+                ))}
+              {appleEnabled && (
+                <AppleSignInButton onError={(key) => setError(key ? t(key) : null)} />
               )}
             </div>
           </>

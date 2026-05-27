@@ -25,6 +25,8 @@ def _fake_settings(**over):
         GOOGLE_ALLOWED_DOMAIN="",
         google_admin_emails_list=[],
         google_allowed_emails_list=[],
+        # Sign in with Apple (default: not configured).
+        APPLE_CLIENT_ID="",
     )
     base.update(over)
     return types.SimpleNamespace(**base)
@@ -152,6 +154,52 @@ def test_verify_google_id_token_transport_deps_present() -> None:
     assert msg.startswith("invalid_id_token"), msg
 
 
+def test_verify_apple_id_token_extracts_verified_email() -> None:
+    """Happy path: a valid token (mocked JWKS + decode) yields the lowercased
+    verified email; email_verified may be the string "true"."""
+    fake = _fake_settings(APPLE_CLIENT_ID="com.eko.signin")
+    claims = {"email": "User@Eko.com", "email_verified": "true", "sub": "abc"}
+    fake_client = types.SimpleNamespace(
+        get_signing_key_from_jwt=lambda _t: types.SimpleNamespace(key="pubkey")
+    )
+    with patch("app.services.auth.get_settings", return_value=fake), \
+         patch("app.services.auth._get_apple_jwk_client", return_value=fake_client), \
+         patch("jwt.decode", return_value=claims):
+        assert auth_svc.verify_apple_id_token("a.b.c") == "user@eko.com"
+
+
+def test_verify_apple_id_token_rejects_unconfigured_and_unverified() -> None:
+    with patch("app.services.auth.get_settings", return_value=_fake_settings(APPLE_CLIENT_ID="")):
+        with pytest.raises(auth_svc.AppleAuthError) as ei:
+            auth_svc.verify_apple_id_token("x")
+        assert "apple_signin_not_configured" in str(ei.value)
+
+    fake = _fake_settings(APPLE_CLIENT_ID="com.eko.signin")
+    fake_client = types.SimpleNamespace(
+        get_signing_key_from_jwt=lambda _t: types.SimpleNamespace(key="pubkey")
+    )
+    with patch("app.services.auth.get_settings", return_value=fake), \
+         patch("app.services.auth._get_apple_jwk_client", return_value=fake_client), \
+         patch("jwt.decode", return_value={"email": "u@eko.com", "email_verified": False}):
+        with pytest.raises(auth_svc.AppleAuthError) as ei:
+            auth_svc.verify_apple_id_token("x")
+        assert "email_not_verified" in str(ei.value)
+
+
+@pytest.mark.asyncio
+async def test_me_reports_apple_enabled_flag() -> None:
+    """apple_signin_enabled is true only when APPLE_CLIENT_ID is set AND some
+    allow-list source exists (shared with Google)."""
+    fake = _fake_settings(
+        APPLE_CLIENT_ID="com.eko.signin", google_admin_emails_list=["owner@eko.com"]
+    )
+    with patch("app.api.v1.auth.get_settings", return_value=fake), \
+         patch("app.services.auth.get_settings", return_value=fake):
+        async with await _client() as c:
+            me = (await c.get("/api/v1/auth/me")).json()
+    assert me["apple_signin_enabled"] is True
+
+
 @pytest.mark.asyncio
 async def test_password_login_is_admin() -> None:
     fake = _fake_settings()
@@ -205,3 +253,46 @@ async def test_google_login_db_member_then_denied(_needs_db: None) -> None:
                     assert r.json()["detail"] == "email_not_in_allow_list"
     finally:
         await _clear_allowed("member@eko.com", "stranger@eko.com")
+
+
+# ── Apple sign-in: same allow-list + role resolution (needs DB) ──────────────
+
+
+@pytest.mark.asyncio
+async def test_apple_login_pinned_admin(_needs_db: None) -> None:
+    fake = _fake_settings(
+        APPLE_CLIENT_ID="com.eko.signin", google_admin_emails_list=["owner@eko.com"]
+    )
+    with patch("app.api.v1.auth.get_settings", return_value=fake), \
+         patch("app.services.auth.get_settings", return_value=fake), \
+         patch("app.api.v1.auth.verify_apple_id_token", return_value="owner@eko.com"):
+        async with await _client() as c:
+            r = await c.post("/api/v1/auth/login/apple", json={"id_token": "x"})
+            assert r.status_code == 200, r.text
+            me = (await c.get("/api/v1/auth/me")).json()
+        assert me["role"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_apple_login_db_member_then_denied(_needs_db: None) -> None:
+    fake = _fake_settings(APPLE_CLIENT_ID="com.eko.signin")  # no env allow-list
+    await _clear_allowed("amember@eko.com", "astranger@eko.com")
+    await _seed_allowed("amember@eko.com", "member")
+    try:
+        with patch("app.api.v1.auth.get_settings", return_value=fake), \
+             patch("app.services.auth.get_settings", return_value=fake):
+            # Allowed DB member (added via Google) also logs in via Apple.
+            with patch("app.api.v1.auth.verify_apple_id_token", return_value="amember@eko.com"):
+                async with await _client() as c:
+                    r = await c.post("/api/v1/auth/login/apple", json={"id_token": "x"})
+                    assert r.status_code == 200, r.text
+                    me = (await c.get("/api/v1/auth/me")).json()
+                    assert me["role"] == "member"
+            # Email on no list → denied (same message as Google).
+            with patch("app.api.v1.auth.verify_apple_id_token", return_value="astranger@eko.com"):
+                async with await _client() as c:
+                    r = await c.post("/api/v1/auth/login/apple", json={"id_token": "x"})
+                    assert r.status_code == 401
+                    assert r.json()["detail"] == "email_not_in_allow_list"
+    finally:
+        await _clear_allowed("amember@eko.com", "astranger@eko.com")

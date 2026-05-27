@@ -127,7 +127,7 @@ class Settings(BaseSettings):
     # shows a "Sign in with Google" button. The backend validates the ID token
     # and resolves the verified email against the access list to a role.
     #
-    # Access list precedence (see services/auth.resolve_google_access):
+    # Access list precedence (see services/auth.resolve_email_access):
     #   GOOGLE_ADMIN_EMAILS (env)  → admin, immutable bootstrap (lockout-proof)
     #   allowed_users DB rows      → managed in the UI by admins (admin|member)
     #   GOOGLE_ALLOWED_EMAILS (env)→ member (back-compat static allow)
@@ -145,6 +145,17 @@ class Settings(BaseSettings):
     @property
     def google_admin_emails_list(self) -> list[str]:
         return [e.strip().lower() for e in self.GOOGLE_ADMIN_EMAILS.split(",") if e.strip()]
+
+    # ─── Sign in with Apple ──────────────────────────────────────────────
+    # Coexists with Google + password. When APPLE_CLIENT_ID (the Services ID,
+    # e.g. "com.ekoai.realtors.signin") is set, /login shows the "Sign in with
+    # Apple" button. The backend verifies Apple's RS256 identity token (signature
+    # against appleid.apple.com/auth/keys, iss + aud + exp) and resolves the
+    # verified email against the SAME access list as Google (resolve_email_access).
+    # The web popup flow returns the id_token directly, so no client secret /
+    # .p8 key is needed for login. Apple Private Relay addresses
+    # (@privaterelay.appleid.com) only log in if explicitly allow-listed.
+    APPLE_CLIENT_ID: str = ""  # the Services ID — also the token `aud` we validate
 
     # ─── Follow-ups / nurture (Phase 10) ────────────────────────────────
     # In-process background worker that sends scheduled post-visit follow-ups +

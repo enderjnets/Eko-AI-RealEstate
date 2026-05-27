@@ -346,6 +346,7 @@ export interface MeResult {
   auth_enabled: boolean;
   role?: Role;
   google_signin_enabled?: boolean;
+  apple_signin_enabled?: boolean;
 }
 
 export const authApi = {
@@ -357,6 +358,11 @@ export const authApi = {
     }),
   loginGoogle: (idToken: string) =>
     api<{ ok: boolean; auth_enabled?: boolean }>(`/v1/auth/login/google`, {
+      method: "POST",
+      body: JSON.stringify({ id_token: idToken }),
+    }),
+  loginApple: (idToken: string) =>
+    api<{ ok: boolean; auth_enabled?: boolean }>(`/v1/auth/login/apple`, {
       method: "POST",
       body: JSON.stringify({ id_token: idToken }),
     }),

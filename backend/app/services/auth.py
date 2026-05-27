@@ -106,7 +106,7 @@ def token_role(token: str | None) -> str | None:
 # ─── Google Sign In (Google Identity Services) ──────────────────────────
 # verify_google_id_token only validates the token (signature + aud +
 # email_verified) and returns the verified email. The allow-list / role
-# decision is DB-aware and lives in resolve_google_access below.
+# decision is DB-aware and lives in resolve_email_access below.
 
 class GoogleAuthError(Exception):
     """Raised when Google ID token verification fails."""
@@ -118,7 +118,7 @@ def verify_google_id_token(id_token_str: str) -> str:
     Checks the signature against Google's public keys, that `aud` matches
     GOOGLE_CLIENT_ID, and that the email is verified. Raises GoogleAuthError
     otherwise. Whether the email may log in (and as what role) is decided by
-    resolve_google_access.
+    resolve_email_access.
     """
     s = get_settings()
     if not s.GOOGLE_CLIENT_ID:
@@ -150,9 +150,12 @@ def verify_google_id_token(id_token_str: str) -> str:
     return email
 
 
-async def resolve_google_access(email: str, db: AsyncSession) -> str | None:
+async def resolve_email_access(email: str, db: AsyncSession) -> str | None:
     """Return the role ('admin' | 'member') a verified email may log in as, or
     None to deny (safe default).
+
+    Provider-agnostic: the same access list governs Google and Apple sign-in —
+    the office's allow-list is keyed on the email, not on who issued the token.
 
     Precedence:
       1. env GOOGLE_ADMIN_EMAILS  → admin (always; immutable bootstrap).
@@ -180,3 +183,74 @@ async def resolve_google_access(email: str, db: AsyncSession) -> str | None:
     if domain and email.endswith("@" + domain):
         return ROLE_MEMBER
     return None
+
+
+# Back-compat alias (Google-era name); role resolution is provider-agnostic.
+resolve_google_access = resolve_email_access
+
+
+# ─── Sign in with Apple ─────────────────────────────────────────────────
+# verify_apple_id_token only validates Apple's identity token (RS256 signature
+# against Apple's public keys + iss + aud + exp) and returns the verified email.
+# Whether that email may log in (and as what role) is decided by
+# resolve_email_access — the same allow-list as Google.
+
+APPLE_ISSUER = "https://appleid.apple.com"
+APPLE_KEYS_URL = "https://appleid.apple.com/auth/keys"
+
+_apple_jwk_client = None  # lazy PyJWKClient — caches Apple's public keys
+
+
+class AppleAuthError(Exception):
+    """Raised when Apple identity token verification fails."""
+
+
+def _get_apple_jwk_client():
+    global _apple_jwk_client
+    if _apple_jwk_client is None:
+        from jwt import PyJWKClient
+
+        _apple_jwk_client = PyJWKClient(APPLE_KEYS_URL)
+    return _apple_jwk_client
+
+
+def verify_apple_id_token(id_token_str: str) -> str:
+    """Validate an Apple-issued identity token; return the verified email.
+
+    Checks the RS256 signature against the matching key from
+    appleid.apple.com/auth/keys, that `iss` is Apple, `aud` matches
+    APPLE_CLIENT_ID (the Services ID), the token hasn't expired, and that the
+    email is verified. Raises AppleAuthError otherwise.
+    """
+    s = get_settings()
+    if not s.APPLE_CLIENT_ID:
+        raise AppleAuthError("apple_signin_not_configured")
+    if not id_token_str:
+        raise AppleAuthError("missing_id_token")
+
+    # Import lazily so the dep is only required when the feature is used.
+    try:
+        import jwt
+    except ImportError as e:
+        raise AppleAuthError(f"pyjwt_library_missing: {e}") from e
+
+    try:
+        signing_key = _get_apple_jwk_client().get_signing_key_from_jwt(id_token_str)
+        claims = jwt.decode(
+            id_token_str,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=s.APPLE_CLIENT_ID,
+            issuer=APPLE_ISSUER,
+        )
+    except Exception as e:
+        raise AppleAuthError(f"invalid_id_token: {e}") from e
+
+    # email_verified may arrive as a bool or the string "true" depending on the
+    # token version; accept both.
+    if claims.get("email_verified") not in (True, "true"):
+        raise AppleAuthError("email_not_verified")
+    email = (claims.get("email") or "").lower().strip()
+    if not email:
+        raise AppleAuthError("missing_email")
+    return email
