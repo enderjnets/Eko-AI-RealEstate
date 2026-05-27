@@ -25,6 +25,8 @@ const EN: Record<string, string> = {
   "nav.discovery": "Discovery",
   "nav.api": "API",
   "lang.label": "Language",
+  "version.history": "Version history",
+  "version.close": "Close",
   // discovery
   "discovery.title": "Discovery",
   "discovery.subtitle": "Find real-estate leads — owners likely to sell and people looking to buy or rent — or import your existing database from any file.",
@@ -335,6 +337,8 @@ const ES: Record<string, string> = {
   "nav.discovery": "Descubrir",
   "nav.api": "API",
   "lang.label": "Idioma",
+  "version.history": "Historial de versiones",
+  "version.close": "Cerrar",
   "discovery.title": "Descubrir",
   "discovery.subtitle": "Encontrá leads inmobiliarios — dueños con probabilidad de vender y gente buscando comprar o rentar — o importá tu base de datos desde cualquier archivo.",
   "discovery.searchTitle": "Buscar leads inmobiliarios",
