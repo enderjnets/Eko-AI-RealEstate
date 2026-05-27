@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.16.0";
+export const CURRENT_VERSION = "0.16.1";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.16.1",
+    date: "2026-05-27",
+    title: "Fix — pasar las variables de Google Sign In a los contenedores (compose + Dockerfile)",
+    changes: [
+      "v0.16.0 trajo el código de Google Sign In pero el docker-compose.yml no pasaba las variables GOOGLE_* al backend, así que GOOGLE_ADMIN_EMAILS no llegaba al contenedor y el admin bootstrap no se sembraba en allowed_users.",
+      "Fix: el bloque environment del backend ahora pasa GOOGLE_CLIENT_ID, GOOGLE_ADMIN_EMAILS, GOOGLE_ALLOWED_EMAILS y GOOGLE_ALLOWED_DOMAIN; el frontend recibe NEXT_PUBLIC_GOOGLE_CLIENT_ID como build arg (Next.js inyecta NEXT_PUBLIC_* en tiempo de build, por eso va en el Dockerfile, no en runtime).",
+    ],
+  },
   {
     version: "0.16.0",
     date: "2026-05-27",
