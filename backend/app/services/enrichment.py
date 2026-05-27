@@ -173,19 +173,21 @@ async def enrich_pending_leads(db: AsyncSession, *, limit: int = 10) -> dict[str
     server-side (periodic worker + manual trigger), so enrichment never depends on
     the browser staying open. Failed leads are retried up to MAX_ENRICH_ATTEMPTS.
     """
+    # score is indexed; `meta` is a generic JSON column (no portable `->>` filter),
+    # so narrow on score in SQL and check the discovery flag in Python.
     rows = (
         await db.execute(
-            select(Lead)
-            .where(Lead.score == 0)
-            .where(Lead.meta["discovery"].astext == "true")
-            .order_by(Lead.id.desc())
-            .limit(limit * 4)
+            select(Lead).where(Lead.score == 0).order_by(Lead.id.desc()).limit(200)
         )
     ).scalars().all()
 
-    enriched = failed = 0
+    enriched = failed = scanned = 0
     for lead in rows:
-        enr = (lead.meta or {}).get("enrichment") or {}
+        meta = lead.meta or {}
+        if meta.get("discovery") is not True:
+            continue  # leave conversation leads to the normal scoring pipeline
+        scanned += 1
+        enr = meta.get("enrichment") or {}
         if enr.get("status") != "ok" and (enr.get("attempts") or 0) >= MAX_ENRICH_ATTEMPTS:
             continue  # give up on a persistently failing lead
         out = await enrich_lead(lead, db)
@@ -195,4 +197,4 @@ async def enrich_pending_leads(db: AsyncSession, *, limit: int = 10) -> dict[str
             failed += 1
         if enriched >= limit:
             break
-    return {"enriched": enriched, "failed": failed, "scanned": len(rows)}
+    return {"enriched": enriched, "failed": failed, "scanned": scanned}
