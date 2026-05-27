@@ -2,6 +2,19 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.18.0] — 2026-05-27
+
+### Version button + changelog viewer in the dashboard
+
+Adds a version pill (`v0.18.0`) in the top-right of the Nav (next to the language
+switcher). Clicking it opens a modal listing the full version history (version,
+date, title, bullet changes) read from `lib/version.ts` — mirroring Eko AI Main.
+
+- Modal closes on ESC, click-outside or the Close button; locks body scroll while
+  open; rendered via a portal. Dashboard violet/noir palette, EN/ES i18n.
+- New component `frontend/components/ui/VersionButton.tsx`, mounted in
+  `components/ui/Nav.tsx`.
+
 ## [0.17.0] — 2026-05-27
 
 ### Add Lead — manual lead creation (demo + operational) with AI kickoff

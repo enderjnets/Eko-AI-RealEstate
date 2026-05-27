@@ -7,6 +7,7 @@ import { BarChart3, Home, LogOut, Search, Settings, Zap } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
+import { VersionButton } from "@/components/ui/VersionButton";
 
 export function Nav() {
   const { t } = useI18n();
@@ -96,6 +97,7 @@ export function Nav() {
             {t("nav.api")}
           </a>
           <LanguageSwitcher />
+          <VersionButton />
           {authEnabled && (
             <button
               type="button"

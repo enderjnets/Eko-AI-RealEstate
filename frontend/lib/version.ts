@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.17.0";
+export const CURRENT_VERSION = "0.18.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.18.0",
+    date: "2026-05-27",
+    title: "Botón de versión + historial de cambios en el dashboard",
+    changes: [
+      "Nuevo botón de versión (pill `v0.18.0`) arriba a la derecha en el Nav, junto al selector de idioma. Al hacer click abre un modal con el historial completo de versiones (versión, fecha, título y cambios) leído de `lib/version.ts` — igual que el de Eko AI Main.",
+      "El modal cierra con ESC, click afuera o el botón Cerrar; bloquea el scroll del body mientras está abierto; se renderiza vía portal. Paleta violeta/noir del dashboard e i18n EN/ES.",
+    ],
+  },
   {
     version: "0.17.0",
     date: "2026-05-27",
