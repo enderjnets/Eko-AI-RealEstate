@@ -20,11 +20,14 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Lead, LeadIntent
 from app.services.llm import LLMUnavailable, generate_reply
 from app.services.scoring import score_tier
+
+MAX_ENRICH_ATTEMPTS = 3
 
 log = logging.getLogger(__name__)
 
@@ -119,6 +122,7 @@ async def enrich_lead(lead: Lead, db: AsyncSession) -> dict[str, Any]:
     """Enrich one lead in place (writes lead.meta['enrichment'] + commits)."""
     meta = dict(lead.meta or {})
     contact_missing = bool(meta.get("synthetic_identifier")) or not (meta.get("phone") or meta.get("email"))
+    attempts = ((meta.get("enrichment") or {}).get("attempts") or 0) + 1
 
     enrichment: dict[str, Any]
     try:
@@ -151,9 +155,44 @@ async def enrich_lead(lead: Lead, db: AsyncSession) -> dict[str, Any]:
         enrichment = {"status": "failed", "error": str(exc)[:200], "partner_type": "other", "tags": []}
 
     enrichment["contact_missing"] = contact_missing
+    enrichment["attempts"] = attempts
     enrichment["enriched_at"] = datetime.now(UTC).isoformat()
     meta["enrichment"] = enrichment
     lead.meta = meta
     await db.commit()
     await db.refresh(lead)
     return enrichment
+
+
+async def enrich_pending_leads(db: AsyncSession, *, limit: int = 10) -> dict[str, int]:
+    """Backfill / safety-net: enrich discovery leads that aren't classified yet.
+
+    A classified discovery lead has score > 0 (discovery_score floors at ~12); an
+    unclassified one sits at 0 — whether it predates classification, was skipped by
+    dedupe on re-import, or the frontend enrichment loop never reached it. This runs
+    server-side (periodic worker + manual trigger), so enrichment never depends on
+    the browser staying open. Failed leads are retried up to MAX_ENRICH_ATTEMPTS.
+    """
+    rows = (
+        await db.execute(
+            select(Lead)
+            .where(Lead.score == 0)
+            .where(Lead.meta["discovery"].astext == "true")
+            .order_by(Lead.id.desc())
+            .limit(limit * 4)
+        )
+    ).scalars().all()
+
+    enriched = failed = 0
+    for lead in rows:
+        enr = (lead.meta or {}).get("enrichment") or {}
+        if enr.get("status") != "ok" and (enr.get("attempts") or 0) >= MAX_ENRICH_ATTEMPTS:
+            continue  # give up on a persistently failing lead
+        out = await enrich_lead(lead, db)
+        if out.get("status") == "ok":
+            enriched += 1
+        else:
+            failed += 1
+        if enriched >= limit:
+            break
+    return {"enriched": enriched, "failed": failed, "scanned": len(rows)}

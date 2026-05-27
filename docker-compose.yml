@@ -86,6 +86,9 @@ services:
       # Follow-ups / nurture (Phase 10) — in-process worker for post-visit + reminders.
       FOLLOWUPS_ENABLED: ${FOLLOWUPS_ENABLED:-true}
       FOLLOWUPS_INTERVAL_SECONDS: ${FOLLOWUPS_INTERVAL_SECONDS:-300}
+      # Discovery enrichment (Phase 12) — server-side worker that classifies leads.
+      ENRICHMENT_ENABLED: ${ENRICHMENT_ENABLED:-true}
+      ENRICHMENT_INTERVAL_SECONDS: ${ENRICHMENT_INTERVAL_SECONDS:-120}
       # Listings / MLS (Phase 7) — SIMULATED by default; set RESO_* for a real feed.
       LISTINGS_SIMULATED: ${LISTINGS_SIMULATED:-true}
       LISTINGS_PROVIDER: ${LISTINGS_PROVIDER:-reso}

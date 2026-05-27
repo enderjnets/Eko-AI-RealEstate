@@ -67,6 +67,7 @@ app.include_router(discovery.router, prefix="/api/v1/discovery", tags=["discover
 
 
 _followups_task: asyncio.Task | None = None
+_enrichment_task: asyncio.Task | None = None
 
 
 async def _followups_loop() -> None:
@@ -85,6 +86,27 @@ async def _followups_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.error("Follow-ups worker tick failed: %s", exc)
+
+
+async def _enrichment_loop() -> None:
+    """Background worker: enrich discovery leads server-side so it never depends on
+    the browser. Backfills leads that predate classification / were skipped on re-import."""
+    from app.db.base import get_session_factory
+    from app.services.enrichment import enrich_pending_leads
+
+    interval = max(30, settings.ENRICHMENT_INTERVAL_SECONDS)
+    Session = get_session_factory()
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            async with Session() as session:
+                result = await enrich_pending_leads(session, limit=10)
+            if result["enriched"]:
+                logger.info("Enrichment worker: enriched %d discovery lead(s)", result["enriched"])
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Enrichment worker tick failed: %s", exc)
 
 
 @app.on_event("startup")
@@ -108,14 +130,19 @@ async def _startup() -> None:
         global _followups_task
         _followups_task = asyncio.create_task(_followups_loop())
         logger.info("Follow-ups worker started (every %ds)", settings.FOLLOWUPS_INTERVAL_SECONDS)
+    if settings.ENRICHMENT_ENABLED:
+        global _enrichment_task
+        _enrichment_task = asyncio.create_task(_enrichment_loop())
+        logger.info("Enrichment worker started (every %ds)", settings.ENRICHMENT_INTERVAL_SECONDS)
 
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    if _followups_task is not None:
-        _followups_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await _followups_task
+    for task in (_followups_task, _enrichment_task):
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
 
 @app.get("/")
