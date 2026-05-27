@@ -59,6 +59,24 @@ async def test_simulated_max_results_cap() -> None:
     assert len(res) <= 1
 
 
+@pytest.mark.asyncio
+async def test_real_mode_falls_back_to_simulated_when_no_provider(monkeypatch) -> None:
+    # In real mode, a category with no wired provider (fsbo) must still return the
+    # curated leads so every category stays demoable.
+    from app.services import discovery as disc
+
+    class _S:
+        DISCOVERY_SIMULATED = False
+        ATTOM_API_KEY = ""
+        YELP_API_KEY = ""
+        SERPAPI_API_KEY = ""
+        OUTSCRAPER_API_KEY = ""
+
+    monkeypatch.setattr(disc, "get_settings", lambda: _S())
+    res = await disc.discover(category="fsbo", city="Denver")
+    assert res and all(b.source == "fsbo" for b in res)
+
+
 def test_sanitize_email() -> None:
     assert sanitize_email("Info@Example2.com") == "info@example2.com"
     assert sanitize_email("bad@example.com") is None      # placeholder domain
