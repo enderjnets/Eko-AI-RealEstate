@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart3, Home, LogOut, Search, Zap } from "lucide-react";
+import { BarChart3, Home, LogOut, Search, Settings, Zap } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
@@ -12,9 +12,16 @@ export function Nav() {
   const { t } = useI18n();
   const router = useRouter();
   const [authEnabled, setAuthEnabled] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    authApi.me().then((m) => setAuthEnabled(m.auth_enabled)).catch(() => {});
+    authApi
+      .me()
+      .then((m) => {
+        setAuthEnabled(m.auth_enabled);
+        setIsAdmin(m.role === "admin");
+      })
+      .catch(() => {});
   }, []);
 
   async function logout() {
@@ -70,6 +77,15 @@ export function Nav() {
             <BarChart3 className="w-3.5 h-3.5" />
             {t("nav.analytics")}
           </Link>
+          {isAdmin && (
+            <Link
+              href="/settings"
+              className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              {t("nav.settings")}
+            </Link>
+          )}
           <a
             href="/docs"
             target="_blank"

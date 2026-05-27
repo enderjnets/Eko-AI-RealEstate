@@ -8,9 +8,19 @@ import logging
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import analytics, auth, conversations, discovery, health, leads, properties, visits
+from app.api.v1 import (
+    analytics,
+    auth,
+    conversations,
+    discovery,
+    health,
+    leads,
+    properties,
+    team,
+    visits,
+)
 from app.api.v1 import settings as settings_api
-from app.api.v1.auth import require_auth
+from app.api.v1.auth import require_admin, require_auth
 from app.api.v1.webhooks import email as email_webhook
 from app.api.v1.webhooks import sms as sms_webhook
 from app.api.v1.webhooks import whatsapp as whatsapp_webhook
@@ -55,11 +65,14 @@ app.include_router(sms_webhook.router, prefix="/api/v1/webhooks", tags=["webhook
 
 # Protected data API — require_auth is a no-op unless AUTH_ENABLED.
 _auth = [Depends(require_auth)]
+# Admin-only — settings + team management (hidden + 403 for members).
+_admin = [Depends(require_admin)]
 app.include_router(leads.router, prefix="/api/v1/leads", tags=["leads"], dependencies=_auth)
 app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["conversations"], dependencies=_auth)
 app.include_router(visits.leads_calendar_router, prefix="/api/v1", tags=["calendar"], dependencies=_auth)
 app.include_router(visits.visits_router, prefix="/api/v1", tags=["visits"], dependencies=_auth)
-app.include_router(settings_api.router, prefix="/api/v1/settings", tags=["settings"], dependencies=_auth)
+app.include_router(settings_api.router, prefix="/api/v1/settings", tags=["settings"], dependencies=_admin)
+app.include_router(team.router, prefix="/api/v1/team", tags=["team"], dependencies=_admin)
 app.include_router(properties.router, prefix="/api/v1/properties", tags=["properties"], dependencies=_auth)
 app.include_router(properties.lead_matches_router, prefix="/api/v1", tags=["properties"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"], dependencies=_auth)
@@ -109,12 +122,42 @@ async def _enrichment_loop() -> None:
             logger.error("Enrichment worker tick failed: %s", exc)
 
 
+async def _seed_admin_users() -> None:
+    """Ensure each GOOGLE_ADMIN_EMAILS entry exists as an admin in allowed_users so
+    bootstrap admins show up in the Team list. Idempotent; promotes an existing row
+    to admin if needed. Best-effort — never blocks startup."""
+    from sqlalchemy import select
+
+    from app.db.base import get_session_factory
+    from app.models import AllowedUser
+    from app.services.auth import ROLE_ADMIN
+
+    pinned = settings.google_admin_emails_list
+    if not pinned:
+        return
+    Session = get_session_factory()
+    async with Session() as session:
+        for email in pinned:
+            row = (
+                await session.execute(select(AllowedUser).where(AllowedUser.email == email))
+            ).scalar_one_or_none()
+            if row is None:
+                session.add(AllowedUser(email=email, role=ROLE_ADMIN, added_by="bootstrap"))
+            elif row.role != ROLE_ADMIN:
+                row.role = ROLE_ADMIN
+        await session.commit()
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     logger.info(
         "Eko AI Realtors %s starting · env=%s · LLM primary=%s fallback=%s",
         settings.APP_VERSION, settings.APP_ENV, settings.LLM_PRIMARY, settings.LLM_FALLBACK,
     )
+    try:
+        await _seed_admin_users()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Bootstrap admin seed skipped: %s", exc)
     if settings.is_production and settings.WHATSAPP_SIMULATED:
         logger.warning(
             "⚠️  WHATSAPP_SIMULATED=true AND APP_ENV=production — outbound messages will only "

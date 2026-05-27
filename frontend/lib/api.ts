@@ -324,9 +324,13 @@ export const conversationsApi = {
   get: (leadId: number) => api<Conversation>(`/v1/conversations/${leadId}`),
 };
 
+export type Role = "admin" | "member";
+
 export interface MeResult {
   authenticated: boolean;
   auth_enabled: boolean;
+  role?: Role;
+  google_signin_enabled?: boolean;
 }
 
 export const authApi = {
@@ -336,7 +340,33 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ password }),
     }),
+  loginGoogle: (idToken: string) =>
+    api<{ ok: boolean; auth_enabled?: boolean }>(`/v1/auth/login/google`, {
+      method: "POST",
+      body: JSON.stringify({ id_token: idToken }),
+    }),
   logout: () => api<{ ok: boolean }>(`/v1/auth/logout`, { method: "POST" }),
+};
+
+export interface TeamMember {
+  email: string;
+  role: Role;
+  added_by: string | null;
+  created_at: string;
+  immutable: boolean;
+}
+
+export const teamApi = {
+  list: () => api<TeamMember[]>(`/v1/team`),
+  add: (email: string, role: Role) =>
+    api<TeamMember>(`/v1/team`, { method: "POST", body: JSON.stringify({ email, role }) }),
+  updateRole: (email: string, role: Role) =>
+    api<TeamMember>(`/v1/team/${encodeURIComponent(email)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    }),
+  remove: (email: string) =>
+    api<{ ok: boolean }>(`/v1/team/${encodeURIComponent(email)}`, { method: "DELETE" }),
 };
 
 export interface Analytics {

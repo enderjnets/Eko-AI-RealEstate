@@ -120,6 +120,23 @@ Proactive lead sourcing (until now leads were inbound-only):
   Frontend `/discovery` page + Discovery link in the nav.
 - See [`setup-discovery.md`](setup-discovery.md) for which source needs which key.
 
+## Auth add-on · Google Sign In + admin-managed team — ✅ done (`v0.16.0`)
+
+Builds on Phase 11 auth:
+
+- **Google Sign In** (Google Identity Services): "Sign in with Google" on
+  `/login` (coexists with the password). Backend `POST /api/v1/auth/login/google`
+  verifies the ID token with `google-auth` (signature + `aud` + `email_verified`).
+- **Identity + roles**: the session token now carries email + role
+  (`admin` | `member`). Password login = admin (master key, lockout-proof).
+- **DB-managed access**: the allow-list moved from env to the `allowed_users`
+  table (Alembic `008`). Admins manage it in **Settings → Team** (`/api/v1/team`
+  CRUD under `require_admin`) — add Gmail addresses, set roles, no redeploy.
+- **Lockout-proofing**: `GOOGLE_ADMIN_EMAILS` pins immutable bootstrap admins;
+  the API refuses to remove/demote them or the last admin.
+- The **entire Settings page is admin-only** (hidden + 403 for members).
+- See [`setup-google-signin.md`](setup-google-signin.md).
+
 ## Phase 13 · Voice agent (VAPI / Retell) — ⏳ deferred
 
 Inbound/outbound voice. Deferred until a provider account is set up.

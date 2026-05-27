@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.15.2";
+export const CURRENT_VERSION = "0.16.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.16.0",
+    date: "2026-05-27",
+    title: "Google Sign In + control de acceso por admin (equipo gestionado desde Settings)",
+    changes: [
+      "Login con Google (Google Identity Services): botón 'Entrar con Google' en /login que convive con la contraseña. El backend valida el ID token (firma + email_verified) con la librería google-auth y emite la misma cookie de sesión HMAC.",
+      "La sesión ahora lleva identidad + rol (admin/member). El login por contraseña entra como ADMIN (llave maestra); el login por Google toma el rol de la lista de acceso.",
+      "La lista de correos permitidos se movió de variables de entorno a la BASE DE DATOS (tabla allowed_users) — el admin la gestiona en vivo desde Settings, sin redeploy. Cada correo tiene rol admin o member.",
+      "Settings volvió a la barra de navegación y es SOLO para admins (oculto y 403 para members). Incluye el panel 'Equipo / Acceso': agregar correos Gmail, asignar rol, promover a admin o quitar.",
+      "Admin bootstrap fijado por entorno (GOOGLE_ADMIN_EMAILS) — no se puede degradar ni eliminar desde la UI, y la API rechaza quitar al último admin. Junto con la contraseña-admin, esto garantiza que nunca te quedás afuera.",
+      "Seguridad: members usan el dashboard pero reciben 403 en /team y /settings; una cuenta de Google fuera de la lista es rechazada con mensaje claro. El flujo GIS no tiene client secret (solo el Client ID público).",
+    ],
+  },
   {
     version: "0.15.2",
     date: "2026-05-27",
