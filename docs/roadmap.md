@@ -102,6 +102,24 @@ dev); production via `CALCOM_API_KEY` + `CALCOM_EVENT_TYPE_ID`.
 - **Analytics** (`/analytics` + `GET /api/v1/analytics`): funnel, conversion,
   by channel, by score tier, avg first-response, new leads per day.
 
-## Phase 12 · Voice agent (VAPI / Retell) — ⏳ deferred
+## Phase 12 · Discovery — lead search + file import — ✅ done (`v0.13.0`)
+
+Proactive lead sourcing (until now leads were inbound-only):
+
+- **Search** across 4 sources — Google Maps, Yelp, LinkedIn, Colorado SOS — via
+  `services/discovery.py` (SIMULATED-first like `listings.py`; real per-source
+  when its key is set; Colorado SOS is free/no-key). Ported + adapted from the
+  Eko AI sales platform's discovery agent (Paperclip dropped).
+- **File import** (`services/file_import.py`): upload a contact DB in **any
+  format** — PDF / JPG-PNG (OCR) / TXT / CSV / XLSX / HTML — text is extracted
+  then run through the LLM (`json_mode`) to pull out contacts. Graceful: bad
+  output → `[]`, never crashes.
+- **Preview-and-select** flow: search/upload returns transient results; the user
+  picks which to import → they become `Lead` rows (deduped by phone/email).
+- API under `/api/v1/discovery` (`/search`, `/upload`, `/import`, protected).
+  Frontend `/discovery` page + Discovery link in the nav.
+- See [`setup-discovery.md`](setup-discovery.md) for which source needs which key.
+
+## Phase 13 · Voice agent (VAPI / Retell) — ⏳ deferred
 
 Inbound/outbound voice. Deferred until a provider account is set up.

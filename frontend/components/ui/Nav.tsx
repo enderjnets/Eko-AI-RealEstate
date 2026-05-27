@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart3, Home, LogOut, Settings, Zap } from "lucide-react";
+import { BarChart3, Home, LogOut, Search, Settings, Zap } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
@@ -55,6 +55,13 @@ export function Nav() {
           >
             <Home className="w-3.5 h-3.5" />
             {t("nav.properties")}
+          </Link>
+          <Link
+            href="/discovery"
+            className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+          >
+            <Search className="w-3.5 h-3.5" />
+            {t("nav.discovery")}
           </Link>
           <Link
             href="/analytics"
