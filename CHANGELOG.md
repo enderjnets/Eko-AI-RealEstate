@@ -2,6 +2,31 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.14.2] — 2026-05-26
+
+### Discovery — imported leads are now classified (intent + 🔥 score) like the rest
+
+Imported discovery leads showed up bare in `/leads` (status `new`, no intent,
+score `0` ⚪) next to worked leads with 🔥 / qualified / buy badges. Enrichment now
+**also classifies and scores** the lead so it carries the same `IntentBadge` +
+`ScoreBadge`.
+
+- The enrichment LLM now also returns **`intent`** (`buy` / `rent` / `valuation` /
+  `other` — best-fit if the contact could be a client, else `other`) and
+  **`relevance`** (0-10). `enrich_lead` sets `lead.intent` and computes
+  `lead.score` + `score_breakdown` via a prospect-lead scoring (no conversation
+  to score): `partner_type` (referral_partner 35 / prospect 32 / vendor 18 /
+  competitor 6 / other 12) + `relevance×2` + real contact (+25) + website (+10),
+  mapped to `hot ≥67 / warm ≥34 / cold` with the same thresholds as `scoring.py`.
+- A referral-partner mortgage broker with contact + high relevance → 🔥 hot; a
+  competitor with no contact → ⚪ cold. The leads list ranks them by score
+  alongside conversation leads.
+- Status stays `new` (honest — freshly sourced, unworked). If enrichment fails the
+  lead is still saved, just unclassified.
+- Tests +3: `_coerce` of intent/relevance, `discovery_score` tiers, and the happy
+  path now asserts `lead.intent`, `lead.score > 0`, and
+  `score_breakdown.source == "discovery_enrichment"`.
+
 ## [0.14.1] — 2026-05-26
 
 ### Hotfix — widen `leads.phone` 32 → 254 (discovery import was 500-ing)

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.14.1";
+export const CURRENT_VERSION = "0.14.2";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.14.2",
+    date: "2026-05-26",
+    title: "Discovery — los leads importados ahora se clasifican (intent + score 🔥) como el resto",
+    changes: [
+      "Los leads de discovery aparecían 'pelados' en /leads (status new, sin intent, score 0 ⚪) frente a los leads trabajados que muestran 🔥/qualified/buy. Ahora el enriquecimiento TAMBIÉN clasifica y puntúa el lead, así muestra los mismos badges (IntentBadge + ScoreBadge con fueguito).",
+      "El LLM de enriquecimiento ahora devuelve también `intent` (buy/rent/valuation/other — best-fit si el contacto pudiera ser cliente, sino other) y `relevance` (0-10). enrich_lead setea `lead.intent` y calcula `lead.score` + `score_breakdown` con un scoring propio para leads prospectados (sin conversación): partner_type (referral_partner 35 / prospect 32 / vendor 18 / competitor 6 / other 12) + relevance×2 + contacto real (+25) + web (+10), mapeado a tier hot≥67/warm≥34/cold con los mismos umbrales que scoring.py.",
+      "Resultado: un broker hipotecario que refiere (referral_partner) con contacto y alta relevancia sale 🔥 hot; un competidor sin contacto sale ⚪ cold — y la lista de leads los rankea por score junto a los demás.",
+      "El status se mantiene en 'new' (es honesto: son leads recién traídos, sin trabajar). Si el enriquecimiento falla, el lead se guarda igual sin clasificar (no se pierde).",
+      "Tests +3: _coerce de intent/relevance (normaliza + clampa), discovery_score (referral+contacto+web+relevancia→hot, other sin nada→cold), y el happy path ahora verifica que enrich setea lead.intent=buy + score>0 + breakdown source=discovery_enrichment.",
+    ],
+  },
   {
     version: "0.14.1",
     date: "2026-05-26",
