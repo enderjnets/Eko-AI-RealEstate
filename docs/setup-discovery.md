@@ -11,9 +11,24 @@ inbound messages. Two ways in:
 
 Both end in a **preview-and-select** step: nothing is saved until you tick the
 rows you want and hit **Import**. Imported rows become `Lead`s (`status=new`,
-`meta.source`), deduped against existing leads by phone (else email).
+`meta.source`).
 
-UI: `/discovery`. API: `/api/v1/discovery/{search,upload,import}` (auth-gated).
+### Import → enrichment
+
+- Every selected business is created as a `Lead`. The unique identifier falls
+  back **phone → email → website → synthetic** (`discovery:<source>:<slug>:<city>`),
+  so businesses with **no contact info** (common for Colorado SOS and LinkedIn)
+  still import — and re-imports **dedupe** on that key instead of duplicating.
+- Right after import, each new lead is **enriched** by the LLM
+  (`POST /api/v1/discovery/enrich/{lead_id}`): a normalized business type, how a
+  realtor should treat the contact (`partner_type`), a one-line summary, an
+  outreach angle, and tags — stored in `meta.enrichment`. The UI shows a
+  **progress bar** while this runs, then a **"View in Leads"** link.
+- Enrichment is graceful: if the LLM is unavailable or returns bad JSON, the lead
+  is still saved with `meta.enrichment.status="failed"` (never lost).
+
+UI: `/discovery`. API: `/api/v1/discovery/{search,upload,import,enrich/{id}}`
+(auth-gated).
 
 ---
 

@@ -367,6 +367,13 @@ export interface ImportResult {
   created: number;
   skipped: number;
   total: number;
+  lead_ids: number[];
+}
+
+export interface EnrichResult {
+  lead_id: number;
+  name: string | null;
+  enrichment: Record<string, unknown>;
 }
 
 export const discoveryApi = {
@@ -380,6 +387,8 @@ export const discoveryApi = {
       method: "POST",
       body: JSON.stringify({ leads, source_label }),
     }),
+  enrich: (leadId: number) =>
+    api<EnrichResult>(`/v1/discovery/enrich/${leadId}`, { method: "POST" }),
   // Upload bypasses api() — multipart/form-data must NOT carry a JSON Content-Type.
   upload: async (file: File): Promise<{ results: BusinessLead[] }> => {
     const fd = new FormData();

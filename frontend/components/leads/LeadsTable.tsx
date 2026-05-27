@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Loader2, Mail, MessageCircle, MessageSquare, Phone, User2 } from "lucide-react";
+import { Globe, Loader2, Mail, MessageCircle, MessageSquare, Phone, Search, User2 } from "lucide-react";
 import { type Lead, type LeadIntent, type LeadStatus, leadsApi } from "@/lib/api";
 import { formatBudget, relativeTime } from "@/lib/format";
 import { IntentBadge, StatusBadge } from "@/components/ui/Badge";
@@ -11,8 +11,16 @@ import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { useI18n } from "@/lib/i18n";
 
 function channelGlyph(identifier: string): typeof MessageCircle {
-  // Heuristic: email addresses contain "@", phone numbers don't.
+  if (identifier.startsWith("discovery:")) return Search; // sourced lead, no contact yet
+  if (identifier.startsWith("http")) return Globe; // website-only (e.g. LinkedIn)
   return identifier.includes("@") ? Mail : MessageCircle;
+}
+
+function displayIdentifier(identifier: string): string {
+  // Synthetic discovery keys aren't real contacts — don't show the raw slug.
+  if (identifier.startsWith("discovery:")) return "—";
+  if (identifier.startsWith("http")) return identifier.replace(/^https?:\/\/(www\.)?/, "");
+  return identifier;
 }
 
 export function LeadsTable() {
@@ -94,7 +102,7 @@ export function LeadsTable() {
                         const Glyph = channelGlyph(lead.phone);
                         return <Glyph className="w-3 h-3 text-gray-600" aria-hidden />;
                       })()}
-                      <span className="text-xs text-gray-500 font-mono truncate max-w-[260px]">{lead.phone}</span>
+                      <span className="text-xs text-gray-500 font-mono truncate max-w-[260px]">{displayIdentifier(lead.phone)}</span>
                       {lead.human_takeover && (
                         <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
                           {t("leads.human")}

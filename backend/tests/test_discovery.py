@@ -9,7 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models import Lead
-from app.services.discovery import BusinessDTO, discover, import_business_leads, sanitize_email
+from app.services.discovery import (
+    BusinessDTO,
+    discover,
+    import_business_leads,
+    lead_identifier,
+    sanitize_email,
+)
 
 
 @pytest.fixture
@@ -51,6 +57,18 @@ def test_sanitize_email() -> None:
     assert sanitize_email(None) is None
 
 
+def test_lead_identifier_fallback() -> None:
+    # phone wins, then email, then website
+    assert lead_identifier(BusinessDTO("A", "yelp", phone="+13035550000", email="a@b.com")) == "+13035550000"
+    assert lead_identifier(BusinessDTO("A", "yelp", email="a@b.com", website="https://x")) == "a@b.com"
+    assert lead_identifier(BusinessDTO("A", "linkedin", website="https://linkedin.com/in/a")) == "https://linkedin.com/in/a"
+    # no contact at all → stable synthetic key (so it still imports + dedupes)
+    syn = lead_identifier(BusinessDTO("Cherry Creek Renovations LLC", "colorado_sos", city="Denver"))
+    assert syn == "discovery:colorado_sos:cherry-creek-renovations-llc:denver"
+    # deterministic
+    assert syn == lead_identifier(BusinessDTO("Cherry Creek Renovations LLC", "colorado_sos", city="Denver"))
+
+
 # ── Import (live DB) ───────────────────────────────────────────────────────
 
 
@@ -78,9 +96,11 @@ async def test_import_creates_and_dedupes(database_url: str) -> None:
         async with Session() as s:
             r1 = await import_business_leads([dto], s)
             assert r1["created"] == 1
+            assert len(r1["lead_ids"]) == 1  # IDs returned so the caller can enrich
             # Re-import the same identifier → skipped (dedupe by unique phone).
             r2 = await import_business_leads([dto], s)
             assert r2["created"] == 0 and r2["skipped"] == 1
+            assert r2["lead_ids"] == []
             lead = (await s.execute(select(Lead).where(Lead.phone == phone))).scalar_one()
             assert lead.name == "Disc Test Co"
             assert lead.meta.get("source") == "google_maps"
@@ -91,13 +111,25 @@ async def test_import_creates_and_dedupes(database_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_import_skips_without_identifier(database_url: str) -> None:
-    no_id = BusinessDTO(business_name="No Contact LLC", source="colorado_sos", city="Denver")
+async def test_import_no_contact_creates_synthetic_id(database_url: str) -> None:
+    # Colorado SOS / LinkedIn carry no phone/email — these MUST still import
+    # (was the bug: they were silently skipped and never reached /leads).
+    name = f"No Contact LLC {uuid.uuid4().hex[:6]}"
+    dto = BusinessDTO(business_name=name, source="colorado_sos", city="Denver", category="LLC")
+    ident = lead_identifier(dto)
+    assert ident.startswith("discovery:colorado_sos:")
     engine = create_async_engine(database_url, echo=False, future=True)
     Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
     try:
         async with Session() as s:
-            r = await import_business_leads([no_id], s)
-            assert r["created"] == 0 and r["skipped"] == 1
+            r = await import_business_leads([dto], s)
+            assert r["created"] == 1 and len(r["lead_ids"]) == 1
+            lead = (await s.execute(select(Lead).where(Lead.phone == ident))).scalar_one()
+            assert lead.name == name
+            assert lead.meta.get("synthetic_identifier") is True
+            # re-import dedupes on the synthetic key
+            r2 = await import_business_leads([dto], s)
+            assert r2["created"] == 0 and r2["skipped"] == 1
     finally:
         await engine.dispose()
+        await _delete_lead(database_url, ident)
