@@ -139,6 +139,19 @@ def test_token_carries_role() -> None:
         assert auth_svc.token_role(f"{raw}.{sig}") == "admin"
 
 
+def test_verify_google_id_token_transport_deps_present() -> None:
+    """Regression guard: google-auth's verifier needs the `requests` transport
+    (an optional dep). A malformed token must fail with `invalid_id_token`, NOT
+    `google_auth_library_missing` — the latter means a transport dep is absent."""
+    fake = _fake_settings(GOOGLE_CLIENT_ID="cid.apps.googleusercontent.com")
+    with patch("app.services.auth.get_settings", return_value=fake):
+        with pytest.raises(auth_svc.GoogleAuthError) as ei:
+            auth_svc.verify_google_id_token("not.a.valid.jwt")
+        msg = str(ei.value)
+    assert "google_auth_library_missing" not in msg, msg
+    assert msg.startswith("invalid_id_token"), msg
+
+
 @pytest.mark.asyncio
 async def test_password_login_is_admin() -> None:
     fake = _fake_settings()

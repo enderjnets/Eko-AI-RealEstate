@@ -2,6 +2,21 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.16.2] — 2026-05-27
+
+### Fix — Google login 401'd (missing `requests` transport dependency)
+
+The Google button rendered but selecting an account failed with "Google sign-in
+failed". `google-auth`'s `verify_oauth2_token` uses `google.auth.transport.requests`
+to fetch Google's public keys, and `requests` is an **optional** dependency of
+`google-auth` — it wasn't in `requirements.txt`, so verification raised
+`requests library is not installed` → 401. (Password login was never affected.)
+
+- Added `requests==2.32.3` to `backend/requirements.txt`.
+- Regression test: `verify_google_id_token` on a malformed token must fail with
+  `invalid_id_token`, not `google_auth_library_missing` — so an absent transport
+  dep is caught in CI (the existing tests mocked verification and missed it).
+
 ## [0.16.1] — 2026-05-27
 
 ### Fix — wire the Google Sign In env vars into the containers

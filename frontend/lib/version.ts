@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.16.1";
+export const CURRENT_VERSION = "0.16.2";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,16 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.16.2",
+    date: "2026-05-27",
+    title: "Fix — el login con Google fallaba (faltaba la librería `requests`)",
+    changes: [
+      "Síntoma: el botón de Google aparecía pero al elegir la cuenta daba 'Google sign-in failed'. Causa: google-auth usa `requests` como transporte HTTP para traer las llaves públicas de Google al validar el ID token, pero `requests` es dependencia OPCIONAL y no estaba en requirements → verify_oauth2_token tiraba 'requests library is not installed' → 401.",
+      "Fix: agregado `requests==2.32.3` a backend/requirements.txt. (El password login nunca se vio afectado.)",
+      "Test de regresión: `verify_google_id_token` con un token malformado ahora debe fallar con 'invalid_id_token', NO con 'google_auth_library_missing' — así un transporte ausente se detecta en CI (antes los tests mockeaban la verificación y no lo agarraban).",
+    ],
+  },
   {
     version: "0.16.1",
     date: "2026-05-27",
