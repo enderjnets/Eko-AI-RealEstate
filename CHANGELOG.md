@@ -2,6 +2,22 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.14.1] — 2026-05-26
+
+### Hotfix — widen `leads.phone` 32 → 254 (discovery import was 500-ing)
+
+- Importing a discovery lead with a long identifier (a LinkedIn URL, or the
+  synthetic `discovery:<source>:<slug>:<city>` key) raised HTTP 500
+  `StringDataRightTruncationError`. **Root cause**: `leads.phone` was still
+  `VARCHAR(32)` in the database even though the model has declared `String(254)`
+  since Phase 3 — that migration renamed columns but never actually altered
+  `leads.phone` (emails under 32 chars worked by luck).
+- **Migration `007_phase12_widen_phone`**: `ALTER leads.phone TYPE VARCHAR(254)`
+  to align the DB with the model. Safe widening (no data loss, keeps the unique
+  index).
+- Without this, the v0.14.0 fix (importing contact-less leads) failed in
+  production for most Colorado SOS / LinkedIn results.
+
 ## [0.14.0] — 2026-05-26
 
 ### Discovery fix — imported leads now save + LLM enrichment with a progress bar

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.14.0";
+export const CURRENT_VERSION = "0.14.1";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,16 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.14.1",
+    date: "2026-05-26",
+    title: "Hotfix — ensanchar leads.phone 32→254 (importar discovery daba 500)",
+    changes: [
+      "FIX: importar leads de discovery con identificador largo (URLs de LinkedIn, o la clave sintética `discovery:<fuente>:<slug>:<ciudad>`) daba HTTP 500 `StringDataRightTruncationError`. Causa raíz: la columna `leads.phone` seguía siendo VARCHAR(32) en la base, aunque el modelo declara String(254) desde Phase 3 — la migración de Phase 3 nunca llegó a ensanchar la columna (los emails <32 chars funcionaban de casualidad).",
+      "Migración Alembic 007_phase12_widen_phone: `ALTER leads.phone TYPE VARCHAR(254)` para alinear la base con el modelo. Operación de ensanchado segura (sin pérdida de datos, mantiene el índice único).",
+      "Sin esto, el fix de v0.14.0 (importar leads sin contacto) fallaba en producción para la mayoría de los resultados de Colorado SOS/LinkedIn.",
+    ],
+  },
   {
     version: "0.14.0",
     date: "2026-05-26",
