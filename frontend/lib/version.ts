@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.12.0";
+export const CURRENT_VERSION = "0.13.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,21 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.13.0",
+    date: "2026-05-26",
+    title: "Phase 12 — Discovery: búsqueda de leads (4 fuentes) + importar desde cualquier archivo",
+    changes: [
+      "Nueva pestaña Discovery (como la del sales platform): buscá nuevos leads de negocios en 4 fuentes — Google Maps, Yelp, LinkedIn y Colorado SOS — y sumá una sección para importar tu base de datos existente desde CUALQUIER archivo (PDF, JPG/PNG, TXT, CSV, XLSX, HTML).",
+      "Flujo preview-and-select: buscar/subir devuelve resultados transitorios (no se persisten); el dashboard muestra un checklist con select-all y vos elegís cuáles importar → se crean como Leads (status new, meta.source). Dedupe por identificador (teléfono, sino email) contra leads existentes.",
+      "services/discovery.py (portado y adaptado del sales platform Eko AI Main, drop de Paperclip): patrón SIMULATED-first como listings.py. Default DISCOVERY_SIMULATED=true → set curado de negocios CO reales-plausibles (sin keys). Adapters reales por fuente: Colorado SOS (Socrata público, GRATIS sin key), Yelp Fusion, Google Maps (Outscraper), LinkedIn (SerpApi) — cada uno degrada a [] sin su key.",
+      "services/file_import.py — extracción 'cualquier formato': PDF (pypdf), XLSX (openpyxl), imágenes JPG/PNG vía OCR (pytesseract + tesseract-ocr en el Dockerfile), CSV/TXT/HTML (stdlib + strip de tags). Luego extract_leads pasa el texto por el LLM (json_mode) para sacar contactos como array JSON, con degradación graceful (output malo → [], nunca crashea).",
+      "API protegida bajo /api/v1/discovery: POST /search (query/city/state/sources/max_results), POST /upload (multipart, cap FILE_IMPORT_MAX_MB=25), POST /import (crea los leads elegidos). Frontend: /discovery (DiscoveryPanel con 4 chips de fuente + ResultsList reutilizable + FileImport con drag-drop). Link Discovery en el Nav (icono Search).",
+      "config + .env.example + compose: DISCOVERY_SIMULATED + YELP_API_KEY/OUTSCRAPER_API_KEY/SERPAPI_API_KEY (se reusan las keys del sales platform) + FILE_IMPORT_MAX_MB. requirements: pypdf/openpyxl/pillow/pytesseract. docs/setup-discovery.md (qué fuente necesita qué key; Colorado SOS gratis; flip DISCOVERY_SIMULATED=false).",
+      "Tests +13 (total 145): test_discovery.py (6 — búsqueda simulada devuelve negocios, filtro por fuente, cap max_results, sanitize_email, import crea+dedupe, import sin identificador skip) + test_file_import.py (7 — extract_text plaintext/csv/html-strip/empty, extract_leads parsea JSON array, tolera prosa, output malo→[], texto vacío no llama LLM).",
+      "Voz (VAPI/Retell) renumerado a Phase 13.",
+    ],
+  },
   {
     version: "0.12.0",
     date: "2026-05-26",

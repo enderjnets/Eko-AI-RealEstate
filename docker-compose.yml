@@ -72,6 +72,12 @@ services:
       TWILIO_WEBHOOK_URL: ${TWILIO_WEBHOOK_URL:-}
       TWILIO_MESSAGING_SERVICE_SID: ${TWILIO_MESSAGING_SERVICE_SID:-}
       TWILIO_STATUS_CALLBACK_URL: ${TWILIO_STATUS_CALLBACK_URL:-}
+      # Discovery / lead search (Phase 12) — SIMULATED unless keys are set.
+      DISCOVERY_SIMULATED: ${DISCOVERY_SIMULATED:-true}
+      YELP_API_KEY: ${YELP_API_KEY:-}
+      OUTSCRAPER_API_KEY: ${OUTSCRAPER_API_KEY:-}
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
+      FILE_IMPORT_MAX_MB: ${FILE_IMPORT_MAX_MB:-25}
       # Dashboard auth (Phase 11) — off by default (open demo); installer turns it on.
       AUTH_ENABLED: ${AUTH_ENABLED:-false}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}

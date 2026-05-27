@@ -2,6 +2,64 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.13.0] — 2026-05-26
+
+### Phase 12 — Discovery: lead search (4 sources) + import from any file
+
+Adds proactive lead sourcing — until now leads were inbound-only (WhatsApp /
+email / SMS). A realtor can now go find new business leads, or bulk-import an
+existing contact database in any file format.
+
+#### Search (4 sources, preview-and-select)
+
+- New **Discovery** tab (mirrors the Eko AI sales platform): search **Google
+  Maps, Yelp, LinkedIn, Colorado SOS** for businesses, see a checklist preview,
+  pick which to import.
+- **`services/discovery.py`** — ported + adapted from the sales platform's
+  discovery agent (Paperclip dropped). SIMULATED-first like `listings.py`:
+  `DISCOVERY_SIMULATED=true` (default) serves a curated set of plausible CO
+  businesses with **zero keys**. Real adapters per source, each degrading to
+  `[]` without its key: **Colorado SOS** (public Socrata API — **free, no key**),
+  **Yelp** (Fusion), **Google Maps** (Outscraper), **LinkedIn** (SerpApi).
+
+#### File import (any format)
+
+- **`services/file_import.py`** — `extract_text` routes by extension: **PDF**
+  (`pypdf`), **XLSX** (`openpyxl`), **images JPG/PNG** via OCR (`pytesseract` +
+  `tesseract-ocr` in the Dockerfile), CSV/TXT/HTML (stdlib + tag strip). Then
+  `extract_leads` runs the text through the LLM (`json_mode`) to pull contacts
+  as a JSON array, with the classifier's graceful-degradation style (bad output
+  → `[]`, never crashes).
+
+#### Import → leads
+
+- Search/upload return **transient** results (not persisted). `POST
+  /api/v1/discovery/import` creates the selected ones as `Lead` rows
+  (`status=new`, `meta.source`), **deduped** by identifier (phone, else email)
+  against existing leads. No new table / migration.
+
+#### API + frontend + config
+
+- API under **`/api/v1/discovery`** (`/search`, `/upload` with a
+  `FILE_IMPORT_MAX_MB=25` cap, `/import`) — protected by `require_auth`.
+- Frontend **`/discovery`**: `DiscoveryPanel` (4 toggleable source chips + a
+  reusable `ResultsList` checklist) + `FileImport` (drag-drop). Discovery link
+  in the nav (Search icon). i18n EN/ES.
+- `config` + `.env.example` + compose: `DISCOVERY_SIMULATED`,
+  `YELP_API_KEY` / `OUTSCRAPER_API_KEY` / `SERPAPI_API_KEY` (reuse the sales
+  platform keys), `FILE_IMPORT_MAX_MB`. `requirements`: `pypdf` / `openpyxl` /
+  `pillow` / `pytesseract`. New **`docs/setup-discovery.md`**.
+
+#### Tests
+
+- **+13 (total 145)**: `test_discovery.py` (6 — simulated search returns
+  businesses, source filtering, `max_results` cap, `sanitize_email`, import
+  creates + dedupes, import without identifier skips) + `test_file_import.py`
+  (7 — `extract_text` plaintext/csv/html-strip/empty, `extract_leads` parses a
+  JSON array, tolerates prose, bad output → `[]`, empty text skips the LLM).
+
+Voice (VAPI / Retell) renumbered to Phase 13.
+
 ## [0.12.0] — 2026-05-26
 
 ### Phase 11 — Pilot hardening: dashboard auth + analytics

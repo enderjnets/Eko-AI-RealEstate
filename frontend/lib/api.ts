@@ -340,3 +340,61 @@ export interface Analytics {
 export const analyticsApi = {
   get: () => api<Analytics>(`/v1/analytics`),
 };
+
+export type DiscoverySource = "google_maps" | "yelp" | "linkedin" | "colorado_sos";
+
+export interface BusinessLead {
+  business_name: string;
+  source: string;
+  category: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+}
+
+export interface DiscoverySearchIn {
+  query: string;
+  city: string;
+  state: string;
+  max_results: number;
+  sources: DiscoverySource[];
+}
+
+export interface ImportResult {
+  created: number;
+  skipped: number;
+  total: number;
+}
+
+export const discoveryApi = {
+  search: (body: DiscoverySearchIn) =>
+    api<{ results: BusinessLead[] }>(`/v1/discovery/search`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  import: (leads: BusinessLead[], source_label = "discovery") =>
+    api<ImportResult>(`/v1/discovery/import`, {
+      method: "POST",
+      body: JSON.stringify({ leads, source_label }),
+    }),
+  // Upload bypasses api() — multipart/form-data must NOT carry a JSON Content-Type.
+  upload: async (file: File): Promise<{ results: BusinessLead[] }> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`/api/v1/discovery/upload`, { method: "POST", body: fd, cache: "no-store" });
+    if (!res.ok) {
+      let detail = "";
+      try {
+        const b = await res.json();
+        detail = typeof b?.detail === "string" ? b.detail : JSON.stringify(b);
+      } catch {
+        detail = await res.text();
+      }
+      throw new Error(`API ${res.status}: ${detail || res.statusText}`);
+    }
+    return res.json();
+  },
+};

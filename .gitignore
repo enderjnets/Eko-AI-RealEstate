@@ -22,6 +22,8 @@ out/
 dist/
 build/
 npm-debug.log*
+next-env.d.ts
+*.tsbuildinfo
 yarn-debug.log*
 yarn-error.log*
 .pnp.*

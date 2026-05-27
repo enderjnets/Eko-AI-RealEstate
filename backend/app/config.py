@@ -100,6 +100,17 @@ class Settings(BaseSettings):
     RESO_BASE_URL: str = ""
     RESO_ACCESS_TOKEN: str = ""
 
+    # ─── Discovery / lead search (Phase 12) ─────────────────────────────
+    # SIMULATED-first: when true (default) returns a curated synthetic set (demo
+    # works with zero keys). When false, each source uses its real adapter if its
+    # key is set — Colorado SOS is free (no key); Yelp/Google Maps/LinkedIn reuse
+    # the keys from the Eko AI sales platform. See docs/setup-discovery.md.
+    DISCOVERY_SIMULATED: bool = True
+    YELP_API_KEY: str = ""           # Yelp Fusion (free tier)
+    OUTSCRAPER_API_KEY: str = ""     # Google Maps via Outscraper
+    SERPAPI_API_KEY: str = ""        # LinkedIn via SerpApi Google search
+    FILE_IMPORT_MAX_MB: int = 25
+
     # ─── Dashboard auth (Phase 11) ──────────────────────────────────────
     # One deploy = one office → a single shared dashboard password. When
     # AUTH_ENABLED=true, the data API + dashboard require login. Default false so
