@@ -2,6 +2,15 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.15.2] — 2026-05-27
+
+### Nav reorder — Discovery · Leads · Properties · Analytics · API · EN
+
+- Reordered the top nav to **Discovery, Leads, Properties, Analytics, API, EN**
+  (language switcher) — Discovery leads (the prospecting flow starts there).
+- **Settings** was removed from the top bar to match the requested menu; the page
+  is still reachable at `/settings`.
+
 ## [0.15.1] — 2026-05-27
 
 ### Discovery — SIMULATED fallback per category with no real provider

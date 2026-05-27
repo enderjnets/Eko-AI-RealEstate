@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.15.1";
+export const CURRENT_VERSION = "0.15.2";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.15.2",
+    date: "2026-05-27",
+    title: "Nav reordenado: Discovery · Leads · Properties · Analytics · API · EN",
+    changes: [
+      "Reordené la barra de navegación a: Discovery, Leads, Properties, Analytics, API, EN (selector de idioma). Discovery queda primero (el flujo de prospección arranca ahí).",
+      "Settings se quitó de la barra superior para que el menú coincida con lo pedido; la página sigue disponible en /settings.",
+    ],
+  },
   {
     version: "0.15.1",
     date: "2026-05-27",
