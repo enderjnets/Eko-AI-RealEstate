@@ -84,6 +84,13 @@ services:
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
       AUTH_SECRET: ${AUTH_SECRET:-}
       AUTH_TTL_HOURS: ${AUTH_TTL_HOURS:-168}
+      # Google Sign In (GIS) + admin-managed team access (v0.16.0).
+      # GOOGLE_ADMIN_EMAILS pins lockout-proof bootstrap admins; the rest of the
+      # access list is managed in Settings → Team (DB-backed).
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_ADMIN_EMAILS: ${GOOGLE_ADMIN_EMAILS:-}
+      GOOGLE_ALLOWED_EMAILS: ${GOOGLE_ALLOWED_EMAILS:-}
+      GOOGLE_ALLOWED_DOMAIN: ${GOOGLE_ALLOWED_DOMAIN:-}
       # Follow-ups / nurture (Phase 10) — in-process worker for post-visit + reminders.
       FOLLOWUPS_ENABLED: ${FOLLOWUPS_ENABLED:-true}
       FOLLOWUPS_INTERVAL_SECONDS: ${FOLLOWUPS_INTERVAL_SECONDS:-300}
@@ -109,6 +116,8 @@ services:
         # Client JS never hits this directly — it talks to a same-origin /api/...
         # which next.config.js rewrites to INTERNAL_API_URL below.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+        # Google Sign In client ID (public) — inlined into the bundle at build.
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
     container_name: eko-realestate-frontend
     restart: unless-stopped
     depends_on:

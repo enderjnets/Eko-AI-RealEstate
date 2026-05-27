@@ -2,6 +2,19 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.16.1] — 2026-05-27
+
+### Fix — wire the Google Sign In env vars into the containers
+
+v0.16.0 shipped the Google Sign In code but `docker-compose.yml` didn't pass the
+`GOOGLE_*` vars to the backend, so `GOOGLE_ADMIN_EMAILS` never reached the
+container and the bootstrap admin wasn't seeded into `allowed_users`.
+
+- Backend `environment:` now passes `GOOGLE_CLIENT_ID`, `GOOGLE_ADMIN_EMAILS`,
+  `GOOGLE_ALLOWED_EMAILS`, `GOOGLE_ALLOWED_DOMAIN`.
+- Frontend gets `NEXT_PUBLIC_GOOGLE_CLIENT_ID` as a **build arg** (Next.js inlines
+  `NEXT_PUBLIC_*` at build time — declared in the Dockerfile, not runtime env).
+
 ## [0.16.0] — 2026-05-27
 
 ### Google Sign In (GIS) + admin-managed team access
