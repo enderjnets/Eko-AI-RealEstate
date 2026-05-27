@@ -8,7 +8,7 @@ import logging
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import analytics, auth, conversations, health, leads, properties, visits
+from app.api.v1 import analytics, auth, conversations, discovery, health, leads, properties, visits
 from app.api.v1 import settings as settings_api
 from app.api.v1.auth import require_auth
 from app.api.v1.webhooks import email as email_webhook
@@ -63,6 +63,7 @@ app.include_router(settings_api.router, prefix="/api/v1/settings", tags=["settin
 app.include_router(properties.router, prefix="/api/v1/properties", tags=["properties"], dependencies=_auth)
 app.include_router(properties.lead_matches_router, prefix="/api/v1", tags=["properties"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"], dependencies=_auth)
+app.include_router(discovery.router, prefix="/api/v1/discovery", tags=["discovery"], dependencies=_auth)
 
 
 _followups_task: asyncio.Task | None = None

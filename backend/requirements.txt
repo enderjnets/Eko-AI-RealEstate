@@ -24,6 +24,12 @@ anthropic==0.45.0  # Used with custom base_url for Kimi + MiniMax (anthropic-mes
 python-dateutil==2.9.0
 langdetect==1.0.9  # bilingual detection (es/en) for inbound messages
 
+# File import (Phase 12) — extract leads from uploaded files
+pypdf==5.1.0            # PDF text extraction
+openpyxl==3.1.5         # XLSX extraction
+pillow==10.4.0          # image decoding for OCR
+pytesseract==0.3.13     # OCR wrapper (needs system tesseract-ocr — see Dockerfile)
+
 # Test (kept in primary requirements so the image is self-sufficient for `docker exec pytest`)
 pytest==8.3.3
 pytest-asyncio==0.24.0

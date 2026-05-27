@@ -2,10 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# System deps (kept minimal — Playwright comes later in Phase 4)
+# System deps. tesseract-ocr powers image file-import OCR (Phase 12).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
+    tesseract-ocr \
  && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
