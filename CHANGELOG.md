@@ -2,6 +2,45 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.14.0] — 2026-05-26
+
+### Discovery fix — imported leads now save + LLM enrichment with a progress bar
+
+Follow-up to Phase 12 after testing surfaced that "Import selected" appeared to do
+nothing.
+
+#### Critical fix: imports were silently dropped
+
+- **Root cause**: `import_business_leads` used `phone | email` as the unique
+  identifier, but most sources (Colorado SOS, LinkedIn) carry **neither** → every
+  such lead was skipped and never reached `/leads`. The `phone` column is
+  `NOT NULL UNIQUE`, so a contact-less lead couldn't even be created.
+- **Fix**: identifier now falls back **phone → email → website → synthetic**
+  (`discovery:<source>:<slug>:<city>`). Every named business imports, and
+  re-imports **dedupe** on that stable key instead of duplicating. Import also
+  returns the created `lead_ids`.
+
+#### New: lead enrichment + visible progress
+
+- **`services/enrichment.py`** + **`POST /api/v1/discovery/enrich/{lead_id}`**:
+  per lead, the LLM (`json_mode`) infers a normalized **business_type**, a
+  **partner_type** (`referral_partner` / `vendor` / `prospect` / `competitor` /
+  `other`), a one-line **summary**, an **outreach_angle**, and **tags** — stored
+  in `meta.enrichment`. Flags `contact_missing` when there's no real phone/email.
+  Graceful (mirrors `classifier.py`): LLM down or bad JSON → `status="failed"`,
+  never raises, never loses the lead.
+- **Progress bar**: after import, the frontend enriches lead-by-lead with a real
+  **X/N progress bar**, then shows a summary + a **"View in Leads"** link.
+- `/leads` table renders contact-less discovery leads cleanly (synthetic id → `—`
+  with a search glyph; `linkedin.com/in/…` URLs with a globe glyph).
+
+#### Tests
+
+- **+9**: `lead_identifier` fallback + deterministic synthetic key; import with no
+  contact **now creates + dedupes + returns `lead_ids`**; `_coerce`
+  (invalid `partner_type` → `other`, tag string → list capped at 4); `enrich_lead`
+  happy path (persists `meta`, `contact_missing`) + graceful on LLM failure + bad JSON.
+
 ## [0.13.0] — 2026-05-26
 
 ### Phase 12 — Discovery: lead search (4 sources) + import from any file

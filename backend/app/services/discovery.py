@@ -287,22 +287,42 @@ async def discover(
 # ── Import → Lead rows ───────────────────────────────────────────────────────
 
 
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+
+
+def lead_identifier(b: BusinessDTO) -> str:
+    """The unique Lead.phone value for a discovered business.
+
+    The `phone` column is a generic identifier (Phase 3). Prefer a real contact
+    (phone, then email, then website); many sources (Colorado SOS, LinkedIn)
+    carry none, so fall back to a stable synthetic key derived from the business
+    so the lead still imports AND re-imports dedupe instead of duplicating.
+    """
+    real = (b.phone or b.email or b.website or "").strip()
+    if real:
+        return real[:254]
+    return f"discovery:{b.source}:{_slug(b.business_name)}:{_slug(b.city or '')}"[:254]
+
+
 async def import_business_leads(
     items: list[BusinessDTO], db: AsyncSession, *, source_label: str = "discovery"
-) -> dict[str, int]:
-    """Create Lead rows from selected businesses. Upsert by identifier (phone|email);
-    existing leads (by the unique phone column) are skipped, not duplicated."""
-    created = skipped = 0
+) -> dict[str, Any]:
+    """Create Lead rows from selected businesses. Dedupe by identifier (the unique
+    `phone` column); existing leads are skipped, not duplicated. Returns the IDs of
+    newly created leads so the caller can enrich them."""
+    created_ids: list[int] = []
+    skipped = 0
     for b in items:
-        identifier = (b.phone or b.email or "").strip()
-        if not identifier or not b.business_name:
+        if not b.business_name:
             skipped += 1
             continue
+        identifier = lead_identifier(b)
         existing = (await db.execute(select(Lead).where(Lead.phone == identifier))).scalar_one_or_none()
         if existing is not None:
             skipped += 1
             continue
-        db.add(Lead(
+        lead = Lead(
             phone=identifier,
             name=b.business_name,
             status=LeadStatus.NEW,
@@ -314,8 +334,17 @@ async def import_business_leads(
                 "website": b.website,
                 "address": b.address,
                 "email": b.email,
+                "phone": b.phone,
+                "synthetic_identifier": not (b.phone or b.email or b.website),
             },
-        ))
-        created += 1
+        )
+        db.add(lead)
+        await db.flush()
+        created_ids.append(lead.id)
     await db.commit()
-    return {"created": created, "skipped": skipped, "total": created + skipped}
+    return {
+        "created": len(created_ids),
+        "skipped": skipped,
+        "total": len(created_ids) + skipped,
+        "lead_ids": created_ids,
+    }

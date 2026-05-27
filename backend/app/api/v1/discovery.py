@@ -10,11 +10,14 @@ import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.base import get_db
+from app.models import Lead
 from app.services.discovery import VALID_SOURCES, BusinessDTO, discover, import_business_leads
+from app.services.enrichment import enrich_lead
 from app.services.file_import import extract_leads, extract_text
 
 log = logging.getLogger(__name__)
@@ -56,6 +59,13 @@ class ImportResult(BaseModel):
     created: int
     skipped: int
     total: int
+    lead_ids: list[int] = []
+
+
+class EnrichResult(BaseModel):
+    lead_id: int
+    name: str | None = None
+    enrichment: dict
 
 
 def _dto(b: BusinessOut) -> BusinessDTO:
@@ -102,3 +112,12 @@ async def do_import(body: ImportIn, db: AsyncSession = Depends(get_db)) -> Impor
         [_dto(b) for b in body.leads], db, source_label=body.source_label
     )
     return ImportResult(**result)
+
+
+@router.post("/enrich/{lead_id}", response_model=EnrichResult)
+async def enrich(lead_id: int, db: AsyncSession = Depends(get_db)) -> EnrichResult:
+    lead = (await db.execute(select(Lead).where(Lead.id == lead_id))).scalar_one_or_none()
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    enrichment = await enrich_lead(lead, db)
+    return EnrichResult(lead_id=lead.id, name=lead.name, enrichment=enrichment)

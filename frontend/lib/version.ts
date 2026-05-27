@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.13.0";
+export const CURRENT_VERSION = "0.14.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.14.0",
+    date: "2026-05-26",
+    title: "Discovery fix — los leads SÍ se guardan + enriquecimiento con barra de progreso",
+    changes: [
+      "FIX crítico: al darle 'Importar seleccionados' los leads no aparecían en /leads. Causa: el import usaba phone|email como identificador y la mayoría de las fuentes (Colorado SOS, LinkedIn) no traen ni teléfono ni email → se saltaban TODOS silenciosamente. Ahora el identificador cae en cascada phone → email → website → clave sintética estable `discovery:<fuente>:<slug>:<ciudad>`, así cada negocio con nombre se importa Y los re-imports deduplican en vez de duplicar.",
+      "El import ahora devuelve `lead_ids` (los IDs creados) para poder enriquecerlos.",
+      "NUEVO enriquecimiento de leads (`services/enrichment.py` + `POST /api/v1/discovery/enrich/{lead_id}`): por cada lead importado el LLM (Kimi/MiniMax json_mode) infiere tipo de negocio normalizado, partner_type (referral_partner/vendor/prospect/competitor), un resumen, un ángulo de outreach y tags — guardado en `meta.enrichment`. Marca `contact_missing` cuando no hay teléfono/email real. Graceful: si el LLM falla o devuelve JSON inválido, `status=failed` y nunca se pierde el lead.",
+      "Barra de progreso real: tras importar, el frontend enriquece lead por lead mostrando una barra X/N que avanza visiblemente, y al terminar muestra un resumen + link 'Ver en Leads'. Antes no había ninguna señal de procesamiento.",
+      "La tabla de /leads ahora muestra los leads de discovery sin contacto de forma limpia (identificador sintético → '—' con icono de lupa; URLs como linkedin.com/in/… con icono de globo) en vez del slug crudo.",
+      "Tests +9: lead_identifier (cascada + sintético determinista), import sin contacto AHORA crea + deduplica + devuelve lead_ids, _coerce (partner_type inválido→other, tags string→list + cap 4), enrich_lead (happy path persiste meta + contact_missing, graceful ante LLM caído y JSON inválido).",
+    ],
+  },
   {
     version: "0.13.0",
     date: "2026-05-26",
