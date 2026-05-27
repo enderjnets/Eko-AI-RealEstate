@@ -27,6 +27,11 @@ anthropic==0.45.0  # Used with custom base_url for Kimi + MiniMax (anthropic-mes
 google-auth==2.34.0
 requests==2.32.3
 
+# Sign in with Apple — verify Apple's RS256 identity tokens. PyJWKClient fetches
+# Apple's public keys (appleid.apple.com/auth/keys) and the [crypto] extra pulls
+# in `cryptography` for RSA signature verification.
+pyjwt[crypto]==2.9.0
+
 # Misc
 python-dateutil==2.9.0
 langdetect==1.0.9  # bilingual detection (es/en) for inbound messages

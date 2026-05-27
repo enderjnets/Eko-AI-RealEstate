@@ -18,11 +18,13 @@ from app.services.auth import (
     COOKIE_NAME,
     ROLE_ADMIN,
     ROLE_MEMBER,
+    AppleAuthError,
     GoogleAuthError,
     check_password,
     make_token,
-    resolve_google_access,
+    resolve_email_access,
     token_role,
+    verify_apple_id_token,
     verify_google_id_token,
     verify_token,
 )
@@ -78,11 +80,17 @@ class GoogleLoginIn(BaseModel):
     id_token: str
 
 
+class AppleLoginIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id_token: str
+
+
 class MeOut(BaseModel):
     authenticated: bool
     auth_enabled: bool
     role: str = ROLE_MEMBER
     google_signin_enabled: bool = False
+    apple_signin_enabled: bool = False
 
 
 def _set_session_cookie(response: Response, token: str) -> None:
@@ -126,9 +134,34 @@ async def login_google(
     except GoogleAuthError as e:
         log.warning("google_signin_failed reason=%s", e)
         raise HTTPException(status_code=401, detail=str(e)) from e
-    role = await resolve_google_access(email, db)
+    role = await resolve_email_access(email, db)
     if role is None:
         log.warning("google_signin_denied email=%s", email)
+        raise HTTPException(status_code=401, detail="email_not_in_allow_list")
+    _set_session_cookie(response, make_token(email=email, role=role))
+    return {"ok": True, "auth_enabled": True}
+
+
+@router.post("/login/apple")
+async def login_apple(
+    body: AppleLoginIn,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, bool]:
+    """Validate an Apple identity token (from the Sign in with Apple JS popup),
+    resolve the verified email against the access list to a role, and — if
+    allowed — issue the same HMAC session cookie as the Google/password flows."""
+    s = get_settings()
+    if not s.AUTH_ENABLED:
+        return {"ok": True, "auth_enabled": False}
+    try:
+        email = verify_apple_id_token(body.id_token)
+    except AppleAuthError as e:
+        log.warning("apple_signin_failed reason=%s", e)
+        raise HTTPException(status_code=401, detail=str(e)) from e
+    role = await resolve_email_access(email, db)
+    if role is None:
+        log.warning("apple_signin_denied email=%s", email)
         raise HTTPException(status_code=401, detail="email_not_in_allow_list")
     _set_session_cookie(response, make_token(email=email, role=role))
     return {"ok": True, "auth_enabled": True}
@@ -143,15 +176,20 @@ async def logout(response: Response) -> dict[str, bool]:
 @router.get("/me", response_model=MeOut)
 async def me(request: Request) -> MeOut:
     s = get_settings()
-    google_enabled = bool(s.GOOGLE_CLIENT_ID) and bool(
+    # An office's allow-list (env or DB) governs both providers; a social button
+    # only makes sense once a client ID is set AND some allow-list source exists.
+    allow_list_configured = bool(
         s.google_admin_emails_list or s.google_allowed_emails_list or s.GOOGLE_ALLOWED_DOMAIN
     )
+    google_enabled = bool(s.GOOGLE_CLIENT_ID) and allow_list_configured
+    apple_enabled = bool(s.APPLE_CLIENT_ID) and allow_list_configured
     if not s.AUTH_ENABLED:
         return MeOut(
             authenticated=True,
             auth_enabled=False,
             role=ROLE_ADMIN,
             google_signin_enabled=google_enabled,
+            apple_signin_enabled=apple_enabled,
         )
     authed = verify_token(_token_from_request(request))
     return MeOut(
@@ -159,4 +197,5 @@ async def me(request: Request) -> MeOut:
         auth_enabled=True,
         role=current_role(request) if authed else ROLE_MEMBER,
         google_signin_enabled=google_enabled,
+        apple_signin_enabled=apple_enabled,
     )
