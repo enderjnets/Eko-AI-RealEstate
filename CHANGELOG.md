@@ -2,6 +2,20 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.15.1] — 2026-05-27
+
+### Discovery — SIMULATED fallback per category with no real provider
+
+- In real mode (`DISCOVERY_SIMULATED=false`, how the ROG demo runs) only
+  `investor_llc` returned data (Colorado SOS, free); the seller categories +
+  `renter` came back **empty** because they have no free real source (ATTOM is
+  paid, FSBO needs a licensed feed) — so most of Discovery looked broken.
+- **Fix**: when a category has no configured real provider (or it returns
+  nothing), Discovery falls back to that category's curated SIMULATED leads, so
+  all 7 categories stay demoable. Real data (Colorado SOS now, ATTOM once keyed)
+  takes precedence when present.
+- Test: in real mode, `fsbo` with no provider still returns leads.
+
 ## [0.15.0] — 2026-05-27
 
 ### Discovery v2 — search reoriented to real-estate leads (not businesses)

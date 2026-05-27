@@ -376,6 +376,12 @@ async def discover(
     except Exception as exc:  # noqa: BLE001
         log.warning("Discovery real source for %s failed: %s", category, exc)
 
+    # No real provider configured for this category (or it returned nothing) →
+    # fall back to the curated SIMULATED leads so every category stays demoable.
+    # Real data (Colorado SOS, ATTOM when keyed) takes precedence when present.
+    if not results:
+        return _simulated(query, city, category, max_results)
+
     # Dedupe by (name, city).
     seen: set[tuple[str, str]] = set()
     out: list[BusinessDTO] = []

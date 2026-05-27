@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.15.0";
+export const CURRENT_VERSION = "0.15.1";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,16 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.15.1",
+    date: "2026-05-27",
+    title: "Discovery — fallback a SIMULATED por categoría sin proveedor real (demo siempre muestra leads)",
+    changes: [
+      "En modo real (DISCOVERY_SIMULATED=false, como corre el demo del ROG) sólo investor_llc traía datos (Colorado SOS gratis); las categorías de vendedor (fsbo/expired/absentee/preforeclosure/high_equity) y renter salían VACÍAS porque no tienen fuente real gratis (ATTOM es pago, FSBO necesita feed licenciado).",
+      "Fix: si una categoría no tiene proveedor real configurado (o devuelve vacío), Discovery cae a los leads curados SIMULATED de esa categoría — así las 7 categorías siempre muestran leads demoables. Los datos reales (Colorado SOS, y ATTOM cuando se ponga la key) tienen precedencia cuando existen.",
+      "Test: en modo real, fsbo sin proveedor sigue devolviendo leads simulados.",
+    ],
+  },
   {
     version: "0.15.0",
     date: "2026-05-27",
