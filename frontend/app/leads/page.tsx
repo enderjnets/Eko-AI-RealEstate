@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { Nav } from "@/components/ui/Nav";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { AddLeadButton } from "@/components/leads/AddLeadButton";
 import { FilterBar } from "@/components/leads/FilterBar";
 import { HotLeadsPanel } from "@/components/leads/HotLeadsPanel";
 import { LeadsTable } from "@/components/leads/LeadsTable";
@@ -16,9 +17,12 @@ export default function LeadsPage() {
 
         <HotLeadsPanel />
 
-        <Suspense fallback={null}>
-          <FilterBar />
-        </Suspense>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Suspense fallback={null}>
+            <FilterBar />
+          </Suspense>
+          <AddLeadButton />
+        </div>
 
         <Suspense fallback={null}>
           <LeadsTable />

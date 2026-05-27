@@ -88,6 +88,19 @@ export interface LeadPatch {
   human_takeover?: boolean;
 }
 
+export interface LeadCreate {
+  phone: string; // identifier: phone (sms) or email address (email)
+  name?: string;
+  intent?: LeadIntent;
+  zone?: string;
+  budget_min?: number | string;
+  budget_max?: number | string;
+  property_type?: string;
+  urgency?: string;
+  channel?: "sms" | "email";
+  first_message?: string;
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     ...init,
@@ -303,6 +316,8 @@ export const leadsApi = {
     return api<LeadList>(`/v1/leads${qs ? `?${qs}` : ""}`);
   },
   digest: (limit: number = 5) => api<Lead[]>(`/v1/leads/digest?limit=${limit}`),
+  create: (body: LeadCreate) =>
+    api<Lead>(`/v1/leads`, { method: "POST", body: JSON.stringify(body) }),
   get: (id: number) => api<Lead>(`/v1/leads/${id}`),
   patch: (id: number, body: LeadPatch) =>
     api<Lead>(`/v1/leads/${id}`, { method: "PATCH", body: JSON.stringify(body) }),

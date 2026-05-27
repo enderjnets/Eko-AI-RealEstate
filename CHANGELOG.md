@@ -2,6 +2,36 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.17.0] — 2026-05-27
+
+### Add Lead — manual lead creation (demo + operational) with AI kickoff
+
+Adds an **Add Lead** button + modal on `/leads` to create a lead by hand. One
+flow, two uses: (1) the realtor poses as a client to experience the agent
+live, and (2) the realtor enters a real referral/contact into their CRM. Either
+way the lead enters the **same pipeline** as auto-captured ones — scoring, intent
+classification, property matching and follow-ups.
+
+- **First-message kickoff**: an optional "first message from the client" is
+  injected as an INBOUND message and triggers the full AI turn (classify → reply
+  → send through the chosen channel) via the same path a real webhook takes. On
+  save the dashboard lands directly on the lead's conversation with the AI reply
+  already generated.
+- **Channels**: SMS (default) and Email work today; Voice shows as disabled
+  ("coming soon", Phase 13) and WhatsApp is omitted for now. The backend only
+  accepts `sms`/`email` for the kickoff so it can't create an undeliverable
+  conversation.
+- **Backend**: `POST /api/v1/leads` (`LeadCreate`, `extra="forbid"`) with dedupe
+  by identifier (409 on conflict), marks `meta.source="manual"` (NOT a demo flag
+  → first-class lead, not wiped by `seed_demo --reset`) and rescores on create.
+  Reuses `handle_inbound_message` for the first turn; sits behind the same
+  `require_auth` as the rest of the data API.
+- **Frontend**: `AddLeadButton` modal (dashboard violet/noir palette),
+  `leadsApi.create` + `LeadCreate` interface, EN/ES i18n.
+- **Tests +5**: create without message (source=manual + score + no conversation),
+  create with first message (mocked LLM → conversation + inbound/outbound),
+  duplicate 409, missing phone 422, unknown field 422.
+
 ## [0.16.2] — 2026-05-27
 
 ### Fix — Google login 401'd (missing `requests` transport dependency)

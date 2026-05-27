@@ -1,8 +1,10 @@
-"""Tests for the leads API — list, detail, PATCH (Phase 2 dashboard ops)."""
+"""Tests for the leads API — list, detail, PATCH (Phase 2 dashboard ops) +
+manual create (Add Lead)."""
 from __future__ import annotations
 
 import os
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -10,7 +12,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.main import app
-from app.models import Lead, LeadStatus
+from app.models import (
+    Conversation,
+    Lead,
+    Message,
+    MessageDirection,
+    MessageSender,
+)
+from app.services.classifier import IntentEntities, IntentResult
+from app.services.llm import LLMResult
 
 
 @pytest.fixture
@@ -148,3 +158,123 @@ async def test_patch_lead_404_when_missing() -> None:
     async with await _http_client() as client:
         r = await client.patch("/api/v1/leads/999999999", json={"human_takeover": True})
     assert r.status_code == 404
+
+
+# ── POST /leads — manual Add Lead ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_lead_without_first_message(database_url: str) -> None:
+    """A bare manual lead is created, scored, marked source=manual, no conversation."""
+    suffix = uuid.uuid4().hex[:10].upper()
+    phone = f"+34666NEW{suffix}"
+    try:
+        async with await _http_client() as client:
+            r = await client.post(
+                "/api/v1/leads",
+                json={"phone": phone, "name": "Walk-in Referral", "intent": "buy", "zone": "Brickell"},
+            )
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["phone"] == phone
+        assert body["intent"] == "buy"
+        assert body["zone"] == "Brickell"
+
+        engine = create_async_engine(database_url, echo=False, future=True)
+        Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+        async with Session() as s:
+            lead = (await s.execute(select(Lead).where(Lead.phone == phone))).scalar_one()
+            assert lead.meta.get("source") == "manual"
+            assert "demo" not in lead.meta  # first-class lead, not a demo throwaway
+            assert lead.score > 0  # intent + zone produce a non-zero score
+            convs = (
+                await s.execute(select(Conversation).where(Conversation.lead_id == lead.id))
+            ).scalars().all()
+            assert convs == []  # no first_message → no conversation
+        await engine.dispose()
+    finally:
+        await _delete_lead(database_url, phone)
+
+
+@pytest.mark.asyncio
+async def test_create_lead_with_first_message_kicks_off_ai(database_url: str) -> None:
+    """A first_message is injected as inbound → AI classifies + replies (LLM mocked)."""
+    suffix = uuid.uuid4().hex[:10].upper()
+    phone = f"+34666KICK{suffix}"
+
+    fake_intent = IntentResult(
+        intent="rent",  # type: ignore[arg-type]
+        confidence=0.95,
+        entities=IntentEntities(zone="Wynwood", budget_max=2500),
+    )
+    fake_reply = LLMResult(
+        text="¡Hola! Tengo opciones en Wynwood. ¿Cuándo te gustaría visitarlas?",
+        provider="kimi",
+        model="kimi-for-coding",
+        input_tokens=80,
+        output_tokens=30,
+    )
+    try:
+        with patch("app.services.conversation.classify_intent", AsyncMock(return_value=fake_intent)):
+            with patch("app.services.conversation.generate_reply", AsyncMock(return_value=fake_reply)):
+                async with await _http_client() as client:
+                    r = await client.post(
+                        "/api/v1/leads",
+                        json={
+                            "phone": phone,
+                            "name": "Demo Realtor",
+                            "channel": "sms",
+                            "first_message": "Hola, busco algo en alquiler en Wynwood",
+                        },
+                    )
+        assert r.status_code == 201, r.text
+        lead_id = r.json()["id"]
+
+        engine = create_async_engine(database_url, echo=False, future=True)
+        Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+        async with Session() as s:
+            conv = (
+                await s.execute(select(Conversation).where(Conversation.lead_id == lead_id))
+            ).scalar_one()
+            assert conv.channel == "sms"
+            msgs = (
+                await s.execute(
+                    select(Message).where(Message.conversation_id == conv.id).order_by(Message.created_at)
+                )
+            ).scalars().all()
+            assert len(msgs) == 2
+            assert msgs[0].direction == MessageDirection.INBOUND
+            assert msgs[0].sender == MessageSender.LEAD
+            assert msgs[1].direction == MessageDirection.OUTBOUND
+            assert msgs[1].sender == MessageSender.AGENT
+        await engine.dispose()
+    finally:
+        await _delete_lead(database_url, phone)
+
+
+@pytest.mark.asyncio
+async def test_create_lead_duplicate_contact_409(database_url: str) -> None:
+    suffix = uuid.uuid4().hex[:10].upper()
+    phone = f"+34666DUP{suffix}"
+    await _insert_lead(database_url, phone)
+    try:
+        async with await _http_client() as client:
+            r = await client.post("/api/v1/leads", json={"phone": phone})
+        assert r.status_code == 409, r.text
+    finally:
+        await _delete_lead(database_url, phone)
+
+
+@pytest.mark.asyncio
+async def test_create_lead_missing_phone_422() -> None:
+    async with await _http_client() as client:
+        r = await client.post("/api/v1/leads", json={"name": "No contact"})
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_lead_unknown_field_422() -> None:
+    """`extra='forbid'` on LeadCreate rejects unknown fields."""
+    async with await _http_client() as client:
+        r = await client.post("/api/v1/leads", json={"phone": "+34600000000", "bogus": "x"})
+    assert r.status_code == 422

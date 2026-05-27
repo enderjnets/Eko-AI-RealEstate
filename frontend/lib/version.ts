@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.16.2";
+export const CURRENT_VERSION = "0.17.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.17.0",
+    date: "2026-05-27",
+    title: "Add Lead — alta manual de leads (demo + uso operativo) con arranque de IA",
+    changes: [
+      "Nuevo botón 'Add Lead' en /leads + modal para crear un lead a mano. Dos usos con el mismo flujo: (1) el realtor se hace pasar por un cliente para experimentar al agente, y (2) el realtor agrega un lead real (referido/contacto) a su CRM. En ambos casos el lead entra al MISMO pipeline que los capturados automáticamente — scoring, clasificación de intent, matching de propiedades y follow-ups.",
+      "Campo opcional 'primer mensaje del cliente': si se llena, se inyecta como mensaje INBOUND y dispara el turno completo de la IA (clasifica + responde + envía por el canal elegido) por el mismo camino que un webhook real. Al guardar, el dashboard cae directo en la conversación del lead con la respuesta de la IA ya generada.",
+      "Canales del modal: SMS (default) y Email funcionan hoy; Voz aparece deshabilitada ('próximamente', Phase 13) y WhatsApp queda fuera por ahora (se re-agrega cuando se habilite). El backend solo acepta sms/email para el arranque, así no se crea una conversación que no se pueda entregar.",
+      "Backend: POST /api/v1/leads (schema LeadCreate, extra='forbid') con dedupe por identificador (409 si ya existe), marca meta.source='manual' (NO demo → es un lead de primera clase, no borrable por seed_demo --reset) y rescorea al crear. Reutiliza handle_inbound_message para el primer turno; queda detrás del mismo require_auth que el resto del data API.",
+      "Frontend: AddLeadButton (modal con paleta violeta/noir del dashboard), leadsApi.create + interface LeadCreate, i18n EN/ES.",
+      "Tests +5: create sin mensaje (source=manual + score + sin conversación), create con primer mensaje (LLM mockeado → conversación + inbound/outbound), duplicado 409, falta phone 422, campo desconocido 422.",
+    ],
+  },
   {
     version: "0.16.2",
     date: "2026-05-27",
