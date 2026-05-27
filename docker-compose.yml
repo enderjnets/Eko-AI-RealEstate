@@ -74,6 +74,7 @@ services:
       TWILIO_STATUS_CALLBACK_URL: ${TWILIO_STATUS_CALLBACK_URL:-}
       # Discovery / lead search (Phase 12) — SIMULATED unless keys are set.
       DISCOVERY_SIMULATED: ${DISCOVERY_SIMULATED:-true}
+      ATTOM_API_KEY: ${ATTOM_API_KEY:-}
       YELP_API_KEY: ${YELP_API_KEY:-}
       OUTSCRAPER_API_KEY: ${OUTSCRAPER_API_KEY:-}
       SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}

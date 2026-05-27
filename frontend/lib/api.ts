@@ -353,7 +353,17 @@ export const analyticsApi = {
   get: () => api<Analytics>(`/v1/analytics`),
 };
 
-export type DiscoverySource = "google_maps" | "yelp" | "linkedin" | "colorado_sos";
+export type LeadCategory =
+  | "fsbo"
+  | "expired"
+  | "absentee"
+  | "preforeclosure"
+  | "high_equity"
+  | "investor_llc"
+  | "renter";
+
+export const SELLER_CATEGORIES: LeadCategory[] = ["fsbo", "expired", "absentee", "preforeclosure", "high_equity"];
+export const BUYER_CATEGORIES: LeadCategory[] = ["investor_llc", "renter"];
 
 export interface BusinessLead {
   business_name: string;
@@ -365,14 +375,18 @@ export interface BusinessLead {
   address: string | null;
   city: string | null;
   state: string | null;
+  motivation: string | null;
+  timeline: string | null;
+  property_type: string | null;
+  est_value: string | null;
 }
 
 export interface DiscoverySearchIn {
+  category: LeadCategory;
   query: string;
   city: string;
   state: string;
   max_results: number;
-  sources: DiscoverySource[];
 }
 
 export interface ImportResult {

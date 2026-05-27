@@ -24,15 +24,34 @@ from app.models import Lead, LeadStatus
 
 log = logging.getLogger(__name__)
 
+# Legacy business sources (still used under the hood — e.g. Colorado SOS powers
+# the investor-LLC category). The product-facing surface is the lead categories.
 VALID_SOURCES = ("google_maps", "yelp", "linkedin", "colorado_sos")
+
+# Real-estate lead categories — how realtors actually prospect (see
+# docs/discovery-realestate-research.md). SELLER categories carry listing intent;
+# BUYER categories carry purchase/rent intent.
+LEAD_CATEGORIES = (
+    "fsbo",            # For Sale By Owner — seller
+    "expired",         # Expired listing — seller
+    "absentee",        # Absentee / out-of-state owner — seller
+    "preforeclosure",  # Pre-foreclosure / distressed — seller
+    "high_equity",     # High-equity / likely-to-sell — seller
+    "investor_llc",    # Real-estate investor LLC — buyer (real via Colorado SOS)
+    "renter",          # Renter / relocator — buyer
+)
+SELLER_CATEGORIES = ("fsbo", "expired", "absentee", "preforeclosure", "high_equity")
+
 _COLORADO_SODA_API = "https://data.colorado.gov/resource/4ykn-tg5h.json"
 
 
 @dataclass
 class BusinessDTO:
+    """A discovered lead — an owner/consumer (real-estate categories) or a business."""
+
     business_name: str
-    source: str
-    category: str | None = None
+    source: str  # the lead category (fsbo/expired/...) or a legacy business source
+    category: str | None = None  # human label
     description: str | None = None
     email: str | None = None
     phone: str | None = None
@@ -41,6 +60,10 @@ class BusinessDTO:
     city: str | None = None
     state: str | None = None
     zip_code: str | None = None
+    motivation: str | None = None       # why they'd transact ("listing expired 2 wks ago")
+    timeline: str | None = None         # immediate | 3-6mo | exploring
+    property_type: str | None = None    # house | condo | townhome | commercial | land
+    est_value: str | None = None        # estimated property value, when known
     raw: dict[str, Any] = field(default_factory=dict)
 
     def to_public(self) -> dict[str, Any]:
@@ -54,6 +77,10 @@ class BusinessDTO:
             "address": self.address,
             "city": self.city,
             "state": self.state,
+            "motivation": self.motivation,
+            "timeline": self.timeline,
+            "property_type": self.property_type,
+            "est_value": self.est_value,
         }
 
 
@@ -70,51 +97,96 @@ def sanitize_email(raw: str | None) -> str | None:
     return cleaned
 
 
-# ── Curated SIMULATED set (Denver/CO businesses a realtor would prospect) ──────
-_SIMULATED: list[BusinessDTO] = [
-    BusinessDTO("Mile High Mortgage Group", "google_maps", category="Mortgage broker",
-                phone="+13035550111", email="info@milehighmortgage.com", website="https://milehighmortgage.com",
-                address="1600 Broadway, Denver, CO 80202", city="Denver", state="CO"),
-    BusinessDTO("Rocky Mountain Home Inspections", "google_maps", category="Home inspector",
-                phone="+13035550122", email="hello@rmhinspections.com", website="https://rmhinspections.com",
-                address="2nd Ave, Denver, CO 80206", city="Denver", state="CO"),
-    BusinessDTO("Front Range Title Co.", "google_maps", category="Title company",
-                phone="+13035550133", website="https://frontrangetitle.com",
-                address="999 18th St, Denver, CO 80202", city="Denver", state="CO"),
-    BusinessDTO("Summit Moving & Storage", "yelp", category="Movers",
-                phone="+13035550144", website="https://summitmoving.example", address="Aurora, CO", city="Aurora", state="CO"),
-    BusinessDTO("Bloom Interior Staging", "yelp", category="Home staging",
-                phone="+13035550155", email="studio@bloomstaging.com", website="https://bloomstaging.example",
-                address="Boulder, CO", city="Boulder", state="CO"),
-    BusinessDTO("Aspen Property Management LLC", "yelp", category="Property management",
-                phone="+13035550166", email="leasing@aspenpm.example", city="Denver", state="CO"),
-    BusinessDTO("Jordan Reyes — Realtor", "linkedin", category="Real estate agent",
-                email="jordan.reyes@kw.example", website="https://linkedin.com/in/jordanreyes", city="Denver", state="CO"),
-    BusinessDTO("Priya Nair — Commercial Broker", "linkedin", category="Commercial real estate",
-                email="priya.nair@cbre.example", website="https://linkedin.com/in/priyanair", city="Denver", state="CO"),
-    BusinessDTO("Cherry Creek Renovations LLC", "colorado_sos", category="Limited Liability Company",
-                description="Colorado registered LLC. Status: Good Standing.",
-                address="3000 E 1st Ave", city="Denver", state="CO", zip_code="80206"),
-    BusinessDTO("Highlands Realty Partners LLC", "colorado_sos", category="Limited Liability Company",
-                description="Colorado registered LLC. Status: Good Standing.",
-                address="32nd Ave", city="Denver", state="CO", zip_code="80211"),
-    BusinessDTO("Mountain View Builders Inc", "colorado_sos", category="Corporation",
-                description="Colorado registered Corporation. Status: Good Standing.",
-                city="Littleton", state="CO", zip_code="80120"),
+# ── Curated SIMULATED real-estate leads (Denver-metro CO, matches the demo) ────
+# Each lead is an owner/consumer with a real-estate motivation + timeline, so the
+# whole search → import → enrich → /leads flow works with zero API keys.
+_SIMULATED_LEADS: list[BusinessDTO] = [
+    # FSBO — For Sale By Owner (sellers listing without an agent)
+    BusinessDTO("Daniel & Rosa Vega", "fsbo", category="For Sale By Owner", phone="+13035552201",
+                address="2841 Stuart St", city="Denver", state="CO", zip_code="80212",
+                motivation="Listed FSBO 18 days ago, no offers yet", timeline="immediate",
+                property_type="house", est_value="$685,000"),
+    BusinessDTO("Marcus Bell", "fsbo", category="For Sale By Owner", phone="+13035552202",
+                address="1190 S Galena St", city="Aurora", state="CO", zip_code="80247",
+                motivation="FSBO listing, relocating for work in 60 days", timeline="immediate",
+                property_type="townhome", est_value="$420,000"),
+    BusinessDTO("Karen Okafor", "fsbo", category="For Sale By Owner", phone="+13035552203",
+                address="745 Pearl St", city="Boulder", state="CO", zip_code="80302",
+                motivation="Selling by owner, frustrated with showings", timeline="3-6mo",
+                property_type="condo", est_value="$540,000"),
+    # Expired listings (failed to sell with a prior agent — highest ROI)
+    BusinessDTO("Thomas Reilly", "expired", category="Expired listing", phone="+13035552211",
+                address="5520 W 29th Ave", city="Denver", state="CO", zip_code="80212",
+                motivation="Listing expired 2 weeks ago, was on market 142 days", timeline="immediate",
+                property_type="house", est_value="$760,000"),
+    BusinessDTO("Angela Pruitt", "expired", category="Expired listing", phone="+13035552212",
+                address="3033 E Arizona Ave", city="Denver", state="CO", zip_code="80210",
+                motivation="Expired after a price-reduction, still motivated", timeline="immediate",
+                property_type="house", est_value="$612,000"),
+    BusinessDTO("Greg Hammond", "expired", category="Expired listing", phone="+13035552213",
+                address="660 S Alton Way", city="Aurora", state="CO", zip_code="80012",
+                motivation="Listing expired, agent contract lapsed", timeline="3-6mo",
+                property_type="condo", est_value="$315,000"),
+    # Absentee / out-of-state owners (own where they don't live → investment exits)
+    BusinessDTO("Lillian Brooks", "absentee", category="Absentee owner",
+                address="1424 Newport St (owner mails to Phoenix, AZ)", city="Denver", state="CO", zip_code="80220",
+                motivation="Out-of-state owner (mailing addr in AZ), owns 11 yrs", timeline="exploring",
+                property_type="house", est_value="$575,000"),
+    BusinessDTO("Raymond Cho", "absentee", category="Absentee owner",
+                address="9803 E Peakview Ave (owner in Seattle, WA)", city="Aurora", state="CO", zip_code="80111",
+                motivation="Absentee landlord, mailing addr out of state", timeline="3-6mo",
+                property_type="townhome", est_value="$455,000"),
+    # Pre-foreclosure / distressed (motivated/forced sale)
+    BusinessDTO("Dewayne Carter", "preforeclosure", category="Pre-foreclosure",
+                address="4715 Perry St", city="Denver", state="CO", zip_code="80212",
+                motivation="Notice of default recorded last month", timeline="immediate",
+                property_type="house", est_value="$498,000"),
+    BusinessDTO("Sandra Mejía", "preforeclosure", category="Pre-foreclosure",
+                address="2208 Florence St", city="Aurora", state="CO", zip_code="80010",
+                motivation="Lis pendens filed, behind on payments", timeline="immediate",
+                property_type="house", est_value="$372,000"),
+    # High-equity / likely-to-sell (long tenure + equity → predictive seller)
+    BusinessDTO("Patricia Nolan", "high_equity", category="High-equity owner",
+                address="1280 Josephine St", city="Denver", state="CO", zip_code="80206",
+                motivation="Owns 22 yrs, ~85% equity, empty-nester", timeline="exploring",
+                property_type="house", est_value="$890,000"),
+    BusinessDTO("Frank & Doris Whitaker", "high_equity", category="High-equity owner",
+                address="3550 S Harlan St", city="Littleton", state="CO", zip_code="80123",
+                motivation="Mortgage nearly paid, likely downsizing", timeline="3-6mo",
+                property_type="house", est_value="$640,000"),
+    # Investor LLCs (buyers — real via Colorado SOS in live mode)
+    BusinessDTO("Cherry Creek Renovations LLC", "investor_llc", category="Real-estate investor LLC",
+                description="Colorado registered LLC, real-estate activity", address="3000 E 1st Ave",
+                city="Denver", state="CO", zip_code="80206",
+                motivation="Active CO real-estate LLC — likely buyer/flipper", timeline="immediate",
+                property_type="investment"),
+    BusinessDTO("Highlands Capital Holdings LLC", "investor_llc", category="Real-estate investor LLC",
+                description="Colorado registered LLC, real-estate activity", address="3578 W 32nd Ave",
+                city="Denver", state="CO", zip_code="80211",
+                motivation="Buy-and-hold investor LLC", timeline="3-6mo", property_type="investment"),
+    # Renters / relocators (buyers — lease ending, may convert to purchase)
+    BusinessDTO("Emily Tran", "renter", category="Renter / relocator", phone="+13035552251",
+                email="emily.tran@example.net", address="Capitol Hill", city="Denver", state="CO",
+                motivation="Lease ends in 75 days, asking about buying", timeline="3-6mo",
+                property_type="condo", est_value="~$350,000 budget"),
+    BusinessDTO("Jaylen Foster", "renter", category="Renter / relocator", phone="+13035552252",
+                address="Stapleton / Central Park", city="Denver", state="CO",
+                motivation="Relocating to Denver, pre-approved buyer", timeline="immediate",
+                property_type="house", est_value="~$525,000 budget"),
 ]
 
 
-def _simulated(query: str, city: str | None, sources: list[str], max_results: int) -> list[BusinessDTO]:
+def _simulated(query: str, city: str | None, category: str, max_results: int) -> list[BusinessDTO]:
     q = (query or "").lower()
-    items = [b for b in _SIMULATED if b.source in sources]
+    items = [b for b in _SIMULATED_LEADS if b.source == category]
     if city:
         cl = city.lower()
-        # keep matches for the city, but don't over-filter the demo to empty
         city_matches = [b for b in items if (b.city or "").lower() == cl]
-        if city_matches:
+        if city_matches:  # don't over-filter the demo to empty
             items = city_matches
-    if q:
-        ql = [b for b in items if q in (b.category or "").lower() or q in b.business_name.lower()]
+    if q:  # optional free-text refine over name/motivation/property_type
+        ql = [b for b in items if q in (b.business_name + " " + (b.motivation or "") + " "
+                                        + (b.property_type or "")).lower()]
         if ql:
             items = ql
     return items[:max_results]
@@ -240,37 +312,69 @@ async def _linkedin(query: str, city: str, state: str | None, max_results: int) 
     return out
 
 
+async def _attom_owners(category: str, city: str, state: str, max_results: int) -> list[BusinessDTO]:
+    """Property/owner-record categories (absentee / preforeclosure / high_equity)
+    via the ATTOM Property Data API. Key-gated; returns [] without ATTOM_API_KEY
+    (SIMULATED data covers the demo). ATTOM exposes owner mailing address (→ absentee),
+    pre-foreclosure filings, and equity — the public-records signals realtors farm."""
+    s = get_settings()
+    if not s.ATTOM_API_KEY:
+        return []
+    # ATTOM REST (apikey header). The exact endpoint/filters differ per category;
+    # this is the integration point — wire the specific property endpoint per plan.
+    async with httpx.AsyncClient(timeout=45.0, headers={"apikey": s.ATTOM_API_KEY, "accept": "application/json"}) as c:
+        resp = await c.get(
+            "https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/address",
+            params={"cityname": city, "state": state, "pagesize": min(max_results, 50)},
+        )
+        resp.raise_for_status()
+        rows = (resp.json() or {}).get("property", []) or []
+    out: list[BusinessDTO] = []
+    for p in rows:
+        addr = (p.get("address") or {})
+        line = addr.get("line1") or addr.get("oneLine")
+        if not line:
+            continue
+        out.append(BusinessDTO(
+            business_name=(p.get("owner") or {}).get("owner1", {}).get("lastname") or line,
+            source=category, category={"absentee": "Absentee owner", "preforeclosure": "Pre-foreclosure",
+                                       "high_equity": "High-equity owner"}.get(category, category),
+            address=line, city=addr.get("locality") or city, state=addr.get("countrySubd") or state,
+            zip_code=addr.get("postal1"), property_type=(p.get("summary") or {}).get("proptype"), raw=p,
+        ))
+    return out
+
+
 # ── Orchestration ────────────────────────────────────────────────────────────
 
 
 async def discover(
-    *, query: str, city: str, state: str = "CO", max_results: int = 50, sources: list[str]
+    *, query: str = "", city: str, state: str = "CO", max_results: int = 50, category: str,
 ) -> list[BusinessDTO]:
-    """Search the requested sources and return deduped business leads."""
-    sources = [s for s in (sources or []) if s in VALID_SOURCES] or ["google_maps"]
+    """Find real-estate leads for one category. SIMULATED-first; real per-category
+    when its key is set (Colorado SOS is free for investor LLCs; ATTOM for owner
+    records). Categories without a wired free feed return [] in real mode."""
+    if category not in LEAD_CATEGORIES:
+        category = "fsbo"
     s = get_settings()
 
     if s.DISCOVERY_SIMULATED:
-        return _simulated(query, city, sources, max_results)
+        return _simulated(query, city, category, max_results)
 
     results: list[BusinessDTO] = []
-    if "colorado_sos" in sources:
-        try:
-            results += await _colorado_sos(query, city, max_results)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Colorado SOS failed: %s", exc)
-    if "yelp" in sources:
-        try:
-            results += await _yelp(query, city, state, max_results)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Yelp failed: %s", exc)
-    if "google_maps" in sources:
-        try:
-            results += await _google_maps(query, city, state, max_results)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Google Maps failed: %s", exc)
-    if "linkedin" in sources:
-        results += await _linkedin(query, city, state, max_results)
+    try:
+        if category == "investor_llc":
+            for b in await _colorado_sos(query or "realty", city, max_results):
+                b.source, b.category = "investor_llc", "Real-estate investor LLC"
+                b.motivation = b.motivation or "Active CO real-estate LLC — likely buyer/investor"
+                results.append(b)
+        elif category in ("absentee", "preforeclosure", "high_equity"):
+            results += await _attom_owners(category, city, state, max_results)
+        else:
+            # fsbo / expired / renter — need a licensed/portal feed (not free).
+            log.info("Discovery category %s has no free real feed; configure a provider.", category)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Discovery real source for %s failed: %s", category, exc)
 
     # Dedupe by (name, city).
     seen: set[tuple[str, str]] = set()
@@ -327,14 +431,19 @@ async def import_business_leads(
             name=b.business_name,
             status=LeadStatus.NEW,
             zone=b.city,
+            property_type=b.property_type,
             meta={
                 "source": b.source or source_label,
                 "discovery": True,
                 "category": b.category,
+                "lead_category": b.source if b.source in LEAD_CATEGORIES else None,
                 "website": b.website,
                 "address": b.address,
                 "email": b.email,
                 "phone": b.phone,
+                "motivation": b.motivation,
+                "timeline": b.timeline,
+                "est_value": b.est_value,
                 "synthetic_identifier": not (b.phone or b.email or b.website),
             },
         )

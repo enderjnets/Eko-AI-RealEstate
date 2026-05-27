@@ -26,28 +26,37 @@ def database_url() -> str:
     return url
 
 
-# ── SIMULATED search (pure) ───────────────────────────────────────────────
+# ── SIMULATED search by real-estate category (pure) ───────────────────────
 
 
 @pytest.mark.asyncio
-async def test_simulated_search_returns_businesses() -> None:
-    res = await discover(query="mortgage", city="Denver", sources=["google_maps", "yelp"])
+async def test_simulated_category_returns_realestate_leads() -> None:
+    res = await discover(category="fsbo", city="Denver")
     assert len(res) >= 1
     assert all(isinstance(b, BusinessDTO) for b in res)
-    assert all(b.source in ("google_maps", "yelp") for b in res)
+    assert all(b.source == "fsbo" for b in res)        # category tagged on source
+    assert all(b.motivation for b in res)              # real-estate motivation present
 
 
 @pytest.mark.asyncio
-async def test_simulated_source_filtering() -> None:
-    only_sos = await discover(query="LLC", city="Denver", sources=["colorado_sos"])
-    assert only_sos
-    assert all(b.source == "colorado_sos" for b in only_sos)
+async def test_simulated_category_filtering() -> None:
+    expired = await discover(category="expired", city="Denver")
+    assert expired and all(b.source == "expired" for b in expired)
+    # a different category yields different leads
+    fsbo = await discover(category="fsbo", city="Denver")
+    assert {b.business_name for b in expired}.isdisjoint({b.business_name for b in fsbo})
+
+
+@pytest.mark.asyncio
+async def test_simulated_unknown_category_defaults() -> None:
+    res = await discover(category="not_a_category", city="Denver")
+    assert all(b.source == "fsbo" for b in res)        # defaults to fsbo
 
 
 @pytest.mark.asyncio
 async def test_simulated_max_results_cap() -> None:
-    res = await discover(query="", city="", max_results=2, sources=list(("google_maps", "yelp", "linkedin", "colorado_sos")))
-    assert len(res) <= 2
+    res = await discover(category="fsbo", city="", max_results=1)
+    assert len(res) <= 1
 
 
 def test_sanitize_email() -> None:
