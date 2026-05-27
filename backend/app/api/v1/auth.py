@@ -7,7 +7,14 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict
 
 from app.config import get_settings
-from app.services.auth import COOKIE_NAME, check_password, make_token, verify_token
+from app.services.auth import (
+    COOKIE_NAME,
+    GoogleAuthError,
+    check_password,
+    make_token,
+    verify_google_id_token,
+    verify_token,
+)
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -36,9 +43,15 @@ class LoginIn(BaseModel):
     password: str
 
 
+class GoogleLoginIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id_token: str
+
+
 class MeOut(BaseModel):
     authenticated: bool
     auth_enabled: bool
+    google_signin_enabled: bool = False
 
 
 @router.post("/login")
@@ -61,6 +74,32 @@ async def login(body: LoginIn, response: Response) -> dict[str, bool]:
     return {"ok": True, "auth_enabled": True}
 
 
+@router.post("/login/google")
+async def login_google(body: GoogleLoginIn, response: Response) -> dict[str, bool]:
+    """Validate a Google-issued ID token (from @react-oauth/google client) and,
+    if the verified email is in the office allow list, issue the same HMAC
+    session cookie as the password flow."""
+    s = get_settings()
+    if not s.AUTH_ENABLED:
+        return {"ok": True, "auth_enabled": False}
+    try:
+        verify_google_id_token(body.id_token)
+    except GoogleAuthError as e:
+        log.warning("google_signin_failed reason=%s", e)
+        raise HTTPException(status_code=401, detail=str(e)) from e
+    token = make_token()
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=s.is_production,
+        max_age=s.AUTH_TTL_HOURS * 3600,
+        path="/",
+    )
+    return {"ok": True, "auth_enabled": True}
+
+
 @router.post("/logout")
 async def logout(response: Response) -> dict[str, bool]:
     response.delete_cookie(key=COOKIE_NAME, path="/")
@@ -70,6 +109,13 @@ async def logout(response: Response) -> dict[str, bool]:
 @router.get("/me", response_model=MeOut)
 async def me(request: Request) -> MeOut:
     s = get_settings()
+    google_enabled = bool(s.GOOGLE_CLIENT_ID) and (
+        bool(s.google_allowed_emails_list) or bool(s.GOOGLE_ALLOWED_DOMAIN)
+    )
     if not s.AUTH_ENABLED:
-        return MeOut(authenticated=True, auth_enabled=False)
-    return MeOut(authenticated=verify_token(_token_from_request(request)), auth_enabled=True)
+        return MeOut(authenticated=True, auth_enabled=False, google_signin_enabled=google_enabled)
+    return MeOut(
+        authenticated=verify_token(_token_from_request(request)),
+        auth_enabled=True,
+        google_signin_enabled=google_enabled,
+    )

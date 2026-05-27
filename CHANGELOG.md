@@ -2,6 +2,47 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.13.1] — 2026-05-26
+
+### Phase 11.5 — Google Sign In on `/login` (coexists with password)
+
+Lets office staff log in with their Google account instead of (or alongside)
+the shared dashboard password. Coexists with the existing HMAC-cookie password
+flow — no new identity table, the session model is unchanged.
+
+#### Backend
+
+- **`POST /api/v1/auth/login/google`** — validates a Google-issued ID token
+  (verified against Google's public keys via the `google-auth` library and
+  matched to `GOOGLE_CLIENT_ID`). Enforces `email_verified=true`, then checks
+  the verified email against the office allow list. On success issues the same
+  HMAC-signed `eko_auth` cookie as the password flow.
+- **Allow list** — union of `GOOGLE_ALLOWED_EMAILS` (comma-separated, exact
+  match, case-insensitive) and `GOOGLE_ALLOWED_DOMAIN` (matches any address
+  `@that-domain`). **Both empty → Google login DENIED** (safe default: we never
+  open a dashboard to anyone with a Google account by accident).
+- **`GET /api/v1/auth/me`** now returns `google_signin_enabled: bool` so the
+  frontend can decide whether to render the button.
+- **Dep**: `google-auth==2.34.0`.
+
+#### Frontend
+
+- **`/login`** — under the password field, shows a **"Sign in with Google"**
+  button when `NEXT_PUBLIC_GOOGLE_CLIENT_ID` is set AND the backend reports
+  `google_signin_enabled=true`. Uses `@react-oauth/google` (~12 KB). Coexists
+  with the password — does not replace it.
+- **`lib/api.ts`** — new `authApi.loginGoogle(idToken)` method.
+- **i18n** — new keys `auth.googleSignIn` / `auth.googleSigningIn` /
+  `auth.googleDenied` / `auth.googleFailed` / `auth.or` in EN + ES.
+
+#### Config & docs
+
+- **`.env.example`** — `GOOGLE_CLIENT_ID`, `GOOGLE_ALLOWED_EMAILS`,
+  `GOOGLE_ALLOWED_DOMAIN`, `NEXT_PUBLIC_GOOGLE_CLIENT_ID`.
+- **`docs/setup-google-signin.md`** — Google Cloud Console walkthrough,
+  origins to authorize, allow-list semantics, troubleshooting table, security
+  notes (rotation, audit trail, password coexistence).
+
 ## [0.13.0] — 2026-05-26
 
 ### Phase 12 — Discovery: lead search (4 sources) + import from any file

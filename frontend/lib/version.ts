@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.13.0";
+export const CURRENT_VERSION = "0.13.1";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.13.1",
+    date: "2026-05-26",
+    title: "Phase 11.5 — Google Sign In en /login (coexiste con password)",
+    changes: [
+      "Backend: nuevo endpoint POST /api/v1/auth/login/google que valida el ID token de Google (google-auth library) contra GOOGLE_CLIENT_ID, verifica email_verified=true, y checa el email contra GOOGLE_ALLOWED_EMAILS (comma-separated) OR GOOGLE_ALLOWED_DOMAIN. Si pasa, emite la MISMA cookie HMAC que el flujo de password — sin nuevo modelo de usuario.",
+      "Safe default: allow list vacía → Google login DENIED. No abrimos accidentalmente un dashboard a internet entero.",
+      "Frontend: /login muestra botón 'Sign in with Google' debajo del password cuando GOOGLE_CLIENT_ID está configurado + allow list no vacía + NEXT_PUBLIC_GOOGLE_CLIENT_ID seteado. Usa @react-oauth/google (~12KB). Coexiste con el password — no lo reemplaza.",
+      "GET /api/v1/auth/me ahora devuelve google_signin_enabled: bool para que el frontend sepa si mostrar el botón.",
+      "Config: GOOGLE_CLIENT_ID, GOOGLE_ALLOWED_EMAILS, GOOGLE_ALLOWED_DOMAIN, NEXT_PUBLIC_GOOGLE_CLIENT_ID en .env.example. Documentación step-by-step en docs/setup-google-signin.md (incluye Google Cloud Console setup + troubleshooting).",
+      "i18n: nuevas claves auth.googleSignIn / auth.googleSigningIn / auth.googleDenied / auth.googleFailed / auth.or en ambos idiomas.",
+    ],
+  },
   {
     version: "0.13.0",
     date: "2026-05-26",
