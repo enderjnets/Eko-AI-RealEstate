@@ -17,7 +17,7 @@ from app.config import get_settings
 from app.db.base import get_db
 from app.models import Lead
 from app.services.discovery import VALID_SOURCES, BusinessDTO, discover, import_business_leads
-from app.services.enrichment import enrich_lead
+from app.services.enrichment import enrich_lead, enrich_pending_leads
 from app.services.file_import import extract_leads, extract_text
 
 log = logging.getLogger(__name__)
@@ -121,3 +121,11 @@ async def enrich(lead_id: int, db: AsyncSession = Depends(get_db)) -> EnrichResu
         raise HTTPException(status_code=404, detail="Lead not found")
     enrichment = await enrich_lead(lead, db)
     return EnrichResult(lead_id=lead.id, name=lead.name, enrichment=enrichment)
+
+
+@router.post("/enrich-pending")
+async def enrich_pending(
+    limit: int = 25, db: AsyncSession = Depends(get_db)
+) -> dict[str, int]:
+    """Enrich any discovery lead still unclassified (score 0) — backfill / manual sweep."""
+    return await enrich_pending_leads(db, limit=max(1, min(100, limit)))

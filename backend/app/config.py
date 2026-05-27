@@ -127,6 +127,12 @@ class Settings(BaseSettings):
     FOLLOWUPS_ENABLED: bool = True
     FOLLOWUPS_INTERVAL_SECONDS: int = 300
 
+    # In-process background worker that enriches discovery leads server-side, so
+    # enrichment never depends on the browser staying open. Backfills leads that
+    # predate classification or were skipped by dedupe on re-import.
+    ENRICHMENT_ENABLED: bool = True
+    ENRICHMENT_INTERVAL_SECONDS: int = 120
+
     # ─── CORS ───────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3004"
 

@@ -2,6 +2,28 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.14.3] — 2026-05-27
+
+### Discovery — server-side enrichment (no longer depends on the browser)
+
+Leads passed through the flow but stayed unenriched. **Root cause**: enrichment
+only fired from the **frontend** loop over **newly created** leads — so leads
+imported before classification (v0.14.2), skipped by dedupe on re-import, or left
+when the user closed the tab, never got enriched (`score 0`, no intent).
+
+- **Fix**: a server-side enrichment worker. `enrich_pending_leads()` finds
+  discovery leads still unclassified (`score == 0`) and enriches them; it runs as
+  an in-process loop (`ENRICHMENT_ENABLED`, every 120s, mirroring the follow-ups
+  worker) plus a manual `POST /api/v1/discovery/enrich-pending`. Enrichment no
+  longer depends on the browser — every discovery lead ends up classified.
+- **Retry cap**: `enrich_lead` tracks `meta.enrichment.attempts`; the sweep gives
+  up on a lead after 3 failures so it won't retry forever.
+- **Backfill**: on deploy, the worker (or the manual endpoint) classifies the
+  older leads that were sitting at `score 0` / no intent.
+- The frontend per-lead loop stays for immediate progress feedback; the worker is
+  the safety net. Tests +1 (sweep only touches unclassified discovery leads,
+  respects the cap, leaves conversation leads alone).
+
 ## [0.14.2] — 2026-05-26
 
 ### Discovery — imported leads are now classified (intent + 🔥 score) like the rest

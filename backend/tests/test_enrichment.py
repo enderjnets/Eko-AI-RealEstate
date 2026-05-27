@@ -152,3 +152,44 @@ async def test_enrich_lead_graceful_on_bad_json(database_url: str) -> None:
     finally:
         await engine.dispose()
         await _delete(database_url, phone)
+
+
+# ── enrich_pending_leads sweep (backfill / safety net) ──────────────────────
+
+
+@pytest.mark.asyncio
+async def test_enrich_pending_targets_only_unclassified_discovery(database_url: str) -> None:
+    from app.services.enrichment import enrich_pending_leads
+
+    sfx = uuid.uuid4().hex[:6]
+    p_disc = f"discovery:colorado_sos:pending-{sfx}:denver"     # discovery, score 0 → enrich
+    p_nondisc = f"+1303ND{sfx.upper()}"                          # NOT discovery, score 0 → skip
+    p_capped = f"discovery:linkedin:capped-{sfx}:denver"         # discovery, failed x3 → skip
+    payload = '{"business_type":"LLC","partner_type":"prospect","intent":"buy","relevance":7,"tags":["x"]}'
+
+    engine = create_async_engine(database_url, echo=False, future=True)
+    Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+    try:
+        async with Session() as s:
+            s.add(Lead(phone=p_disc, name="Pending LLC", status=LeadStatus.NEW, zone="Denver",
+                       meta={"discovery": True, "source": "colorado_sos"}))
+            s.add(Lead(phone=p_nondisc, name="Real Prospect", status=LeadStatus.NEW, zone="Denver", meta={}))
+            s.add(Lead(phone=p_capped, name="Capped LLC", status=LeadStatus.NEW, zone="Denver",
+                       meta={"discovery": True, "source": "linkedin",
+                             "enrichment": {"status": "failed", "attempts": 3}}))
+            await s.commit()
+
+            with patch("app.services.enrichment.generate_reply", AsyncMock(return_value=_reply(payload))):
+                result = await enrich_pending_leads(s, limit=50)
+
+            assert result["enriched"] >= 1
+            disc = (await s.execute(select(Lead).where(Lead.phone == p_disc))).scalar_one()
+            assert disc.score > 0 and disc.intent is not None  # unclassified discovery → enriched
+            nondisc = (await s.execute(select(Lead).where(Lead.phone == p_nondisc))).scalar_one()
+            assert nondisc.score == 0 and "enrichment" not in (nondisc.meta or {})  # conversation lead untouched
+            capped = (await s.execute(select(Lead).where(Lead.phone == p_capped))).scalar_one()
+            assert capped.score == 0  # retry cap respected
+    finally:
+        await engine.dispose()
+        for p in (p_disc, p_nondisc, p_capped):
+            await _delete(database_url, p)

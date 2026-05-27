@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.14.2";
+export const CURRENT_VERSION = "0.14.3";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.14.3",
+    date: "2026-05-27",
+    title: "Discovery — enriquecimiento server-side (deja de depender del navegador)",
+    changes: [
+      "Problema: leads que pasaban por el flujo pero quedaban sin enriquecer. Causa: el enriquecimiento solo lo disparaba el loop del FRONTEND sobre los leads recién CREADOS — así que leads importados antes de la clasificación (v0.14.2), o saltados por dedupe al re-importar, o si el usuario cerraba la pestaña, nunca se enriquecían (quedaban score 0, sin intent).",
+      "Fix: worker server-side de enriquecimiento. `enrich_pending_leads()` busca leads de discovery sin clasificar (score 0) y los enriquece; corre como loop in-process (`ENRICHMENT_ENABLED`, cada 120s) igual que el de follow-ups, + endpoint manual `POST /api/v1/discovery/enrich-pending`. Ahora el enriquecimiento NO depende del navegador: todo lead de discovery termina clasificado aunque la UI no lo haya tocado.",
+      "Retry-cap: `enrich_lead` cuenta intentos en `meta.enrichment.attempts`; el sweep abandona un lead tras 3 fallos para no reintentar infinito.",
+      "Backfill: al desplegar, el worker (o el endpoint manual) clasifica los leads viejos que estaban en score 0 / sin intent.",
+      "El loop del frontend se mantiene como feedback inmediato (barra de progreso); el worker server-side es la red de seguridad. Tests +1 (sweep solo toca discovery sin clasificar, respeta el cap, no toca leads de conversación).",
+    ],
+  },
   {
     version: "0.14.2",
     date: "2026-05-26",
