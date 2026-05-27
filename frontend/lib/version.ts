@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.14.3";
+export const CURRENT_VERSION = "0.14.4";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,16 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.14.4",
+    date: "2026-05-27",
+    title: "Fix — error real visible en la UI (no más 'body stream already read')",
+    changes: [
+      "El cliente API (`lib/api.ts`) leía el body de una respuesta de error dos veces (`res.json()` y luego `res.text()` en el catch), lo que tiraba 'Failed to execute text on Response: body stream already read' y TAPABA el error real (p.ej. un 500 del backend se mostraba como ese mensaje confuso).",
+      "Fix: helper `errorDetail()` que lee el body UNA sola vez como texto y luego intenta `JSON.parse` para sacar el `detail`. Aplicado en `api()` y en `discoveryApi.upload()`.",
+      "Contexto: el síntoma apareció cuando el backend devolvió 500 porque el disco del ROG estaba al 100% y Postgres quedó en recovery mode (crash-loop por 'No space left on device'); se liberó espacio (Docker build cache) y la base se recuperó. Este fix asegura que la próxima vez se vea el error real, no el de doble lectura.",
+    ],
+  },
   {
     version: "0.14.3",
     date: "2026-05-27",

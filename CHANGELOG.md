@@ -2,6 +2,21 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.14.4] — 2026-05-27
+
+### Fix — surface the real API error (no more "body stream already read")
+
+- The API client (`lib/api.ts`) read an error response body twice (`res.json()`
+  then `res.text()` in the `catch`), which threw *"Failed to execute 'text' on
+  'Response': body stream already read"* and **masked the real error** — a backend
+  500 showed up as that confusing message instead.
+- Fix: an `errorDetail()` helper reads the body **once** as text, then tries
+  `JSON.parse` to pull out `detail`. Applied to `api()` and `discoveryApi.upload()`.
+- Context: this surfaced when the backend returned 500 because the ROG disk was
+  100% full and Postgres was stuck in recovery (crash-loop on "No space left on
+  device"). Freed ~93 GB of Docker build cache and the DB recovered; this fix
+  ensures the *real* error shows next time.
+
 ## [0.14.3] — 2026-05-27
 
 ### Discovery — server-side enrichment (no longer depends on the browser)

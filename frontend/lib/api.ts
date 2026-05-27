@@ -98,17 +98,29 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     cache: "no-store",
   });
   if (!res.ok) {
-    let detail = "";
-    try {
-      const body = await res.json();
-      detail = typeof body?.detail === "string" ? body.detail : JSON.stringify(body);
-    } catch {
-      detail = await res.text();
-    }
-    throw new Error(`API ${res.status}: ${detail || res.statusText}`);
+    throw new Error(`API ${res.status}: ${await errorDetail(res)}`);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+// Read the response body exactly once (a stream can't be read twice — reading it
+// as JSON then again as text throws "body stream already read" and masks the real
+// error). Read text, then try to pull a JSON `detail` out of it.
+async function errorDetail(res: Response): Promise<string> {
+  let raw = "";
+  try {
+    raw = await res.text();
+  } catch {
+    return res.statusText;
+  }
+  try {
+    const body = JSON.parse(raw);
+    if (typeof body?.detail === "string") return body.detail;
+    return JSON.stringify(body);
+  } catch {
+    return raw || res.statusText;
+  }
 }
 
 export interface HumanMessageResult {
@@ -395,14 +407,7 @@ export const discoveryApi = {
     fd.append("file", file);
     const res = await fetch(`/api/v1/discovery/upload`, { method: "POST", body: fd, cache: "no-store" });
     if (!res.ok) {
-      let detail = "";
-      try {
-        const b = await res.json();
-        detail = typeof b?.detail === "string" ? b.detail : JSON.stringify(b);
-      } catch {
-        detail = await res.text();
-      }
-      throw new Error(`API ${res.status}: ${detail || res.statusText}`);
+      throw new Error(`API ${res.status}: ${await errorDetail(res)}`);
     }
     return res.json();
   },
