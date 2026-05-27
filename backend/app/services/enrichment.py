@@ -39,16 +39,22 @@ _INTENTS = {"rent", "buy", "valuation", "other"}
 _PARTNER_WEIGHT = {"referral_partner": 35, "prospect": 32, "vendor": 18, "competitor": 6, "other": 12}
 
 _SYSTEM = """Sos un asistente de prospección para un agente inmobiliario en EEUU.
-Te paso un negocio/contacto encontrado por el módulo de descubrimiento. Inferí SOLO
-a partir del nombre, categoría, fuente y datos dados — NO inventes teléfonos, emails
-ni hechos específicos que no estén.
+Te paso un LEAD inmobiliario encontrado por el módulo de descubrimiento — puede ser
+un dueño/consumidor (vendedor o comprador) o un negocio. Inferí SOLO a partir de los
+datos dados (nombre, categoría/fuente, motivación, timeline, tipo de propiedad,
+valor estimado) — NO inventes teléfonos, emails ni hechos que no estén.
+
+Pistas de categoría: fsbo/expired/absentee/preforeclosure/high_equity = VENDEDORES
+(quieren vender/listar → intent "valuation"); investor_llc = comprador/inversor
+(intent "buy"); renter = inquilino que puede comprar/rentar (intent "buy" o "rent");
+un negocio (mortgage broker, title co, etc.) NO es cliente → intent "other".
 
 Devolvé un JSON con exactamente estas claves:
-- "business_type": string corto normalizado (ej "Mortgage broker", "Home inspector", "Real estate agent", "Title company", "Property manager").
-- "partner_type": uno de: "referral_partner" (puede referir clientes), "vendor" (servicio que el realtor contrata), "prospect" (posible cliente comprador/vendedor), "competitor", "other".
-- "intent": el mejor encaje de necesidad inmobiliaria si este contacto pudiera ser un CLIENTE: "buy", "rent", "valuation"; si es un partner/proveedor/competidor que NO es cliente, usá "other".
-- "relevance": entero 0-10 — qué tan valioso es este contacto para el pipeline de un realtor (10 = altísimo, p.ej. un broker hipotecario que refiere; 0 = irrelevante).
-- "summary": una frase (máx 140 chars) describiendo qué es y por qué le sirve a un realtor.
+- "business_type": etiqueta corta del lead (ej "Vendedor FSBO", "Listing expirado", "Dueño ausente", "Inversor LLC", "Inquilino/relocator", "Mortgage broker").
+- "partner_type": uno de: "prospect" (cliente comprador/vendedor), "referral_partner", "vendor", "competitor", "other".
+- "intent": "buy" | "rent" | "valuation" | "other" según las pistas de arriba.
+- "relevance": entero 0-10 — qué tan caliente/valioso es el lead. Pesá MÁS la motivación fuerte (default, preforeclosure, listing expirado) y el timeline "immediate"; menos los "exploring".
+- "summary": una frase (máx 140 chars) de quién es y por qué conviene contactarlo.
 - "outreach_angle": una frase con el ángulo de primer contacto sugerido.
 - "tags": array de 1-4 strings cortos en minúscula."""
 
@@ -107,8 +113,16 @@ def _context(lead: Lead) -> str:
     parts = [f"Nombre: {lead.name or '(sin nombre)'}"]
     if m.get("category"):
         parts.append(f"Categoría: {m['category']}")
-    if m.get("source"):
-        parts.append(f"Fuente: {m['source']}")
+    if m.get("lead_category") or m.get("source"):
+        parts.append(f"Fuente/categoría: {m.get('lead_category') or m.get('source')}")
+    if m.get("motivation"):
+        parts.append(f"Motivación: {m['motivation']}")
+    if m.get("timeline"):
+        parts.append(f"Timeline: {m['timeline']}")
+    if lead.property_type or m.get("property_type"):
+        parts.append(f"Tipo de propiedad: {lead.property_type or m.get('property_type')}")
+    if m.get("est_value"):
+        parts.append(f"Valor estimado: {m['est_value']}")
     if m.get("website"):
         parts.append(f"Web: {m['website']}")
     if m.get("address"):

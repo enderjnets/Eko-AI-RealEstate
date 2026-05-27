@@ -1,11 +1,16 @@
-# Discovery — lead search + file import (Phase 12)
+# Discovery — real-estate lead search + file import
 
 Discovery lets a realtor **proactively source leads** instead of only waiting for
-inbound messages. Two ways in:
+inbound messages. It searches by **real-estate lead category** (how agents
+actually prospect) — see [`discovery-realestate-research.md`](discovery-realestate-research.md)
+for the research behind it. Two ways in:
 
-1. **Search** four sources — Google Maps, Yelp, LinkedIn, Colorado SOS — for
-   businesses (mortgage brokers, inspectors, movers, title cos, property
-   managers, agents…).
+1. **Search by lead category**:
+   - **Sellers**: `fsbo` (For Sale By Owner), `expired` (expired listings),
+     `absentee` (out-of-state owners), `preforeclosure` (distressed),
+     `high_equity` (long-tenure / likely-to-sell).
+   - **Buyers**: `investor_llc` (real-estate investor LLCs — **real via Colorado
+     SOS, free**), `renter` (renters / relocators).
 2. **Import a file** — upload an existing contact database in **any format**
    (PDF, JPG/PNG, TXT, CSV, XLSX, HTML); we extract the contacts for you.
 
@@ -44,25 +49,29 @@ the normal product LLM, no extra account.
 
 ---
 
-## Going real — which source needs which key
+## Going real — which category needs which key
 
-Set `DISCOVERY_SIMULATED=false`, then each source lights up **only if its key is
-present** (otherwise it just returns nothing — it never errors the search):
+`DISCOVERY_SIMULATED=true` (default) serves curated realistic CO leads for every
+category with **zero keys** — the demo runs on this. Set
+`DISCOVERY_SIMULATED=false` to hit real sources; each category lights up only if
+its source is wired (otherwise it returns nothing — never errors the search):
 
-| Source | Env var | Cost | Notes |
+| Category | Source | Env var | Cost |
 |---|---|---|---|
-| **Colorado SOS** | *(none)* | **Free** | Public Socrata API (`data.colorado.gov`). Always on — registered CO business entities. The cheapest real source to lead with. |
-| **Yelp** | `YELP_API_KEY` | Free tier | Yelp Fusion API. Good for local service businesses. |
-| **Google Maps** | `OUTSCRAPER_API_KEY` | Paid | Via [Outscraper](https://outscraper.com). Highest coverage; metered. |
-| **LinkedIn** | `SERPAPI_API_KEY` | Paid | Via [SerpApi](https://serpapi.com) (`site:linkedin.com/in` Google search). Finds agent/broker profiles. |
+| `investor_llc` (buyers) | Colorado SOS (Socrata) | *(none)* | **Free** |
+| `absentee` / `preforeclosure` / `high_equity` (sellers) | ATTOM Property API | `ATTOM_API_KEY` | Paid |
+| `fsbo` / `expired` / `renter` | licensed feed / portal | — | n/a yet |
 
-These reuse the **same keys already configured in the Eko AI sales platform**
-(`~/Eko-AI-main/.env`) — copy `YELP_API_KEY`, `OUTSCRAPER_API_KEY`,
-`SERPAPI_API_KEY` into this product's `.env` and flip `DISCOVERY_SIMULATED=false`.
+- **`investor_llc`** is the cheapest real category — Colorado SOS is free, no key.
+- **ATTOM** (`ATTOM_API_KEY`, [attomdata.com](https://www.attomdata.com/solutions/property-data-api/))
+  powers the owner-record seller categories (mailing≠situs → absentee; NOD/lis
+  pendens → pre-foreclosure; equity → high-equity).
+- **FSBO / expired / renter** need a licensed feed (PropStream/portal/MLS) — no
+  free source; they stay SIMULATED until a provider is configured.
 
-> Lead with **Colorado SOS (free)** + **Yelp (free tier)**. Google Maps and
-> LinkedIn rely on paid/metered providers and scraping ToS — keep them off
-> unless you have budget for the keys.
+> Compliance: discovered leads are **prospects, not consented contacts**. Scrub
+> against the federal + state Do-Not-Call registries (Colorado has its own) and
+> follow TCPA calling rules before outreach.
 
 ---
 

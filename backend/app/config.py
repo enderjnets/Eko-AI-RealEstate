@@ -106,9 +106,10 @@ class Settings(BaseSettings):
     # key is set — Colorado SOS is free (no key); Yelp/Google Maps/LinkedIn reuse
     # the keys from the Eko AI sales platform. See docs/setup-discovery.md.
     DISCOVERY_SIMULATED: bool = True
-    YELP_API_KEY: str = ""           # Yelp Fusion (free tier)
-    OUTSCRAPER_API_KEY: str = ""     # Google Maps via Outscraper
-    SERPAPI_API_KEY: str = ""        # LinkedIn via SerpApi Google search
+    YELP_API_KEY: str = ""           # Yelp Fusion (free tier) — legacy business search
+    OUTSCRAPER_API_KEY: str = ""     # Google Maps via Outscraper — legacy
+    SERPAPI_API_KEY: str = ""        # LinkedIn via SerpApi Google search — legacy
+    ATTOM_API_KEY: str = ""          # ATTOM property/owner data — absentee/preforeclosure/high_equity
     FILE_IMPORT_MAX_MB: int = 25
 
     # ─── Dashboard auth (Phase 11) ──────────────────────────────────────

@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db.base import get_db
 from app.models import Lead
-from app.services.discovery import VALID_SOURCES, BusinessDTO, discover, import_business_leads
+from app.services.discovery import LEAD_CATEGORIES, BusinessDTO, discover, import_business_leads
 from app.services.enrichment import enrich_lead, enrich_pending_leads
 from app.services.file_import import extract_leads, extract_text
 
@@ -34,6 +34,10 @@ class BusinessOut(BaseModel):
     address: str | None = None
     city: str | None = None
     state: str | None = None
+    motivation: str | None = None
+    timeline: str | None = None
+    property_type: str | None = None
+    est_value: str | None = None
 
 
 class ResultsOut(BaseModel):
@@ -42,11 +46,11 @@ class ResultsOut(BaseModel):
 
 class SearchIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    query: str = Field(min_length=1, max_length=200)
+    category: str = Field(default="fsbo")  # a LEAD_CATEGORIES value
+    query: str = Field(default="", max_length=200)  # optional free-text refine
     city: str = Field(default="", max_length=120)
     state: str = Field(default="CO", max_length=40)
     max_results: int = Field(default=50, ge=1, le=100)
-    sources: list[str] = Field(default_factory=lambda: ["google_maps"])
 
 
 class ImportIn(BaseModel):
@@ -72,18 +76,18 @@ def _dto(b: BusinessOut) -> BusinessDTO:
     return BusinessDTO(
         business_name=b.business_name, source=b.source, category=b.category,
         email=b.email, phone=b.phone, website=b.website, address=b.address,
-        city=b.city, state=b.state,
+        city=b.city, state=b.state, motivation=b.motivation, timeline=b.timeline,
+        property_type=b.property_type, est_value=b.est_value,
     )
 
 
 @router.post("/search", response_model=ResultsOut)
 async def search(body: SearchIn) -> ResultsOut:
-    bad = [s for s in body.sources if s not in VALID_SOURCES]
-    if bad:
-        raise HTTPException(status_code=422, detail=f"Unknown sources: {bad}")
+    if body.category not in LEAD_CATEGORIES:
+        raise HTTPException(status_code=422, detail=f"Unknown category: {body.category}")
     results = await discover(
         query=body.query, city=body.city, state=body.state,
-        max_results=body.max_results, sources=body.sources,
+        max_results=body.max_results, category=body.category,
     )
     return ResultsOut(results=[BusinessOut(**b.to_public()) for b in results])
 

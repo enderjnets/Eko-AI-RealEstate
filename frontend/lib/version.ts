@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.14.4";
+export const CURRENT_VERSION = "0.15.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.15.0",
+    date: "2026-05-27",
+    title: "Discovery v2 — búsqueda reorientada a leads inmobiliarios reales (no negocios)",
+    changes: [
+      "Discovery dejó de buscar 'negocios' (Google Maps/Yelp/LinkedIn) y ahora busca LEADS INMOBILIARIOS por categoría, como prospecta un agente. Vendedores: FSBO (venta por dueño), listings expirados, dueños ausentes/fuera del estado, pre-ejecución (distressed), alta plusvalía (likely-to-sell). Compradores: inversores LLC, inquilinos/relocators.",
+      "Investigación profunda documentada en docs/discovery-realestate-research.md (fuentes por ROI, APIs accesibles ATTOM/PropStream/county records/Colorado SOS, y cumplimiento TCPA/DNC).",
+      "Cada lead trae motivación ('listing expiró hace 2 semanas', 'notice of default'), timeline (inmediato/3-6m/explorando), tipo de propiedad y valor estimado — que el enriquecimiento usa para clasificar intent (vendedor→valuation, comprador→buy/rent) y puntuar el calor del lead.",
+      "SIMULATED-first como siempre: set curado de ~17 leads CO realistas por categoría, $0 sin keys. Real por categoría: investor_llc vía Colorado SOS (GRATIS, ya andaba); absentee/preforeclosure/high_equity vía ATTOM (ATTOM_API_KEY, stub key-gated); fsbo/expired/renter requieren feed licenciado (quedan SIMULATED).",
+      "API: /discovery/search ahora toma `category` (en vez de `sources`) + `query` opcional de refine. BusinessOut/Lead.meta llevan motivation/timeline/property_type/est_value.",
+      "Frontend: chips de categoría (Vendedores / Compradores) en vez de toggles de fuente, refine opcional, y los resultados muestran motivación + timeline + tipo + valor. Aviso de cumplimiento DNC/TCPA visible (los leads son prospectos, no contactos con consentimiento). i18n EN/ES.",
+      "Tests actualizados a categorías (search simulado por categoría, filtrado, default a fsbo, cap).",
+    ],
+  },
   {
     version: "0.14.4",
     date: "2026-05-27",

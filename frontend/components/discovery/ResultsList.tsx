@@ -137,11 +137,20 @@ export function ResultsList({
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-white truncate">{b.business_name}</span>
-                    <span className="text-[10px] uppercase tracking-wider text-gray-600 px-1.5 py-0.5 rounded bg-white/5">
-                      {t(`discovery.source.${b.source}`) || b.source}
+                    <span className="text-[10px] uppercase tracking-wider text-eko-violet/80 px-1.5 py-0.5 rounded bg-eko-violet/10">
+                      {t(`discovery.cat.${b.source}`) || b.category || b.source}
                     </span>
-                    {b.category && <span className="text-[11px] text-gray-500">{b.category}</span>}
+                    {b.timeline && (
+                      <span className="text-[10px] text-amber-300/80 px-1.5 py-0.5 rounded bg-amber-500/10">
+                        {t(`discovery.timeline.${b.timeline}`) || b.timeline}
+                      </span>
+                    )}
+                    {b.property_type && <span className="text-[11px] text-gray-500">{b.property_type}</span>}
+                    {b.est_value && <span className="text-[11px] text-gray-400">{b.est_value}</span>}
                   </span>
+                  {b.motivation && (
+                    <span className="mt-0.5 block text-[11px] text-gray-400 italic truncate">{b.motivation}</span>
+                  )}
                   <span className="mt-1 flex items-center gap-3 flex-wrap text-[11px] text-gray-500">
                     {b.phone && (
                       <span className="inline-flex items-center gap-1">

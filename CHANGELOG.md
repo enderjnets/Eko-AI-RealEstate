@@ -2,6 +2,41 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.15.0] — 2026-05-27
+
+### Discovery v2 — search reoriented to real-estate leads (not businesses)
+
+Discovery now finds **people likely to buy / rent / sell** real estate, not
+generic businesses — the whole point of a realtor product. Backed by research
+(see [`docs/discovery-realestate-research.md`](docs/discovery-realestate-research.md)).
+
+#### Lead categories (how agents actually prospect)
+- **Sellers**: `fsbo` (For Sale By Owner), `expired` (expired listings),
+  `absentee` (out-of-state owners), `preforeclosure` (distressed),
+  `high_equity` (long-tenure / likely-to-sell).
+- **Buyers**: `investor_llc` (real-estate investor LLCs), `renter`
+  (renters / relocators).
+
+#### What changed
+- Each discovered lead carries **motivation** ("listing expired 2 weeks ago",
+  "notice of default recorded"), **timeline** (immediate / 3-6mo / exploring),
+  **property type** and **estimated value**. Enrichment uses these to classify
+  `intent` (seller → `valuation`, buyer → `buy`/`rent`) and to weight the score
+  by motivation + urgency.
+- **SIMULATED-first**: ~17 curated realistic Denver-metro leads across the
+  categories — $0, no keys. Real per category: `investor_llc` via **Colorado SOS
+  (free)**; `absentee`/`preforeclosure`/`high_equity` via **ATTOM**
+  (`ATTOM_API_KEY`, key-gated); `fsbo`/`expired`/`renter` need a licensed feed
+  (stay SIMULATED).
+- API: `POST /discovery/search` now takes **`category`** (+ optional `query`
+  refine) instead of `sources`. `BusinessOut` / `Lead.meta` carry
+  motivation/timeline/property_type/est_value.
+- Frontend: **lead-category preset chips** (Sellers / Buyers) replace the source
+  toggles; results show motivation + timeline + type + value; a **DNC/TCPA
+  compliance note** is shown (leads are prospects, not consented contacts). i18n
+  EN/ES.
+- Tests updated to category-based search.
+
 ## [0.14.4] — 2026-05-27
 
 ### Fix — surface the real API error (no more "body stream already read")
