@@ -122,6 +122,21 @@ class Settings(BaseSettings):
     AUTH_SECRET: str = ""  # token signing key; derived from the password if empty
     AUTH_TTL_HOURS: int = 168  # 7 days
 
+    # ─── Google Sign In (Phase 11.5) ─────────────────────────────────────
+    # Coexists with DASHBOARD_PASSWORD. When GOOGLE_CLIENT_ID is set, the
+    # /login page shows a "Sign in with Google" button. The backend validates
+    # the Google-issued ID token and, if the verified email is in the allow
+    # list (GOOGLE_ALLOWED_EMAILS, comma-separated) OR matches
+    # GOOGLE_ALLOWED_DOMAIN, issues the same HMAC session cookie as password
+    # login. Empty allow list + empty domain = Google login DENIED (safe default).
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_ALLOWED_EMAILS: str = ""  # comma-separated lowercased emails
+    GOOGLE_ALLOWED_DOMAIN: str = ""  # e.g. "ekoaiautomation.com" (any user @ this domain)
+
+    @property
+    def google_allowed_emails_list(self) -> list[str]:
+        return [e.strip().lower() for e in self.GOOGLE_ALLOWED_EMAILS.split(",") if e.strip()]
+
     # ─── Follow-ups / nurture (Phase 10) ────────────────────────────────
     # In-process background worker that sends scheduled post-visit follow-ups +
     # visit reminders. Disable to run them only via scripts/run_followups.py (cron).

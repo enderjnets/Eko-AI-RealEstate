@@ -67,3 +67,61 @@ def verify_token(token: str | None) -> bool:
     if payload.get("sub") != _SUBJECT:
         return False
     return int(payload.get("exp", 0)) > int(time.time())
+
+
+# ─── Google Sign In (Phase 11.5) ────────────────────────────────────────
+# Verifies the ID token client-side issued by Google and checks the email
+# against the office's allow list. On success the caller mints the same HMAC
+# session token as the password flow — no new identity table.
+
+class GoogleAuthError(Exception):
+    """Raised when Google ID token verification or allow-list check fails."""
+
+
+def verify_google_id_token(id_token_str: str) -> str:
+    """Validate Google-issued ID token + enforce the office allow list.
+
+    Returns the verified email on success. Raises GoogleAuthError otherwise.
+
+    The allow list is the union of GOOGLE_ALLOWED_EMAILS (exact match,
+    case-insensitive) and GOOGLE_ALLOWED_DOMAIN (matches any address
+    @that-domain). Both empty → deny (safe default).
+    """
+    s = get_settings()
+    if not s.GOOGLE_CLIENT_ID:
+        raise GoogleAuthError("google_signin_not_configured")
+    if not id_token_str:
+        raise GoogleAuthError("missing_id_token")
+
+    # Import lazily so the dep is only required when the feature is used.
+    try:
+        from google.auth.transport import requests as google_requests
+        from google.oauth2 import id_token as google_id_token
+    except ImportError as e:
+        raise GoogleAuthError(f"google_auth_library_missing: {e}") from e
+
+    try:
+        claims = google_id_token.verify_oauth2_token(
+            id_token_str,
+            google_requests.Request(),
+            s.GOOGLE_CLIENT_ID,
+        )
+    except ValueError as e:
+        raise GoogleAuthError(f"invalid_id_token: {e}") from e
+
+    if not claims.get("email_verified"):
+        raise GoogleAuthError("email_not_verified")
+    email = (claims.get("email") or "").lower().strip()
+    if not email:
+        raise GoogleAuthError("missing_email")
+
+    allowed_emails = s.google_allowed_emails_list
+    allowed_domain = (s.GOOGLE_ALLOWED_DOMAIN or "").lower().strip()
+    if not allowed_emails and not allowed_domain:
+        raise GoogleAuthError("no_allow_list_configured")
+
+    if email in allowed_emails:
+        return email
+    if allowed_domain and email.endswith("@" + allowed_domain):
+        return email
+    raise GoogleAuthError("email_not_in_allow_list")

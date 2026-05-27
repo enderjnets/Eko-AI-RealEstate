@@ -2,6 +2,52 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.16.0] — 2026-05-27
+
+### Google Sign In (GIS) + admin-managed team access
+
+Adds "Sign in with Google" on `/login` (coexists with the password) **and**
+admin-managed access control. The allow-list moves out of env vars into the
+database so an admin edits it live from a restored, admin-only **Settings** tab.
+
+#### Auth model
+
+- The session token now carries **identity + role** (`admin` | `member`), still
+  an HMAC-signed `eko_auth` cookie (no new dependency, no JWT lib).
+- **Password login → admin** (master key; lockout-proof fallback). **Google login**
+  takes its role from the access list.
+- **`POST /api/v1/auth/login/google`** verifies the Google ID token (signature +
+  `aud == GOOGLE_CLIENT_ID` + `email_verified`) via `google-auth`, resolves the
+  email against the access list, and mints the role-bearing cookie. Not on the
+  list → `401 email_not_in_allow_list` (safe default deny).
+- **`GET /api/v1/auth/me`** now returns `role` + `google_signin_enabled`.
+
+#### Team / access (admin-only)
+
+- New `allowed_users` table (email, role, added_by) — Alembic `008`.
+- **`/api/v1/team`** CRUD (`require_admin`): list / add / change-role / remove.
+  Guards: cannot demote or remove an env-pinned admin; cannot remove the **last**
+  admin.
+- **`GOOGLE_ADMIN_EMAILS`** (env) pins bootstrap admin(s) — always admin, seeded
+  into the table on startup, immutable from the UI.
+- The **entire Settings page is admin-only** now (`/api/v1/settings` +
+  `/api/v1/team` under `require_admin`; hidden + 403 for members).
+
+#### Frontend
+
+- **`/login`** shows the GIS "Sign in with Google" button (via `@react-oauth/google`)
+  when configured; coexists with the password.
+- **Settings** restored to the nav (gear), shown only to admins. New **Team /
+  Access** panel: add Gmail addresses, set role, promote/remove; env-pinned admins
+  shown as immutable "owner".
+- `lib/api.ts` `teamApi` + `MeResult.role`; i18n `settings.team.*` (EN + ES).
+
+#### Config & docs
+
+- `.env.example`: `GOOGLE_CLIENT_ID`, `GOOGLE_ADMIN_EMAILS`, `GOOGLE_ALLOWED_EMAILS`,
+  `GOOGLE_ALLOWED_DOMAIN`, `NEXT_PUBLIC_GOOGLE_CLIENT_ID`.
+- `docs/setup-google-signin.md` updated for the DB-managed team + bootstrap admin.
+
 ## [0.15.2] — 2026-05-27
 
 ### Nav reorder — Discovery · Leads · Properties · Analytics · API · EN

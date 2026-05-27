@@ -327,6 +327,7 @@ export const conversationsApi = {
 export interface MeResult {
   authenticated: boolean;
   auth_enabled: boolean;
+  google_signin_enabled?: boolean;
 }
 
 export const authApi = {
@@ -335,6 +336,11 @@ export const authApi = {
     api<{ ok: boolean; auth_enabled?: boolean }>(`/v1/auth/login`, {
       method: "POST",
       body: JSON.stringify({ password }),
+    }),
+  loginGoogle: (idToken: string) =>
+    api<{ ok: boolean; auth_enabled?: boolean }>(`/v1/auth/login/google`, {
+      method: "POST",
+      body: JSON.stringify({ id_token: idToken }),
     }),
   logout: () => api<{ ok: boolean }>(`/v1/auth/logout`, { method: "POST" }),
 };
