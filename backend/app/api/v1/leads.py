@@ -228,6 +228,9 @@ class HumanMessageIn(BaseModel):
 
     text: str
     subject: str | None = None  # email-only override; otherwise inferred from last inbound
+    # Optional explicit channel. Omit to auto-pick the most recently-active
+    # conversation. Voice is NOT accepted (Phase 13) — a voice value is a 422.
+    channel: Literal["sms", "email", "whatsapp"] | None = None
 
 
 class HumanMessageResult(BaseModel):
@@ -245,17 +248,20 @@ async def post_human_message(
     body: HumanMessageIn,
     db: AsyncSession = Depends(get_db),
 ) -> HumanMessageResult:
-    """Send a human-authored reply via the lead's last-active channel.
+    """Send a human-authored reply, optionally choosing the channel.
 
-    Phase 4 dashboard composer endpoint. Auto-picks channel from the most
-    recently-active Conversation. Returns 200 with `status="error"` body when
-    the lead is missing or has no active conversation (lets the UI surface a
-    friendly error without parsing HTTP status codes).
+    Dashboard composer endpoint. With `channel` omitted it auto-picks the most
+    recently-active Conversation; with an explicit `channel` it sends on that
+    channel (creating the thread if the lead hasn't used it yet). Returns 200 with
+    a `status="error"` body when the lead is missing / has no active conversation
+    (lets the UI surface a friendly error without parsing HTTP status codes).
     """
     text = (body.text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="`text` is required")
-    result = await send_human_message(lead_id, text, db, subject=body.subject)
+    result = await send_human_message(
+        lead_id, text, db, subject=body.subject, channel=body.channel
+    )
     return HumanMessageResult(**result)  # type: ignore[arg-type]
 
 
