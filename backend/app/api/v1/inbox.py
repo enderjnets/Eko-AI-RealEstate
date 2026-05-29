@@ -111,11 +111,14 @@ async def list_inbox(
     db: AsyncSession = Depends(get_db),
 ) -> InboxListOut:
     items = await gather_inbox(db)
-    pending_count = sum(1 for it in items if it.needs_response)
-    booked_count = sum(1 for it in items if it.has_visit)
 
+    # Scope the counts to the channel filter so the chip badges match the rows
+    # the user would see when switching tabs within the current channel scope.
     if channel:
         items = [it for it in items if channel in it.channels]
+
+    pending_count = sum(1 for it in items if it.needs_response)
+    booked_count = sum(1 for it in items if it.has_visit)
 
     if filter == "pending":
         items = [it for it in items if it.needs_response]

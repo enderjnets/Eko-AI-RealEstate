@@ -124,22 +124,45 @@ async def test_explicit_channel_reuses_existing_conversation(database_url: str) 
 
 @pytest.mark.asyncio
 async def test_explicit_channel_creates_conversation_when_missing(database_url: str) -> None:
-    """Lead only used SMS; realtor sends on email → a new email conversation is created."""
+    """Lead used WhatsApp (phone); realtor sends SMS (same phone) → new sms conversation."""
     suffix = uuid.uuid4().hex[:8].upper()
     phone = f"+34666CHC{suffix}"
+    lead_id = await _insert_lead_with_channels(database_url, phone, ["whatsapp"])
+    try:
+        async with await _http_client() as client:
+            r = await client.post(
+                f"/api/v1/leads/{lead_id}/messages",
+                json={"text": "Texting you instead", "channel": "sms"},
+            )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["channel"] == "sms"
+        convs = await _convs_for(database_url, lead_id)
+        channels = sorted(c.channel for c in convs)
+        assert channels == ["sms", "whatsapp"]  # a new sms conversation now exists
+    finally:
+        await _cleanup_lead(database_url, phone)
+
+
+@pytest.mark.asyncio
+async def test_explicit_channel_rejected_on_identifier_mismatch(database_url: str) -> None:
+    """Phone-only lead + channel=email → mismatch error; no email conversation created."""
+    suffix = uuid.uuid4().hex[:8].upper()
+    phone = f"+34666CHM{suffix}"
     lead_id = await _insert_lead_with_channels(database_url, phone, ["sms"])
     try:
         async with await _http_client() as client:
             r = await client.post(
                 f"/api/v1/leads/{lead_id}/messages",
-                json={"text": "Switching you to email", "channel": "email"},
+                json={"text": "trying email", "channel": "email"},
             )
         assert r.status_code == 200, r.text
         body = r.json()
-        assert body["channel"] == "email"
+        assert body["status"] == "error"
+        assert body["error"] == "channel_identifier_mismatch"
+        # No undeliverable email conversation was created.
         convs = await _convs_for(database_url, lead_id)
-        channels = sorted(c.channel for c in convs)
-        assert channels == ["email", "sms"]  # a new email conversation now exists
+        assert [c.channel for c in convs] == ["sms"]
     finally:
         await _cleanup_lead(database_url, phone)
 

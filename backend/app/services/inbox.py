@@ -11,7 +11,7 @@ All state is read with a handful of grouped queries (no per-lead loops).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -110,7 +110,14 @@ async def _channels_per_lead(db: AsyncSession) -> dict[int, list[str]]:
 
 
 async def _next_visit_per_lead(db: AsyncSession) -> dict[int, object]:
-    """The earliest upcoming SCHEDULED/CONFIRMED visit per lead."""
+    """The earliest UPCOMING SCHEDULED/CONFIRMED visit per lead.
+
+    Filters out visits whose time has already passed (still SCHEDULED/CONFIRMED
+    only because the status was never advanced to completed/no_show) so the inbox
+    never shows a stale past visit as booked, and DISTINCT ON picks the next
+    future visit rather than the earliest-ever one.
+    """
+    now = datetime.now(UTC)
     rows = (
         await db.execute(
             select(
@@ -118,7 +125,10 @@ async def _next_visit_per_lead(db: AsyncSession) -> dict[int, object]:
                 Visit.scheduled_at.label("scheduled_at"),
                 Visit.status.label("status"),
             )
-            .where(Visit.status.in_(_ACTIVE_VISIT_STATUSES))
+            .where(
+                Visit.status.in_(_ACTIVE_VISIT_STATUSES),
+                Visit.scheduled_at >= now,
+            )
             .order_by(Visit.lead_id, Visit.scheduled_at.asc())
             .distinct(Visit.lead_id)
         )
