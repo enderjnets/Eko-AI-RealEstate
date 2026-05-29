@@ -54,9 +54,12 @@ class Settings(BaseSettings):
     # ─── Email channel (Phase 3) ────────────────────────────────────────
     # Resend transactional API for outbound + Resend inbound webhook (Svix-signed).
     # When SIMULATED=true (dev default), outbound is LOGGED instead of sent.
+    # The from-address uses a subdomain DEDICATED to Realtors — NEVER reuse Eko AI
+    # Main's biz.ekoaiautomation.com (separate Resend domain, key + webhook secret).
+    # See docs/setup-email.md.
     EMAIL_SIMULATED: bool = True
     RESEND_API_KEY: str = ""
-    RESEND_FROM: str = "Eko AI Realtors <noreply@realtor-demo.ekoaiautomation.com>"
+    RESEND_FROM: str = "Eko AI Realtors <noreply@realtors.ekoaiautomation.com>"
     RESEND_WEBHOOK_SECRET: str = ""  # Svix-style HMAC secret, may start with `whsec_`
 
     # ─── Calendar (Phase 5) ─────────────────────────────────────────────

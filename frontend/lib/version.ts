@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.19.0";
+export const CURRENT_VERSION = "0.20.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.20.0",
+    date: "2026-05-28",
+    title: "Hilo unificado multicanal por lead + selector de canal + email real (plumbing)",
+    changes: [
+      "La conversación del lead ahora es UN solo hilo que junta TODOS los canales (SMS + email + WhatsApp) en una línea de tiempo ordenada por fecha; cada burbuja muestra el ícono de su canal y el header lista los canales activos. Antes solo se veía el canal más reciente.",
+      "Nuevo endpoint GET /api/v1/conversations/{lead_id}/timeline (mergea los mensajes de todas las conversaciones del lead con su canal; devuelve channels[], primary_channel y resúmenes por canal; 200 vacío si el lead aún no tiene conversación). MessageOut ahora incluye `channel`.",
+      "El composer permite ELEGIR el canal al responder (SMS / Email activos; Voz deshabilitada 'próximamente', Phase 13). Si el lead no tenía ese canal, se crea la conversación al enviar. send_human_message acepta `channel` (auto-pick si se omite, back-compat) y rechaza voz; HumanMessageIn.channel = Literal[sms,email,whatsapp] (voz → 422).",
+      "Fix: el mensaje enviado ahora aparece al instante (refetch del timeline en el cliente) en vez de depender de router.refresh() — que no re-ejecutaba el efecto del componente cliente (el outbound no se veía hasta recargar).",
+      "Email real (plumbing): docker-compose ahora pasa EMAIL_SIMULATED/RESEND_API_KEY/RESEND_FROM/RESEND_WEBHOOK_SECRET al backend (faltaba); RESEND_FROM default movido a un subdominio DEDICADO (realtors.ekoaiautomation.com) — nunca se mezcla con biz.ekoaiautomation.com de Eko AI Main. Nueva guía docs/setup-email.md (alta de subdominio + DNS Cloudflare, aislado de la sales platform).",
+      "Tests +8: timeline (merge 2 canales ordenado, tiebreak por id, vacío 200) + selección de canal (reusa conversación existente, crea si falta, voz 422 + unsupported_channel a nivel servicio, auto-pick sin canal).",
+    ],
+  },
   {
     version: "0.19.0",
     date: "2026-05-27",

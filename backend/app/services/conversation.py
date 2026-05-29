@@ -92,6 +92,11 @@ MAX_HISTORY_TURNS = 20
 INTENT_CONFIDENCE_THRESHOLD = 0.55
 
 
+# Channels the dispatcher can actually deliver on (mirrors _dispatch_send).
+# Voice (Phase 13) is intentionally excluded — sending on it is rejected.
+SENDABLE_CHANNELS = {"sms", "email", "whatsapp"}
+
+
 async def _latest_active_conversation(lead_id: int, db: AsyncSession) -> Conversation | None:
     """Return the most recently-active conversation for the lead, any channel."""
     row = await db.execute(
@@ -106,29 +111,64 @@ async def _latest_active_conversation(lead_id: int, db: AsyncSession) -> Convers
     return row.scalar_one_or_none()
 
 
+async def _active_conversation_for_channel(
+    lead_id: int, channel: str, db: AsyncSession
+) -> Conversation | None:
+    """The active conversation for a specific (lead, channel), if any."""
+    row = await db.execute(
+        select(Conversation)
+        .where(
+            Conversation.lead_id == lead_id,
+            Conversation.channel == channel,
+            Conversation.status == ConversationStatus.ACTIVE,
+        )
+        .order_by(Conversation.id.desc())
+        .limit(1)
+    )
+    return row.scalar_one_or_none()
+
+
 async def send_human_message(
     lead_id: int,
     text: str,
     db: AsyncSession,
     *,
     subject: str | None = None,
+    channel: str | None = None,
 ) -> dict[str, object]:
-    """Send a human-authored reply to a lead via their last-active channel.
+    """Send a human-authored reply to a lead.
 
     Returns a small status dict with the new outbound Message id + delivery_status.
-    Used by Phase 4's dashboard composer (the realtor types a reply and clicks
-    Send). Channel is auto-picked from the conversation's `channel` field; if the
-    lead has multiple active conversations (multichannel), the most recently
-    active one wins.
+    Used by the dashboard composer (the realtor types a reply and clicks Send).
+
+    Channel selection:
+      - `channel=None` (default): auto-pick the most recently-active conversation
+        (back-compat). Errors `no_active_conversation` if the lead has none.
+      - explicit `channel`: reuse that channel's active conversation, or create one
+        if the lead hasn't used it yet (the realtor chose to start a new thread).
+        Voice / unknown channels are rejected with `unsupported_channel`.
     """
     lead_row = await db.execute(select(Lead).where(Lead.id == lead_id))
     lead = lead_row.scalar_one_or_none()
     if lead is None:
         return {"status": "error", "error": "lead_not_found"}
 
-    conv = await _latest_active_conversation(lead_id, db)
-    if conv is None:
-        return {"status": "error", "error": "no_active_conversation"}
+    if channel is not None:
+        if channel not in SENDABLE_CHANNELS:
+            return {"status": "error", "error": "unsupported_channel"}
+        conv = await _active_conversation_for_channel(lead_id, channel, db)
+        if conv is None:
+            conv = Conversation(
+                lead_id=lead_id,
+                channel=channel,
+                status=ConversationStatus.ACTIVE,
+            )
+            db.add(conv)
+            await db.flush()
+    else:
+        conv = await _latest_active_conversation(lead_id, db)
+        if conv is None:
+            return {"status": "error", "error": "no_active_conversation"}
 
     # Build subject: for email, default to "Re: <last inbound subject>"; for
     # other channels, ignore the param.

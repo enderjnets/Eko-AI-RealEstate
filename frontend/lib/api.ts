@@ -59,6 +59,7 @@ export interface Message {
   external_id: string | null;
   delivery_status: MessageStatus;
   subject: string | null;
+  channel: string; // channel of this message's conversation (for mixed timelines)
   llm_provider: string | null;
   llm_model: string | null;
   created_at: string;
@@ -75,6 +76,27 @@ export interface Conversation {
   last_at: string;
   messages: Message[];
 }
+
+export interface ConversationSummary {
+  id: number;
+  channel: string;
+  status: "active" | "archived";
+  external_thread_id: string | null;
+  started_at: string;
+  last_at: string;
+  message_count: number;
+}
+
+export interface Timeline {
+  lead_id: number;
+  messages: Message[]; // flat, time-ordered across all channels
+  conversations: ConversationSummary[];
+  channels: string[];
+  primary_channel: string | null;
+  primary_conversation_id: number | null;
+}
+
+export type SendChannel = "sms" | "email" | "whatsapp";
 
 export interface LeadPatch {
   name?: string;
@@ -321,10 +343,14 @@ export const leadsApi = {
   get: (id: number) => api<Lead>(`/v1/leads/${id}`),
   patch: (id: number, body: LeadPatch) =>
     api<Lead>(`/v1/leads/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
-  sendMessage: (id: number, text: string, subject?: string) =>
+  sendMessage: (
+    id: number,
+    text: string,
+    opts?: { subject?: string; channel?: SendChannel },
+  ) =>
     api<HumanMessageResult>(`/v1/leads/${id}/messages`, {
       method: "POST",
-      body: JSON.stringify({ text, subject }),
+      body: JSON.stringify({ text, subject: opts?.subject, channel: opts?.channel }),
     }),
   suggestions: (id: number, count: number = 3) =>
     api<SuggestionsResult>(`/v1/leads/${id}/suggestions`, {
@@ -337,6 +363,7 @@ export const leadsApi = {
 
 export const conversationsApi = {
   get: (leadId: number) => api<Conversation>(`/v1/conversations/${leadId}`),
+  timeline: (leadId: number) => api<Timeline>(`/v1/conversations/${leadId}/timeline`),
 };
 
 export type Role = "admin" | "member";

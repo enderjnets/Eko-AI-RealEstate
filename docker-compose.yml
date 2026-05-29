@@ -64,6 +64,13 @@ services:
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET}
       WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN}
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
+      # Email channel (Phase 3 — Resend) — SIMULATED by default; set RESEND_* for
+      # real delivery on Realtors' OWN dedicated subdomain (NEVER reuse Eko AI
+      # Main's biz.ekoaiautomation.com). See docs/setup-email.md.
+      EMAIL_SIMULATED: ${EMAIL_SIMULATED:-true}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-Eko AI Realtors <noreply@realtors.ekoaiautomation.com>}
+      RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
       # SMS (Phase 9 — Twilio) — SIMULATED by default; set TWILIO_* for real SMS.
       SMS_SIMULATED: ${SMS_SIMULATED:-true}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}

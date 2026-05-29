@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Loader2, MessageCircle, Phone, User2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Loader2, Mail, MessageCircle, MessageSquare, Phone, User2 } from "lucide-react";
 import {
-  type Conversation,
   type Lead,
+  type Timeline,
   conversationsApi,
   leadsApi,
 } from "@/lib/api";
@@ -18,23 +18,36 @@ import { TakeoverToggle } from "@/components/conversation/TakeoverToggle";
 import { exactTime, formatBudget, relativeTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 
+const CHANNEL_ICON: Record<string, typeof MessageCircle> = {
+  whatsapp: MessageCircle,
+  email: Mail,
+  sms: MessageSquare,
+  voice: Phone,
+};
+
 export function LeadDetail({ leadId }: { leadId: number }) {
   const { t, lang } = useI18n();
   const [lead, setLead] = useState<Lead | null>(null);
-  const [conv, setConv] = useState<Conversation | null>(null);
+  const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Reload just the timeline — called after the composer sends, so the new
+  // outbound shows immediately (router.refresh() doesn't re-run this client effect).
+  const refetchTimeline = useCallback(() => {
+    conversationsApi.timeline(leadId).then(setTimeline).catch(() => {});
+  }, [leadId]);
 
   useEffect(() => {
     let mounted = true;
     setLoading(true);
     setError(null);
 
-    Promise.all([leadsApi.get(leadId), conversationsApi.get(leadId).catch(() => null)])
-      .then(([leadData, convData]) => {
+    Promise.all([leadsApi.get(leadId), conversationsApi.timeline(leadId).catch(() => null)])
+      .then(([leadData, tl]) => {
         if (!mounted) return;
         setLead(leadData);
-        setConv(convData);
+        setTimeline(tl);
       })
       .catch((e) => mounted && setError(String(e.message || e)))
       .finally(() => mounted && setLoading(false));
@@ -101,32 +114,52 @@ export function LeadDetail({ leadId }: { leadId: number }) {
         </div>
       </div>
 
-      {/* Conversation */}
+      {/* Conversation — unified timeline across all channels */}
       <section>
-        <h2 className="text-sm uppercase tracking-wider text-gray-500 mb-3 flex items-center gap-2">
+        <h2 className="text-sm uppercase tracking-wider text-gray-500 mb-3 flex items-center gap-2 flex-wrap">
           <MessageCircle className="w-3.5 h-3.5" />
           {t("lead.conversation")}
-          {conv && (
+          {timeline && timeline.messages.length > 0 && (
             <span className="text-[10px] text-gray-600 normal-case tracking-normal">
-              ({conv.messages.length} {t("lead.messages")} · {t("lead.channel")} {conv.channel})
+              ({timeline.messages.length} {t("lead.messages")})
+            </span>
+          )}
+          {timeline && timeline.channels.length > 0 && (
+            <span className="inline-flex items-center gap-1.5">
+              {timeline.channels.map((ch) => {
+                const Ch = CHANNEL_ICON[ch] ?? MessageCircle;
+                return (
+                  <span
+                    key={ch}
+                    className="inline-flex items-center gap-1 text-[10px] text-gray-500 px-1.5 py-0.5 rounded border border-white/10 bg-white/[0.03] normal-case tracking-normal"
+                    title={ch}
+                  >
+                    <Ch className="w-3 h-3" aria-hidden /> {ch}
+                  </span>
+                );
+              })}
             </span>
           )}
         </h2>
 
-        {!conv || conv.messages.length === 0 ? (
+        {!timeline || timeline.messages.length === 0 ? (
           <div className="rounded-xl border border-white/5 bg-white/[0.02] p-12 text-center text-gray-500 text-sm">
             {t("lead.noMessages")}
           </div>
         ) : (
           <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5 space-y-4">
-            {conv.messages.map((m) => (
-              <MessageBubble key={m.id} msg={m} channel={conv.channel} />
+            {timeline.messages.map((m) => (
+              <MessageBubble key={m.id} msg={m} channel={m.channel} />
             ))}
           </div>
         )}
       </section>
 
-      {conv && <Composer leadId={lead.id} channel={conv.channel} />}
+      <Composer
+        leadId={lead.id}
+        defaultChannel={timeline?.primary_channel ?? "sms"}
+        onSent={refetchTimeline}
+      />
 
       <MatchesSection leadId={lead.id} />
 

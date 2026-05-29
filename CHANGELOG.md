@@ -2,6 +2,36 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.20.0] — 2026-05-28
+
+### Unified multichannel lead thread + channel picker + real email (plumbing)
+
+A lead's conversation is now a **single timeline merging all channels** (SMS +
+email + WhatsApp), time-ordered, each bubble showing its channel icon; the header
+lists the active channels. Previously only the most-recently-active channel showed.
+
+- **New endpoint** `GET /api/v1/conversations/{lead_id}/timeline` — merges messages
+  across all of the lead's conversations (each tagged with its channel); returns
+  `channels[]`, `primary_channel`, and per-channel summaries; 200 with empty arrays
+  when the lead has no conversation yet. `MessageOut` now includes `channel`.
+- **Channel picker** in the composer (SMS / Email active; Voice disabled "coming
+  soon", Phase 13). Sending on a channel the lead hasn't used creates that
+  conversation. `send_human_message(channel=…)` (auto-picks when omitted —
+  backward compatible) rejects voice; `HumanMessageIn.channel` is
+  `Literal["sms","email","whatsapp"] | None` (voice → 422).
+- **Fix**: sent messages now appear instantly (client-side timeline refetch via an
+  `onSent` callback) instead of relying on `router.refresh()`, which didn't re-run
+  the client component effect — the outbound didn't show until a full reload.
+- **Real email (plumbing)**: `docker-compose.yml` now passes
+  `EMAIL_SIMULATED` / `RESEND_API_KEY` / `RESEND_FROM` / `RESEND_WEBHOOK_SECRET`
+  to the backend (was missing); `RESEND_FROM` default moved to a **dedicated
+  subdomain** (`realtors.ekoaiautomation.com`) — never mixed with Eko AI Main's
+  `biz.ekoaiautomation.com`. New `docs/setup-email.md` (subdomain + Cloudflare DNS,
+  isolated from the sales platform).
+- **Tests +8**: timeline (2-channel merge ordering, id tiebreak, empty 200) +
+  channel selection (reuse existing conversation, create when missing, voice 422 +
+  service-level `unsupported_channel`, auto-pick when channel omitted).
+
 ## [0.19.0] — 2026-05-27
 
 ### Sign in with Apple

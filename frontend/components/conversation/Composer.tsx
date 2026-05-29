@@ -1,21 +1,31 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { Loader2, Send, Sparkles } from "lucide-react";
-import { type SuggestionsResult, leadsApi } from "@/lib/api";
+import { useState } from "react";
+import { Loader2, Mail, MessageSquare, Phone, Send, Sparkles } from "lucide-react";
+import { type SendChannel, type SuggestionsResult, leadsApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
 const MAX_LEN = 4000;
 
-export function Composer({ leadId, channel }: { leadId: number; channel: string }) {
-  const router = useRouter();
+function initialChannel(defaultChannel: string): SendChannel {
+  return defaultChannel === "email" ? "email" : defaultChannel === "whatsapp" ? "whatsapp" : "sms";
+}
+
+export function Composer({
+  leadId,
+  defaultChannel,
+  onSent,
+}: {
+  leadId: number;
+  defaultChannel: string;
+  onSent?: () => void;
+}) {
   const { t } = useI18n();
   const [text, setText] = useState("");
+  const [channel, setChannel] = useState<SendChannel>(initialChannel(defaultChannel));
   const [error, setError] = useState<string | null>(null);
 
   const [sending, setSending] = useState(false);
-  const [, startTransition] = useTransition();
 
   const [suggesting, setSuggesting] = useState(false);
   const [suggestions, setSuggestions] = useState<string[] | null>(null);
@@ -26,15 +36,16 @@ export function Composer({ leadId, channel }: { leadId: number; channel: string 
     setError(null);
     setSending(true);
     try {
-      const result = await leadsApi.sendMessage(leadId, text.trim());
+      const result = await leadsApi.sendMessage(leadId, text.trim(), { channel });
       if (result.status === "error") {
-        setError(result.error || t("composer.unknownError"));
+        const key = result.error === "unsupported_channel" ? "composer.unsupportedChannel" : "";
+        setError(key ? t(key) : result.error || t("composer.unknownError"));
         return;
       }
       setText("");
       setSuggestions(null);
-      // Refresh server data so the new outbound shows in the chat.
-      startTransition(() => router.refresh());
+      // Reload the timeline client-side so the new outbound shows immediately.
+      onSent?.();
     } catch (e: unknown) {
       setError(String((e as Error)?.message || e));
     } finally {
@@ -61,12 +72,42 @@ export function Composer({ leadId, channel }: { leadId: number; channel: string 
     }
   }
 
+  const channelOptions: { value: SendChannel | "voice"; label: string; Icon: typeof Mail; disabled?: boolean }[] = [
+    { value: "sms", label: t("composer.channel.sms"), Icon: MessageSquare },
+    { value: "email", label: t("composer.channel.email"), Icon: Mail },
+    { value: "voice", label: t("composer.channel.voice"), Icon: Phone, disabled: true },
+  ];
+
   return (
     <section className="mt-6 rounded-xl border border-white/10 bg-white/[0.02] p-4">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs uppercase tracking-wider text-gray-500">
-          {t("composer.title", { channel })}
-        </h3>
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h3 className="text-xs uppercase tracking-wider text-gray-500">{t("composer.channelLabel")}</h3>
+          <div className="inline-flex rounded-lg border border-white/10 overflow-hidden">
+            {channelOptions.map(({ value, label, Icon, disabled }) => {
+              const active = value === channel;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => !disabled && setChannel(value as SendChannel)}
+                  title={disabled ? t("composer.channel.voice") : label}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    active
+                      ? "bg-eko-violet/20 text-eko-violet"
+                      : disabled
+                      ? "text-gray-600 cursor-not-allowed"
+                      : "text-gray-400 hover:bg-white/5"
+                  }`}
+                >
+                  <Icon className="w-3 h-3" aria-hidden />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <button
           type="button"
           onClick={handleSuggest}
