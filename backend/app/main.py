@@ -14,6 +14,7 @@ from app.api.v1 import (
     conversations,
     discovery,
     health,
+    inbox,
     leads,
     properties,
     team,
@@ -69,6 +70,7 @@ _auth = [Depends(require_auth)]
 _admin = [Depends(require_admin)]
 app.include_router(leads.router, prefix="/api/v1/leads", tags=["leads"], dependencies=_auth)
 app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["conversations"], dependencies=_auth)
+app.include_router(inbox.router, prefix="/api/v1/inbox", tags=["inbox"], dependencies=_auth)
 app.include_router(visits.leads_calendar_router, prefix="/api/v1", tags=["calendar"], dependencies=_auth)
 app.include_router(visits.visits_router, prefix="/api/v1", tags=["visits"], dependencies=_auth)
 app.include_router(settings_api.router, prefix="/api/v1/settings", tags=["settings"], dependencies=_admin)

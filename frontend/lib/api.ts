@@ -366,6 +366,56 @@ export const conversationsApi = {
   timeline: (leadId: number) => api<Timeline>(`/v1/conversations/${leadId}/timeline`),
 };
 
+export type InboxFilter = "pending" | "booked" | "all";
+
+export interface InboxItem {
+  lead_id: number;
+  name: string | null;
+  identifier: string;
+  status: LeadStatus;
+  intent: LeadIntent | null;
+  zone: string | null;
+  score: number;
+  tier: "hot" | "warm" | "cold";
+  human_takeover: boolean;
+  channels: string[];
+  last_message_at: string | null;
+  last_direction: MessageDirection | null;
+  last_channel: string | null;
+  last_preview: string | null;
+  needs_response: boolean;
+  has_visit: boolean;
+  next_visit_at: string | null;
+  visit_status: VisitStatus | null;
+  handled_at: string | null;
+}
+
+export interface InboxList {
+  items: InboxItem[];
+  pending_count: number;
+  booked_count: number;
+}
+
+export interface InboxCount {
+  pending: number;
+  booked: number;
+}
+
+export const inboxApi = {
+  list: (params?: { filter?: InboxFilter; channel?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.filter) q.set("filter", params.filter);
+    if (params?.channel) q.set("channel", params.channel);
+    const qs = q.toString();
+    return api<InboxList>(`/v1/inbox${qs ? `?${qs}` : ""}`);
+  },
+  count: () => api<InboxCount>(`/v1/inbox/count`),
+  markHandled: (leadId: number) =>
+    api<InboxCount>(`/v1/inbox/${leadId}/handled`, { method: "POST" }),
+  unmarkHandled: (leadId: number) =>
+    api<InboxCount>(`/v1/inbox/${leadId}/handled`, { method: "DELETE" }),
+};
+
 export type Role = "admin" | "member";
 
 export interface MeResult {
