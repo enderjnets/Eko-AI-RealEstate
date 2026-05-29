@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.21.0";
+export const CURRENT_VERSION = "0.21.1";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.21.1",
+    date: "2026-05-28",
+    title: "Fixes de code-review del buzón: visitas pasadas, canal incompatible, counts por canal",
+    changes: [
+      "Fix: el filtro 'Con cita' mostraba visitas ya pasadas que seguían en estado scheduled/confirmed (nunca se marcaron completed). Ahora _next_visit_per_lead filtra scheduled_at >= ahora → solo cuenta la PRÓXIMA visita futura (antes podía mostrar la más vieja, incluso pasada).",
+      "Fix: el selector de canal permitía elegir Email para un lead identificado solo por teléfono (o SMS para uno de email), lo que intentaba enviar a un destinatario inválido y guardaba el mensaje como FAILED. Ahora se valida que el canal pueda alcanzar al identificador del lead (email→dirección, sms/whatsapp→teléfono); si no, devuelve 'channel_identifier_mismatch' sin crear una conversación no entregable, y el composer muestra un aviso claro.",
+      "Fix: con ?channel=X los contadores pending/booked se calculaban antes de filtrar por canal → los badges no coincidían con las filas. Ahora se calculan sobre el conjunto ya filtrado por canal.",
+      "Tests +4: visita pasada no cuenta como 'con cita' (+ next_visit_at es la futura), canal incompatible rechazado sin crear conversación, create-when-missing usa canal compatible (whatsapp→sms), counts scoped por canal.",
+    ],
+  },
   {
     version: "0.21.0",
     date: "2026-05-28",

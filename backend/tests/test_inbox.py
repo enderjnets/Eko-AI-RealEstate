@@ -215,6 +215,70 @@ async def test_pending_priority_sort_and_count(database_url: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_past_visit_not_counted_as_booked(database_url: str) -> None:
+    """A past SCHEDULED/CONFIRMED visit (status never advanced) is NOT 'booked';
+    with a past + a future visit, next_visit_at is the future one."""
+    sfx = uuid.uuid4().hex[:6]
+    p_past, p_both = f"+34666VP{sfx}A", f"+34666VP{sfx}B"
+    engine = create_async_engine(database_url, echo=False, future=True)
+    Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+    try:
+        past = datetime.now(UTC) - timedelta(days=2)
+        future = datetime.now(UTC) + timedelta(days=3)
+        async with Session() as s:
+            id_past = await _mk_lead(s, p_past, channel="sms", last_dir=MessageDirection.OUTBOUND)
+            id_both = await _mk_lead(s, p_both, channel="sms", last_dir=MessageDirection.OUTBOUND)
+            s.add(Visit(lead_id=id_past, external_booking_id=f"v_{uuid.uuid4().hex[:8]}",
+                        status=VisitStatus.SCHEDULED, scheduled_at=past))
+            s.add(Visit(lead_id=id_both, external_booking_id=f"v_{uuid.uuid4().hex[:8]}",
+                        status=VisitStatus.SCHEDULED, scheduled_at=past))
+            s.add(Visit(lead_id=id_both, external_booking_id=f"v_{uuid.uuid4().hex[:8]}",
+                        status=VisitStatus.CONFIRMED, scheduled_at=future))
+            await s.commit()
+
+        async with await _http_client() as c:
+            items = (await c.get("/api/v1/inbox?filter=all")).json()["items"]
+            booked_ids = [it["lead_id"] for it in (await c.get("/api/v1/inbox?filter=booked")).json()["items"]]
+        past_item = _find(items, id_past)
+        both_item = _find(items, id_both)
+        assert past_item["has_visit"] is False  # past-only → not booked
+        assert id_past not in booked_ids
+        assert both_item["has_visit"] is True
+        # next_visit_at is the FUTURE visit, not the earliest (past) one.
+        assert both_item["next_visit_at"] is not None
+        assert both_item["next_visit_at"] > datetime.now(UTC).isoformat()
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, p_past, p_both)
+
+
+@pytest.mark.asyncio
+async def test_counts_scoped_to_channel_filter(database_url: str) -> None:
+    """With ?channel=X the pending/booked counts reflect only that channel."""
+    sfx = uuid.uuid4().hex[:6]
+    p_email, p_sms = f"+34666CS{sfx}A", f"+34666CS{sfx}B"
+    engine = create_async_engine(database_url, echo=False, future=True)
+    Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+    try:
+        async with Session() as s:
+            await _mk_lead(s, p_email, channel="email", last_dir=MessageDirection.INBOUND)
+            await _mk_lead(s, p_sms, channel="sms", last_dir=MessageDirection.INBOUND)
+            await s.commit()
+
+        async with await _http_client() as c:
+            unscoped = (await c.get("/api/v1/inbox?filter=all")).json()
+            email_only = (await c.get("/api/v1/inbox?filter=all&channel=email")).json()
+        # Global pending count includes both; email-scoped excludes the sms lead.
+        assert unscoped["pending_count"] >= 2
+        # Every returned item actually has the email channel (filter guarantee).
+        assert all("email" in it["channels"] for it in email_only["items"])
+        assert email_only["pending_count"] < unscoped["pending_count"]
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, p_email, p_sms)
+
+
+@pytest.mark.asyncio
 async def test_mark_handled_idempotent_and_isolated(database_url: str) -> None:
     """POST /handled twice is safe; another lead is unaffected."""
     sfx = uuid.uuid4().hex[:6]

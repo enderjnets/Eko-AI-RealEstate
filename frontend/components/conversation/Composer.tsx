@@ -38,7 +38,12 @@ export function Composer({
     try {
       const result = await leadsApi.sendMessage(leadId, text.trim(), { channel });
       if (result.status === "error") {
-        const key = result.error === "unsupported_channel" ? "composer.unsupportedChannel" : "";
+        const key =
+          result.error === "unsupported_channel"
+            ? "composer.unsupportedChannel"
+            : result.error === "channel_identifier_mismatch"
+            ? "composer.channelUnreachable"
+            : "";
         setError(key ? t(key) : result.error || t("composer.unknownError"));
         return;
       }

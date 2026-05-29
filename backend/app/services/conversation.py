@@ -97,6 +97,21 @@ INTENT_CONFIDENCE_THRESHOLD = 0.55
 SENDABLE_CHANNELS = {"sms", "email", "whatsapp"}
 
 
+def _channel_can_reach(channel: str, identifier: str) -> bool:
+    """Whether `channel` can deliver to a lead whose identifier is `identifier`.
+
+    A lead has a single identifier (`Lead.phone`): an email address for email
+    leads, a phone number otherwise. Sending email needs an address; sending
+    sms/whatsapp needs a phone — picking the wrong one would dispatch to a
+    nonsense recipient (e.g. emailing a phone number)."""
+    is_email = "@" in identifier
+    if channel == "email":
+        return is_email
+    if channel in ("sms", "whatsapp"):
+        return not is_email
+    return False
+
+
 async def _latest_active_conversation(lead_id: int, db: AsyncSession) -> Conversation | None:
     """Return the most recently-active conversation for the lead, any channel."""
     row = await db.execute(
@@ -156,6 +171,10 @@ async def send_human_message(
     if channel is not None:
         if channel not in SENDABLE_CHANNELS:
             return {"status": "error", "error": "unsupported_channel"}
+        if not _channel_can_reach(channel, lead.phone):
+            # e.g. picking email for a phone-only lead — don't create an
+            # undeliverable conversation; surface a clear error instead.
+            return {"status": "error", "error": "channel_identifier_mismatch"}
         conv = await _active_conversation_for_channel(lead_id, channel, db)
         if conv is None:
             conv = Conversation(

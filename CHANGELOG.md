@@ -2,6 +2,26 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.21.1] — 2026-05-28
+
+### Code-review fixes for the inbox
+
+- **Past visits no longer shown as booked**: `_next_visit_per_lead` now filters
+  `scheduled_at >= now`, so a visit still in scheduled/confirmed status only
+  because it was never advanced to completed isn't counted as booked, and
+  `next_visit_at` is the next *future* visit (was: earliest-ever, possibly past).
+- **Channel/identifier guard**: the channel picker allowed choosing Email for a
+  phone-only lead (or SMS for an email lead), which dispatched to an invalid
+  recipient and persisted the message as FAILED. `send_human_message` now rejects
+  with `channel_identifier_mismatch` before creating an undeliverable
+  conversation; the composer surfaces a clear message.
+- **Channel-scoped counts**: with `?channel=X` the pending/booked counts were
+  computed before the channel filter, so the chip badges didn't match the rows.
+  Counts are now computed over the channel-filtered set.
+- **Tests +4**: past visit not booked (+ next_visit_at is the future one),
+  mismatched channel rejected without creating a conversation, create-when-missing
+  uses a compatible channel (whatsapp→sms), counts scoped by channel.
+
 ## [0.21.0] — 2026-05-28
 
 ### Communications inbox — leads buzón with badges, filters, priority
