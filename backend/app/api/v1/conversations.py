@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import lazyload
 
 from app.db.base import get_db
 from app.models import (
@@ -148,6 +149,9 @@ async def get_timeline_for_lead(
             select(Message, Conversation.channel)
             .join(Conversation, Message.conversation_id == Conversation.id)
             .where(Conversation.lead_id == lead_id)
+            # Message.conversation is lazy="joined"; suppress the eager join — we
+            # already have the channel from the explicit JOIN above.
+            .options(lazyload(Message.conversation))
             .order_by(Message.created_at.asc(), Message.id.asc())
         )
     ).all()
@@ -159,6 +163,10 @@ async def get_timeline_for_lead(
             select(Conversation, func.count(Message.id))
             .outerjoin(Message, Message.conversation_id == Conversation.id)
             .where(Conversation.lead_id == lead_id)
+            # Conversation.lead is lazy="joined" + messages lazy="selectin";
+            # suppress both so GROUP BY conversations.id is valid (no extra lead
+            # columns in the SELECT) and we don't fire a needless selectin query.
+            .options(lazyload(Conversation.lead), lazyload(Conversation.messages))
             .group_by(Conversation.id)
             .order_by(Conversation.last_at.desc())
         )
