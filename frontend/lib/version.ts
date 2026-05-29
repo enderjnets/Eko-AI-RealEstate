@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.20.0";
+export const CURRENT_VERSION = "0.21.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.21.0",
+    date: "2026-05-28",
+    title: "Bandeja de comunicaciones — buzón de leads con badges, filtros y prioridad",
+    changes: [
+      "Nueva pestaña 'Bandeja' en el Nav (con contador de pendientes): un buzón estilo correo que lista los leads con conversaciones abiertas. Cada lead muestra su prioridad (🔥/🟡/⚪), un badge del canal pendiente (✉️ Email / 💬 SMS / 🗣️ Voz) cuando esperamos responderle, y 📅 Cita con fecha si tiene una visita agendada; los que no tienen nada pendiente muestran '✅ Al día'.",
+      "Filtros: Pendientes (default) / Con cita / Todos. Orden automático por prioridad (score desc; dentro del mismo, el que espera hace más tiempo primero). 'Pendiente' = el último mensaje del lead es entrante y no lo respondimos/atendimos desde entonces.",
+      "Marcar 'Atendido' quita el lead de pendientes (se guarda en Lead.meta — sin migración); reaparece solo si entra un nuevo mensaje del lead. Responder desde la conversación también lo saca de pendientes (el último mensaje pasa a saliente). Botón 'Responder' abre la conversación unificada del lead.",
+      "Backend: services/inbox.py (estados derivados con queries agrupadas, sin N+1: último mensaje por lead, canales por lead, próxima visita activa) + api/v1/inbox.py (GET /api/v1/inbox?filter=pending|booked|all, GET /inbox/count para el badge del Nav, POST/DELETE /inbox/{id}/handled). Protegido por el mismo require_auth que el resto del data API.",
+      "Tests +5: pending refleja el último entrante por canal; 'atendido' suprime y un nuevo entrante re-arma; filter=booked solo con cita ordenado por fecha; orden por prioridad + count coherente; mark-handled idempotente + aislado entre leads + 404.",
+    ],
+  },
   {
     version: "0.20.0",
     date: "2026-05-28",

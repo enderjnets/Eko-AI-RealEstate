@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart3, Home, LogOut, Search, Settings, Zap } from "lucide-react";
-import { authApi } from "@/lib/api";
+import { BarChart3, Home, Inbox, LogOut, Search, Settings, Zap } from "lucide-react";
+import { authApi, inboxApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { VersionButton } from "@/components/ui/VersionButton";
@@ -14,6 +14,7 @@ export function Nav() {
   const router = useRouter();
   const [authEnabled, setAuthEnabled] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [pending, setPending] = useState(0);
 
   useEffect(() => {
     authApi
@@ -22,6 +23,10 @@ export function Nav() {
         setAuthEnabled(m.auth_enabled);
         setIsAdmin(m.role === "admin");
       })
+      .catch(() => {});
+    inboxApi
+      .count()
+      .then((c) => setPending(c.pending))
       .catch(() => {});
   }, []);
 
@@ -63,6 +68,18 @@ export function Nav() {
             className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
           >
             {t("nav.leads")}
+          </Link>
+          <Link
+            href="/inbox"
+            className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+          >
+            <Inbox className="w-3.5 h-3.5" />
+            {t("nav.inbox")}
+            {pending > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                {pending}
+              </span>
+            )}
           </Link>
           <Link
             href="/properties"

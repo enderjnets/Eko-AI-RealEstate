@@ -2,6 +2,32 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.21.0] — 2026-05-28
+
+### Communications inbox — leads buzón with badges, filters, priority
+
+New **Inbox** tab in the Nav (with a pending counter): a mailbox-style view of
+leads with open conversations. Each lead shows its priority (🔥/🟡/⚪), a
+**pending-channel badge** (✉️ Email / 💬 SMS / 🗣️ Voice) when it's waiting for our
+reply, and a 📅 **Visit** badge with date if a visit is booked; leads with nothing
+pending show **✅ Up to date**.
+
+- **Filters**: Pending (default) / With visit / All. **Auto-sorted by priority**
+  (score desc; within a score, the longest-waiting first). "Pending" = the lead's
+  last message is inbound and we haven't replied/handled it since.
+- **Mark handled** removes a lead from pending (stored in `Lead.meta` — no
+  migration); it re-arms only when a new inbound arrives. Replying from the
+  conversation also clears it (last message becomes outbound). "Reply" opens the
+  lead's unified conversation.
+- **Backend**: `services/inbox.py` (derived state via grouped queries — no N+1:
+  last message per lead, channels per lead, next active visit) + `api/v1/inbox.py`
+  (`GET /api/v1/inbox?filter=pending|booked|all`, `GET /inbox/count` for the nav
+  badge, `POST`/`DELETE /inbox/{id}/handled`). Behind the same `require_auth` gate
+  as the rest of the data API.
+- **Tests +5**: pending reflects last inbound by channel; handled suppresses then a
+  new inbound re-arms; `filter=booked` only with-visit ordered by date; priority
+  sort + coherent count; mark-handled idempotent + isolated + 404.
+
 ## [0.20.0] — 2026-05-28
 
 ### Unified multichannel lead thread + channel picker + real email (plumbing)
