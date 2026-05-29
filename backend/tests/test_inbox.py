@@ -26,6 +26,7 @@ from app.models import (
     Visit,
     VisitStatus,
 )
+from app.services.inbox import set_handled
 
 
 @pytest.fixture
@@ -276,6 +277,42 @@ async def test_counts_scoped_to_channel_filter(database_url: str) -> None:
     finally:
         await engine.dispose()
         await _cleanup(database_url, p_email, p_sms)
+
+
+@pytest.mark.asyncio
+async def test_handled_does_not_clobber_concurrent_meta(database_url: str) -> None:
+    """Regression: handled state is its own column, so an interleaved writer to
+    Lead.meta (e.g. enrichment) and a mark-handled don't clobber each other.
+
+    Under the old meta-blob approach, whichever transaction committed last would
+    overwrite the other's meta key. With a dedicated column they touch different
+    columns and both survive.
+    """
+    sfx = uuid.uuid4().hex[:6]
+    phone = f"+34666MC{sfx}"
+    engine = create_async_engine(database_url, echo=False, future=True)
+    Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+    try:
+        async with Session() as s:
+            lead_id = await _mk_lead(s, phone, channel="sms", last_dir=MessageDirection.INBOUND)
+            await s.commit()
+
+        # Two overlapping sessions edit the SAME lead.
+        async with Session() as s1, Session() as s2:
+            l1 = (await s1.execute(select(Lead).where(Lead.id == lead_id))).scalar_one()
+            l2 = (await s2.execute(select(Lead).where(Lead.id == lead_id))).scalar_one()
+            l1.meta = {**(l1.meta or {}), "enrichment": {"partner_type": "referral"}}
+            set_handled(l2, datetime.now(UTC))
+            await s1.commit()  # writes meta
+            await s2.commit()  # writes inbox_handled_at — must NOT wipe meta
+
+        async with Session() as s:
+            lead = (await s.execute(select(Lead).where(Lead.id == lead_id))).scalar_one()
+            assert lead.inbox_handled_at is not None
+            assert lead.meta.get("enrichment", {}).get("partner_type") == "referral"
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, phone)
 
 
 @pytest.mark.asyncio

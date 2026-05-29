@@ -73,6 +73,14 @@ class Lead(Base):
 
     meta: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
+    # Inbox triage: when a realtor marked this lead handled. A lead is "pending"
+    # if its last message is inbound and this is null or older than that message.
+    # A dedicated column (not meta JSON) so marking handled never races with other
+    # writers to meta (e.g. discovery enrichment).
+    inbox_handled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

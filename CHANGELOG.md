@@ -2,6 +2,23 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.21.2] — 2026-05-28
+
+### Inbox handled-state moved to a real column (removes the Lead.meta race)
+
+- The inbox "handled" state moved from `Lead.meta["inbox"]["handled_at"]` (JSON
+  blob) to a dedicated `leads.inbox_handled_at` column (Alembic `009`, backfilled
+  from the existing JSON). Previously, marking handled reassigned the whole `meta`
+  dict, so it could clobber (or be clobbered by) a concurrent writer to `meta`
+  (e.g. discovery enrichment writing `meta.enrichment`). They're now separate
+  columns and can't interfere.
+- `set_handled()` is now a plain column assignment (no ISO parse, no dict
+  reassign); removed the silent parse-swallow that could leave a lead "pending"
+  forever on a corrupt value.
+- **Regression test +1**: two overlapping sessions on the same lead (one writes
+  `meta.enrichment`, the other marks handled) both survive (the old approach lost
+  one on the last commit).
+
 ## [0.21.1] — 2026-05-28
 
 ### Code-review fixes for the inbox
