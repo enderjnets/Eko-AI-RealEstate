@@ -147,7 +147,11 @@ async def test_inbound_text_creates_lead_and_replies(database_url: str) -> None:
             conv = (await s.execute(select(Conversation).where(Conversation.lead_id == lead_id))).scalar_one()
             msgs = (
                 await s.execute(
-                    select(Message).where(Message.conversation_id == conv.id).order_by(Message.created_at)
+                    select(Message)
+                    .where(Message.conversation_id == conv.id)
+                    # Tiebreak on id: inbound + outbound can share created_at (same
+                    # turn, server_default=func.now()) → deterministic order.
+                    .order_by(Message.created_at, Message.id)
                 )
             ).scalars().all()
             assert len(msgs) == 2
