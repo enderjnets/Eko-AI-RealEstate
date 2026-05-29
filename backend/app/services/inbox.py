@@ -3,8 +3,7 @@
 Derives, per lead that has at least one conversation, the state a realtor needs
 to triage: which channels it has used, whether the last message is still waiting
 for our reply (`needs_response`), whether a visit is booked, and whether the
-realtor already marked it handled (stored in `Lead.meta["inbox"]["handled_at"]`,
-so no schema migration is needed).
+realtor already marked it handled (the `Lead.inbox_handled_at` column).
 
 All state is read with a handful of grouped queries (no per-lead loops).
 """
@@ -44,29 +43,12 @@ class InboxItem:
     handled_at: datetime | None
 
 
-def _handled_at(lead: Lead) -> datetime | None:
-    raw = (lead.meta or {}).get("inbox", {}).get("handled_at")
-    if not raw:
-        return None
-    try:
-        return datetime.fromisoformat(raw)
-    except (ValueError, TypeError):
-        return None
-
-
 def set_handled(lead: Lead, when: datetime | None) -> None:
-    """Mark (or clear when `when` is None) the lead as handled in `Lead.meta`.
+    """Mark (or clear when `when` is None) the lead as handled.
 
-    Reassigns the whole JSON dict so SQLAlchemy tracks the change (in-place dict
-    mutation on a plain JSON column is not auto-tracked)."""
-    meta = dict(lead.meta or {})
-    inbox = dict(meta.get("inbox", {}))
-    if when is None:
-        inbox.pop("handled_at", None)
-    else:
-        inbox["handled_at"] = when.isoformat()
-    meta["inbox"] = inbox
-    lead.meta = meta
+    Writes the dedicated `inbox_handled_at` column — independent of `Lead.meta`,
+    so it never clobbers (or is clobbered by) other writers to the meta blob."""
+    lead.inbox_handled_at = when
 
 
 async def _last_message_per_lead(db: AsyncSession) -> dict[int, object]:
@@ -151,7 +133,7 @@ async def gather_inbox(db: AsyncSession) -> list[InboxItem]:
     items: list[InboxItem] = []
     for lead in leads:
         lm = last[lead.id]
-        handled_at = _handled_at(lead)
+        handled_at = lead.inbox_handled_at
         last_inbound = lm.direction == MessageDirection.INBOUND
         # Pending if the lead spoke last AND we haven't handled it since then.
         needs_response = last_inbound and (

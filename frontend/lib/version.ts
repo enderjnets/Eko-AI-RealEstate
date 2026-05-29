@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.21.1";
+export const CURRENT_VERSION = "0.21.2";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,16 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.21.2",
+    date: "2026-05-28",
+    title: "Estado 'atendido' del buzón en columna propia (elimina race en Lead.meta)",
+    changes: [
+      "El estado 'atendido' del buzón se movió de `Lead.meta[\"inbox\"][\"handled_at\"]` (blob JSON) a una columna dedicada `leads.inbox_handled_at` (Alembic 009, con backfill desde el JSON existente). Antes, marcar atendido reasignaba TODO el dict meta → podía pisar (o ser pisado por) otro writer concurrente del meta (p.ej. el enriquecimiento de discovery escribiendo `meta.enrichment`). Ahora son columnas distintas y no se interfieren.",
+      "set_handled() ahora hace `lead.inbox_handled_at = when` (sin parseo de ISO ni reasignación de dict). Eliminado el parse silencioso que podía dejar un lead 'pendiente' para siempre ante un valor corrupto.",
+      "Test de regresión +1: dos sesiones concurrentes sobre el mismo lead (una escribe meta.enrichment, otra marca atendido) → ambos sobreviven (con el enfoque viejo, el último commit borraba el otro).",
+    ],
+  },
   {
     version: "0.21.1",
     date: "2026-05-28",
