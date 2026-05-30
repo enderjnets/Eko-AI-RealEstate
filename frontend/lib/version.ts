@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.22.0";
+export const CURRENT_VERSION = "0.22.1";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.22.1",
+    date: "2026-05-29",
+    title: "Fix: 'Sign in with Google' funciona en móvil (popup → redirect)",
+    changes: [
+      "Bug: en el teléfono, tocar 'Sign in with Google' abría una pestaña nueva en `accounts.google.com/gsi/transform` que quedaba EN BLANCO y no dejaba continuar. Causa: el botón usaba el modo popup por defecto; los navegadores móviles abren el popup como pestaña separada y el credencial nunca vuelve a la pestaña original. (En desktop el popup sí funcionaba.) No lo causó la release móvil v0.22.0 — la config de Google estaba correcta.",
+      "Fix: el botón ahora usa `ux_mode=redirect` + `login_uri` → Google hace una navegación de página completa (sin popups) y postea el ID token al backend. Funciona igual en móvil y desktop.",
+      "Backend: nuevo `POST /api/v1/auth/login/google/callback` que verifica el token doble-submit anti-CSRF (`g_csrf_token` body == cookie), valida el ID token + allow-list (reusa los helpers del flujo JSON), setea la cookie de sesión y redirige a `/leads`. Fallos → `/login?error=google_failed|google_denied` (la página de login muestra el aviso). +4 tests.",
+      "Requiere agregar UNA URL en Google Cloud Console → Authorized redirect URIs: `https://inmo-demo.ekoaiautomation.com/api/v1/auth/login/google/callback` (ver docs/setup-google-signin.md). El login por contraseña no cambió.",
+    ],
+  },
   {
     version: "0.22.0",
     date: "2026-05-29",

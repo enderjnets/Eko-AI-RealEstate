@@ -255,6 +255,85 @@ async def test_google_login_db_member_then_denied(_needs_db: None) -> None:
         await _clear_allowed("member@eko.com", "stranger@eko.com")
 
 
+# ── Google redirect-mode callback (ux_mode=redirect) ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_google_callback_success_redirects_to_leads() -> None:
+    """Valid CSRF + token + allowed email → 303 to /leads with a session cookie."""
+    fake = _fake_settings()
+    with patch("app.api.v1.auth.get_settings", return_value=fake), \
+         patch("app.services.auth.get_settings", return_value=fake), \
+         patch("app.api.v1.auth.verify_google_id_token", return_value="owner@eko.com"), \
+         patch("app.api.v1.auth.resolve_email_access", return_value="admin"):
+        async with await _client() as c:
+            r = await c.post(
+                "/api/v1/auth/login/google/callback",
+                data={"credential": "tok", "g_csrf_token": "csrf123"},
+                cookies={"g_csrf_token": "csrf123"},
+            )
+    assert r.status_code == 303, r.text
+    assert r.headers["location"] == "/leads"
+    assert "eko_auth=" in r.headers.get("set-cookie", "")
+
+
+@pytest.mark.asyncio
+async def test_google_callback_csrf_mismatch_redirects_to_login() -> None:
+    """Body token != cookie token (or missing) → bounce to /login, no session."""
+    fake = _fake_settings()
+    with patch("app.api.v1.auth.get_settings", return_value=fake), \
+         patch("app.services.auth.get_settings", return_value=fake):
+        async with await _client() as c:
+            r = await c.post(
+                "/api/v1/auth/login/google/callback",
+                data={"credential": "tok", "g_csrf_token": "body-token"},
+                cookies={"g_csrf_token": "different-cookie"},
+            )
+    assert r.status_code == 303
+    assert r.headers["location"] == "/login?error=google_failed"
+    assert "eko_auth=" not in r.headers.get("set-cookie", "")
+
+
+@pytest.mark.asyncio
+async def test_google_callback_denied_email_redirects_with_flag() -> None:
+    """Valid CSRF + token but email not on the allow-list → /login?error=google_denied."""
+    fake = _fake_settings()
+    with patch("app.api.v1.auth.get_settings", return_value=fake), \
+         patch("app.services.auth.get_settings", return_value=fake), \
+         patch("app.api.v1.auth.verify_google_id_token", return_value="stranger@eko.com"), \
+         patch("app.api.v1.auth.resolve_email_access", return_value=None):
+        async with await _client() as c:
+            r = await c.post(
+                "/api/v1/auth/login/google/callback",
+                data={"credential": "tok", "g_csrf_token": "csrf123"},
+                cookies={"g_csrf_token": "csrf123"},
+            )
+    assert r.status_code == 303
+    assert r.headers["location"] == "/login?error=google_denied"
+    assert "eko_auth=" not in r.headers.get("set-cookie", "")
+
+
+@pytest.mark.asyncio
+async def test_google_callback_invalid_token_redirects_to_login() -> None:
+    """A bad ID token (verifier raises) → /login?error=google_failed, no session."""
+    fake = _fake_settings()
+    with patch("app.api.v1.auth.get_settings", return_value=fake), \
+         patch("app.services.auth.get_settings", return_value=fake), \
+         patch(
+             "app.api.v1.auth.verify_google_id_token",
+             side_effect=auth_svc.GoogleAuthError("invalid_id_token"),
+         ):
+        async with await _client() as c:
+            r = await c.post(
+                "/api/v1/auth/login/google/callback",
+                data={"credential": "bad", "g_csrf_token": "csrf123"},
+                cookies={"g_csrf_token": "csrf123"},
+            )
+    assert r.status_code == 303
+    assert r.headers["location"] == "/login?error=google_failed"
+    assert "eko_auth=" not in r.headers.get("set-cookie", "")
+
+
 # ── Apple sign-in: same allow-list + role resolution (needs DB) ──────────────
 
 

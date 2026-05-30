@@ -21,7 +21,16 @@ flow — password keeps working; Google is an extra button.
    - `http://localhost:3004` (local dev)
    - `https://inmo-demo.ekoaiautomation.com` (demo)
    - `https://<your-customer-domain>` (each pilot install)
-7. **Authorized redirect URIs** — leave **empty**. We use the Google Identity Services "implicit / credential" flow (one-tap + button), not the redirect flow.
+7. **Authorized redirect URIs** — add the backend callback for **every** origin above
+   (the "Sign in with Google" button uses `ux_mode=redirect`, which is reliable on mobile;
+   popup mode opens a blank tab on phones):
+   - `http://localhost:3004/api/v1/auth/login/google/callback` (local dev)
+   - `https://inmo-demo.ekoaiautomation.com/api/v1/auth/login/google/callback` (demo)
+   - `https://<your-customer-domain>/api/v1/auth/login/google/callback` (each pilot install)
+
+   Google redirects the browser (top-level POST) to this URL with the signed ID token; the
+   backend (`POST /api/v1/auth/login/google/callback`) verifies the double-submit CSRF token +
+   the ID token, sets the session cookie, and 303-redirects into `/leads`.
 8. Create → copy the **Client ID** (looks like `1234567890-xxxxxx.apps.googleusercontent.com`).
 
 ## 2. Wire the .env
@@ -73,11 +82,22 @@ office (each as admin or member) — no redeploy needed.
 
 ## 4. How it works (one paragraph)
 
-1. User clicks "Sign in with Google" → the Google Identity Services button returns a signed **ID token** (JWT).
-2. Frontend POSTs `{id_token: "..."}` to `POST /api/v1/auth/login/google`.
-3. Backend validates the token signature against Google's public keys (`google-auth`) AND `aud == GOOGLE_CLIENT_ID` AND `email_verified == true`.
-4. Backend resolves the verified email against the access list (above) to a role; if denied → `401 email_not_in_allow_list`.
-5. On success it issues the **same HMAC-signed `eko_auth` cookie** as the password flow — but the token now carries the email + role, which gates the admin-only Settings/Team APIs.
+1. User clicks "Sign in with Google" → with `ux_mode=redirect`, Google does a top-level
+   navigation (no popup) and, after the account is chosen, **POSTs** the signed **ID token**
+   (JWT) plus a `g_csrf_token` to `POST /api/v1/auth/login/google/callback`.
+2. Backend verifies the double-submit CSRF token (body `g_csrf_token` == cookie `g_csrf_token`),
+   then validates the ID token signature against Google's public keys (`google-auth`) AND
+   `aud == GOOGLE_CLIENT_ID` AND `email_verified == true`.
+3. Backend resolves the verified email against the access list (above) to a role; if denied it
+   303-redirects to `/login?error=google_denied` (invalid token/CSRF → `?error=google_failed`).
+4. On success it issues the **same HMAC-signed `eko_auth` cookie** as the password flow — but the
+   token now carries the email + role, which gates the admin-only Settings/Team APIs — and
+   303-redirects into `/leads`.
+
+> Why redirect, not popup: mobile browsers open the GIS popup as a separate tab, so the
+> credential never returns to the original tab and you get a blank `accounts.google.com/gsi/transform`
+> page. The redirect flow works the same on phones and desktops. (The legacy JSON popup endpoint
+> `POST /api/v1/auth/login/google` is kept for back-compat but the button no longer uses it.)
 
 ## 5. Troubleshooting
 
@@ -85,6 +105,8 @@ office (each as admin or member) — no redeploy needed.
 |---|---|---|
 | Button not visible | `GOOGLE_CLIENT_ID` empty, or no admin/allow env set | Set `GOOGLE_CLIENT_ID` + `GOOGLE_ADMIN_EMAILS` + `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, restart |
 | Popup opens then closes immediately | Origin not in "Authorized JavaScript origins" | Add the URL in Google Console, wait ~5 min |
+| Blank `accounts.google.com/gsi/transform` tab (esp. mobile) | Callback URL not in "Authorized redirect URIs" | Add `…/api/v1/auth/login/google/callback` for that origin, wait ~5 min |
+| Lands on `/login?error=google_failed` | CSRF/token rejected (often a stale redirect URI or `aud` mismatch) | Confirm the redirect URI + that `GOOGLE_CLIENT_ID` matches the built `NEXT_PUBLIC_GOOGLE_CLIENT_ID` |
 | 401 `email_not_in_allow_list` | Account not on the list | Add it in Settings → Team (or to `GOOGLE_ADMIN_EMAILS`) |
 | Logged in but no Settings tab | You're a `member`, not `admin` | Have an admin promote you in Settings → Team |
 | 401 `invalid_id_token: Token used too late` | Server clock skew | `sudo ntpdate -s pool.ntp.org` on the ROG |

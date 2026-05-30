@@ -6,9 +6,11 @@ Google login → the role resolved from the access list (services/auth).
 """
 from __future__ import annotations
 
+import hmac
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -140,6 +142,42 @@ async def login_google(
         raise HTTPException(status_code=401, detail="email_not_in_allow_list")
     _set_session_cookie(response, make_token(email=email, role=role))
     return {"ok": True, "auth_enabled": True}
+
+
+@router.post("/login/google/callback")
+async def login_google_callback(
+    request: Request,
+    credential: str = Form(...),
+    g_csrf_token: str = Form(default=""),
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    """Redirect-mode landing for "Sign in with Google" (`ux_mode=redirect`).
+
+    Google posts the ID token here as a top-level form navigation (the popup
+    flow is unreliable on mobile — phones open it as a new tab and the credential
+    never returns). We verify Google's double-submit-cookie CSRF token, validate
+    the ID token + access list with the same helpers as the JSON flow, set the
+    session cookie, and 303 back into the app. Failures redirect to /login with
+    a flag instead of surfacing a raw error to the user."""
+    s = get_settings()
+    if not s.AUTH_ENABLED:
+        return RedirectResponse("/leads", status_code=303)
+    cookie_csrf = request.cookies.get("g_csrf_token", "")
+    if not g_csrf_token or not cookie_csrf or not hmac.compare_digest(g_csrf_token, cookie_csrf):
+        log.warning("google_signin_csrf_failed")
+        return RedirectResponse("/login?error=google_failed", status_code=303)
+    try:
+        email = verify_google_id_token(credential)
+    except GoogleAuthError as e:
+        log.warning("google_signin_failed reason=%s", e)
+        return RedirectResponse("/login?error=google_failed", status_code=303)
+    role = await resolve_email_access(email, db)
+    if role is None:
+        log.warning("google_signin_denied email=%s", email)
+        return RedirectResponse("/login?error=google_denied", status_code=303)
+    resp = RedirectResponse("/leads", status_code=303)
+    _set_session_cookie(resp, make_token(email=email, role=role))
+    return resp
 
 
 @router.post("/login/apple")
