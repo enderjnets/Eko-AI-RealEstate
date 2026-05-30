@@ -5,6 +5,14 @@
 html, body { background: #0B0B0F; color: #F3F4F6; }
 body { -webkit-tap-highlight-color: transparent; }
 
+/* Accessible keyboard focus + a dark scrollbar that matches the noir console. */
+:focus-visible { outline: 2px solid rgba(124, 58, 237, 0.6); outline-offset: 2px; border-radius: 6px; }
+* { scrollbar-color: rgba(255, 255, 255, 0.12) transparent; scrollbar-width: thin; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 9999px; border: 2px solid #0B0B0F; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }
+*::-webkit-scrollbar-track { background: transparent; }
+
 /* Phones: reserve space so the fixed bottom tab bar never hides page content.
    Scoped with :has() so login / about (no tab bar) keep their full layout. */
 @media (max-width: 767px) {

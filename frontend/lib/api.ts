@@ -41,6 +41,7 @@ export interface Lead {
     status?: string;
     tier?: "hot" | "warm" | "cold";
   };
+  needs_response?: boolean;
   last_message_at: string | null;
   created_at: string;
   updated_at: string;

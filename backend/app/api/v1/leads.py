@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_db
-from app.models import Lead, LeadIntent, LeadStatus
+from app.models import Conversation, Lead, LeadIntent, LeadStatus, Message, MessageDirection
 from app.services._common import ParsedMessage
 from app.services.conversation import (
     generate_reply_suggestions,
@@ -88,6 +88,7 @@ class LeadOut(BaseModel):
     human_takeover: bool
     score: int
     score_breakdown: dict
+    needs_response: bool = False
     last_message_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -128,7 +129,31 @@ async def list_leads(
             select(Lead).where(*where).order_by(*order).limit(limit).offset(offset)
         )
     ).scalars().all()
-    return LeadListOut(total=total, items=[LeadOut.model_validate(r) for r in rows])
+    pending = await _needs_response_map(db, [r.id for r in rows])
+    items = []
+    for r in rows:
+        out = LeadOut.model_validate(r)
+        out.needs_response = pending.get(r.id, False)
+        items.append(out)
+    return LeadListOut(total=total, items=items)
+
+
+async def _needs_response_map(db: AsyncSession, lead_ids: list[int]) -> dict[int, bool]:
+    """Per lead in `lead_ids`, True when the most recent message (any channel) is
+    inbound — i.e. the lead spoke last and is waiting on us. Scoped to the page's
+    leads (one grouped query, no N+1). Mirrors the inbox's `needs_response`."""
+    if not lead_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(Conversation.lead_id, Message.direction)
+            .join(Conversation, Message.conversation_id == Conversation.id)
+            .where(Conversation.lead_id.in_(lead_ids))
+            .order_by(Conversation.lead_id, Message.created_at.desc(), Message.id.desc())
+            .distinct(Conversation.lead_id)
+        )
+    ).all()
+    return {lead_id: direction == MessageDirection.INBOUND for lead_id, direction in rows}
 
 
 @router.post("", response_model=LeadOut, status_code=201)

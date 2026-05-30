@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.22.1";
+export const CURRENT_VERSION = "0.23.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.23.0",
+    date: "2026-05-29",
+    title: "Escritorio más potente: Leads tipo CRM (buscador + filtros + orden) y detalle con acciones rápidas + 'Why this score'",
+    changes: [
+      "Implementa el diseño de escritorio de Claude Design: que el realtor sienta el sistema intuitivo pero potente. (El móvil quedó en v0.22.0; esto es la capa de escritorio.)",
+      "Leads ahora es un explorador tipo CRM (`LeadsExplorer`, reemplaza FilterBar+LeadsTable): buscador en vivo (nombre/zona/contacto/intención/tipo) con atajo de teclado `/`, chips de filtro inteligentes (Todos · 🔥 Hot · Por responder · New · Qualified · Visiting · Won), orden conmutable Prioridad↔Reciente (server-side vía sort) con contador 'N de M', filas más ricas (barra de acento rojo→ámbar en hot, punto ámbar de 'por responder', chevron al hover) y estado vacío con limpiar filtros.",
+      "Backend: `GET /leads` ahora devuelve `needs_response` por lead (último mensaje entrante = espera respuesta), con una query agrupada scoped a la página (sin N+1, mismo patrón que el buzón). Alimenta el chip 'Por responder' y el punto de la fila. +1 test.",
+      "Detalle del lead: barra de acciones rápidas (Responder → enfoca el composer · Llamar → tel: en leads con teléfono · Agendar visita → scroll a visitas · Marcar ganado → PATCH status=won) + tarjeta 'Why this score' que visualiza el `score_breakdown` real (Intención/Presupuesto/Interacción/Urgencia/Zona/Tipo/Recencia/Visita) con barras degradadas.",
+      "Pulido global: anillo de foco accesible (`:focus-visible`) + scrollbar oscuro a juego con el noir.",
+      "i18n EN+ES para todo lo nuevo. El escritorio gana potencia sin romper la versión móvil (todo responsive).",
+    ],
+  },
   {
     version: "0.22.1",
     date: "2026-05-29",

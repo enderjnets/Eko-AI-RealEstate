@@ -1,10 +1,7 @@
-import { Suspense } from "react";
 import { Nav } from "@/components/ui/Nav";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { AddLeadButton } from "@/components/leads/AddLeadButton";
-import { FilterBar } from "@/components/leads/FilterBar";
 import { HotLeadsPanel } from "@/components/leads/HotLeadsPanel";
-import { LeadsTable } from "@/components/leads/LeadsTable";
+import { LeadsExplorer } from "@/components/leads/LeadsExplorer";
 
 export const dynamic = "force-dynamic";
 
@@ -17,16 +14,7 @@ export default function LeadsPage() {
 
         <HotLeadsPanel />
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Suspense fallback={null}>
-            <FilterBar />
-          </Suspense>
-          <AddLeadButton />
-        </div>
-
-        <Suspense fallback={null}>
-          <LeadsTable />
-        </Suspense>
+        <LeadsExplorer />
       </main>
     </>
   );
