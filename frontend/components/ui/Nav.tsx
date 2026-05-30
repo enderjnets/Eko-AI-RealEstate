@@ -2,8 +2,17 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { BarChart3, Home, Inbox, LogOut, Search, Settings, Zap } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  BarChart3,
+  Home,
+  Inbox,
+  LogOut,
+  Search,
+  Settings,
+  Users,
+  Zap,
+} from "lucide-react";
 import { authApi, inboxApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
@@ -12,6 +21,7 @@ import { VersionButton } from "@/components/ui/VersionButton";
 export function Nav() {
   const { t } = useI18n();
   const router = useRouter();
+  const pathname = usePathname();
   const [authEnabled, setAuthEnabled] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [pending, setPending] = useState(0);
@@ -38,95 +48,153 @@ export function Nav() {
     }
   }
 
-  return (
-    <nav className="border-b border-white/5 bg-eko-noir/80 backdrop-blur-md sticky top-0 z-40">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-eko-violet to-eko-magenta flex items-center justify-center">
-            <Zap className="w-4 h-4 text-white" />
-          </div>
-          <div className="leading-tight">
-            <div className="font-semibold text-sm text-white">
-              Eko AI <span className="text-eko-violet">Realtors</span>
-            </div>
-            <div className="text-[10px] text-gray-500 uppercase tracking-wider">
-              {t("nav.subtitle")}
-            </div>
-          </div>
-        </Link>
+  const isActive = (href: string) =>
+    href === "/leads" ? pathname.startsWith("/leads") : pathname.startsWith(href);
 
-        <div className="flex items-center gap-1">
-          <Link
-            href="/discovery"
-            className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
-          >
-            <Search className="w-3.5 h-3.5" />
-            {t("nav.discovery")}
+  const tabs = [
+    { href: "/discovery", label: t("nav.discovery"), Icon: Search },
+    { href: "/leads", label: t("nav.leads"), Icon: Users },
+    { href: "/inbox", label: t("nav.inbox"), Icon: Inbox, dot: pending > 0 },
+    { href: "/properties", label: t("nav.properties"), Icon: Home },
+    { href: "/analytics", label: t("nav.stats"), Icon: BarChart3 },
+  ];
+
+  return (
+    <>
+      <nav className="border-b border-white/5 bg-eko-noir/80 backdrop-blur-md sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-eko-violet to-eko-magenta flex items-center justify-center">
+              <Zap className="w-4 h-4 text-white" />
+            </div>
+            <div className="leading-tight">
+              <div className="font-semibold text-sm text-white">
+                Eko AI <span className="text-eko-violet">Realtors</span>
+              </div>
+              <div className="text-[10px] text-gray-500 uppercase tracking-wider">
+                {t("nav.subtitle")}
+              </div>
+            </div>
           </Link>
-          <Link
-            href="/leads"
-            className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
-          >
-            {t("nav.leads")}
-          </Link>
-          <Link
-            href="/inbox"
-            className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
-          >
-            <Inbox className="w-3.5 h-3.5" />
-            {t("nav.inbox")}
-            {pending > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                {pending}
-              </span>
-            )}
-          </Link>
-          <Link
-            href="/properties"
-            className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
-          >
-            <Home className="w-3.5 h-3.5" />
-            {t("nav.properties")}
-          </Link>
-          <Link
-            href="/analytics"
-            className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
-          >
-            <BarChart3 className="w-3.5 h-3.5" />
-            {t("nav.analytics")}
-          </Link>
-          {isAdmin && (
+
+          {/* Desktop links — hidden on phones (the bottom tab bar replaces them). */}
+          <div className="hidden md:flex items-center gap-1">
             <Link
-              href="/settings"
+              href="/discovery"
               className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
             >
-              <Settings className="w-3.5 h-3.5" />
-              {t("nav.settings")}
+              <Search className="w-3.5 h-3.5" />
+              {t("nav.discovery")}
             </Link>
-          )}
-          <a
-            href="/docs"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-1.5 rounded-md text-sm text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
-            title="OpenAPI docs (backend Swagger UI)"
-          >
-            {t("nav.api")}
-          </a>
-          <LanguageSwitcher />
-          <VersionButton />
-          {authEnabled && (
-            <button
-              type="button"
-              onClick={logout}
-              title={t("auth.logout")}
-              className="px-2.5 py-1.5 rounded-md text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+            <Link
+              href="/leads"
+              className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
             >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          )}
+              {t("nav.leads")}
+            </Link>
+            <Link
+              href="/inbox"
+              className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+            >
+              <Inbox className="w-3.5 h-3.5" />
+              {t("nav.inbox")}
+              {pending > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  {pending}
+                </span>
+              )}
+            </Link>
+            <Link
+              href="/properties"
+              className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+            >
+              <Home className="w-3.5 h-3.5" />
+              {t("nav.properties")}
+            </Link>
+            <Link
+              href="/analytics"
+              className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              {t("nav.analytics")}
+            </Link>
+            {isAdmin && (
+              <Link
+                href="/settings"
+                className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                {t("nav.settings")}
+              </Link>
+            )}
+            <a
+              href="/docs"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-md text-sm text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+              title="OpenAPI docs (backend Swagger UI)"
+            >
+              {t("nav.api")}
+            </a>
+          </div>
+
+          {/* Actions — always visible. On phones this is the whole right side. */}
+          <div className="flex items-center gap-1">
+            {/* Settings isn't in the bottom tab bar, so expose it here on phones. */}
+            {isAdmin && (
+              <Link
+                href="/settings"
+                title={t("nav.settings")}
+                aria-label={t("nav.settings")}
+                className="md:hidden inline-flex items-center justify-center min-w-[40px] h-10 rounded-md text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+              </Link>
+            )}
+            <LanguageSwitcher />
+            <div className="hidden sm:block">
+              <VersionButton />
+            </div>
+            {authEnabled && (
+              <button
+                type="button"
+                onClick={logout}
+                title={t("auth.logout")}
+                aria-label={t("auth.logout")}
+                className="inline-flex items-center justify-center min-w-[40px] h-10 sm:h-auto sm:min-w-0 sm:px-2.5 sm:py-1.5 rounded-md text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
-      </div>
-    </nav>
+      </nav>
+
+      {/* Bottom tab bar — native-app navigation on phones only. */}
+      <nav
+        aria-label="Primary"
+        className="eko-tabbar md:hidden fixed inset-x-0 bottom-0 z-50 flex border-t border-white/10 bg-eko-noir/90 backdrop-blur-lg pb-[env(safe-area-inset-bottom,0px)]"
+      >
+        {tabs.map(({ href, label, Icon, dot }) => {
+          const active = isActive(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              aria-current={active ? "page" : undefined}
+              className={`relative flex-1 flex flex-col items-center justify-center gap-1 min-h-[56px] py-2 text-[10px] font-medium transition-colors ${
+                active ? "text-eko-violet" : "text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              <Icon className="w-[21px] h-[21px]" />
+              <span>{label}</span>
+              {dot && (
+                <span className="absolute top-[7px] left-[calc(50%+8px)] w-2 h-2 rounded-full bg-amber-400 border-[1.5px] border-eko-noir" />
+              )}
+            </Link>
+          );
+        })}
+      </nav>
+    </>
   );
 }

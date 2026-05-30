@@ -86,9 +86,9 @@ export function Composer({
   return (
     <section className="mt-6 rounded-xl border border-white/10 bg-white/[0.02] p-4">
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
           <h3 className="text-xs uppercase tracking-wider text-gray-500">{t("composer.channelLabel")}</h3>
-          <div className="inline-flex rounded-lg border border-white/10 overflow-hidden">
+          <div className="flex w-full sm:inline-flex sm:w-auto rounded-lg border border-white/10 overflow-hidden">
             {channelOptions.map(({ value, label, Icon, disabled }) => {
               const active = value === channel;
               return (
@@ -98,7 +98,7 @@ export function Composer({
                   disabled={disabled}
                   onClick={() => !disabled && setChannel(value as SendChannel)}
                   title={disabled ? t("composer.channel.voice") : label}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-2.5 py-2 sm:py-1 text-[11px] font-medium transition-colors ${
                     active
                       ? "bg-eko-violet/20 text-eko-violet"
                       : disabled
@@ -117,7 +117,7 @@ export function Composer({
           type="button"
           onClick={handleSuggest}
           disabled={suggesting}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border border-eko-violet/30 bg-eko-violet/10 text-eko-violet hover:bg-eko-violet/20 disabled:opacity-60"
+          className="w-full sm:w-auto justify-center inline-flex items-center gap-1.5 px-2.5 py-2 sm:py-1 rounded-md text-[11px] font-medium border border-eko-violet/30 bg-eko-violet/10 text-eko-violet hover:bg-eko-violet/20 disabled:opacity-60"
           title={t("composer.suggestTitle")}
         >
           {suggesting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
@@ -165,7 +165,7 @@ export function Composer({
             type="button"
             onClick={handleSend}
             disabled={!text.trim() || sending}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-eko-violet text-white hover:bg-eko-violet-dark disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 px-4 sm:px-3 py-2 sm:py-1.5 rounded-lg text-xs font-semibold bg-eko-violet text-white hover:bg-eko-violet-dark disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
             {t("composer.send")}

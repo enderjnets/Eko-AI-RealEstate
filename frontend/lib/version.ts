@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.21.2";
+export const CURRENT_VERSION = "0.22.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.22.0",
+    date: "2026-05-29",
+    title: "Dashboard móvil tipo app nativa: barra de pestañas inferior + barra superior delgada + notch",
+    changes: [
+      "Barra de pestañas inferior fija (solo en teléfonos, oculta en escritorio): Discovery · Leads · Inbox · Properties · Stats. La pestaña activa se resalta en violeta según la ruta actual; Inbox muestra un punto ámbar cuando hay pendientes. Es la navegación principal en móvil, estilo app nativa.",
+      "La barra superior se simplifica en móvil: marca + idioma + salir (y engranaje de Settings para admins, ya que no está en la tab bar). Los enlaces completos de escritorio se ocultan por debajo de `md`. El escritorio no cambia.",
+      "Soporte de notch / safe-area: `viewport-fit=cover` + `theme-color` oscuro + metadatos apple-web-app; la tab bar respeta `env(safe-area-inset-bottom)` y el contenido reserva espacio inferior (vía `body:has(.eko-tabbar)`, sin afectar login/about que no tienen tab bar).",
+      "Composer táctil en móvil: selector de canal (SMS/Email/Voz) a ancho completo con áreas de toque más grandes; botones 'Sugerir respuestas' y 'Enviar' más cómodos para el dedo. En escritorio queda igual.",
+      "El stacking a una columna ya estaba resuelto en las páginas vía clases responsive de Tailwind; este release añade la capa de chrome nativo móvil que faltaba.",
+    ],
+  },
   {
     version: "0.21.2",
     date: "2026-05-28",

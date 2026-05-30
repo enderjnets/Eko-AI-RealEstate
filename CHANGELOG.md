@@ -2,6 +2,32 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.22.0] — 2026-05-29
+
+### Native-app mobile dashboard (bottom tab bar + slim top bar + notch support)
+
+Mobile visitors to `inmo-demo.ekoaiautomation.com` now get a genuinely usable,
+native-app-feeling dashboard. Desktop is unchanged.
+
+- **Fixed bottom tab bar** (phones only, hidden ≥ `md`): Discovery · Leads ·
+  Inbox · Properties · Stats. The active tab is highlighted in violet based on
+  the current route; Inbox shows an amber dot when there are pending
+  conversations. This is the primary navigation on mobile.
+- **Slim top bar on mobile**: brand + language + sign-out (plus a Settings gear
+  for admins, since Settings isn't in the tab bar). The full desktop link row is
+  hidden below `md`.
+- **Notch / safe-area support**: `viewport-fit=cover` + dark `theme-color` +
+  apple-web-app metadata. The tab bar honors `env(safe-area-inset-bottom)`, and
+  page content reserves bottom clearance via `body:has(.eko-tabbar)` so login /
+  about (which have no tab bar) keep their full-height layout.
+- **Touch-friendly composer on mobile**: the channel selector (SMS / Email /
+  Voice) spans full width with larger tap targets; the "Suggest replies" and
+  "Send" buttons are roomier for the thumb. Desktop layout is untouched.
+- Single-column stacking was already handled per-page by Tailwind responsive
+  classes; this release adds the native mobile chrome that was missing.
+
+Implements the mobile design handed off from Claude Design (claude.ai/design).
+
 ## [0.21.2] — 2026-05-28
 
 ### Inbox handled-state moved to a real column (removes the Lead.meta race)

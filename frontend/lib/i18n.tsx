@@ -25,6 +25,7 @@ const EN: Record<string, string> = {
   "nav.analytics": "Analytics",
   "nav.discovery": "Discovery",
   "nav.api": "API",
+  "nav.stats": "Stats",
   // inbox / communications buzón
   "inbox.title": "Inbox",
   "inbox.subtitle": "Leads with open conversations — answer the pending ones, see who has a booked visit, sorted by priority.",
@@ -368,6 +369,7 @@ const ES: Record<string, string> = {
   "nav.analytics": "Analíticas",
   "nav.discovery": "Descubrir",
   "nav.api": "API",
+  "nav.stats": "Stats",
   // bandeja de comunicaciones
   "inbox.title": "Bandeja",
   "inbox.subtitle": "Leads con conversaciones abiertas — respondé los pendientes, mirá quién tiene cita agendada, ordenados por prioridad.",
