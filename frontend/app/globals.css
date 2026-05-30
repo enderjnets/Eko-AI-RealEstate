@@ -3,3 +3,12 @@
 @tailwind utilities;
 
 html, body { background: #0B0B0F; color: #F3F4F6; }
+body { -webkit-tap-highlight-color: transparent; }
+
+/* Phones: reserve space so the fixed bottom tab bar never hides page content.
+   Scoped with :has() so login / about (no tab bar) keep their full layout. */
+@media (max-width: 767px) {
+  body:has(.eko-tabbar) {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
