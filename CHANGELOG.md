@@ -2,6 +2,31 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.22.1] — 2026-05-29
+
+### Fix: "Sign in with Google" works on mobile (popup → redirect)
+
+On a phone, tapping "Sign in with Google" opened a new tab to
+`accounts.google.com/gsi/transform` that stayed **blank**. Mobile browsers open
+the GIS popup as a separate tab, so the credential never returns to the original
+tab. (Desktop worked; the Google Console config was correct; v0.22.0 did not
+cause it — it surfaced on first mobile use.)
+
+- The button now uses `ux_mode="redirect"` + `login_uri` → Google does a
+  full-page navigation (no popup) and POSTs the ID token to the backend. Works
+  identically on mobile and desktop.
+- New `POST /api/v1/auth/login/google/callback`: verifies Google's
+  double-submit CSRF token (`g_csrf_token` body == cookie), validates the ID
+  token + allow-list (reusing the existing helpers), sets the session cookie,
+  and 303-redirects into `/leads`. Failures bounce to
+  `/login?error=google_failed|google_denied` (the login page shows the notice).
+  +4 backend tests.
+- **Requires one Google Cloud Console change**: add
+  `https://inmo-demo.ekoaiautomation.com/api/v1/auth/login/google/callback` to
+  the OAuth client's **Authorized redirect URIs** (see
+  `docs/setup-google-signin.md`). Password login is unchanged. The legacy JSON
+  popup endpoint `POST /api/v1/auth/login/google` is kept for back-compat.
+
 ## [0.22.0] — 2026-05-29
 
 ### Native-app mobile dashboard (bottom tab bar + slim top bar + notch support)

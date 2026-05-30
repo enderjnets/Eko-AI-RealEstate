@@ -35,6 +35,19 @@ export default function LoginPage() {
       });
   }, []);
 
+  // The Google redirect flow (ux_mode=redirect) lands back here with ?error=…
+  // when the backend callback rejects the sign-in (CSRF/invalid token or denied).
+  useEffect(() => {
+    const err = new URLSearchParams(window.location.search).get("error");
+    if (err === "google_denied") setError(t("auth.googleDenied"));
+    else if (err === "google_failed") setError(t("auth.googleFailed"));
+  }, [t]);
+
+  const googleCallbackUri =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/api/v1/auth/login/google/callback`
+      : "";
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (loading) return;
@@ -130,6 +143,8 @@ export default function LoginPage() {
                   <GoogleLogin
                     onSuccess={handleGoogleCredential}
                     onError={() => setError(t("auth.googleFailed"))}
+                    ux_mode="redirect"
+                    login_uri={googleCallbackUri}
                     text="signin_with"
                     theme="filled_black"
                     shape="rectangular"
