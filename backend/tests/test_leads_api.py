@@ -278,3 +278,43 @@ async def test_create_lead_unknown_field_422() -> None:
     async with await _http_client() as client:
         r = await client.post("/api/v1/leads", json={"phone": "+34600000000", "bogus": "x"})
     assert r.status_code == 422
+
+
+async def _seed_lead_with_last_message(database_url: str, phone: str, last_dir: MessageDirection) -> int:
+    engine = create_async_engine(database_url, echo=False, future=True)
+    Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+    try:
+        async with Session() as s:
+            lead = Lead(phone=phone, name="NR Lead")
+            s.add(lead)
+            await s.flush()
+            conv = Conversation(lead_id=lead.id, channel="sms")
+            s.add(conv)
+            await s.flush()
+            sender = MessageSender.LEAD if last_dir == MessageDirection.INBOUND else MessageSender.AGENT
+            s.add(Message(
+                conversation_id=conv.id, direction=last_dir, sender=sender,
+                content="hi", external_id=f"nr_{uuid.uuid4().hex[:10]}",
+            ))
+            await s.commit()
+            return lead.id
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_list_leads_needs_response_flag(database_url: str) -> None:
+    """needs_response is True when the lead's last message is inbound, else False."""
+    pin = uuid.uuid4().hex[:8]
+    inbound_phone, outbound_phone = f"+3460{pin}1", f"+3460{pin}2"
+    inbound_id = await _seed_lead_with_last_message(database_url, inbound_phone, MessageDirection.INBOUND)
+    outbound_id = await _seed_lead_with_last_message(database_url, outbound_phone, MessageDirection.OUTBOUND)
+    try:
+        async with await _http_client() as client:
+            body = (await client.get("/api/v1/leads?limit=200")).json()
+        by_id = {it["id"]: it for it in body["items"]}
+        assert by_id[inbound_id]["needs_response"] is True
+        assert by_id[outbound_id]["needs_response"] is False
+    finally:
+        await _delete_lead(database_url, inbound_phone)
+        await _delete_lead(database_url, outbound_phone)

@@ -2,6 +2,33 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.23.0] — 2026-05-29
+
+### More powerful desktop: CRM-style Leads + Lead detail with quick actions & "Why this score"
+
+Implements the desktop design handed off from Claude Design — make the realtor
+feel the system is intuitive yet powerful. (Mobile shipped in v0.22.0; this is
+the desktop layer.) Everything stays responsive; the mobile experience is intact.
+
+- **Leads is now a CRM-style explorer** (`LeadsExplorer`, replacing
+  `FilterBar` + `LeadsTable`): live search (name / zone / contact / intent /
+  type) with a `/` keyboard shortcut; smart filter chips (All · 🔥 Hot ·
+  Pending reply · New · Qualified · Visiting · Won); a toggleable Priority ↔
+  Recent sort (server-side) with a live "N of M" counter; richer rows (red→amber
+  accent bar on hot leads, amber "waiting for reply" dot, hover chevron); and an
+  empty state with a clear-filters action.
+- **Backend**: `GET /leads` now returns `needs_response` per lead (last message
+  inbound = waiting on us), via a grouped query scoped to the page (no N+1, same
+  pattern as the inbox). Powers the "Pending reply" chip and the row dot. +1 test.
+- **Lead detail quick-action bar**: Reply (focuses the composer) · Call (`tel:`
+  for phone leads) · Book visit (scrolls to the visits section) · Mark won
+  (`PATCH status=won`). Plus a **"Why this score"** card that visualizes the real
+  `score_breakdown` (Intent / Budget / Engagement / Urgency / Zone / Type /
+  Recency / Visit) with gradient bars.
+- **Global polish**: accessible `:focus-visible` ring + a dark scrollbar that
+  matches the noir console.
+- Full EN + ES i18n for the new strings.
+
 ## [0.22.1] — 2026-05-29
 
 ### Fix: "Sign in with Google" works on mobile (popup → redirect)
