@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.26.1";
+export const CURRENT_VERSION = "0.27.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.27.0",
+    date: "2026-06-01",
+    title: "Inbound email: traer cuerpo + Message-ID reales (Received Emails API) → threading correcto",
+    changes: [
+      "Causa del 'responde con correo nuevo en vez de enganchar al hilo': el webhook `email.received` de Resend es SOLO-METADATA (sin cuerpo ni headers), así que el inbound entraba con contenido vacío y sin el Message-ID real → la respuesta no podía threadearse.",
+      "Fix: el handler del webhook ahora hace `GET /emails/inbound/{id}` (Received Emails API) para traer el correo COMPLETO — `text`, `message_id` RFC822 y `references`/`in_reply_to` — y se lo pasa al orquestador. Así el agente lee el mensaje real y la respuesta sale con `In-Reply-To`/`References` correctos → Gmail la engancha al hilo.",
+      "`services/email.py`: nuevo `fetch_inbound_email(id)` + `_strip_quoted_reply()` (quita el historial citado tipo 'On … wrote:' / '>' para que el agente vea solo el mensaje nuevo). El path SIMULADO (tests) no hace fetch (ya trae el cuerpo).",
+      "Nota: la entrega externa (Gmail→Resend) SÍ funcionaba — los correos estaban en la Received Emails API; lo que faltaba era traer su contenido al backend.",
+    ],
+  },
   {
     version: "0.26.1",
     date: "2026-06-01",

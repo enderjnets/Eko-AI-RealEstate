@@ -2,6 +2,25 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.27.0] — 2026-06-01
+
+### Inbound email: fetch real body + Message-ID (Received Emails API) → correct threading
+
+- **Root cause of "replies as a new email instead of threading"**: Resend's
+  `email.received` webhook is **metadata-only** (no body/headers), so inbound
+  messages were stored with empty content and without the real RFC822 Message-ID
+  — so the agent's reply couldn't be threaded.
+- **Fix**: the webhook handler now calls `GET /emails/inbound/{id}` (Received
+  Emails API) to fetch the **full** email — `text`, RFC822 `message_id`, and
+  `references`/`in_reply_to` — and passes that to the orchestrator. The agent now
+  reads the real message and its reply carries correct `In-Reply-To`/`References`
+  → Gmail threads it into the conversation.
+- `services/email.py`: new `fetch_inbound_email(id)` + `_strip_quoted_reply()`
+  (drops quoted "On … wrote:" / ">" history so the agent sees only the new
+  message). The SIMULATED path (tests) skips the fetch (body already present).
+- Note: external delivery (Gmail→Resend) was working all along — the emails were
+  in the Received Emails API; we just weren't pulling their content into the backend.
+
 ## [0.26.1] — 2026-06-01
 
 ### Email self-loop guard: the agent never replies to itself
