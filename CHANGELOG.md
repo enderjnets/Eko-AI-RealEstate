@@ -2,6 +2,21 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.26.0] — 2026-06-01
+
+### Agent language: English by default, mirroring the lead's language (or the one they ask for)
+
+- Outbound agent communications now default to **English**. If the lead writes in
+  another supported language (es/en) the agent mirrors it; if the lead explicitly
+  asks for another language, the agent switches to it.
+- `services/i18n.py`: `DEFAULT_LANGUAGE` changed `es → en` (used when the language
+  can't be detected / the text is ambiguous). The steering line now allows an
+  explicit override ("UNLESS the client asks for another language").
+- `services/conversation.py`: the default supported-language order is now
+  `["en", "es"]` (reply + suggestions), so an unsupported detected language falls
+  back to English. Previously the default was Spanish.
+- i18n tests +3 (English default, English-first mirroring, explicit-request override).
+
 ## [0.25.0] — 2026-06-01
 
 ### Local Gemma (Google) LLM fallback via Ollama — the agent replies even when paid quotas are exhausted

@@ -5,8 +5,10 @@ seed for reproducibility), pick the closest supported language from
 AgentSettings.languages, and pass that hint into the system prompt so the
 LLM replies in the same language.
 
-Supported languages today: es (Spanish), en (English). Adding pt/fr/de later
-is a one-line change in `_LANG_NAMES`.
+Supported languages today: en (English, the DEFAULT) and es (Spanish). The agent
+replies in English by default; it mirrors the lead's language when they write in
+(or explicitly ask for) another supported one. Adding pt/fr/de later is a one-line
+change in `_LANG_NAMES`.
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ log = logging.getLogger(__name__)
 # Deterministic detection — same input → same output, important for tests.
 DetectorFactory.seed = 0
 
-DEFAULT_LANGUAGE = "es"
+DEFAULT_LANGUAGE = "en"  # system communications default to English when undetected
 
 _LANG_NAMES: dict[str, dict[str, str]] = {
     "es": {"es": "castellano", "en": "Spanish"},
@@ -62,11 +64,13 @@ def language_instruction(lang_code: str, *, persona_locale: str = "es") -> str:
     if persona_locale == "en":
         name = names.get("en", lang_code.upper())
         return (
-            f"\n\nLANGUAGE: The user is writing in {name}. Reply in {name} only. "
-            "Match the user's register (formal / informal)."
+            f"\n\nLANGUAGE: Reply in {name} only — UNLESS the client explicitly asks for a "
+            "different language, in which case reply in that one. Match the client's register "
+            "(formal / informal)."
         )
     name = names.get("es", lang_code.upper())
     return (
-        f"\n\nIDIOMA: el cliente escribe en {name}. Responde EXCLUSIVAMENTE en {name}. "
-        "Adapta el registro (formal / informal) al del cliente."
+        f"\n\nIDIOMA: responde EXCLUSIVAMENTE en {name}, SALVO que el cliente pida explícitamente "
+        "otro idioma (en ese caso, responde en ese). Adapta el registro (formal / informal) al "
+        "del cliente."
     )
