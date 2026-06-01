@@ -9,10 +9,27 @@ import os
 import pytest
 
 from app.services.email import (
+    _strip_quoted_reply,
     parse_inbound_email,
     send_email,
     verify_resend_signature,
 )
+
+
+def test_strip_quoted_reply_gmail_attribution() -> None:
+    # Gmail appends "On <date> … wrote:" + quoted ">" history below the new text.
+    raw = (
+        "Do you speak English?\n\n"
+        "On Mon, Jun 1, 2026 at 7:33 AM Eko AI Realtors <\n"
+        "noreply@realtors.ekoaiautomation.com> wrote:\n"
+        "> Hola! Claro que si...\n"
+    )
+    assert _strip_quoted_reply(raw) == "Do you speak English?"
+
+
+def test_strip_quoted_reply_noop_without_quotes() -> None:
+    clean = "Hola, busco un condo en Centennial bajo 500k."
+    assert _strip_quoted_reply(clean) == clean
 
 
 SECRET_BASE64 = base64.b64encode(b"test-secret-bytes-32-chars-aaaaaa").decode("ascii")

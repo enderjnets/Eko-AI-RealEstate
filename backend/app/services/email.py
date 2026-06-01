@@ -93,6 +93,43 @@ def verify_resend_signature(
 # ── Inbound payload parsing ────────────────────────────────────────────
 
 
+async def fetch_inbound_email(email_id: str) -> dict[str, Any] | None:
+    """Fetch the FULL received email from Resend's Received Emails API.
+
+    The `email.received` webhook is metadata-only (no body/headers), so to get the
+    text + RFC822 Message-ID + References — needed for real content AND correct
+    Gmail threading — we GET /emails/inbound/{id} after the webhook fires."""
+    s = get_settings()
+    if not s.RESEND_API_KEY:
+        return None
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(
+            f"https://api.resend.com/emails/inbound/{email_id}",
+            headers={"Authorization": f"Bearer {s.RESEND_API_KEY}"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+def _strip_quoted_reply(text: str) -> str:
+    """Drop the quoted history mail clients append below a reply, so the agent
+    sees only the new message. Cuts at the Gmail-style attribution ('On <date>
+    … wrote:') or the first quoted '>' block. Conservative — returns the original
+    if nothing matches."""
+    import re
+
+    if not text:
+        return text
+    m = re.search(r"\n\s*On .{0,300}?wrote:", text, flags=re.DOTALL)
+    if m:
+        text = text[: m.start()]
+    else:
+        m2 = re.search(r"\n\s*>", text)
+        if m2:
+            text = text[: m2.start()]
+    return text.strip()
+
+
 def parse_inbound_email(payload: dict[str, Any]) -> list[ParsedMessage]:
     """Extract ParsedMessage(s) from a Resend inbound webhook payload.
 
@@ -151,6 +188,7 @@ def parse_inbound_email(payload: dict[str, Any]) -> list[ParsedMessage]:
 
         body = re.sub(r"<[^>]+>", " ", data["html"])
         body = re.sub(r"\s+", " ", body).strip()
+    body = _strip_quoted_reply(body)
 
     return [
         ParsedMessage(
