@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.26.0";
+export const CURRENT_VERSION = "0.26.1";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.26.1",
+    date: "2026-06-01",
+    title: "Guard anti-loop de email: el agente nunca se responde a sí mismo",
+    changes: [
+      "Fix de seguridad: un email entrante cuyo remitente es NUESTRA propia dirección de envío (`noreply@<dominio>`) ahora se ignora. Sin esto, una respuesta/bounce dirigida a noreply@ volvía a entrar por el webhook inbound y el agente se respondía a sí mismo en un loop infinito (gastando LLM + enviando emails). Detectado en pruebas de inbound.",
+      "`services/conversation.py`: guard al inicio de `handle_inbound_message` — si `channel=email` y el remitente == la dirección de `RESEND_FROM`, retorna `ignored_self_loop` sin crear lead ni responder. +1 test.",
+    ],
+  },
   {
     version: "0.26.0",
     date: "2026-06-01",

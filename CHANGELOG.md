@@ -2,6 +2,19 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.26.1] — 2026-06-01
+
+### Email self-loop guard: the agent never replies to itself
+
+- **Security fix**: an inbound email whose sender is **our own sending address**
+  (`noreply@<domain>`) is now ignored. Without it, a reply/bounce addressed back
+  to `noreply@` re-entered via the inbound webhook and the agent answered itself
+  in an infinite loop (burning LLM calls + sending emails). Found during inbound
+  testing.
+- `services/conversation.py`: guard at the top of `handle_inbound_message` — if
+  `channel=email` and the sender equals the `RESEND_FROM` address, it returns
+  `ignored_self_loop` without creating a lead or replying. +1 test.
+
 ## [0.26.0] — 2026-06-01
 
 ### Agent language: English by default, mirroring the lead's language (or the one they ask for)
