@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     MINIMAX_BASE_URL: str = "https://api.minimax.io/anthropic"
     MINIMAX_MODEL: str = "MiniMax-M2.7"
 
+    # Local Google open model (Gemma) via Ollama — a zero-cost FINAL fallback so
+    # the agent can still reply when the paid providers are out of quota. Speaks
+    # Ollama's own /api/chat (not the Anthropic protocol), so it's handled apart.
+    OLLAMA_ENABLED: bool = False
+    OLLAMA_BASE_URL: str = "http://172.20.0.1:11434"
+    OLLAMA_MODEL: str = "gemma3:4b"
+    OLLAMA_TIMEOUT_SECONDS: float = 120.0  # local cold-load + generation can be slow
+
     # ─── WhatsApp Business Cloud API (Phase 1) ──────────────────────────
     # SIMULATED=true (default) means whatsapp.send_text_message() LOGS the
     # outbound payload instead of POSTing to Meta. Required for dev/test

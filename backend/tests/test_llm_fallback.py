@@ -102,6 +102,31 @@ async def test_both_fail_raises_unavailable() -> None:
 
 
 @pytest.mark.asyncio
+async def test_falls_back_to_local_ollama_when_paid_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both paid providers fail + OLLAMA_ENABLED → local Gemma answers (provider=ollama)."""
+    monkeypatch.setenv("OLLAMA_ENABLED", "true")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    paid_down = _client_with(httpx.TimeoutException("paid provider down"))
+
+    from app.services.llm import LLMResult
+
+    async def fake_ollama(cfg: Any, messages: Any, **kw: Any) -> LLMResult:
+        return LLMResult(
+            text="Hola, soy el agente — ¿en qué zona buscás?",
+            provider="ollama", model=cfg.model, input_tokens=5, output_tokens=9,
+        )
+
+    with patch.object(llm_module, "_build_client", side_effect=lambda cfg, *, timeout: paid_down), \
+         patch.object(llm_module, "_ollama_generate", side_effect=fake_ollama):
+        result = await generate_reply(messages=[{"role": "user", "content": "hola"}])
+
+    assert result.provider == "ollama"
+    assert "agente" in result.text
+
+
+@pytest.mark.asyncio
 async def test_primary_unconfigured_skips_to_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     # Wipe primary key only.
     monkeypatch.setenv("KIMI_API_KEY", "")

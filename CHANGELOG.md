@@ -2,6 +2,24 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.25.0] — 2026-06-01
+
+### Local Gemma (Google) LLM fallback via Ollama — the agent replies even when paid quotas are exhausted
+
+- **Root cause**: the agent stopped replying to leads because **both** paid LLM
+  providers ran out of quota (Kimi: "usage limit for this billing cycle";
+  MiniMax: "usage limit exceeded"). Not an email or code bug.
+- **Fix**: added a third LLM provider — **Gemma** (Google's open model) running
+  **locally on Ollama** on the ROG — as a free final fallback. Order is
+  Kimi → MiniMax → local Gemma. Paid providers still go first (quality); when
+  both fail, local Gemma guarantees the lead gets an answer at no cost.
+- `services/llm.py`: new `ollama` provider speaking Ollama's native `/api/chat`
+  (with `format=json` for the classifier), separate from the Anthropic protocol
+  used by Kimi/MiniMax. Gated by `OLLAMA_ENABLED`. +1 test.
+- Config: `OLLAMA_ENABLED` / `OLLAMA_BASE_URL` / `OLLAMA_MODEL` /
+  `OLLAMA_TIMEOUT_SECONDS` in config.py + docker-compose. The ROG demo uses
+  `gemma3:4b` (fits the RTX 3070 8GB).
+
 ## [0.24.1] — 2026-05-31
 
 ### Fix: Add Lead budget accepts "600k"/"1.2M" + readable validation errors

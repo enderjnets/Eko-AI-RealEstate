@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.24.1";
+export const CURRENT_VERSION = "0.25.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.25.0",
+    date: "2026-06-01",
+    title: "Fallback LLM local con Gemma (Google) vía Ollama — el agente responde aunque las cuotas de pago estén agotadas",
+    changes: [
+      "Causa detectada: el agente dejó de responder a los leads porque los DOS proveedores LLM de pago quedaron sin cuota (Kimi: 'usage limit for this billing cycle'; MiniMax: 'usage limit exceeded'). No era el email ni el código.",
+      "Solución: se agregó un tercer proveedor LLM — Gemma (modelo open de Google) corriendo LOCAL en Ollama en el ROG — como fallback final gratuito. Orden: Kimi → MiniMax → Gemma local. Los de pago siguen primero por calidad; cuando ambos fallan, Gemma local garantiza que el lead reciba respuesta sin costo ni cuota.",
+      "`services/llm.py`: nuevo provider `ollama` que habla la API nativa de Ollama (`/api/chat`, con `format=json` para el clasificador), separado del protocolo Anthropic de Kimi/MiniMax. Se activa con `OLLAMA_ENABLED=true`. +1 test.",
+      "Config: `OLLAMA_ENABLED`/`OLLAMA_BASE_URL`/`OLLAMA_MODEL`/`OLLAMA_TIMEOUT_SECONDS` en config.py + docker-compose. En el ROG el demo usa `gemma3:4b` (entra en la RTX 3070 8GB).",
+    ],
+  },
   {
     version: "0.24.1",
     date: "2026-05-31",
