@@ -2,6 +2,17 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.27.1] — 2026-06-01
+
+### More robust email threading: full References chain
+
+- The agent's reply now sets the `References` header to the **full chain** (thread
+  root … the lead's message), not just `In-Reply-To` to the parent — so Gmail/
+  Outlook reliably nest the reply inside the conversation instead of starting a new
+  thread.
+- `services/email.py::send_email` takes a `references` arg; `conversation.py` builds
+  the chain from `thread_id` (root) + `external_id` (inbound message) and passes it.
+
 ## [0.27.0] — 2026-06-01
 
 ### Inbound email: fetch real body + Message-ID (Received Emails API) → correct threading
