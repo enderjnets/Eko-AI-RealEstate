@@ -27,6 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.models import (
     AgentSettings,
     Conversation,
@@ -38,7 +39,6 @@ from app.models import (
     MessageSender,
     MessageStatus,
 )
-from app.config import get_settings
 from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
 from app.services.i18n import detect_language, language_instruction, pick_supported_language
