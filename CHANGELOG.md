@@ -2,6 +2,26 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.24.0] — 2026-05-31
+
+### Power layer on Properties (search + type chips + sort) and Analytics (weekly trend)
+
+Continues the Claude Design desktop pass — the same "intuitive yet powerful"
+layer, now on Properties and Analytics. Frontend-only; no backend changes.
+
+- **Properties → CRM-style explorer**: live search (zone / address / title /
+  type) with a `/` shortcut; filter chips by property type (derived from the
+  loaded listings); a max-price filter; a toggleable Newest ↔ Price sort; an
+  "N of M active" counter; and an empty state with clear-filters. The Sync MLS
+  button stays.
+- **Analytics → real weekly trend**: ▲/▼ deltas computed from the existing
+  `leads_per_day` series — a new "New this week" stat card (sum of the last 7
+  days) with a % delta vs. the previous 7 days, and the per-day chart now
+  highlights the current week (bright bars) vs. the prior week (dimmed). No
+  invented metrics — a trend only shows where there is real time-series data.
+- Full EN + ES i18n. Everything stays responsive; mobile and the rest of the
+  dashboard are untouched.
+
 ## [0.23.0] — 2026-05-29
 
 ### More powerful desktop: CRM-style Leads + Lead detail with quick actions & "Why this score"

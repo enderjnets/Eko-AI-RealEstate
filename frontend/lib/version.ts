@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.23.0";
+export const CURRENT_VERSION = "0.24.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.24.0",
+    date: "2026-05-31",
+    title: "Capa de potencia en Properties (buscador + chips de tipo + orden) y Analytics (tendencia semanal)",
+    changes: [
+      "Continúa el diseño de escritorio de Claude Design: misma capa 'intuitivo pero potente' ahora en Properties y Analytics. Solo frontend, sin cambios de backend.",
+      "Properties = explorador estilo CRM: buscador en vivo (zona/dirección/título/tipo) con atajo `/`, chips de filtro por tipo de propiedad (derivados de los listings cargados), filtro de precio máximo, orden conmutable Recientes↔Precio, contador 'N de M activas', estado vacío con limpiar. Se mantiene el botón Sincronizar MLS.",
+      "Analytics: indicadores de tendencia ▲/▼ calculados de verdad desde `leads_per_day` — nueva tarjeta 'Nuevos esta semana' (suma de los últimos 7 días) con delta % vs. los 7 días previos, y la gráfica por día resalta la semana actual (barras vivas) vs la anterior (atenuadas). Sin métricas inventadas: la tendencia solo se muestra donde hay serie temporal real.",
+      "i18n EN+ES para todo lo nuevo. Todo responsive; no toca móvil ni el resto del dashboard.",
+    ],
+  },
   {
     version: "0.23.0",
     date: "2026-05-29",
