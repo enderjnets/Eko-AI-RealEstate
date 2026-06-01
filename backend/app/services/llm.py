@@ -28,7 +28,7 @@ from app.config import get_settings
 
 log = logging.getLogger(__name__)
 
-ProviderName = Literal["kimi", "minimax"]
+ProviderName = Literal["kimi", "minimax", "ollama"]
 
 
 @dataclass(frozen=True)
@@ -71,7 +71,53 @@ def _provider_configs() -> dict[ProviderName, ProviderConfig]:
             api_key=s.MINIMAX_API_KEY,
             model=s.MINIMAX_MODEL,
         ),
+        # Local Gemma via Ollama. api_key is just a configured-flag here; the real
+        # gate is OLLAMA_ENABLED (no key needed for a local server).
+        "ollama": ProviderConfig(
+            name="ollama",
+            base_url=s.OLLAMA_BASE_URL,
+            api_key="local" if s.OLLAMA_ENABLED else "",
+            model=s.OLLAMA_MODEL,
+        ),
     }
+
+
+async def _ollama_generate(
+    cfg: ProviderConfig,
+    messages: list[dict[str, Any]],
+    *,
+    system: str | None,
+    max_tokens: int,
+    temperature: float,
+    json_mode: bool,
+    timeout_s: float,
+) -> LLMResult:
+    """Call a local Ollama model via its native /api/chat (not the Anthropic
+    protocol). Used as a zero-cost final fallback when paid providers are down."""
+    msgs: list[dict[str, Any]] = []
+    if system:
+        msgs.append({"role": "system", "content": system})
+    msgs.extend(messages)
+    payload: dict[str, Any] = {
+        "model": cfg.model,
+        "messages": msgs,
+        "stream": False,
+        "options": {"temperature": temperature, "num_predict": max_tokens},
+    }
+    if json_mode:
+        payload["format"] = "json"
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        resp = await client.post(f"{cfg.base_url.rstrip('/')}/api/chat", json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+    text = ((data.get("message") or {}).get("content") or "").strip()
+    return LLMResult(
+        text=text,
+        provider="ollama",
+        model=cfg.model,
+        input_tokens=int(data.get("prompt_eval_count") or 0),
+        output_tokens=int(data.get("eval_count") or 0),
+    )
 
 
 def _build_client(cfg: ProviderConfig, *, timeout: float) -> AsyncAnthropic:
@@ -121,6 +167,10 @@ async def generate_reply(
     s = get_settings()
     configs = _provider_configs()
     order: list[ProviderName] = [s.LLM_PRIMARY, s.LLM_FALLBACK]  # type: ignore[list-item]
+    # Local Gemma is the last-resort fallback so the lead always gets a reply even
+    # when both paid providers are out of quota; paid ones still go first (quality).
+    if s.OLLAMA_ENABLED and "ollama" not in order:
+        order.append("ollama")
     max_tok = max_tokens if max_tokens is not None else s.LLM_MAX_TOKENS_DEFAULT
 
     if json_mode and system is not None:
@@ -142,6 +192,24 @@ async def generate_reply(
         if cfg is None or not cfg.is_configured:
             log.warning("LLM provider %s not configured (missing API key); skipping", provider_name)
             continue
+
+        if provider_name == "ollama":
+            try:
+                result = await _ollama_generate(
+                    cfg, messages, system=system, max_tokens=max_tok,
+                    temperature=temperature, json_mode=json_mode,
+                    timeout_s=s.OLLAMA_TIMEOUT_SECONDS,
+                )
+                log.info(
+                    "LLM ok provider=ollama model=%s in_tok=%d out_tok=%d",
+                    cfg.model, result.input_tokens, result.output_tokens,
+                )
+                return result
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                log.warning("LLM provider ollama failed (%s: %s); falling back anyway",
+                            type(exc).__name__, exc)
+                continue
 
         client = _build_client(cfg, timeout=s.LLM_TIMEOUT_SECONDS)
         try:
