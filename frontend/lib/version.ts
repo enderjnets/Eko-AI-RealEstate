@@ -17,6 +17,7 @@ export const CHANGELOG: VersionEntry[] = [
       "`services/email.py::send_email` acepta `references`; `conversation.py` arma la cadena desde `thread_id` (raíz) + `external_id` (mensaje entrante) y la pasa al envío.",
     ],
   },
+  {
     version: "0.27.0",
     date: "2026-06-01",
     title: "Inbound email: traer cuerpo + Message-ID reales (Received Emails API) → threading correcto",
