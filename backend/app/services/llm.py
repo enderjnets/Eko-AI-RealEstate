@@ -90,7 +90,7 @@ async def _ollama_generate(
     max_tokens: int,
     temperature: float,
     json_mode: bool,
-    timeout: float,
+    timeout_s: float,
 ) -> LLMResult:
     """Call a local Ollama model via its native /api/chat (not the Anthropic
     protocol). Used as a zero-cost final fallback when paid providers are down."""
@@ -106,7 +106,7 @@ async def _ollama_generate(
     }
     if json_mode:
         payload["format"] = "json"
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
         resp = await client.post(f"{cfg.base_url.rstrip('/')}/api/chat", json=payload)
         resp.raise_for_status()
         data = resp.json()
@@ -198,7 +198,7 @@ async def generate_reply(
                 result = await _ollama_generate(
                     cfg, messages, system=system, max_tokens=max_tok,
                     temperature=temperature, json_mode=json_mode,
-                    timeout=s.OLLAMA_TIMEOUT_SECONDS,
+                    timeout_s=s.OLLAMA_TIMEOUT_SECONDS,
                 )
                 log.info(
                     "LLM ok provider=ollama model=%s in_tok=%d out_tok=%d",
