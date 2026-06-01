@@ -56,6 +56,7 @@ async def _dispatch_send(
     text: str,
     subject: str | None = None,
     in_reply_to: str | None = None,
+    references: str | None = None,
 ) -> tuple[str | None, str | None]:
     """Send the reply through the correct channel adapter.
 
@@ -75,6 +76,7 @@ async def _dispatch_send(
             subject=subject or "Tu consulta",
             body_text=text,
             in_reply_to=in_reply_to,
+            references=references,
         )
         return result.get("id"), subject
 
@@ -592,12 +594,23 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
 
     # ── 10. Dispatch send through the right channel adapter ──────────
     try:
+        # Threading: reply In-Reply-To the inbound's Message-ID, and set References
+        # to the full chain (thread root … this message) so Gmail/Outlook reliably
+        # nest the reply inside the existing conversation instead of a new thread.
+        email_references = None
+        if parsed.channel == "email":
+            chain = [t for t in (parsed.thread_id, parsed.external_id) if t]
+            # dedupe while preserving order
+            seen: set[str] = set()
+            chain = [t for t in chain if not (t in seen or seen.add(t))]
+            email_references = " ".join(chain) or None
         external_id, _ = await _dispatch_send(
             parsed.channel,
             to=parsed.from_identifier,
             text=reply.text,
             subject=reply_subject,
             in_reply_to=parsed.external_id if parsed.channel == "email" else None,
+            references=email_references,
         )
         outbound.external_id = external_id
         outbound.delivery_status = MessageStatus.SENT

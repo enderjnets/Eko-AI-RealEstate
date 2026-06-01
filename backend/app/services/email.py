@@ -214,6 +214,7 @@ async def send_email(
     body_text: str,
     body_html: str | None = None,
     in_reply_to: str | None = None,
+    references: str | None = None,
 ) -> dict[str, Any]:
     """Send via Resend, or LOG when EMAIL_SIMULATED=true.
 
@@ -241,7 +242,14 @@ async def send_email(
         # Strip surrounding <> if present, add them back per RFC.
         clean = in_reply_to.strip().lstrip("<").rstrip(">")
         headers["In-Reply-To"] = f"<{clean}>"
-        headers["References"] = f"<{clean}>"
+        # References should be the FULL chain (thread root … parent) for reliable
+        # threading in Gmail/Outlook; fall back to just the parent when we only
+        # have the one id.
+        if references:
+            ids = [t.strip().lstrip("<").rstrip(">") for t in references.replace(",", " ").split() if t.strip()]
+            headers["References"] = " ".join(f"<{i}>" for i in ids) or f"<{clean}>"
+        else:
+            headers["References"] = f"<{clean}>"
 
     body: dict[str, Any] = {
         "from": s.RESEND_FROM,

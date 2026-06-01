@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.27.0";
+export const CURRENT_VERSION = "0.27.1";
 
 export interface VersionEntry {
   version: string;
@@ -9,6 +9,14 @@ export interface VersionEntry {
 
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.27.1",
+    date: "2026-06-01",
+    title: "Threading de email más robusto: References con la cadena completa del hilo",
+    changes: [
+      "Refuerzo del threading: la respuesta del agente ahora setea el header `References` con la CADENA COMPLETA (raíz del hilo … mensaje del lead), no solo el `In-Reply-To` al padre. Esto hace que Gmail/Outlook aniden la respuesta dentro de la conversación de forma confiable en vez de abrir un hilo nuevo.",
+      "`services/email.py::send_email` acepta `references`; `conversation.py` arma la cadena desde `thread_id` (raíz) + `external_id` (mensaje entrante) y la pasa al envío.",
+    ],
+  },
     version: "0.27.0",
     date: "2026-06-01",
     title: "Inbound email: traer cuerpo + Message-ID reales (Received Emails API) → threading correcto",
