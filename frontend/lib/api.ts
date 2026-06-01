@@ -153,6 +153,18 @@ async function errorDetail(res: Response): Promise<string> {
   try {
     const body = JSON.parse(raw);
     if (typeof body?.detail === "string") return body.detail;
+    // FastAPI validation errors: `detail` is an array of {loc, msg}. Render it
+    // readable ("budget_min: Input should be a valid decimal") instead of dumping
+    // the raw JSON (which also crashes React if rendered as an object).
+    if (Array.isArray(body?.detail)) {
+      return body.detail
+        .map((e: { loc?: unknown[]; msg?: string }) => {
+          const field =
+            Array.isArray(e?.loc) && e.loc.length ? String(e.loc[e.loc.length - 1]) : "";
+          return field ? `${field}: ${e?.msg ?? "invalid"}` : e?.msg ?? "invalid";
+        })
+        .join("; ");
+    }
     return JSON.stringify(body);
   } catch {
     return raw || res.statusText;

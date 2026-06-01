@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.24.0";
+export const CURRENT_VERSION = "0.24.1";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,16 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.24.1",
+    date: "2026-05-31",
+    title: "Fix Add Lead: presupuesto acepta '600k'/'1.2M' y errores de validación legibles",
+    changes: [
+      "Bug: en Add Lead, escribir el presupuesto como '600k'/'800k' mandaba el string crudo al backend → 422 'Input should be a valid decimal', y el error se mostraba como JSON crudo en el modal.",
+      "Fix: el presupuesto ahora se normaliza en el cliente — acepta '600k', '1.2M', '600,000', '$850000' y los convierte a número antes de enviar (k=×1.000, M=×1.000.000). Si queda algo no numérico, muestra un aviso claro en vez de mandar basura al backend.",
+      "Fix: `errorDetail` (lib/api.ts) ahora formatea los errores de validación de FastAPI (cuando `detail` es un array) como texto legible 'campo: mensaje' en vez de volcar el JSON crudo (que además podía romper React si se renderizaba como objeto).",
+    ],
+  },
   {
     version: "0.24.0",
     date: "2026-05-31",

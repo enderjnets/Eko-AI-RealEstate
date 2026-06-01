@@ -2,6 +2,21 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.24.1] — 2026-05-31
+
+### Fix: Add Lead budget accepts "600k"/"1.2M" + readable validation errors
+
+- **Bug**: typing the budget as `600k` / `800k` in Add Lead sent the raw string to
+  the backend → `422 Input should be a valid decimal`, and the error was dumped
+  as raw JSON in the modal.
+- **Fix**: the budget is now normalized client-side — accepts `600k`, `1.2M`,
+  `600,000`, `$850000` and converts to a number before sending (k=×1,000,
+  M=×1,000,000). If a field is non-numeric, a clear inline message is shown
+  instead of sending garbage.
+- **Fix**: `errorDetail` (lib/api.ts) now formats FastAPI validation errors
+  (when `detail` is an array) as readable `field: message` text instead of
+  dumping raw JSON (which could also crash React if rendered as an object).
+
 ## [0.24.0] — 2026-05-31
 
 ### Power layer on Properties (search + type chips + sort) and Analytics (weekly trend)

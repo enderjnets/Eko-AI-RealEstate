@@ -10,6 +10,19 @@ type Channel = "sms" | "email";
 
 const INTENTS: LeadIntent[] = ["rent", "buy", "valuation", "other"];
 
+// Accept human budget input ("600k", "1.2M", "600,000", "$850000") and normalize
+// to a plain number. undefined = blank (omit), null = present but unparseable.
+function normalizeBudget(raw: string): number | null | undefined {
+  const s = raw.trim().toLowerCase().replace(/[$,\s]/g, "");
+  if (!s) return undefined;
+  const m = s.match(/^(\d+(?:\.\d+)?)(k|m)?$/);
+  if (!m) return null;
+  let n = parseFloat(m[1]);
+  if (m[2] === "k") n *= 1_000;
+  else if (m[2] === "m") n *= 1_000_000;
+  return Math.round(n);
+}
+
 const EMPTY = {
   name: "",
   channel: "sms" as Channel,
@@ -53,8 +66,14 @@ export function AddLeadButton() {
     if (form.name.trim()) body.name = form.name.trim();
     if (form.intent) body.intent = form.intent;
     if (form.zone.trim()) body.zone = form.zone.trim();
-    if (form.budget_min.trim()) body.budget_min = form.budget_min.trim();
-    if (form.budget_max.trim()) body.budget_max = form.budget_max.trim();
+    const bmin = normalizeBudget(form.budget_min);
+    const bmax = normalizeBudget(form.budget_max);
+    if (bmin === null || bmax === null) {
+      setError(t("leadNew.errorBudget"));
+      return;
+    }
+    if (typeof bmin === "number") body.budget_min = bmin;
+    if (typeof bmax === "number") body.budget_max = bmax;
     if (form.property_type.trim()) body.property_type = form.property_type.trim();
     if (form.urgency.trim()) body.urgency = form.urgency.trim();
     if (form.first_message.trim()) body.first_message = form.first_message.trim();
