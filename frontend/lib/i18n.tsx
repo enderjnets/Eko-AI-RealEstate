@@ -196,6 +196,7 @@ const EN: Record<string, string> = {
   "leadNew.saving": "Saving…",
   "leadNew.errorRequired": "A contact (phone or email) is required.",
   "leadNew.errorDuplicate": "A lead with this contact already exists.",
+  "leadNew.errorBudget": "Budget must be a number (e.g. 600000, 600k or 1.2M).",
   // hot leads
   "hot.title": "Hot leads — who to call first",
   // filters
@@ -570,6 +571,7 @@ const ES: Record<string, string> = {
   "leadNew.saving": "Guardando…",
   "leadNew.errorRequired": "Hace falta un contacto (teléfono o email).",
   "leadNew.errorDuplicate": "Ya existe un lead con este contacto.",
+  "leadNew.errorBudget": "El presupuesto debe ser un número (ej. 600000, 600k o 1.2M).",
   "hot.title": "Leads calientes — a quién llamar primero",
   "filter.allStatuses": "Todos los estados",
   "filter.allIntents": "Todas las intenciones",
