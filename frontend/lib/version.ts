@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.25.0";
+export const CURRENT_VERSION = "0.26.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.26.0",
+    date: "2026-06-01",
+    title: "Idioma del agente: inglés por defecto, espejando el idioma del lead (o el que pida)",
+    changes: [
+      "Las comunicaciones del agente ahora son en INGLÉS por defecto. Si el lead escribe en otro idioma soportado (es/en) se le responde en ese idioma (mirroring), y si pide explícitamente otro idioma, el agente cambia a ese.",
+      "`services/i18n.py`: `DEFAULT_LANGUAGE` pasó de `es` a `en` (default cuando no se detecta idioma / texto ambiguo). La línea de steering ahora permite override explícito ('UNLESS the client asks for another language' / 'SALVO que pida otro idioma').",
+      "`services/conversation.py`: el orden de idiomas soportados por defecto pasó a `['en','es']` (en el reply y en las sugerencias) → un idioma no soportado cae a inglés. Antes el default era español.",
+      "Tests i18n: +3 (default inglés, mirroring con orden en-first, override por solicitud explícita).",
+    ],
+  },
   {
     version: "0.25.0",
     date: "2026-06-01",

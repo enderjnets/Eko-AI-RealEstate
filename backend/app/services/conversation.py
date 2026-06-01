@@ -313,7 +313,7 @@ async def generate_reply_suggestions(
     # Language steering from the latest inbound.
     settings_row = await db.execute(select(AgentSettings).where(AgentSettings.id == 1))
     agent_cfg = settings_row.scalar_one_or_none()
-    supported = (agent_cfg.languages if agent_cfg else ["es", "en"]) or ["es", "en"]
+    supported = (agent_cfg.languages if agent_cfg else ["en", "es"]) or ["en", "es"]
     last_user_content = next(
         (m.content for m in reversed(history) if m.direction == MessageDirection.INBOUND),
         history[-1].content,
@@ -483,7 +483,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # bias the result). Pick the closest supported language from agent settings.
     settings_row_pre = await db.execute(select(AgentSettings).where(AgentSettings.id == 1))
     agent_cfg = settings_row_pre.scalar_one_or_none()
-    supported_languages = (agent_cfg.languages if agent_cfg else ["es", "en"]) or ["es", "en"]
+    supported_languages = (agent_cfg.languages if agent_cfg else ["en", "es"]) or ["en", "es"]
     detected_lang = detect_language(parsed.content)
     target_lang = pick_supported_language(detected_lang, supported_languages)
 
