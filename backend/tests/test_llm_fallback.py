@@ -46,6 +46,10 @@ def _force_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """Inject dummy keys so the configured-check passes for both providers."""
     monkeypatch.setenv("KIMI_API_KEY", "dummy-kimi-key")
     monkeypatch.setenv("MINIMAX_API_KEY", "dummy-minimax-key")
+    # Pin Ollama OFF by default so paid-provider tests are hermetic regardless of
+    # the host env (the ROG sets OLLAMA_ENABLED=true). The local-fallback test
+    # opts back in explicitly.
+    monkeypatch.setenv("OLLAMA_ENABLED", "false")
     # Clear the lru_cache on get_settings so the new env vars apply.
     from app.config import get_settings
     get_settings.cache_clear()
