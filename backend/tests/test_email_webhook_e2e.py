@@ -122,3 +122,36 @@ async def test_inbound_email_creates_lead_and_replies(database_url: str) -> None
         await engine.dispose()
     finally:
         await _cleanup_lead(database_url, identifier)
+
+
+@pytest.mark.asyncio
+async def test_inbound_from_own_address_is_ignored(database_url: str) -> None:
+    """Self-loop guard: an inbound whose `from` is our own sending address (a reply
+    addressed back to noreply@…) is dropped — no lead, no reply, no infinite loop."""
+    own = "noreply@realtors.ekoaiautomation.com"  # matches default RESEND_FROM
+    suffix = uuid.uuid4().hex[:8].upper()
+    payload = {
+        "type": "email.received",
+        "data": {
+            "id": f"resend_self_{suffix}",
+            "from": own,
+            "from_name": "Eko AI Realtors",
+            "to": ["someone@realtors.ekoaiautomation.com"],
+            "subject": "Re: self loop",
+            "text": "this should never trigger a reply",
+            "headers": {"message-id": f"<self-{suffix}@realtors.ekoaiautomation.com>"},
+        },
+    }
+    try:
+        async with await _http_client() as client:
+            resp = await client.post("/api/v1/webhooks/email", json=payload)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["results"][0]["status"] == "ignored_self_loop"
+
+        engine = create_async_engine(database_url, echo=False, future=True)
+        Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+        async with Session() as s:
+            assert (await s.execute(select(Lead).where(Lead.phone == own))).scalar_one_or_none() is None
+        await engine.dispose()
+    finally:
+        await _cleanup_lead(database_url, own)

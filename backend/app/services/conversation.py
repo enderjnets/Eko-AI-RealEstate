@@ -21,11 +21,13 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from email.utils import parseaddr
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.models import (
     AgentSettings,
     Conversation,
@@ -387,6 +389,16 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     (phone column doubles as identifier) for email — the column accepts any
     string up to 32 chars; we store the email address there too.
     """
+    # ── 0. Self-loop guard ─────────────────────────────────────────────
+    # Never process an inbound that came from our OWN sending address. The
+    # agent emails from noreply@<domain>, which is also receivable on that
+    # domain — so a reply (or a bounce) addressed back to it would re-enter
+    # here and the agent would answer itself forever. Drop it silently.
+    own = parseaddr(get_settings().RESEND_FROM)[1].strip().lower()
+    if parsed.channel == "email" and own and parsed.from_identifier.strip().lower() == own:
+        log.warning("Inbound from our own address %s — ignored (self-loop guard)", own)
+        return {"status": "ignored_self_loop", "from": parsed.from_identifier}
+
     # ── 1. Lead upsert ──────────────────────────────────────────────────
     lead_row = await db.execute(select(Lead).where(Lead.phone == parsed.from_identifier))
     lead = lead_row.scalar_one_or_none()
