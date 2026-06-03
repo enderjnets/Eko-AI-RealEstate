@@ -35,6 +35,7 @@ pyjwt[crypto]==2.9.0
 # Misc
 python-dateutil==2.9.0
 langdetect==1.0.9  # bilingual detection (es/en) for inbound messages
+tzdata==2024.2  # IANA tz database for zoneinfo (python-slim has no system zoneinfo)
 
 # File import (Phase 12) — extract leads from uploaded files
 pypdf==5.1.0            # PDF text extraction

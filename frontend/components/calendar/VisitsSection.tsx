@@ -7,16 +7,20 @@ import { VisitStatusBadge } from "@/components/ui/VisitStatusBadge";
 import { BookingDialog } from "@/components/calendar/BookingDialog";
 import { useI18n } from "@/lib/i18n";
 
-const TZ = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
+const BROWSER_TZ =
+  typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
 
-function fmtDateTime(iso: string, locale: string): string {
+// Render a visit in ITS OWN timezone (the office tz stored on the visit), with the
+// tz abbreviation, so "2 PM" is unambiguous regardless of where the realtor looks.
+function fmtDateTime(iso: string, locale: string, tz: string): string {
   return new Date(iso).toLocaleString(locale, {
     weekday: "short",
     day: "2-digit",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: TZ,
+    timeZone: tz || BROWSER_TZ,
+    timeZoneName: "short",
   });
 }
 
@@ -125,7 +129,7 @@ export function VisitsSection({ leadId }: { leadId: number }) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-white">
-                      {fmtDateTime(v.scheduled_at, locale)}
+                      {fmtDateTime(v.scheduled_at, locale, v.timezone)}
                     </span>
                     <VisitStatusBadge status={v.status} />
                     <span className="text-[10px] text-gray-600">{v.duration_minutes} {t("visits.minutes")}</span>

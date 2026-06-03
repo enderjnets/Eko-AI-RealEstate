@@ -259,6 +259,7 @@ export interface AgencySettings {
   agent_persona: string;
   greeting_template: string;
   languages: string[];
+  timezone: string;
   business_hours: Record<string, { open: string; close: string } | null>;
   created_at: string;
   updated_at: string;
@@ -270,6 +271,7 @@ export interface AgencySettingsPatch {
   agent_persona?: string;
   greeting_template?: string;
   languages?: string[];
+  timezone?: string;
   business_hours?: Record<string, { open: string; close: string } | null>;
 }
 

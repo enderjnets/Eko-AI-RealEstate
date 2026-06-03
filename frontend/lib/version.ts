@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.29.1";
+export const CURRENT_VERSION = "0.30.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,16 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.30.0",
+    date: "2026-06-02",
+    title: "Zona horaria de la oficina: las citas se agendan en hora local (no UTC)",
+    changes: [
+      "Bug: la agente de voz interpretaba \"2 PM\" como 2 PM UTC → la cita quedaba a las 8 AM. Ahora la hora hablada se interpreta en la ZONA HORARIA de la oficina y se guarda correctamente (2 PM Denver = 20:00 UTC).",
+      "Nueva preferencia de Zona Horaria en Settings: se auto-detecta del navegador la primera vez y podés cambiarla cuando quieras. Define cómo el agente interpreta las horas y cómo se muestran todas las visitas.",
+      "Las visitas se muestran ahora en la zona horaria de la oficina con su abreviatura (ej. \"2:00 PM MDT\"), sin importar desde dónde mires el dashboard.",
+    ],
+  },
   {
     version: "0.29.1",
     date: "2026-06-02",

@@ -31,13 +31,14 @@ export function relativeTime(isoString: string | null, lang: Lang = "en"): strin
   return d.toLocaleDateString(loc(lang), { day: "2-digit", month: "short" });
 }
 
-export function exactTime(isoString: string, lang: Lang = "en"): string {
+export function exactTime(isoString: string, lang: Lang = "en", timezone?: string): string {
   return new Date(isoString).toLocaleString(loc(lang), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    ...(timezone ? { timeZone: timezone } : {}),
   });
 }
 

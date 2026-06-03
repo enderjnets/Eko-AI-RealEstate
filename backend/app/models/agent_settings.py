@@ -42,6 +42,12 @@ class AgentSettings(Base):
     )
 
     languages: Mapped[list] = mapped_column(JSON, default=lambda: ["es", "en"], nullable=False)
+
+    # IANA timezone of the office (e.g. "America/Denver"). Used to interpret the
+    # times the voice agent hears ("2 PM" → 2 PM local, not UTC) and to display
+    # visits. Default UTC; the Settings page auto-detects the browser tz on load.
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC", nullable=False)
+
     business_hours: Mapped[dict] = mapped_column(
         JSON,
         default=lambda: {

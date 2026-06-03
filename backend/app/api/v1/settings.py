@@ -13,6 +13,7 @@ exist yet, so a freshly installed instance always returns a usable config.
 from __future__ import annotations
 
 from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,6 +36,7 @@ class SettingsOut(BaseModel):
     agent_persona: str
     greeting_template: str
     languages: list[str]
+    timezone: str
     business_hours: dict
     created_at: datetime
     updated_at: datetime
@@ -52,6 +54,7 @@ class SettingsPatch(BaseModel):
     agent_persona: str | None = Field(default=None, min_length=1)
     greeting_template: str | None = Field(default=None, min_length=1)
     languages: list[str] | None = Field(default=None, min_length=1)
+    timezone: str | None = Field(default=None, min_length=1, max_length=64)
     business_hours: dict | None = None
 
 
@@ -100,6 +103,14 @@ async def update_settings(
         if not cleaned:
             raise HTTPException(status_code=400, detail="`languages` cannot be empty")
         updates["languages"] = cleaned
+
+    if "timezone" in updates:
+        tz = str(updates["timezone"]).strip()
+        try:
+            ZoneInfo(tz)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid timezone: {tz}") from exc
+        updates["timezone"] = tz
 
     row = await _get_or_create(db)
     for field, value in updates.items():

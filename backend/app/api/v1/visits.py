@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_db
-from app.models import Lead, Visit, VisitStatus
+from app.models import AgentSettings, Lead, Visit, VisitStatus
 from app.services.calendar_cal import (
     CalComError,
     cancel_booking,
@@ -51,7 +51,9 @@ class BookingIn(BaseModel):
     duration_minutes: int = Field(default=30, ge=15, le=240)
     property_address: str | None = None
     notes: str | None = None
-    timezone: str = "UTC"
+    # Defaults to the office timezone (AgentSettings) when omitted, so visits are
+    # stored + displayed in the office's local tz rather than UTC.
+    timezone: str | None = None
 
 
 class VisitOut(BaseModel):
@@ -85,6 +87,12 @@ async def _get_lead_or_404(lead_id: int, db: AsyncSession) -> Lead:
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead not found")
     return lead
+
+
+async def _office_tz(db: AsyncSession) -> str:
+    """The office IANA timezone from AgentSettings (singleton), default UTC."""
+    cfg = (await db.execute(select(AgentSettings).where(AgentSettings.id == 1))).scalar_one_or_none()
+    return (cfg.timezone if cfg and cfg.timezone else "UTC")
 
 
 async def _busy_starts_for_lead(lead_id: int, db: AsyncSession) -> set[datetime]:
@@ -134,6 +142,7 @@ async def book_slot(
     db: AsyncSession = Depends(get_db),
 ) -> VisitOut:
     lead = await _get_lead_or_404(lead_id, db)
+    tz = body.timezone or await _office_tz(db)
 
     # Email-or-phone heuristic: lead.phone holds an email when channel is email.
     attendee_email = lead.phone if "@" in lead.phone else None
@@ -147,7 +156,7 @@ async def book_slot(
             attendee_email=attendee_email,
             attendee_phone=attendee_phone,
             notes=body.notes,
-            timezone_name=body.timezone,
+            timezone_name=tz,
             duration_minutes=body.duration_minutes,
         )
     except CalComError as exc:
@@ -160,7 +169,7 @@ async def book_slot(
         status=VisitStatus.SCHEDULED,
         scheduled_at=booking.scheduled_at,
         duration_minutes=booking.duration_minutes,
-        timezone=body.timezone,
+        timezone=tz,
         property_address=body.property_address,
         meeting_url=booking.meeting_url,
         notes=body.notes,
