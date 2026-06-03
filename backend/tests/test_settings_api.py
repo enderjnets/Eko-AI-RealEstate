@@ -13,7 +13,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 
-_RESTORABLE = ("agency_name", "agency_phone", "agent_persona", "greeting_template", "languages", "business_hours")
+_RESTORABLE = ("agency_name", "agency_phone", "agent_persona", "greeting_template", "languages", "timezone", "business_hours")
 
 
 @pytest.fixture
@@ -92,6 +92,27 @@ async def test_put_languages_normalized_and_deduped(_needs_db: None) -> None:
         assert r.json()["languages"] == ["en", "es"]
     finally:
         await _restore(original)
+
+
+@pytest.mark.asyncio
+async def test_put_timezone_roundtrip(_needs_db: None) -> None:
+    original = await _snapshot()
+    try:
+        async with await _client() as c:
+            r = await c.put("/api/v1/settings", json={"timezone": "America/Denver"})
+        assert r.status_code == 200, r.text
+        assert r.json()["timezone"] == "America/Denver"
+        async with await _client() as c:
+            assert (await c.get("/api/v1/settings")).json()["timezone"] == "America/Denver"
+    finally:
+        await _restore(original)
+
+
+@pytest.mark.asyncio
+async def test_put_invalid_timezone_400(_needs_db: None) -> None:
+    async with await _client() as c:
+        r = await c.put("/api/v1/settings", json={"timezone": "Mars/Olympus_Mons"})
+    assert r.status_code == 400
 
 
 @pytest.mark.asyncio

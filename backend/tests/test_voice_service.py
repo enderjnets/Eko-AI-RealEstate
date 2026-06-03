@@ -1,13 +1,33 @@
 """Voice service (VAPI): secret verification + end-of-call parsing + tool calls."""
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
+
 import pytest
 
 from app.services.voice import (
+    _parse_dt,
     handle_tool_call,
     parse_end_of_call_report,
     verify_vapi_secret,
 )
+
+
+class _FakeResult:
+    def scalar_one_or_none(self):
+        return None  # no AgentSettings row → office tz falls back to UTC
+
+
+class _FakeDB:
+    """Minimal async DB stub for the guard-path tool tests (no real settings row)."""
+
+    async def execute(self, *args, **kwargs):
+        return _FakeResult()
+
+    async def rollback(self):
+        pass
+
 
 # ── Secret ───────────────────────────────────────────────────────────────
 
@@ -96,16 +116,17 @@ def test_parse_end_of_call_report_tolerates_unwrapped_payload() -> None:
 
 @pytest.mark.asyncio
 async def test_tool_check_availability_returns_slots_text() -> None:
-    # CALENDAR_SIMULATED defaults to true → list_available_slots needs no Cal.com,
-    # and this branch never touches the DB.
-    out = await handle_tool_call("check_availability", {"days": 7}, customer_number=None, db=None)
+    # CALENDAR_SIMULATED defaults to true → list_available_slots needs no Cal.com.
+    out = await handle_tool_call(
+        "check_availability", {"days": 7}, customer_number=None, db=_FakeDB()
+    )
     assert "available" in out.lower()
 
 
 @pytest.mark.asyncio
 async def test_tool_book_visit_rejects_bad_datetime() -> None:
     out = await handle_tool_call(
-        "book_visit", {"datetime": "tomorrow-ish"}, customer_number="+13035551234", db=None
+        "book_visit", {"datetime": "tomorrow-ish"}, customer_number="+13035551234", db=_FakeDB()
     )
     assert "date and time" in out.lower()
 
@@ -113,15 +134,34 @@ async def test_tool_book_visit_rejects_bad_datetime() -> None:
 @pytest.mark.asyncio
 async def test_tool_book_visit_needs_phone() -> None:
     out = await handle_tool_call(
-        "book_visit", {"datetime": "2027-01-15T15:00:00Z"}, customer_number=None, db=None
+        "book_visit", {"datetime": "2027-01-15T15:00:00Z"}, customer_number=None, db=_FakeDB()
     )
     assert "phone number" in out.lower()
 
 
 @pytest.mark.asyncio
 async def test_tool_unknown_returns_graceful_message() -> None:
-    out = await handle_tool_call("do_a_backflip", {}, customer_number=None, db=None)
+    out = await handle_tool_call("do_a_backflip", {}, customer_number=None, db=_FakeDB())
     assert "not able" in out.lower()
+
+
+# ── Timezone: a spoken local time is stored as office-local → UTC ───────────
+
+
+def test_parse_dt_interprets_wall_clock_as_office_local() -> None:
+    # "2 PM" in America/Denver (UTC-6 in June / MDT) → 20:00 UTC, NOT 14:00 UTC.
+    out = _parse_dt("2026-06-03T14:00:00", ZoneInfo("America/Denver"))
+    assert out == datetime(2026, 6, 3, 20, 0, tzinfo=UTC)
+
+
+def test_parse_dt_ignores_llm_supplied_z_suffix() -> None:
+    # Even if the LLM appends Z, the wall-clock is interpreted as office-local.
+    out = _parse_dt("2026-06-03T14:00:00Z", ZoneInfo("America/Denver"))
+    assert out == datetime(2026, 6, 3, 20, 0, tzinfo=UTC)
+
+
+def test_parse_dt_bad_value_returns_none() -> None:
+    assert _parse_dt("tomorrow-ish", ZoneInfo("UTC")) is None
 
 
 # ── structuredData mapping (flat + VAPI's nested auto-shape) ────────────────

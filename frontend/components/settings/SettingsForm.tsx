@@ -14,6 +14,18 @@ const KNOWN_LANGS: { code: string; label: string }[] = [
   { code: "fr", label: "Français" },
 ];
 
+const BROWSER_TZ =
+  typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
+
+// A short curated list; the office's own tz is always added so the <select> can
+// show it even if it's not here.
+const COMMON_TZS = [
+  "America/New_York", "America/Chicago", "America/Denver", "America/Phoenix",
+  "America/Los_Angeles", "America/Anchorage", "Pacific/Honolulu",
+  "America/Mexico_City", "America/Bogota", "America/Argentina/Buenos_Aires",
+  "America/Sao_Paulo", "Europe/Madrid", "Europe/London", "UTC",
+];
+
 type Hours = Record<string, { open: string; close: string } | null>;
 
 export function SettingsForm() {
@@ -27,7 +39,19 @@ export function SettingsForm() {
   useEffect(() => {
     settingsApi
       .get()
-      .then(setData)
+      .then(async (d) => {
+        // Auto-configure the timezone by default: if it's still the unset default
+        // (UTC) and the browser is in a different zone, detect + persist it once so
+        // the voice agent books in the right local time without manual setup.
+        if ((!d.timezone || d.timezone === "UTC") && BROWSER_TZ && BROWSER_TZ !== "UTC") {
+          try {
+            return setData(await settingsApi.update({ timezone: BROWSER_TZ }));
+          } catch {
+            return setData({ ...d, timezone: BROWSER_TZ });
+          }
+        }
+        setData(d);
+      })
       .catch((e) => setError(String((e as Error)?.message || e)))
       .finally(() => setLoading(false));
   }, []);
@@ -61,6 +85,7 @@ export function SettingsForm() {
         agent_persona: data.agent_persona,
         greeting_template: data.greeting_template,
         languages: data.languages,
+        timezone: data.timezone,
         business_hours: data.business_hours,
       });
       setData(updated);
@@ -174,6 +199,34 @@ export function SettingsForm() {
               </button>
             );
           })}
+        </div>
+      </section>
+
+      {/* Zona horaria */}
+      <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+        <h2 className="text-sm font-semibold text-white mb-1">{t("settings.timezone")}</h2>
+        <p className="text-xs text-gray-500 mb-4">{t("settings.timezoneHint")}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={data.timezone}
+            onChange={(e) => set("timezone", e.target.value)}
+            className="px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white focus:outline-none focus:border-eko-violet/50"
+          >
+            {Array.from(new Set([data.timezone, ...COMMON_TZS])).map((z) => (
+              <option key={z} value={z} className="bg-eko-noir">
+                {z}
+              </option>
+            ))}
+          </select>
+          {data.timezone !== BROWSER_TZ && BROWSER_TZ && (
+            <button
+              type="button"
+              onClick={() => set("timezone", BROWSER_TZ)}
+              className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium border border-white/10 text-gray-300 hover:border-eko-violet/40 hover:text-eko-violet"
+            >
+              {t("settings.detectTz")} ({BROWSER_TZ})
+            </button>
+          )}
         </div>
       </section>
 

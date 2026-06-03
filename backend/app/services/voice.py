@@ -25,6 +25,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -149,9 +150,23 @@ def parse_end_of_call_report(payload: dict[str, Any]) -> VoiceCallReport | None:
 # ── Tool calls (answered live during the call) ───────────────────────────────
 
 
-def _parse_dt(value: Any) -> datetime | None:
-    """Parse an ISO-8601 datetime the assistant passes for booking. Returns an
-    aware UTC datetime, or None if unparseable."""
+def _office_zone(tz_name: str) -> ZoneInfo:
+    """ZoneInfo for the office tz, falling back to UTC on a bad/unknown name."""
+    try:
+        return ZoneInfo(tz_name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        log.warning("Unknown office timezone %r — falling back to UTC", tz_name)
+        return ZoneInfo("UTC")
+
+
+def _parse_dt(value: Any, tz: ZoneInfo) -> datetime | None:
+    """Parse the datetime the assistant passes for booking, returning an aware UTC
+    datetime — or None if unparseable.
+
+    A caller on the phone always speaks a LOCAL wall-clock time ("2 PM"), so we
+    interpret the parsed hour/minute in the OFFICE timezone regardless of any
+    tz suffix the LLM may have added, then convert to UTC for storage. (2 PM in
+    America/Denver → 20:00 UTC, not 14:00 UTC.)"""
     if not isinstance(value, str) or not value.strip():
         return None
     raw = value.strip().replace("Z", "+00:00")
@@ -159,9 +174,18 @@ def _parse_dt(value: Any) -> datetime | None:
         dt = datetime.fromisoformat(raw)
     except ValueError:
         return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
+    # Drop any tz the LLM attached and treat the wall-clock as office-local.
+    dt = dt.replace(tzinfo=tz)
     return dt.astimezone(UTC)
+
+
+async def _office_tz_name(db: AsyncSession) -> str:
+    """The office IANA timezone from AgentSettings (singleton), default UTC."""
+    from app.models import AgentSettings
+
+    row = await db.execute(select(AgentSettings).where(AgentSettings.id == 1))
+    cfg = row.scalar_one_or_none()
+    return (cfg.timezone if cfg and cfg.timezone else "UTC")
 
 
 async def _resolve_or_create_lead(identifier: str, name: str | None, db: AsyncSession):
@@ -198,22 +222,29 @@ async def handle_tool_call(
     handler would make the assistant stall mid-call)."""
     from app.services.calendar_cal import CalComError, create_booking, list_available_slots
 
+    tz_name = await _office_tz_name(db)
+    zone = _office_zone(tz_name)
+
     try:
         if name == "check_availability":
             days = int(arguments.get("days") or 7)
             days = max(1, min(days, 30))
             now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
-            slots = await list_available_slots(start=now, end=now + timedelta(days=days))
+            slots = await list_available_slots(
+                start=now, end=now + timedelta(days=days), timezone_name=tz_name
+            )
             if not slots:
                 return "I don't see any open visit times in that window right now."
             top = slots[:5]
-            pretty = "; ".join(s.start.strftime("%A %b %d at %I:%M %p UTC") for s in top)
+            pretty = "; ".join(
+                s.start.astimezone(zone).strftime("%A %b %d at %I:%M %p") for s in top
+            )
             return f"Here are the next available visit times: {pretty}."
 
         if name == "book_visit":
             from app.models import Visit, VisitStatus
 
-            when = _parse_dt(arguments.get("datetime") or arguments.get("start_time"))
+            when = _parse_dt(arguments.get("datetime") or arguments.get("start_time"), zone)
             if when is None:
                 return "I couldn't read that date and time. Could you give me a specific day and time?"
 
@@ -242,6 +273,7 @@ async def handle_tool_call(
                 attendee_email=attendee_email,
                 attendee_phone=attendee_phone,
                 notes=note,
+                timezone_name=tz_name,
             )
             visit = Visit(
                 lead_id=lead.id,
@@ -250,7 +282,7 @@ async def handle_tool_call(
                 status=VisitStatus.SCHEDULED,
                 scheduled_at=booking.scheduled_at,
                 duration_minutes=booking.duration_minutes,
-                timezone="UTC",
+                timezone=tz_name,
                 property_address=property_address,
                 meeting_url=booking.meeting_url,
                 notes=note,
@@ -265,7 +297,7 @@ async def handle_tool_call(
             except Exception as exc:  # noqa: BLE001
                 log.warning("Could not enqueue follow-ups for voice visit %d: %s", visit.id, exc)
 
-            when_str = booking.scheduled_at.strftime("%A %b %d at %I:%M %p UTC")
+            when_str = booking.scheduled_at.astimezone(zone).strftime("%A %b %d at %I:%M %p")
             return f"Your visit is booked for {when_str}. You'll get a reminder beforehand."
 
         log.warning("Voice tool-call for unknown tool: %s", name)

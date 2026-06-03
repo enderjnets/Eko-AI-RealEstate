@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CalendarPlus, Loader2, X } from "lucide-react";
-import { type Slot, calendarApi } from "@/lib/api";
+import { type Slot, calendarApi, settingsApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
 const DEFAULT_TZ =
@@ -44,8 +44,16 @@ export function BookingDialog({
   const [loading, setLoading] = useState(false);
   const [booking, setBooking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Book + display in the OFFICE timezone (from settings), not the browser's.
+  const [tz, setTz] = useState(DEFAULT_TZ);
 
-  const tz = DEFAULT_TZ;
+  useEffect(() => {
+    if (!open) return;
+    settingsApi
+      .get()
+      .then((s) => setTz(s.timezone || DEFAULT_TZ))
+      .catch(() => {});
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

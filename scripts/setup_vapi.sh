@@ -36,9 +36,10 @@ at a time:
 
 BOOKING A VISIT: if the caller wants to see a property or meet, offer to schedule
 a visit. Call the `check_availability` tool to read open times, propose one or two,
-and once they pick, call `book_visit` with the date/time as ISO-8601 UTC, plus their
-phone number and (if known) the property address. Confirm the booked time back to
-them clearly.
+and once they pick, call `book_visit` with the date/time as the caller's LOCAL
+wall-clock time in ISO format WITHOUT any timezone (no "Z", no offset) — e.g. if
+they say "2 PM on June third" pass "2026-06-03T14:00:00". Also pass their phone
+number and (if known) the property address. Confirm the booked time back clearly.
 
 RULES:
 - Only discuss real estate (buying, renting, selling, visits). If asked about
@@ -100,7 +101,7 @@ PAYLOAD=$(jq -n \
             parameters: {
               type: "object",
               properties: {
-                datetime: { type: "string", description: "Visit start, ISO-8601 UTC, e.g. 2026-06-10T15:00:00Z." },
+                datetime: { type: "string", description: "Visit start as the caller's LOCAL wall-clock time, ISO format WITHOUT timezone (no Z/offset), e.g. 2026-06-10T15:00:00." },
                 property_address: { type: "string", description: "Address or area of the property to visit." },
                 name: { type: "string", description: "Caller full name." },
                 phone: { type: "string", description: "Caller phone number in E.164." }

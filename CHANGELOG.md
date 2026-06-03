@@ -2,6 +2,24 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.30.0] — 2026-06-02
+
+### Office timezone: visits booked in local time (not UTC) + a Settings preference
+
+- **Bug**: the voice agent treated a spoken "2 PM" as 2 PM **UTC**, so the visit
+  landed at 8 AM Denver. Booking now interprets the spoken wall-clock time in the
+  **office timezone** and stores it correctly (2 PM Denver → 20:00 UTC). `_parse_dt`
+  localizes the wall-clock to the office tz; `book_visit` + manual `book_slot` load
+  the office tz from settings; the assistant prompt now passes a tz-less local time.
+- **New Settings preference — Timezone**: auto-detected from the browser on first
+  load (one-time persist), changeable anytime. Drives how the agent interprets
+  spoken times and how all visits are displayed.
+- Visits now render in the office timezone **with the tz abbreviation** (e.g.
+  "2:00 PM MDT"), consistent regardless of the viewer's location.
+- `AgentSettings.timezone` (Alembic `010`, default UTC); `tzdata` added to
+  requirements (python-slim has no system zoneinfo). `GET/PUT /settings` validate
+  the IANA name.
+
 ## [0.29.1] — 2026-06-02
 
 ### Friendly "lead not found" state (no more raw red API error)
