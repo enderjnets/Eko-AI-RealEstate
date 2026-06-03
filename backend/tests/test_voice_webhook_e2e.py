@@ -133,14 +133,17 @@ async def test_end_of_call_report_idempotent(database_url: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_tool_call_book_visit_creates_visit(database_url: str) -> None:
-    """Needs CALENDAR_SIMULATED=true (default) so create_booking returns a sim id."""
+async def test_tool_call_book_visit_keys_on_caller_id(database_url: str) -> None:
+    """The visit must land on the CALLER ID lead (same as the transcript), even when
+    the caller dictates a DIFFERENT callback number — which is kept as a note.
+    Needs CALENDAR_SIMULATED=true (default) so create_booking returns a sim id."""
     sfx = uuid.uuid4().hex[:8]
-    phone = f"+1303557{sfx[:4]}"
+    caller_id = f"+1303557{sfx[:4]}"
+    dictated = f"+1720555{sfx[:4]}"  # different from the caller id
     payload = {
         "message": {
             "type": "tool-calls",
-            "call": {"id": f"call_{sfx}", "customer": {"number": phone}},
+            "call": {"id": f"call_{sfx}", "customer": {"number": caller_id}},
             "toolCalls": [
                 {
                     "id": "tc_1",
@@ -149,6 +152,7 @@ async def test_tool_call_book_visit_creates_visit(database_url: str) -> None:
                         "arguments": {
                             "datetime": "2027-01-15T15:00:00Z",
                             "property_address": "123 Main St, Aurora CO",
+                            "phone": dictated,
                         },
                     },
                 }
@@ -167,12 +171,17 @@ async def test_tool_call_book_visit_creates_visit(database_url: str) -> None:
         engine = create_async_engine(database_url, echo=False, future=True)
         Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
         async with Session() as s:
-            lead = (await s.execute(select(Lead).where(Lead.phone == phone))).scalar_one()
+            # lead keyed on the caller id, NOT the dictated number
+            lead = (await s.execute(select(Lead).where(Lead.phone == caller_id))).scalar_one()
+            assert (
+                await s.execute(select(Lead).where(Lead.phone == dictated))
+            ).scalar_one_or_none() is None
             visits = (
                 await s.execute(select(Visit).where(Visit.lead_id == lead.id))
             ).scalars().all()
             assert len(visits) == 1
             assert visits[0].property_address == "123 Main St, Aurora CO"
+            assert dictated in (visits[0].notes or "")  # callback note
         await engine.dispose()
     finally:
-        await _cleanup(database_url, phone)
+        await _cleanup(database_url, caller_id)

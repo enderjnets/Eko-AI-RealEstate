@@ -391,27 +391,53 @@ _VOICE_INTENT_MAP = {
 }
 
 
+def _flatten_voice_structured(structured: dict) -> dict:
+    """Normalize VAPI's structuredData to flat canonical keys.
+
+    With an explicit `structuredDataPlan.schema` VAPI returns a flat shape
+    (`intent`, `zone`, `budget_*`, `property_type`, `timeline`, `name`). Without
+    one it auto-generates a NESTED shape (`property_inquiry`, `customer_info`).
+    Read both so a lead always gets classified."""
+    flat = dict(structured)
+    pi = structured.get("property_inquiry")
+    if isinstance(pi, dict):
+        flat.setdefault("intent", pi.get("inquiry_type") or pi.get("intent"))
+        flat.setdefault("zone", pi.get("location") or pi.get("zone"))
+        flat.setdefault("budget_min", pi.get("budget_min"))
+        flat.setdefault("budget_max", pi.get("budget_max"))
+        flat.setdefault("property_type", pi.get("property_type"))
+        flat.setdefault("timeline", pi.get("move_in_timeline") or pi.get("timeline"))
+    ci = structured.get("customer_info")
+    if isinstance(ci, dict):
+        flat.setdefault("name", ci.get("name"))
+    return flat
+
+
 def _apply_voice_structured(lead: Lead, structured: dict) -> None:
     """Map a VAPI call's extracted structuredData onto the lead, conservatively
     (don't overwrite values the lead already has, except intent which reflects
     the latest call)."""
-    raw_intent = str(structured.get("intent") or "").strip().lower()
+    s = _flatten_voice_structured(structured)
+    raw_intent = str(s.get("intent") or "").strip().lower()
     if raw_intent in _VOICE_INTENT_MAP:
         lead.intent = _VOICE_INTENT_MAP[raw_intent]
-    zone = structured.get("zone")
+    name = s.get("name")
+    if isinstance(name, str) and name.strip() and not lead.name:
+        lead.name = name.strip()
+    zone = s.get("zone")
     if isinstance(zone, str) and zone.strip() and not lead.zone:
         lead.zone = zone.strip()
     for key in ("budget_min", "budget_max"):
-        val = structured.get(key)
+        val = s.get(key)
         if val is not None and getattr(lead, key) is None:
             try:
                 setattr(lead, key, int(float(val)))
             except (TypeError, ValueError):
                 pass
-    ptype = structured.get("property_type")
+    ptype = s.get("property_type")
     if isinstance(ptype, str) and ptype.strip() and not lead.property_type:
         lead.property_type = ptype.strip()
-    timeline = structured.get("timeline") or structured.get("urgency")
+    timeline = s.get("timeline") or s.get("urgency")
     if isinstance(timeline, str) and timeline.strip() and not lead.urgency:
         lead.urgency = timeline.strip()
 
