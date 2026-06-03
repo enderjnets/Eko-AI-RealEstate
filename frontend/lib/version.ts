@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.30.0";
+export const CURRENT_VERSION = "0.31.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.31.0",
+    date: "2026-06-02",
+    title: "Nuevo tab Calendario: agenda + grilla mensual + eventos manuales",
+    changes: [
+      "Nuevo tab Calendario en el nav que reúne en un solo lugar todas las visitas de leads, los eventos manuales y los pendientes del sistema (follow-ups), en la zona horaria de la oficina.",
+      "Dos vistas con toggle: Agenda (lista agrupada por día — Hoy/Mañana/fecha) y Mes (grilla mensual con los eventos por día).",
+      "Botón 'Agregar evento' para crear eventos manuales (título, fecha/hora, duración, notas) — no necesitan estar ligados a un lead. Se interpretan en la zona horaria de la oficina.",
+      "Backend: `lead_id` de las visitas ahora es opcional (+ `title`), endpoints `GET /visits` (todas), `POST /visits` (evento manual) y `GET /visits/agenda` (visitas + pendientes).",
+    ],
+  },
   {
     version: "0.30.0",
     date: "2026-06-02",

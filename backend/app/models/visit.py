@@ -32,9 +32,15 @@ class Visit(Base):
     __tablename__ = "visits"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    lead_id: Mapped[int] = mapped_column(
-        ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True
+    # Nullable: a lead's property visit links to its lead; a MANUAL calendar event
+    # (open house, team meeting, ...) created by the realtor has no lead.
+    lead_id: Mapped[int | None] = mapped_column(
+        ForeignKey("leads.id", ondelete="CASCADE"), nullable=True, index=True
     )
+
+    # Title for manual events (NULL for lead visits, which derive their label from
+    # the lead + scheduled time).
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     # Provider + external id (mirrored to Cal.com / Google Calendar). For
     # SIMULATED bookings the external_booking_id is `calcom-sim-<uuid>` so the
