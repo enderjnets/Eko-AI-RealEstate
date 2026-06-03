@@ -10,7 +10,7 @@ All state is read with a handful of grouped queries (no per-lead loops).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +27,11 @@ from app.models import (
 PREVIEW_LEN = 140
 _ACTIVE_VISIT_STATUSES = (VisitStatus.SCHEDULED, VisitStatus.CONFIRMED)
 
+# A lead with recent activity it hasn't been triaged ("handled") for still counts
+# as needing attention even when it's not awaiting our reply — e.g. a just-finished
+# voice call where the agent spoke last. Bounded so old untriaged leads don't pile in.
+NEW_ACTIVITY_WINDOW_HOURS = 24
+
 
 @dataclass
 class InboxItem:
@@ -37,6 +42,7 @@ class InboxItem:
     last_channel: str | None
     last_preview: str | None
     needs_response: bool
+    needs_attention: bool
     has_visit: bool
     next_visit_at: datetime | None
     visit_status: str | None
@@ -130,6 +136,9 @@ async def gather_inbox(db: AsyncSession) -> list[InboxItem]:
         await db.execute(select(Lead).where(Lead.id.in_(list(last.keys()))))
     ).scalars().all()
 
+    now = datetime.now(UTC)
+    fresh_cutoff = now - timedelta(hours=NEW_ACTIVITY_WINDOW_HOURS)
+
     items: list[InboxItem] = []
     for lead in leads:
         lm = last[lead.id]
@@ -139,6 +148,13 @@ async def gather_inbox(db: AsyncSession) -> list[InboxItem]:
         needs_response = last_inbound and (
             handled_at is None or (lm.created_at is not None and handled_at < lm.created_at)
         )
+        # Needs attention = awaiting our reply OR a fresh, not-yet-triaged conversation
+        # (e.g. a just-finished voice call). The recency window keeps old untriaged
+        # leads from inflating the badge.
+        is_fresh_untriaged = handled_at is None and (
+            lm.created_at is not None and lm.created_at >= fresh_cutoff
+        )
+        needs_attention = needs_response or is_fresh_untriaged
         v = visits.get(lead.id)
         items.append(
             InboxItem(
@@ -149,6 +165,7 @@ async def gather_inbox(db: AsyncSession) -> list[InboxItem]:
                 last_channel=lm.channel,
                 last_preview=(lm.content or "")[:PREVIEW_LEN] or None,
                 needs_response=needs_response,
+                needs_attention=needs_attention,
                 has_visit=v is not None,
                 next_visit_at=v.scheduled_at if v else None,
                 visit_status=v.status.value if v else None,

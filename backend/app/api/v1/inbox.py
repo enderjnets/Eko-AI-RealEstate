@@ -38,6 +38,7 @@ class InboxItemOut(BaseModel):
     last_channel: str | None
     last_preview: str | None
     needs_response: bool
+    needs_attention: bool
     has_visit: bool
     next_visit_at: datetime | None
     visit_status: str | None
@@ -48,11 +49,13 @@ class InboxListOut(BaseModel):
     items: list[InboxItemOut]
     pending_count: int
     booked_count: int
+    attention_count: int
 
 
 class InboxCountOut(BaseModel):
     pending: int
     booked: int
+    attention: int
 
 
 def _to_out(it: InboxItem) -> InboxItemOut:
@@ -72,6 +75,7 @@ def _to_out(it: InboxItem) -> InboxItemOut:
         last_channel=it.last_channel,
         last_preview=it.last_preview,
         needs_response=it.needs_response,
+        needs_attention=it.needs_attention,
         has_visit=it.has_visit,
         next_visit_at=it.next_visit_at,
         visit_status=it.visit_status,
@@ -97,6 +101,11 @@ def _sort_key_all(it: InboxItem):
     return (-it.lead.score, _neg_time(it.last_message_at))
 
 
+def _sort_key_attention(it: InboxItem):
+    # Newest activity first — the dropdown surfaces the latest new/pending comms.
+    return _neg_time(it.last_message_at)
+
+
 def _neg_time(dt: datetime | None) -> float:
     # Most-recent first → sort ascending on negative epoch.
     return -(dt.timestamp() if dt else _FAR_PAST.timestamp())
@@ -104,7 +113,7 @@ def _neg_time(dt: datetime | None) -> float:
 
 @router.get("", response_model=InboxListOut)
 async def list_inbox(
-    filter: str = Query(default="pending", pattern="^(pending|booked|all)$"),
+    filter: str = Query(default="pending", pattern="^(pending|booked|all|attention)$"),
     channel: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=300),
     offset: int = Query(default=0, ge=0),
@@ -119,6 +128,7 @@ async def list_inbox(
 
     pending_count = sum(1 for it in items if it.needs_response)
     booked_count = sum(1 for it in items if it.has_visit)
+    attention_count = sum(1 for it in items if it.needs_attention)
 
     if filter == "pending":
         items = [it for it in items if it.needs_response]
@@ -126,6 +136,9 @@ async def list_inbox(
     elif filter == "booked":
         items = [it for it in items if it.has_visit]
         items.sort(key=_sort_key_booked)
+    elif filter == "attention":
+        items = [it for it in items if it.needs_attention]
+        items.sort(key=_sort_key_attention)
     else:  # all
         items.sort(key=_sort_key_all)
 
@@ -134,6 +147,7 @@ async def list_inbox(
         items=[_to_out(it) for it in window],
         pending_count=pending_count,
         booked_count=booked_count,
+        attention_count=attention_count,
     )
 
 
@@ -143,6 +157,7 @@ async def inbox_count(db: AsyncSession = Depends(get_db)) -> InboxCountOut:
     return InboxCountOut(
         pending=sum(1 for it in items if it.needs_response),
         booked=sum(1 for it in items if it.has_visit),
+        attention=sum(1 for it in items if it.needs_attention),
     )
 
 

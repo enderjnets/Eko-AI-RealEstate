@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.28.1";
+export const CURRENT_VERSION = "0.29.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.29.0",
+    date: "2026-06-02",
+    title: "Inbox: contador 'nuevo + pendiente' y menú desplegable de acceso rápido",
+    changes: [
+      "El número del Inbox en el nav ahora cuenta también las comunicaciones NUEVAS sin revisar (ej. una llamada de voz recién terminada), no solo las que esperan tu respuesta. Así una llamada nueva se refleja al instante.",
+      "Clic en el Inbox abre un menú: arriba 'Ir a la bandeja' (sección general) y debajo acceso directo a cada comunicación nueva/pendiente (con su ícono de canal 🗣️✉️💬 y vista previa) que lleva directo a la ficha del lead.",
+      "Abrir un lead lo marca como revisado y lo saca del contador — salvo que todavía esté esperando tu respuesta (ese se limpia al responder o con 'Atendido').",
+      "Backend: nuevo `needs_attention` (= esperando respuesta O actividad nueva sin atender en las últimas 24h) + filtro `attention` en `GET /inbox` y campo `attention` en el contador.",
+    ],
+  },
   {
     version: "0.28.1",
     date: "2026-06-02",

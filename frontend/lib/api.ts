@@ -379,7 +379,7 @@ export const conversationsApi = {
   timeline: (leadId: number) => api<Timeline>(`/v1/conversations/${leadId}/timeline`),
 };
 
-export type InboxFilter = "pending" | "booked" | "all";
+export type InboxFilter = "pending" | "booked" | "all" | "attention";
 
 export interface InboxItem {
   lead_id: number;
@@ -397,6 +397,7 @@ export interface InboxItem {
   last_channel: string | null;
   last_preview: string | null;
   needs_response: boolean;
+  needs_attention: boolean;
   has_visit: boolean;
   next_visit_at: string | null;
   visit_status: VisitStatus | null;
@@ -407,11 +408,13 @@ export interface InboxList {
   items: InboxItem[];
   pending_count: number;
   booked_count: number;
+  attention_count: number;
 }
 
 export interface InboxCount {
   pending: number;
   booked: number;
+  attention: number;
 }
 
 export const inboxApi = {

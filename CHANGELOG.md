@@ -2,6 +2,23 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.29.0] — 2026-06-02
+
+### Inbox: "new + pending" badge count + quick-access dropdown menu
+
+- The nav **Inbox badge** now counts **`needs_attention`** = awaiting our reply **OR**
+  a fresh (<24h) untriaged conversation (e.g. a just-finished voice call where the
+  agent spoke last). So a new call shows up immediately, without old leads inflating
+  the number.
+- Clicking the Inbox badge opens a **dropdown**: a **"Go to inbox"** header (general
+  section) and below it direct links to each new/pending communication (channel icon
+  🗣️/✉️/💬 + name + preview) that jump straight to `/leads/{id}`.
+- **Opening a lead** marks it reviewed → clears it from the badge, *unless* it's still
+  awaiting our reply (that clears on reply or explicit "handled").
+- Backend: `services/inbox.py` computes `needs_attention` (`NEW_ACTIVITY_WINDOW_HOURS=24`);
+  `GET /inbox` gains a `filter=attention` + `attention_count`; `GET /inbox/count` gains
+  `attention`. `pending` is unchanged for back-compat.
+
 ## [0.28.1] — 2026-06-02
 
 ### Fix voice: a call lands on ONE lead (transcript + visit + extracted fields)

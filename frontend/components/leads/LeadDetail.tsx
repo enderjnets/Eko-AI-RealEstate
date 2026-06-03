@@ -16,6 +16,7 @@ import {
   type Lead,
   type Timeline,
   conversationsApi,
+  inboxApi,
   leadsApi,
 } from "@/lib/api";
 import { IntentBadge, StatusBadge } from "@/components/ui/Badge";
@@ -71,6 +72,12 @@ export function LeadDetail({ leadId }: { leadId: number }) {
         if (!mounted) return;
         setLead(leadData);
         setTimeline(tl);
+        // Opening a lead "reviews" it: clear it from the Inbox attention badge —
+        // but NOT if it's still awaiting our reply (that stays pending until we
+        // answer or explicitly mark it handled).
+        if (!leadData.needs_response) {
+          inboxApi.markHandled(leadId).catch(() => {});
+        }
       })
       .catch((e) => mounted && setError(String(e.message || e)))
       .finally(() => mounted && setLoading(false));
