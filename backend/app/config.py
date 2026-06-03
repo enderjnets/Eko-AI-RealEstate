@@ -101,6 +101,20 @@ class Settings(BaseSettings):
     # the backend reflects the final status on the outbound Message.
     TWILIO_STATUS_CALLBACK_URL: str = ""
 
+    # ─── Voice (Phase 13 — VAPI) ────────────────────────────────────────
+    # Inbound voice: VAPI runs the call (STT + TTS + realtime LLM) and POSTs
+    # server messages to our webhook. `tool-calls` are answered synchronously
+    # (e.g. book_visit during the call); `end-of-call-report` ingests the full
+    # transcript into the lead's timeline (channel="voice"). When VOICE_SIMULATED
+    # =true (dev default), the webhook accepts unsigned requests so tests + the
+    # demo work without VAPI. Outbound calling is out of scope this phase.
+    VOICE_SIMULATED: bool = True
+    VAPI_API_KEY: str = ""  # Bearer for the VAPI REST API (outbound calls, mgmt)
+    VAPI_WEBHOOK_SECRET: str = ""  # shared secret sent as `x-vapi-secret` header
+    VAPI_ASSISTANT_ID: str = ""  # the Eko AI Realtors assistant
+    VAPI_PHONE_NUMBER_ID: str = ""  # the number routed to the assistant
+    VAPI_BASE_URL: str = "https://api.vapi.ai"
+
     # ─── Listings / MLS (Phase 7) ───────────────────────────────────────
     # When SIMULATED=true (dev default), the listings service returns a curated
     # Miami dataset and sync_listings upserts it as MANUAL — no MLS feed needed.

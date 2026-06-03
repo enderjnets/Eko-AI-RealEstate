@@ -2,6 +2,30 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.28.0] — 2026-06-02
+
+### Phase 13 · Voice agent (VAPI) — calls that qualify leads and book visits
+
+- **New VOICE channel.** The agent answers calls via VAPI (female English 11labs
+  voice + Claude Sonnet 4.5 as the realtime brain). It qualifies the caller
+  (buy/rent/valuation, zone, budget, timeline) and can **book a visit during the
+  call** through a tool-call into the Cal.com booking service (Phase 5).
+- **End-of-call ingest.** When the call ends, VAPI POSTs an `end-of-call-report`
+  to `POST /api/v1/webhooks/voice`; we ingest the full transcript into the lead's
+  timeline as `channel="voice"` (turns as Messages), apply the extracted fields,
+  and rescore — same lead pipeline as SMS/email. No LLM call on ingest (the
+  conversation already happened live). Idempotent per `call_id`.
+- `services/voice.py`: `verify_vapi_secret` (shared `x-vapi-secret`),
+  `parse_end_of_call_report`, and `handle_tool_call` (`check_availability` /
+  `book_visit`). `conversation.py::ingest_voice_call` upserts the lead and stores
+  the transcript. Voice stays OUT of `SENDABLE_CHANNELS` (no outbound text).
+- `VOICE_SIMULATED=true` by default (dev + the public demo need no VAPI account;
+  the webhook accepts unsigned requests). Outbound calling (the agent calling
+  leads) is deferred to a future phase. Setup: `docs/setup-vapi.md`.
+- Tests: `test_voice_service.py` (secret/parse/tool-calls) +
+  `test_voice_webhook_e2e.py` (end-of-call → lead+conversation+messages+score,
+  idempotency, tool-call book_visit → Visit).
+
 ## [0.27.1] — 2026-06-01
 
 ### More robust email threading: full References chain
