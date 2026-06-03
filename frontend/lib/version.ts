@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.28.0";
+export const CURRENT_VERSION = "0.28.1";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.28.1",
+    date: "2026-06-02",
+    title: "Fix voz: la llamada queda en UNA sola ficha (transcript + visita + datos)",
+    changes: [
+      "Bug: una llamada se partía en dos leads — la VISITA caía en el número que el cliente dictaba y la TRANSCRIPCIÓN en el caller id real. Fix: `book_visit` ahora ancla el lead al caller id (el mismo que usa el ingest del end-of-call), y guarda el número dictado como nota de callback. Así visita y transcripción quedan en la misma ficha.",
+      "Bug: VAPI devolvía el `structuredData` en un shape anidado (`customer_info`/`property_inquiry`) que no se mapeaba → el lead quedaba sin intención/zona/presupuesto. Fix: `_flatten_voice_structured` normaliza el shape plano Y el anidado; además se define un schema EXPLÍCITO en el assistant para que las llamadas futuras vengan deterministas.",
+    ],
+  },
   {
     version: "0.28.0",
     date: "2026-06-02",

@@ -60,7 +60,25 @@ PAYLOAD=$(jq -n \
     transcriber: { provider: "deepgram", model: "nova-2", language: "en" },
     server: { url: $url, secret: $secret },
     serverMessages: ["end-of-call-report", "tool-calls", "status-update"],
-    analysisPlan: { summaryPlan: { enabled: true }, structuredDataPlan: { enabled: true } },
+    analysisPlan: {
+      summaryPlan: { enabled: true },
+      structuredDataPlan: {
+        enabled: true,
+        schema: {
+          type: "object",
+          properties: {
+            intent: { type: "string", enum: ["buy", "rent", "valuation", "other"], description: "What the caller wants to do." },
+            zone: { type: "string", description: "Neighborhood / area of interest." },
+            budget_min: { type: "number", description: "Minimum budget (USD), if mentioned." },
+            budget_max: { type: "number", description: "Maximum budget (USD), if mentioned." },
+            property_type: { type: "string", description: "house, condo, apartment, ..." },
+            timeline: { type: "string", description: "How soon they want to move / decide." },
+            name: { type: "string", description: "Caller full name." },
+            phone: { type: "string", description: "Callback phone number the caller gave." }
+          }
+        }
+      }
+    },
     model: {
       provider: "anthropic",
       model: "claude-sonnet-4-5-20250929",

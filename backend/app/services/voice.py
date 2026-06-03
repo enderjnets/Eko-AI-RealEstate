@@ -130,6 +130,9 @@ def parse_end_of_call_report(payload: dict[str, Any]) -> VoiceCallReport | None:
 
     from_name = None
     name = structured.get("name")
+    if not (isinstance(name, str) and name.strip()):
+        ci = structured.get("customer_info")
+        name = ci.get("name") if isinstance(ci, dict) else None
     if isinstance(name, str) and name.strip():
         from_name = name.strip()
 
@@ -214,13 +217,22 @@ async def handle_tool_call(
             if when is None:
                 return "I couldn't read that date and time. Could you give me a specific day and time?"
 
-            phone = (arguments.get("phone") or customer_number or "").strip()
+            # Key the lead on the CALLER ID (always present on a phone call and
+            # identical in the end-of-call report), so the visit lands on the SAME
+            # lead as the transcript. The number the caller dictates is kept as a
+            # callback note. Web calls (no caller id) fall back to the dictated one.
+            phone = (customer_number or arguments.get("phone") or "").strip()
             if not phone:
                 return "I need a phone number to confirm the visit. What's the best number to reach you?"
 
             caller_name = arguments.get("name") or None
             lead = await _resolve_or_create_lead(phone, caller_name, db)
             property_address = (arguments.get("property_address") or arguments.get("property") or None)
+
+            provided = (arguments.get("phone") or "").strip()
+            note = "Booked during a voice call"
+            if provided and provided != phone:
+                note += f" · callback: {provided}"
 
             attendee_email = lead.phone if "@" in lead.phone else None
             attendee_phone = lead.phone if "@" not in lead.phone else None
@@ -229,7 +241,7 @@ async def handle_tool_call(
                 attendee_name=lead.name or "Caller",
                 attendee_email=attendee_email,
                 attendee_phone=attendee_phone,
-                notes="Booked during a voice call",
+                notes=note,
             )
             visit = Visit(
                 lead_id=lead.id,
@@ -241,7 +253,7 @@ async def handle_tool_call(
                 timezone="UTC",
                 property_address=property_address,
                 meeting_url=booking.meeting_url,
-                notes="Booked during a voice call",
+                notes=note,
             )
             db.add(visit)
             await db.commit()

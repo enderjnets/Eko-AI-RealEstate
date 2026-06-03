@@ -122,3 +122,43 @@ async def test_tool_book_visit_needs_phone() -> None:
 async def test_tool_unknown_returns_graceful_message() -> None:
     out = await handle_tool_call("do_a_backflip", {}, customer_number=None, db=None)
     assert "not able" in out.lower()
+
+
+# ── structuredData mapping (flat + VAPI's nested auto-shape) ────────────────
+
+
+def test_apply_voice_structured_nested_shape() -> None:
+    from app.models import Lead, LeadIntent
+    from app.services.conversation import _apply_voice_structured
+
+    lead = Lead(phone="+13035551234")
+    nested = {
+        "customer_info": {"name": "Margie Quintero", "phone_number": "7208387940"},
+        "property_inquiry": {
+            "inquiry_type": "rent",
+            "location": "DTC",
+            "budget_max": "2000",
+            "bedrooms": "2",
+            "move_in_timeline": "2 months",
+        },
+    }
+    _apply_voice_structured(lead, nested)
+    assert lead.intent == LeadIntent.RENT
+    assert lead.zone == "DTC"
+    assert lead.budget_max == 2000
+    assert lead.name == "Margie Quintero"
+    assert lead.urgency == "2 months"
+
+
+def test_apply_voice_structured_flat_shape() -> None:
+    from app.models import Lead, LeadIntent
+    from app.services.conversation import _apply_voice_structured
+
+    lead = Lead(phone="x")
+    _apply_voice_structured(
+        lead, {"intent": "buy", "zone": "Brickell", "budget_max": 800000, "name": "Jo"}
+    )
+    assert lead.intent == LeadIntent.BUY
+    assert lead.zone == "Brickell"
+    assert lead.budget_max == 800000
+    assert lead.name == "Jo"

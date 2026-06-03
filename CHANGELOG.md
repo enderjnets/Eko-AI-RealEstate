@@ -2,6 +2,21 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.28.1] — 2026-06-02
+
+### Fix voice: a call lands on ONE lead (transcript + visit + extracted fields)
+
+- **Split-lead bug**: a single call produced two leads — the **visit** went to the
+  number the caller *dictated* (`book_visit` arg) while the **transcript** went to the
+  real **caller id** (end-of-call report). Fix: `book_visit` now keys the lead on the
+  **caller id** (same identifier the end-of-call ingest uses) and keeps the dictated
+  number as a callback note → visit + transcript land on the same lead.
+- **Structured-data bug**: VAPI returned `structuredData` in a **nested** auto-shape
+  (`customer_info` / `property_inquiry`) that wasn't mapped → the lead had no
+  intent/zone/budget. Fix: `_flatten_voice_structured` normalizes both the flat and
+  nested shapes; `scripts/setup_vapi.sh` now sets an **explicit** `structuredDataPlan.schema`
+  so future calls return a deterministic flat shape.
+
 ## [0.28.0] — 2026-06-02
 
 ### Phase 13 · Voice agent (VAPI) — calls that qualify leads and book visits
