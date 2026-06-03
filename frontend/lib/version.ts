@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.27.1";
+export const CURRENT_VERSION = "0.28.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.28.0",
+    date: "2026-06-02",
+    title: "Phase 13 · Agente de voz (VAPI) — llamadas que cualifican y agendan visitas",
+    changes: [
+      "Nuevo canal de VOZ: el agente atiende llamadas vía VAPI (voz femenina en inglés 11labs + Claude Sonnet 4.5 como cerebro en tiempo real). Cualifica al cliente (compra/renta/tasación, zona, presupuesto, timeline) y puede AGENDAR UNA VISITA durante la misma llamada.",
+      "Al colgar, la llamada se ingiere al timeline del lead (channel=\"voice\") con la transcripción completa, los campos extraídos y el score recalculado — igual que SMS/email. Aparece en `/leads/{id}` con las burbujas de voz 🗣️.",
+      "Backend: `services/voice.py` (verificación del secret de VAPI, parseo del end-of-call-report, tool-calls `check_availability`/`book_visit` que reutilizan Cal.com de Phase 5) + `POST /api/v1/webhooks/voice` (responde los tool-calls en vivo y, sin LLM, ingiere la llamada terminada). Idempotente por call_id.",
+      "`VOICE_SIMULATED=true` por defecto (dev + demo no necesitan cuenta VAPI). Outbound (que el agente LLAME a leads) queda para una fase futura. Doc: `docs/setup-vapi.md`.",
+    ],
+  },
   {
     version: "0.27.1",
     date: "2026-06-01",

@@ -24,6 +24,7 @@ from app.api.v1 import settings as settings_api
 from app.api.v1.auth import require_admin, require_auth
 from app.api.v1.webhooks import email as email_webhook
 from app.api.v1.webhooks import sms as sms_webhook
+from app.api.v1.webhooks import voice as voice_webhook
 from app.api.v1.webhooks import whatsapp as whatsapp_webhook
 from app.config import get_settings
 
@@ -63,6 +64,7 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(whatsapp_webhook.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(email_webhook.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(sms_webhook.router, prefix="/api/v1/webhooks", tags=["webhooks"])
+app.include_router(voice_webhook.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 
 # Protected data API — require_auth is a no-op unless AUTH_ENABLED.
 _auth = [Depends(require_auth)]

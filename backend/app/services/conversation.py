@@ -382,6 +382,125 @@ async def generate_reply_suggestions(
     }
 
 
+_VOICE_INTENT_MAP = {
+    "buy": LeadIntent.BUY,
+    "rent": LeadIntent.RENT,
+    "sell": LeadIntent.VALUATION,
+    "valuation": LeadIntent.VALUATION,
+    "other": LeadIntent.OTHER,
+}
+
+
+def _apply_voice_structured(lead: Lead, structured: dict) -> None:
+    """Map a VAPI call's extracted structuredData onto the lead, conservatively
+    (don't overwrite values the lead already has, except intent which reflects
+    the latest call)."""
+    raw_intent = str(structured.get("intent") or "").strip().lower()
+    if raw_intent in _VOICE_INTENT_MAP:
+        lead.intent = _VOICE_INTENT_MAP[raw_intent]
+    zone = structured.get("zone")
+    if isinstance(zone, str) and zone.strip() and not lead.zone:
+        lead.zone = zone.strip()
+    for key in ("budget_min", "budget_max"):
+        val = structured.get(key)
+        if val is not None and getattr(lead, key) is None:
+            try:
+                setattr(lead, key, int(float(val)))
+            except (TypeError, ValueError):
+                pass
+    ptype = structured.get("property_type")
+    if isinstance(ptype, str) and ptype.strip() and not lead.property_type:
+        lead.property_type = ptype.strip()
+    timeline = structured.get("timeline") or structured.get("urgency")
+    if isinstance(timeline, str) and timeline.strip() and not lead.urgency:
+        lead.urgency = timeline.strip()
+
+
+async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | bool]:
+    """Ingest a finished VAPI call (channel="voice") into the lead timeline.
+
+    The conversation already happened LIVE in the call, so — unlike the other
+    channels — we do NOT call the LLM or send a reply. We upsert the lead, store
+    each transcript turn as a Message (idempotent per call), apply the call's
+    extracted fields, and rescore. `report` is a services.voice.VoiceCallReport.
+
+    Caller commits the session.
+    """
+    # ── 1. Lead upsert (by identifier == Lead.phone, same as other channels) ──
+    lead_row = await db.execute(select(Lead).where(Lead.phone == report.from_identifier))
+    lead = lead_row.scalar_one_or_none()
+    is_new_lead = lead is None
+    if lead is None:
+        lead = Lead(phone=report.from_identifier, name=report.from_name)
+        db.add(lead)
+        await db.flush()
+        log.info("Created lead id=%d channel=voice identifier=%s", lead.id, lead.phone)
+    elif report.from_name and not lead.name:
+        lead.name = report.from_name
+
+    # ── 2. Idempotency: a re-delivered report for the same call must not dup ──
+    first_external_id = f"{report.call_id}#0"
+    dup_row = await db.execute(select(Message).where(Message.external_id == first_external_id))
+    already_ingested = dup_row.scalar_one_or_none() is not None
+
+    # ── 3. Active voice conversation for this lead (anchored to the call id) ──
+    conv = await _active_conversation_for_channel(lead.id, "voice", db)
+    if conv is None:
+        conv = Conversation(
+            lead_id=lead.id,
+            channel="voice",
+            status=ConversationStatus.ACTIVE,
+            external_thread_id=report.call_id,
+        )
+        db.add(conv)
+        await db.flush()
+
+    # ── 4. Persist transcript turns (skip if this call was already ingested) ──
+    stored = 0
+    if not already_ingested:
+        for i, (role, text) in enumerate(report.turns):
+            msg = Message(
+                conversation_id=conv.id,
+                direction=(
+                    MessageDirection.INBOUND if role == "user" else MessageDirection.OUTBOUND
+                ),
+                sender=(MessageSender.LEAD if role == "user" else MessageSender.AGENT),
+                content=text,
+                external_id=f"{report.call_id}#{i}",
+                delivery_status=MessageStatus.DELIVERED,
+            )
+            db.add(msg)
+            stored += 1
+        if stored:
+            lead.last_message_at = datetime.now(UTC)
+            try:
+                await db.flush()
+            except IntegrityError:
+                await db.rollback()
+                log.info("Race-condition idempotent skip for voice call_id=%s", report.call_id)
+                return {"status": "duplicate", "lead_id": lead.id, "skipped": True}
+
+    # ── 5. Apply extracted fields + rescore ──────────────────────────────────
+    if report.structured:
+        _apply_voice_structured(lead, report.structured)
+    await rescore_lead(lead, db, commit=False)
+    await db.commit()
+
+    log.info(
+        "Voice call ingested: lead=%d call=%s turns_stored=%d intent=%s%s",
+        lead.id, report.call_id, stored,
+        lead.intent.value if lead.intent else "?",
+        " (already_ingested)" if already_ingested else "",
+    )
+    return {
+        "status": "duplicate" if already_ingested else "ok",
+        "lead_id": lead.id,
+        "call_id": report.call_id,
+        "turns_stored": stored,
+        "is_new_lead": is_new_lead,
+    }
+
+
 async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dict[str, int | str | bool]:
     """Process one inbound message (any channel) end-to-end. Returns a small status dict.
 
