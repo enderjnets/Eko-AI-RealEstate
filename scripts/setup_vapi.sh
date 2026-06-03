@@ -101,7 +101,7 @@ PAYLOAD=$(jq -n \
             parameters: {
               type: "object",
               properties: {
-                datetime: { type: "string", description: "Visit start as the caller's LOCAL wall-clock time, ISO format WITHOUT timezone (no Z/offset), e.g. 2026-06-10T15:00:00." },
+                datetime: { type: "string", description: "Visit start as the local wall-clock time the caller said, ISO format WITHOUT timezone (no Z or offset), e.g. 2026-06-10T15:00:00." },
                 property_address: { type: "string", description: "Address or area of the property to visit." },
                 name: { type: "string", description: "Caller full name." },
                 phone: { type: "string", description: "Caller phone number in E.164." }
