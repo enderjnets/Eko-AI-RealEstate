@@ -209,6 +209,7 @@ const EN: Record<string, string> = {
   // lead detail
   "lead.loading": "Loading lead…",
   "lead.notFound": "Lead not found",
+  "lead.notFoundHint": "It may have been merged into another lead or removed.",
   "lead.conversation": "Conversation",
   "lead.messages": "messages",
   "lead.channel": "channel",
@@ -584,6 +585,7 @@ const ES: Record<string, string> = {
   "filter.clear": "Limpiar filtros",
   "lead.loading": "Cargando lead…",
   "lead.notFound": "Lead no encontrado",
+  "lead.notFoundHint": "Puede haber sido fusionado con otro lead o eliminado.",
   "lead.conversation": "Conversación",
   "lead.messages": "mensajes",
   "lead.channel": "canal",

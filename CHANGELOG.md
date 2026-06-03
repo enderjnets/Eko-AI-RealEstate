@@ -2,6 +2,17 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.29.1] — 2026-06-02
+
+### Friendly "lead not found" state (no more raw red API error)
+
+- Opening a lead that no longer exists (e.g. an old link to a lead that was merged
+  or removed) showed a raw red `API 404: Lead not found` box. It now renders a clean
+  "Lead not found" empty state — with a hint that it may have been merged/removed and
+  a **Back to leads** link. Real (non-404) errors still show the error box.
+- `components/leads/LeadDetail.tsx` distinguishes 404 from other errors; i18n
+  `lead.notFoundHint` (EN+ES).
+
 ## [0.29.0] — 2026-06-02
 
 ### Inbox: "new + pending" badge count + quick-access dropdown menu

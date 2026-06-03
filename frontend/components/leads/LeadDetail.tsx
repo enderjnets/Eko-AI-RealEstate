@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   CalendarCheck,
@@ -91,6 +92,23 @@ export function LeadDetail({ leadId }: { leadId: number }) {
     return (
       <div className="flex items-center gap-2 text-gray-400 text-sm py-12 justify-center">
         <Loader2 className="w-4 h-4 animate-spin" /> {t("lead.loading")}
+      </div>
+    );
+  }
+  // A missing lead (404 — e.g. an old link to a lead that was merged/removed) gets a
+  // friendly empty state with a way back, not a raw red API error.
+  const isNotFound = !lead && (!error || /(^|\D)404(\D|$)/.test(error) || /not found/i.test(error));
+  if (isNotFound) {
+    return (
+      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8 text-center">
+        <p className="text-sm text-gray-300">{t("lead.notFound")}</p>
+        <p className="mt-1 text-xs text-gray-500">{t("lead.notFoundHint")}</p>
+        <Link
+          href="/leads"
+          className="mt-4 inline-flex items-center gap-1 text-sm text-eko-violet hover:underline"
+        >
+          ← {t("common.back_to_leads")}
+        </Link>
       </div>
     );
   }

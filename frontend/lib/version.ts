@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.29.0";
+export const CURRENT_VERSION = "0.29.1";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,14 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.29.1",
+    date: "2026-06-02",
+    title: "Lead inexistente: estado 'no encontrado' amigable (no más error rojo crudo)",
+    changes: [
+      "Abrir un lead que ya no existe (ej. un link viejo a una ficha que se fusionó o se borró) mostraba un cuadro rojo crudo 'API 404: Lead not found'. Ahora muestra un estado limpio 'Lead no encontrado' con la pista de que pudo fusionarse/eliminarse y un botón para volver a la lista de leads.",
+    ],
+  },
   {
     version: "0.29.0",
     date: "2026-06-02",
