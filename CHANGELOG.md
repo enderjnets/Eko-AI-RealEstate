@@ -2,6 +2,14 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.31.1] — 2026-06-03
+
+### Calendar: clicking an appointment opens the lead
+
+- Calendar items (in both the Agenda list and the Month grid) are now clickable —
+  a visit or follow-up navigates straight to the lead's page (`/leads/{id}`).
+  Lead-less manual events are not clickable. `components/calendar/CalendarView.tsx`.
+
 ## [0.31.0] — 2026-06-02
 
 ### New Calendar tab: agenda + month grid + manual events

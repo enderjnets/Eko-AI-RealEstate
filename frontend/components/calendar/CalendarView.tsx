@@ -182,8 +182,9 @@ function ItemRow({
   t: (k: string) => string;
 }) {
   const Icon = KIND_ICON[it.kind] ?? CalendarDays;
-  return (
-    <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
+  const clickable = it.lead_id != null;
+  const inner = (
+    <>
       <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${KIND_ACCENT[it.kind]}`} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
@@ -204,12 +205,16 @@ function ItemRow({
           </div>
         )}
       </div>
-      {it.lead_id && (
-        <a href={`/leads/${it.lead_id}`} className="text-[11px] text-eko-violet hover:underline shrink-0">
-          {t("calendar.openLead")}
-        </a>
-      )}
-    </div>
+      {clickable && <ChevronRight className="w-4 h-4 text-gray-600 self-center shrink-0" />}
+    </>
+  );
+  const base = "flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3";
+  return clickable ? (
+    <a href={`/leads/${it.lead_id}`} className={`${base} hover:border-eko-violet/40 hover:bg-white/[0.04] transition-colors`}>
+      {inner}
+    </a>
+  ) : (
+    <div className={base}>{inner}</div>
   );
 }
 
@@ -330,21 +335,30 @@ function MonthGrid({
                 {c.day}
               </div>
               <div className="space-y-0.5">
-                {dayItems.slice(0, 3).map((it) => (
-                  <div
-                    key={`${it.kind}-${it.id}`}
-                    title={it.title}
-                    className={`truncate text-[9px] px-1 py-0.5 rounded ${
-                      it.kind === "visit"
-                        ? "bg-eko-violet/15 text-eko-violet"
-                        : it.kind === "event"
-                          ? "bg-eko-green/15 text-eko-green"
-                          : "bg-amber-500/15 text-amber-300"
-                    }`}
-                  >
-                    {fmtTime(it.scheduled_at, tz, locale)} {it.title}
-                  </div>
-                ))}
+                {dayItems.slice(0, 3).map((it) => {
+                  const cls = `block truncate text-[9px] px-1 py-0.5 rounded ${
+                    it.kind === "visit"
+                      ? "bg-eko-violet/15 text-eko-violet"
+                      : it.kind === "event"
+                        ? "bg-eko-green/15 text-eko-green"
+                        : "bg-amber-500/15 text-amber-300"
+                  }`;
+                  const label = `${fmtTime(it.scheduled_at, tz, locale)} ${it.title}`;
+                  return it.lead_id != null ? (
+                    <a
+                      key={`${it.kind}-${it.id}`}
+                      href={`/leads/${it.lead_id}`}
+                      title={it.title}
+                      className={`${cls} hover:brightness-125`}
+                    >
+                      {label}
+                    </a>
+                  ) : (
+                    <div key={`${it.kind}-${it.id}`} title={it.title} className={cls}>
+                      {label}
+                    </div>
+                  );
+                })}
                 {dayItems.length > 3 && (
                   <div className="text-[9px] text-gray-500 px-1">+{dayItems.length - 3}</div>
                 )}
