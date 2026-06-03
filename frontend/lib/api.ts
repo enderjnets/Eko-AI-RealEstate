@@ -207,7 +207,8 @@ export interface SlotsResponse {
 
 export interface Visit {
   id: number;
-  lead_id: number;
+  lead_id: number | null;
+  title: string | null;
   calendar_provider: string;
   external_booking_id: string;
   status: VisitStatus;
@@ -219,6 +220,35 @@ export interface Visit {
   notes: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface CalendarItem {
+  kind: "visit" | "event" | "followup";
+  id: number;
+  title: string;
+  scheduled_at: string;
+  duration_minutes: number | null;
+  timezone: string | null;
+  status: string | null;
+  lead_id: number | null;
+  lead_name: string | null;
+  property_address: string | null;
+  notes: string | null;
+}
+
+export interface AgendaResponse {
+  items: CalendarItem[];
+  timezone: string;
+}
+
+export interface ManualEventIn {
+  title: string;
+  scheduled_at: string;
+  duration_minutes?: number;
+  notes?: string;
+  property_address?: string;
+  lead_id?: number | null;
+  timezone?: string;
 }
 
 export interface BookingIn {
@@ -251,6 +281,16 @@ export const visitsApi = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+  all: (opts?: { from?: string; to?: string }) => {
+    const q = new URLSearchParams();
+    if (opts?.from) q.set("from", opts.from);
+    if (opts?.to) q.set("to", opts.to);
+    const qs = q.toString();
+    return api<Visit[]>(`/v1/visits${qs ? `?${qs}` : ""}`);
+  },
+  agenda: (days = 30) => api<AgendaResponse>(`/v1/visits/agenda?days=${days}`),
+  createEvent: (body: ManualEventIn) =>
+    api<Visit>(`/v1/visits`, { method: "POST", body: JSON.stringify(body) }),
 };
 
 export interface AgencySettings {

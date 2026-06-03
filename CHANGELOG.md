@@ -2,6 +2,22 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.31.0] — 2026-06-02
+
+### New Calendar tab: agenda + month grid + manual events
+
+- New **Calendar** nav tab aggregating, in the office timezone: all lead **visits**,
+  **manual events**, and **pending system follow-ups** — one place to see everything
+  the system schedules.
+- Two views (toggle): **Agenda** (list grouped by day — Today/Tomorrow/date) and
+  **Month** (month grid with each day's items).
+- **Add event** creates a manual calendar entry (title, date/time, duration, notes)
+  that doesn't need a lead. The naive wall-clock is localized to the office timezone.
+- Backend: `Visit.lead_id` is now **nullable** + `Visit.title` (Alembic `011`).
+  New `GET /api/v1/visits` (all, optional from/to), `POST /api/v1/visits` (manual
+  event, `provider=manual`, no Cal.com round-trip), `GET /api/v1/visits/agenda`
+  (visits + PENDING follow-ups unified). `VisitOut` gains `lead_id?`/`title`.
+
 ## [0.30.0] — 2026-06-02
 
 ### Office timezone: visits booked in local time (not UTC) + a Settings preference

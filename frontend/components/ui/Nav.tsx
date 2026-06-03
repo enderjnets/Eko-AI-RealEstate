@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
+  CalendarDays,
   Home,
   Inbox,
   LogOut,
@@ -113,6 +114,7 @@ export function Nav() {
     { href: "/discovery", label: t("nav.discovery"), Icon: Search },
     { href: "/leads", label: t("nav.leads"), Icon: Users },
     { href: "/inbox", label: t("nav.inbox"), Icon: Inbox, dot: attention > 0 },
+    { href: "/calendar", label: t("nav.calendar"), Icon: CalendarDays },
     { href: "/properties", label: t("nav.properties"), Icon: Home },
     { href: "/analytics", label: t("nav.stats"), Icon: BarChart3 },
   ];
@@ -244,6 +246,13 @@ export function Nav() {
             >
               <Home className="w-3.5 h-3.5" />
               {t("nav.properties")}
+            </Link>
+            <Link
+              href="/calendar"
+              className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+            >
+              <CalendarDays className="w-3.5 h-3.5" />
+              {t("nav.calendar")}
             </Link>
             <Link
               href="/analytics"
