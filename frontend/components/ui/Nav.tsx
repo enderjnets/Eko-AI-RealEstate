@@ -1,22 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   Home,
   Inbox,
   LogOut,
+  Mail,
+  MessageCircle,
+  MessageSquare,
+  Phone,
   Search,
   Settings,
   Users,
   Zap,
 } from "lucide-react";
-import { authApi, inboxApi } from "@/lib/api";
+import { authApi, inboxApi, type InboxItem } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { VersionButton } from "@/components/ui/VersionButton";
+
+const MAX_MENU_ITEMS = 6;
+
+function channelIcon(ch: string | null) {
+  switch (ch) {
+    case "voice":
+      return Phone;
+    case "email":
+      return Mail;
+    case "whatsapp":
+      return MessageCircle;
+    default:
+      return MessageSquare; // sms
+  }
+}
 
 export function Nav() {
   const { t } = useI18n();
@@ -24,7 +43,11 @@ export function Nav() {
   const pathname = usePathname();
   const [authEnabled, setAuthEnabled] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [pending, setPending] = useState(0);
+  const [attention, setAttention] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuItems, setMenuItems] = useState<InboxItem[]>([]);
+  const [menuLoading, setMenuLoading] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     authApi
@@ -36,9 +59,44 @@ export function Nav() {
       .catch(() => {});
     inboxApi
       .count()
-      .then((c) => setPending(c.pending))
+      .then((c) => setAttention(c.attention))
       .catch(() => {});
   }, []);
+
+  // Close the dropdown on outside click / ESC.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onDown(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  // Close on navigation.
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  function toggleMenu() {
+    const next = !menuOpen;
+    setMenuOpen(next);
+    if (next) {
+      setMenuLoading(true);
+      inboxApi
+        .list({ filter: "attention" })
+        .then((r) => setMenuItems(r.items.slice(0, MAX_MENU_ITEMS)))
+        .catch(() => setMenuItems([]))
+        .finally(() => setMenuLoading(false));
+    }
+  }
 
   async function logout() {
     try {
@@ -54,7 +112,7 @@ export function Nav() {
   const tabs = [
     { href: "/discovery", label: t("nav.discovery"), Icon: Search },
     { href: "/leads", label: t("nav.leads"), Icon: Users },
-    { href: "/inbox", label: t("nav.inbox"), Icon: Inbox, dot: pending > 0 },
+    { href: "/inbox", label: t("nav.inbox"), Icon: Inbox, dot: attention > 0 },
     { href: "/properties", label: t("nav.properties"), Icon: Home },
     { href: "/analytics", label: t("nav.stats"), Icon: BarChart3 },
   ];
@@ -92,18 +150,94 @@ export function Nav() {
             >
               {t("nav.leads")}
             </Link>
-            <Link
-              href="/inbox"
-              className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
-            >
-              <Inbox className="w-3.5 h-3.5" />
-              {t("nav.inbox")}
-              {pending > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  {pending}
-                </span>
+
+            {/* Inbox — button opens a dropdown with quick access to new/pending comms. */}
+            <div className="relative" ref={menuRef}>
+              <button
+                type="button"
+                onClick={toggleMenu}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+              >
+                <Inbox className="w-3.5 h-3.5" />
+                {t("nav.inbox")}
+                {attention > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    {attention}
+                  </span>
+                )}
+              </button>
+
+              {menuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-2 w-80 rounded-xl border border-white/10 bg-eko-noir/95 backdrop-blur-md shadow-2xl z-50 overflow-hidden"
+                >
+                  <Link
+                    href="/inbox"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center justify-between px-4 py-3 text-sm text-white hover:bg-white/5 border-b border-white/10"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <Inbox className="w-4 h-4 text-eko-violet" />
+                      {t("nav.inboxGoTo")}
+                    </span>
+                    {attention > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        {attention}
+                      </span>
+                    )}
+                  </Link>
+
+                  <div className="px-4 pt-2.5 pb-1 text-[10px] uppercase tracking-wider text-gray-500">
+                    {t("nav.inboxNew")}
+                  </div>
+                  <div className="max-h-80 overflow-y-auto pb-1">
+                    {menuLoading ? (
+                      <div className="px-4 py-6 text-center text-xs text-gray-500">…</div>
+                    ) : menuItems.length === 0 ? (
+                      <div className="px-4 py-6 text-center text-xs text-gray-500">
+                        {t("nav.inboxEmpty")}
+                      </div>
+                    ) : (
+                      menuItems.map((it) => {
+                        const CIcon = channelIcon(it.last_channel);
+                        return (
+                          <Link
+                            key={it.lead_id}
+                            href={`/leads/${it.lead_id}`}
+                            onClick={() => setMenuOpen(false)}
+                            className="flex items-start gap-2.5 px-4 py-2.5 hover:bg-white/5 border-b border-white/5 last:border-0"
+                          >
+                            <CIcon className="w-3.5 h-3.5 mt-0.5 text-eko-violet shrink-0" />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center justify-between gap-2">
+                                <span className="text-sm text-white truncate">
+                                  {it.name || it.identifier}
+                                </span>
+                                {it.needs_response && (
+                                  <span
+                                    className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"
+                                    aria-label="awaiting reply"
+                                  />
+                                )}
+                              </span>
+                              {it.last_preview && (
+                                <span className="block text-xs text-gray-500 truncate">
+                                  {it.last_preview}
+                                </span>
+                              )}
+                            </span>
+                          </Link>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
               )}
-            </Link>
+            </div>
+
             <Link
               href="/properties"
               className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"

@@ -280,6 +280,50 @@ async def test_counts_scoped_to_channel_filter(database_url: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_attention_includes_fresh_unhandled_and_pending(database_url: str) -> None:
+    """needs_attention = awaiting reply OR a fresh (<24h) untriaged conversation
+    (e.g. a just-finished voice call where the agent spoke last). Old untriaged
+    outbound leads do NOT count; marking handled clears it."""
+    sfx = uuid.uuid4().hex[:6]
+    p_fresh, p_old, p_pend = f"+34666AT{sfx}F", f"+34666AT{sfx}O", f"+34666AT{sfx}P"
+    engine = create_async_engine(database_url, echo=False, future=True)
+    Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+    try:
+        now = datetime.now(UTC)
+        async with Session() as s:
+            id_fresh = await _mk_lead(s, p_fresh, channel="voice",
+                                      last_dir=MessageDirection.OUTBOUND, created_at=now)
+            id_old = await _mk_lead(s, p_old, channel="sms", last_dir=MessageDirection.OUTBOUND,
+                                    created_at=now - timedelta(days=3))
+            id_pend = await _mk_lead(s, p_pend, channel="email", last_dir=MessageDirection.INBOUND,
+                                     created_at=now - timedelta(days=3))
+            await s.commit()
+
+        async with await _http_client() as c:
+            att = (await c.get("/api/v1/inbox?filter=attention")).json()
+            att_ids = [it["lead_id"] for it in att["items"]]
+            allitems = (await c.get("/api/v1/inbox?filter=all")).json()["items"]
+        # Fresh completed call counts even though it's not awaiting a reply.
+        assert id_fresh in att_ids
+        fresh_item = _find(allitems, id_fresh)
+        assert fresh_item["needs_response"] is False and fresh_item["needs_attention"] is True
+        # Pending counts; old untriaged outbound does NOT.
+        assert id_pend in att_ids
+        assert id_old not in att_ids
+        assert _find(allitems, id_old)["needs_attention"] is False
+
+        # Marking the fresh one handled clears it from attention.
+        async with await _http_client() as c:
+            mh = await c.post(f"/api/v1/inbox/{id_fresh}/handled")
+            assert mh.status_code == 200
+            att2_ids = [it["lead_id"] for it in (await c.get("/api/v1/inbox?filter=attention")).json()["items"]]
+        assert id_fresh not in att2_ids
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, p_fresh, p_old, p_pend)
+
+
+@pytest.mark.asyncio
 async def test_handled_does_not_clobber_concurrent_meta(database_url: str) -> None:
     """Regression: handled state is its own column, so an interleaved writer to
     Lead.meta (e.g. enrichment) and a mark-handled don't clobber each other.
