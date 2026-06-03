@@ -11,8 +11,9 @@ import types
 from unittest.mock import patch
 
 import pytest
+import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app.main import app
 
@@ -21,6 +22,36 @@ from app.main import app
 def _needs_db() -> None:
     if not os.environ.get("DATABASE_URL"):
         pytest.skip("DATABASE_URL not set — team API tests need live Postgres")
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _preserve_allowed_users():
+    """Snapshot the WHOLE allowed_users table before each test and restore it after.
+
+    These tests intentionally clear the table (via `_clear()`) to exercise the
+    clean-slate / last-admin guards. Run against a live DB (as the ROG suite is),
+    an unbounded clear would wipe REAL team config — so we snapshot + restore to
+    guarantee no test in this file can destroy production data. No-op without a DB."""
+    if not os.environ.get("DATABASE_URL"):
+        yield
+        return
+    from app.db.base import get_session_factory
+    from app.models import AllowedUser
+
+    Session = get_session_factory()
+    async with Session() as s:
+        snapshot = [
+            (r.email, r.role, r.added_by)
+            for r in (await s.execute(select(AllowedUser))).scalars().all()
+        ]
+    try:
+        yield
+    finally:
+        async with Session() as s:
+            await s.execute(delete(AllowedUser))
+            for email, role, added_by in snapshot:
+                s.add(AllowedUser(email=email, role=role, added_by=added_by))
+            await s.commit()
 
 
 async def _client() -> AsyncClient:
