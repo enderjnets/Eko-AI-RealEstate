@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.31.0";
+export const CURRENT_VERSION = "0.31.1";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,14 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.31.1",
+    date: "2026-06-03",
+    title: "Calendario: clic en una cita abre el lead",
+    changes: [
+      "Al hacer clic en una cita/seguimiento del calendario (tanto en la vista Agenda como en la grilla Mes) ahora se abre directamente la ficha del lead. Los eventos manuales sin lead no son clickeables.",
+    ],
+  },
   {
     version: "0.31.0",
     date: "2026-06-02",
