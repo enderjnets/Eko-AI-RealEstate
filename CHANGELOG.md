@@ -2,6 +2,15 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.32.1] — 2026-06-04
+
+### Fix: the "Create account" (register) link did nothing
+
+- The `AuthGuard` only exempted `/login`, so navigating to `/register` while
+  unauthenticated (on the AUTH_ENABLED demo) bounced straight back to `/login` —
+  the link appeared to do nothing. `/register` is now a public route in the guard,
+  so the registration page opens. `components/ui/AuthGuard.tsx`.
+
 ## [0.32.0] — 2026-06-04
 
 ### Self-registration → read-only ("viewer") demo accounts
