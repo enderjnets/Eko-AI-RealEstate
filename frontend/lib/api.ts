@@ -547,6 +547,24 @@ export const teamApi = {
     api<{ ok: boolean }>(`/v1/team/${encodeURIComponent(email)}`, { method: "DELETE" }),
 };
 
+export interface DemoAccount {
+  id: number;
+  name: string;
+  email: string;
+  phone: string | null;
+  company: string | null;
+  address: string | null;
+  state: string | null;
+  country: string | null;
+  role: string;
+  created_at: string;
+}
+
+export const accountsApi = {
+  list: () => api<DemoAccount[]>(`/v1/team/accounts`),
+  remove: (id: number) => api<{ ok: boolean }>(`/v1/team/accounts/${id}`, { method: "DELETE" }),
+};
+
 export interface Analytics {
   total_leads: number;
   funnel: Record<string, number>;

@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.base import get_db
-from app.models import AllowedUser
+from app.models import Account, AllowedUser
 from app.services.auth import ROLE_ADMIN, ROLE_MEMBER
 
 router = APIRouter()
@@ -119,6 +119,48 @@ async def update_role(
     m = TeamMemberOut.model_validate(row)
     m.immutable = email in pinned
     return m
+
+
+# ─── Self-registered demo (view-only "viewer") accounts ────────────────────
+# Read-only accounts created from the public /register form. Admins view the
+# captured profile here (sales follow-up) and can delete test/abandoned signups.
+
+
+class AccountOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    email: str
+    phone: str | None
+    company: str | None
+    address: str | None
+    state: str | None
+    country: str | None
+    role: str
+    created_at: datetime
+
+
+@router.get("/accounts", response_model=list[AccountOut])
+async def list_accounts(db: AsyncSession = Depends(get_db)) -> list[AccountOut]:
+    """All self-registered demo (viewer) accounts, newest first."""
+    rows = (
+        await db.execute(select(Account).order_by(Account.created_at.desc()))
+    ).scalars().all()
+    return [AccountOut.model_validate(r) for r in rows]
+
+
+@router.delete("/accounts/{account_id}")
+async def remove_account(account_id: int, db: AsyncSession = Depends(get_db)) -> dict[str, bool]:
+    """Delete a self-registered demo account (e.g. a test or abandoned signup)."""
+    row = (
+        await db.execute(select(Account).where(Account.id == account_id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    await db.delete(row)
+    await db.commit()
+    return {"ok": True}
 
 
 @router.delete("/{email}")

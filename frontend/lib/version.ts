@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.32.1";
+export const CURRENT_VERSION = "0.33.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.33.0",
+    date: "2026-06-04",
+    title: "Admin: panel de usuarios registrados (Google/Apple + demos view-only)",
+    changes: [
+      "Settings ahora muestra un panel 'Registros de demostración (solo lectura)' con todas las cuentas que se registraron por el formulario público: nombre, email, teléfono, empresa, ubicación y fecha — para seguimiento comercial.",
+      "El admin puede eliminar registros (ej. cuentas de prueba) desde ahí.",
+      "El acceso por Google/Apple se sigue gestionando en el panel 'Equipo y acceso (Google/Apple)' (la allow-list). Ambos quedan juntos en Settings, admin-only.",
+      "Backend: endpoints admin `GET /api/v1/team/accounts` y `DELETE /api/v1/team/accounts/{id}`.",
+    ],
+  },
   {
     version: "0.32.1",
     date: "2026-06-04",

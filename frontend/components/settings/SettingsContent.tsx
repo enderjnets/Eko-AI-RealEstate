@@ -7,6 +7,7 @@ import { authApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { SettingsForm } from "@/components/settings/SettingsForm";
 import { TeamPanel } from "@/components/settings/TeamPanel";
+import { RegistrationsPanel } from "@/components/settings/RegistrationsPanel";
 
 /**
  * Settings is admin-only. The Nav hides the link for members, but a member could
@@ -46,6 +47,7 @@ export function SettingsContent() {
   return (
     <div className="space-y-8">
       <TeamPanel />
+      <RegistrationsPanel />
       <SettingsForm />
     </div>
   );
