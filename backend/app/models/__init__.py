@@ -2,6 +2,7 @@
 
 Order matters for cascades: parents before children.
 """
+from app.models.account import Account
 from app.models.agent_settings import AgentSettings
 from app.models.allowed_user import AllowedUser
 from app.models.conversation import Conversation, ConversationStatus
@@ -17,6 +18,7 @@ from app.models.property import Property, PropertySource, PropertyStatus
 from app.models.visit import Visit, VisitStatus
 
 __all__: list[str] = [
+    "Account",
     "AgentSettings",
     "AllowedUser",
     "Conversation",

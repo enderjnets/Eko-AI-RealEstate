@@ -474,7 +474,7 @@ export const inboxApi = {
     api<InboxCount>(`/v1/inbox/${leadId}/handled`, { method: "DELETE" }),
 };
 
-export type Role = "admin" | "member";
+export type Role = "admin" | "member" | "viewer";
 
 export interface MeResult {
   authenticated: boolean;
@@ -482,6 +482,18 @@ export interface MeResult {
   role?: Role;
   google_signin_enabled?: boolean;
   apple_signin_enabled?: boolean;
+  registration_enabled?: boolean;
+}
+
+export interface RegisterPayload {
+  name: string;
+  email: string;
+  password: string;
+  phone?: string;
+  address?: string;
+  state?: string;
+  country?: string;
+  company?: string;
 }
 
 export const authApi = {
@@ -500,6 +512,16 @@ export const authApi = {
     api<{ ok: boolean; auth_enabled?: boolean }>(`/v1/auth/login/apple`, {
       method: "POST",
       body: JSON.stringify({ id_token: idToken }),
+    }),
+  loginAccount: (email: string, password: string) =>
+    api<{ ok: boolean; role: Role; auth_enabled?: boolean }>(`/v1/auth/login/account`, {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  register: (payload: RegisterPayload) =>
+    api<{ ok: boolean; role: Role; auth_enabled?: boolean }>(`/v1/auth/register`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
   logout: () => api<{ ok: boolean }>(`/v1/auth/logout`, { method: "POST" }),
 };

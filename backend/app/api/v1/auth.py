@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import hmac
 import logging
+import re
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -20,16 +22,22 @@ from app.services.auth import (
     COOKIE_NAME,
     ROLE_ADMIN,
     ROLE_MEMBER,
+    ROLE_VIEWER,
+    SAFE_METHODS,
     AppleAuthError,
     GoogleAuthError,
     check_password,
+    hash_password,
     make_token,
     resolve_email_access,
     token_role,
     verify_apple_id_token,
     verify_google_id_token,
+    verify_password,
     verify_token,
 )
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -54,11 +62,17 @@ def current_role(request: Request) -> str:
 
 
 async def require_auth(request: Request) -> None:
-    """Dependency for protected data routes. No-op when AUTH_ENABLED is false."""
+    """Dependency for protected data routes. No-op when AUTH_ENABLED is false.
+
+    Read-only enforcement: a `viewer` (self-registered demo account) may only use
+    safe HTTP methods (GET/HEAD/OPTIONS); any write is rejected with 403. This is
+    the single choke-point — every mutating data route depends on require_auth."""
     if not get_settings().AUTH_ENABLED:
         return
     if not verify_token(_token_from_request(request)):
         raise HTTPException(status_code=401, detail="Not authenticated")
+    if current_role(request) == ROLE_VIEWER and request.method not in SAFE_METHODS:
+        raise HTTPException(status_code=403, detail="view_only")
 
 
 async def require_admin(request: Request) -> None:
@@ -87,12 +101,32 @@ class AppleLoginIn(BaseModel):
     id_token: str
 
 
+class RegisterIn(BaseModel):
+    """Public self-registration for a read-only ("viewer") demo account."""
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=160)
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=8, max_length=200)
+    phone: str | None = Field(default=None, max_length=40)
+    address: str | None = Field(default=None, max_length=280)
+    state: str | None = Field(default=None, max_length=120)
+    country: str | None = Field(default=None, max_length=120)
+    company: str | None = Field(default=None, max_length=160)
+
+
+class AccountLoginIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: str
+    password: str
+
+
 class MeOut(BaseModel):
     authenticated: bool
     auth_enabled: bool
     role: str = ROLE_MEMBER
     google_signin_enabled: bool = False
     apple_signin_enabled: bool = False
+    registration_enabled: bool = True
 
 
 def _set_session_cookie(response: Response, token: str) -> None:
@@ -203,6 +237,70 @@ async def login_apple(
         raise HTTPException(status_code=401, detail="email_not_in_allow_list")
     _set_session_cookie(response, make_token(email=email, role=role))
     return {"ok": True, "auth_enabled": True}
+
+
+@router.post("/register", status_code=201)
+async def register(
+    body: RegisterIn,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    """Public self-registration → a read-only ("viewer") demo account.
+
+    Creates the account with a hashed password + profile, then signs the visitor
+    in (sets the session cookie) so they land straight in the dashboard. These
+    accounts can browse everything but cannot mutate anything (enforced server-side
+    in require_auth)."""
+    from app.models import Account
+
+    email = body.email.strip().lower()
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="invalid_email")
+
+    existing = (
+        await db.execute(select(Account).where(Account.email == email))
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="email_already_registered")
+
+    account = Account(
+        email=email,
+        password_hash=hash_password(body.password),
+        role=ROLE_VIEWER,
+        name=body.name.strip(),
+        phone=(body.phone or None),
+        address=(body.address or None),
+        state=(body.state or None),
+        country=(body.country or None),
+        company=(body.company or None),
+    )
+    db.add(account)
+    await db.commit()
+    log.info("New viewer account registered: %s", email)
+
+    # Sign them in immediately (cookie). When AUTH_ENABLED is false the cookie is
+    # simply ignored — the dashboard is already open in that mode.
+    _set_session_cookie(response, make_token(email=email, role=ROLE_VIEWER))
+    return {"ok": True, "role": ROLE_VIEWER, "auth_enabled": get_settings().AUTH_ENABLED}
+
+
+@router.post("/login/account")
+async def login_account(
+    body: AccountLoginIn,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    """Email + password login for a self-registered (viewer) account."""
+    from app.models import Account
+
+    email = body.email.strip().lower()
+    account = (
+        await db.execute(select(Account).where(Account.email == email))
+    ).scalar_one_or_none()
+    if account is None or not verify_password(body.password, account.password_hash):
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+    _set_session_cookie(response, make_token(email=email, role=account.role or ROLE_VIEWER))
+    return {"ok": True, "role": account.role or ROLE_VIEWER, "auth_enabled": get_settings().AUTH_ENABLED}
 
 
 @router.post("/logout")

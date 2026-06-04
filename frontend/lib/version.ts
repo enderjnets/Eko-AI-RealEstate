@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.31.1";
+export const CURRENT_VERSION = "0.32.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.32.0",
+    date: "2026-06-04",
+    title: "Auto-registro con email + contraseña → cuentas de demostración (solo lectura)",
+    changes: [
+      "Nueva página de registro (/register): cualquiera puede crear una cuenta con nombre, email, teléfono, empresa, dirección, estado, país y contraseña. Al registrarse entra automáticamente.",
+      "Estas cuentas son SOLO LECTURA (rol 'viewer'): pueden ver todo el dashboard pero NO pueden modificar nada. Pensadas para mostrar el sistema a futuros clientes.",
+      "El bloqueo de escritura se aplica en el servidor (cualquier POST/PUT/PATCH/DELETE de un viewer → 403) y en la interfaz: banner 'solo lectura' + se ocultan los botones de crear/editar (Agregar lead, responder, agendar/crear eventos, marcar ganado…).",
+      "En /login se agregó el ingreso con email + contraseña para estas cuentas, además de la contraseña de oficina y Google/Apple.",
+    ],
+  },
   {
     version: "0.31.1",
     date: "2026-06-03",

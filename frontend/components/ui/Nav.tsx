@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   CalendarDays,
+  Eye,
   Home,
   Inbox,
   LogOut,
@@ -44,6 +45,7 @@ export function Nav() {
   const pathname = usePathname();
   const [authEnabled, setAuthEnabled] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isViewer, setIsViewer] = useState(false);
   const [attention, setAttention] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuItems, setMenuItems] = useState<InboxItem[]>([]);
@@ -56,6 +58,7 @@ export function Nav() {
       .then((m) => {
         setAuthEnabled(m.auth_enabled);
         setIsAdmin(m.role === "admin");
+        setIsViewer(Boolean(m.auth_enabled) && m.role === "viewer");
       })
       .catch(() => {});
     inboxApi
@@ -312,6 +315,13 @@ export function Nav() {
           </div>
         </div>
       </nav>
+
+      {isViewer && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 text-amber-300 text-[11px] px-4 py-1.5 flex items-center justify-center gap-1.5">
+          <Eye className="w-3.5 h-3.5 shrink-0" />
+          <span>{t("auth.viewOnlyBanner")}</span>
+        </div>
+      )}
 
       {/* Bottom tab bar — native-app navigation on phones only. */}
       <nav

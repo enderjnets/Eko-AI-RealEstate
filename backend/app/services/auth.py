@@ -26,6 +26,41 @@ _SUBJECT = "dashboard"
 
 ROLE_ADMIN = "admin"
 ROLE_MEMBER = "member"
+# Read-only demo accounts (self-registered with email + password). They can view
+# the whole dashboard but cannot mutate anything — enforced in require_auth.
+ROLE_VIEWER = "viewer"
+
+# HTTP methods a viewer (read-only) may use on the protected data API.
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+# ─── Password hashing for self-registered accounts (stdlib PBKDF2) ──────────
+_PBKDF2_ITERATIONS = 200_000
+
+
+def hash_password(password: str) -> str:
+    """Hash a password with PBKDF2-HMAC-SHA256 (stdlib, no extra dependency).
+
+    Format: `pbkdf2_sha256$<iterations>$<salt_b64>$<hash_b64>`."""
+    import os
+
+    salt = os.urandom(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, _PBKDF2_ITERATIONS)
+    return f"pbkdf2_sha256${_PBKDF2_ITERATIONS}${_b64e(salt)}${_b64e(dk)}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    """Constant-time verify a password against a `hash_password` digest."""
+    try:
+        algo, iters, salt_b64, hash_b64 = (stored or "").split("$")
+        if algo != "pbkdf2_sha256":
+            return False
+        dk = hashlib.pbkdf2_hmac(
+            "sha256", (password or "").encode("utf-8"), _b64d(salt_b64), int(iters)
+        )
+        return hmac.compare_digest(dk, _b64d(hash_b64))
+    except (ValueError, TypeError):
+        return False
 
 
 def _b64e(raw: bytes) -> str:

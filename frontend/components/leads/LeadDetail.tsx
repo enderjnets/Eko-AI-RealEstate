@@ -20,6 +20,7 @@ import {
   inboxApi,
   leadsApi,
 } from "@/lib/api";
+import { useViewer } from "@/lib/useViewer";
 import { IntentBadge, StatusBadge } from "@/components/ui/Badge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { VisitsSection } from "@/components/calendar/VisitsSection";
@@ -39,6 +40,7 @@ const CHANNEL_ICON: Record<string, typeof MessageCircle> = {
 
 export function LeadDetail({ leadId }: { leadId: number }) {
   const { t, lang } = useI18n();
+  const isViewer = useViewer();
   const [lead, setLead] = useState<Lead | null>(null);
   const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [loading, setLoading] = useState(true);
@@ -190,7 +192,8 @@ export function LeadDetail({ leadId }: { leadId: number }) {
         </div>
       </div>
 
-      {/* Quick actions */}
+      {/* Quick actions — hidden for read-only viewers. */}
+      {!isViewer && (
       <div className="flex gap-2 mb-6 flex-nowrap overflow-x-auto sm:flex-wrap pb-1 sm:pb-0">
         <button
           type="button"
@@ -217,6 +220,7 @@ export function LeadDetail({ leadId }: { leadId: number }) {
           </button>
         )}
       </div>
+      )}
 
       <ScoreInsight breakdown={lead.score_breakdown} />
 

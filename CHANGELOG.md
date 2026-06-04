@@ -2,6 +2,24 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.32.0] — 2026-06-04
+
+### Self-registration → read-only ("viewer") demo accounts
+
+- **New `/register` page**: anyone can sign up with name, email, phone, company,
+  address, state, country + password. Registration auto-signs them in.
+- These are **read-only "viewer" accounts** — they can browse the whole dashboard
+  but cannot mutate anything. Intended to showcase the system to prospective clients.
+- **Read-only enforced server-side**: `require_auth` rejects any non-GET request
+  from a viewer with 403 (single choke-point for the whole data API). Passwords are
+  hashed with stdlib PBKDF2 (no new dep). New `accounts` table (Alembic `012`).
+- **UI**: a "view-only" banner + the create/edit controls hide for viewers
+  (Add lead, Composer reply, book/cancel visit, calendar Add event, lead quick
+  actions). `/login` gains an email+password sign-in for these accounts alongside
+  the office password and Google/Apple.
+- Endpoints: `POST /api/v1/auth/register`, `POST /api/v1/auth/login/account`. New
+  role `viewer` in the session token.
+
 ## [0.31.1] — 2026-06-03
 
 ### Calendar: clicking an appointment opens the lead

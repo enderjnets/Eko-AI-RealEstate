@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, Lock, Zap } from "lucide-react";
+import { Loader2, Lock, Mail, Zap } from "lucide-react";
 import { GoogleOAuthProvider, GoogleLogin, type CredentialResponse } from "@react-oauth/google";
 import { authApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -21,6 +22,10 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const [appleEnabled, setAppleEnabled] = useState(false);
+  // Demo viewer (email + password) login.
+  const [demoEmail, setDemoEmail] = useState("");
+  const [demoPw, setDemoPw] = useState("");
+  const [demoLoading, setDemoLoading] = useState(false);
 
   useEffect(() => {
     authApi
@@ -62,6 +67,20 @@ export default function LoginPage() {
     }
   }
 
+  async function handleAccountLogin(e: React.FormEvent) {
+    e.preventDefault();
+    if (demoLoading) return;
+    setDemoLoading(true);
+    setError(null);
+    try {
+      await authApi.loginAccount(demoEmail.trim(), demoPw);
+      router.replace("/leads");
+    } catch {
+      setError(t("auth.invalidAccount"));
+      setDemoLoading(false);
+    }
+  }
+
   async function handleGoogleCredential(resp: CredentialResponse) {
     if (!resp.credential) {
       setError(t("auth.googleFailed"));
@@ -84,9 +103,10 @@ export default function LoginPage() {
       <div className="absolute top-4 right-4">
         <LanguageSwitcher />
       </div>
+      <div className="w-full max-w-sm space-y-4">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-2xl border border-white/10 bg-white/[0.02] p-7"
+        className="rounded-2xl border border-white/10 bg-white/[0.02] p-7"
       >
         <div className="flex items-center gap-2.5 mb-6">
           <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-eko-violet to-eko-magenta flex items-center justify-center">
@@ -158,6 +178,49 @@ export default function LoginPage() {
           </>
         )}
       </form>
+
+      {/* Demo (view-only) access: email + password for self-registered accounts. */}
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+        <h2 className="text-sm font-semibold text-white">{t("auth.demoTitle")}</h2>
+        <p className="text-[11px] text-gray-500 mb-3">{t("auth.demoSubtitle")}</p>
+        <form onSubmit={handleAccountLogin} className="space-y-2.5">
+          <div className="relative">
+            <Mail className="w-3.5 h-3.5 text-gray-600 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="email"
+              value={demoEmail}
+              onChange={(e) => setDemoEmail(e.target.value)}
+              placeholder={t("register.email")}
+              className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-eko-violet/50"
+            />
+          </div>
+          <div className="relative">
+            <Lock className="w-3.5 h-3.5 text-gray-600 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="password"
+              value={demoPw}
+              onChange={(e) => setDemoPw(e.target.value)}
+              placeholder={t("auth.password")}
+              className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-eko-violet/50"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={demoLoading || !demoEmail || !demoPw}
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-eko-violet/40 bg-eko-violet/10 text-eko-violet hover:bg-eko-violet/20 disabled:opacity-50"
+          >
+            {demoLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {t("auth.demoSignIn")}
+          </button>
+        </form>
+        <p className="text-[11px] text-gray-500 mt-3 text-center">
+          {t("auth.noAccount")}{" "}
+          <Link href="/register" className="text-eko-violet hover:underline">
+            {t("auth.createDemo")}
+          </Link>
+        </p>
+      </div>
+      </div>
     </main>
   );
 
