@@ -77,6 +77,47 @@ def _fake(**over):
     return types.SimpleNamespace(**base)
 
 
+async def _clear_accounts(*emails: str) -> None:
+    from app.db.base import get_session_factory
+    from app.models import Account
+
+    Session = get_session_factory()
+    async with Session() as s:
+        await s.execute(delete(Account).where(Account.email.in_(emails)))
+        await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_demo_accounts_list_and_delete(_needs_db: None) -> None:
+    """Admins can list self-registered (viewer) demo accounts + delete one."""
+    import uuid
+
+    email = f"reg_{uuid.uuid4().hex[:8]}@example.com"
+    try:
+        async with await _client() as c:
+            reg = await c.post(
+                "/api/v1/auth/register",
+                json={"name": "Margie Demo", "email": email, "password": "view-only-123",
+                      "company": "Acme Realty", "country": "USA"},
+            )
+            assert reg.status_code == 201, reg.text
+
+            listing = (await c.get("/api/v1/team/accounts")).json()
+            mine = next((a for a in listing if a["email"] == email), None)
+            assert mine is not None
+            assert mine["name"] == "Margie Demo" and mine["company"] == "Acme Realty"
+            assert mine["role"] == "viewer"
+
+            acct_id = mine["id"]
+            assert (await c.delete(f"/api/v1/team/accounts/{acct_id}")).status_code == 200
+            # Gone now → 404 on re-delete; absent from the list.
+            assert (await c.delete(f"/api/v1/team/accounts/{acct_id}")).status_code == 404
+            after = (await c.get("/api/v1/team/accounts")).json()
+            assert not any(a["email"] == email for a in after)
+    finally:
+        await _clear_accounts(email)
+
+
 @pytest.mark.asyncio
 async def test_team_crud_lifecycle(_needs_db: None) -> None:
     await _clear("agent@office.com", "backup@office.com")

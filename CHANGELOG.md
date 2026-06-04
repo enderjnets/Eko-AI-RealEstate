@@ -2,6 +2,18 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.33.0] — 2026-06-04
+
+### Admin: registered-users view (Google/Apple + view-only demo signups)
+
+- **Settings** now shows a **"Demo registrations (view-only)"** panel listing everyone who
+  self-registered via the public form — name, email, phone, company, location, registration
+  date — for sales follow-up. Admins can delete a registration (e.g. test accounts).
+- Google/Apple access is still managed in the **"Team & access (Google/Apple)"** panel (the
+  allow-list). Both sit together in Settings, admin-only.
+- Backend: `GET /api/v1/team/accounts` + `DELETE /api/v1/team/accounts/{id}` (admin-gated,
+  on the existing `require_admin` team router). Reuses the `accounts` table — no migration.
+
 ## [0.32.1] — 2026-06-04
 
 ### Fix: the "Create account" (register) link did nothing
