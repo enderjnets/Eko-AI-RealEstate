@@ -39,6 +39,19 @@ from app.services.auth import (
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
+
+async def _safe_record_login(db: AsyncSession, email: str, source: str, request: Request) -> None:
+    """Best-effort: bump the user's login_count. Never break login on a telemetry error."""
+    try:
+        from app.services.activity import client_ip, record_login
+
+        await record_login(
+            db, email=email, source=source,
+            ip=client_ip(request), user_agent=request.headers.get("user-agent"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.debug("record_login skipped for %s: %s", email, exc)
+
 log = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -157,6 +170,7 @@ async def login(body: LoginIn, response: Response) -> dict[str, bool]:
 async def login_google(
     body: GoogleLoginIn,
     response: Response,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, bool]:
     """Validate a Google ID token (from the @react-oauth/google client), resolve
@@ -175,6 +189,7 @@ async def login_google(
         log.warning("google_signin_denied email=%s", email)
         raise HTTPException(status_code=401, detail="email_not_in_allow_list")
     _set_session_cookie(response, make_token(email=email, role=role))
+    await _safe_record_login(db, email, "google", request)
     return {"ok": True, "auth_enabled": True}
 
 
@@ -211,6 +226,7 @@ async def login_google_callback(
         return RedirectResponse("/login?error=google_denied", status_code=303)
     resp = RedirectResponse("/leads", status_code=303)
     _set_session_cookie(resp, make_token(email=email, role=role))
+    await _safe_record_login(db, email, "google", request)
     return resp
 
 
@@ -218,6 +234,7 @@ async def login_google_callback(
 async def login_apple(
     body: AppleLoginIn,
     response: Response,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, bool]:
     """Validate an Apple identity token (from the Sign in with Apple JS popup),
@@ -236,6 +253,7 @@ async def login_apple(
         log.warning("apple_signin_denied email=%s", email)
         raise HTTPException(status_code=401, detail="email_not_in_allow_list")
     _set_session_cookie(response, make_token(email=email, role=role))
+    await _safe_record_login(db, email, "apple", request)
     return {"ok": True, "auth_enabled": True}
 
 
@@ -243,6 +261,7 @@ async def login_apple(
 async def register(
     body: RegisterIn,
     response: Response,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, object]:
     """Public self-registration → a read-only ("viewer") demo account.
@@ -281,6 +300,7 @@ async def register(
     # Sign them in immediately (cookie). When AUTH_ENABLED is false the cookie is
     # simply ignored — the dashboard is already open in that mode.
     _set_session_cookie(response, make_token(email=email, role=ROLE_VIEWER))
+    await _safe_record_login(db, email, "account", request)
     return {"ok": True, "role": ROLE_VIEWER, "auth_enabled": get_settings().AUTH_ENABLED}
 
 
@@ -288,9 +308,10 @@ async def register(
 async def login_account(
     body: AccountLoginIn,
     response: Response,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, object]:
-    """Email + password login for a self-registered (viewer) account."""
+    """Email + password login for a self-registered (viewer/member) account."""
     from app.models import Account
 
     email = body.email.strip().lower()
@@ -300,6 +321,7 @@ async def login_account(
     if account is None or not verify_password(body.password, account.password_hash):
         raise HTTPException(status_code=401, detail="invalid_credentials")
     _set_session_cookie(response, make_token(email=email, role=account.role or ROLE_VIEWER))
+    await _safe_record_login(db, email, "account", request)
     return {"ok": True, "role": account.role or ROLE_VIEWER, "auth_enabled": get_settings().AUTH_ENABLED}
 
 

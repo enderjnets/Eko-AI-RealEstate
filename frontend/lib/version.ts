@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.33.0";
+export const CURRENT_VERSION = "0.34.0";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.34.0",
+    date: "2026-06-04",
+    title: "Admin: cambiar acceso a Member + estadísticas de uso por usuario",
+    changes: [
+      "El admin puede cambiar el acceso de un registro demo de 'Solo lectura' a 'Member' (deja de ser read-only y puede operar el dashboard). Se cambia desde el selector en cada registro de Settings.",
+      "Estadísticas de engagement por usuario (Google/Apple y demos): cada fila en Settings tiene un botón 📊 que muestra inicios de sesión, acciones totales, días activos, última vez visto, secciones más usadas, dispositivo/navegador e IP.",
+      "La actividad se captura de forma liviana (1 fila por usuario, vía middleware) atribuida al email de la sesión. La contraseña de oficina (dueño) no se rastrea. Solo visible para admins.",
+      "Backend: tabla `user_activity` (Alembic 013), middleware de tracking, `PATCH /api/v1/team/accounts/{id}` (rol) y `GET /api/v1/team/activity`.",
+    ],
+  },
   {
     version: "0.33.0",
     date: "2026-06-04",

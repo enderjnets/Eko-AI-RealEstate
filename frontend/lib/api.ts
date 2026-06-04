@@ -563,6 +563,28 @@ export interface DemoAccount {
 export const accountsApi = {
   list: () => api<DemoAccount[]>(`/v1/team/accounts`),
   remove: (id: number) => api<{ ok: boolean }>(`/v1/team/accounts/${id}`, { method: "DELETE" }),
+  setRole: (id: number, role: "viewer" | "member") =>
+    api<DemoAccount>(`/v1/team/accounts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    }),
+};
+
+export interface UserActivity {
+  email: string;
+  source: string | null;
+  first_seen: string;
+  last_seen: string;
+  login_count: number;
+  request_count: number;
+  active_days: number;
+  top_sections: { section: string; count: number }[];
+  device: string | null;
+  last_ip: string | null;
+}
+
+export const activityApi = {
+  list: () => api<UserActivity[]>(`/v1/team/activity`),
 };
 
 export interface Analytics {

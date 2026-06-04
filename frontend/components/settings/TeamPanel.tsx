@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Crown, Loader2, Plus, Shield, Trash2, Users } from "lucide-react";
-import { type Role, type TeamMember, teamApi } from "@/lib/api";
+import { BarChart3, Crown, Loader2, Plus, Shield, Trash2, Users } from "lucide-react";
+import { type Role, type TeamMember, type UserActivity, activityApi, teamApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { UserStats } from "@/components/settings/UserStats";
 
 function cleanError(e: unknown): string {
   const msg = String((e as Error)?.message || e);
@@ -18,12 +19,18 @@ export function TeamPanel() {
   const [newRole, setNewRole] = useState<Role>("member");
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null); // email being mutated
+  const [activity, setActivity] = useState<Record<string, UserActivity>>({});
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   function load() {
     teamApi
       .list()
       .then(setMembers)
       .catch((e) => setError(cleanError(e)));
+    activityApi
+      .list()
+      .then((rows) => setActivity(Object.fromEntries(rows.map((r) => [r.email, r]))))
+      .catch(() => {});
   }
 
   useEffect(load, []);
@@ -127,50 +134,63 @@ export function TeamPanel() {
       {members !== null && members.length > 0 && (
         <ul className="divide-y divide-white/5">
           {members.map((m) => (
-            <li key={m.email} className="flex items-center gap-3 py-2.5">
-              <span
-                className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border ${
-                  m.role === "admin"
-                    ? "bg-eko-violet/15 text-eko-violet border-eko-violet/40"
-                    : "bg-white/[0.03] text-gray-400 border-white/10"
-                }`}
-              >
-                {m.role === "admin" ? <Shield className="w-3 h-3" /> : null}
-                {m.role === "admin" ? t("settings.team.roleAdmin") : t("settings.team.roleMember")}
-              </span>
-              <span className="flex-1 text-sm text-gray-200 truncate" title={m.email}>
-                {m.email}
-              </span>
-              {m.immutable ? (
+            <li key={m.email} className="py-2.5">
+              <div className="flex items-center gap-3">
                 <span
-                  className="shrink-0 inline-flex items-center gap-1 text-[10px] text-amber-300/80"
-                  title={t("settings.team.ownerHint")}
+                  className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border ${
+                    m.role === "admin"
+                      ? "bg-eko-violet/15 text-eko-violet border-eko-violet/40"
+                      : "bg-white/[0.03] text-gray-400 border-white/10"
+                  }`}
                 >
-                  <Crown className="w-3 h-3" /> {t("settings.team.owner")}
+                  {m.role === "admin" ? <Shield className="w-3 h-3" /> : null}
+                  {m.role === "admin" ? t("settings.team.roleAdmin") : t("settings.team.roleMember")}
                 </span>
-              ) : (
-                <div className="shrink-0 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => changeRole(m)}
-                    disabled={busy === m.email}
-                    className="text-[11px] text-gray-400 hover:text-white disabled:opacity-50"
+                <span className="flex-1 text-sm text-gray-200 truncate" title={m.email}>
+                  {m.email}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setExpanded(expanded === m.email ? null : m.email)}
+                  title={t("stats.toggle")}
+                  className={`shrink-0 p-1 rounded-md hover:bg-white/5 ${
+                    expanded === m.email ? "text-eko-violet" : "text-gray-500 hover:text-white"
+                  }`}
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
+                </button>
+                {m.immutable ? (
+                  <span
+                    className="shrink-0 inline-flex items-center gap-1 text-[10px] text-amber-300/80"
+                    title={t("settings.team.ownerHint")}
                   >
-                    {m.role === "admin"
-                      ? t("settings.team.makeMember")
-                      : t("settings.team.makeAdmin")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => remove(m)}
-                    disabled={busy === m.email}
-                    title={t("settings.team.remove")}
-                    className="text-gray-500 hover:text-red-400 disabled:opacity-50"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
+                    <Crown className="w-3 h-3" /> {t("settings.team.owner")}
+                  </span>
+                ) : (
+                  <div className="shrink-0 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => changeRole(m)}
+                      disabled={busy === m.email}
+                      className="text-[11px] text-gray-400 hover:text-white disabled:opacity-50"
+                    >
+                      {m.role === "admin"
+                        ? t("settings.team.makeMember")
+                        : t("settings.team.makeAdmin")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => remove(m)}
+                      disabled={busy === m.email}
+                      title={t("settings.team.remove")}
+                      className="text-gray-500 hover:text-red-400 disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+              {expanded === m.email && <UserStats activity={activity[m.email]} />}
             </li>
           ))}
         </ul>

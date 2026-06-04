@@ -57,6 +57,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def _record_user_activity(request, call_next):
+    """Best-effort per-user engagement tracking: after each authenticated request
+    to a tracked /api/v1 section, upsert the session-email's UserActivity row. The
+    shared office password (no email) is not tracked. Errors here never affect the
+    response."""
+    response = await call_next(request)
+    try:
+        from app.api.v1.auth import _token_from_request
+        from app.db.base import get_session_factory
+        from app.services.activity import client_ip, record_request, section_for_path
+        from app.services.auth import decode_token
+
+        path = request.url.path
+        if section_for_path(path):  # only tracked dashboard sections
+            payload = decode_token(_token_from_request(request))
+            email = (payload or {}).get("email")
+            if email:
+                async with get_session_factory()() as session:
+                    await record_request(
+                        session,
+                        email=email,
+                        source=None,  # set at login; never overwrite here
+                        path=path,
+                        ip=client_ip(request),
+                        user_agent=request.headers.get("user-agent"),
+                    )
+    except Exception as exc:  # noqa: BLE001 — never break a request for telemetry
+        logger.debug("activity middleware skipped: %s", exc)
+    return response
+
+
 # Routers
 # Public / unauthenticated: health, webhooks (own signature auth), auth itself.
 app.include_router(health.router, prefix="/api/v1", tags=["health"])

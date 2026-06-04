@@ -2,6 +2,22 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.34.0] — 2026-06-04
+
+### Admin: change demo access to Member + per-user engagement stats
+
+- **Change access level**: admins can switch a demo registration from view-only to
+  **Member** (read+write) via a per-row dropdown in Settings. `PATCH /api/v1/team/accounts/{id}`
+  updates `Account.role`; `login/account` then mints a member session.
+- **Per-user stats** (Google/Apple **and** demo accounts): each Settings row has a 📊 toggle
+  showing logins, total actions, active days, last seen, most-used sections (mini-bars),
+  device/browser, and IP — to understand users and improve the system.
+- **Lightweight tracking**: a middleware upserts one `UserActivity` row per session-email on
+  each authenticated request to a tracked section; login endpoints bump login_count. The
+  shared office password (no email) isn't tracked. Stats are admin-only.
+- Backend: `user_activity` table (Alembic `013`), `services/activity.py`, the middleware,
+  `GET /api/v1/team/activity`. IP + device only (no geolocation).
+
 ## [0.33.0] — 2026-06-04
 
 ### Admin: registered-users view (Google/Apple + view-only demo signups)
