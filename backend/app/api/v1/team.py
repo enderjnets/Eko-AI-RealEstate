@@ -21,8 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.base import get_db
-from app.models import Account, AllowedUser
-from app.services.auth import ROLE_ADMIN, ROLE_MEMBER
+from app.models import Account, AllowedUser, UserActivity
+from app.services.auth import ROLE_ADMIN, ROLE_MEMBER, ROLE_VIEWER
 
 router = APIRouter()
 
@@ -150,6 +150,29 @@ async def list_accounts(db: AsyncSession = Depends(get_db)) -> list[AccountOut]:
     return [AccountOut.model_validate(r) for r in rows]
 
 
+class AccountRoleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # A self-registered account can be upgraded from read-only "viewer" to a full
+    # "member" (read + write). Admin access stays managed via the allow-list.
+    role: Literal["viewer", "member"]
+
+
+@router.patch("/accounts/{account_id}", response_model=AccountOut)
+async def update_account_role(
+    account_id: int, body: AccountRoleIn, db: AsyncSession = Depends(get_db)
+) -> AccountOut:
+    """Change a demo account's access level (viewer ↔ member)."""
+    row = (
+        await db.execute(select(Account).where(Account.id == account_id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    row.role = ROLE_VIEWER if body.role == "viewer" else ROLE_MEMBER
+    await db.commit()
+    await db.refresh(row)
+    return AccountOut.model_validate(row)
+
+
 @router.delete("/accounts/{account_id}")
 async def remove_account(account_id: int, db: AsyncSession = Depends(get_db)) -> dict[str, bool]:
     """Delete a self-registered demo account (e.g. a test or abandoned signup)."""
@@ -161,6 +184,52 @@ async def remove_account(account_id: int, db: AsyncSession = Depends(get_db)) ->
     await db.delete(row)
     await db.commit()
     return {"ok": True}
+
+
+# ─── Per-user engagement stats (admin) ──────────────────────────────────────
+
+
+class ActivityOut(BaseModel):
+    email: str
+    source: str | None
+    first_seen: datetime
+    last_seen: datetime
+    login_count: int
+    request_count: int
+    active_days: int
+    top_sections: list[dict]  # [{"section": "leads", "count": 42}, ...] desc
+    device: str | None
+    last_ip: str | None
+
+
+@router.get("/activity", response_model=list[ActivityOut])
+async def list_activity(db: AsyncSession = Depends(get_db)) -> list[ActivityOut]:
+    """Engagement stats for every tracked user (by email), most-recently-active first."""
+    rows = (
+        await db.execute(select(UserActivity).order_by(UserActivity.last_seen.desc()))
+    ).scalars().all()
+    out: list[ActivityOut] = []
+    for r in rows:
+        sections = sorted(
+            ({"section": k, "count": v} for k, v in (r.sections or {}).items()),
+            key=lambda x: x["count"],
+            reverse=True,
+        )
+        out.append(
+            ActivityOut(
+                email=r.email,
+                source=r.source,
+                first_seen=r.first_seen,
+                last_seen=r.last_seen,
+                login_count=r.login_count,
+                request_count=r.request_count,
+                active_days=r.active_days,
+                top_sections=sections,
+                device=r.device,
+                last_ip=r.last_ip,
+            )
+        )
+    return out
 
 
 @router.delete("/{email}")
