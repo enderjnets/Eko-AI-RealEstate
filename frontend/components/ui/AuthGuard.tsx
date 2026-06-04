@@ -6,10 +6,15 @@ import { Loader2 } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
+// Public routes that must NEVER be gated (else an unauthenticated visitor is
+// bounced straight back to /login). /register is public so prospective clients
+// can self-register a read-only demo account.
+const PUBLIC_PATHS = new Set(["/login", "/register"]);
+
 /**
  * Gates the dashboard when AUTH_ENABLED. Calls /auth/me once per navigation; if
  * auth is on and the session is missing, redirects to /login. When auth is off
- * (dev / public demo) it's transparent. The /login route is never gated.
+ * (dev / public demo) it's transparent. PUBLIC_PATHS are never gated.
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -18,7 +23,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (pathname === "/login") {
+    if (PUBLIC_PATHS.has(pathname)) {
       setReady(true);
       return;
     }
@@ -37,7 +42,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     };
   }, [pathname, router]);
 
-  if (pathname === "/login") return <>{children}</>;
+  if (PUBLIC_PATHS.has(pathname)) return <>{children}</>;
   if (!ready) {
     return (
       <div className="min-h-screen flex items-center justify-center text-gray-500 text-sm gap-2">

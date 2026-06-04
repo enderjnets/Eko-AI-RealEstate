@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.32.0";
+export const CURRENT_VERSION = "0.32.1";
 
 export interface VersionEntry {
   version: string;
@@ -8,6 +8,14 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.32.1",
+    date: "2026-06-04",
+    title: "Fix: el botón 'Crear cuenta' (registro) no hacía nada",
+    changes: [
+      "El AuthGuard solo eximía /login, así que al ir a /register te rebotaba de vuelta a /login (parecía que el botón no hacía nada). Ahora /register también es ruta pública → la página de registro abre correctamente.",
+    ],
+  },
   {
     version: "0.32.0",
     date: "2026-06-04",
