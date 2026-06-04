@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { type CalendarItem, visitsApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { useViewer } from "@/lib/useViewer";
 
 const BROWSER_TZ =
   typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
@@ -41,6 +42,7 @@ const KIND_ACCENT = {
 
 export function CalendarView() {
   const { t, locale } = useI18n();
+  const isViewer = useViewer();
   const [items, setItems] = useState<CalendarItem[] | null>(null);
   const [tz, setTz] = useState(BROWSER_TZ);
   const [loading, setLoading] = useState(true);
@@ -110,14 +112,16 @@ export function CalendarView() {
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={() => setAddOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-eko-violet text-white hover:bg-eko-violet-dark"
-        >
-          <CalendarPlus className="w-3.5 h-3.5" />
-          {t("calendar.addEvent")}
-        </button>
+        {!isViewer && (
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-eko-violet text-white hover:bg-eko-violet-dark"
+          >
+            <CalendarPlus className="w-3.5 h-3.5" />
+            {t("calendar.addEvent")}
+          </button>
+        )}
       </div>
 
       {loading && !items && (

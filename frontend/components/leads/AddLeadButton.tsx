@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Plus, X } from "lucide-react";
 import { type LeadCreate, type LeadIntent, leadsApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { useViewer } from "@/lib/useViewer";
 
 type Channel = "sms" | "email";
 
@@ -43,6 +44,7 @@ export function AddLeadButton() {
   const [form, setForm] = useState({ ...EMPTY });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isViewer = useViewer();
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -93,6 +95,8 @@ export function AddLeadButton() {
   const inputCls =
     "w-full px-3 py-1.5 rounded-md bg-white/5 border border-white/10 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-eko-violet/50";
   const labelCls = "block text-xs text-gray-400 mb-1";
+
+  if (isViewer) return null; // read-only demo accounts can't create leads
 
   return (
     <>

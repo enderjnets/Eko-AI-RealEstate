@@ -6,6 +6,7 @@ import { type Visit, visitsApi } from "@/lib/api";
 import { VisitStatusBadge } from "@/components/ui/VisitStatusBadge";
 import { BookingDialog } from "@/components/calendar/BookingDialog";
 import { useI18n } from "@/lib/i18n";
+import { useViewer } from "@/lib/useViewer";
 
 const BROWSER_TZ =
   typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
@@ -30,6 +31,7 @@ function isPast(iso: string): boolean {
 
 export function VisitsSection({ leadId }: { leadId: number }) {
   const { t, locale } = useI18n();
+  const isViewer = useViewer();
   const [visits, setVisits] = useState<Visit[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,14 +84,16 @@ export function VisitsSection({ leadId }: { leadId: number }) {
             </span>
           )}
         </h2>
-        <button
-          type="button"
-          onClick={() => setBookingOpen(true)}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border border-eko-violet/30 bg-eko-violet/10 text-eko-violet hover:bg-eko-violet/20"
-        >
-          <CalendarPlus className="w-3 h-3" />
-          {t("visits.book")}
-        </button>
+        {!isViewer && (
+          <button
+            type="button"
+            onClick={() => setBookingOpen(true)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border border-eko-violet/30 bg-eko-violet/10 text-eko-violet hover:bg-eko-violet/20"
+          >
+            <CalendarPlus className="w-3 h-3" />
+            {t("visits.book")}
+          </button>
+        )}
       </div>
 
       {loading && !visits && (
@@ -147,7 +151,7 @@ export function VisitsSection({ leadId }: { leadId: number }) {
                     {v.calendar_provider} · {v.external_booking_id}
                   </div>
                 </div>
-                {(v.status === "scheduled" || v.status === "confirmed") && (
+                {!isViewer && (v.status === "scheduled" || v.status === "confirmed") && (
                   <button
                     type="button"
                     onClick={() => handleCancel(v.id)}

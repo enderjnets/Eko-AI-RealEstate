@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Loader2, Mail, MessageSquare, Phone, Send, Sparkles } from "lucide-react";
 import { type SendChannel, type SuggestionsResult, leadsApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { useViewer } from "@/lib/useViewer";
 
 const MAX_LEN = 4000;
 
@@ -21,6 +22,7 @@ export function Composer({
   onSent?: () => void;
 }) {
   const { t } = useI18n();
+  const isViewer = useViewer();
   const [text, setText] = useState("");
   const [channel, setChannel] = useState<SendChannel>(initialChannel(defaultChannel));
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +84,14 @@ export function Composer({
     { value: "email", label: t("composer.channel.email"), Icon: Mail },
     { value: "voice", label: t("composer.channel.voice"), Icon: Phone, disabled: true },
   ];
+
+  if (isViewer) {
+    return (
+      <section className="mt-6 rounded-xl border border-white/5 bg-white/[0.02] p-4 text-center text-xs text-gray-500">
+        {t("composer.viewOnly")}
+      </section>
+    );
+  }
 
   return (
     <section className="mt-6 rounded-xl border border-white/10 bg-white/[0.02] p-4">
