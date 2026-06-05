@@ -2,6 +2,14 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.34.1] — 2026-06-05
+
+### Version history now follows the selected language
+
+- The version-history modal was always shown in Spanish, even with English selected.
+  Every changelog entry in `lib/version.ts` is now bilingual (`{ en, es }`) and
+  `VersionButton` renders `title`/`changes` in the active UI language.
+
 ## [0.34.0] — 2026-06-04
 
 ### Admin: change demo access to Member + per-user engagement stats

@@ -7,7 +7,7 @@ import { CHANGELOG, CURRENT_VERSION } from "@/lib/version";
 import { useI18n } from "@/lib/i18n";
 
 export function VersionButton() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -86,12 +86,12 @@ export function VersionButton() {
                 </span>
                 <span className="text-xs text-gray-500">{entry.date}</span>
               </div>
-              <h3 className="text-sm font-semibold text-gray-200">{entry.title}</h3>
+              <h3 className="text-sm font-semibold text-gray-200">{entry.title[lang]}</h3>
               <ul className="space-y-1.5">
                 {entry.changes.map((change, idx) => (
                   <li key={idx} className="flex items-start gap-2 text-sm text-gray-400">
                     <span className="mt-1.5 w-1 h-1 rounded-full bg-eko-violet shrink-0" />
-                    <span>{change}</span>
+                    <span>{change[lang]}</span>
                   </li>
                 ))}
               </ul>
