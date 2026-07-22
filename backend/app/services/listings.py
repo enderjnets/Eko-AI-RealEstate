@@ -12,22 +12,23 @@ real pilot only needs env vars — no schema/orchestrator changes.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import Lead, LeadIntent, Property, PropertySource, PropertyStatus
+from app.models import Lead, LeadIntent, Property, PropertySource, PropertyStatus, SyncState
 
 log = logging.getLogger(__name__)
-
-NOW = datetime.now(UTC)
 
 
 class ListingsError(RuntimeError):
@@ -54,6 +55,7 @@ class ListingDTO:
     url: str | None = None
     photos: list[str] = field(default_factory=list)
     listed_at: datetime | None = None
+    source_modified_at: datetime | None = None  # RESO ModificationTimestamp (for the sync cursor)
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -133,8 +135,14 @@ _SIMULATED: list[ListingDTO] = [
 # ── Fetch ──────────────────────────────────────────────────────────────────
 
 
-async def fetch_listings(*, city: str | None = None, limit: int = 200) -> list[ListingDTO]:
-    """Return listings from the configured feed (SIMULATED curated set or RESO)."""
+async def fetch_listings(
+    *, city: str | None = None, limit: int = 200, modified_since: datetime | None = None
+) -> list[ListingDTO]:
+    """Return listings from the configured feed (SIMULATED curated set or RESO).
+
+    `modified_since` applies only to the real RESO feed (incremental replication);
+    the SIMULATED set ignores it.
+    """
     s = get_settings()
 
     if s.LISTINGS_SIMULATED:
@@ -148,71 +156,233 @@ async def fetch_listings(*, city: str | None = None, limit: int = 200) -> list[L
             "MLS feed not configured: RESO_BASE_URL + RESO_ACCESS_TOKEN must be set, "
             "or set LISTINGS_SIMULATED=true for dev."
         )
-    return await _fetch_reso(s.RESO_BASE_URL, s.RESO_ACCESS_TOKEN, city=city, limit=limit)
+    out: list[ListingDTO] = []
+    async for page in _fetch_reso_pages(
+        s.RESO_BASE_URL,
+        s.RESO_ACCESS_TOKEN,
+        modified_since=modified_since,
+        city=city,
+        page_size=min(limit, s.RESO_PAGE_SIZE),
+        max_pages=s.RESO_MAX_PAGES,
+    ):
+        out.extend(page)
+        if len(out) >= limit:
+            return out[:limit]
+    return out
 
 
-async def _fetch_reso(base_url: str, token: str, *, city: str | None, limit: int) -> list[ListingDTO]:
-    """Query a RESO Web API (OData) feed and map to ListingDTO."""
-    filt = "StandardStatus eq 'Active'"
-    if city:
-        filt += f" and City eq '{city}'"
-    params = {"$filter": filt, "$top": str(min(limit, 200)), "$orderby": "ModificationTimestamp desc"}
+# ── RESO Web API (OData) adapter — MLS Grid / REcolorado ─────────────────────
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(
-            f"{base_url.rstrip('/')}/Property",
-            params=params,
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-        )
+_RESO_SOURCE_KEY = "reso"  # SyncState.source for the REcolorado/MLS Grid feed
+
+# StandardStatus (RESO) → our PropertyStatus. Lower-cased keys; unknown → OFF_MARKET
+# (safe default: never shown to a lead). VERIFY the exact status set REcolorado emits.
+_STATUS_MAP: dict[str, PropertyStatus] = {
+    "active": PropertyStatus.ACTIVE,
+    "active under contract": PropertyStatus.PENDING,
+    "pending": PropertyStatus.PENDING,
+    "closed": PropertyStatus.SOLD,
+    "canceled": PropertyStatus.OFF_MARKET,
+    "cancelled": PropertyStatus.OFF_MARKET,
+    "withdrawn": PropertyStatus.OFF_MARKET,
+    "expired": PropertyStatus.OFF_MARKET,
+    "hold": PropertyStatus.OFF_MARKET,
+    "incomplete": PropertyStatus.OFF_MARKET,
+    "delete": PropertyStatus.OFF_MARKET,
+    "coming soon": PropertyStatus.OFF_MARKET,  # not publicly showable yet → out of matches
+}
+
+_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+_MAX_RETRIES = 4
+_RETRY_BASE_DELAY = 0.5  # seconds; exponential backoff. Patched to ~0 in tests.
+
+
+def _map_status(standard_status: str | None, mlg_can_view: object = None) -> PropertyStatus:
+    """RESO StandardStatus → PropertyStatus. MLS Grid's MlgCanView=false means we may
+    not display the record → force OFF_MARKET regardless of its status."""
+    if mlg_can_view is False:
+        return PropertyStatus.OFF_MARKET
+    return _STATUS_MAP.get((standard_status or "").strip().lower(), PropertyStatus.OFF_MARKET)
+
+
+def _parse_dt(value: object) -> datetime | None:
+    """Parse a RESO ISO-8601 timestamp (…Z / offset) into a tz-aware datetime."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
+def _odata_str(value: str) -> str:
+    """A single-quoted OData string literal, escaping embedded quotes ('')."""
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _odata_dt(dt: datetime) -> str:
+    """OData v4 Edm.DateTimeOffset literal (bare, no quotes). VERIFY vs MLS Grid docs."""
+    return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _backoff(attempt: int) -> float:
+    return min(_RETRY_BASE_DELAY * (2**attempt), 8.0)
+
+
+def _retry_after(resp: httpx.Response) -> float | None:
+    raw = resp.headers.get("Retry-After")
+    try:
+        return float(raw) if raw else None
+    except ValueError:
+        return None
+
+
+def _reso_client() -> httpx.AsyncClient:
+    """Build the HTTP client for RESO calls. Isolated so tests inject a MockTransport
+    by monkeypatching this function."""
+    timeout = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=5.0)
+    transport = httpx.AsyncHTTPTransport(retries=2)  # connection-level retries
+    return httpx.AsyncClient(timeout=timeout, transport=transport)
+
+
+async def _reso_get(
+    client: httpx.AsyncClient, url: str, token: str, params: dict | None
+) -> dict:
+    """GET one RESO page, retrying with backoff on 429/5xx/timeouts (honors Retry-After)."""
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    attempt = 0
+    while True:
+        try:
+            resp = await client.get(url, params=params, headers=headers)
+        except (httpx.TimeoutException, httpx.TransportError) as exc:
+            if attempt >= _MAX_RETRIES:
+                raise ListingsError(f"RESO request failed after retries: {exc}") from exc
+            await asyncio.sleep(_backoff(attempt))
+            attempt += 1
+            continue
+        if resp.status_code in _RETRY_STATUSES and attempt < _MAX_RETRIES:
+            await asyncio.sleep(_retry_after(resp) or _backoff(attempt))
+            attempt += 1
+            continue
         if resp.status_code >= 400:
             log.error("RESO fetch failed: %d %s", resp.status_code, resp.text[:300])
             raise ListingsError(f"RESO HTTP {resp.status_code}: {resp.text[:200]}")
-        payload = resp.json()
+        return resp.json()
 
-    out: list[ListingDTO] = []
-    for r in payload.get("value", []):
-        key = str(r.get("ListingKey") or r.get("ListingId") or "")
-        if not key:
-            continue
-        media = r.get("Media") or []
-        photos = [m.get("MediaURL") for m in media if isinstance(m, dict) and m.get("MediaURL")][:12]
-        sub = (r.get("PropertySubType") or "").lower()
-        listing_type = "rent" if "lease" in sub or "rent" in sub else "sale"
-        out.append(
-            ListingDTO(
-                external_id=key,
-                title=r.get("UnparsedAddress") or f"Listing {key}",
-                price=_d(r["ListPrice"]) if r.get("ListPrice") is not None else None,
-                listing_type=listing_type,
-                property_type=r.get("PropertySubType") or r.get("PropertyType"),
-                description=r.get("PublicRemarks"),
-                address=r.get("UnparsedAddress"),
-                city=r.get("City"),
-                state=r.get("StateOrProvince"),
-                zip_code=r.get("PostalCode"),
-                zone=r.get("SubdivisionName") or r.get("MLSAreaMajor"),
-                bedrooms=r.get("BedroomsTotal"),
-                bathrooms=_d(r["BathroomsTotalInteger"]) if r.get("BathroomsTotalInteger") is not None else None,
-                sqft=r.get("LivingArea"),
-                url=r.get("ListingURL"),
-                photos=photos,
-                raw={"reso_key": key, "listing_type": listing_type},
-            )
+
+def _map_reso_record(r: dict) -> ListingDTO | None:
+    """Map one RESO Property record to a ListingDTO (None if it has no key)."""
+    key = str(r.get("ListingKey") or r.get("ListingId") or "")
+    if not key:
+        return None
+    media = [m for m in (r.get("Media") or []) if isinstance(m, dict) and m.get("MediaURL")]
+    media.sort(key=lambda m: m["Order"] if isinstance(m.get("Order"), int) else 1_000_000)
+    photos = [m["MediaURL"] for m in media][:12]
+    sub = (r.get("PropertySubType") or "").lower()
+    listing_type = "rent" if ("lease" in sub or "rent" in sub) else "sale"
+    baths = r.get("BathroomsTotalDecimal")
+    if baths is None:
+        baths = r.get("BathroomsTotalInteger")
+    return ListingDTO(
+        external_id=key,
+        title=r.get("UnparsedAddress") or f"Listing {key}",
+        price=_d(r["ListPrice"]) if r.get("ListPrice") is not None else None,
+        listing_type=listing_type,
+        status=_map_status(r.get("StandardStatus"), r.get("MlgCanView")),
+        property_type=r.get("PropertySubType") or r.get("PropertyType"),
+        description=r.get("PublicRemarks"),
+        address=r.get("UnparsedAddress"),
+        city=r.get("City"),
+        state=r.get("StateOrProvince"),
+        zip_code=r.get("PostalCode"),
+        zone=r.get("SubdivisionName") or r.get("MLSAreaMajor"),
+        bedrooms=r.get("BedroomsTotal"),
+        bathrooms=_d(baths) if baths is not None else None,
+        sqft=r.get("LivingArea"),
+        url=r.get("ListingURL"),
+        photos=photos,
+        source_modified_at=_parse_dt(r.get("ModificationTimestamp")),
+        raw={
+            "reso_key": key,
+            "listing_type": listing_type,
+            "standard_status": r.get("StandardStatus"),
+            "modification_timestamp": r.get("ModificationTimestamp"),
+            "mlg_can_view": r.get("MlgCanView"),
+            "list_office_name": r.get("ListOfficeName"),
+            "list_agent_name": r.get("ListAgentFullName"),
+        },
+    )
+
+
+async def _fetch_reso_pages(
+    base_url: str,
+    token: str,
+    *,
+    modified_since: datetime | None = None,
+    city: str | None = None,
+    page_size: int = 200,
+    max_pages: int = 50,
+) -> AsyncIterator[list[ListingDTO]]:
+    """Yield pages of ListingDTO from a RESO Web API (OData) feed, following
+    @odata.nextLink. Incremental: with `modified_since`, only records with
+    ModificationTimestamp >= cursor (>= so boundary records sharing the cursor's
+    exact timestamp are re-seen and idempotently upserted). ALL statuses are
+    ingested so status transitions drive delta-delete downstream (the matcher
+    filters to ACTIVE)."""
+    s = get_settings()
+    filt = f"OriginatingSystemName eq {_odata_str(s.RESO_ORIGINATING_SYSTEM)}"
+    if modified_since is not None:
+        filt += f" and ModificationTimestamp ge {_odata_dt(modified_since)}"
+    if city:
+        filt += f" and City eq {_odata_str(city)}"
+    params: dict | None = {
+        "$filter": filt,
+        "$top": str(max(1, page_size)),
+        "$orderby": "ModificationTimestamp,ListingKey",
+        "$expand": "Media",
+    }
+    url: str | None = f"{base_url.rstrip('/')}/Property"
+    pages = 0
+    async with _reso_client() as client:
+        while url and pages < max_pages:
+            payload = await _reso_get(client, url, token, params)
+            params = None  # @odata.nextLink already carries the query string
+            yield [dto for r in payload.get("value", []) if (dto := _map_reso_record(r))]
+            url = payload.get("@odata.nextLink")
+            pages += 1
+    if url and pages >= max_pages:
+        log.info(
+            "RESO pagination stopped at RESO_MAX_PAGES=%d; the cursor resumes the rest next run",
+            max_pages,
         )
-    return out
 
 
 # ── Sync (upsert into the DB) ───────────────────────────────────────────────
 
 
-async def sync_listings(db: AsyncSession, *, city: str | None = None) -> dict[str, int]:
+async def sync_listings(
+    db: AsyncSession, *, city: str | None = None, full: bool = False
+) -> dict[str, int]:
     """Fetch listings and upsert into `properties` by (source, external_id).
 
-    Returns counts {created, updated, total}. Source is RESO when a real feed is
-    configured, MANUAL when SIMULATED.
+    Returns counts {created, updated, total}. SIMULATED upserts the curated set as
+    MANUAL in one commit. A real feed replicates from RESO/MLS Grid incrementally —
+    pages commit one at a time and the cursor advances after each, so a mid-run crash
+    resumes from the last durable page. `full=True` ignores the cursor (full backfill).
     """
     s = get_settings()
-    source = PropertySource.MANUAL if s.LISTINGS_SIMULATED else PropertySource.RESO
+    if not s.LISTINGS_SIMULATED:
+        if not s.RESO_BASE_URL or not s.RESO_ACCESS_TOKEN:
+            raise ListingsError(
+                "MLS feed not configured: RESO_BASE_URL + RESO_ACCESS_TOKEN must be set, "
+                "or set LISTINGS_SIMULATED=true for dev."
+            )
+        return await _sync_reso(db, city=city, full=full)
+
+    source = PropertySource.MANUAL
     listings = await fetch_listings(city=city)
 
     created = updated = 0
@@ -275,6 +445,145 @@ async def sync_listings(db: AsyncSession, *, city: str | None = None) -> dict[st
     await db.commit()
     log.info("Listings sync: source=%s created=%d updated=%d", source.value, created, updated)
     return {"created": created, "updated": updated, "total": created + updated}
+
+
+async def _upsert_page(
+    db: AsyncSession, source: PropertySource, dtos: list[ListingDTO]
+) -> tuple[int, int]:
+    """Bulk upsert one page of listings by (source, external_id) via INSERT … ON
+    CONFLICT (race-safe against a concurrent worker/cron). Returns (created, updated).
+    Does NOT commit — the caller owns the transaction boundary."""
+    by_key: dict[str, ListingDTO] = {}
+    for d in dtos:
+        if d is not None:
+            by_key[d.external_id] = d  # de-dup within the page (keep last / most recent)
+    if not by_key:
+        return (0, 0)
+
+    keys = list(by_key.keys())
+    existing = set(
+        (
+            await db.execute(
+                select(Property.external_id).where(
+                    Property.source == source, Property.external_id.in_(keys)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    rows = []
+    for d in by_key.values():
+        raw = dict(d.raw)
+        raw.setdefault("listing_type", d.listing_type)
+        rows.append(
+            {
+                "source": source,
+                "external_id": d.external_id,
+                "status": d.status,
+                "title": d.title,
+                "description": d.description,
+                "property_type": d.property_type,
+                "address": d.address,
+                "city": d.city,
+                "state": d.state,
+                "zip_code": d.zip_code,
+                "zone": d.zone,
+                "price": d.price,
+                "bedrooms": d.bedrooms,
+                "bathrooms": d.bathrooms,
+                "sqft": d.sqft,
+                "url": d.url,
+                "photos": d.photos,
+                "listed_at": d.listed_at,
+                "raw": raw,
+            }
+        )
+
+    stmt = pg_insert(Property).values(rows)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["source", "external_id"],
+        set_={
+            col: getattr(stmt.excluded, col)
+            for col in (
+                "status", "title", "description", "property_type", "address", "city",
+                "state", "zip_code", "zone", "price", "bedrooms", "bathrooms", "sqft",
+                "url", "photos", "raw",
+            )
+        },
+    )
+    await db.execute(stmt)
+    created = sum(1 for k in keys if k not in existing)
+    return (created, len(keys) - created)
+
+
+async def _sync_reso(
+    db: AsyncSession, *, city: str | None = None, full: bool = False
+) -> dict[str, int]:
+    """Incremental RESO replication: per-page upsert + commit + cursor advance."""
+    s = get_settings()
+    row = (
+        await db.execute(select(SyncState).where(SyncState.source == _RESO_SOURCE_KEY))
+    ).scalar_one_or_none()
+    if row is None:
+        db.add(SyncState(source=_RESO_SOURCE_KEY))
+        await db.commit()
+        cursor = None
+    else:
+        cursor = None if full else row.cursor_modified_at
+
+    total_created = total_updated = 0
+    max_seen = cursor
+    try:
+        async for page in _fetch_reso_pages(
+            s.RESO_BASE_URL,
+            s.RESO_ACCESS_TOKEN,
+            modified_since=cursor,
+            city=city,
+            page_size=s.RESO_PAGE_SIZE,
+            max_pages=s.RESO_MAX_PAGES,
+        ):
+            if not page:
+                continue
+            created, updated = await _upsert_page(db, PropertySource.RESO, page)
+            page_max = max(
+                (d.source_modified_at for d in page if d.source_modified_at), default=None
+            )
+            if page_max and (max_seen is None or page_max > max_seen):
+                max_seen = page_max
+            await db.execute(
+                update(SyncState)
+                .where(SyncState.source == _RESO_SOURCE_KEY)
+                .values(
+                    cursor_modified_at=max_seen,
+                    last_run_at=datetime.now(UTC),
+                    last_created=created,
+                    last_updated=updated,
+                    last_error=None,
+                )
+            )
+            await db.commit()  # page rows + cursor advance commit atomically
+            total_created += created
+            total_updated += updated
+    except Exception as exc:  # noqa: BLE001 — record the failure, then re-raise
+        await db.rollback()
+        await db.execute(
+            update(SyncState)
+            .where(SyncState.source == _RESO_SOURCE_KEY)
+            .values(last_run_at=datetime.now(UTC), last_error=str(exc)[:500])
+        )
+        await db.commit()
+        raise
+
+    log.info(
+        "RESO sync: created=%d updated=%d cursor=%s", total_created, total_updated, max_seen
+    )
+    return {
+        "created": total_created,
+        "updated": total_updated,
+        "total": total_created + total_updated,
+    }
 
 
 # ── Matching ─────────────────────────────────────────────────────────────────

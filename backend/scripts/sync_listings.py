@@ -27,12 +27,17 @@ from app.services.listings import sync_listings  # noqa: E402
 async def main() -> int:
     p = argparse.ArgumentParser(description="Sync MLS/IDX listings into the DB.")
     p.add_argument("--city", default=None, help="filter to a city (e.g. Miami)")
+    p.add_argument(
+        "--full",
+        action="store_true",
+        help="ignore the incremental cursor and do a full RESO backfill/reconcile",
+    )
     args = p.parse_args()
 
     Session = get_session_factory()
     try:
         async with Session() as session:
-            result = await sync_listings(session, city=args.city)
+            result = await sync_listings(session, city=args.city, full=args.full)
         print(
             f"🏠 listings sync: created {result['created']}, updated {result['updated']} "
             f"(total {result['total']})"

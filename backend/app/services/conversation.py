@@ -689,9 +689,14 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
                 beds = f"{p.bedrooms}bd" if p.bedrooms else ""
                 baths = f"{float(p.bathrooms):g}ba" if p.bathrooms is not None else ""
                 specs = " ".join(x for x in (beds, baths) if x)
+                # IDX attribution: the listing broker MUST be credited when a listing is
+                # shown to a consumer. VERIFY REcolorado's exact required disclaimer text.
+                office = (p.raw or {}).get("list_office_name")
+                courtesy = f" · Cortesía de {office}" if office else ""
                 lines.append(
                     f"- {p.title} — {price}{(' · ' + specs) if specs else ''}"
                     f"{(' · ' + p.address) if p.address else ''}{(' · ' + p.url) if p.url else ''}"
+                    f"{courtesy}"
                 )
             system_prompt += (
                 "\n\nLISTINGS DISPONIBLES QUE PUEDES OFRECER (usa SOLO estas, NO inventes "

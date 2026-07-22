@@ -124,6 +124,18 @@ class Settings(BaseSettings):
     LISTINGS_PROVIDER: str = "reso"  # reso | idx | mls
     RESO_BASE_URL: str = ""
     RESO_ACCESS_TOKEN: str = ""
+    # ─── MLS Grid / REcolorado (Phase 7b — replication) ─────────────────
+    # REcolorado ships its RESO Web API through MLS Grid. We replicate the feed
+    # into `properties` incrementally (by ModificationTimestamp) instead of proxying
+    # live — MLS Grid throttles full pulls. The values below are VERIFIED against the
+    # MLS Grid data dictionary once the feed is provisioned; the defaults are safe
+    # placeholders. The sync WORKER is OFF by default so it never spins on errors
+    # before the token exists — flip LISTINGS_SYNC_ENABLED on (with RESO creds set).
+    RESO_ORIGINATING_SYSTEM: str = "recolorado"  # OData OriginatingSystemName — VERIFY exact value/casing
+    RESO_PAGE_SIZE: int = 200  # $top per page — VERIFY MLS Grid cap
+    RESO_MAX_PAGES: int = 50  # pagination safety cap; crash-safe (cursor advances per page)
+    LISTINGS_SYNC_ENABLED: bool = False  # in-process replication worker
+    LISTINGS_SYNC_INTERVAL_SECONDS: int = 900  # 15 min — VERIFY MLS Grid recommended cadence
 
     # ─── Discovery / lead search (Phase 12) ─────────────────────────────
     # SIMULATED-first: when true (default) returns a curated synthetic set (demo

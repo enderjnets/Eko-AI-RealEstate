@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.34.1";
+export const CURRENT_VERSION = "0.35.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.35.0",
+    date: "2026-07-21",
+    title: {
+      en: "REcolorado (MLS Grid) listings integration — ready to switch on",
+      es: "Integración de listings de REcolorado (MLS Grid) — lista para activar",
+    },
+    changes: [
+      {
+        en: "The listings engine can now replicate real MLS data from REcolorado via MLS Grid's RESO Web API — incremental sync by ModificationTimestamp, @odata.nextLink pagination, status reconciliation (sold/pending homes drop out of buyer matches), and IDX broker attribution (“Cortesía de …”) when a home is shown to a lead.",
+        es: "El motor de listings ya puede replicar datos MLS reales de REcolorado vía el RESO Web API de MLS Grid — sync incremental por ModificationTimestamp, paginación @odata.nextLink, reconciliación de estatus (las casas vendidas/pendientes salen de las coincidencias del comprador) y atribución de broker IDX (“Cortesía de …”) cuando se le muestra una casa a un lead.",
+      },
+      {
+        en: "A background worker (off by default) keeps the feed fresh on an interval and resumes crash-safely from the last synced page. Switch to real data by setting the RESO credentials and flipping LISTINGS_SIMULATED=false — no code change.",
+        es: "Un worker en segundo plano (apagado por defecto) mantiene el feed actualizado en intervalos y reanuda de forma segura ante fallos desde la última página sincronizada. Se cambia a datos reales configurando las credenciales RESO y poniendo LISTINGS_SIMULATED=false — sin cambios de código.",
+      },
+      {
+        en: "Backend: sync_state table (Alembic 014), a RESO/MLS Grid adapter with retry/backoff, and 24 new tests. No behavior change until a feed is provisioned.",
+        es: "Backend: tabla sync_state (Alembic 014), un adaptador RESO/MLS Grid con reintentos/backoff, y 24 tests nuevos. Sin cambios de comportamiento hasta que se aprovisione un feed.",
+      },
+    ],
+  },
   {
     version: "0.34.1",
     date: "2026-06-05",

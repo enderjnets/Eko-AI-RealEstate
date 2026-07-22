@@ -122,6 +122,12 @@ services:
       LISTINGS_PROVIDER: ${LISTINGS_PROVIDER:-reso}
       RESO_BASE_URL: ${RESO_BASE_URL:-}
       RESO_ACCESS_TOKEN: ${RESO_ACCESS_TOKEN:-}
+      # MLS Grid / REcolorado replication (Phase 7b). Worker OFF until the feed exists.
+      RESO_ORIGINATING_SYSTEM: ${RESO_ORIGINATING_SYSTEM:-recolorado}
+      RESO_PAGE_SIZE: ${RESO_PAGE_SIZE:-200}
+      RESO_MAX_PAGES: ${RESO_MAX_PAGES:-50}
+      LISTINGS_SYNC_ENABLED: ${LISTINGS_SYNC_ENABLED:-false}
+      LISTINGS_SYNC_INTERVAL_SECONDS: ${LISTINGS_SYNC_INTERVAL_SECONDS:-900}
       APP_ENV: ${APP_ENV:-development}
       DEBUG: ${DEBUG:-true}
     ports:
