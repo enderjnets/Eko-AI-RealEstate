@@ -22,6 +22,7 @@ from app.api.v1 import (
     team,
     visits,
 )
+from app.api.v1 import platform as platform_api
 from app.api.v1 import settings as settings_api
 from app.api.v1.auth import require_admin, require_auth
 from app.api.v1.webhooks import email as email_webhook
@@ -199,6 +200,10 @@ app.include_router(visits.leads_calendar_router, prefix="/api/v1", tags=["calend
 app.include_router(visits.visits_router, prefix="/api/v1", tags=["visits"], dependencies=_auth)
 app.include_router(settings_api.router, prefix="/api/v1/settings", tags=["settings"], dependencies=_admin)
 app.include_router(team.router, prefix="/api/v1/team", tags=["team"], dependencies=_admin)
+# Platform operator only — creating/suspending tenants and entering them.
+# Its own require_platform_admin dependency is the gate; _admin would let any
+# client agency's admin in.
+app.include_router(platform_api.router, prefix="/api/v1/platform", tags=["platform"])
 app.include_router(properties.router, prefix="/api/v1/properties", tags=["properties"], dependencies=_auth)
 app.include_router(properties.lead_matches_router, prefix="/api/v1", tags=["properties"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"], dependencies=_auth)
