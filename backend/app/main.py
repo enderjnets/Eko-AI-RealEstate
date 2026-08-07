@@ -94,9 +94,6 @@ class TenantMiddleware:
         await self.app(scope, receive, send)
 
 
-app.add_middleware(TenantMiddleware)
-
-
 @app.middleware("http")
 async def _record_user_activity(request, call_next):
     """Best-effort per-user engagement tracking: after each authenticated request
@@ -127,6 +124,15 @@ async def _record_user_activity(request, call_next):
     except Exception as exc:  # noqa: BLE001 — never break a request for telemetry
         logger.debug("activity middleware skipped: %s", exc)
     return response
+
+
+# Registered LAST on purpose. add_middleware prepends, so the last one added is
+# the OUTERMOST — which is what TenantMiddleware has to be. Registered before
+# _record_user_activity it ended up inside a BaseHTTPMiddleware, whose call_next
+# runs downstream in a separate anyio task; the org bound there never propagated
+# back out, so the activity middleware ran with no org and every insert into
+# user_activity was rejected and swallowed.
+app.add_middleware(TenantMiddleware)
 
 
 # Routers
@@ -162,16 +168,16 @@ _listings_sync_task: asyncio.Task | None = None
 
 async def _followups_loop() -> None:
     """Background worker: periodically send due nurture follow-ups (Phase 10)."""
-    from app.db.base import get_session_factory
     from app.services.followups import process_due_followups
+    from app.services.tenant_context import run_for_every_org
 
     interval = max(30, settings.FOLLOWUPS_INTERVAL_SECONDS)
-    Session = get_session_factory()
     while True:
         try:
             await asyncio.sleep(interval)
-            async with Session() as session:
-                await process_due_followups(session)
+            # Per org, not once globally: a worker with no org bound sees zero
+            # rows under default-deny RLS and would run forever doing nothing.
+            await run_for_every_org(process_due_followups)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -181,16 +187,21 @@ async def _followups_loop() -> None:
 async def _enrichment_loop() -> None:
     """Background worker: enrich discovery leads server-side so it never depends on
     the browser. Backfills leads that predate classification / were skipped on re-import."""
-    from app.db.base import get_session_factory
     from app.services.enrichment import enrich_pending_leads
+    from app.services.tenant_context import run_for_every_org
 
     interval = max(30, settings.ENRICHMENT_INTERVAL_SECONDS)
-    Session = get_session_factory()
+    result: dict | None = None
+
+    async def _enrich_one_org(session) -> None:
+        nonlocal result
+        result = await enrich_pending_leads(session, limit=10)
+
     while True:
         try:
             await asyncio.sleep(interval)
-            async with Session() as session:
-                result = await enrich_pending_leads(session, limit=10)
+            # Per org, for the same reason as the follow-ups worker.
+            await run_for_every_org(_enrich_one_org)
             if result["enriched"]:
                 logger.info("Enrichment worker: enriched %d discovery lead(s)", result["enriched"])
         except asyncio.CancelledError:
@@ -240,21 +251,34 @@ async def _seed_admin_users() -> None:
     to admin if needed. Best-effort — never blocks startup."""
     from sqlalchemy import select
 
-    from app.db.base import get_session_factory
+    from app.db.base import get_bypass_session_factory
     from app.models import AllowedUser
+    from app.models.organization import DEFAULT_ORG_ID
     from app.services.auth import ROLE_ADMIN
 
     pinned = settings.google_admin_emails_list
     if not pinned:
         return
-    Session = get_session_factory()
+    # Bypass: this runs at startup with no request and therefore no org, so an
+    # RLS-enforcing session would find no rows and re-insert a duplicate on
+    # every boot. The failure was invisible — the exception is swallowed by the
+    # caller, so GOOGLE_ADMIN_EMAILS simply never reached the Team list.
+    Session = get_bypass_session_factory()
     async with Session() as session:
         for email in pinned:
             row = (
                 await session.execute(select(AllowedUser).where(AllowedUser.email == email))
             ).scalar_one_or_none()
             if row is None:
-                session.add(AllowedUser(email=email, role=ROLE_ADMIN, added_by="bootstrap"))
+                # org_id explicit: a bypass session skips the before_flush stamp.
+                session.add(
+                    AllowedUser(
+                        email=email,
+                        role=ROLE_ADMIN,
+                        added_by="bootstrap",
+                        org_id=DEFAULT_ORG_ID,
+                    )
+                )
             elif row.role != ROLE_ADMIN:
                 row.role = ROLE_ADMIN
         await session.commit()
@@ -270,6 +294,29 @@ async def _startup() -> None:
         await _seed_admin_users()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Bootstrap admin seed skipped: %s", exc)
+    if not settings.AUTH_ENABLED:
+        from sqlalchemy import func, select
+
+        from app.db.base import get_bypass_session_factory
+        from app.models.organization import Organization
+
+        try:
+            async with get_bypass_session_factory()() as session:
+                org_count = (
+                    await session.execute(select(func.count()).select_from(Organization))
+                ).scalar_one()
+        except Exception as exc:  # noqa: BLE001 — a warning must not block startup
+            logger.debug("org count check skipped: %s", exc)
+            org_count = 0
+        if org_count > 1:
+            logger.warning(
+                "⚠️  AUTH_ENABLED=false with %d organizations. Every unauthenticated "
+                "request resolves to the default org WITH WRITE ACCESS, so the open "
+                "internet can read and modify client agency data. This mode is only "
+                "safe for a single-tenant demo. Set AUTH_ENABLED=true.",
+                org_count,
+            )
+
     if settings.is_production and settings.WHATSAPP_SIMULATED:
         logger.warning(
             "⚠️  WHATSAPP_SIMULATED=true AND APP_ENV=production — outbound messages will only "

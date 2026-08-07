@@ -25,7 +25,6 @@ from app.models import AgentSettings
 
 router = APIRouter()
 
-SINGLETON_ID = 1
 
 
 class SettingsOut(BaseModel):
@@ -60,10 +59,13 @@ class SettingsPatch(BaseModel):
 
 async def _get_or_create(db: AsyncSession) -> AgentSettings:
     row = (
-        await db.execute(select(AgentSettings).where(AgentSettings.id == SINGLETON_ID))
+        await db.execute(select(AgentSettings))
     ).scalar_one_or_none()
     if row is None:
-        row = AgentSettings(id=SINGLETON_ID)
+        # No pinned id: there is one settings row per organization now, and
+        # forcing id=1 made the second tenant collide on the primary key.
+        # org_id is stamped on flush from the acting org.
+        row = AgentSettings()
         db.add(row)
         await db.commit()
         await db.refresh(row)

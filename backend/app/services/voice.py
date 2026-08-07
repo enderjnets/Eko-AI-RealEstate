@@ -183,7 +183,7 @@ async def _office_tz_name(db: AsyncSession) -> str:
     """The office IANA timezone from AgentSettings (singleton), default UTC."""
     from app.models import AgentSettings
 
-    row = await db.execute(select(AgentSettings).where(AgentSettings.id == 1))
+    row = await db.execute(select(AgentSettings))
     cfg = row.scalar_one_or_none()
     return (cfg.timezone if cfg and cfg.timezone else "UTC")
 

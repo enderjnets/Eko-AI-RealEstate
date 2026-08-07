@@ -17,7 +17,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db.base import get_db
+from app.db.base import get_bypass_db
+from app.models.organization import DEFAULT_ORG_ID, DEMO_ORG_ID
 from app.services.auth import (
     COOKIE_NAME,
     ROLE_ADMIN,
@@ -30,6 +31,7 @@ from app.services.auth import (
     hash_password,
     make_token,
     resolve_email_access,
+    resolve_email_org,
     token_role,
     verify_apple_id_token,
     verify_google_id_token,
@@ -162,7 +164,11 @@ async def login(body: LoginIn, response: Response) -> dict[str, bool]:
         return {"ok": True, "auth_enabled": False}
     if not check_password(body.password):
         raise HTTPException(status_code=401, detail="Invalid password")
-    _set_session_cookie(response, make_token(role=ROLE_ADMIN))
+    # The shared password is the operator's master key, not a client agency's,
+    # so it acts for the default org and carries platform superuser rights.
+    _set_session_cookie(
+        response, make_token(role=ROLE_ADMIN, org_id=DEFAULT_ORG_ID, superuser=True)
+    )
     return {"ok": True, "auth_enabled": True}
 
 
@@ -171,7 +177,7 @@ async def login_google(
     body: GoogleLoginIn,
     response: Response,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_bypass_db),
 ) -> dict[str, bool]:
     """Validate a Google ID token (from the @react-oauth/google client), resolve
     the verified email against the access list to a role, and — if allowed —
@@ -185,10 +191,11 @@ async def login_google(
         log.warning("google_signin_failed reason=%s", e)
         raise HTTPException(status_code=401, detail=str(e)) from e
     role = await resolve_email_access(email, db)
+    org_id = await resolve_email_org(email, db)
     if role is None:
         log.warning("google_signin_denied email=%s", email)
         raise HTTPException(status_code=401, detail="email_not_in_allow_list")
-    _set_session_cookie(response, make_token(email=email, role=role))
+    _set_session_cookie(response, make_token(email=email, role=role, org_id=org_id))
     await _safe_record_login(db, email, "google", request)
     return {"ok": True, "auth_enabled": True}
 
@@ -198,7 +205,7 @@ async def login_google_callback(
     request: Request,
     credential: str = Form(...),
     g_csrf_token: str = Form(default=""),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_bypass_db),
 ) -> RedirectResponse:
     """Redirect-mode landing for "Sign in with Google" (`ux_mode=redirect`).
 
@@ -221,11 +228,12 @@ async def login_google_callback(
         log.warning("google_signin_failed reason=%s", e)
         return RedirectResponse("/login?error=google_failed", status_code=303)
     role = await resolve_email_access(email, db)
+    org_id = await resolve_email_org(email, db)
     if role is None:
         log.warning("google_signin_denied email=%s", email)
         return RedirectResponse("/login?error=google_denied", status_code=303)
     resp = RedirectResponse("/leads", status_code=303)
-    _set_session_cookie(resp, make_token(email=email, role=role))
+    _set_session_cookie(resp, make_token(email=email, role=role, org_id=org_id))
     await _safe_record_login(db, email, "google", request)
     return resp
 
@@ -235,7 +243,7 @@ async def login_apple(
     body: AppleLoginIn,
     response: Response,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_bypass_db),
 ) -> dict[str, bool]:
     """Validate an Apple identity token (from the Sign in with Apple JS popup),
     resolve the verified email against the access list to a role, and — if
@@ -249,10 +257,11 @@ async def login_apple(
         log.warning("apple_signin_failed reason=%s", e)
         raise HTTPException(status_code=401, detail=str(e)) from e
     role = await resolve_email_access(email, db)
+    org_id = await resolve_email_org(email, db)
     if role is None:
         log.warning("apple_signin_denied email=%s", email)
         raise HTTPException(status_code=401, detail="email_not_in_allow_list")
-    _set_session_cookie(response, make_token(email=email, role=role))
+    _set_session_cookie(response, make_token(email=email, role=role, org_id=org_id))
     await _safe_record_login(db, email, "apple", request)
     return {"ok": True, "auth_enabled": True}
 
@@ -262,7 +271,7 @@ async def register(
     body: RegisterIn,
     response: Response,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_bypass_db),
 ) -> dict[str, object]:
     """Public self-registration → a read-only ("viewer") demo account.
 
@@ -284,6 +293,9 @@ async def register(
 
     account = Account(
         email=email,
+        # Explicit: this runs on a bypass session (no org bound), so the
+        # before_flush stamp does not fire and the row would have no org.
+        org_id=DEMO_ORG_ID,
         password_hash=hash_password(body.password),
         role=ROLE_VIEWER,
         name=body.name.strip(),
@@ -299,7 +311,9 @@ async def register(
 
     # Sign them in immediately (cookie). When AUTH_ENABLED is false the cookie is
     # simply ignored — the dashboard is already open in that mode.
-    _set_session_cookie(response, make_token(email=email, role=ROLE_VIEWER))
+    _set_session_cookie(
+        response, make_token(email=email, role=ROLE_VIEWER, org_id=DEMO_ORG_ID)
+    )
     await _safe_record_login(db, email, "account", request)
     return {"ok": True, "role": ROLE_VIEWER, "auth_enabled": get_settings().AUTH_ENABLED}
 
@@ -309,7 +323,7 @@ async def login_account(
     body: AccountLoginIn,
     response: Response,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_bypass_db),
 ) -> dict[str, object]:
     """Email + password login for a self-registered (viewer/member) account."""
     from app.models import Account
@@ -320,7 +334,16 @@ async def login_account(
     ).scalar_one_or_none()
     if account is None or not verify_password(body.password, account.password_hash):
         raise HTTPException(status_code=401, detail="invalid_credentials")
-    _set_session_cookie(response, make_token(email=email, role=account.role or ROLE_VIEWER))
+    # account.org_id was loaded with the row above; ignoring it was how every
+    # self-registered user ended up acting for the default organization.
+    _set_session_cookie(
+        response,
+        make_token(
+            email=email,
+            role=account.role or ROLE_VIEWER,
+            org_id=account.org_id or DEMO_ORG_ID,
+        ),
+    )
     await _safe_record_login(db, email, "account", request)
     return {"ok": True, "role": account.role or ROLE_VIEWER, "auth_enabled": get_settings().AUTH_ENABLED}
 

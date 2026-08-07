@@ -136,7 +136,7 @@ async def _get_lead_or_404(lead_id: int, db: AsyncSession) -> Lead:
 
 async def _office_tz(db: AsyncSession) -> str:
     """The office IANA timezone from AgentSettings (singleton), default UTC."""
-    cfg = (await db.execute(select(AgentSettings).where(AgentSettings.id == 1))).scalar_one_or_none()
+    cfg = (await db.execute(select(AgentSettings))).scalar_one_or_none()
     return (cfg.timezone if cfg and cfg.timezone else "UTC")
 
 

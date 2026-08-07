@@ -69,14 +69,14 @@ def _first_name(lead: Lead) -> str:
 
 
 async def _agency_name(db: AsyncSession) -> str:
-    cfg = (await db.execute(select(AgentSettings).where(AgentSettings.id == 1))).scalar_one_or_none()
+    cfg = (await db.execute(select(AgentSettings))).scalar_one_or_none()
     return cfg.agency_name if cfg and cfg.agency_name else "the team"
 
 
 async def _lead_language(lead: Lead, db: AsyncSession) -> str:
     """Best-effort language for nurture text: from the lead's last inbound, else
     the agency's primary supported language."""
-    cfg = (await db.execute(select(AgentSettings).where(AgentSettings.id == 1))).scalar_one_or_none()
+    cfg = (await db.execute(select(AgentSettings))).scalar_one_or_none()
     supported = (cfg.languages if cfg else ["en"]) or ["en"]
     last_in = (
         await db.execute(

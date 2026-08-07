@@ -12,6 +12,9 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.organization import DEFAULT_ORG_ID
+from app.services.tenant_context import get_org_id
+
 log = logging.getLogger(__name__)
 
 # First path segment after /api/v1/ → the dashboard section it belongs to.
@@ -88,7 +91,17 @@ async def _get_or_create(db: AsyncSession, email: str, source: str | None):
     ).scalar_one_or_none()
     if row is None:
         now = datetime.now(UTC)
-        row = UserActivity(email=email, source=source, first_seen=now, last_seen=now, sections={})
+        # org_id explicit rather than relying on the before_flush stamp: this
+        # also runs from the login endpoints, which use a bypass session (there
+        # is no org bound until the user is identified) and so are not stamped.
+        row = UserActivity(
+            email=email,
+            source=source,
+            first_seen=now,
+            last_seen=now,
+            sections={},
+            org_id=get_org_id() or DEFAULT_ORG_ID,
+        )
         db.add(row)
         await db.flush()
     elif source and not row.source:

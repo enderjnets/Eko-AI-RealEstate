@@ -16,8 +16,9 @@ workers (which sweep every org). They do it through the bypass engine in
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from contextvars import ContextVar
+from typing import Any
 
 _current_org_id: ContextVar[int | None] = ContextVar("current_org_id", default=None)
 
@@ -28,6 +29,41 @@ def get_org_id() -> int | None:
 
 def set_org_id(org_id: int | None) -> None:
     _current_org_id.set(org_id)
+
+
+async def run_for_every_org(work: "Callable[[Any], Awaitable[None]]") -> None:
+    """Run `work(session)` once per active organization, each in its own scope.
+
+    Background workers have no request and therefore no org, and under
+    default-deny RLS that means they see nothing at all — they do not crash,
+    they quietly process zero rows forever. This walks the tenants explicitly so
+    the silence is impossible.
+
+    The org list is read on the bypass engine (there is no org to read it as);
+    the work itself runs on the normal RLS-enforcing session, so a worker still
+    cannot touch a tenant it was not invoked for.
+    """
+    from sqlalchemy import select
+
+    from app.db.base import get_bypass_session_factory, get_session_factory
+    from app.models.organization import STATUS_SUSPENDED, Organization
+
+    async with get_bypass_session_factory()() as meta:
+        org_ids = list(
+            (
+                await meta.execute(
+                    select(Organization.id).where(Organization.status != STATUS_SUSPENDED)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    session_factory = get_session_factory()
+    for org_id in org_ids:
+        with org_scope(org_id):
+            async with session_factory() as session:
+                await work(session)
 
 
 @contextlib.contextmanager

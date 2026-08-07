@@ -315,7 +315,7 @@ async def generate_reply_suggestions(
     ]
 
     # Language steering from the latest inbound.
-    settings_row = await db.execute(select(AgentSettings).where(AgentSettings.id == 1))
+    settings_row = await db.execute(select(AgentSettings))
     agent_cfg = settings_row.scalar_one_or_none()
     supported = (agent_cfg.languages if agent_cfg else ["en", "es"]) or ["en", "es"]
     last_user_content = next(
@@ -640,7 +640,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # ── 7. Language detection + intent classification ─────────────────
     # Detect on the latest inbound only (avoid letting historical AI replies
     # bias the result). Pick the closest supported language from agent settings.
-    settings_row_pre = await db.execute(select(AgentSettings).where(AgentSettings.id == 1))
+    settings_row_pre = await db.execute(select(AgentSettings))
     agent_cfg = settings_row_pre.scalar_one_or_none()
     supported_languages = (agent_cfg.languages if agent_cfg else ["en", "es"]) or ["en", "es"]
     detected_lang = detect_language(parsed.content)

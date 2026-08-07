@@ -71,9 +71,32 @@ def _b64d(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
 
+class InsecureAuthConfig(RuntimeError):
+    """Auth is on but nothing secret is configured to sign sessions with."""
+
+
 def _secret() -> bytes:
     s = get_settings()
-    material = s.AUTH_SECRET or f"eko-auth::{s.DASHBOARD_PASSWORD}"
+    material = s.AUTH_SECRET or (
+        f"eko-auth::{s.DASHBOARD_PASSWORD}" if s.DASHBOARD_PASSWORD else ""
+    )
+    if not material:
+        # With both unset the key used to be sha256("eko-auth::") — a constant
+        # anyone can derive from this repository, so a session token could be
+        # forged naming any role AND any organization, which under multi-tenancy
+        # means reading any client agency's data. Reachable in the documented
+        # Google-Sign-In-only setup, where an operator has no reason to set
+        # DASHBOARD_PASSWORD. Refusing is the only safe answer; the installer
+        # already generates a random AUTH_SECRET.
+        if s.AUTH_ENABLED:
+            raise InsecureAuthConfig(
+                "AUTH_ENABLED is true but neither AUTH_SECRET nor DASHBOARD_PASSWORD "
+                "is set — session tokens would be signed with a key published in "
+                "this repository. Set AUTH_SECRET to a random value."
+            )
+        # Auth off: tokens are not a security boundary anyway (require_auth is a
+        # no-op), so a fixed dev key is fine and keeps local work frictionless.
+        material = "eko-auth::insecure-dev-only"
     return hashlib.sha256(material.encode("utf-8")).digest()
 
 
@@ -216,6 +239,30 @@ def verify_google_id_token(id_token_str: str) -> str:
     if not email:
         raise GoogleAuthError("missing_email")
     return email
+
+
+async def resolve_email_org(email: str, db: AsyncSession) -> int | None:
+    """Which organization a verified email belongs to, or None if it has no row.
+
+    Split from resolve_email_access so the caller gets both facts without a
+    second query shape to keep in sync. Env-based bootstrap admins
+    (GOOGLE_ADMIN_EMAILS) and domain allow-lists have no row and therefore no
+    org of their own, so they land in the default org — they are the operator's
+    own accounts, not a client agency's.
+
+    MUST be called on a bypass session: at login time there is no org bound yet,
+    so an RLS-enforcing session would find nobody and deny every sign-in.
+    """
+    from app.models import AllowedUser
+    from app.models.organization import DEFAULT_ORG_ID
+
+    email = (email or "").lower().strip()
+    if not email:
+        return None
+    row = (
+        await db.execute(select(AllowedUser).where(AllowedUser.email == email))
+    ).scalar_one_or_none()
+    return row.org_id if row is not None else DEFAULT_ORG_ID
 
 
 async def resolve_email_access(email: str, db: AsyncSession) -> str | None:
