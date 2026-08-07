@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.36.0";
+export const CURRENT_VERSION = "0.37.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.37.0",
+    date: "2026-08-06",
+    title: {
+      en: "Each agency now has its own separate workspace",
+      es: "Cada agencia tiene ahora su propio espacio separado",
+    },
+    changes: [
+      {
+        en: "Eko AI Realtors now hosts multiple agencies in one installation. Every agency is a separate organization: its leads, conversations, visits and settings are visible only to its own members.",
+        es: "Eko AI Realtors aloja ahora varias agencias en una sola instalación. Cada agencia es una organización aparte: sus leads, conversaciones, visitas y ajustes solo los ven sus propios miembros.",
+      },
+      {
+        en: "Separation is enforced by the database itself, not by the application. A query that forgets to filter returns nothing rather than another agency's data.",
+        es: "La separación la impone la propia base de datos, no la aplicación. Una consulta que olvide filtrar devuelve nada, no los datos de otra agencia.",
+      },
+      {
+        en: "Fixed an error handler in the WhatsApp webhook that crashed while reporting a failure, hiding the original cause.",
+        es: "Corregido un manejador de errores del webhook de WhatsApp que fallaba al reportar un fallo y ocultaba la causa original.",
+      },
+    ],
+  },
   {
     version: "0.36.0",
     date: "2026-07-31",

@@ -2,6 +2,41 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.37.0] — 2026-08-06
+
+### Multi-tenant: one installation, many client agencies
+
+The product stops being one deploy per agency and becomes the mother system.
+Each client is an `Organization`; `properties` and `sync_state` stay shared
+because there is a single REcolorado feed behind one Software Vendor account.
+
+Isolation is enforced by Postgres, not by application discipline:
+
+- `FORCE ROW LEVEL SECURITY` on all nine tenant tables — without FORCE the table
+  owner ignores policies silently.
+- The request path connects as `eko_app`, a role without `BYPASSRLS`
+  (`DATABASE_URL_APP`). Postgres superusers bypass RLS even with FORCE, so
+  connecting as the owner would leave every isolation test green while isolating
+  nothing. `DATABASE_URL` remains for migrations, login and the workers.
+- Default-deny: an unset org resolves to `NULL`, and `org_id = NULL` is never
+  true, so a forgotten scope returns zero rows instead of everyone's.
+- `WITH CHECK` alongside `USING`, since `USING` alone still permits writing into
+  another organization.
+
+`TenantMiddleware` is raw ASGI rather than `@app.middleware("http")`: Starlette's
+`BaseHTTPMiddleware` runs the endpoint in a separate anyio task, so a ContextVar
+set before `call_next` never reaches it.
+
+`test_tenant_isolation.py` is verified by mutation — five of its seven cases fail
+when the app is pointed at a superuser, so it detects the failure mode instead of
+asserting that a policy exists.
+
+### Fixed
+
+- The WhatsApp webhook's error handler referenced `parsed.wa_message_id`, which
+  does not exist on `ParsedMessage`. It only ran when the try block raised, so it
+  had never fired — and when it did, it masked the real exception.
+
 ## [0.36.0] — 2026-07-31
 
 ### REcolorado / MLS Grid replication aligned with the official docs

@@ -6,8 +6,20 @@
 ## What this is
 
 **Eko AI Realtors** is the **customer-facing product** sold to real-estate
-agencies (target: 2–10 person offices in Spain / EU / LATAM). It runs on the
-customer's own hardware (or their own VPS) and provides:
+agencies. Since 2026-08-06 it is a **multi-tenant mother system**: one
+installation we operate, with each client agency as an `Organization` inside it.
+The Phase 6 single-customer installer (`scripts/install.sh`) is legacy — kept,
+not deleted, because `org_id` is present everywhere and a dedicated deployment is
+simply an install with one org.
+
+Isolation between agencies is enforced by **Postgres row-level security**, not by
+remembering to filter. Read `backend/app/db/base.py` and
+`backend/tests/test_tenant_isolation.py` before touching any query: the app
+connects as a role *without* `BYPASSRLS` on purpose, and pointing
+`DATABASE_URL_APP` at the owner would make every isolation test pass while
+isolating nothing.
+
+It provides:
 
 1. A **WhatsApp 24/7 agent** that answers inbound leads in Spanish.
 2. **Lead capture + intent classification** (`rent | buy | valuation`) into a
@@ -138,6 +150,14 @@ when an AI session helped write it.
 - **Async sessions**: use `get_db()` dep from `backend/app/db/base.py`.
   `expire_on_commit=False` is intentional — needed for FastAPI response
   serialization after commit.
+- **Multi-tenancy**: every tenant-owned table carries `org_id` and is covered by
+  an RLS policy. New models that belong to an agency MUST add `org_id` and get a
+  policy in a migration, or they will be readable by every tenant. `properties`
+  and `sync_state` are deliberately shared (one REcolorado feed as Software
+  Vendor). Do not reach for `get_bypass_session_factory()` to make a query
+  "work" — it removes the tenant boundary for that query. It exists only for
+  login (which resolves the org), the background workers (which sweep all orgs)
+  and the superuser panel.
 
 ### LLM
 - All LLM calls go through `app/services/llm.py:generate_reply()`. Do not
