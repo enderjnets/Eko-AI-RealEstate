@@ -180,9 +180,10 @@ second tenant, map its Twilio number, WhatsApp `phone_number_id` and mailbox —
 an unmapped destination is refused with 503 rather than filed under the wrong
 agency, and `webhook_org_or_refuse` is the single place that decides.
 
-SMS, WhatsApp and email are wired. **Voice is not**: VAPI has no provider
-account yet, so it still falls back to the single-tenant path and refuses when
-two tenants exist.
+All four channels are wired: SMS, WhatsApp, email and voice. Voice's
+extractor is **not verified against a live VAPI account** (there is none), so it
+returns None on any shape it does not recognise — which makes the caller fall
+back or refuse rather than guess an organization.
 
 ### LLM
 - All LLM calls go through `app/services/llm.py:generate_reply()`. Do not

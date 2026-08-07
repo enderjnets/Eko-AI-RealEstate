@@ -16,11 +16,15 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.base import get_db
+from app.models.channel_route import CHANNEL_VOICE
 from app.services.conversation import ingest_voice_call
+from app.services.tenant_context import set_org_id
+from app.services.tenant_resolver import WebhookOrgUnresolved, webhook_org_or_refuse
 from app.services.voice import handle_tool_call, parse_end_of_call_report, verify_vapi_secret
 
 log = logging.getLogger(__name__)
@@ -30,6 +34,26 @@ router = APIRouter()
 def _message(payload: dict[str, Any]) -> dict[str, Any]:
     inner = payload.get("message")
     return inner if isinstance(inner, dict) else payload
+
+
+def _dialled_number(msg: dict[str, Any]) -> str | None:
+    """The agency's own VAPI number that was called.
+
+    VAPI nests it as call.phoneNumber.number, with call.phoneNumberId as the
+    stable id. NOT verified against a live VAPI account — there is none yet — so
+    it is written to return None on any shape it does not recognise, which makes
+    the caller fall back or refuse rather than guess an organization.
+    """
+    call = msg.get("call") if isinstance(msg.get("call"), dict) else {}
+    number = call.get("phoneNumber") or msg.get("phoneNumber")
+    if isinstance(number, dict):
+        found = number.get("number") or number.get("id")
+        if found:
+            return str(found).strip() or None
+    if isinstance(number, str) and number.strip():
+        return number.strip()
+    pid = call.get("phoneNumberId") or msg.get("phoneNumberId")
+    return str(pid).strip() or None if pid else None
 
 
 def _customer_number(msg: dict[str, Any]) -> str | None:
@@ -82,6 +106,16 @@ async def voice_inbound(request: Request, db: AsyncSession = Depends(get_db)) ->
 
     msg = _message(payload)
     mtype = msg.get("type")
+
+    # Which agency's VAPI number was called. Same defensive shape as
+    # _customer_number: if the field is absent this returns None and the caller
+    # falls back to the single-tenant path or refuses, so voice is never the one
+    # channel that silently misfiles.
+    try:
+        set_org_id(await webhook_org_or_refuse(CHANNEL_VOICE, _dialled_number(msg)))
+    except WebhookOrgUnresolved as exc:
+        log.error("refusing inbound call — %s", exc)
+        return JSONResponse({"status": "unrouted"}, status_code=503)
 
     # ── Tool calls — answer synchronously so the assistant can speak the result ──
     if mtype == "tool-calls":

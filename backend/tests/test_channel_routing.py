@@ -214,3 +214,111 @@ async def test_whatsapp_and_email_route_by_their_own_destination() -> None:
         assert await resolve_org_by_destination(CHANNEL_EMAIL, "109988776655") is None
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_voice_routes_by_the_dialled_number() -> None:
+    """Voice was the last channel on a different code path. A channel that is
+    special is a channel that silently misfiles, so it uses the same defensive
+    extractor: unknown shape → None → fall back or refuse, never guess."""
+    from app.api.v1.webhooks.voice import _dialled_number
+    from app.models.channel_route import CHANNEL_VOICE
+
+    assert _dialled_number({"call": {"phoneNumber": {"number": "+15553330000"}}}) == (
+        "+15553330000"
+    )
+    assert _dialled_number({"call": {"phoneNumberId": "pn_abc123"}}) == "pn_abc123"
+    assert _dialled_number({"phoneNumber": "+15553330000"}) == "+15553330000"
+    # The shape the fixtures actually carry has no destination at all.
+    assert _dialled_number({"call": {"customer": {"number": "+1555999"}}}) is None
+    assert _dialled_number({}) is None
+
+    org_a, _ = await _seed_two_agencies()
+    try:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text(
+                    "INSERT INTO channel_routes (org_id, channel, destination) "
+                    "VALUES (:o, :c, :d)"
+                ),
+                {
+                    "o": org_a,
+                    "c": CHANNEL_VOICE,
+                    "d": normalize_destination("+15553330000"),
+                },
+            )
+            await db.commit()
+        tenant_resolver.reset_cache()
+        assert (
+            await resolve_org_by_destination(CHANNEL_VOICE, "+1 (555) 333-0000") == org_a
+        )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_call_lands_in_the_agency_that_was_dialled() -> None:
+    """End to end, because the isolated extractor test passed against a mutation
+    that made the handler read the CALLER instead of the dialled number — the
+    same declared-but-not-consumed shape this codebase keeps hitting. Only a
+    two-agency round trip can tell the difference."""
+    from app.models.channel_route import CHANNEL_VOICE
+
+    org_a, org_b = await _seed_two_agencies()
+    caller = "+15557770009"
+    try:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text(
+                    "INSERT INTO channel_routes (org_id, channel, destination) "
+                    "VALUES (:o, :c, :d)"
+                ),
+                # Agency B owns the dialled number...
+                {"o": org_b, "c": CHANNEL_VOICE, "d": normalize_destination(AGENCY_B_NUMBER)},
+            )
+            # ...while the CALLER's number is agency A's SMS route, so reading
+            # the wrong field sends the call to agency A.
+            await db.execute(
+                text(
+                    "INSERT INTO channel_routes (org_id, channel, destination) "
+                    "VALUES (:o, :c, :d)"
+                ),
+                {"o": org_a, "c": CHANNEL_VOICE, "d": normalize_destination(caller)},
+            )
+            await db.commit()
+        tenant_resolver.reset_cache()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            resp = await c.post(
+                "/api/v1/webhooks/voice",
+                json={
+                    "message": {
+                        "type": "end-of-call-report",
+                        "call": {
+                            "id": "call_routing_probe",
+                            "customer": {"number": caller},
+                            "phoneNumber": {"number": AGENCY_B_NUMBER},
+                        },
+                        "artifact": {"messages": []},
+                    }
+                },
+            )
+            assert resp.status_code == 200, resp.text
+
+        async with get_bypass_session_factory()() as db:
+            org_of_lead = (
+                await db.execute(
+                    text("SELECT org_id FROM leads WHERE phone = :p"), {"p": caller}
+                )
+            ).scalar_one_or_none()
+        assert org_of_lead == org_b, (
+            f"call to agency B's number landed in org {org_of_lead}, not {org_b} — "
+            "the handler is reading the caller, not the dialled number"
+        )
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(text("DELETE FROM leads WHERE phone = :p"), {"p": caller})
+            await db.commit()
+        await _cleanup()
