@@ -116,10 +116,24 @@ def _business_number(payload: dict) -> str | None:
     number porting, which is exactly when a routing lookup must not start
     missing.
     """
+    found: set[str] = set()
     for entry in payload.get("entry", []) or []:
         for change in entry.get("changes", []) or []:
             meta = (change.get("value") or {}).get("metadata") or {}
-            found = meta.get("phone_number_id") or meta.get("display_phone_number")
-            if found:
-                return str(found)
+            value = meta.get("phone_number_id") or meta.get("display_phone_number")
+            if value:
+                found.add(str(value))
+    if len(found) == 1:
+        return found.pop()
+    # Zero, or more than one. Meta batches entries per app delivery, and one app
+    # serving two WhatsApp Business accounts is the documented multi-tenant
+    # setup — so a single envelope really can carry two agencies. Returning the
+    # first one filed BOTH under it. None makes the caller refuse instead.
+    if found:
+        log.error(
+            "WhatsApp envelope carries %d business numbers (%s); refusing rather "
+            "than filing them all under the first",
+            len(found),
+            sorted(found),
+        )
     return None

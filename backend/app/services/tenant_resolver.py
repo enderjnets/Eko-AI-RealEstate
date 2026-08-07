@@ -80,6 +80,19 @@ async def resolve_org_for_request(path: str, token: str | None) -> int | None:
     from app.config import get_settings
     from app.services.auth import token_org_id
 
+    if path.startswith(WEBHOOK_PREFIX):
+        # Inbound messages are attributed by DESTINATION, which lives in the
+        # request body — and this layer cannot read it. So it returns no org and
+        # the handler decides, via webhook_org_or_refuse, before any write.
+        #
+        # This used to call a path-only resolver that raised as soon as a second
+        # organization existed. That ran BEFORE the handler, so with auth on and
+        # two tenants every webhook 503'd no matter how well channel_routes was
+        # configured — the routing feature was unreachable in exactly the
+        # configuration it was built for. Under default-deny RLS, returning None
+        # here is safe: a handler that forgot to bind an org writes nothing.
+        return None
+
     if token:
         org_id = token_org_id(token)
         if org_id is not None:
@@ -91,9 +104,6 @@ async def resolve_org_for_request(path: str, token: str | None) -> int | None:
         # rather than on "no token": in a real deployment an unauthenticated
         # request must resolve to no org at all, never to somebody's data.
         return DEFAULT_ORG_ID
-
-    if path.startswith(WEBHOOK_PREFIX):
-        return await _resolve_webhook_org(path)
 
     return None
 
@@ -134,11 +144,22 @@ async def webhook_org_or_refuse(channel: str, destination: str | None) -> int:
     single-tenant fallback applies only when there is genuinely nothing to
     confuse it with.
     """
+    orgs = await active_orgs()
+
     routed = await resolve_org_by_destination(channel, destination)
     if routed is not None:
+        # Status is checked on the ROUTED branch too. It used to be checked only
+        # on the fallback below, so a suspended agency kept receiving inbound
+        # messages and getting rows written into it — suspension has to stop the
+        # product working for them, not just stop their background sweeps.
+        status = orgs.get(routed)
+        if status is None or status == "suspended":
+            raise WebhookOrgUnresolved(
+                f"{channel} destination {destination!r} belongs to organization "
+                f"{routed}, which is {status or 'no longer present'}"
+            )
         return routed
 
-    orgs = await active_orgs()
     candidates = [
         org_id
         for org_id, status in orgs.items()

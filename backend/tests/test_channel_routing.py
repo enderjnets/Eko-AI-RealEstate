@@ -322,3 +322,83 @@ async def test_a_call_lands_in_the_agency_that_was_dialled() -> None:
             await db.execute(text("DELETE FROM leads WHERE phone = :p"), {"p": caller})
             await db.commit()
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_routing_works_with_auth_on_which_is_production(monkeypatch) -> None:
+    """The configuration that actually ships.
+
+    An independent audit found every webhook 503'd with AUTH_ENABLED=true and
+    two tenants, no matter how well channel_routes was configured: the
+    middleware resolved webhooks by PATH before the handler could look at the
+    destination, and raised as soon as a second org existed. So the whole
+    routing feature was dead in production.
+
+    The suite missed it because it runs at the default AUTH_ENABLED=false, where
+    an early return skips that branch entirely. This test turns auth on and goes
+    through HTTP, which is the only combination that would have caught it.
+    """
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "AUTH_ENABLED", True)
+    monkeypatch.setattr(get_settings(), "AUTH_SECRET", "routing-prod-secret")
+
+    org_a, org_b = await _seed_two_agencies()
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            resp = await c.post(
+                "/api/v1/webhooks/sms",
+                data={
+                    "From": "+15557770011",
+                    "To": AGENCY_B_NUMBER,
+                    "Body": "hola",
+                    "MessageSid": "SMprodauth",
+                },
+            )
+        assert resp.status_code == 200, (
+            f"routing is unreachable with auth on: {resp.status_code}"
+        )
+
+        async with get_bypass_session_factory()() as db:
+            org_of_lead = (
+                await db.execute(
+                    text("SELECT org_id FROM leads WHERE phone = :p"),
+                    {"p": "+15557770011"},
+                )
+            ).scalar_one_or_none()
+        assert org_of_lead == org_b, f"landed in org {org_of_lead}, expected {org_b}"
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM leads WHERE phone = '+15557770011'")
+            )
+            await db.commit()
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_suspended_agency_stops_receiving_inbound(monkeypatch) -> None:
+    """Status was checked only on the fallback branch, so a routed destination
+    kept delivering into a suspended agency. Suspension has to stop the product
+    working for them, not just stop their background sweeps."""
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "AUTH_ENABLED", True)
+    monkeypatch.setattr(get_settings(), "AUTH_SECRET", "routing-prod-secret")
+
+    _, org_b = await _seed_two_agencies()
+    try:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE organizations SET status='suspended' WHERE id = :i"),
+                {"i": org_b},
+            )
+            await db.commit()
+        tenant_resolver.reset_cache()
+
+        with pytest.raises(tenant_resolver.WebhookOrgUnresolved):
+            await tenant_resolver.webhook_org_or_refuse(CHANNEL_SMS, AGENCY_B_NUMBER)
+    finally:
+        await _cleanup()

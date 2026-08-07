@@ -20,8 +20,16 @@ from app.services.auth import COOKIE_NAME, make_token
 SLUG = "audit-test-agency"
 
 
-def _client(org_id: int) -> AsyncClient:
-    token = make_token(email=f"admin{org_id}@x.test", role="admin", org_id=org_id)
+def _client(org_id: int, *, superuser: bool = False) -> AsyncClient:
+    """`superuser` is explicit on purpose.
+
+    Deriving it from `org_id == DEFAULT_ORG_ID` is exactly the defect these
+    routes shipped with: the default org is a real client agency, so its own
+    admins inherited platform rights, and so did the shared office password.
+    """
+    token = make_token(
+        email=f"admin{org_id}@x.test", role="admin", org_id=org_id, superuser=superuser
+    )
     return AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
@@ -58,7 +66,7 @@ async def test_a_client_agency_admin_cannot_reach_the_platform() -> None:
     an unknown organization and the assertion passed even with the wrong gate —
     caught by mutating require_platform_admin back to require_admin.
     """
-    async with _client(org_id=DEFAULT_ORG_ID) as operator:
+    async with _client(org_id=DEFAULT_ORG_ID, superuser=True) as operator:
         created = await operator.post(
             "/api/v1/platform/organizations",
             json={"name": "Audit Test Agency", "slug": SLUG},
@@ -82,7 +90,7 @@ async def test_a_client_agency_admin_cannot_reach_the_platform() -> None:
 @pytest.mark.asyncio
 async def test_operator_creates_and_suspends_a_tenant() -> None:
     try:
-        async with _client(org_id=DEFAULT_ORG_ID) as c:
+        async with _client(org_id=DEFAULT_ORG_ID, superuser=True) as c:
             created = await c.post(
                 "/api/v1/platform/organizations",
                 json={"name": "Audit Test Agency", "slug": SLUG},
@@ -120,7 +128,7 @@ async def test_impersonation_is_recorded_before_the_cookie_is_issued() -> None:
     """An operator who can read every tenant must leave a trail; otherwise there
     is no answer to 'who looked at our data?'."""
     try:
-        async with _client(org_id=DEFAULT_ORG_ID) as c:
+        async with _client(org_id=DEFAULT_ORG_ID, superuser=True) as c:
             created = await c.post(
                 "/api/v1/platform/organizations",
                 json={"name": "Audit Test Agency", "slug": SLUG},
@@ -149,7 +157,7 @@ async def test_impersonation_is_recorded_before_the_cookie_is_issued() -> None:
 
 @pytest.mark.asyncio
 async def test_impersonating_a_missing_org_is_404_not_a_usable_session() -> None:
-    async with _client(org_id=DEFAULT_ORG_ID) as c:
+    async with _client(org_id=DEFAULT_ORG_ID, superuser=True) as c:
         resp = await c.post("/api/v1/platform/impersonate/424242")
     assert resp.status_code == 404
     assert COOKIE_NAME not in resp.cookies
@@ -171,7 +179,7 @@ async def test_onboarding_a_client_end_to_end() -> None:
     agency_number = "+15558880000"
     admin_email = "owner@newagency.test"
     try:
-        async with _client(org_id=DEFAULT_ORG_ID) as operator:
+        async with _client(org_id=DEFAULT_ORG_ID, superuser=True) as operator:
             created = await operator.post(
                 "/api/v1/platform/organizations",
                 json={"name": "Audit Test Agency", "slug": SLUG},
@@ -229,3 +237,45 @@ async def test_onboarding_a_client_end_to_end() -> None:
             )
             await db.commit()
         tenant_resolver.reset_cache()
+
+
+@pytest.mark.asyncio
+async def test_being_an_admin_of_the_default_org_is_not_platform_access() -> None:
+    """The critical defect an independent audit found: `require_platform_admin`
+    was defined as "admin whose token names the default org", and the shared
+    office password minted exactly that — so the password was a platform key,
+    and the default org's own admins (it is a real client agency, slug
+    `client-zero`) inherited the same rights. Platform access is now its own
+    claim, carried only by the operator password.
+    """
+    async with _client(org_id=DEFAULT_ORG_ID) as agency_admin_of_org_one:
+        resp = await agency_admin_of_org_one.get("/api/v1/platform/organizations")
+        assert resp.status_code == 403, (
+            "an admin of the default org reached the platform routes without the "
+            "superuser claim"
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_token_with_no_org_claim_is_not_a_platform_key() -> None:
+    """Sessions minted before multi-tenancy carry no `org`, and token_org_id
+    resolves those to the default org for continuity. That must not also hand
+    them platform access for the rest of their TTL."""
+    import hashlib
+    import hmac
+    import json
+    import time
+
+    from app.services.auth import _SUBJECT, _b64e, _secret
+
+    payload = {"sub": _SUBJECT, "exp": int(time.time()) + 3600, "role": "admin"}
+    b64 = _b64e(json.dumps(payload, separators=(",", ":")).encode())
+    sig = _b64e(hmac.new(_secret(), b64.encode("ascii"), hashlib.sha256).digest())
+    legacy = f"{b64}.{sig}"
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        cookies={COOKIE_NAME: legacy},
+    ) as c:
+        assert (await c.get("/api/v1/platform/organizations")).status_code == 403

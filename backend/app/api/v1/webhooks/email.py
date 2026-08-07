@@ -118,9 +118,25 @@ def _mailbox(payload: dict) -> str | None:
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, dict):
         return None
-    to = data.get("to")
-    if isinstance(to, list) and to:
-        return str(to[0])
-    if isinstance(to, str) and to:
-        return to
-    return data.get("recipient")
+    for candidate in (data.get("to"), data.get("recipient")):
+        if isinstance(candidate, str) and candidate.strip():
+            return _address_only(candidate)
+        if isinstance(candidate, list):
+            for item in candidate:
+                # Resend can deliver dicts, and the agency's own address is not
+                # always first when a lead CCs several people.
+                addr = item.get("email") if isinstance(item, dict) else item
+                if isinstance(addr, str) and addr.strip():
+                    return _address_only(addr)
+    return None
+
+
+def _address_only(value: str) -> str:
+    """Strip a display name: `Agency A <a@x.com>` -> `a@x.com`.
+
+    Senders and providers both add these, and a lookup that kept the name never
+    matched a stored route — turning a routable message into a refusal.
+    """
+    if "<" in value and ">" in value:
+        return value[value.rindex("<") + 1 : value.rindex(">")].strip()
+    return value.strip()

@@ -120,6 +120,7 @@ def make_token(
     role: str = ROLE_ADMIN,
     ttl_hours: int | None = None,
     org_id: int | None = None,
+    superuser: bool = False,
 ) -> str:
     """Mint a signed session token carrying identity (email) + role.
 
@@ -136,6 +137,12 @@ def make_token(
     # instead of logging everyone out.
     if org_id is not None:
         payload["org"] = org_id
+    # Platform-operator marker. Deliberately its OWN claim rather than
+    # "is an admin of the default org": that collapsed the platform boundary
+    # into a tenant boundary, and since the default org is a real client
+    # agency, its own admins became platform operators.
+    if superuser:
+        payload["su"] = True
     payload_b64 = _b64e(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     sig = _b64e(hmac.new(_secret(), payload_b64.encode("ascii"), hashlib.sha256).digest())
     return f"{payload_b64}.{sig}"
@@ -185,6 +192,17 @@ def token_org_id(token: str | None) -> int | None:
         return DEFAULT_ORG_ID if org is None else None
     return org if org > 0 else None
 
+
+
+def token_is_superuser(token: str | None) -> bool:
+    """Whether this session may act across tenants.
+
+    Only the shared operator password mints it. A token without it — every
+    Google/Apple sign-in, and every session issued before multi-tenancy —
+    cannot reach the platform routes no matter which org it names.
+    """
+    data = decode_token(token)
+    return bool(data and data.get('su') is True)
 
 
 def token_role(token: str | None) -> str | None:

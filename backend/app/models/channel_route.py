@@ -37,9 +37,28 @@ def normalize_destination(value: str | None) -> str:
     what stops a routing miss from silently becoming a 503.
     """
     v = (value or "").strip().lower()
+    if not v:
+        return ""
     if "@" in v:
         return v
-    return "".join(ch for ch in v if ch.isdigit())
+
+    # Extensions first: they carry letters (`;ext=`) that would otherwise make
+    # a perfectly ordinary number look like an opaque id.
+    for sep in (";ext=", ";", ",", " x"):
+        if sep in v:
+            v = v.split(sep, 1)[0]
+
+    # A provider id (VAPI phone-number UUID, WhatsApp phone_number_id) is an
+    # opaque token, not a number — reducing it to digits collided distinct ids.
+    # Formatting characters common in phone numbers are not evidence of one.
+    if any(ch.isalpha() or ch == "_" for ch in v):
+        return v.strip()
+
+    digits = "".join(ch for ch in v if ch.isdigit())
+    # 0019995550001, +19995550001 and 19995550001 are one destination.
+    if digits.startswith("00"):
+        digits = digits[2:]
+    return digits
 
 
 class ChannelRoute(Base):

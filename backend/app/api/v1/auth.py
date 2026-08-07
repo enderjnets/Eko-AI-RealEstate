@@ -32,6 +32,7 @@ from app.services.auth import (
     make_token,
     resolve_email_access,
     resolve_email_org,
+    token_is_superuser,
     token_org_id,
     token_role,
     verify_apple_id_token,
@@ -182,10 +183,14 @@ async def login(body: LoginIn, response: Response) -> dict[str, bool]:
         return {"ok": True, "auth_enabled": False}
     if not check_password(body.password):
         raise HTTPException(status_code=401, detail="Invalid password")
-    # The shared password is the operator's master key, not a client agency's,
-    # so it acts for the default org. Platform-superuser rights land in Fase 2,
-    # added together with the code that enforces them rather than ahead of it.
-    _set_session_cookie(response, make_token(role=ROLE_ADMIN, org_id=DEFAULT_ORG_ID))
+    # The shared password is the operator's master key. It carries an explicit
+    # superuser claim; being an admin of the default org is NOT enough, because
+    # that org is a real client agency whose own admins would otherwise inherit
+    # platform rights.
+    _set_session_cookie(
+        response,
+        make_token(role=ROLE_ADMIN, org_id=DEFAULT_ORG_ID, superuser=True),
+    )
     return {"ok": True, "auth_enabled": True}
 
 
@@ -412,5 +417,5 @@ async def require_platform_admin(request: Request) -> None:
     await require_admin(request)
     if not get_settings().AUTH_ENABLED:
         return
-    if token_org_id(_token_from_request(request)) != DEFAULT_ORG_ID:
+    if not token_is_superuser(_token_from_request(request)):
         raise HTTPException(status_code=403, detail="Platform operators only")

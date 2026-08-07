@@ -107,6 +107,19 @@ async def sms_status_callback(request: Request, db: AsyncSession = Depends(get_d
             log.warning("Twilio status callback signature failed (url=%s)", url)
             raise HTTPException(status_code=403, detail="Invalid signature")
 
+    # Delivery callbacks carry no destination — the agency is the one that OWNS
+    # the outbound message, which is what `From` is here. Without this the
+    # handler ran org-less: the lookup found nothing under default-deny RLS,
+    # logged "unknown sid" and returned 200, so carrier failures (A2P 30034 and
+    # friends) never reached any tenant but the default one.
+    try:
+        set_org_id(await webhook_org_or_refuse(CHANNEL_SMS, form.get("From")))
+    except WebhookOrgUnresolved as exc:
+        log.error("refusing SMS status callback — %s", exc)
+        return Response(
+            status_code=503, content=_EMPTY_TWIML, media_type="application/xml"
+        )
+
     sid = form.get("MessageSid") or form.get("SmsSid")
     twilio_status = form.get("MessageStatus") or form.get("SmsStatus") or ""
     error_code = form.get("ErrorCode")

@@ -15,7 +15,7 @@ from app.services import tenant_resolver
 from app.services.auth import make_token
 from app.services.tenant_resolver import (
     WebhookOrgUnresolved,
-    resolve_org_for_request,
+    webhook_org_or_refuse,
 )
 
 WEBHOOK_PATH = "/api/v1/webhooks/sms"
@@ -73,7 +73,7 @@ async def test_inbound_webhook_refuses_rather_than_guessing_the_agency() -> None
     await _make_org(90, "second-agency")
     try:
         with pytest.raises(WebhookOrgUnresolved):
-            await resolve_org_for_request(WEBHOOK_PATH, None)
+            await webhook_org_or_refuse("sms", None)
     finally:
         await _drop_org(90)
 
@@ -81,7 +81,7 @@ async def test_inbound_webhook_refuses_rather_than_guessing_the_agency() -> None
 @pytest.mark.asyncio
 async def test_inbound_webhook_routes_while_there_is_one_real_tenant() -> None:
     """Refusing must not break the single-tenant case that works today."""
-    assert await resolve_org_for_request(WEBHOOK_PATH, None) == DEFAULT_ORG_ID
+    assert await webhook_org_or_refuse("sms", None) == DEFAULT_ORG_ID
 
 
 @pytest.mark.asyncio
@@ -89,7 +89,7 @@ async def test_suspended_org_is_not_routable_for_inbound() -> None:
     await _set_org_status(DEFAULT_ORG_ID, "suspended")
     try:
         with pytest.raises(WebhookOrgUnresolved):
-            await resolve_org_for_request(WEBHOOK_PATH, None)
+            await webhook_org_or_refuse("sms", None)
     finally:
         await _set_org_status(DEFAULT_ORG_ID, "active")
 
@@ -99,7 +99,7 @@ async def test_demo_org_never_receives_inbound_messages() -> None:
     """The demo org exists for /register signups, not to be handed real leads."""
     orgs = await tenant_resolver.active_orgs()
     assert DEMO_ORG_ID in orgs, "demo org missing — the fixture below proves nothing"
-    assert await resolve_org_for_request(WEBHOOK_PATH, None) == DEFAULT_ORG_ID
+    assert await webhook_org_or_refuse("sms", None) == DEFAULT_ORG_ID
 
 
 @pytest.mark.asyncio
@@ -113,8 +113,10 @@ async def test_platform_routes_reject_a_client_agencys_admin() -> None:
 
     from app.api.v1.auth import COOKIE_NAME, require_platform_admin
 
-    def _request_as(org_id: int) -> Request:
-        token = make_token(email="a@x.test", role="admin", org_id=org_id)
+    def _request_as(org_id: int, *, superuser: bool = False) -> Request:
+        token = make_token(
+            email="a@x.test", role="admin", org_id=org_id, superuser=superuser
+        )
         headers = Headers({"cookie": f"{COOKIE_NAME}={token}"})
         return Request({"type": "http", "headers": headers.raw, "method": "GET", "path": "/"})
 
@@ -123,7 +125,14 @@ async def test_platform_routes_reject_a_client_agencys_admin() -> None:
         with pytest.raises(HTTPException) as caught:
             await require_platform_admin(_request_as(91))
         assert caught.value.status_code == 403
-        # The operator still gets through.
-        await require_platform_admin(_request_as(DEFAULT_ORG_ID))
+
+        # And neither does an admin of the DEFAULT org: it is a real client
+        # agency (slug `client-zero`), so naming it cannot be what grants
+        # platform rights. Only the operator's superuser claim does.
+        with pytest.raises(HTTPException) as caught_default:
+            await require_platform_admin(_request_as(DEFAULT_ORG_ID))
+        assert caught_default.value.status_code == 403
+
+        await require_platform_admin(_request_as(DEFAULT_ORG_ID, superuser=True))
     finally:
         await _drop_org(91)
