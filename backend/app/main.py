@@ -50,14 +50,6 @@ app = FastAPI(
     redoc_url=None,
 )
 
-# CORS: dev allows localhost; production tightens via env.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 class TenantMiddleware:
@@ -170,6 +162,21 @@ async def _record_user_activity(request, call_next):
 # back out, so the activity middleware ran with no org and every insert into
 # user_activity was rejected and swallowed.
 app.add_middleware(TenantMiddleware)
+
+# CORS goes on LAST so it ends up OUTSIDE TenantMiddleware. The tenant layer
+# answers some requests itself — 403 for a suspended organization, 503 when an
+# inbound message cannot be attributed — and those short-circuit responses
+# skipped CORS entirely while it was the inner layer. The browser then saw a
+# network error instead of a readable status, so the dashboard could not tell
+# the user their session had ended.
+# CORS: dev allows localhost; production tightens via env.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Routers
