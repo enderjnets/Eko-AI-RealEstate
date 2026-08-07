@@ -98,15 +98,72 @@ async def resolve_org_for_request(path: str, token: str | None) -> int | None:
     return None
 
 
-async def _resolve_webhook_org(path: str) -> int:
-    """Attribute an inbound message to a tenant, or refuse.
+async def resolve_org_by_destination(channel: str, destination: str | None) -> int | None:
+    """The organization that owns an inbound destination, or None if unmapped.
 
-    Routing by destination (which Twilio number, which mailbox) is Fase 3. Until
-    it exists there is exactly one real tenant, so a single candidate is
-    unambiguous. A second one makes every inbound message ambiguous, and the
-    old behaviour — default to org 1 — wrote agency B's leads and their whole
-    conversation transcript into agency A's dashboard while agency B saw
-    nothing and their follow-ups never fired.
+    Read on the bypass session by necessity: this runs *before* any org is
+    bound, which is the whole problem it exists to solve.
+    """
+    from sqlalchemy import select
+
+    from app.db.base import get_bypass_session_factory
+    from app.models.channel_route import ChannelRoute, normalize_destination
+
+    key = normalize_destination(destination)
+    if not key:
+        return None
+    async with get_bypass_session_factory()() as db:
+        return (
+            await db.execute(
+                select(ChannelRoute.org_id).where(
+                    ChannelRoute.channel == channel,
+                    ChannelRoute.destination == key,
+                )
+            )
+        ).scalar_one_or_none()
+
+
+async def webhook_org_or_refuse(channel: str, destination: str | None) -> int:
+    """The agency an inbound message belongs to, or raise.
+
+    The single decision point for every channel, deliberately independent of
+    AUTH_ENABLED. Routing it through `resolve_org_for_request` meant that with
+    auth off — the dev and single-customer default — an unmapped destination
+    silently resolved to the first organization, which is the misfiling this
+    whole mechanism exists to stop. The destination is authoritative; the
+    single-tenant fallback applies only when there is genuinely nothing to
+    confuse it with.
+    """
+    routed = await resolve_org_by_destination(channel, destination)
+    if routed is not None:
+        return routed
+
+    orgs = await active_orgs()
+    candidates = [
+        org_id
+        for org_id, status in orgs.items()
+        if org_id != DEMO_ORG_ID and status != "suspended"
+    ]
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        raise WebhookOrgUnresolved("no active organization can receive inbound messages")
+    raise WebhookOrgUnresolved(
+        f"inbound {channel} to {destination!r} matches no channel_route and "
+        f"{len(candidates)} active organizations exist, so it cannot be "
+        "attributed to one. Map the destination in channel_routes."
+    )
+
+
+async def _resolve_webhook_org(path: str) -> int:
+    """Attribute an inbound message when the destination is not yet known.
+
+    The middleware cannot read the request body, so a webhook that carries its
+    destination inside the payload is resolved by the handler via
+    `resolve_org_by_destination`. This is the fallback for the case the handler
+    cannot cover: with exactly one real tenant there is no ambiguity, and with
+    more there is nothing to guess from — and guessing wrote agency B's leads
+    and their whole conversation transcript into agency A's dashboard.
     """
     orgs = await active_orgs()
     candidates = [
@@ -119,7 +176,7 @@ async def _resolve_webhook_org(path: str) -> int:
     if not candidates:
         raise WebhookOrgUnresolved("no active organization can receive inbound messages")
     raise WebhookOrgUnresolved(
-        f"{len(candidates)} active organizations exist and inbound routing by "
-        f"destination is not built yet, so {path} cannot be attributed to one. "
-        "Refusing rather than filing it under the wrong agency."
+        f"{len(candidates)} active organizations exist and {path} carries no "
+        "destination this layer can read. Refusing rather than filing it under "
+        "the wrong agency — map the destination in channel_routes."
     )

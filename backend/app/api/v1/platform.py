@@ -126,3 +126,82 @@ async def impersonate(
         response, make_token(email=None, role=ROLE_ADMIN, org_id=org_id)
     )
     return {"ok": True, "org_id": org_id, "slug": org.slug}
+
+
+class RouteOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    org_id: int
+    channel: str
+    destination: str
+    label: str | None = None
+
+
+class RouteCreateIn(BaseModel):
+    org_id: int
+    channel: str = Field(pattern=r"^(whatsapp|sms|email|voice)$")
+    destination: str = Field(min_length=3, max_length=254)
+    label: str | None = Field(default=None, max_length=120)
+
+
+@router.get("/routes", response_model=list[RouteOut])
+async def list_routes(db: AsyncSession = Depends(get_bypass_db)) -> list[RouteOut]:
+    from app.models.channel_route import ChannelRoute
+
+    rows = (
+        await db.execute(select(ChannelRoute).order_by(ChannelRoute.id))
+    ).scalars().all()
+    return [RouteOut.model_validate(r) for r in rows]
+
+
+@router.post("/routes", response_model=RouteOut, status_code=201)
+async def create_route(
+    body: RouteCreateIn, db: AsyncSession = Depends(get_bypass_db)
+) -> RouteOut:
+    """Point an inbound destination at an agency.
+
+    Until a destination is mapped, inbound messages for a second tenant are
+    refused rather than filed under the first — so this is the prerequisite for
+    onboarding client number two.
+    """
+    from app.models.channel_route import ChannelRoute, normalize_destination
+
+    org = (
+        await db.execute(select(Organization).where(Organization.id == body.org_id))
+    ).scalar_one_or_none()
+    if org is None:
+        raise HTTPException(status_code=404, detail="organization_not_found")
+
+    route = ChannelRoute(
+        org_id=body.org_id,
+        channel=body.channel,
+        destination=normalize_destination(body.destination),
+        label=body.label,
+    )
+    db.add(route)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        # A destination belongs to exactly one agency; two claiming it is the
+        # ambiguity this table exists to prevent.
+        raise HTTPException(
+            status_code=409, detail="destination_already_routed"
+        ) from exc
+    await db.refresh(route)
+    return RouteOut.model_validate(route)
+
+
+@router.delete("/routes/{route_id}")
+async def delete_route(route_id: int, db: AsyncSession = Depends(get_bypass_db)) -> dict:
+    from app.models.channel_route import ChannelRoute
+
+    route = (
+        await db.execute(select(ChannelRoute).where(ChannelRoute.id == route_id))
+    ).scalar_one_or_none()
+    if route is None:
+        raise HTTPException(status_code=404, detail="route_not_found")
+    await db.delete(route)
+    await db.commit()
+    return {"ok": True}

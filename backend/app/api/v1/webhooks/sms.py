@@ -23,8 +23,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db.base import get_db
 from app.models import Message, MessageStatus
+from app.models.channel_route import CHANNEL_SMS
 from app.services.conversation import handle_inbound_message
 from app.services.sms import parse_inbound_sms, twilio_status_to_delivery, verify_twilio_signature
+from app.services.tenant_context import set_org_id
+from app.services.tenant_resolver import WebhookOrgUnresolved, webhook_org_or_refuse
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -65,6 +68,16 @@ async def sms_inbound(request: Request, db: AsyncSession = Depends(get_db)) -> R
     parsed = parse_inbound_sms(form)
     if parsed is None:
         return Response(content=_EMPTY_TWIML, media_type="application/xml")
+
+    # Which agency was texted. The middleware cannot read the body, so the org
+    # is decided here, before any write, from the number the message arrived at.
+    try:
+        set_org_id(await webhook_org_or_refuse(CHANNEL_SMS, form.get("To")))
+    except WebhookOrgUnresolved as exc:
+        log.error("refusing inbound SMS — %s", exc)
+        return Response(
+            status_code=503, content=_EMPTY_TWIML, media_type="application/xml"
+        )
 
     try:
         await handle_inbound_message(parsed, db)
