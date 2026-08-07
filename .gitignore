@@ -45,3 +45,6 @@ Thumbs.db
 .docker-volumes/
 ollama-models/
 postgres-data/
+
+# graphify knowledge graph artifacts
+graphify-out/

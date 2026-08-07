@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.34.1";
+export const CURRENT_VERSION = "0.36.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,50 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.36.0",
+    date: "2026-07-31",
+    title: {
+      en: "REcolorado feed aligned with MLS Grid's real rules",
+      es: "El feed de REcolorado, alineado con las reglas reales de MLS Grid",
+    },
+    changes: [
+      {
+        en: "Now that we have MLS Grid access, the integration was checked against the official documentation. Three things it was doing would have failed on the very first call: filtering by city (MLS Grid only allows a fixed set of searchable fields, and City is not one), sorting the results, and firing requests with no pacing — MLS Grid caps at 2 per second and suspends tokens that go over.",
+        es: "Ahora que tenemos acceso a MLS Grid, la integración se contrastó con la documentación oficial. Tres cosas que hacía habrían fallado en la primera llamada: filtrar por ciudad (MLS Grid solo permite un conjunto fijo de campos buscables, y City no es uno), ordenar los resultados, y lanzar peticiones sin pausa — MLS Grid limita a 2 por segundo y suspende los tokens que se pasan.",
+      },
+      {
+        en: "Rentals were being classified as sales. The lease signal lives in PropertyType (“Residential Lease”), not in the subtype we were reading — so rental leads were being shown homes for sale, and buyers were being shown rentals.",
+        es: "Los alquileres se clasificaban como ventas. La señal de alquiler está en PropertyType (“Residential Lease”), no en el subtipo que leíamos — así que a los leads de alquiler se les enseñaban casas en venta, y a los compradores, alquileres.",
+      },
+      {
+        en: "New sync-status endpoint so a failing background sync is visible instead of buried in the logs, and the replication cursor now keeps millisecond precision.",
+        es: "Nuevo endpoint sync-status para que un sync en segundo plano que falla se vea, en vez de quedar enterrado en los logs, y el cursor de replicación ahora conserva la precisión de milisegundos.",
+      },
+    ],
+  },
+  {
+    version: "0.35.0",
+    date: "2026-07-21",
+    title: {
+      en: "REcolorado (MLS Grid) listings integration — ready to switch on",
+      es: "Integración de listings de REcolorado (MLS Grid) — lista para activar",
+    },
+    changes: [
+      {
+        en: "The listings engine can now replicate real MLS data from REcolorado via MLS Grid's RESO Web API — incremental sync by ModificationTimestamp, @odata.nextLink pagination, status reconciliation (sold/pending homes drop out of buyer matches), and IDX broker attribution (“Cortesía de …”) when a home is shown to a lead.",
+        es: "El motor de listings ya puede replicar datos MLS reales de REcolorado vía el RESO Web API de MLS Grid — sync incremental por ModificationTimestamp, paginación @odata.nextLink, reconciliación de estatus (las casas vendidas/pendientes salen de las coincidencias del comprador) y atribución de broker IDX (“Cortesía de …”) cuando se le muestra una casa a un lead.",
+      },
+      {
+        en: "A background worker (off by default) keeps the feed fresh on an interval and resumes crash-safely from the last synced page. Switch to real data by setting the RESO credentials and flipping LISTINGS_SIMULATED=false — no code change.",
+        es: "Un worker en segundo plano (apagado por defecto) mantiene el feed actualizado en intervalos y reanuda de forma segura ante fallos desde la última página sincronizada. Se cambia a datos reales configurando las credenciales RESO y poniendo LISTINGS_SIMULATED=false — sin cambios de código.",
+      },
+      {
+        en: "Backend: sync_state table (Alembic 014), a RESO/MLS Grid adapter with retry/backoff, and 24 new tests. No behavior change until a feed is provisioned.",
+        es: "Backend: tabla sync_state (Alembic 014), un adaptador RESO/MLS Grid con reintentos/backoff, y 24 tests nuevos. Sin cambios de comportamiento hasta que se aprovisione un feed.",
+      },
+    ],
+  },
   {
     version: "0.34.1",
     date: "2026-06-05",

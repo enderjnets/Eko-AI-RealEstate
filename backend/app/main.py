@@ -118,6 +118,7 @@ app.include_router(discovery.router, prefix="/api/v1/discovery", tags=["discover
 
 _followups_task: asyncio.Task | None = None
 _enrichment_task: asyncio.Task | None = None
+_listings_sync_task: asyncio.Task | None = None
 
 
 async def _followups_loop() -> None:
@@ -157,6 +158,41 @@ async def _enrichment_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.error("Enrichment worker tick failed: %s", exc)
+
+
+async def _listings_sync_loop() -> None:
+    """Background worker: replicate the MLS feed (RESO / MLS Grid) into `properties`
+    on an interval. No-ops with a one-time warning if a real feed is selected but the
+    RESO credentials are missing, so it never spins on errors before the token exists."""
+    from app.db.base import get_session_factory
+    from app.services.listings import sync_listings
+
+    if not settings.LISTINGS_SIMULATED and (
+        not settings.RESO_BASE_URL or not settings.RESO_ACCESS_TOKEN
+    ):
+        logger.warning(
+            "Listings sync worker enabled but RESO_BASE_URL/RESO_ACCESS_TOKEN are unset "
+            "(LISTINGS_SIMULATED=false) — worker idle until the feed is configured."
+        )
+        return
+
+    interval = max(60, settings.LISTINGS_SYNC_INTERVAL_SECONDS)
+    Session = get_session_factory()
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            async with Session() as session:
+                result = await sync_listings(session)
+            if result["total"]:
+                logger.info(
+                    "Listings sync worker: %d created, %d updated",
+                    result["created"],
+                    result["updated"],
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Listings sync worker tick failed: %s", exc)
 
 
 async def _seed_admin_users() -> None:
@@ -215,10 +251,17 @@ async def _startup() -> None:
         _enrichment_task = asyncio.create_task(_enrichment_loop())
         logger.info("Enrichment worker started (every %ds)", settings.ENRICHMENT_INTERVAL_SECONDS)
 
+    if settings.LISTINGS_SYNC_ENABLED:
+        global _listings_sync_task
+        _listings_sync_task = asyncio.create_task(_listings_sync_loop())
+        logger.info(
+            "Listings sync worker started (every %ds)", settings.LISTINGS_SYNC_INTERVAL_SECONDS
+        )
+
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    for task in (_followups_task, _enrichment_task):
+    for task in (_followups_task, _enrichment_task, _listings_sync_task):
         if task is not None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

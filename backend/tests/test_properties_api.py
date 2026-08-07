@@ -56,6 +56,17 @@ async def _delete_lead(database_url: str, lead_id: int) -> None:
 
 
 @pytest.mark.asyncio
+async def test_sync_status_is_not_parsed_as_a_property_id(database_url: str) -> None:
+    """Declared before /{property_id}; if the order ever flips this 422s or 404s.
+    Null body is valid — the RESO feed may not have run yet."""
+    async with await _client() as c:
+        r = await c.get("/api/v1/properties/sync-status")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body is None or body["source"] == "reso"
+
+
+@pytest.mark.asyncio
 async def test_sync_is_idempotent(database_url: str) -> None:
     """First sync may create; a second sync creates nothing (all updates)."""
     async with await _client() as c:

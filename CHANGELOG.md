@@ -2,6 +2,42 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.36.0] — 2026-07-31
+
+### REcolorado / MLS Grid replication aligned with the official docs
+
+With MLS Grid access granted, the adapter written against assumptions in `6b6bc1e`
+was verified against the API v2 docs + Best Practices Guide. Confirmed correct:
+`OriginatingSystemName=recolorado`, the 11 `StandardStatus` values, the unquoted
+OData date literal, and the 15-minute cadence. Fixed:
+
+- **`City` removed from `$filter`** — MLS Grid exposes a fixed set of searchable
+  fields and `City` is not among them, so the request errored out. City narrowing
+  is now client-side, while the replication cursor keeps tracking the greatest
+  `ModificationTimestamp` *received* (per MLS Grid's rule for partial storage);
+  tracking only stored records would re-pull the discarded window forever.
+- **`$orderby` removed** — not a supported segment, and we send `$expand=Media`
+  where the docs explicitly reject it. The feed already arrives ordered.
+- **Request pacing** (`RESO_MIN_REQUEST_INTERVAL_SECONDS=0.5`) to respect the hard
+  2 req/s ceiling; exceeding MLS Grid's limits suspends the token. `$top` raised to
+  1000 (the cap when `$expand` is used) and clamped, cutting request count 5×.
+- **Rentals were classified as sales** — the lease signal is in `PropertyType`
+  (`Residential Lease`), not `PropertySubType`. Rent leads were being matched
+  against for-sale listings and vice versa.
+- **Millisecond precision** in the OData cursor literal; MLS Grid stamps to the
+  millisecond and truncating re-scanned a full second every run.
+- `Accept-Encoding: gzip,deflate` sent explicitly (required); dropped the
+  always-null `ListingURL` mapping.
+
+### Replication health is now visible
+
+`GET /api/v1/properties/sync-status` returns the cursor, last run, counts and
+`last_error` for the feed. With the background worker doing the backfill
+unattended, a failure otherwise only surfaced in the logs.
+
+> Displaying real REcolorado listings still requires local media copies, the
+> `MlgCanUse` (IDX) gate, and stripping the `REC` prefix — tracked separately.
+
 ## [0.34.1] — 2026-06-05
 
 ### Version history now follows the selected language
