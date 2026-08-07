@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -23,6 +23,11 @@ class AllowedUser(Base):
     __tablename__ = "allowed_users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     email: Mapped[str] = mapped_column(String(254), unique=True, nullable=False, index=True)
     role: Mapped[str] = mapped_column(String(16), default=ROLE_MEMBER, nullable=False)
     added_by: Mapped[str | None] = mapped_column(String(254), nullable=True)

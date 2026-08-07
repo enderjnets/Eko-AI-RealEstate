@@ -16,6 +16,17 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://eko:eko_local_pass@db:5432/eko_realestate"
+    # Connects as a role WITHOUT bypassrls, so the tenant policies actually bind.
+    # Postgres superusers ignore RLS even with FORCE — pointing DATABASE_URL at
+    # one makes every isolation test pass while isolating nothing, so the app
+    # role and the migration role are deliberately different connections.
+    DATABASE_URL_APP: str = (
+        "postgresql+asyncpg://eko_app:eko_app_local_pass@db:5432/eko_realestate"
+    )
+    # Reserved for login lookup, background workers and the superuser panel —
+    # the three paths with no single org to act as. Defaults to DATABASE_URL,
+    # which owns the tables.
+    DATABASE_URL_BYPASS: str = ""
 
     # Redis
     REDIS_URL: str = "redis://redis:6379/0"

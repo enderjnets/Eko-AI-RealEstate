@@ -32,6 +32,11 @@ class Visit(Base):
     __tablename__ = "visits"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     # Nullable: a lead's property visit links to its lead; a MANUAL calendar event
     # (open house, team meeting, ...) created by the realtor has no lead.
     lead_id: Mapped[int | None] = mapped_column(

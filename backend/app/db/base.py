@@ -9,15 +9,17 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from sqlalchemy import Enum as SqlEnum
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, Session
 
 from app.config import get_settings
+from app.services.tenant_context import get_org_id
 
 
 class Base(DeclarativeBase):
@@ -38,6 +40,8 @@ def pg_enum(enum_cls: type, *, name: str) -> SqlEnum:
 
 _engine: AsyncEngine | None = None
 _SessionLocal: async_sessionmaker[AsyncSession] | None = None
+_bypass_engine: AsyncEngine | None = None
+_BypassSessionLocal: async_sessionmaker[AsyncSession] | None = None
 
 
 def get_engine() -> AsyncEngine:
@@ -46,7 +50,7 @@ def get_engine() -> AsyncEngine:
     if _engine is None:
         settings = get_settings()
         _engine = create_async_engine(
-            settings.DATABASE_URL,
+            settings.DATABASE_URL_APP or settings.DATABASE_URL,
             echo=settings.DEBUG and settings.APP_ENV == "development",
             future=True,
             pool_pre_ping=True,
@@ -66,6 +70,86 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _SessionLocal
 
 
+def get_bypass_engine() -> AsyncEngine:
+    """Engine for the three callers that legitimately act outside one org.
+
+    Login resolves a user's org *before* an org is known, and the background
+    workers sweep every org. Both would see zero rows under default-deny RLS.
+    The superuser panel is the third.
+
+    Everything else must use get_engine(). Reaching for this to "make a query
+    work" removes the tenant boundary for that query.
+    """
+    global _bypass_engine
+    if _bypass_engine is None:
+        settings = get_settings()
+        _bypass_engine = create_async_engine(
+            settings.DATABASE_URL_BYPASS or settings.DATABASE_URL,
+            echo=settings.DEBUG and settings.APP_ENV == "development",
+            future=True,
+            pool_pre_ping=True,
+        )
+    return _bypass_engine
+
+
+def get_bypass_session_factory() -> async_sessionmaker[AsyncSession]:
+    global _BypassSessionLocal
+    if _BypassSessionLocal is None:
+        _BypassSessionLocal = async_sessionmaker(
+            get_bypass_engine(),
+            expire_on_commit=False,
+            autoflush=False,
+            class_=AsyncSession,
+            info={"bypass_rls": True},
+        )
+    return _BypassSessionLocal
+
+
+@event.listens_for(Session, "before_flush")
+def _stamp_org_id(session: Session, flush_context: Any, instances: Any) -> None:
+    """Fill in `org_id` on new rows from the acting org.
+
+    Without this every INSERT would have to remember to set the column, and the
+    one that forgot would be rejected by the RLS WITH CHECK at runtime — correct,
+    but only discovered in production. Stamping here means callers cannot forget,
+    and the policy stays as the backstop rather than the primary mechanism.
+
+    An explicit value is never overwritten: the workers legitimately write into
+    a specific org while iterating many of them.
+    """
+    if session.info.get("bypass_rls"):
+        return
+    org_id = get_org_id()
+    if org_id is None:
+        return
+    for obj in session.new:
+        if hasattr(type(obj), "org_id") and getattr(obj, "org_id", None) is None:
+            obj.org_id = org_id
+
+
+@event.listens_for(Session, "after_begin")
+def _inject_org_id(session: Session, transaction: Any, connection: Any) -> None:
+    """Stamp the acting org onto every transaction, for the RLS policies to read.
+
+    `after_begin` rather than session creation because `set_config(..., true)` is
+    transaction-local: it is discarded at COMMIT. Flows here commit repeatedly
+    inside one request — conversation.py commits five times, listings.py four —
+    so a value set once at session open would silently vanish after the first
+    one and every later statement would run with no org, seeing nothing.
+
+    Parameterised, never interpolated: the org id reaches this from a token.
+    """
+    if connection.engine.url.get_backend_name() != "postgresql":
+        return
+    if session.info.get("bypass_rls"):
+        return
+    org_id = get_org_id()
+    connection.execute(
+        text("SELECT set_config('app.current_org_id', :v, true)"),
+        {"v": "" if org_id is None else str(org_id)},
+    )
+
+
 async def get_db() -> AsyncIterator[AsyncSession]:
     """FastAPI dependency. Yields a session, rolls back on exception, always closes."""
     session = get_session_factory()()
@@ -80,11 +164,27 @@ async def get_db() -> AsyncIterator[AsyncSession]:
 
 async def dispose_engine() -> None:
     """Call from app shutdown hooks or test teardown to release pool."""
-    global _engine, _SessionLocal
+    global _engine, _SessionLocal, _bypass_engine, _BypassSessionLocal
     if _engine is not None:
         await _engine.dispose()
+    if _bypass_engine is not None:
+        await _bypass_engine.dispose()
     _engine = None
     _SessionLocal = None
+    _bypass_engine = None
+    _BypassSessionLocal = None
+
+
+async def get_bypass_db() -> AsyncIterator[AsyncSession]:
+    """Session that ignores RLS. See get_bypass_engine for who may use it."""
+    session = get_bypass_session_factory()()
+    try:
+        yield session
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        await session.close()
 
 
 __all__: list[str] = [

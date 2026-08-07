@@ -47,7 +47,12 @@ services:
       redis:
         condition: service_healthy
     environment:
+      # Owns the schema: migrations, the login lookup and the background workers.
       DATABASE_URL: ${DATABASE_URL}
+      # What the request path actually connects as — a role without BYPASSRLS, so
+      # the tenant policies bind. Pointing this at the owner would leave every
+      # isolation test green while isolating nothing.
+      DATABASE_URL_APP: ${DATABASE_URL_APP:-postgresql+asyncpg://eko_app:eko_app_local_pass@db:5432/eko_realestate}
       REDIS_URL: ${REDIS_URL}
       # LLM
       LLM_PRIMARY: ${LLM_PRIMARY:-kimi}

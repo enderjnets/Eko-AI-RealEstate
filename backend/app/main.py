@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from typing import Any
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,6 +57,44 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class TenantMiddleware:
+    """Pin the acting organization for the whole request.
+
+    Deliberately raw ASGI rather than `@app.middleware("http")`. Starlette's
+    BaseHTTPMiddleware runs the downstream app in a *separate* anyio task, so a
+    ContextVar set before `call_next` never reaches the endpoint — the org would
+    silently stay unset and every request would see zero rows under default-deny.
+    A plain ASGI middleware awaits the app in the same task, so the value holds.
+
+    Failing to resolve an org is not an error here: it leaves the value unset,
+    and RLS turns that into no rows rather than into everyone's rows.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        from starlette.requests import Request
+
+        from app.api.v1.auth import _token_from_request
+        from app.services.tenant_context import set_org_id
+        from app.services.tenant_resolver import resolve_org_for_path
+
+        try:
+            token = _token_from_request(Request(scope))
+        except Exception:  # noqa: BLE001 — a malformed header must not 500 the request
+            token = None
+        set_org_id(resolve_org_for_path(scope.get("path", ""), token))
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(TenantMiddleware)
 
 
 @app.middleware("http")

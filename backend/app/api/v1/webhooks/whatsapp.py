@@ -84,11 +84,11 @@ async def whatsapp_inbound(
             results.append(result)
         except IntegrityError:
             await db.rollback()
-            log.info("Idempotent skip on wa_message_id=%s", parsed.wa_message_id)
-            results.append({"status": "duplicate", "wa_message_id": parsed.wa_message_id})
+            log.info("Idempotent skip on wa_message_id=%s", parsed.external_id)
+            results.append({"status": "duplicate", "wa_message_id": parsed.external_id})
         except Exception as exc:  # noqa: BLE001
             await db.rollback()
-            log.exception("Error processing inbound %s: %s", parsed.wa_message_id, exc)
-            results.append({"status": "error", "wa_message_id": parsed.wa_message_id, "error": str(exc)})
+            log.exception("Error processing inbound %s: %s", parsed.external_id, exc)
+            results.append({"status": "error", "wa_message_id": parsed.external_id, "error": str(exc)})
 
     return {"status": "ok", "processed": len(parsed_messages), "results": results}

@@ -86,7 +86,12 @@ def check_password(password: str) -> bool:
 
 
 def make_token(
-    *, email: str | None = None, role: str = ROLE_ADMIN, ttl_hours: int | None = None
+    *,
+    email: str | None = None,
+    role: str = ROLE_ADMIN,
+    ttl_hours: int | None = None,
+    org_id: int | None = None,
+    superuser: bool = False,
 ) -> str:
     """Mint a signed session token carrying identity (email) + role.
 
@@ -98,6 +103,13 @@ def make_token(
     payload: dict = {"sub": _SUBJECT, "exp": int(time.time()) + ttl * 3600, "role": role}
     if email:
         payload["email"] = email
+    # Tokens minted before multi-tenancy carry no org and resolve to DEFAULT_ORG_ID
+    # in current_org_id(); that keeps existing sessions working through the deploy
+    # instead of logging everyone out.
+    if org_id is not None:
+        payload["org"] = org_id
+    if superuser:
+        payload["su"] = True
     payload_b64 = _b64e(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     sig = _b64e(hmac.new(_secret(), payload_b64.encode("ascii"), hashlib.sha256).digest())
     return f"{payload_b64}.{sig}"
@@ -124,6 +136,27 @@ def decode_token(token: str | None) -> dict | None:
 
 def verify_token(token: str | None) -> bool:
     return decode_token(token) is not None
+
+
+def token_org_id(token: str | None) -> int | None:
+    """The organization a valid token acts for, or None if the token is invalid.
+
+    Tokens minted before multi-tenancy carry no `org`; they resolve to the
+    default org so sessions open across the deploy keep working rather than
+    every user being silently logged out.
+    """
+    data = decode_token(token)
+    if data is None:
+        return None
+    from app.models.organization import DEFAULT_ORG_ID
+
+    org = data.get("org")
+    return int(org) if isinstance(org, int) else DEFAULT_ORG_ID
+
+
+def token_is_superuser(token: str | None) -> bool:
+    data = decode_token(token)
+    return bool(data and data.get("su"))
 
 
 def token_role(token: str | None) -> str | None:

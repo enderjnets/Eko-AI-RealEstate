@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import JSON, DateTime, String, Text, func
+from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -16,7 +17,14 @@ from app.db.base import Base
 class AgentSettings(Base):
     __tablename__ = "agent_settings"
 
-    id: Mapped[int] = mapped_column(primary_key=True)  # always 1 — singleton
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # One row per organization — this stopped being a singleton when the product
+    # became multi-tenant. UNIQUE is what keeps a second row per org impossible.
+    org_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
 
     agency_name: Mapped[str] = mapped_column(String(160), default="Inmobiliaria", nullable=False)
     agency_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
