@@ -2,6 +2,48 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.38.0] — 2026-08-07
+
+### Inbound messages are attributed by destination
+
+`channel_routes` maps a destination — Twilio number, WhatsApp
+`phone_number_id`, mailbox — to an organization, managed at
+`/api/v1/platform/routes`. Before this, every webhook defaulted to the first
+organization: a second agency's leads and their entire conversation transcript
+were written into the first agency's dashboard, while the real recipient saw
+nothing and their follow-ups never fired.
+
+`webhook_org_or_refuse` is the single decision point, deliberately independent
+of `AUTH_ENABLED` — routing it through the request resolver meant that with
+auth off (the dev and single-customer default) an unmapped destination silently
+resolved to the first organization, which is the misfiling the mechanism exists
+to stop.
+
+Uniqueness is global per channel, unlike `leads.phone` which is per-org: a
+number belongs to exactly one agency, and two claiming it is the ambiguity the
+table prevents. Destinations are normalised on write and lookup, since Twilio
+sends `+1555…`, a form post may arrive as `1555…`, and an address in mixed case.
+
+SMS, WhatsApp and email are wired. **Voice is not** — VAPI has no provider
+account, so there is no real payload to extract a destination from.
+
+### Platform operator routes (Fase 2)
+
+Create and suspend tenants, and enter one explicitly. Impersonation is recorded
+in `user_activity` *before* the session cookie is issued, so the trail survives
+a response that never arrives. Gated by `require_platform_admin`, not
+`require_admin` — the latter authorises the admin of *some* organization, and
+every client agency has one.
+
+### Fixed
+
+- A suspended or deleted organization kept full read and write access; only its
+  background sweeps stopped. Status is now checked per request.
+- `/health` had a database round-trip in front of it and hung during an outage —
+  the one endpoint whose job is to answer then.
+- `TenantMiddleware`'s own 403 and 503 responses skipped CORS, so a browser saw
+  an opaque network error instead of a status the dashboard could act on.
+
 ## [0.37.0] — 2026-08-06
 
 ### Multi-tenant: one installation, many client agencies

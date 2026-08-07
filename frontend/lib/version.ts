@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.37.0";
+export const CURRENT_VERSION = "0.38.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,32 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.38.0",
+    date: "2026-08-07",
+    title: {
+      en: "Each agency's messages now reach only that agency",
+      es: "Los mensajes de cada agencia llegan solo a esa agencia",
+    },
+    changes: [
+      {
+        en: "Incoming texts, WhatsApp messages and emails are matched to an agency by the number or mailbox they were sent to, so a second agency's leads can never land in another's dashboard.",
+        es: "Los mensajes de texto, WhatsApp y correos entrantes se asignan a una agencia por el número o buzón al que se enviaron, así que los leads de una agencia nunca aparecen en el panel de otra.",
+      },
+      {
+        en: "A message sent to an address nobody has claimed is refused and retried rather than filed under the wrong agency.",
+        es: "Un mensaje enviado a una dirección que nadie ha reclamado se rechaza y se reintenta, en vez de archivarse en la agencia equivocada.",
+      },
+      {
+        en: "Platform operators can create and suspend agencies, and enter one when support is needed — every entry is recorded.",
+        es: "Los operadores de la plataforma pueden crear y suspender agencias, y entrar en una cuando hace falta dar soporte — cada entrada queda registrada.",
+      },
+      {
+        en: "A suspended agency now loses access immediately instead of keeping it.",
+        es: "Una agencia suspendida ahora pierde el acceso de inmediato en vez de conservarlo.",
+      },
+    ],
+  },
   {
     version: "0.37.0",
     date: "2026-08-06",

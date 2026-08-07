@@ -172,13 +172,17 @@ when an AI session helped write it.
   `require_admin`** — the latter authorises the admin of *some* organization,
   and every client agency has one.
 
-### Known limitation — blocks onboarding a second agency
+### Onboarding a second agency
 
-Inbound webhooks cannot yet be routed to the right tenant: there is no mapping
-from a destination (Twilio number, mailbox) to an org. `tenant_resolver` refuses
-with 503 once more than one active tenant exists rather than filing the message
-under the wrong agency. **Building that mapping is a prerequisite for client
-number two.**
+Inbound messages are attributed by **destination**, via `channel_routes`
+(destination → org, managed at `/api/v1/platform/routes`). Before adding a
+second tenant, map its Twilio number, WhatsApp `phone_number_id` and mailbox —
+an unmapped destination is refused with 503 rather than filed under the wrong
+agency, and `webhook_org_or_refuse` is the single place that decides.
+
+SMS, WhatsApp and email are wired. **Voice is not**: VAPI has no provider
+account yet, so it still falls back to the single-tenant path and refuses when
+two tenants exist.
 
 ### LLM
 - All LLM calls go through `app/services/llm.py:generate_reply()`. Do not
