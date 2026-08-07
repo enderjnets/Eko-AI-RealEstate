@@ -21,7 +21,7 @@ import argparse
 import asyncio
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 # Allow `python scripts/seed_demo.py` from the backend root: Python puts the
@@ -46,7 +46,7 @@ from app.models import (  # noqa: E402
     VisitStatus,
 )
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
 DEMO_BRANDING = {
     "agency_name": "Sunset Realty Group",
@@ -202,7 +202,7 @@ async def _wipe_demo(session, *, keep_settings: bool) -> int:
     for lead in demo:
         await session.delete(lead)  # cascades to conversations/messages/visits
     if not keep_settings:
-        cfg = (await session.execute(select(AgentSettings).where(AgentSettings.id == 1))).scalar_one_or_none()
+        cfg = (await session.execute(select(AgentSettings))).scalar_one_or_none()
         if cfg is not None:
             await session.delete(cfg)
     await session.commit()
@@ -211,9 +211,9 @@ async def _wipe_demo(session, *, keep_settings: bool) -> int:
 
 async def _seed(session, *, keep_settings: bool) -> None:
     if not keep_settings:
-        cfg = (await session.execute(select(AgentSettings).where(AgentSettings.id == 1))).scalar_one_or_none()
+        cfg = (await session.execute(select(AgentSettings))).scalar_one_or_none()
         if cfg is None:
-            cfg = AgentSettings(id=1)
+            cfg = AgentSettings()
             session.add(cfg)
         for k, v in DEMO_BRANDING.items():
             setattr(cfg, k, v)
@@ -307,6 +307,12 @@ async def main() -> int:
     p.add_argument("--keep-settings", action="store_true", help="don't touch AgentSettings branding")
     args = p.parse_args()
 
+    # Bind the demo org: without it, default-deny RLS made every seeded row
+    # fail the WITH CHECK and the script exited 1 on agent_settings.
+    from app.models.organization import DEMO_ORG_ID
+    from app.services.tenant_context import set_org_id
+
+    set_org_id(DEMO_ORG_ID)
     Session = get_session_factory()
     try:
         async with Session() as session:

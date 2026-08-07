@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -16,13 +16,19 @@ from app.db.base import Base
 class AgentSettings(Base):
     __tablename__ = "agent_settings"
 
+    # Declared as a unique INDEX in __table_args__, not `unique=True` here.
+    # `unique=True` emits a UniqueConstraint while migration 016 built an index,
+    # so every `alembic revision --autogenerate` emitted a spurious drop/create
+    # pair — and a permanently non-empty autogenerate is a broken drift alarm:
+    # real schema drift hides behind the noise.
+    __table_args__ = (Index("uq_agent_settings_org_id", "org_id", unique=True),)
+
     id: Mapped[int] = mapped_column(primary_key=True)
     # One row per organization — this stopped being a singleton when the product
-    # became multi-tenant. UNIQUE is what keeps a second row per org impossible.
+    # became multi-tenant.
     org_id: Mapped[int] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
     )
 
     agency_name: Mapped[str] = mapped_column(String(160), default="Inmobiliaria", nullable=False)

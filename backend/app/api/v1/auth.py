@@ -32,6 +32,7 @@ from app.services.auth import (
     make_token,
     resolve_email_access,
     resolve_email_org,
+    token_org_id,
     token_role,
     verify_apple_id_token,
     verify_google_id_token,
@@ -86,8 +87,18 @@ async def require_auth(request: Request) -> None:
     the single choke-point — every mutating data route depends on require_auth."""
     if not get_settings().AUTH_ENABLED:
         return
-    if not verify_token(_token_from_request(request)):
+    token = _token_from_request(request)
+    if not verify_token(token):
         raise HTTPException(status_code=401, detail="Not authenticated")
+    # A signature-valid token whose `org` claim is not a usable id leaves the
+    # request org-less. Reads then fail closed and correctly return nothing, but
+    # writes hit the RLS WITH CHECK and surface as an opaque 500 — a dashboard
+    # that is silently empty and errors on save, with nothing telling the user to
+    # sign in again. Reject it as unauthenticated instead.
+    if token_org_id(token) is None:
+        raise HTTPException(
+            status_code=401, detail="Session has no organization; sign in again"
+        )
     if current_role(request) == ROLE_VIEWER and request.method not in SAFE_METHODS:
         raise HTTPException(status_code=403, detail="view_only")
 
@@ -167,10 +178,9 @@ async def login(body: LoginIn, response: Response) -> dict[str, bool]:
     if not check_password(body.password):
         raise HTTPException(status_code=401, detail="Invalid password")
     # The shared password is the operator's master key, not a client agency's,
-    # so it acts for the default org and carries platform superuser rights.
-    _set_session_cookie(
-        response, make_token(role=ROLE_ADMIN, org_id=DEFAULT_ORG_ID, superuser=True)
-    )
+    # so it acts for the default org. Platform-superuser rights land in Fase 2,
+    # added together with the code that enforces them rather than ahead of it.
+    _set_session_cookie(response, make_token(role=ROLE_ADMIN, org_id=DEFAULT_ORG_ID))
     return {"ok": True, "auth_enabled": True}
 
 

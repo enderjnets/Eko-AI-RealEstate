@@ -180,10 +180,9 @@ def _parse_dt(value: Any, tz: ZoneInfo) -> datetime | None:
 
 
 async def _office_tz_name(db: AsyncSession) -> str:
-    """The office IANA timezone from AgentSettings (singleton), default UTC."""
     from app.models import AgentSettings
 
-    row = await db.execute(select(AgentSettings))
+    row = await db.execute(select(AgentSettings).where(AgentSettings.org_id == _acting_org()))
     cfg = row.scalar_one_or_none()
     return (cfg.timezone if cfg and cfg.timezone else "UTC")
 
@@ -309,3 +308,16 @@ async def handle_tool_call(
         await db.rollback()
         log.exception("Voice tool %s failed: %s", name, exc)
         return "Something went wrong on my side. A team member will follow up with you."
+
+
+def _acting_org() -> int:
+    """The org whose settings row applies to this call.
+
+    RLS already scopes the query in production; naming the org explicitly keeps
+    it correct on a bypass or owner session too, where scalar_one_or_none()
+    would otherwise see every tenant's row and raise.
+    """
+    from app.models.organization import DEFAULT_ORG_ID
+    from app.services.tenant_context import get_org_id
+
+    return get_org_id() or DEFAULT_ORG_ID

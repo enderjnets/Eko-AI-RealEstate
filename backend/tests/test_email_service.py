@@ -4,7 +4,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import os
 
 import pytest
 
@@ -39,7 +38,7 @@ SECRET = f"whsec_{SECRET_BASE64}"
 def _sign(body: bytes, svix_id: str, svix_timestamp: str, secret: str) -> str:
     key_material = secret.removeprefix("whsec_")
     key = base64.b64decode(key_material)
-    signed = f"{svix_id}.{svix_timestamp}.{body.decode('utf-8')}".encode("utf-8")
+    signed = f"{svix_id}.{svix_timestamp}.{body.decode('utf-8')}".encode()
     sig = base64.b64encode(hmac.new(key, signed, hashlib.sha256).digest()).decode("ascii")
     return f"v1,{sig}"
 

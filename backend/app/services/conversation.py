@@ -39,11 +39,13 @@ from app.models import (
     MessageSender,
     MessageStatus,
 )
+from app.models.organization import DEFAULT_ORG_ID
 from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
 from app.services.i18n import detect_language, language_instruction, pick_supported_language
 from app.services.llm import LLMUnavailable, generate_reply
 from app.services.scoring import rescore_lead
+from app.services.tenant_context import get_org_id
 from app.services.whatsapp import send_text_message as whatsapp_send
 
 log = logging.getLogger(__name__)
@@ -315,7 +317,7 @@ async def generate_reply_suggestions(
     ]
 
     # Language steering from the latest inbound.
-    settings_row = await db.execute(select(AgentSettings))
+    settings_row = await db.execute(select(AgentSettings).where(AgentSettings.org_id == _acting_org()))
     agent_cfg = settings_row.scalar_one_or_none()
     supported = (agent_cfg.languages if agent_cfg else ["en", "es"]) or ["en", "es"]
     last_user_content = next(
@@ -640,7 +642,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # ── 7. Language detection + intent classification ─────────────────
     # Detect on the latest inbound only (avoid letting historical AI replies
     # bias the result). Pick the closest supported language from agent settings.
-    settings_row_pre = await db.execute(select(AgentSettings))
+    settings_row_pre = await db.execute(select(AgentSettings).where(AgentSettings.org_id == _acting_org()))
     agent_cfg = settings_row_pre.scalar_one_or_none()
     supported_languages = (agent_cfg.languages if agent_cfg else ["en", "es"]) or ["en", "es"]
     detected_lang = detect_language(parsed.content)
@@ -791,3 +793,8 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         "outbound_status": outbound.delivery_status.value,
         "llm_provider": reply.provider,
     }
+
+
+def _acting_org() -> int:
+    """The org whose settings row applies to this call."""
+    return get_org_id() or DEFAULT_ORG_ID

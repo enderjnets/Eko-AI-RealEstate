@@ -106,6 +106,13 @@ def upgrade() -> None:
             f"fk_{table}_org_id", table, "organizations", ["org_id"], ["id"], ondelete="CASCADE"
         )
         if table == "agent_settings":
+            # Collapse duplicates first. On a re-upgrade after a downgrade every
+            # tenant's settings row has been backfilled to the same org, so the
+            # unique index cannot be created and the migration dies half-applied.
+            op.execute(
+                "DELETE FROM agent_settings a USING agent_settings b "
+                "WHERE a.org_id = b.org_id AND a.id > b.id"
+            )
             op.create_index(f"uq_{table}_org_id", table, ["org_id"], unique=True)
         else:
             op.create_index(f"ix_{table}_org_id", table, ["org_id"])
@@ -130,6 +137,26 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # This downgrade is DESTRUCTIVE in a way the schema does not show. Dropping
+    # org_id merges every tenant's rows into one undifferentiated set, and
+    # dropping `organizations` erases the name, slug and plan of every client
+    # beyond the two hardcoded rows the upgrade re-seeds. Re-upgrading does not
+    # restore anything: it backfills the whole table to org 1.
+    #
+    # Safe on a single-tenant install, silent data destruction on any other, so
+    # it refuses rather than assuming. The escape hatch is deliberately explicit.
+    if not os.environ.get("ALLOW_DESTRUCTIVE_DOWNGRADE"):
+        org_count = op.get_bind().execute(
+            sa.text("SELECT count(*) FROM organizations")
+        ).scalar_one()
+        if org_count > 2:
+            raise RuntimeError(
+                f"Refusing to downgrade: {org_count} organizations exist and this "
+                "migration would merge their data together and delete their "
+                "records irreversibly. Export first, then set "
+                "ALLOW_DESTRUCTIVE_DOWNGRADE=1 to proceed."
+            )
+
     for table in OWNED_TABLES:
         op.execute(f"DROP POLICY IF EXISTS {table}_tenant_isolation ON {table}")
         op.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")

@@ -30,6 +30,7 @@ Revises: 017_lock_down_organizations
 """
 from __future__ import annotations
 
+import sqlalchemy as sa
 from alembic import op
 
 revision = "018_identity_is_global"
@@ -44,8 +45,51 @@ IDENTITY_INDEXES = (
 )
 
 
+def _dedupe_before_unique(table: str) -> None:
+    """Collapse duplicate emails, keeping the earliest row.
+
+    Without this the migration cannot run on the only deployments that need it.
+    Migrations 016/017 made duplicate emails legal, so any install that ran them
+    long enough for the lockout to happen already holds duplicates — and
+    `CREATE UNIQUE INDEX` then fails, leaving the fix undeployable on exactly
+    the systems it was written for.
+
+    Keeping the lowest id keeps the original organization's membership and drops
+    the later claim. That does remove someone's access to the newer agency, so
+    the removals are printed: an operator has to be able to re-add them, and a
+    silent delete of team access would be worse than the lockout.
+    """
+    rows = op.get_bind().execute(
+        sa.text(
+            f"""
+            SELECT email, array_agg(id ORDER BY id) AS ids,
+                   array_agg(org_id ORDER BY id) AS orgs
+              FROM {table}
+             GROUP BY email HAVING count(*) > 1
+            """
+        )
+    ).fetchall()
+    if not rows:
+        return
+    for row in rows:
+        print(
+            f"  [018] {table}: '{row.email}' existed in orgs {list(row.orgs)}; "
+            f"keeping id={row.ids[0]} (org {row.orgs[0]}), removing {list(row.ids[1:])}"
+        )
+    op.get_bind().execute(
+        sa.text(
+            f"""
+            DELETE FROM {table} a
+             USING {table} b
+             WHERE a.email = b.email AND a.id > b.id
+            """
+        )
+    )
+
+
 def upgrade() -> None:
     for name, table, cols in IDENTITY_INDEXES:
+        _dedupe_before_unique(table)
         op.drop_index(name, table_name=table)
         op.create_index(name, table, cols, unique=True)
 

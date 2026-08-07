@@ -1,7 +1,7 @@
 """Cal.com service — simulated slots + booking + cancellation (no network)."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -16,7 +16,7 @@ from app.services.calendar_cal import (
 
 
 def _utc(year: int, month: int, day: int, hour: int = 0) -> datetime:
-    return datetime(year, month, day, hour, tzinfo=timezone.utc)
+    return datetime(year, month, day, hour, tzinfo=UTC)
 
 
 def test_simulated_slots_only_weekdays() -> None:

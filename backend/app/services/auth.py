@@ -1,12 +1,18 @@
-"""Dashboard auth — a single shared password + an HMAC-signed session token.
+"""Dashboard auth — session tokens that carry identity, role AND organization.
 
-One deploy = one inmobiliaria, so we don't need user accounts: the office sets a
-single `DASHBOARD_PASSWORD`. On login we issue a compact HMAC-SHA256 signed token
-(`payload.signature`, like a tiny JWT — no extra dependency) stored in an
-httpOnly cookie. `require_auth` (gated by `AUTH_ENABLED`) protects the data API.
+On login we issue a compact HMAC-SHA256 signed token (`payload.signature`, like
+a tiny JWT — no extra dependency) in an httpOnly cookie. `require_auth` (gated
+by `AUTH_ENABLED`) protects the data API.
 
-The signing secret is `AUTH_SECRET` if set, else derived from the password — so
-tokens stay valid across restarts as long as the password is unchanged.
+The `org` claim is the one that matters most: it is the only channel that tells
+the request which tenant it acts for, and `db/base.py` stamps it onto every
+transaction for the RLS policies to read. A token without a usable org is
+rejected rather than defaulted — defaulting it is how every user once ended up
+inside client zero's data.
+
+`DASHBOARD_PASSWORD` remains the operator's master key. The signing secret is
+`AUTH_SECRET` if set, else derived from the password; with neither set and auth
+enabled, minting refuses rather than signing with a key published in this repo.
 """
 from __future__ import annotations
 
@@ -114,7 +120,6 @@ def make_token(
     role: str = ROLE_ADMIN,
     ttl_hours: int | None = None,
     org_id: int | None = None,
-    superuser: bool = False,
 ) -> str:
     """Mint a signed session token carrying identity (email) + role.
 
@@ -131,8 +136,6 @@ def make_token(
     # instead of logging everyone out.
     if org_id is not None:
         payload["org"] = org_id
-    if superuser:
-        payload["su"] = True
     payload_b64 = _b64e(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     sig = _b64e(hmac.new(_secret(), payload_b64.encode("ascii"), hashlib.sha256).digest())
     return f"{payload_b64}.{sig}"
@@ -182,10 +185,6 @@ def token_org_id(token: str | None) -> int | None:
         return DEFAULT_ORG_ID if org is None else None
     return org if org > 0 else None
 
-
-def token_is_superuser(token: str | None) -> bool:
-    data = decode_token(token)
-    return bool(data and data.get("su"))
 
 
 def token_role(token: str | None) -> str | None:

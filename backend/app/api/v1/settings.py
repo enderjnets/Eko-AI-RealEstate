@@ -22,6 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_db
 from app.models import AgentSettings
+from app.models.organization import DEFAULT_ORG_ID
+from app.services.tenant_context import get_org_id
 
 router = APIRouter()
 
@@ -59,7 +61,7 @@ class SettingsPatch(BaseModel):
 
 async def _get_or_create(db: AsyncSession) -> AgentSettings:
     row = (
-        await db.execute(select(AgentSettings))
+        await db.execute(select(AgentSettings).where(AgentSettings.org_id == _acting_org()))
     ).scalar_one_or_none()
     if row is None:
         # No pinned id: there is one settings row per organization now, and
@@ -121,3 +123,8 @@ async def update_settings(
     await db.commit()
     await db.refresh(row)
     return SettingsOut.model_validate(row)
+
+
+def _acting_org() -> int:
+    """The org whose settings row applies to this call."""
+    return get_org_id() or DEFAULT_ORG_ID

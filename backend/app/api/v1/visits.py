@@ -27,12 +27,14 @@ from app.models import (
     Visit,
     VisitStatus,
 )
+from app.models.organization import DEFAULT_ORG_ID
 from app.services.calendar_cal import (
     CalComError,
     cancel_booking,
     create_booking,
     list_available_slots,
 )
+from app.services.tenant_context import get_org_id
 
 log = logging.getLogger(__name__)
 
@@ -136,7 +138,7 @@ async def _get_lead_or_404(lead_id: int, db: AsyncSession) -> Lead:
 
 async def _office_tz(db: AsyncSession) -> str:
     """The office IANA timezone from AgentSettings (singleton), default UTC."""
-    cfg = (await db.execute(select(AgentSettings))).scalar_one_or_none()
+    cfg = (await db.execute(select(AgentSettings).where(AgentSettings.org_id == _acting_org()))).scalar_one_or_none()
     return (cfg.timezone if cfg and cfg.timezone else "UTC")
 
 
@@ -409,3 +411,8 @@ async def visits_agenda(
 
     items.sort(key=lambda i: i.scheduled_at)
     return AgendaOut(items=items, timezone=tz)
+
+
+def _acting_org() -> int:
+    """The org whose settings row applies to this call."""
+    return get_org_id() or DEFAULT_ORG_ID

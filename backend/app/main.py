@@ -275,8 +275,19 @@ async def _seed_admin_users() -> None:
     Session = get_bypass_session_factory()
     async with Session() as session:
         for email in pinned:
+            # Scoped to the default org on purpose. This runs on a bypass
+            # session, so an unfiltered lookup found the row wherever it lived
+            # and promoted it — an operator email that a client agency had added
+            # to their own team silently became an admin INSIDE that agency,
+            # counted by their "cannot remove the last admin" guard. The
+            # operator meanwhile signs into org 1 and never sees it.
             row = (
-                await session.execute(select(AllowedUser).where(AllowedUser.email == email))
+                await session.execute(
+                    select(AllowedUser).where(
+                        AllowedUser.email == email,
+                        AllowedUser.org_id == DEFAULT_ORG_ID,
+                    )
+                )
             ).scalar_one_or_none()
             if row is None:
                 # org_id explicit: a bypass session skips the before_flush stamp.
@@ -344,6 +355,15 @@ async def _startup() -> None:
             )
     except Exception as exc:  # noqa: BLE001 — a check must not block startup
         logger.warning("database role check skipped: %s", exc)
+
+    if settings.GOOGLE_ALLOWED_DOMAIN or settings.google_allowed_emails_list:
+        logger.warning(
+            "⚠️  GOOGLE_ALLOWED_DOMAIN / GOOGLE_ALLOWED_EMAILS grant member access "
+            "to the DEFAULT organization only — they predate multi-tenancy and have "
+            "no per-org equivalent. A value left over from a single-tenant install "
+            "hands everyone who matches it access to client zero's leads. Manage "
+            "access through Settings → Team instead."
+        )
 
     if not settings.AUTH_ENABLED:
         from sqlalchemy import func, select
