@@ -156,8 +156,29 @@ when an AI session helped write it.
   and `sync_state` are deliberately shared (one REcolorado feed as Software
   Vendor). Do not reach for `get_bypass_session_factory()` to make a query
   "work" — it removes the tenant boundary for that query. It exists only for
-  login (which resolves the org), the background workers (which sweep all orgs)
-  and the superuser panel.
+  login (which has to resolve *which* org the user belongs to), the background
+  workers (which sweep every org via `run_for_every_org`), and the platform
+  routes for demo signups.
+- **Identity is global, business data is per-tenant.** `allowed_users.email` and
+  `accounts.email` are globally unique — login must resolve one person before it
+  knows their org. `leads.phone`, `messages.external_id`,
+  `visits.external_booking_id` and `user_activity.email` are unique per org.
+  Scoping an identity key by org makes every login lookup raise
+  `MultipleResultsFound` and locks people out permanently.
+- **A bypass session is not stamped.** `before_flush` fills `org_id` from the
+  acting org; on a bypass session there is none, so every `db.add()` there must
+  pass `org_id` explicitly.
+- **Anything crossing the tenant boundary needs `require_platform_admin`, not
+  `require_admin`** — the latter authorises the admin of *some* organization,
+  and every client agency has one.
+
+### Known limitation — blocks onboarding a second agency
+
+Inbound webhooks cannot yet be routed to the right tenant: there is no mapping
+from a destination (Twilio number, mailbox) to an org. `tenant_resolver` refuses
+with 503 once more than one active tenant exists rather than filing the message
+under the wrong agency. **Building that mapping is a prerequisite for client
+number two.**
 
 ### LLM
 - All LLM calls go through `app/services/llm.py:generate_reply()`. Do not
