@@ -153,3 +153,79 @@ async def test_impersonating_a_missing_org_is_404_not_a_usable_session() -> None
         resp = await c.post("/api/v1/platform/impersonate/424242")
     assert resp.status_code == 404
     assert COOKIE_NAME not in resp.cookies
+
+
+@pytest.mark.asyncio
+async def test_onboarding_a_client_end_to_end() -> None:
+    """The whole point of the platform routes: create an agency, give it a
+    number, invite its admin — and have an inbound message actually reach it.
+
+    Each step alone produces something unusable: an organization nobody can log
+    into, or a login with no way to receive leads. This asserts the sequence.
+    """
+    from sqlalchemy import text as sql_text
+
+    from app.models.channel_route import CHANNEL_SMS
+    from app.services.tenant_resolver import webhook_org_or_refuse
+
+    agency_number = "+15558880000"
+    admin_email = "owner@newagency.test"
+    try:
+        async with _client(org_id=DEFAULT_ORG_ID) as operator:
+            created = await operator.post(
+                "/api/v1/platform/organizations",
+                json={"name": "Audit Test Agency", "slug": SLUG},
+            )
+            assert created.status_code == 201
+            org_id = created.json()["id"]
+
+            routed = await operator.post(
+                "/api/v1/platform/routes",
+                json={
+                    "org_id": org_id,
+                    "channel": CHANNEL_SMS,
+                    "destination": agency_number,
+                },
+            )
+            assert routed.status_code == 201, routed.text
+
+            invited = await operator.post(
+                f"/api/v1/platform/organizations/{org_id}/members",
+                json={"email": admin_email, "role": "admin"},
+            )
+            assert invited.status_code == 201, invited.text
+            assert invited.json()["org_id"] == org_id
+
+            # A second agency cannot claim the same number.
+            other = await operator.post(
+                "/api/v1/platform/organizations",
+                json={"name": "Rival", "slug": "rival-agency"},
+            )
+            clash = await operator.post(
+                "/api/v1/platform/routes",
+                json={
+                    "org_id": other.json()["id"],
+                    "channel": CHANNEL_SMS,
+                    "destination": agency_number,
+                },
+            )
+            assert clash.status_code == 409, "two agencies claimed one number"
+
+        # And the number now resolves to the new agency, not to client zero.
+        assert await webhook_org_or_refuse(CHANNEL_SMS, agency_number) == org_id
+
+        # The invited admin resolves into their own org, not the default.
+        from app.db.base import get_bypass_session_factory as bypass
+        from app.services.auth import resolve_email_access, resolve_email_org
+
+        async with bypass()() as db:
+            assert await resolve_email_org(admin_email, db) == org_id
+            assert await resolve_email_access(admin_email, db) == "admin"
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                sql_text("DELETE FROM organizations WHERE slug IN (:a, :b)"),
+                {"a": SLUG, "b": "rival-agency"},
+            )
+            await db.commit()
+        tenant_resolver.reset_cache()

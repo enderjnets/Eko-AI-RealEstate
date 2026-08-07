@@ -205,3 +205,47 @@ async def delete_route(route_id: int, db: AsyncSession = Depends(get_bypass_db))
     await db.delete(route)
     await db.commit()
     return {"ok": True}
+
+
+class InviteIn(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    role: str = Field(default="admin", pattern=r"^(admin|member|viewer)$")
+
+
+@router.post("/organizations/{org_id}/members", status_code=201)
+async def invite_member(
+    org_id: int, body: InviteIn, db: AsyncSession = Depends(get_bypass_db)
+) -> dict:
+    """Give a person access to a client agency.
+
+    The last step of onboarding: without it a newly created organization has no
+    one who can log into it, so `create_organization` on its own produces a
+    tenant nobody can reach.
+
+    Runs on the bypass session because the operator is acting on a tenant that
+    is not their own — `add_member` in the team router does the same job from
+    inside an agency, scoped by RLS.
+    """
+    from app.models import AllowedUser
+
+    org = (
+        await db.execute(select(Organization).where(Organization.id == org_id))
+    ).scalar_one_or_none()
+    if org is None:
+        raise HTTPException(status_code=404, detail="organization_not_found")
+
+    email = body.email.lower().strip()
+    row = AllowedUser(email=email, role=body.role, added_by="platform", org_id=org_id)
+    db.add(row)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        # Email is globally unique — identity is one person, one organization —
+        # so this is the operator being told the person already belongs
+        # somewhere, not a constraint surprising them.
+        raise HTTPException(
+            status_code=409, detail="email_already_belongs_to_an_organization"
+        ) from exc
+    await db.refresh(row)
+    return {"id": row.id, "email": row.email, "role": row.role, "org_id": org_id}
