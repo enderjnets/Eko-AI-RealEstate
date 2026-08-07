@@ -83,6 +83,12 @@ def get_bypass_engine() -> AsyncEngine:
     global _bypass_engine
     if _bypass_engine is None:
         settings = get_settings()
+        # Falls back to DATABASE_URL, which owns the tables. That only bypasses
+        # RLS while the owner is a superuser — and every tenant table is FORCE,
+        # so a non-superuser owner is still subject to the policies. In that
+        # configuration this engine stops bypassing and the failure is silent:
+        # run_for_every_org would sweep zero orgs and every login would be
+        # denied, with nothing in the logs. See the startup assertion in main.py.
         _bypass_engine = create_async_engine(
             settings.DATABASE_URL_BYPASS or settings.DATABASE_URL,
             echo=settings.DEBUG and settings.APP_ENV == "development",

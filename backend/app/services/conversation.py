@@ -664,7 +664,11 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # ── 8. Reply generation ────────────────────────────────────────────
     if agent_cfg is None:
         # Bootstrap the singleton on first real interaction.
-        agent_cfg = AgentSettings(id=1)
+        # No pinned id. Org 1 owns agent_settings.id = 1, so forcing it here made
+        # every inbound message for any other tenant die on a primary-key
+        # collision — the read filter above was fixed and this write was missed,
+        # which moved the crash from the SELECT to the flush instead of ending it.
+        agent_cfg = AgentSettings()
         db.add(agent_cfg)
         await db.flush()
 

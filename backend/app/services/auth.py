@@ -174,7 +174,13 @@ def token_org_id(token: str | None) -> int | None:
     from app.models.organization import DEFAULT_ORG_ID
 
     org = data.get("org")
-    return int(org) if isinstance(org, int) else DEFAULT_ORG_ID
+    # `isinstance(True, int)` is True in Python, and a string or float claim
+    # would silently fall through to the default org — i.e. into client zero's
+    # data. Anything that is not a plain positive int is treated as no org at
+    # all, which under default-deny RLS shows nothing rather than the wrong thing.
+    if isinstance(org, bool) or not isinstance(org, int):
+        return DEFAULT_ORG_ID if org is None else None
+    return org if org > 0 else None
 
 
 def token_is_superuser(token: str | None) -> bool:
@@ -259,6 +265,12 @@ async def resolve_email_org(email: str, db: AsyncSession) -> int | None:
     email = (email or "").lower().strip()
     if not email:
         return None
+    # Same precedence as resolve_email_access, deliberately. That one checks the
+    # env bootstrap list BEFORE the database; if this one checked the database
+    # first, an operator email that a client agency happened to add to their Team
+    # would sign in as an admin OF THAT AGENCY instead of the default org.
+    if email in get_settings().google_admin_emails_list:
+        return DEFAULT_ORG_ID
     row = (
         await db.execute(select(AllowedUser).where(AllowedUser.email == email))
     ).scalar_one_or_none()

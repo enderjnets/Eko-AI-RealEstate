@@ -5,11 +5,6 @@ Order matters for cascades: parents before children.
 from app.models.account import Account
 from app.models.agent_settings import AgentSettings
 from app.models.allowed_user import AllowedUser
-from app.models.organization import (
-    DEFAULT_ORG_ID,
-    DEMO_ORG_ID,
-    Organization,
-)
 from app.models.conversation import Conversation, ConversationStatus
 from app.models.follow_up import FollowUp, FollowUpKind, FollowUpStatus
 from app.models.lead import Lead, LeadIntent, LeadStatus
@@ -18,6 +13,11 @@ from app.models.message import (
     MessageDirection,
     MessageSender,
     MessageStatus,
+)
+from app.models.organization import (
+    DEFAULT_ORG_ID,
+    DEMO_ORG_ID,
+    Organization,
 )
 from app.models.property import Property, PropertySource, PropertyStatus
 from app.models.sync_state import SyncState

@@ -84,7 +84,9 @@ class Message(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("external_id", name="uq_messages_external_id"),
+        # Per organization: the idempotency guard against Meta's delivery
+        # retries only has to hold within one tenant's inbox.
+        UniqueConstraint("org_id", "external_id", name="uq_messages_external_id"),
     )
 
     def __repr__(self) -> str:

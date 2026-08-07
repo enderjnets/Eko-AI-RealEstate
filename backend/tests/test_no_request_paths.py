@@ -113,3 +113,80 @@ async def test_token_carries_the_users_org() -> None:
     token = make_token(email="someone@example.test", role="viewer", org_id=DEMO_ORG_ID)
     assert token_org_id(token) == DEMO_ORG_ID
     assert resolve_org_for_path("/api/v1/leads", token) == DEMO_ORG_ID
+
+
+@pytest.mark.asyncio
+async def test_shared_email_across_orgs_cannot_lock_a_user_out() -> None:
+    """Migration 016 made duplicate emails legal and turned every login lookup
+    into MultipleResultsFound — a permanent, unexplained lockout that agency B
+    could inflict on agency A just by adding a person to their team.
+
+    Identity is global now, so the duplicate is refused at the database instead
+    of poisoning sign-in.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    async with get_bypass_session_factory()() as db:
+        db.add(
+            AllowedUser(email=SEEDED_EMAIL, role="member", added_by="a", org_id=DEFAULT_ORG_ID)
+        )
+        await db.commit()
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            db.add(
+                AllowedUser(email=SEEDED_EMAIL, role="member", added_by="b", org_id=DEMO_ORG_ID)
+            )
+            with pytest.raises(IntegrityError):
+                await db.commit()
+
+        # And sign-in still resolves cleanly rather than raising.
+        with org_scope(None):
+            async with get_bypass_session_factory()() as db:
+                assert await resolve_email_access(SEEDED_EMAIL, db) == "member"
+                assert await resolve_email_org(SEEDED_EMAIL, db) == DEFAULT_ORG_ID
+    finally:
+        await _cleanup(email=SEEDED_EMAIL)
+
+
+@pytest.mark.asyncio
+async def test_one_failing_org_does_not_starve_the_others() -> None:
+    """Without a per-org guard, the first tenant with bad data stops every
+    organization after it — forever, logging only a generic tick failure."""
+    visited: list[int] = []
+
+    async def _explode_on_first(session) -> None:
+        org = get_org_id()
+        assert org is not None
+        visited.append(org)
+        if len(visited) == 1:
+            raise RuntimeError("this tenant has bad data")
+
+    with org_scope(None):
+        await run_for_every_org(_explode_on_first)
+
+    assert len(visited) >= 2, f"sweep stopped after the failing org: visited {visited}"
+
+
+@pytest.mark.asyncio
+async def test_token_org_claim_rejects_non_integers() -> None:
+    """A bool, string or float claim used to fall through to the default org —
+    i.e. straight into client zero's data."""
+    import hashlib
+    import hmac
+    import json
+    import time
+
+    from app.services.auth import _SUBJECT, _b64e, _secret, token_org_id
+
+    def _forge(org_value) -> str:
+        payload = {"sub": _SUBJECT, "exp": int(time.time()) + 3600, "role": "admin"}
+        payload["org"] = org_value
+        b64 = _b64e(json.dumps(payload, separators=(",", ":")).encode())
+        sig = _b64e(hmac.new(_secret(), b64.encode("ascii"), hashlib.sha256).digest())
+        return f"{b64}.{sig}"
+
+    assert token_org_id(_forge(True)) is None, "bool claim resolved to an org"
+    assert token_org_id(_forge("2")) is None, "string claim resolved to an org"
+    assert token_org_id(_forge(0)) is None, "zero resolved to an org"
+    assert token_org_id(_forge(2)) == 2

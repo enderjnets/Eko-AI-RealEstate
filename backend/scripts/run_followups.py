@@ -16,15 +16,25 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.db.base import dispose_engine, get_session_factory  # noqa: E402
+from app.db.base import dispose_engine  # noqa: E402
 from app.services.followups import process_due_followups  # noqa: E402
 
 
 async def main() -> int:
-    Session = get_session_factory()
+    from app.services.tenant_context import run_for_every_org
+
+    totals = {"sent": 0, "skipped": 0, "failed": 0}
+
+    async def _one_org(session) -> None:
+        result = await process_due_followups(session)
+        for key in totals:
+            totals[key] += result[key]
+
     try:
-        async with Session() as session:
-            result = await process_due_followups(session)
+        # Per organization. A cron run with no org bound sees zero rows under
+        # default-deny RLS and reports success having sent nothing.
+        await run_for_every_org(_one_org)
+        result = totals
         print(f"📨 follow-ups: sent={result['sent']} skipped={result['skipped']} failed={result['failed']}")
         return 0
     finally:

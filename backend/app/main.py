@@ -191,19 +191,28 @@ async def _enrichment_loop() -> None:
     from app.services.tenant_context import run_for_every_org
 
     interval = max(30, settings.ENRICHMENT_INTERVAL_SECONDS)
-    result: dict | None = None
+    # Accumulated across organizations. Keeping only the last org's result meant
+    # a tenant that enriched ten leads was invisible if the next enriched none,
+    # and with zero active orgs the value stayed None and the tick raised.
+    totals: dict[str, int] = {}
 
     async def _enrich_one_org(session) -> None:
-        nonlocal result
-        result = await enrich_pending_leads(session, limit=10)
+        one = await enrich_pending_leads(session, limit=10)
+        for key, value in one.items():
+            if isinstance(value, int):
+                totals[key] = totals.get(key, 0) + value
 
     while True:
         try:
             await asyncio.sleep(interval)
             # Per org, for the same reason as the follow-ups worker.
             await run_for_every_org(_enrich_one_org)
-            if result["enriched"]:
-                logger.info("Enrichment worker: enriched %d discovery lead(s)", result["enriched"])
+            if totals.get("enriched"):
+                logger.info(
+                    "Enrichment worker: enriched %d discovery lead(s) across all orgs",
+                    totals["enriched"],
+                )
+            totals.clear()
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -294,6 +303,48 @@ async def _startup() -> None:
         await _seed_admin_users()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Bootstrap admin seed skipped: %s", exc)
+    # Assert the two database roles are what the isolation design assumes. Both
+    # failure modes are silent: an app role that bypasses RLS isolates nothing,
+    # and a bypass role that does NOT bypass makes every login deny and every
+    # worker sweep zero organizations, with nothing in the logs either way.
+    try:
+        from sqlalchemy import text
+
+        from app.db.base import get_bypass_engine, get_engine
+
+        async with get_engine().connect() as conn:
+            app_role = (
+                await conn.execute(
+                    text(
+                        "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user"
+                    )
+                )
+            ).one()
+        if app_role.rolsuper or app_role.rolbypassrls:
+            logger.error(
+                "🔴 DATABASE_URL_APP connects as a superuser or a BYPASSRLS role. "
+                "Row-level security is NOT being enforced and every agency can "
+                "read every other agency's data. Point it at a role created with "
+                "NOSUPERUSER NOBYPASSRLS."
+            )
+
+        async with get_bypass_engine().connect() as conn:
+            bypass_role = (
+                await conn.execute(
+                    text(
+                        "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user"
+                    )
+                )
+            ).one()
+        if not (bypass_role.rolsuper or bypass_role.rolbypassrls):
+            logger.error(
+                "🔴 The bypass connection cannot bypass RLS. Login will deny every "
+                "user and the background workers will process zero organizations, "
+                "both silently. Set DATABASE_URL_BYPASS to a role with BYPASSRLS."
+            )
+    except Exception as exc:  # noqa: BLE001 — a check must not block startup
+        logger.warning("database role check skipped: %s", exc)
+
     if not settings.AUTH_ENABLED:
         from sqlalchemy import func, select
 

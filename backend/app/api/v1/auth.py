@@ -42,13 +42,15 @@ from app.services.auth import (
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
-async def _safe_record_login(db: AsyncSession, email: str, source: str, request: Request) -> None:
+async def _safe_record_login(
+    db: AsyncSession, email: str, source: str, request: Request, org_id: int | None = None
+) -> None:
     """Best-effort: bump the user's login_count. Never break login on a telemetry error."""
     try:
         from app.services.activity import client_ip, record_login
 
         await record_login(
-            db, email=email, source=source,
+            db, email=email, source=source, org_id=org_id,
             ip=client_ip(request), user_agent=request.headers.get("user-agent"),
         )
     except Exception as exc:  # noqa: BLE001
@@ -196,7 +198,7 @@ async def login_google(
         log.warning("google_signin_denied email=%s", email)
         raise HTTPException(status_code=401, detail="email_not_in_allow_list")
     _set_session_cookie(response, make_token(email=email, role=role, org_id=org_id))
-    await _safe_record_login(db, email, "google", request)
+    await _safe_record_login(db, email, "google", request, org_id)
     return {"ok": True, "auth_enabled": True}
 
 
@@ -234,7 +236,7 @@ async def login_google_callback(
         return RedirectResponse("/login?error=google_denied", status_code=303)
     resp = RedirectResponse("/leads", status_code=303)
     _set_session_cookie(resp, make_token(email=email, role=role, org_id=org_id))
-    await _safe_record_login(db, email, "google", request)
+    await _safe_record_login(db, email, "google", request, org_id)
     return resp
 
 
@@ -262,7 +264,7 @@ async def login_apple(
         log.warning("apple_signin_denied email=%s", email)
         raise HTTPException(status_code=401, detail="email_not_in_allow_list")
     _set_session_cookie(response, make_token(email=email, role=role, org_id=org_id))
-    await _safe_record_login(db, email, "apple", request)
+    await _safe_record_login(db, email, "apple", request, org_id)
     return {"ok": True, "auth_enabled": True}
 
 
@@ -307,6 +309,7 @@ async def register(
     )
     db.add(account)
     await db.commit()
+    account_org_id = account.org_id
     log.info("New viewer account registered: %s", email)
 
     # Sign them in immediately (cookie). When AUTH_ENABLED is false the cookie is
@@ -314,7 +317,7 @@ async def register(
     _set_session_cookie(
         response, make_token(email=email, role=ROLE_VIEWER, org_id=DEMO_ORG_ID)
     )
-    await _safe_record_login(db, email, "account", request)
+    await _safe_record_login(db, email, "account", request, account_org_id)
     return {"ok": True, "role": ROLE_VIEWER, "auth_enabled": get_settings().AUTH_ENABLED}
 
 
@@ -334,6 +337,7 @@ async def login_account(
     ).scalar_one_or_none()
     if account is None or not verify_password(body.password, account.password_hash):
         raise HTTPException(status_code=401, detail="invalid_credentials")
+    account_org_id = account.org_id
     # account.org_id was loaded with the row above; ignoring it was how every
     # self-registered user ended up acting for the default organization.
     _set_session_cookie(
@@ -344,7 +348,7 @@ async def login_account(
             org_id=account.org_id or DEMO_ORG_ID,
         ),
     )
-    await _safe_record_login(db, email, "account", request)
+    await _safe_record_login(db, email, "account", request, account_org_id)
     return {"ok": True, "role": account.role or ROLE_VIEWER, "auth_enabled": get_settings().AUTH_ENABLED}
 
 

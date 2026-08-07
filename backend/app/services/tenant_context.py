@@ -16,9 +16,12 @@ workers (which sweep every org). They do it through the bypass engine in
 from __future__ import annotations
 
 import contextlib
+import logging
 from collections.abc import Awaitable, Callable, Iterator
 from contextvars import ContextVar
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 _current_org_id: ContextVar[int | None] = ContextVar("current_org_id", default=None)
 
@@ -60,10 +63,27 @@ async def run_for_every_org(work: "Callable[[Any], Awaitable[None]]") -> None:
         )
 
     session_factory = get_session_factory()
+    failures: list[tuple[int, Exception]] = []
     for org_id in org_ids:
         with org_scope(org_id):
             async with session_factory() as session:
-                await work(session)
+                try:
+                    await work(session)
+                except Exception as exc:  # noqa: BLE001 — one tenant must not stop the rest
+                    # Without this, a single tenant with bad data starves every
+                    # organization after it in the list — forever, and the tick
+                    # handler only logs a generic failure so nobody can tell
+                    # which tenant broke or that others were skipped.
+                    logger.exception("org %s failed during a sweep", org_id)
+                    failures.append((org_id, exc))
+
+    if failures:
+        logger.error(
+            "sweep finished with %d of %d organizations failing: %s",
+            len(failures),
+            len(org_ids),
+            [org for org, _ in failures],
+        )
 
 
 @contextlib.contextmanager

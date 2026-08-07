@@ -83,11 +83,27 @@ def client_ip(request) -> str | None:
     return request.client.host if request.client else None
 
 
-async def _get_or_create(db: AsyncSession, email: str, source: str | None):
+async def _get_or_create(
+    db: AsyncSession, email: str, source: str | None, org_id: int | None = None
+):
+    """Find or create this user's activity row, always inside one organization.
+
+    `org_id` is passed explicitly because the login endpoints call this on a
+    bypass session, where nothing is bound and nothing gets stamped. Without it
+    the lookup matched on email alone across every tenant: a self-registered
+    viewer's telemetry was filed under client zero, and an org-1 login could
+    overwrite an org-2 user's last IP and device — which their admin then saw in
+    their own activity panel.
+    """
     from app.models import UserActivity
 
+    effective_org = org_id or get_org_id() or DEFAULT_ORG_ID
     row = (
-        await db.execute(select(UserActivity).where(UserActivity.email == email))
+        await db.execute(
+            select(UserActivity).where(
+                UserActivity.email == email, UserActivity.org_id == effective_org
+            )
+        )
     ).scalar_one_or_none()
     if row is None:
         now = datetime.now(UTC)
@@ -100,7 +116,7 @@ async def _get_or_create(db: AsyncSession, email: str, source: str | None):
             first_seen=now,
             last_seen=now,
             sections={},
-            org_id=get_org_id() or DEFAULT_ORG_ID,
+            org_id=effective_org,
         )
         db.add(row)
         await db.flush()
@@ -151,10 +167,11 @@ async def record_login(
     source: str | None,
     ip: str | None = None,
     user_agent: str | None = None,
+    org_id: int | None = None,
 ) -> None:
     """Increment login_count + refresh last_seen on a successful login."""
     now = datetime.now(UTC)
-    row = await _get_or_create(db, email, source)
+    row = await _get_or_create(db, email, source, org_id)
     row.login_count = (row.login_count or 0) + 1
     row.last_seen = now
     if ip:

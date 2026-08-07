@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, pg_enum
@@ -46,7 +46,10 @@ class Lead(Base):
     # as a generic identifier: phone numbers for whatsapp/sms/voice, email
     # addresses for email. Widened to 254 chars (RFC 5321 max email length).
     # A future migration will rename it to `identifier`.
-    phone: Mapped[str] = mapped_column(String(254), unique=True, nullable=False, index=True)
+    # Unique per organization, not globally: two agencies may legitimately work
+    # the same prospect. The composite index lives in __table_args__ so
+    # autogenerate does not "helpfully" restore the global one.
+    phone: Mapped[str] = mapped_column(String(254), nullable=False)
     name: Mapped[str | None] = mapped_column(String(160), nullable=True)
 
     status: Mapped[LeadStatus] = mapped_column(
@@ -112,6 +115,7 @@ class Lead(Base):
 
     __table_args__ = (
         Index("ix_leads_status_last_message_at", "status", "last_message_at"),
+        Index("ix_leads_phone", "org_id", "phone", unique=True),
     )
 
     def __repr__(self) -> str:
