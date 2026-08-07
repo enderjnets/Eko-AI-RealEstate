@@ -89,10 +89,15 @@ class TenantMiddleware:
         from app.services.tenant_resolver import (
             WebhookOrgUnresolved,
             active_orgs,
+            needs_tenant,
             resolve_org_for_request,
         )
 
         path = scope.get("path", "")
+        if not needs_tenant(path):
+            set_org_id(None)
+            await self.app(scope, receive, send)
+            return
         try:
             token = _token_from_request(Request(scope))
         except Exception:  # noqa: BLE001 — a malformed header must not 500 the request

@@ -24,6 +24,15 @@ logger = logging.getLogger(__name__)
 # Unauthenticated paths that legitimately write: the inbound channels.
 WEBHOOK_PREFIX = "/api/v1/webhooks"
 
+# Paths that must answer without touching the database. `/health` exists to be
+# reachable during an outage — routing it through the org-status lookup made it
+# hang exactly when a monitor needs a straight answer.
+NO_TENANT_PREFIXES = ("/api/v1/health", "/docs", "/redoc", "/openapi.json")
+
+
+def needs_tenant(path: str) -> bool:
+    return not path.startswith(NO_TENANT_PREFIXES)
+
 # Orgs change rarely and this is consulted on every request, so the set of
 # routable orgs is cached briefly. Short enough that suspending a tenant takes
 # effect in seconds, long enough to keep the hot path off the database.
