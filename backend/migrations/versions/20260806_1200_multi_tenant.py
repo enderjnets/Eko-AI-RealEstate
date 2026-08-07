@@ -24,6 +24,8 @@ Revises: 014_sync_state
 """
 from __future__ import annotations
 
+import os
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -50,7 +52,10 @@ DEFAULT_ORG_ID = 1
 DEMO_ORG_ID = 2
 
 APP_ROLE = "eko_app"
-APP_PASSWORD = "eko_app_local_pass"
+# Dev/CI convenience only. A real deployment sets APP_DB_PASSWORD before running
+# migrations — otherwise the role that guards every tenant boundary ships with a
+# password that is published in this repository.
+APP_PASSWORD = os.environ.get("APP_DB_PASSWORD", "eko_app_local_pass")
 
 
 def upgrade() -> None:
