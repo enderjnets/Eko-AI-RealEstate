@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import IntegrityError
 
 from app.api.v1 import (
     analytics,
@@ -81,16 +82,47 @@ class TenantMiddleware:
             return
 
         from starlette.requests import Request
+        from starlette.responses import JSONResponse
 
         from app.api.v1.auth import _token_from_request
         from app.services.tenant_context import set_org_id
-        from app.services.tenant_resolver import resolve_org_for_path
+        from app.services.tenant_resolver import (
+            WebhookOrgUnresolved,
+            active_orgs,
+            resolve_org_for_request,
+        )
 
+        path = scope.get("path", "")
         try:
             token = _token_from_request(Request(scope))
         except Exception:  # noqa: BLE001 — a malformed header must not 500 the request
             token = None
-        set_org_id(resolve_org_for_path(scope.get("path", ""), token))
+
+        try:
+            org_id = await resolve_org_for_request(path, token)
+        except WebhookOrgUnresolved as exc:
+            # 503, not 500: the provider should retry, and the operator needs to
+            # see this rather than discover it as another agency's leads.
+            logger.error("inbound message refused — %s", exc)
+            await JSONResponse(
+                {"detail": "inbound routing unavailable"}, status_code=503
+            )(scope, receive, send)
+            return
+
+        # A token naming a suspended or deleted organization used to sail
+        # through: reads returned nothing and writes 500'd on the RLS check.
+        # Suspension has to end access, not just stop the background sweeps.
+        if org_id is not None:
+            status = (await active_orgs()).get(org_id)
+            if status is None or status == "suspended":
+                set_org_id(None)
+                await JSONResponse(
+                    {"detail": "organization is not active; sign in again"},
+                    status_code=403,
+                )(scope, receive, send)
+                return
+
+        set_org_id(org_id)
         await self.app(scope, receive, send)
 
 
@@ -301,7 +333,18 @@ async def _seed_admin_users() -> None:
                 )
             elif row.role != ROLE_ADMIN:
                 row.role = ROLE_ADMIN
-        await session.commit()
+            # Commit per email. Email is globally unique, so one address a
+            # client agency already claimed used to roll back the whole batch
+            # and no pinned admin was seeded at all — swallowed as a warning.
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                logger.warning(
+                    "Bootstrap admin %s is already registered to another "
+                    "organization and was not seeded",
+                    email,
+                )
 
 
 @app.on_event("startup")

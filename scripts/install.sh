@@ -98,6 +98,7 @@ if [ "${SKIP_ENV:-0}" -ne 1 ]; then
   MINIMAX_API_KEY="${MINIMAX_API_KEY:-$(ask_secret 'MiniMax API key (sk-cp-…) — blank to set later')}"
 
   PG_PASS="$(gen_secret)"
+  APP_DB_PASS="$(gen_secret)"
   WA_VERIFY="$(gen_secret)"
   AUTH_SECRET="$(gen_secret)"
 
@@ -133,6 +134,11 @@ POSTGRES_USER=eko
 POSTGRES_PASSWORD=${PG_PASS}
 POSTGRES_DB=eko_realestate
 DATABASE_URL=postgresql+asyncpg://eko:${PG_PASS}@db:5432/eko_realestate
+# The role the request path connects as. It has no BYPASSRLS, which is what
+# makes the per-agency row-level policies bind. Generated per install: the
+# default in docker-compose is a literal published in this repository.
+APP_DB_PASSWORD=${APP_DB_PASS}
+DATABASE_URL_APP=postgresql+asyncpg://eko_app:${APP_DB_PASS}@db:5432/eko_realestate
 REDIS_URL=redis://redis:6379/0
 INTERNAL_API_URL=http://backend:8000
 NEXT_PUBLIC_API_URL=/api

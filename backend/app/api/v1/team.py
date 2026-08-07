@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.auth import require_platform_admin
 from app.config import get_settings
 from app.db.base import get_bypass_db, get_db
 from app.models import Account, AllowedUser, UserActivity
@@ -160,7 +161,11 @@ class AccountOut(BaseModel):
     created_at: datetime
 
 
-@router.get("/accounts", response_model=list[AccountOut])
+@router.get(
+    "/accounts",
+    response_model=list[AccountOut],
+    dependencies=[Depends(require_platform_admin)],
+)
 async def list_accounts(db: AsyncSession = Depends(get_bypass_db)) -> list[AccountOut]:
     """All self-registered demo (viewer) accounts, newest first."""
     rows = (
@@ -180,7 +185,11 @@ class AccountRoleIn(BaseModel):
     role: Literal["viewer", "member"]
 
 
-@router.patch("/accounts/{account_id}", response_model=AccountOut)
+@router.patch(
+    "/accounts/{account_id}",
+    response_model=AccountOut,
+    dependencies=[Depends(require_platform_admin)],
+)
 async def update_account_role(
     account_id: int, body: AccountRoleIn, db: AsyncSession = Depends(get_bypass_db)
 ) -> AccountOut:
@@ -200,7 +209,10 @@ async def update_account_role(
     return AccountOut.model_validate(row)
 
 
-@router.delete("/accounts/{account_id}")
+@router.delete(
+    "/accounts/{account_id}",
+    dependencies=[Depends(require_platform_admin)],
+)
 async def remove_account(account_id: int, db: AsyncSession = Depends(get_bypass_db)) -> dict[str, bool]:
     """Delete a self-registered demo account (e.g. a test or abandoned signup)."""
     row = (

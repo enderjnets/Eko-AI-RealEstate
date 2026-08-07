@@ -108,8 +108,13 @@ async def require_admin(request: Request) -> None:
     is false; otherwise requires a valid session whose role is admin."""
     if not get_settings().AUTH_ENABLED:
         return
-    if not verify_token(_token_from_request(request)):
+    token = _token_from_request(request)
+    if not verify_token(token):
         raise HTTPException(status_code=401, detail="Not authenticated")
+    if token_org_id(token) is None:
+        raise HTTPException(
+            status_code=401, detail="Session has no organization; sign in again"
+        )
     if current_role(request) != ROLE_ADMIN:
         raise HTTPException(status_code=403, detail="Admins only")
 
@@ -394,3 +399,18 @@ async def me(request: Request) -> MeOut:
         google_signin_enabled=google_enabled,
         apple_signin_enabled=apple_enabled,
     )
+
+
+async def require_platform_admin(request: Request) -> None:
+    """Routes that belong to the operator of the platform, not to any tenant.
+
+    require_admin is not enough on its own: it authorises the admin OF SOME
+    organization, and every client agency has one. Anything reaching across
+    tenants — the demo signup list, tenant lifecycle — needs the caller to be an
+    admin of the default org specifically.
+    """
+    await require_admin(request)
+    if not get_settings().AUTH_ENABLED:
+        return
+    if token_org_id(_token_from_request(request)) != DEFAULT_ORG_ID:
+        raise HTTPException(status_code=403, detail="Platform operators only")

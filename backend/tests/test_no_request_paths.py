@@ -108,11 +108,11 @@ async def test_token_carries_the_users_org() -> None:
     """The defect that defeated the whole isolation layer: no login path wrote
     the org into the token, so every session resolved to the default org."""
     from app.services.auth import make_token, token_org_id
-    from app.services.tenant_resolver import resolve_org_for_path
+    from app.services.tenant_resolver import resolve_org_for_request
 
     token = make_token(email="someone@example.test", role="viewer", org_id=DEMO_ORG_ID)
     assert token_org_id(token) == DEMO_ORG_ID
-    assert resolve_org_for_path("/api/v1/leads", token) == DEMO_ORG_ID
+    assert await resolve_org_for_request("/api/v1/leads", token) == DEMO_ORG_ID
 
 
 @pytest.mark.asyncio
