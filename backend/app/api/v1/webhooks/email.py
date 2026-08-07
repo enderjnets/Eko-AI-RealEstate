@@ -5,13 +5,17 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.base import get_db
+from app.models.channel_route import CHANNEL_EMAIL
 from app.services.conversation import handle_inbound_message
 from app.services.email import fetch_inbound_email, parse_inbound_email, verify_resend_signature
+from app.services.tenant_context import set_org_id
+from app.services.tenant_resolver import WebhookOrgUnresolved, webhook_org_or_refuse
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -80,6 +84,14 @@ async def email_inbound(
     if not parsed_messages:
         return {"status": "ok", "processed": 0}
 
+    # Which agency's mailbox was written to. Resolved before any write; the
+    # middleware cannot read the body.
+    try:
+        set_org_id(await webhook_org_or_refuse(CHANNEL_EMAIL, _mailbox(payload)))
+    except WebhookOrgUnresolved as exc:
+        log.error("refusing inbound email — %s", exc)
+        return JSONResponse({"status": "unrouted"}, status_code=503)
+
     results = []
     for parsed in parsed_messages:
         try:
@@ -95,3 +107,20 @@ async def email_inbound(
             results.append({"status": "error", "external_id": parsed.external_id, "error": str(exc)})
 
     return {"status": "ok", "processed": len(parsed_messages), "results": results}
+
+
+def _mailbox(payload: dict) -> str | None:
+    """The agency mailbox this message was addressed to.
+
+    Resend delivers `to` as a list; the first entry is the delivery address.
+    Falls back to the envelope recipient when present.
+    """
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return None
+    to = data.get("to")
+    if isinstance(to, list) and to:
+        return str(to[0])
+    if isinstance(to, str) and to:
+        return to
+    return data.get("recipient")

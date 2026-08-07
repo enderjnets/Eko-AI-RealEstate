@@ -156,3 +156,61 @@ async def test_unmapped_destination_with_two_tenants_is_refused_not_misfiled() -
         assert after == before, "a refused message still wrote a lead"
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_whatsapp_and_email_route_by_their_own_destination() -> None:
+    """Each channel carries its destination in a different place: WhatsApp in
+    changes[].value.metadata, email in data.to. Getting either wrong sends an
+    agency's messages to another tenant, so both are asserted explicitly."""
+    from app.api.v1.webhooks.email import _mailbox
+    from app.api.v1.webhooks.whatsapp import _business_number
+    from app.models.channel_route import CHANNEL_EMAIL, CHANNEL_WHATSAPP
+
+    wa_payload = {
+        "entry": [
+            {
+                "changes": [
+                    {"value": {"metadata": {"phone_number_id": "109988776655"}}}
+                ]
+            }
+        ]
+    }
+    assert _business_number(wa_payload) == "109988776655"
+    assert _business_number({"entry": []}) is None
+
+    email_payload = {"data": {"to": ["Leads@AgencyB.com"], "from": "x@y.com"}}
+    assert _mailbox(email_payload) == "Leads@AgencyB.com"
+    assert _mailbox({"data": {}}) is None
+
+    org_a, org_b = await _seed_two_agencies()
+    try:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text(
+                    "INSERT INTO channel_routes (org_id, channel, destination) "
+                    "VALUES (:o1, :c1, :d1), (:o2, :c2, :d2)"
+                ),
+                {
+                    "o1": org_a,
+                    "c1": CHANNEL_WHATSAPP,
+                    "d1": normalize_destination("109988776655"),
+                    "o2": org_b,
+                    "c2": CHANNEL_EMAIL,
+                    "d2": normalize_destination("Leads@AgencyB.com"),
+                },
+            )
+            await db.commit()
+        tenant_resolver.reset_cache()
+
+        assert (
+            await resolve_org_by_destination(CHANNEL_WHATSAPP, "109988776655") == org_a
+        )
+        # Case-insensitive: providers do not preserve the sender's capitals.
+        assert (
+            await resolve_org_by_destination(CHANNEL_EMAIL, "leads@agencyb.com") == org_b
+        )
+        # And they do not bleed into each other's channel.
+        assert await resolve_org_by_destination(CHANNEL_EMAIL, "109988776655") is None
+    finally:
+        await _cleanup()
