@@ -10,8 +10,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_db
-from app.models import Lead, Property, PropertySource, PropertyStatus
-from app.services.listings import match_properties_for_lead, sync_listings
+from app.models import Lead, Property, PropertySource, PropertyStatus, SyncState
+from app.services.listings import RESO_SOURCE_KEY, match_properties_for_lead, sync_listings
 
 router = APIRouter()
 lead_matches_router = APIRouter()
@@ -104,6 +104,28 @@ async def sync_properties(
     """Ingest listings from the configured feed (SIMULATED curated set or RESO)."""
     result = await sync_listings(db, city=city)
     return SyncResult(**result)
+
+
+class SyncStatusOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    source: str
+    cursor_modified_at: datetime | None = None
+    last_run_at: datetime | None = None
+    last_created: int = 0
+    last_updated: int = 0
+    last_error: str | None = None
+
+
+# Declared before /{property_id} so "sync-status" is not parsed as an id.
+@router.get("/sync-status", response_model=SyncStatusOut | None)
+async def get_sync_status(db: AsyncSession = Depends(get_db)) -> SyncStatusOut | None:
+    """Replication health for the MLS Grid feed — the only window into the background
+    worker, which otherwise fails silently in the logs. Null before the first run."""
+    row = (
+        await db.execute(select(SyncState).where(SyncState.source == RESO_SOURCE_KEY))
+    ).scalar_one_or_none()
+    return SyncStatusOut.model_validate(row) if row else None
 
 
 @router.get("/{property_id}", response_model=PropertyOut)

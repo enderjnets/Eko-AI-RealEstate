@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -165,7 +166,7 @@ async def fetch_listings(
         page_size=min(limit, s.RESO_PAGE_SIZE),
         max_pages=s.RESO_MAX_PAGES,
     ):
-        out.extend(page)
+        out.extend(page.listings)
         if len(out) >= limit:
             return out[:limit]
     return out
@@ -173,7 +174,7 @@ async def fetch_listings(
 
 # ── RESO Web API (OData) adapter — MLS Grid / REcolorado ─────────────────────
 
-_RESO_SOURCE_KEY = "reso"  # SyncState.source for the REcolorado/MLS Grid feed
+RESO_SOURCE_KEY = "reso"  # SyncState.source for the REcolorado/MLS Grid feed
 
 # StandardStatus (RESO) → our PropertyStatus. Lower-cased keys; unknown → OFF_MARKET
 # (safe default: never shown to a lead). VERIFY the exact status set REcolorado emits.
@@ -195,6 +196,10 @@ _STATUS_MAP: dict[str, PropertyStatus] = {
 _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 _MAX_RETRIES = 4
 _RETRY_BASE_DELAY = 0.5  # seconds; exponential backoff. Patched to ~0 in tests.
+
+# MLS Grid caps a request at 5000 records, but drops the cap to 1000 as soon as
+# $expand is used — and we always expand Media. $top above this errors out.
+_MAX_TOP_WITH_EXPAND = 1000
 
 
 def _map_status(standard_status: str | None, mlg_can_view: object = None) -> PropertyStatus:
@@ -224,8 +229,18 @@ def _odata_str(value: str) -> str:
 
 
 def _odata_dt(dt: datetime) -> str:
-    """OData v4 Edm.DateTimeOffset literal (bare, no quotes). VERIFY vs MLS Grid docs."""
-    return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """OData v4 Edm.DateTimeOffset literal — bare (no quotes), millisecond precision.
+
+    MLS Grid stamps ModificationTimestamp to the millisecond ("…T00:55:41.516Z").
+    Truncating to the second makes the `ge` cursor re-scan a whole second every run,
+    and would silently skip records if it were ever switched to `gt`.
+    """
+    u = dt.astimezone(UTC)
+    return f"{u.strftime('%Y-%m-%dT%H:%M:%S')}.{u.microsecond // 1000:03d}Z"
+
+
+def _city_matches(dto: ListingDTO, city: str | None) -> bool:
+    return not city or (dto.city or "").strip().lower() == city.strip().lower()
 
 
 def _backoff(attempt: int) -> float:
@@ -252,7 +267,12 @@ async def _reso_get(
     client: httpx.AsyncClient, url: str, token: str, params: dict | None
 ) -> dict:
     """GET one RESO page, retrying with backoff on 429/5xx/timeouts (honors Retry-After)."""
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        # Required by MLS Grid: every response is compressed.
+        "Accept-Encoding": "gzip,deflate",
+    }
     attempt = 0
     while True:
         try:
@@ -281,8 +301,10 @@ def _map_reso_record(r: dict) -> ListingDTO | None:
     media = [m for m in (r.get("Media") or []) if isinstance(m, dict) and m.get("MediaURL")]
     media.sort(key=lambda m: m["Order"] if isinstance(m.get("Order"), int) else 1_000_000)
     photos = [m["MediaURL"] for m in media][:12]
-    sub = (r.get("PropertySubType") or "").lower()
-    listing_type = "rent" if ("lease" in sub or "rent" in sub) else "sale"
+    # Rentals live in PropertyType ("Residential Lease" / "Commercial Lease"), not in
+    # PropertySubType — a lease's subtype is still "Single Family Residence" etc.
+    kind = f"{r.get('PropertyType') or ''} {r.get('PropertySubType') or ''}".lower()
+    listing_type = "rent" if ("lease" in kind or "rent" in kind) else "sale"
     baths = r.get("BathroomsTotalDecimal")
     if baths is None:
         baths = r.get("BathroomsTotalInteger")
@@ -302,7 +324,7 @@ def _map_reso_record(r: dict) -> ListingDTO | None:
         bedrooms=r.get("BedroomsTotal"),
         bathrooms=_d(baths) if baths is not None else None,
         sqft=r.get("LivingArea"),
-        url=r.get("ListingURL"),
+        url=None,  # MLS Grid's Property payload has no ListingURL field
         photos=photos,
         source_modified_at=_parse_dt(r.get("ModificationTimestamp")),
         raw={
@@ -317,6 +339,21 @@ def _map_reso_record(r: dict) -> ListingDTO | None:
     )
 
 
+@dataclass
+class ResoPage:
+    """One page of the RESO feed.
+
+    `listings` is already narrowed to the requested city, but `max_modified` comes
+    from EVERY record the page returned. MLS Grid requires the replication cursor to
+    track the greatest ModificationTimestamp *received*, not the greatest one stored —
+    with a client-side city filter those differ, and using the stored one would re-pull
+    the same window forever.
+    """
+
+    listings: list[ListingDTO]
+    max_modified: datetime | None
+
+
 async def _fetch_reso_pages(
     base_url: str,
     token: str,
@@ -325,32 +362,50 @@ async def _fetch_reso_pages(
     city: str | None = None,
     page_size: int = 200,
     max_pages: int = 50,
-) -> AsyncIterator[list[ListingDTO]]:
-    """Yield pages of ListingDTO from a RESO Web API (OData) feed, following
-    @odata.nextLink. Incremental: with `modified_since`, only records with
-    ModificationTimestamp >= cursor (>= so boundary records sharing the cursor's
-    exact timestamp are re-seen and idempotently upserted). ALL statuses are
-    ingested so status transitions drive delta-delete downstream (the matcher
-    filters to ACTIVE)."""
+) -> AsyncIterator[ResoPage]:
+    """Yield pages of the RESO feed, following @odata.nextLink.
+
+    Only OriginatingSystemName + ModificationTimestamp go into $filter: MLS Grid
+    exposes a fixed set of searchable fields and City is not one of them, so the city
+    narrowing happens client-side. $orderby is not a supported segment either — the
+    feed already arrives ordered by ModificationTimestamp and the cursor takes the page
+    max. Requests are spaced to stay under MLS Grid's 2 req/s ceiling.
+
+    Incremental: with `modified_since`, only records with ModificationTimestamp >=
+    cursor (>= so boundary records sharing the cursor's exact timestamp are re-seen and
+    idempotently upserted). ALL statuses are ingested so status transitions drive
+    delta-delete downstream (the matcher filters to ACTIVE).
+    """
     s = get_settings()
     filt = f"OriginatingSystemName eq {_odata_str(s.RESO_ORIGINATING_SYSTEM)}"
     if modified_since is not None:
         filt += f" and ModificationTimestamp ge {_odata_dt(modified_since)}"
-    if city:
-        filt += f" and City eq {_odata_str(city)}"
     params: dict | None = {
         "$filter": filt,
-        "$top": str(max(1, page_size)),
-        "$orderby": "ModificationTimestamp,ListingKey",
+        "$top": str(max(1, min(page_size, _MAX_TOP_WITH_EXPAND))),
         "$expand": "Media",
     }
     url: str | None = f"{base_url.rstrip('/')}/Property"
+    min_interval = max(0.0, s.RESO_MIN_REQUEST_INTERVAL_SECONDS)
+    last_request_at: float | None = None
     pages = 0
     async with _reso_client() as client:
         while url and pages < max_pages:
+            if last_request_at is not None and min_interval:
+                wait = min_interval - (time.monotonic() - last_request_at)
+                if wait > 0:
+                    await asyncio.sleep(wait)
+            last_request_at = time.monotonic()
             payload = await _reso_get(client, url, token, params)
             params = None  # @odata.nextLink already carries the query string
-            yield [dto for r in payload.get("value", []) if (dto := _map_reso_record(r))]
+            received = [dto for r in payload.get("value", []) if (dto := _map_reso_record(r))]
+            yield ResoPage(
+                listings=[d for d in received if _city_matches(d, city)],
+                max_modified=max(
+                    (d.source_modified_at for d in received if d.source_modified_at),
+                    default=None,
+                ),
+            )
             url = payload.get("@odata.nextLink")
             pages += 1
     if url and pages >= max_pages:
@@ -524,10 +579,10 @@ async def _sync_reso(
     """Incremental RESO replication: per-page upsert + commit + cursor advance."""
     s = get_settings()
     row = (
-        await db.execute(select(SyncState).where(SyncState.source == _RESO_SOURCE_KEY))
+        await db.execute(select(SyncState).where(SyncState.source == RESO_SOURCE_KEY))
     ).scalar_one_or_none()
     if row is None:
-        db.add(SyncState(source=_RESO_SOURCE_KEY))
+        db.add(SyncState(source=RESO_SOURCE_KEY))
         await db.commit()
         cursor = None
     else:
@@ -544,17 +599,16 @@ async def _sync_reso(
             page_size=s.RESO_PAGE_SIZE,
             max_pages=s.RESO_MAX_PAGES,
         ):
-            if not page:
-                continue
-            created, updated = await _upsert_page(db, PropertySource.RESO, page)
-            page_max = max(
-                (d.source_modified_at for d in page if d.source_modified_at), default=None
-            )
-            if page_max and (max_seen is None or page_max > max_seen):
-                max_seen = page_max
+            # The cursor advances on EVERY page, even one the city filter emptied —
+            # otherwise those records come back on the next run, forever.
+            if page.max_modified and (max_seen is None or page.max_modified > max_seen):
+                max_seen = page.max_modified
+            created = updated = 0
+            if page.listings:
+                created, updated = await _upsert_page(db, PropertySource.RESO, page.listings)
             await db.execute(
                 update(SyncState)
-                .where(SyncState.source == _RESO_SOURCE_KEY)
+                .where(SyncState.source == RESO_SOURCE_KEY)
                 .values(
                     cursor_modified_at=max_seen,
                     last_run_at=datetime.now(UTC),
@@ -570,7 +624,7 @@ async def _sync_reso(
         await db.rollback()
         await db.execute(
             update(SyncState)
-            .where(SyncState.source == _RESO_SOURCE_KEY)
+            .where(SyncState.source == RESO_SOURCE_KEY)
             .values(last_run_at=datetime.now(UTC), last_error=str(exc)[:500])
         )
         await db.commit()

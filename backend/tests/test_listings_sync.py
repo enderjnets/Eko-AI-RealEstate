@@ -20,6 +20,14 @@ from app.services import listings as L
 from app.services.listings import ListingDTO
 
 
+def _page(*dtos: ListingDTO) -> L.ResoPage:
+    """A feed page whose cursor covers every record it carried."""
+    return L.ResoPage(
+        listings=list(dtos),
+        max_modified=max((d.source_modified_at for d in dtos if d.source_modified_at), default=None),
+    )
+
+
 @pytest.fixture
 def database_url() -> str:
     url = os.getenv("DATABASE_URL")
@@ -59,7 +67,7 @@ async def test_reso_cursor_advances_and_reconciles_status(monkeypatch, database_
         t1 = datetime(2026, 7, 1, 12, 0, 0, tzinfo=UTC)
 
         async def pages_v1(*a, **k):
-            yield [_dto("RX1", PropertyStatus.ACTIVE, t1)]
+            yield _page(_dto("RX1", PropertyStatus.ACTIVE, t1))
 
         monkeypatch.setattr(L, "_fetch_reso_pages", pages_v1)
         async with Session() as s:
@@ -86,7 +94,7 @@ async def test_reso_cursor_advances_and_reconciles_status(monkeypatch, database_
         t2 = datetime(2026, 7, 2, 9, 0, 0, tzinfo=UTC)
 
         async def pages_v2(*a, **k):
-            yield [_dto("RX1", PropertyStatus.SOLD, t2)]
+            yield _page(_dto("RX1", PropertyStatus.SOLD, t2))
 
         monkeypatch.setattr(L, "_fetch_reso_pages", pages_v2)
         async with Session() as s:
@@ -119,7 +127,7 @@ async def test_reso_crash_safety_commits_per_page(monkeypatch, database_url):
         t1 = datetime(2026, 7, 3, 8, 0, 0, tzinfo=UTC)
 
         async def pages_crash(*a, **k):
-            yield [_dto("RC1", PropertyStatus.ACTIVE, t1, zone="Denver")]
+            yield _page(_dto("RC1", PropertyStatus.ACTIVE, t1, zone="Denver"))
             raise RuntimeError("boom mid-run")
 
         monkeypatch.setattr(L, "_fetch_reso_pages", pages_crash)
@@ -148,7 +156,7 @@ async def test_reso_crash_safety_commits_per_page(monkeypatch, database_url):
         t2 = datetime(2026, 7, 4, 8, 0, 0, tzinfo=UTC)
 
         async def pages_resume(*a, **k):
-            yield [_dto("RC2", PropertyStatus.ACTIVE, t2, zone="Denver")]
+            yield _page(_dto("RC2", PropertyStatus.ACTIVE, t2, zone="Denver"))
 
         monkeypatch.setattr(L, "_fetch_reso_pages", pages_resume)
         async with Session() as s:

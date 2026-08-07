@@ -5,7 +5,11 @@ processed ``ModificationTimestamp`` to fetch only the delta (MLS Grid replicatio
 and writes it back **only after the batch commits** — so a crash re-fetches from the
 last durable point instead of silently skipping records. Filtering the feed with
 ``ge`` (≥) on the cursor + the idempotent upsert absorbs any boundary records that
-share the cursor's exact timestamp.
+share the cursor's exact timestamp — which is also why a run capped by
+``RESO_MAX_PAGES`` mid-timestamp is safe, where ``gt`` would drop the remainder.
+
+That guarantee depends on the OData literal carrying milliseconds (MLS Grid stamps
+to the millisecond); see ``listings._odata_dt``.
 """
 from __future__ import annotations
 

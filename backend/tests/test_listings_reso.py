@@ -29,13 +29,21 @@ def _install(monkeypatch, handler) -> None:
 
     monkeypatch.setattr(L, "_reso_client", _client)
     monkeypatch.setattr(L, "_RETRY_BASE_DELAY", 0.0)
+    # Real value is 0.5s (MLS Grid's 2 req/s ceiling) — would stall the suite.
+    monkeypatch.setattr(L.get_settings(), "RESO_MIN_REQUEST_INTERVAL_SECONDS", 0.0)
 
 
 async def _collect(**kwargs) -> list[L.ListingDTO]:
     out: list[L.ListingDTO] = []
     async for page in L._fetch_reso_pages("https://api.mlsgrid.test/v2", "tok", **kwargs):
-        out.extend(page)
+        out.extend(page.listings)
     return out
+
+
+async def _pages(**kwargs) -> list[L.ResoPage]:
+    return [
+        p async for p in L._fetch_reso_pages("https://api.mlsgrid.test/v2", "tok", **kwargs)
+    ]
 
 
 # ── status mapping ───────────────────────────────────────────────────────────
@@ -67,9 +75,13 @@ def test_odata_str_escapes_single_quotes():
     assert L._odata_str("recolorado") == "'recolorado'"
 
 
-def test_odata_dt_is_utc_z():
+def test_odata_dt_is_utc_z_with_milliseconds():
     dt = datetime(2026, 7, 20, 12, 34, 56, tzinfo=UTC)
-    assert L._odata_dt(dt) == "2026-07-20T12:34:56Z"
+    assert L._odata_dt(dt) == "2026-07-20T12:34:56.000Z"
+    # MLS Grid stamps to the millisecond; truncating would re-scan a whole second.
+    assert L._odata_dt(datetime(2026, 7, 20, 12, 34, 56, 516000, tzinfo=UTC)) == (
+        "2026-07-20T12:34:56.516Z"
+    )
 
 
 # ── record mapping: photo order, decimal baths, attribution, cursor ────────────
@@ -117,6 +129,27 @@ def test_map_record_bathrooms_integer_fallback():
     assert dto is not None and str(dto.bathrooms) == "3"
 
 
+def test_lease_is_detected_from_property_type():
+    """A lease's PropertySubType is still "Single Family Residence" — only
+    PropertyType carries the lease signal, and rent/sale drives intent matching."""
+    rent = L._map_reso_record(
+        {
+            "ListingKey": "REC9",
+            "PropertyType": "Residential Lease",
+            "PropertySubType": "Single Family Residence",
+        }
+    )
+    sale = L._map_reso_record(
+        {
+            "ListingKey": "REC8",
+            "PropertyType": "Residential",
+            "PropertySubType": "Single Family Residence",
+        }
+    )
+    assert rent.listing_type == "rent"
+    assert sale.listing_type == "sale"
+
+
 # ── outgoing request: OriginatingSystem + incremental cursor + $expand ──────────
 
 
@@ -133,13 +166,15 @@ async def test_outgoing_request_filters_and_expand(monkeypatch):
 
     dec = unquote(seen["url"])
     assert "OriginatingSystemName eq 'recolorado'" in dec
-    assert "ModificationTimestamp ge 2026-07-01T00:00:00Z" in dec
-    assert "City eq 'Aurora'" in dec
+    assert "ModificationTimestamp ge 2026-07-01T00:00:00.000Z" in dec
     assert "$expand=Media" in dec
-    assert "ModificationTimestamp,ListingKey" in dec
+    # MLS Grid only allows a fixed set of searchable fields — City is not one, and
+    # $orderby is not a supported segment. Sending either errors the request out.
+    assert "City" not in dec
+    assert "$orderby" not in dec
 
 
-async def test_outgoing_request_escapes_city_quote(monkeypatch):
+async def test_top_is_clamped_to_expand_limit(monkeypatch):
     seen: dict[str, str] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -147,8 +182,37 @@ async def test_outgoing_request_escapes_city_quote(monkeypatch):
         return _resp({"value": []})
 
     _install(monkeypatch, handler)
-    await _collect(city="O'Fallon")
-    assert "City eq 'O''Fallon'" in unquote(seen["url"])
+    await _collect(page_size=5000)
+    assert "$top=1000" in unquote(seen["url"])
+
+
+async def test_city_is_filtered_client_side_but_cursor_sees_every_record(monkeypatch):
+    """The cursor must track the greatest ModificationTimestamp RECEIVED, not the
+    greatest one stored — otherwise the discarded records come back every run."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _resp(
+            {
+                "value": [
+                    {
+                        "ListingKey": "REC1",
+                        "City": "Aurora",
+                        "ModificationTimestamp": "2026-07-20T10:00:00.000Z",
+                    },
+                    {
+                        "ListingKey": "REC2",
+                        "City": "Boulder",
+                        "ModificationTimestamp": "2026-07-21T10:00:00.000Z",
+                    },
+                ]
+            }
+        )
+
+    _install(monkeypatch, handler)
+    pages = await _pages(city="Aurora")
+
+    assert [d.external_id for d in pages[0].listings] == ["REC1"]
+    assert pages[0].max_modified == datetime(2026, 7, 21, 10, 0, 0, tzinfo=UTC)
 
 
 # ── pagination via @odata.nextLink ─────────────────────────────────────────────

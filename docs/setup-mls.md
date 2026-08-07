@@ -26,26 +26,74 @@ In `.env`:
 ```bash
 LISTINGS_SIMULATED=false
 LISTINGS_PROVIDER=reso
-RESO_BASE_URL=https://api.your-mls.com/v2
+RESO_BASE_URL=https://api.mlsgrid.com/v2
 RESO_ACCESS_TOKEN=your-long-lived-server-token
+RESO_ORIGINATING_SYSTEM=recolorado
+LISTINGS_SYNC_ENABLED=true
 ```
 
 Then restart and run a sync:
 
 ```bash
 docker compose up -d
-docker compose exec backend python scripts/sync_listings.py --city Miami
+docker compose exec backend python scripts/sync_listings.py
 ```
+
+## REcolorado via MLS Grid
+
+REcolorado ships its RESO Web API through [MLS Grid](https://docs.mlsgrid.com/api-documentation/api-version-2.0).
+Its constraints are not the generic RESO ones, and getting them wrong either errors
+the request or gets the token suspended:
+
+| Constraint | Value |
+|---|---|
+| `OriginatingSystemName` | `recolorado` (lowercase, required on **every** request) |
+| Key prefix | `REC` on keys/MlsIds, `REC_` on local fields |
+| Searchable fields | `OriginatingSystemName`, `ModificationTimestamp`, `StandardStatus`, `PropertyType`, `ListingId`, `MlgCanView`, `ListOfficeMlsId` — **and nothing else** |
+| `$top` | 1000 max with `$expand` (5000 without), 500 if unset |
+| `$orderby` / `$select` | not supported on expanded resources; we send neither |
+| Rate limits | **2 req/s**, 7200/h, 40 000/24 h, 4 GB/h, 60 GB/24 h |
+| Cadence | every 15 min is what MLS Grid recommends |
+
+Two consequences baked into `services/listings.py`:
+
+- **`--city` filters client-side.** `City` is not searchable, so the whole feed is
+  downloaded and narrowed in memory. The replication cursor still advances over
+  *every record received*, not just the ones kept — otherwise the discarded ones
+  come back on every run.
+- **Requests are spaced** by `RESO_MIN_REQUEST_INTERVAL_SECONDS` (0.5s = 2 req/s).
+  Do not lower it.
+
+Before the first full import, email support@mlsgrid.com to request a **Grace
+Period** — the backfill would otherwise trip the hourly limits.
+
+Check replication health at any time:
+
+```bash
+curl -s localhost:8011/api/v1/properties/sync-status
+```
+
+`last_error` is where a failing background worker shows up; the logs alone are easy
+to miss.
+
+> ⚠️ **Not ready to show real listings yet.** Photos still come through as raw
+> MLS Grid `MediaURL`s. Those may only be used to download a local copy — never
+> rendered directly — and since June 2026 fetching them requires sending the OAuth
+> token as the `User-Agent`, which a browser cannot do. Displaying REcolorado
+> listings publicly also requires honouring `MlgCanUse` (IDX vs VOW/BO/PT) and
+> stripping the `REC` prefix. That work is tracked separately.
 
 `sync_listings` upserts by `(source, external_id)` so it is safe to re-run. The
 `source` is recorded as `reso` for real feeds (vs `manual` for the SIMULATED set).
 
-## Keep it fresh (cron)
+## Keep it fresh
 
-Listings change constantly. Schedule a periodic sync on the host:
+With `LISTINGS_SYNC_ENABLED=true` the backend replicates in-process every
+`LISTINGS_SYNC_INTERVAL_SECONDS` (900 = the 15 min MLS Grid recommends), so no cron
+is needed. To drive it externally instead, leave the flag off and schedule:
 
 ```cron
-*/30 * * * *  cd /path/to/Eko-AI-RealEstate && /usr/bin/docker compose exec -T backend python scripts/sync_listings.py >/dev/null 2>&1
+*/15 * * * *  cd /path/to/Eko-AI-RealEstate && /usr/bin/docker compose exec -T backend python scripts/sync_listings.py >/dev/null 2>&1
 ```
 
 ## How matching works
