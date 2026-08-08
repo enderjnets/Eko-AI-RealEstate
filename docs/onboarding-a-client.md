@@ -1,12 +1,26 @@
 # Onboarding a client agency
 
-Four steps. Each one alone leaves something unusable — an organization nobody
-can log into, or a login with no way to receive leads — so do them in order.
+Five steps. Each one alone leaves something unusable — an organization nobody
+can log into, a login with no way to receive leads, or an agency whose replies
+go out from your number — so do them in order.
 
-All of these are platform-operator routes. They require an `admin` session
-**whose organization is the default one**; an agency's own admin gets 403.
-That distinction exists because `require_admin` authorises the admin of *some*
-organization, and every client has one.
+## Becoming a platform operator first
+
+All of these are platform-operator routes, and they need the `su` claim. Only
+two things issue it:
+
+1. an email listed in `PLATFORM_ADMIN_EMAILS` signing in with Google or Apple;
+2. the shared `DASHBOARD_PASSWORD` login — **but only while that list is
+   empty**.
+
+So set `PLATFORM_ADMIN_EMAILS` to your own address and sign in with it. The
+password stays as the fallback for a fresh install with no operators yet, which
+is what stops a deployment from being locked out of its own onboarding.
+
+Being an admin of the default organization is *not* enough, and used not to be
+distinguishable: org 1 is a real client agency (`client-zero`), so its admins
+inherited platform rights, and so did any session predating multi-tenancy.
+An agency's own admin gets 403 here.
 
 ## 1. Create the organization
 
@@ -54,15 +68,53 @@ That person can then sign in with Google or Apple and manage their own team
 from Settings → Team. A 409 means the email already belongs to another
 organization: identity is global, one person to one agency.
 
-## 4. Check it landed
+## 4. Point the route at their own provider account
+
+Skip this and the agency still *receives* correctly, but every reply goes out
+from **your** number and address. Their lead answers you, `To` matches your
+route, and the rest of their conversation is written into your tenant. Startup
+logs a warning naming any agency still in this state.
+
+Put their credentials in `.env` under names of your choosing, restart, then
+record the names — never the values, which stay in `.env`:
+
+```bash
+# .env
+TWILIO_SID_CHERRY_CREEK=AC...
+TWILIO_TOKEN_CHERRY_CREEK=...
+```
+
+```bash
+curl -X PATCH "$API/api/v1/platform/routes/7/identity" -b cookies.txt \
+  -H 'content-type: application/json' \
+  -d '{"provider_account_ref": "TWILIO_SID_CHERRY_CREEK",
+       "credential_ref": "TWILIO_TOKEN_CHERRY_CREEK",
+       "inbound_secret_ref": "TWILIO_TOKEN_CHERRY_CREEK",
+       "webhook_url": "https://api.example.com/api/v1/webhooks/sms"}'
+```
+
+`inbound_secret_ref` is what lets their inbound messages pass signature
+verification — for Twilio it is the same auth token. `webhook_url` must match
+the URL configured in their console exactly, or every signature fails.
+
+A 400 listing `environment_variables_not_set` means you recorded a name you
+have not set (or have not restarted since setting). That check exists because
+the alternative is a route that fails at a lead's first message instead of
+here.
+
+An agency that uses *your* provider account with its own number needs none of
+this: leave the refs null and only the destination is theirs.
+
+## 5. Check it landed
 
 ```bash
 curl "$API/api/v1/platform/organizations" -b cookies.txt   # the new org is listed
-curl "$API/api/v1/platform/routes" -b cookies.txt          # its destinations are mapped
+curl "$API/api/v1/platform/routes" -b cookies.txt          # destinations and credential names
 ```
 
-Then send a real message to the routed number and confirm the lead appears in
-that agency's dashboard — not in anyone else's.
+Then send a real message to the routed number and confirm two things: the lead
+appears in that agency's dashboard and nobody else's, **and the reply arrives
+from their number**. The second half is the one that used to be wrong.
 
 ## Suspending an agency
 

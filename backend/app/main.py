@@ -222,6 +222,16 @@ app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytic
 app.include_router(discovery.router, prefix="/api/v1/discovery", tags=["discovery"], dependencies=_auth)
 
 
+# These three run IN the web process, which pins the app to a single uvicorn
+# worker. Under `--workers N` each one would sweep every organization
+# independently: N copies of every nurture SMS and email to the same lead, and N
+# concurrent listings syncs. Nothing enforces the constraint at runtime, so it
+# is written here, where someone reaching for --workers will be looking.
+#
+# The org-status cache in tenant_resolver has the same shape — invalidation is
+# per process — but its window is 15 seconds and self-healing, which is minor
+# next to duplicate outbound messages. Going multi-worker means moving these
+# loops behind a leader lock or into their own service first.
 _followups_task: asyncio.Task | None = None
 _enrichment_task: asyncio.Task | None = None
 _listings_sync_task: asyncio.Task | None = None

@@ -2,6 +2,68 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.39.0] — 2026-08-08
+
+Séptima ronda de auditoría. Tres auditores independientes resolvieron las cinco
+sospechas que quedaron abiertas y encontraron doce defectos que ninguna ronda
+anterior vio. Todos corregidos, y cada arreglo revertido uno a uno para
+comprobar que su test se pone en rojo.
+
+### Cada agencia responde desde su propio número (C3)
+
+El bloqueante que arrastrábamos. La entrada se enrutaba por destino desde hacía
+varias rondas, pero la **salida** tenía una sola identidad por canal: un número
+de Twilio, un id de WhatsApp, un remitente de Resend. El lead de la agencia B
+recibía la respuesta desde el número de la agencia A, contestaba a ese número, y
+el resto de su conversación se escribía en el inquilino de A. Sin adversario ni
+error de configuración: funcionaba así.
+
+`channel_routes` gana columnas de identidad que guardan el **nombre** de una
+variable de entorno, nunca el secreto: las claves siguen en `.env` y la base
+solo guarda el mapeo. `PATCH /platform/routes/{id}/identity` las configura y
+rechaza nombres que no estén realmente definidos. Una referencia rota **falla en
+vez de caer al global** — un fallback silencioso significaría que una errata
+envía las respuestas de B desde el número de A, que es el bug original de vuelta.
+
+Nada cambia para la instalación de un solo cliente: sin fila de ruta, se usa
+exactamente la configuración de `.env` de siempre.
+
+### Dejamos de perder leads cuando llegan dos mensajes a la vez
+
+Cuatro webhooks simultáneos contra un inquilino nuevo dejaban **un** lead de
+cuatro. Los cuatro competían por crear la misma fila `agent_settings`, uno
+ganaba, y el `IntegrityError` de los otros destruía una transacción que ya
+contenía su lead, su conversación y su mensaje. El manejador lo leía como
+duplicado y devolvía **200**, así que el proveedor nunca reintentaba y el log
+decía "idempotent skip".
+
+Los cuatro webhooks ahora devuelven 5xx cuando algo falla de verdad. Migración
+022: una conversación activa por lead y canal, que el modelo llevaba
+documentando sin que nada lo hiciera cumplir.
+
+### Enrutado por todos los destinos, no por el primero
+
+Un lead que escribe a la agencia B con copia a la agencia A tenía todo su hilo
+archivado en A, porque se tomaba la primera dirección de `to`. Y en voz, VAPI
+manda unas veces el número E.164 y otras el id opaco, así que una ruta mapeada
+por número daba **503 a mitad de llamada** en las tool-calls: el asistente no
+podía agendar visitas mientras el transcript sí se guardaba bien.
+
+### Acceso de plataforma, que era inalcanzable
+
+El claim `su` solo lo emitía el login por contraseña compartida, y la propia
+documentación recomienda ponerle una cadena aleatoria que nadie sabe en los
+despliegues con Google. En esa configuración era **imposible dar de alta una
+segunda agencia**. `PLATFORM_ADMIN_EMAILS` nombra a los operadores reales.
+
+También: un email permitido por dominio sin fila en `allowed_users` entraba como
+miembro de la agencia 1; la org demo (pública) era enrutable; suspender la org 1
+encerraba al operador fuera de la ruta que lo deshace; `AUTH_ENABLED=false` con
+dos agencias servía la primera a todo el mundo; e invitar como `viewer` daba
+permisos de escritura en silencio.
+
+---
+
 ## [0.38.0] — 2026-08-07
 
 ### Inbound messages are attributed by destination
@@ -24,8 +86,10 @@ number belongs to exactly one agency, and two claiming it is the ambiguity the
 table prevents. Destinations are normalised on write and lookup, since Twilio
 sends `+1555…`, a form post may arrive as `1555…`, and an address in mixed case.
 
-SMS, WhatsApp and email are wired. **Voice is not** — VAPI has no provider
-account, so there is no real payload to extract a destination from.
+SMS, WhatsApp and email are wired. Voice was wired one commit later; its
+extractor is still **unverified against a live VAPI account** — there is none —
+so it yields nothing on any shape it does not recognise, which makes the caller
+fall back or refuse rather than guess an agency.
 
 ### Platform operator routes (Fase 2)
 

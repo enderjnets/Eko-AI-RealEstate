@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.38.0";
+export const CURRENT_VERSION = "0.39.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,36 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.39.0",
+    date: "2026-08-08",
+    title: {
+      en: "Each agency now replies from its own number",
+      es: "Cada agencia responde ahora desde su propio número",
+    },
+    changes: [
+      {
+        en: "Replies to a lead now go out from the number, WhatsApp line or email address of the agency they wrote to. Previously every reply left from the first agency's number, so the lead answered the wrong agency and the rest of the conversation ended up in the wrong dashboard.",
+        es: "Las respuestas a un lead salen ahora desde el número, la línea de WhatsApp o el correo de la agencia a la que escribieron. Antes toda respuesta salía desde el número de la primera agencia, así que el lead contestaba a la agencia equivocada y el resto de la conversación acababa en el panel que no era.",
+      },
+      {
+        en: "Two messages arriving at the same instant no longer lose leads. Four simultaneous first contacts used to leave one lead out of four, with every delivery reported as successful.",
+        es: "Dos mensajes que llegan a la vez ya no pierden leads. Cuatro primeros contactos simultáneos dejaban un lead de cuatro, y cada entrega se reportaba como correcta.",
+      },
+      {
+        en: "An email that copies two agencies is held back instead of being filed under whichever address happened to come first.",
+        es: "Un correo con copia a dos agencias se retiene en vez de archivarse en la dirección que viniera primero.",
+      },
+      {
+        en: "The voice assistant can book visits again on lines mapped by phone number — it used to fail mid-call while the transcript still saved correctly.",
+        es: "El asistente de voz vuelve a poder agendar visitas en las líneas mapeadas por número — antes fallaba a mitad de llamada mientras el transcript sí se guardaba bien.",
+      },
+      {
+        en: "Platform operators are named by email instead of sharing one password, so entering an agency records who did it.",
+        es: "Los operadores de la plataforma se identifican por correo en vez de compartir una contraseña, así que entrar en una agencia registra quién lo hizo.",
+      },
+    ],
+  },
   {
     version: "0.38.0",
     date: "2026-08-07",

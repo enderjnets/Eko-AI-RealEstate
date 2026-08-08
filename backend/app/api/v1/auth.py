@@ -457,8 +457,13 @@ async def require_platform_admin(request: Request) -> None:
 
     require_admin is not enough on its own: it authorises the admin OF SOME
     organization, and every client agency has one. Anything reaching across
-    tenants — the demo signup list, tenant lifecycle — needs the caller to be an
-    admin of the default org specifically.
+    tenants — the demo signup list, tenant lifecycle, impersonation — needs the
+    `su` claim, which only the emails in PLATFORM_ADMIN_EMAILS receive.
+
+    Naming the default organization is deliberately NOT what grants this. That
+    org is a real client agency (slug `client-zero`), so its own admins would
+    have inherited platform rights, and so would any token issued before
+    multi-tenancy, which carries no org at all.
     """
     await require_admin(request)
     if not get_settings().AUTH_ENABLED:

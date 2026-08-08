@@ -182,8 +182,25 @@ agency, and `webhook_org_or_refuse` is the single place that decides.
 
 All four channels are wired: SMS, WhatsApp, email and voice. Voice's
 extractor is **not verified against a live VAPI account** (there is none), so it
-returns None on any shape it does not recognise — which makes the caller fall
+yields nothing on any shape it does not recognise — which makes the caller fall
 back or refuse rather than guess an organization.
+
+Attribution takes **every** destination a message carries, not one: an email
+names all its recipients, and a VAPI payload carries either the E.164 number or
+the opaque phone-number id depending on the message type. Exactly one agency
+addressed is the answer; two is refused. Picking by position is what filed a
+lead's thread under the agency that was merely CC'd.
+
+**Outbound identity is per organization too**, and it has to be: with one global
+Twilio number, agency B's lead was answered from agency A's number, replied to
+it, and the rest of the conversation was written into A. `channel_routes` holds
+the *names* of the environment variables with each agency's credentials — never
+the values, which stay in `.env`. NULL means the global configuration, so a
+single-customer install is unaffected.
+
+Platform access is the `su` claim, granted only to `PLATFORM_ADMIN_EMAILS`.
+Naming the default org is deliberately not enough: org 1 is a real client
+agency, so its admins would have inherited it.
 
 ### LLM
 - All LLM calls go through `app/services/llm.py:generate_reply()`. Do not
