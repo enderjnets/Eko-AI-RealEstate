@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.39.1";
+export const CURRENT_VERSION = "0.39.2";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.39.2",
+    date: "2026-08-08",
+    title: {
+      en: "Each phone line verifies with its own key",
+      es: "Cada línea verifica con su propia clave",
+    },
+    changes: [
+      {
+        en: "An agency with two numbers on one channel now has each one checked against its own signing key. Messages to the second number were being checked against the first one's, so they failed and the lead was lost with nothing to explain it.",
+        es: "Una agencia con dos números en un mismo canal comprueba ahora cada uno con su propia clave de firma. Los mensajes al segundo número se comprobaban con la del primero, así que fallaban y el lead se perdía sin explicación.",
+      },
+      {
+        en: "The database role that enforces separation between agencies gets its password rotated on upgrade instead of keeping the one it was created with.",
+        es: "El rol de base de datos que separa a las agencias rota su contraseña al actualizar, en vez de conservar la que se le puso al crearlo.",
+      },
+      {
+        en: "A call whose line is not mapped now hears a hand-off message instead of the assistant going quiet.",
+        es: "Una llamada cuya línea no está mapeada oye ahora un mensaje de traspaso en vez de que el asistente se quede callado.",
+      },
+    ],
+  },
   {
     version: "0.39.1",
     date: "2026-08-08",

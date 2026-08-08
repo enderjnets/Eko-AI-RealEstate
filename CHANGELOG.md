@@ -2,6 +2,34 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.39.2] — 2026-08-08
+
+Rondas 12 y 13. Ambas devolvieron DO-NOT-SHIP, y las dos veces el defecto lo
+había introducido el arreglo anterior.
+
+**El guard de la ronda 11 leía la columna equivocada.** Preguntaba por
+`credential_ref` cuando la pregunta es "¿autenticó esta agencia el mensaje?", y
+eso vive en `inbound_secret_ref`. Quedaba inerte justo en la configuración que
+más importa —agencia con su propia app de Meta que aún responde por la cuenta
+compartida— y rechazaba de más en el caso espejo, tirando leads legítimos.
+
+**La identidad se resolvía por `rows[0]`, ignorando el destino.** Una agencia con
+dos números en un canal (solo `(canal, destino)` es único) verificaba el segundo
+con el secreto del primero: la firma falla, 403, y el lead se pierde sin rastro.
+
+**El rol de RLS conservaba la contraseña publicada.** La migración 015 lo crea con
+`IF NOT EXISTS`, así que pasar `APP_DB_PASSWORD` al contenedor no rotaba nada: la
+024 emite el `ALTER ROLE`.
+
+Además: el rechazo por destino ambiguo ya no responde 503 antes de que el
+handler pueda rehusar (eso hacía inalcanzable el 200 y filtraba 503-vs-403 a un
+atacante sin autenticar); un `tool-calls` sin ruta devuelve la forma que VAPI
+sabe leer, en vez de dejar la llamada muda; `DATABASE_URL_BYPASS` llega al
+contenedor; y una variable borrada del `.env` después de guardar la ruta ya no
+rompe los envíos de esa agencia.
+
+---
+
 ## [0.39.1] — 2026-08-08
 
 Cuatro auditorías independientes más (rondas 8–11) sobre lo que la 0.39.0 dejó.

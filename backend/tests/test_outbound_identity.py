@@ -298,7 +298,16 @@ async def test_an_unmapped_destination_is_refused_once_the_agency_owns_its_accou
 @pytest.mark.asyncio
 async def test_the_fallback_still_works_for_an_agency_on_the_shared_account() -> None:
     """The refusal above must not break the ordinary single-customer install,
-    which has no routes at all and relies on that fallback for every message."""
+    which has no routes at all and relies on that fallback for every message.
+
+    Asserts the state it depends on first. Reading `webhook_org_or_refuse` alone
+    made this the tripwire for any other test that leaked an organization: the
+    failure surfaced here, in a file that had nothing to do with the leak.
+    """
+    routable = tenant_resolver.routable_candidates(await tenant_resolver.active_orgs())
+    assert routable == [DEFAULT_ORG_ID], (
+        f"another test leaked an organization: {routable}"
+    )
     assert await tenant_resolver.webhook_org_or_refuse(CHANNEL_SMS, "+19998887777") == (
         DEFAULT_ORG_ID
     )
@@ -378,4 +387,46 @@ async def test_an_outbound_only_agency_is_not_refused(monkeypatch) -> None:
                 {"i": DEFAULT_ORG_ID},
             )
             await db.commit()
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_two_numbers_on_one_channel_each_verify_with_their_own_secret(
+    monkeypatch,
+) -> None:
+    """An agency may hold two numbers on one channel — only `(channel,
+    destination)` is unique, not `(channel, org)`.
+
+    Identity resolution picked the lowest-id route regardless, so inbound to
+    the second number was verified against the first one's secret: the HMAC
+    fails, the message 403s, and a real lead is dropped with nothing to explain
+    it. The destination now selects the row.
+    """
+    second_number = "+13035554321"
+    monkeypatch.setenv("WA_SECRET_LINE_ONE", "secret-one")
+    monkeypatch.setenv("WA_SECRET_LINE_TWO", "secret-two")
+    await _seed_agency_b(inbound_secret_ref="WA_SECRET_LINE_ONE")
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text(
+                "INSERT INTO channel_routes "
+                "(org_id, channel, destination, inbound_secret_ref) "
+                "VALUES (:o, :c, :d, 'WA_SECRET_LINE_TWO')"
+            ),
+            {
+                "o": AGENCY_B,
+                "c": CHANNEL_SMS,
+                "d": normalize_destination(second_number),
+            },
+        )
+        await db.commit()
+    tenant_resolver.reset_cache()
+    try:
+        first = await resolve_inbound_secret(CHANNEL_SMS, B_NUMBER)
+        second = await resolve_inbound_secret(CHANNEL_SMS, second_number)
+        assert first.inbound_secret == "secret-one"
+        assert second.inbound_secret == "secret-two", (
+            "the second number was verified against the first one's secret"
+        )
+    finally:
         await _cleanup()

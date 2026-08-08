@@ -16,7 +16,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -223,6 +223,23 @@ async def _refs_claimed_elsewhere(
 
     if not refs:
         return []
+
+    # Serialise concurrent writers naming the same variable. Without this the
+    # check is read-then-write across an await: two onboarding calls for
+    # different agencies could both find no conflict and both commit, leaving
+    # one holding the secret that authenticates the other's inbound messages —
+    # the outcome the check exists to prevent.
+    #
+    # A unique index cannot express the rule: the same agency reusing one
+    # credential across its own routes is the ordinary arrangement (a Twilio
+    # account behind two numbers), so uniqueness would forbid the legitimate
+    # case and still permit nothing useful. The lock is held to end of
+    # transaction and is keyed on the variable name, so it costs nothing except
+    # to a second writer claiming that exact name.
+    for ref in sorted(set(refs)):
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:ref))"), {"ref": ref}
+        )
     conditions = [
         ChannelRoute.provider_account_ref.in_(refs),
         ChannelRoute.credential_ref.in_(refs),

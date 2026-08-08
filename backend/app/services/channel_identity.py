@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from app.config import get_settings
@@ -37,6 +38,9 @@ from app.models.channel_route import (
 from app.services.tenant_context import get_org_id
 
 logger = logging.getLogger(__name__)
+
+
+Destination = str | Sequence[str] | None
 
 
 @dataclass(frozen=True)
@@ -88,7 +92,23 @@ class MissingChannelCredential(RuntimeError):
     """A route names an environment variable that is not set."""
 
 
-async def resolve_outbound_identity(channel: str) -> ChannelIdentity:
+
+def _env_or_none(ref: str | None) -> str | None:
+    """`_env`, but a missing variable is None instead of an exception.
+
+    For refs that are not the one being used right now. Raising would let a
+    stale inbound reference break an unrelated outbound send; the error is
+    already logged, and a None secret fails closed at verification time.
+    """
+    try:
+        return _env(ref)
+    except MissingChannelCredential:
+        return None
+
+
+async def resolve_outbound_identity(
+    channel: str, *, destination: Destination = None
+) -> ChannelIdentity:
     """The identity the acting organization sends on `channel` with.
 
     Read on the bypass session: `channel_routes` is not visible to the app role
@@ -113,6 +133,23 @@ async def resolve_outbound_identity(channel: str) -> ChannelIdentity:
             )
         ).scalars().all()
 
+    # When the caller knows which destination the message arrived at, that row
+    # is the answer. Picking `rows[0]` instead meant an agency with two numbers
+    # on one channel had inbound to the second verified against the FIRST one's
+    # secret — the HMAC fails and real leads are dropped with a 403. Nothing
+    # forbids two destinations per agency per channel; only `(channel,
+    # destination)` is unique.
+    if destination is not None:
+        from app.models.channel_route import normalize_destination
+
+        candidates = (
+            [destination] if isinstance(destination, str) else list(destination)
+        )
+        keys = {normalize_destination(d) for d in candidates if isinstance(d, str)}
+        keys.discard("")
+        matched = [r for r in rows if r.destination in keys]
+        rows = matched or rows
+
     routed = next((r for r in rows if r.credential_ref), None)
     if routed is None:
         # The agency may own a destination without owning a sending account —
@@ -133,10 +170,17 @@ async def resolve_outbound_identity(channel: str) -> ChannelIdentity:
             org_id=org_id,
             channel=channel,
             destination=plain.destination,
-            provider_account=_env(plain.provider_account_ref) or base.provider_account,
+            provider_account=(
+                _env_or_none(plain.provider_account_ref) or base.provider_account
+            ),
             credential=base.credential,
-            inbound_secret=_env(plain.inbound_secret_ref) or base.inbound_secret,
-            verify_token=_env(plain.verify_token_ref) or base.verify_token,
+            # `_env_or_none`, not `_env`: this branch is also the outbound path,
+            # and a variable removed from .env after the route was saved must
+            # not stop the agency sending. None here still fails closed where it
+            # matters — every verifier rejects an empty secret — rather than
+            # silently accepting the operator's.
+            inbound_secret=_env_or_none(plain.inbound_secret_ref) or base.inbound_secret,
+            verify_token=_env_or_none(plain.verify_token_ref) or base.verify_token,
             sender_override=plain.sender_override or base.sender_override,
             webhook_url=plain.webhook_url or base.webhook_url,
         )
@@ -288,6 +332,12 @@ async def resolve_inbound_secret(channel: str, destination: object) -> ChannelId
     The way out is that the destination is only used to *look up* a key — a
     forged one either names no route, and the global secret applies, or names
     another agency's, whose signature the forger cannot produce.
+
+    A destination naming two agencies raises `WebhookOrgUnresolved`, which
+    `inbound_secret_or_503` turns into the global identity rather than a 503:
+    the signature then fails closed with a plain 403, and the handler's own
+    refusal — which answers 200 so the provider does not disable the endpoint —
+    stays reachable.
     """
     from app.services.tenant_resolver import (
         resolve_org_by_destination,
@@ -306,4 +356,10 @@ async def resolve_inbound_secret(channel: str, destination: object) -> ChannelId
     from app.services.tenant_context import org_scope
 
     with org_scope(org_id):
-        return await resolve_outbound_identity(channel)
+        # The destination is passed on so the agency's *matching* route is used.
+        # Without it the lowest-id route answered for all of them, and an agency
+        # with two numbers had the second one's inbound verified against the
+        # first one's secret.
+        # The whole candidate set, not the first entry: an email names every
+        # recipient and only one of them is the agency's own address.
+        return await resolve_outbound_identity(channel, destination=destination)

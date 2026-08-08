@@ -37,6 +37,19 @@ router = APIRouter()
 _PERSISTING_MESSAGE_TYPES = frozenset({"tool-calls", "end-of-call-report"})
 
 
+
+def _tool_call_id(call: dict[str, Any]) -> str | None:
+    """VAPI puts the id at the top level or inside `function`, and `function`
+    is not always a dict — a string there raised AttributeError mid-call."""
+    direct = call.get("id")
+    if direct:
+        return str(direct)
+    fn = call.get("function")
+    if isinstance(fn, dict) and fn.get("id"):
+        return str(fn["id"])
+    return None
+
+
 def _message(payload: Any) -> dict[str, Any]:
     """The inner `message` envelope, or the payload itself if it is flat.
 
@@ -172,19 +185,21 @@ async def voice_inbound(request: Request, db: AsyncSession = Depends(get_db)) ->
             # A live call is waiting on this. VAPI reads `results`; anything
             # else and the assistant stalls mid-sentence rather than saying
             # something. The caller gets a graceful hand-off instead of silence.
-            return {
-                "results": [
-                    {
-                        "toolCallId": call.get("id")
-                        or (call.get("function") or {}).get("id"),
-                        "result": (
-                            "I can't reach our booking system right now. "
-                            "A team member will follow up with you."
-                        ),
-                    }
-                    for call in _tool_calls(msg)
-                ]
-            }
+            #
+            # `_tool_calls` guarantees dicts but not that `function` is one, and
+            # a string there used to raise AttributeError — a 500 on a live
+            # call, which is the stall this branch exists to avoid. An empty
+            # list would stall it too, so it always answers with at least one
+            # entry.
+            handoff = (
+                "I can't reach our booking system right now. "
+                "A team member will follow up with you."
+            )
+            results = [
+                {"toolCallId": _tool_call_id(call), "result": handoff}
+                for call in _tool_calls(msg)
+            ]
+            return {"results": results or [{"toolCallId": None, "result": handoff}]}
         return {"status": "unrouted"}
 
     # ── Tool calls — answer synchronously so the assistant can speak the result ──
@@ -193,7 +208,7 @@ async def voice_inbound(request: Request, db: AsyncSession = Depends(get_db)) ->
         results = []
         for call in _tool_calls(msg):
             name, args = _tool_name_args(call)
-            tool_call_id = call.get("id") or (call.get("function") or {}).get("id")
+            tool_call_id = _tool_call_id(call)
             try:
                 result = await handle_tool_call(name, args, customer_number=number, db=db)
             except Exception as exc:  # noqa: BLE001 — never stall the live call
