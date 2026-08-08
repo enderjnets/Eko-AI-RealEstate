@@ -121,6 +121,7 @@ def make_token(
     ttl_hours: int | None = None,
     org_id: int | None = None,
     superuser: bool = False,
+    impersonating: bool = False,
 ) -> str:
     """Mint a signed session token carrying identity (email) + role.
 
@@ -143,6 +144,12 @@ def make_token(
     # agency, its own admins became platform operators.
     if superuser:
         payload["su"] = True
+    # Set only by /platform/impersonate. It grants nothing on its own — the
+    # session is a plain org-scoped admin — but it marks the holder as an
+    # operator looking in from outside, which is why the suspension gate lets it
+    # through: a suspended agency is precisely when someone needs to look.
+    if impersonating:
+        payload["imp"] = True
     payload_b64 = _b64e(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     sig = _b64e(hmac.new(_secret(), payload_b64.encode("ascii"), hashlib.sha256).digest())
     return f"{payload_b64}.{sig}"
@@ -197,12 +204,23 @@ def token_org_id(token: str | None) -> int | None:
 def token_is_superuser(token: str | None) -> bool:
     """Whether this session may act across tenants.
 
-    Only the shared operator password mints it. A token without it — every
-    Google/Apple sign-in, and every session issued before multi-tenancy —
+    Minted for the emails in PLATFORM_ADMIN_EMAILS when they sign in, and for
+    the shared operator password only while that list is empty. A token without
+    it — every other sign-in, and every session issued before multi-tenancy —
     cannot reach the platform routes no matter which org it names.
     """
     data = decode_token(token)
     return bool(data and data.get('su') is True)
+
+
+def token_is_impersonating(token: str | None) -> bool:
+    """Whether this org-scoped session belongs to an operator looking in.
+
+    Grants nothing by itself; read only by the suspension gate, so that entering
+    a suspended agency to investigate does not 403 on the next request.
+    """
+    data = decode_token(token)
+    return bool(data and data.get("imp") is True)
 
 
 def token_role(token: str | None) -> str | None:
@@ -288,10 +306,18 @@ async def resolve_email_org(email: str, db: AsyncSession) -> int | None:
     # would sign in as an admin OF THAT AGENCY instead of the default org.
     if email in get_settings().google_admin_emails_list:
         return DEFAULT_ORG_ID
+    if email in get_settings().platform_admin_emails_list:
+        return DEFAULT_ORG_ID
     row = (
         await db.execute(select(AllowedUser).where(AllowedUser.email == email))
     ).scalar_one_or_none()
-    return row.org_id if row is not None else DEFAULT_ORG_ID
+    # No row means no organization. This used to answer DEFAULT_ORG_ID, which
+    # handed client zero's data to anyone who cleared `resolve_email_access` by
+    # env alone — set GOOGLE_ALLOWED_DOMAIN to a second agency's domain while
+    # onboarding them and their whole staff signs in as members of the first.
+    # The two functions are called on the same request and never cross-checked,
+    # so the org side has to fail closed on its own.
+    return row.org_id if row is not None else None
 
 
 async def resolve_email_access(email: str, db: AsyncSession) -> str | None:

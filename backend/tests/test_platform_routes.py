@@ -144,13 +144,19 @@ async def test_impersonation_is_recorded_before_the_cookie_is_issued() -> None:
             row = (
                 await db.execute(
                     text(
-                        "SELECT org_id FROM user_activity WHERE email = :e"
+                        "SELECT org_id, email FROM user_activity "
+                        "WHERE email LIKE :e"
                     ),
-                    {"e": f"impersonation:org-{org_id}"},
+                    {"e": f"impersonation:%:org-{org_id}"},
                 )
             ).first()
         assert row is not None, "impersonation left no audit row"
         assert row[0] == org_id
+        # The row names the operator, not just the org they entered. It used to
+        # be keyed on "impersonation:org-N" with the IP and user agent hardcoded
+        # to None, so "who read our data on Tuesday?" could only be answered
+        # with "someone holding the office password".
+        assert row[1] == f"impersonation:admin{DEFAULT_ORG_ID}@x.test:org-{org_id}"
     finally:
         await _cleanup()
 

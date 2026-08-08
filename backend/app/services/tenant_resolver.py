@@ -39,34 +39,65 @@ def needs_tenant(path: str) -> bool:
 _CACHE_TTL_SECONDS = 15.0
 _cache: tuple[float, dict[int, str]] | None = None
 
+# Bumped by every invalidation. A read that starts before an invalidation and
+# finishes after it must not install its now-stale snapshot: the read-through is
+# a check-then-act across an await, so without this an in-flight `active_orgs()`
+# could undo `reset_cache()` and keep a just-created tenant invisible — or a
+# just-suspended one live — for a further 15 seconds. The dangerous half is
+# creation: while the second agency is missing from the cache, the fallback in
+# `webhook_org_or_refuse` sees a single candidate and files their unrouted
+# inbound message into the first agency. That write is permanent; the cache
+# expiring does not undo it.
+_cache_generation = 0
 
-class WebhookOrgUnresolved(Exception):
+
+class TenantUnresolvable(Exception):
+    """This request cannot be attributed to an organization, so it is refused.
+
+    Refusing is the recoverable outcome. The alternative — picking an
+    organization anyway — writes one agency's data into another's tenant, and
+    nobody notices until the wrong client reads it.
+    """
+
+
+class WebhookOrgUnresolved(TenantUnresolvable):
     """An inbound message arrived and we cannot tell which agency it is for."""
+
+
+class SingleTenantModeViolated(TenantUnresolvable):
+    """Auth is off — which pins every request to one org — but several exist."""
 
 
 async def active_orgs() -> dict[int, str]:
     """`{org_id: status}` for every organization, briefly cached."""
     global _cache
     now = time.monotonic()
-    if _cache is not None and now - _cache[0] < _CACHE_TTL_SECONDS:
-        return _cache[1]
+    cached = _cache
+    if cached is not None and now - cached[0] < _CACHE_TTL_SECONDS:
+        return cached[1]
 
     from sqlalchemy import select
 
     from app.db.base import get_bypass_session_factory
     from app.models.organization import Organization
 
+    generation = _cache_generation
     async with get_bypass_session_factory()() as db:
         rows = (await db.execute(select(Organization.id, Organization.status))).all()
     result = {row[0]: row[1] for row in rows}
-    _cache = (now, result)
+    if generation == _cache_generation:
+        # Stamped now, not before the query: the round-trip is not cache age.
+        _cache = (time.monotonic(), result)
+    # The snapshot is still returned either way. It was accurate when the query
+    # ran; anything that changed afterwards is a genuine race, not staleness.
     return result
 
 
 def reset_cache() -> None:
     """Drop the cached org list. Called after creating or suspending a tenant."""
-    global _cache
+    global _cache, _cache_generation
     _cache = None
+    _cache_generation += 1
 
 
 async def resolve_org_for_request(path: str, token: str | None) -> int | None:
@@ -103,9 +134,37 @@ async def resolve_org_for_request(path: str, token: str | None) -> int | None:
         # to carry an org and exactly one tenant is expected. Guarded on the flag
         # rather than on "no token": in a real deployment an unauthenticated
         # request must resolve to no org at all, never to somebody's data.
+        #
+        # "Exactly one tenant is expected" was only ever a comment. Nothing
+        # enforced it, and AUTH_ENABLED=false is the compose default — so
+        # seeding a second agency made every dashboard request resolve to the
+        # first one regardless of who was calling: agency B unreachable, and
+        # every write landing in agency A. Startup refuses this combination
+        # outright; this covers the org created while the process is running.
+        if len(routable_candidates(await active_orgs())) > 1:
+            raise SingleTenantModeViolated(
+                "AUTH_ENABLED is off, which pins every request to organization "
+                f"{DEFAULT_ORG_ID}, but more than one active organization "
+                "exists. Turn authentication on before onboarding a second "
+                "agency."
+            )
         return DEFAULT_ORG_ID
 
     return None
+
+
+def routable_candidates(orgs: dict[int, str]) -> list[int]:
+    """Organizations that may receive an inbound message that carries no route.
+
+    The demo org is excluded deliberately, and so is any suspended one. Shared
+    by the fallback below and by the startup check that refuses to run
+    single-tenant mode against a database that has grown a second tenant.
+    """
+    return [
+        org_id
+        for org_id, status in orgs.items()
+        if org_id != DEMO_ORG_ID and status != "suspended"
+    ]
 
 
 async def resolve_org_by_destination(channel: str, destination: str | None) -> int | None:
@@ -148,6 +207,17 @@ async def webhook_org_or_refuse(channel: str, destination: str | None) -> int:
 
     routed = await resolve_org_by_destination(channel, destination)
     if routed is not None:
+        if routed == DEMO_ORG_ID:
+            # Mapping a live destination at the demo org is always a mistake,
+            # and an expensive one: `POST /auth/register` drops any anonymous
+            # visitor into that org as a viewer, so the lead's phone number and
+            # their whole transcript become public. `create_route` refuses this
+            # too — this is the guard for rows that predate it or arrive by SQL.
+            raise WebhookOrgUnresolved(
+                f"{channel} destination {destination!r} is mapped to the demo "
+                "organization, which anonymous sign-ups can read. Re-point the "
+                "route at a real agency."
+            )
         # Status is checked on the ROUTED branch too. It used to be checked only
         # on the fallback below, so a suspended agency kept receiving inbound
         # messages and getting rows written into it — suspension has to stop the
@@ -160,11 +230,7 @@ async def webhook_org_or_refuse(channel: str, destination: str | None) -> int:
             )
         return routed
 
-    candidates = [
-        org_id
-        for org_id, status in orgs.items()
-        if org_id != DEMO_ORG_ID and status != "suspended"
-    ]
+    candidates = routable_candidates(orgs)
     if len(candidates) == 1:
         return candidates[0]
     if not candidates:
@@ -173,31 +239,4 @@ async def webhook_org_or_refuse(channel: str, destination: str | None) -> int:
         f"inbound {channel} to {destination!r} matches no channel_route and "
         f"{len(candidates)} active organizations exist, so it cannot be "
         "attributed to one. Map the destination in channel_routes."
-    )
-
-
-async def _resolve_webhook_org(path: str) -> int:
-    """Attribute an inbound message when the destination is not yet known.
-
-    The middleware cannot read the request body, so a webhook that carries its
-    destination inside the payload is resolved by the handler via
-    `resolve_org_by_destination`. This is the fallback for the case the handler
-    cannot cover: with exactly one real tenant there is no ambiguity, and with
-    more there is nothing to guess from — and guessing wrote agency B's leads
-    and their whole conversation transcript into agency A's dashboard.
-    """
-    orgs = await active_orgs()
-    candidates = [
-        org_id
-        for org_id, status in orgs.items()
-        if org_id != DEMO_ORG_ID and status != "suspended"
-    ]
-    if len(candidates) == 1:
-        return candidates[0]
-    if not candidates:
-        raise WebhookOrgUnresolved("no active organization can receive inbound messages")
-    raise WebhookOrgUnresolved(
-        f"{len(candidates)} active organizations exist and {path} carries no "
-        "destination this layer can read. Refusing rather than filing it under "
-        "the wrong agency — map the destination in channel_routes."
     )

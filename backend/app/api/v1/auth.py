@@ -176,6 +176,39 @@ def _set_session_cookie(response: Response, token: str) -> None:
     )
 
 
+def _is_platform_operator(email: str | None) -> bool:
+    """Whether this verified email runs the platform, rather than an agency.
+
+    The `su` claim is what unlocks /api/v1/platform. Before this existed the
+    only issuer was the shared-password login, so the Google-only deployment
+    the docs recommend — password set to a random string nobody knows — had no
+    way to reach the routes that onboard agency number two.
+    """
+    if not email:
+        return False
+    return email.lower().strip() in get_settings().platform_admin_emails_list
+
+
+async def _sso_session(
+    email: str, db: AsyncSession
+) -> tuple[str, int, bool] | None:
+    """Resolve a verified SSO email to (role, org_id, superuser), or None to deny.
+
+    Both halves have to succeed. `resolve_email_access` can say yes from env
+    alone (GOOGLE_ALLOWED_DOMAIN), while the organization only comes from an
+    `allowed_users` row — so a domain left over from onboarding another agency
+    used to mint a valid member session pointed at client zero. No org means no
+    session.
+    """
+    role = await resolve_email_access(email, db)
+    if role is None:
+        return None
+    org_id = await resolve_email_org(email, db)
+    if org_id is None:
+        return None
+    return role, org_id, _is_platform_operator(email)
+
+
 @router.post("/login")
 async def login(body: LoginIn, response: Response) -> dict[str, bool]:
     s = get_settings()
@@ -183,13 +216,18 @@ async def login(body: LoginIn, response: Response) -> dict[str, bool]:
         return {"ok": True, "auth_enabled": False}
     if not check_password(body.password):
         raise HTTPException(status_code=401, detail="Invalid password")
-    # The shared password is the operator's master key. It carries an explicit
-    # superuser claim; being an admin of the default org is NOT enough, because
-    # that org is a real client agency whose own admins would otherwise inherit
-    # platform rights.
+    # The shared password used to be the operator's master key, unconditionally.
+    # It is a *shared* secret with no named holder, so once real operators exist
+    # in PLATFORM_ADMIN_EMAILS it stops minting `su`: platform actions then have
+    # an actor to audit, and the office password is demoted to what it looks
+    # like — an admin session for client zero. Keeping it as the fallback when
+    # the list is empty means no deployment is ever locked out of onboarding.
+    named_operators = bool(get_settings().platform_admin_emails_list)
     _set_session_cookie(
         response,
-        make_token(role=ROLE_ADMIN, org_id=DEFAULT_ORG_ID, superuser=True),
+        make_token(
+            role=ROLE_ADMIN, org_id=DEFAULT_ORG_ID, superuser=not named_operators
+        ),
     )
     return {"ok": True, "auth_enabled": True}
 
@@ -212,12 +250,15 @@ async def login_google(
     except GoogleAuthError as e:
         log.warning("google_signin_failed reason=%s", e)
         raise HTTPException(status_code=401, detail=str(e)) from e
-    role = await resolve_email_access(email, db)
-    org_id = await resolve_email_org(email, db)
-    if role is None:
+    session = await _sso_session(email, db)
+    if session is None:
         log.warning("google_signin_denied email=%s", email)
         raise HTTPException(status_code=401, detail="email_not_in_allow_list")
-    _set_session_cookie(response, make_token(email=email, role=role, org_id=org_id))
+    role, org_id, superuser = session
+    _set_session_cookie(
+        response,
+        make_token(email=email, role=role, org_id=org_id, superuser=superuser),
+    )
     await _safe_record_login(db, email, "google", request, org_id)
     return {"ok": True, "auth_enabled": True}
 
@@ -249,13 +290,15 @@ async def login_google_callback(
     except GoogleAuthError as e:
         log.warning("google_signin_failed reason=%s", e)
         return RedirectResponse("/login?error=google_failed", status_code=303)
-    role = await resolve_email_access(email, db)
-    org_id = await resolve_email_org(email, db)
-    if role is None:
+    session = await _sso_session(email, db)
+    if session is None:
         log.warning("google_signin_denied email=%s", email)
         return RedirectResponse("/login?error=google_denied", status_code=303)
+    role, org_id, superuser = session
     resp = RedirectResponse("/leads", status_code=303)
-    _set_session_cookie(resp, make_token(email=email, role=role, org_id=org_id))
+    _set_session_cookie(
+        resp, make_token(email=email, role=role, org_id=org_id, superuser=superuser)
+    )
     await _safe_record_login(db, email, "google", request, org_id)
     return resp
 
@@ -278,12 +321,15 @@ async def login_apple(
     except AppleAuthError as e:
         log.warning("apple_signin_failed reason=%s", e)
         raise HTTPException(status_code=401, detail=str(e)) from e
-    role = await resolve_email_access(email, db)
-    org_id = await resolve_email_org(email, db)
-    if role is None:
+    session = await _sso_session(email, db)
+    if session is None:
         log.warning("apple_signin_denied email=%s", email)
         raise HTTPException(status_code=401, detail="email_not_in_allow_list")
-    _set_session_cookie(response, make_token(email=email, role=role, org_id=org_id))
+    role, org_id, superuser = session
+    _set_session_cookie(
+        response,
+        make_token(email=email, role=role, org_id=org_id, superuser=superuser),
+    )
     await _safe_record_login(db, email, "apple", request, org_id)
     return {"ok": True, "auth_enabled": True}
 

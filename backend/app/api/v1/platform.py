@@ -13,22 +13,27 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.auth import _set_session_cookie, require_platform_admin
+from app.api.v1.auth import (
+    _set_session_cookie,
+    _token_from_request,
+    require_platform_admin,
+)
 from app.db.base import get_bypass_db
 from app.models.organization import (
+    DEMO_ORG_ID,
     PLAN_PILOT,
     STATUS_ACTIVE,
     STATUS_SUSPENDED,
     Organization,
 )
 from app.services import tenant_resolver
-from app.services.auth import ROLE_ADMIN, make_token
+from app.services.auth import ROLE_ADMIN, decode_token, make_token
 
 router = APIRouter(dependencies=[Depends(require_platform_admin)])
 
@@ -98,13 +103,17 @@ async def set_organization_status(
 
 @router.post("/impersonate/{org_id}")
 async def impersonate(
-    org_id: int, response: Response, db: AsyncSession = Depends(get_bypass_db)
+    org_id: int,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_bypass_db),
 ) -> dict:
     """Swap the operator's session for one that acts inside `org_id`.
 
     Recorded before the cookie is issued, so the audit row exists even if the
     response never reaches the client. Suspended organizations are still
-    enterable — that is usually exactly when an operator needs to look.
+    enterable — that is usually exactly when an operator needs to look — which
+    is what the `impersonating` mark on the token buys.
     """
     org = (
         await db.execute(select(Organization).where(Organization.id == org_id))
@@ -112,18 +121,33 @@ async def impersonate(
     if org is None:
         raise HTTPException(status_code=404, detail="organization_not_found")
 
-    from app.services.activity import record_login
+    # Name the operator, not just the org they entered. The audit row used to be
+    # keyed on a synthetic "impersonation:org-N" address with the IP and user
+    # agent hardcoded to None, so "who read our data on Tuesday?" could only be
+    # answered with "someone". With PLATFORM_ADMIN_EMAILS there is a real actor
+    # to record; it falls back to the anonymous form for a password session.
+    from app.services.activity import client_ip, record_login
 
+    claims = decode_token(_token_from_request(request)) or {}
+    # Keyed on the pair, not on the operator alone: `record_login` upserts, so
+    # a single "impersonation:<operator>" key would have one operator's visits
+    # to agency B overwrite their visits to agency A. This is still a counter
+    # with a last-seen, not a per-event log — enough to answer "who, which
+    # agency, how often, most recently when", which is the open gap.
+    actor = claims.get("email") or "shared-password"
     await record_login(
         db,
-        email=f"impersonation:org-{org_id}",
+        email=f"impersonation:{actor}:org-{org_id}",
         source="impersonate",
         org_id=org_id,
-        ip=None,
-        user_agent=None,
+        ip=client_ip(request),
+        user_agent=request.headers.get("user-agent"),
     )
     _set_session_cookie(
-        response, make_token(email=None, role=ROLE_ADMIN, org_id=org_id)
+        response,
+        make_token(
+            email=None, role=ROLE_ADMIN, org_id=org_id, impersonating=True
+        ),
     )
     return {"ok": True, "org_id": org_id, "slug": org.slug}
 
@@ -172,6 +196,12 @@ async def create_route(
     ).scalar_one_or_none()
     if org is None:
         raise HTTPException(status_code=404, detail="organization_not_found")
+    if body.org_id == DEMO_ORG_ID:
+        # Organization ids are small integers and the docs example uses 3, so a
+        # typo lands here easily. The demo org is what `POST /auth/register`
+        # drops anonymous visitors into as viewers, so a live route pointed at
+        # it publishes real leads' phone numbers and transcripts.
+        raise HTTPException(status_code=400, detail="cannot_route_to_demo_org")
 
     route = ChannelRoute(
         org_id=body.org_id,
@@ -209,7 +239,12 @@ async def delete_route(route_id: int, db: AsyncSession = Depends(get_bypass_db))
 
 class InviteIn(BaseModel):
     email: str = Field(min_length=3, max_length=254)
-    role: str = Field(default="admin", pattern=r"^(admin|member|viewer)$")
+    # `viewer` is deliberately absent. It is a role of the `accounts` table, not
+    # of `allowed_users`: `resolve_email_access` reads anything that is not
+    # "admin" as a member, so inviting a read-only auditor as `viewer` silently
+    # handed them write access to the agency's leads. The team router restricts
+    # this to the same two values.
+    role: str = Field(default="admin", pattern=r"^(admin|member)$")
 
 
 @router.post("/organizations/{org_id}/members", status_code=201)
@@ -226,6 +261,7 @@ async def invite_member(
     is not their own — `add_member` in the team router does the same job from
     inside an agency, scoped by RLS.
     """
+    from app.api.v1.team import _norm_email
     from app.models import AllowedUser
 
     org = (
@@ -233,8 +269,16 @@ async def invite_member(
     ).scalar_one_or_none()
     if org is None:
         raise HTTPException(status_code=404, detail="organization_not_found")
+    if org.status == "suspended":
+        # The row would be created and the sign-in would then 403 at the
+        # suspension gate, which reads as "the invite silently did nothing".
+        raise HTTPException(status_code=409, detail="organization_is_suspended")
 
-    email = body.email.lower().strip()
+    # An unvalidated string here is not cosmetic: `allowed_users.email` is
+    # globally unique, so a typo permanently consumes the slot for a real
+    # address and can only be removed by an admin of that org — who may be the
+    # very person being invited.
+    email = _norm_email(body.email)
     row = AllowedUser(email=email, role=body.role, added_by="platform", org_id=org_id)
     db.add(row)
     try:

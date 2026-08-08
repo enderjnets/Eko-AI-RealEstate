@@ -78,9 +78,10 @@ class TenantMiddleware:
         from starlette.responses import JSONResponse
 
         from app.api.v1.auth import _token_from_request
+        from app.services.auth import token_is_impersonating, token_is_superuser
         from app.services.tenant_context import set_org_id
         from app.services.tenant_resolver import (
-            WebhookOrgUnresolved,
+            TenantUnresolvable,
             active_orgs,
             needs_tenant,
             resolve_org_for_request,
@@ -98,19 +99,30 @@ class TenantMiddleware:
 
         try:
             org_id = await resolve_org_for_request(path, token)
-        except WebhookOrgUnresolved as exc:
+        except TenantUnresolvable as exc:
             # 503, not 500: the provider should retry, and the operator needs to
             # see this rather than discover it as another agency's leads.
-            logger.error("inbound message refused — %s", exc)
+            logger.error("request refused, no organization — %s", exc)
             await JSONResponse(
-                {"detail": "inbound routing unavailable"}, status_code=503
+                {"detail": "tenant routing unavailable"}, status_code=503
             )(scope, receive, send)
             return
 
         # A token naming a suspended or deleted organization used to sail
         # through: reads returned nothing and writes 500'd on the RLS check.
         # Suspension has to end access, not just stop the background sweeps.
-        if org_id is not None:
+        #
+        # Platform operators are exempt. Their token names organization 1 like
+        # anyone else's, so suspending client zero — one PATCH, no confirmation
+        # — used to 403 every subsequent request from that session including the
+        # one that would un-suspend it, with no way back short of psql. An
+        # operator's `su` claim is verified by the same signature as the org
+        # claim, so trusting it here is not a downgrade.
+        if (
+            org_id is not None
+            and not token_is_superuser(token)
+            and not token_is_impersonating(token)
+        ):
             status = (await active_orgs()).get(org_id)
             if status is None or status == "suspended":
                 set_org_id(None)
@@ -425,28 +437,41 @@ async def _startup() -> None:
             "access through Settings → Team instead."
         )
 
-    if not settings.AUTH_ENABLED:
-        from sqlalchemy import func, select
+    # How many organizations can actually take traffic — the demo org and any
+    # suspended tenant do not count, which is why a plain COUNT(*) was the wrong
+    # test: every install has the demo org, so it always read as "more than one".
+    from app.models.organization import DEFAULT_ORG_ID
 
-        from app.db.base import get_bypass_session_factory
-        from app.models.organization import Organization
+    try:
+        from app.services.tenant_resolver import active_orgs, routable_candidates
 
-        try:
-            async with get_bypass_session_factory()() as session:
-                org_count = (
-                    await session.execute(select(func.count()).select_from(Organization))
-                ).scalar_one()
-        except Exception as exc:  # noqa: BLE001 — a warning must not block startup
-            logger.debug("org count check skipped: %s", exc)
-            org_count = 0
-        if org_count > 1:
-            logger.warning(
-                "⚠️  AUTH_ENABLED=false with %d organizations. Every unauthenticated "
-                "request resolves to the default org WITH WRITE ACCESS, so the open "
-                "internet can read and modify client agency data. This mode is only "
-                "safe for a single-tenant demo. Set AUTH_ENABLED=true.",
-                org_count,
-            )
+        real_orgs = routable_candidates(await active_orgs())
+    except Exception as exc:  # noqa: BLE001 — a check must not block startup
+        logger.debug("org count check skipped: %s", exc)
+        real_orgs = []
+
+    if not settings.AUTH_ENABLED and len(real_orgs) > 1:
+        # Hard failure, not a warning. With auth off there is no token, so every
+        # request resolves to the default organization no matter who sent it:
+        # agency B's dashboard is unreachable and every write it makes lands in
+        # agency A. A warning in a startup log does not stop that, and the flag
+        # defaults to false in docker-compose.
+        raise RuntimeError(
+            f"AUTH_ENABLED=false with {len(real_orgs)} active organizations "
+            f"{real_orgs}. Every request would resolve to organization "
+            f"{DEFAULT_ORG_ID} regardless of who sent it, so a second agency's "
+            "data would be both unreachable and written into the first. Set "
+            "AUTH_ENABLED=true."
+        )
+
+    if settings.AUTH_ENABLED and len(real_orgs) > 1 and not settings.platform_admin_emails_list:
+        logger.warning(
+            "⚠️  %d client agencies and PLATFORM_ADMIN_EMAILS is empty, so the "
+            "shared DASHBOARD_PASSWORD is the only key to the platform routes "
+            "and impersonation has no named actor to audit. Set "
+            "PLATFORM_ADMIN_EMAILS to the operators' addresses.",
+            len(real_orgs),
+        )
 
     if settings.is_production and settings.WHATSAPP_SIMULATED:
         logger.warning(

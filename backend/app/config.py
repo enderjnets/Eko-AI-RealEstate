@@ -189,6 +189,18 @@ class Settings(BaseSettings):
     GOOGLE_ALLOWED_EMAILS: str = ""  # comma-separated lowercased emails (members)
     GOOGLE_ALLOWED_DOMAIN: str = ""  # e.g. "ekoaiautomation.com" (any user @ this domain)
 
+    # ─── Platform operators (cross-tenant) ───────────────────────────────
+    # The people who run the SaaS, as opposed to an admin of a client agency.
+    # Only these emails get the `su` claim that unlocks /api/v1/platform — the
+    # routes that create agencies, map their phone numbers and impersonate them.
+    #
+    # Without this, the only way to hold `su` was the shared DASHBOARD_PASSWORD
+    # session, so a Google-only deployment (docs/setup-google-signin.md tells
+    # you to set the password to a random string nobody knows) could never
+    # onboard a second agency at all. It also gives impersonation a named actor
+    # to record instead of "whoever had the office password".
+    PLATFORM_ADMIN_EMAILS: str = ""  # comma-separated; empty = password-only
+
     @property
     def google_allowed_emails_list(self) -> list[str]:
         return [e.strip().lower() for e in self.GOOGLE_ALLOWED_EMAILS.split(",") if e.strip()]
@@ -196,6 +208,12 @@ class Settings(BaseSettings):
     @property
     def google_admin_emails_list(self) -> list[str]:
         return [e.strip().lower() for e in self.GOOGLE_ADMIN_EMAILS.split(",") if e.strip()]
+
+    @property
+    def platform_admin_emails_list(self) -> list[str]:
+        return [
+            e.strip().lower() for e in self.PLATFORM_ADMIN_EMAILS.split(",") if e.strip()
+        ]
 
     # ─── Sign in with Apple ──────────────────────────────────────────────
     # Coexists with Google + password. When APPLE_CLIENT_ID (the Services ID,
