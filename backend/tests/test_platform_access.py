@@ -148,28 +148,35 @@ async def test_an_ordinary_admin_signing_in_does_not_get_the_superuser_claim() -
 
 
 @pytest.mark.asyncio
-async def test_the_shared_password_stops_being_a_platform_key_once_operators_exist() -> None:
-    """A shared secret has no holder to audit, so named operators supersede it.
+async def test_the_shared_password_is_never_a_platform_key() -> None:
+    """Not even as a fallback when no operator is configured.
 
-    It stays the fallback while the list is empty — no deployment is ever left
-    with no way to onboard — but it must not remain a second master key.
+    That fallback is how C1 came back. `DASHBOARD_PASSWORD` is the agency's
+    password — install.sh calls it "protects /leads" and the office shares it
+    with whoever answers the phone — and PLATFORM_ADMIN_EMAILS is empty by
+    default, so client zero's receptionist could list every tenant, read every
+    agency's routed numbers and impersonate into any of them. Through the front
+    door, with no attack.
+
+    There is no lockout to trade against: an operator with no
+    PLATFORM_ADMIN_EMAILS set has an empty platform, and setting an environment
+    variable is something only they can do.
     """
-    named = _fake_settings(platform_admin_emails_list=["operator@eko.com"])
-    with patch("app.api.v1.auth.get_settings", return_value=named), \
-         patch("app.services.auth.get_settings", return_value=named):
-        async with await _client() as c:
-            r = await c.post("/api/v1/auth/login", json={"password": "office-password"})
-        assert r.status_code == 200, r.text
-        token = r.headers["set-cookie"].split(f"{COOKIE_NAME}=", 1)[1].split(";", 1)[0]
-        assert decode_token(token).get("su") is not True
-
-    nobody = _fake_settings(platform_admin_emails_list=[])
-    with patch("app.api.v1.auth.get_settings", return_value=nobody), \
-         patch("app.services.auth.get_settings", return_value=nobody):
-        async with await _client() as c:
-            r = await c.post("/api/v1/auth/login", json={"password": "office-password"})
-        token = r.headers["set-cookie"].split(f"{COOKIE_NAME}=", 1)[1].split(";", 1)[0]
-        assert decode_token(token).get("su") is True, "no operator left and no fallback"
+    for configured in ([], ["operator@eko.com"]):
+        fake = _fake_settings(platform_admin_emails_list=configured)
+        with patch("app.api.v1.auth.get_settings", return_value=fake), \
+             patch("app.services.auth.get_settings", return_value=fake):
+            async with await _client() as c:
+                r = await c.post(
+                    "/api/v1/auth/login", json={"password": "office-password"}
+                )
+            assert r.status_code == 200, r.text
+            token = r.headers["set-cookie"].split(f"{COOKIE_NAME}=", 1)[1]
+            token = token.split(";", 1)[0]
+            assert decode_token(token).get("su") is not True, (
+                f"the shared password minted platform access "
+                f"(PLATFORM_ADMIN_EMAILS={configured})"
+            )
 
 
 # ── N3: access and organization are resolved separately, both must succeed ───
@@ -477,4 +484,169 @@ async def test_a_read_in_flight_during_an_invalidation_does_not_restore_it() -> 
             "hiding the new tenant for a further TTL"
         )
     finally:
+        await _drop_org(SECOND_ORG_ID)
+
+
+# ── Round 8: the boundary has to exist in the configuration that ships ───────
+
+
+@pytest.mark.asyncio
+async def test_platform_routes_are_not_anonymous_when_auth_is_off(monkeypatch) -> None:
+    """`AUTH_ENABLED=false` is the docker-compose default, and it turns
+    `require_admin` into a no-op — which turned every platform route into an
+    unauthenticated one.
+
+    An anonymous POST could create an organization, and doing so then made the
+    resolver refuse every request in the install, including the route that
+    would undo it. Creating tenants is not something an unauthenticated caller
+    does in any configuration.
+    """
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "AUTH_ENABLED", False)
+    try:
+        async with await _client() as c:
+            listed = await c.get("/api/v1/platform/organizations")
+            created = await c.post(
+                "/api/v1/platform/organizations",
+                json={"name": "Rogue", "slug": "rogue-anon"},
+            )
+        assert listed.status_code == 403, listed.text
+        assert created.status_code == 403, created.text
+    finally:
+        # Cleaned up even when the assertion fails, because if it ever does the
+        # row is exactly the one that bricks the deployment: a second active org
+        # with auth off makes the resolver refuse every subsequent request. That
+        # is not a hypothetical — reverting this fix to check the test bites
+        # left the row behind and the whole suite went 503.
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM organizations WHERE slug = 'rogue-anon'")
+            )
+            await db.commit()
+        tenant_resolver.reset_cache()
+
+
+@pytest.mark.asyncio
+async def test_an_operator_email_outranks_a_row_another_agency_planted() -> None:
+    """`allowed_users.email` is globally unique and any agency's admin can add a
+    row through the ordinary team page.
+
+    So agency B's admin could add the operator's own address to *their* org. The
+    operator's next sign-in would then resolve `member` from that row while the
+    platform list still granted the org — minting a session that
+    `require_platform_admin` rejects, locking the operator out of the platform
+    for good with one authenticated POST and no route able to undo it.
+    """
+    from app.models import AllowedUser
+    from app.services.auth import ROLE_ADMIN, resolve_email_access
+
+    fake = _fake_settings(platform_admin_emails_list=["operator@eko.com"])
+    await _make_org(SECOND_ORG_ID, SECOND_SLUG)
+    try:
+        async with get_bypass_session_factory()() as db:
+            db.add(
+                AllowedUser(
+                    email="operator@eko.com",
+                    role="member",
+                    added_by="agency-b-admin",
+                    org_id=SECOND_ORG_ID,
+                )
+            )
+            await db.commit()
+
+            with patch("app.services.auth.get_settings", return_value=fake):
+                assert await resolve_email_access("operator@eko.com", db) == ROLE_ADMIN
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM allowed_users WHERE email = 'operator@eko.com'")
+            )
+            await db.commit()
+        await _drop_org(SECOND_ORG_ID)
+
+
+@pytest.mark.asyncio
+async def test_an_operator_can_free_an_email_another_agency_is_holding() -> None:
+    """The other half: the row still has to be removable.
+
+    The team router's delete runs under RLS and cannot see a row in someone
+    else's organization, and the platform router could only ever invite — so a
+    squatted address was permanent, and the remedy was psql.
+    """
+    from app.models import AllowedUser
+
+    token = make_token(
+        email="op@eko.com", role="admin", org_id=DEFAULT_ORG_ID, superuser=True
+    )
+    await _make_org(SECOND_ORG_ID, SECOND_SLUG)
+    try:
+        async with get_bypass_session_factory()() as db:
+            db.add(
+                AllowedUser(
+                    email="owner@agency-a.test",
+                    role="admin",
+                    added_by="agency-b-admin",
+                    org_id=SECOND_ORG_ID,
+                )
+            )
+            await db.commit()
+
+        async with await _client(**{COOKIE_NAME: token}) as c:
+            freed = await c.delete("/api/v1/platform/members/Owner@Agency-A.test")
+            assert freed.status_code == 200, freed.text
+            assert freed.json()["was_held_by_org"] == SECOND_ORG_ID
+            # And it is gone, so the rightful organization can claim it.
+            assert (
+                await c.delete("/api/v1/platform/members/owner@agency-a.test")
+            ).status_code == 404
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM allowed_users WHERE email = 'owner@agency-a.test'")
+            )
+            await db.commit()
+        await _drop_org(SECOND_ORG_ID)
+
+
+@pytest.mark.asyncio
+async def test_a_route_cannot_reference_a_deployment_secret() -> None:
+    """The referenced value is sent to the provider as a bearer token.
+
+    Pointing a route at AUTH_SECRET or DATABASE_URL would post the deployment's
+    own secrets to Twilio or Meta. The operator is trusted, but this is one
+    typo away and a typo has no undo.
+    """
+    from app.models.channel_route import CHANNEL_SMS, normalize_destination
+
+    token = make_token(
+        email="op@eko.com", role="admin", org_id=DEFAULT_ORG_ID, superuser=True
+    )
+    await _make_org(SECOND_ORG_ID, SECOND_SLUG)
+    try:
+        async with await _client(**{COOKIE_NAME: token}) as c:
+            created = await c.post(
+                "/api/v1/platform/routes",
+                json={
+                    "org_id": SECOND_ORG_ID,
+                    "channel": CHANNEL_SMS,
+                    "destination": "+13035558123",
+                },
+            )
+            assert created.status_code == 201, created.text
+            route_id = created.json()["id"]
+
+            blocked = await c.patch(
+                f"/api/v1/platform/routes/{route_id}/identity",
+                json={"credential_ref": "AUTH_SECRET"},
+            )
+        assert blocked.status_code == 400, blocked.text
+        assert blocked.json()["detail"]["error"] == "refers_to_a_deployment_secret"
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM channel_routes WHERE destination = :d"),
+                {"d": normalize_destination("+13035558123")},
+            )
+            await db.commit()
         await _drop_org(SECOND_ORG_ID)

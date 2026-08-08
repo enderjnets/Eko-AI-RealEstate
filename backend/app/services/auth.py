@@ -328,11 +328,19 @@ async def resolve_email_access(email: str, db: AsyncSession) -> str | None:
     the office's allow-list is keyed on the email, not on who issued the token.
 
     Precedence:
-      1. env GOOGLE_ADMIN_EMAILS  → admin (always; immutable bootstrap).
-      2. allowed_users DB row     → its role.
-      3. env GOOGLE_ALLOWED_EMAILS→ member (back-compat static allow).
-      4. env GOOGLE_ALLOWED_DOMAIN→ member (any @domain).
-      5. otherwise                → None.
+      1. env PLATFORM_ADMIN_EMAILS→ admin (always; the operators).
+      2. env GOOGLE_ADMIN_EMAILS  → admin (always; immutable bootstrap).
+      3. allowed_users DB row     → its role.
+      4. env GOOGLE_ALLOWED_EMAILS→ member (back-compat static allow).
+      5. env GOOGLE_ALLOWED_DOMAIN→ member (any @domain).
+      6. otherwise                → None.
+
+    The env lists come first because `allowed_users` is writable by the admin of
+    *any* agency and its email column is globally unique. Without this, an
+    agency admin could add an operator's address to their own org and the next
+    time that operator signed in they would arrive as a `member` — which
+    `require_platform_admin` rejects, locking the operator out of the platform
+    with a single ordinary POST.
     """
     from app.models import AllowedUser
 
@@ -340,6 +348,8 @@ async def resolve_email_access(email: str, db: AsyncSession) -> str | None:
     email = (email or "").lower().strip()
     if not email:
         return None
+    if email in s.platform_admin_emails_list:
+        return ROLE_ADMIN
     if email in s.google_admin_emails_list:
         return ROLE_ADMIN
     row = (

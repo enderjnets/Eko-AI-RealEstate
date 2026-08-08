@@ -475,6 +475,50 @@ async def _startup() -> None:
         )
 
     if len(real_orgs) > 1:
+        # A simulated channel skips signature verification entirely — that is
+        # what makes it usable from curl. With a second agency onboarded and a
+        # routed destination, anyone who can reach the port and knows an
+        # agency's public phone number can POST an inbound message and have it
+        # written into that agency's tenant, driving their AI and creating
+        # visits. The flags default to true in docker-compose, so this is not a
+        # hypothetical misconfiguration; it is the default one.
+        #
+        # Only channels that actually have a route matter: an unrouted channel
+        # cannot be attributed to an agency at all, so the refusal already
+        # covers it.
+        try:
+            from sqlalchemy import select as _select
+
+            from app.db.base import get_bypass_session_factory
+            from app.models.channel_route import ChannelRoute
+
+            simulated = {
+                "sms": settings.SMS_SIMULATED,
+                "whatsapp": settings.WHATSAPP_SIMULATED,
+                "email": settings.EMAIL_SIMULATED,
+                "voice": settings.VOICE_SIMULATED,
+            }
+            async with get_bypass_session_factory()() as session:
+                routed_channels = {
+                    c for (c,) in await session.execute(_select(ChannelRoute.channel))
+                }
+            unguarded = sorted(
+                c for c in routed_channels if simulated.get(c)
+            )
+        except Exception as exc:  # noqa: BLE001 — a check must not block startup
+            logger.debug("simulated channel check skipped: %s", exc)
+            unguarded = []
+
+        if unguarded:
+            raise RuntimeError(
+                f"{', '.join(unguarded)} run in SIMULATED mode, which accepts "
+                f"unsigned inbound messages, while {len(real_orgs)} agencies "
+                "have routed destinations. Anyone who knows an agency's number "
+                "could write leads and book visits inside their tenant. Set "
+                f"{', '.join(c.upper() + '_SIMULATED' for c in unguarded)}=false "
+                "and configure the provider secrets."
+            )
+
         # A second agency without its own provider account is answered from the
         # first agency's number, so their lead replies to the first agency and
         # the rest of the conversation is written into the wrong tenant. Name

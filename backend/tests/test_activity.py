@@ -24,6 +24,28 @@ async def _client() -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
+async def _operator_client() -> AsyncClient:
+    """A session carrying the platform-operator claim.
+
+    The demo-account routes are operator-only: they read and delete signups that
+    belong to no client agency. `require_platform_admin` used to stand down when
+    AUTH_ENABLED was false, which made them anonymous in the compose default —
+    so these tests passed without ever presenting a credential.
+    """
+    from app.api.v1.auth import COOKIE_NAME
+    from app.models.organization import DEFAULT_ORG_ID
+    from app.services.auth import make_token
+
+    token = make_token(
+        email="operator@eko.com", role="admin", org_id=DEFAULT_ORG_ID, superuser=True
+    )
+    return AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        cookies={COOKIE_NAME: token},
+    )
+
+
 async def _clear_activity(*emails: str) -> None:
     from app.db.base import get_session_factory
     from app.models import UserActivity
@@ -114,11 +136,17 @@ async def test_account_role_change_viewer_to_member(_needs_db: None) -> None:
             )
             assert reg.status_code == 201 and reg.json()["role"] == "viewer"
 
+        # Demo accounts belong to no client agency, so listing and promoting
+        # them is an operator action, not one any tenant admin may take.
+        async with await _operator_client() as op:
             acct_id = next(
-                a["id"] for a in (await c.get("/api/v1/team/accounts")).json() if a["email"] == email
+                a["id"] for a in (await op.get("/api/v1/team/accounts")).json()
+                if a["email"] == email
             )
-            up = await c.patch(f"/api/v1/team/accounts/{acct_id}", json={"role": "member"})
+            up = await op.patch(f"/api/v1/team/accounts/{acct_id}", json={"role": "member"})
             assert up.status_code == 200 and up.json()["role"] == "member"
+
+        async with await _client() as c:
 
             # Logging in now yields a member session (not viewer).
             login = await c.post(

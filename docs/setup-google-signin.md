@@ -55,15 +55,25 @@ NEXT_PUBLIC_GOOGLE_CLIENT_ID=1234567890-xxxxxx.apps.googleusercontent.com
 `allowed_users`) and is managed by admins in **Settings → Team**. The env vars are
 the bootstrap + back-compat layer. Resolution precedence for a verified email:
 
-1. `GOOGLE_ADMIN_EMAILS` (env) → **admin**, immutable (seeded into the table on startup);
-2. `allowed_users` row → its role (`admin` | `member`);
-3. `GOOGLE_ALLOWED_EMAILS` (env) → member;
-4. `GOOGLE_ALLOWED_DOMAIN` (env) → member (any `@domain`);
-5. otherwise → **denied** (safe default — no accidental open access).
+1. `PLATFORM_ADMIN_EMAILS` (env) → **admin**, and the only source of platform access;
+2. `GOOGLE_ADMIN_EMAILS` (env) → **admin**, immutable (seeded into the table on startup);
+3. `allowed_users` row → its role (`admin` | `member`);
+4. `GOOGLE_ALLOWED_EMAILS` (env) → member;
+5. `GOOGLE_ALLOWED_DOMAIN` (env) → member (any `@domain`);
+6. otherwise → **denied** (safe default — no accidental open access).
+
+The env lists come first on purpose. `allowed_users.email` is unique across
+every tenant and any agency's admin can add a row, so without that ordering one
+agency could add an operator's address to *their* org and the operator's next
+sign-in would arrive as a `member` — locked out of the platform by an ordinary
+POST. Note also that being allowed in is resolved separately from *which
+organization* you belong to, and **both** must succeed: an email that matches
+`GOOGLE_ALLOWED_DOMAIN` but has no `allowed_users` row is refused rather than
+placed in the default organization.
 
 **Roles.** `admin` can manage the team + branding (the whole Settings page).
 `member` can use the dashboard but not Settings (hidden in the nav; the API returns
-403). The shared `DASHBOARD_PASSWORD` always signs in as **admin** (master key).
+403). The shared `DASHBOARD_PASSWORD` signs in as **admin of the default organization** — not as a platform operator. It cannot reach `/api/v1/platform`.
 
 ## 3. Restart + verify
 
@@ -117,6 +127,6 @@ office (each as admin or member) — no redeploy needed.
 - The ID token is verified server-side every login — the client can't lie about which Google account it represents.
 - The session token carries the email + role; admin-only routes (`/api/v1/settings`, `/api/v1/team`) enforce `require_admin` server-side, so hiding the nav link is defense-in-depth, not the gate.
 - Rotating someone out = remove them in Settings → Team (no restart). They lose access on the next session check (sessions also expire after `AUTH_TTL_HOURS`, default 7 days; `POST /api/v1/auth/logout` or a backend restart kills them sooner).
-- Lockout-proofing: `GOOGLE_ADMIN_EMAILS` admins can't be removed/demoted from the UI, the API refuses to remove the **last** admin, and the password always works as admin.
+- Lockout-proofing: `GOOGLE_ADMIN_EMAILS` admins can't be removed/demoted from the UI, the API refuses to remove the **last** admin, and the password always works as admin of that organization. Platform access has its own lockout story: if you lose every `PLATFORM_ADMIN_EMAILS` address, add one to the env and restart — no database surgery.
 - The password flow is **not** disabled by enabling Google. To run Google-only, set `DASHBOARD_PASSWORD` to a random 64-char string nobody knows.
-- If you do that, **also set `PLATFORM_ADMIN_EMAILS`** to your own address. The password login is the fallback issuer of platform access, so retiring it without naming an operator leaves nobody able to create a second agency, map its phone numbers, or enter it for support — the routes exist and return 403 to everyone. Once the list is non-empty the password stops granting platform access at all, which is the point: a shared secret has no holder to record in an audit trail.
+- Either way, **set `PLATFORM_ADMIN_EMAILS`** to your own address before onboarding a second agency. It is the only issuer of platform access: without it nobody can create an agency, map its phone numbers, or enter it for support, and those routes return 403 to everyone. The shared `DASHBOARD_PASSWORD` deliberately cannot grant it — it is the agency's own password, so a receptionist holding it would otherwise be able to list and enter every tenant.

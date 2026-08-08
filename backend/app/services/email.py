@@ -101,14 +101,24 @@ async def fetch_inbound_email(email_id: str) -> dict[str, Any] | None:
 
     The `email.received` webhook is metadata-only (no body/headers), so to get the
     text + RFC822 Message-ID + References — needed for real content AND correct
-    Gmail threading — we GET /emails/inbound/{id} after the webhook fires."""
-    s = get_settings()
-    if not s.RESEND_API_KEY:
+    Gmail threading — we GET /emails/inbound/{id} after the webhook fires.
+
+    Reads on the acting agency's own Resend account. It used to use the global
+    key unconditionally, and a previous commit claimed to have fixed that by
+    moving the call after the org was bound — which changed the ordering and
+    nothing else, because this function never consulted the identity. Two ways
+    that bites: an agency on its own Resend account gets a 401 that the caller
+    swallows, so the agent answers an email whose body it never read; and an
+    agency that knows its own webhook secret could name any message id and have
+    the server fetch it from the *operator's* account.
+    """
+    identity = await resolve_outbound_identity(CHANNEL_EMAIL)
+    if not identity.credential:
         return None
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.get(
             f"https://api.resend.com/emails/inbound/{email_id}",
-            headers={"Authorization": f"Bearer {s.RESEND_API_KEY}"},
+            headers={"Authorization": f"Bearer {identity.credential}"},
         )
         resp.raise_for_status()
         return resp.json()

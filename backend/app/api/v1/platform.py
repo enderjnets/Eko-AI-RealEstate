@@ -127,7 +127,7 @@ async def impersonate(
     # agent hardcoded to None, so "who read our data on Tuesday?" could only be
     # answered with "someone". With PLATFORM_ADMIN_EMAILS there is a real actor
     # to record; it falls back to the anonymous form for a password session.
-    from app.services.activity import client_ip, record_login
+    from app.services.activity import record_login
 
     claims = decode_token(_token_from_request(request)) or {}
     # Keyed on the pair, not on the operator alone: `record_login` upserts, so
@@ -141,8 +141,13 @@ async def impersonate(
         email=f"impersonation:{actor}:org-{org_id}",
         source="impersonate",
         org_id=org_id,
-        ip=client_ip(request),
-        user_agent=request.headers.get("user-agent"),
+        # No IP, no user agent. The row lands in the *client's* user_activity,
+        # which their own admins read back on the team page — deliberately, since
+        # "who looked at our data" is their question to ask. But the operator's
+        # address and device answer nothing for them, and handing every agency
+        # those after each support visit is a platform-to-tenant leak.
+        ip=None,
+        user_agent=None,
     )
     _set_session_cookie(
         response,
@@ -176,6 +181,22 @@ class RouteOut(BaseModel):
 # stops an operator from pasting a live token into a database column by mistake
 # — the field names invite exactly that.
 _ENV_REF = r"^[A-Z][A-Z0-9_]{2,119}$"
+
+# Names an operator must not be able to point a route at. The resolved value is
+# sent to the provider as a bearer token or basic-auth password, so referencing
+# one of these would post the deployment's own secrets to Twilio or Meta. The
+# operator is trusted, but this is a typo away and a typo has no undo.
+_FORBIDDEN_REFS = frozenset(
+    {
+        "AUTH_SECRET",
+        "DASHBOARD_PASSWORD",
+        "DATABASE_URL",
+        "DATABASE_URL_APP",
+        "DATABASE_URL_BYPASS",
+        "REDIS_URL",
+        "SECRET_KEY",
+    }
+)
 
 
 class RouteIdentityIn(BaseModel):
@@ -270,6 +291,37 @@ async def delete_route(route_id: int, db: AsyncSession = Depends(get_bypass_db))
     return {"ok": True}
 
 
+@router.delete("/members/{email}")
+async def release_member(
+    email: str, db: AsyncSession = Depends(get_bypass_db)
+) -> dict:
+    """Free a globally-unique email that is held by the wrong organization.
+
+    `allowed_users.email` is unique across every tenant, and any agency's admin
+    can add a row through the ordinary team page. So one agency could claim an
+    address belonging to another — or an operator's own — and nothing in the API
+    could take it back: the team router's delete runs under RLS and cannot see a
+    row in someone else's org, and this router could only ever invite. The
+    remedy was psql.
+
+    Returns which organization was holding it, because the operator needs to
+    know whether this was a mistake or a squat.
+    """
+    from app.api.v1.team import _norm_email
+    from app.models import AllowedUser
+
+    normalised = _norm_email(email)
+    row = (
+        await db.execute(select(AllowedUser).where(AllowedUser.email == normalised))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="email_not_found")
+    held_by = row.org_id
+    await db.delete(row)
+    await db.commit()
+    return {"ok": True, "email": normalised, "was_held_by_org": held_by}
+
+
 @router.patch("/routes/{route_id}/identity")
 async def set_route_identity(
     route_id: int, body: RouteIdentityIn, db: AsyncSession = Depends(get_bypass_db)
@@ -293,7 +345,7 @@ async def set_route_identity(
     if route is None:
         raise HTTPException(status_code=404, detail="route_not_found")
 
-    missing = [
+    named = [
         ref
         for ref in (
             body.provider_account_ref,
@@ -301,8 +353,15 @@ async def set_route_identity(
             body.inbound_secret_ref,
             body.verify_token_ref,
         )
-        if ref and not os.environ.get(ref)
+        if ref
     ]
+    forbidden = sorted({r for r in named if r in _FORBIDDEN_REFS})
+    if forbidden:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "refers_to_a_deployment_secret", "names": forbidden},
+        )
+    missing = [ref for ref in named if not os.environ.get(ref)]
     if missing:
         # Saving a reference to a variable that is not set produces a route that
         # refuses every send at runtime. Better to fail here, where the operator

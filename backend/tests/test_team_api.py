@@ -58,6 +58,28 @@ async def _client() -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
+async def _operator_client() -> AsyncClient:
+    """A session carrying the platform-operator claim.
+
+    The demo-account routes are operator-only: they read and delete signups that
+    belong to no client agency. `require_platform_admin` used to stand down when
+    AUTH_ENABLED was false, which made them anonymous in the compose default —
+    so these tests passed without ever presenting a credential.
+    """
+    from app.api.v1.auth import COOKIE_NAME
+    from app.models.organization import DEFAULT_ORG_ID
+    from app.services.auth import make_token
+
+    token = make_token(
+        email="operator@eko.com", role="admin", org_id=DEFAULT_ORG_ID, superuser=True
+    )
+    return AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        cookies={COOKIE_NAME: token},
+    )
+
+
 async def _clear(*emails: str) -> None:
     from app.db.base import get_session_factory
     from app.models import AllowedUser
@@ -102,17 +124,20 @@ async def test_demo_accounts_list_and_delete(_needs_db: None) -> None:
             )
             assert reg.status_code == 201, reg.text
 
-            listing = (await c.get("/api/v1/team/accounts")).json()
+        # Demo signups belong to no client agency, so only an operator lists or
+        # deletes them.
+        async with await _operator_client() as op:
+            listing = (await op.get("/api/v1/team/accounts")).json()
             mine = next((a for a in listing if a["email"] == email), None)
             assert mine is not None
             assert mine["name"] == "Margie Demo" and mine["company"] == "Acme Realty"
             assert mine["role"] == "viewer"
 
             acct_id = mine["id"]
-            assert (await c.delete(f"/api/v1/team/accounts/{acct_id}")).status_code == 200
+            assert (await op.delete(f"/api/v1/team/accounts/{acct_id}")).status_code == 200
             # Gone now → 404 on re-delete; absent from the list.
-            assert (await c.delete(f"/api/v1/team/accounts/{acct_id}")).status_code == 404
-            after = (await c.get("/api/v1/team/accounts")).json()
+            assert (await op.delete(f"/api/v1/team/accounts/{acct_id}")).status_code == 404
+            after = (await op.get("/api/v1/team/accounts")).json()
             assert not any(a["email"] == email for a in after)
     finally:
         await _clear_accounts(email)

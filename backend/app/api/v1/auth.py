@@ -216,18 +216,21 @@ async def login(body: LoginIn, response: Response) -> dict[str, bool]:
         return {"ok": True, "auth_enabled": False}
     if not check_password(body.password):
         raise HTTPException(status_code=401, detail="Invalid password")
-    # The shared password used to be the operator's master key, unconditionally.
-    # It is a *shared* secret with no named holder, so once real operators exist
-    # in PLATFORM_ADMIN_EMAILS it stops minting `su`: platform actions then have
-    # an actor to audit, and the office password is demoted to what it looks
-    # like — an admin session for client zero. Keeping it as the fallback when
-    # the list is empty means no deployment is ever locked out of onboarding.
-    named_operators = bool(get_settings().platform_admin_emails_list)
+    # NEVER a platform key, not even as a fallback. This password is handed to
+    # the agency: install.sh calls it "protects /leads" and the office shares it
+    # with whoever answers the phone. Keeping it as the issuer of `su` while
+    # PLATFORM_ADMIN_EMAILS was empty — which is the shipped default — meant
+    # client zero's receptionist could list every tenant, read every agency's
+    # routed numbers, and impersonate into any of them. That is the boundary
+    # collapse this whole mechanism exists to prevent, reintroduced through a
+    # convenience.
+    #
+    # There is no lockout to fear: an operator with no PLATFORM_ADMIN_EMAILS set
+    # has an empty platform anyway, and setting an environment variable is
+    # something only they can do.
     _set_session_cookie(
         response,
-        make_token(
-            role=ROLE_ADMIN, org_id=DEFAULT_ORG_ID, superuser=not named_operators
-        ),
+        make_token(role=ROLE_ADMIN, org_id=DEFAULT_ORG_ID),
     )
     return {"ok": True, "auth_enabled": True}
 
@@ -464,9 +467,15 @@ async def require_platform_admin(request: Request) -> None:
     org is a real client agency (slug `client-zero`), so its own admins would
     have inherited platform rights, and so would any token issued before
     multi-tenancy, which carries no org at all.
+
+    Unlike every other gate, this one does NOT stand down when AUTH_ENABLED is
+    false. That flag makes `require_admin` a no-op, which turned these routes
+    into anonymous ones — and `AUTH_ENABLED=false` is the docker-compose
+    default. Anyone who could reach the port could create an organization, and
+    doing so then made the resolver refuse every request in the install,
+    including the route that would undo it. Creating tenants is not a thing an
+    unauthenticated caller does in any configuration.
     """
-    await require_admin(request)
-    if not get_settings().AUTH_ENABLED:
-        return
     if not token_is_superuser(_token_from_request(request)):
         raise HTTPException(status_code=403, detail="Platform operators only")
+    await require_admin(request)

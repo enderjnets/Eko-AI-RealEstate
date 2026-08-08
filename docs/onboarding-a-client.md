@@ -6,16 +6,20 @@ go out from your number — so do them in order.
 
 ## Becoming a platform operator first
 
-All of these are platform-operator routes, and they need the `su` claim. Only
-two things issue it:
+All of these are platform-operator routes, and they need the `su` claim. Exactly
+one thing issues it: **an email listed in `PLATFORM_ADMIN_EMAILS` signing in
+with Google or Apple.** Set that variable to your own address, restart, and sign
+in with it. There is no other way in, deliberately.
 
-1. an email listed in `PLATFORM_ADMIN_EMAILS` signing in with Google or Apple;
-2. the shared `DASHBOARD_PASSWORD` login — **but only while that list is
-   empty**.
+The shared `DASHBOARD_PASSWORD` is **not** one of them, and never becomes one.
+It is the agency's password — `install.sh` describes it as protecting `/leads`
+and the office shares it with whoever answers the phone — so letting it mint
+platform access, even as a fallback for a fresh install, put every tenant one
+front-door login away from a receptionist.
 
-So set `PLATFORM_ADMIN_EMAILS` to your own address and sign in with it. The
-password stays as the fallback for a fresh install with no operators yet, which
-is what stops a deployment from being locked out of its own onboarding.
+These routes also stay closed when `AUTH_ENABLED=false`, unlike every other
+gate in the app. Creating and suspending tenants is not something an
+unauthenticated caller does in any configuration, including dev.
 
 Being an admin of the default organization is *not* enough, and used not to be
 distinguishable: org 1 is a real client agency (`client-zero`), so its admins

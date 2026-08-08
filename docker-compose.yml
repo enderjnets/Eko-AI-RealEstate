@@ -113,9 +113,10 @@ services:
       GOOGLE_ADMIN_EMAILS: ${GOOGLE_ADMIN_EMAILS:-}
       GOOGLE_ALLOWED_EMAILS: ${GOOGLE_ALLOWED_EMAILS:-}
       GOOGLE_ALLOWED_DOMAIN: ${GOOGLE_ALLOWED_DOMAIN:-}
-      # Who runs the SaaS. Only these addresses reach /api/v1/platform. Empty
-      # leaves that power with the shared DASHBOARD_PASSWORD, which is the
-      # fallback for a fresh install — set it before onboarding a second agency.
+      # Who runs the SaaS. The ONLY source of platform access: only these
+      # addresses reach /api/v1/platform. Empty means nobody can, which is the
+      # correct default — the shared DASHBOARD_PASSWORD is the agency's own
+      # password and deliberately cannot grant it.
       PLATFORM_ADMIN_EMAILS: ${PLATFORM_ADMIN_EMAILS:-}
       # Sign in with Apple — APPLE_CLIENT_ID is the Services ID, also the token
       # `aud` the backend validates. Shares the same allow-list as Google.

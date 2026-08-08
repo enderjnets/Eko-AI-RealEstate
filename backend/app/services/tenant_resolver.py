@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 # Unauthenticated paths that legitimately write: the inbound channels.
 WEBHOOK_PREFIX = "/api/v1/webhooks"
 
+# Operator routes. They act across tenants by design, so they never resolve to
+# one — and they must stay reachable when the deployment is in a state the rest
+# of the app refuses to serve, since they are what fixes it.
+PLATFORM_PREFIX = "/api/v1/platform"
+
 # Paths that must answer without touching the database. `/health` exists to be
 # reachable during an outage — routing it through the org-status lookup made it
 # hang exactly when a monitor needs a straight answer.
@@ -142,7 +147,13 @@ async def resolve_org_for_request(path: str, token: str | None) -> int | None:
         # first one regardless of who was calling: agency B unreachable, and
         # every write landing in agency A. Startup refuses this combination
         # outright; this covers the org created while the process is running.
-        if len(routable_candidates(await active_orgs())) > 1:
+        if len(routable_candidates(await active_orgs())) > 1 and not path.startswith(
+            PLATFORM_PREFIX
+        ):
+            # Platform paths are exempt so the state is recoverable. Refusing
+            # them too meant the only route that could suspend or delete the
+            # extra organization was itself refused, and the whole install
+            # answered 503 until someone edited Postgres by hand.
             raise SingleTenantModeViolated(
                 "AUTH_ENABLED is off, which pins every request to organization "
                 f"{DEFAULT_ORG_ID}, but more than one active organization "
