@@ -163,7 +163,7 @@ async def test_whatsapp_and_email_route_by_their_own_destination() -> None:
     """Each channel carries its destination in a different place: WhatsApp in
     changes[].value.metadata, email in data.to. Getting either wrong sends an
     agency's messages to another tenant, so both are asserted explicitly."""
-    from app.api.v1.webhooks.email import _mailbox
+    from app.api.v1.webhooks.email import _mailboxes
     from app.api.v1.webhooks.whatsapp import _business_number
     from app.models.channel_route import CHANNEL_EMAIL, CHANNEL_WHATSAPP
 
@@ -180,8 +180,8 @@ async def test_whatsapp_and_email_route_by_their_own_destination() -> None:
     assert _business_number({"entry": []}) is None
 
     email_payload = {"data": {"to": ["Leads@AgencyB.com"], "from": "x@y.com"}}
-    assert _mailbox(email_payload) == "Leads@AgencyB.com"
-    assert _mailbox({"data": {}}) is None
+    assert _mailboxes(email_payload) == ["Leads@AgencyB.com"]
+    assert _mailboxes({"data": {}}) == []
 
     org_a, org_b = await _seed_two_agencies()
     try:
@@ -221,17 +221,25 @@ async def test_voice_routes_by_the_dialled_number() -> None:
     """Voice was the last channel on a different code path. A channel that is
     special is a channel that silently misfiles, so it uses the same defensive
     extractor: unknown shape → None → fall back or refuse, never guess."""
-    from app.api.v1.webhooks.voice import _dialled_number
+    from app.api.v1.webhooks.voice import _dialled_numbers
     from app.models.channel_route import CHANNEL_VOICE
 
-    assert _dialled_number({"call": {"phoneNumber": {"number": "+15553330000"}}}) == (
-        "+15553330000"
+    assert _dialled_numbers({"call": {"phoneNumber": {"number": "+15553330000"}}}) == (
+        ["+15553330000"]
     )
-    assert _dialled_number({"call": {"phoneNumberId": "pn_abc123"}}) == "pn_abc123"
-    assert _dialled_number({"phoneNumber": "+15553330000"}) == "+15553330000"
+    assert _dialled_numbers({"call": {"phoneNumberId": "pn_abc123"}}) == ["pn_abc123"]
+    assert _dialled_numbers({"phoneNumber": "+15553330000"}) == ["+15553330000"]
+    # Both keys for one line, because VAPI does not send the same one every
+    # time: the end-of-call report inlines the number while a tool-call message
+    # for that same call may carry only the id. Returning one of them meant a
+    # route mapped by number 503'd the tool calls mid-conversation.
+    both = _dialled_numbers(
+        {"call": {"phoneNumber": {"number": "+15553330000", "id": "pn_abc123"}}}
+    )
+    assert set(both) == {"+15553330000", "pn_abc123"}
     # The shape the fixtures actually carry has no destination at all.
-    assert _dialled_number({"call": {"customer": {"number": "+1555999"}}}) is None
-    assert _dialled_number({}) is None
+    assert _dialled_numbers({"call": {"customer": {"number": "+1555999"}}}) == []
+    assert _dialled_numbers({}) == []
 
     org_a, _ = await _seed_two_agencies()
     try:
@@ -400,5 +408,150 @@ async def test_a_suspended_agency_stops_receiving_inbound(monkeypatch) -> None:
 
         with pytest.raises(tenant_resolver.WebhookOrgUnresolved):
             await tenant_resolver.webhook_org_or_refuse(CHANNEL_SMS, AGENCY_B_NUMBER)
+    finally:
+        await _cleanup()
+
+
+# ── Several destinations on one message ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_an_email_copied_to_two_agencies_is_refused_not_given_to_the_first() -> None:
+    """A lead writes to agency B and copies agency A — realtors get cc'd
+    constantly, and `to` has no meaningful order.
+
+    The extractor returned the *first* address, with a comment right above it
+    admitting the agency's own is not always first, so B's thread, lead row and
+    entire transcript were filed under A. Refusing is recoverable; a
+    cross-tenant write is not.
+    """
+    from app.models.channel_route import CHANNEL_EMAIL
+
+    org_a, org_b = await _seed_two_agencies()
+    try:
+        async with get_bypass_session_factory()() as db:
+            for org_id, mailbox in (
+                (org_a, "leads@agency-a.test"),
+                (org_b, "leads@agency-b.test"),
+            ):
+                await db.execute(
+                    text(
+                        "INSERT INTO channel_routes (org_id, channel, destination) "
+                        "VALUES (:o, :c, :d)"
+                    ),
+                    {"o": org_id, "c": CHANNEL_EMAIL, "d": mailbox},
+                )
+            await db.commit()
+        tenant_resolver.reset_cache()
+
+        from app.api.v1.webhooks.email import _mailboxes
+
+        # Agency A first in `to`, agency B on cc — the ordering that used to
+        # decide the answer.
+        copied = {
+            "data": {
+                "to": ["Leads@Agency-A.test"],
+                "cc": ["leads@agency-b.test"],
+                "from": "buyer@gmail.test",
+            }
+        }
+        assert len(_mailboxes(copied)) == 2, _mailboxes(copied)
+        with pytest.raises(tenant_resolver.WebhookOrgUnresolved):
+            await tenant_resolver.webhook_org_or_refuse(
+                CHANNEL_EMAIL, _mailboxes(copied)
+            )
+
+        # One agency addressed and an unrelated recipient alongside is still
+        # unambiguous — the lead's own address must not turn into a refusal,
+        # and it must not matter that theirs comes first.
+        ordinary = {
+            "data": {"to": ["buyer@gmail.test", "Leads@Agency-B.test"]}
+        }
+        assert (
+            await tenant_resolver.webhook_org_or_refuse(
+                CHANNEL_EMAIL, _mailboxes(ordinary)
+            )
+            == org_b
+        )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_voice_line_is_found_by_either_of_its_keys() -> None:
+    """One `channel_routes` row, two payload shapes.
+
+    VAPI's end-of-call report inlines the E.164 number; a `tool-calls` message
+    for that same live call may carry only the opaque phone-number id. With one
+    key per lookup, a route mapped by number matched the report and missed the
+    tool call — so the assistant 503'd mid-conversation and could not book a
+    visit, while the transcript still filed correctly afterwards.
+    """
+    from app.models.channel_route import CHANNEL_VOICE
+
+    _org_a, org_b = await _seed_two_agencies()
+    try:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text(
+                    "INSERT INTO channel_routes (org_id, channel, destination) "
+                    "VALUES (:o, :c, :d)"
+                ),
+                {"o": org_b, "c": CHANNEL_VOICE, "d": normalize_destination("+15553330000")},
+            )
+            await db.commit()
+        tenant_resolver.reset_cache()
+
+        from app.api.v1.webhooks.voice import _dialled_numbers
+
+        report = {"call": {"phoneNumber": {"number": "+1 555 333 0000", "id": "pn_x1"}}}
+        tool_call = {"call": {"phoneNumber": {"number": "+15553330000"}, "phoneNumberId": "pn_x1"}}
+
+        for payload in (report, tool_call):
+            assert (
+                await tenant_resolver.webhook_org_or_refuse(
+                    CHANNEL_VOICE, _dialled_numbers(payload)
+                )
+                == org_b
+            )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_voice_body_is_a_400_not_a_crash() -> None:
+    """`json.loads` returns a list for `[]`, and `.get` on that raised
+    AttributeError — an unhandled 500 where the honest answer is 400."""
+    from app.api.v1.webhooks.voice import _message
+
+    assert _message([]) == {}
+    assert _message("nonsense") == {}
+    assert _message(None) == {}
+    assert _message({"message": {"type": "hang"}}) == {"type": "hang"}
+
+
+@pytest.mark.asyncio
+async def test_informational_voice_events_do_not_need_a_route() -> None:
+    """VAPI narrates a call with status updates, speech updates and a hangup.
+
+    They are dropped without touching the database, so gating them on routing
+    only produced a stream of 503s and provider retries for events that were
+    never going to be stored.
+    """
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    await _seed_two_agencies()  # two tenants: the fallback cannot resolve
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            r = await c.post(
+                "/api/v1/webhooks/voice",
+                json={"message": {"type": "status-update", "status": "in-progress"}},
+            )
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "ignored"
     finally:
         await _cleanup()

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Sequence
 
 from app.models.organization import DEFAULT_ORG_ID, DEMO_ORG_ID
 
@@ -167,8 +168,24 @@ def routable_candidates(orgs: dict[int, str]) -> list[int]:
     ]
 
 
-async def resolve_org_by_destination(channel: str, destination: str | None) -> int | None:
+Destination = str | Sequence[str] | None
+
+
+async def resolve_org_by_destination(
+    channel: str, destination: Destination
+) -> int | None:
     """The organization that owns an inbound destination, or None if unmapped.
+
+    Takes several candidates because one message can carry more than one, in
+    two different ways. An email names every recipient, and a lead who writes to
+    agency B while CC'ing agency A produces both. A VAPI payload carries either
+    the E.164 number or the opaque phone-number id depending on the message
+    type, so the same call routes by two different keys.
+
+    Matching all of them at once handles both: exactly one agency addressed is
+    the answer, none falls through to the single-tenant fallback, and two is an
+    ambiguity that has to be refused rather than settled by ordering — which is
+    what the old "first entry of `to`" rule did, filing B's thread under A.
 
     Read on the bypass session by necessity: this runs *before* any org is
     bound, which is the whole problem it exists to solve.
@@ -178,21 +195,36 @@ async def resolve_org_by_destination(channel: str, destination: str | None) -> i
     from app.db.base import get_bypass_session_factory
     from app.models.channel_route import ChannelRoute, normalize_destination
 
-    key = normalize_destination(destination)
-    if not key:
+    candidates = [destination] if isinstance(destination, str) else list(destination or [])
+    keys = {normalize_destination(c) for c in candidates}
+    keys.discard("")
+    if not keys:
         return None
+
     async with get_bypass_session_factory()() as db:
-        return (
-            await db.execute(
-                select(ChannelRoute.org_id).where(
-                    ChannelRoute.channel == channel,
-                    ChannelRoute.destination == key,
+        owners = set(
+            (
+                await db.execute(
+                    select(ChannelRoute.org_id).where(
+                        ChannelRoute.channel == channel,
+                        ChannelRoute.destination.in_(keys),
+                    )
                 )
-            )
-        ).scalar_one_or_none()
+            ).scalars()
+        )
+    if not owners:
+        return None
+    if len(owners) > 1:
+        raise WebhookOrgUnresolved(
+            f"inbound {channel} names destinations belonging to {len(owners)} "
+            f"different agencies {sorted(owners)}. Refusing rather than picking "
+            "one — a lead who writes to one agency and copies another must not "
+            "silently become the second one's lead."
+        )
+    return owners.pop()
 
 
-async def webhook_org_or_refuse(channel: str, destination: str | None) -> int:
+async def webhook_org_or_refuse(channel: str, destination: Destination) -> int:
     """The agency an inbound message belongs to, or raise.
 
     The single decision point for every channel, deliberately independent of

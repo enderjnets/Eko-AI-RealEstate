@@ -86,7 +86,7 @@ async def email_inbound(
     # Which agency's mailbox was written to. Resolved before any write; the
     # middleware cannot read the body.
     try:
-        set_org_id(await webhook_org_or_refuse(CHANNEL_EMAIL, _mailbox(payload)))
+        set_org_id(await webhook_org_or_refuse(CHANNEL_EMAIL, _mailboxes(payload)))
     except WebhookOrgUnresolved as exc:
         log.error("refusing inbound email — %s", exc)
         return JSONResponse({"status": "unrouted"}, status_code=503)
@@ -113,26 +113,29 @@ async def email_inbound(
     return {"status": "ok", "processed": len(parsed_messages), "results": results}
 
 
-def _mailbox(payload: dict) -> str | None:
-    """The agency mailbox this message was addressed to.
+def _mailboxes(payload: dict) -> list[str]:
+    """Every address this message was addressed to, in no meaningful order.
 
-    Resend delivers `to` as a list; the first entry is the delivery address.
-    Falls back to the envelope recipient when present.
+    All of them, deliberately. This used to return the *first* entry of `to`,
+    with a comment right above it admitting the agency's own address is not
+    always first — so a lead writing to agency B while CC'ing agency A had their
+    whole thread, lead row and transcript filed under A. Handing the full set to
+    the resolver lets it match exactly one route and refuse when two agencies
+    are both addressed, which is the same rule WhatsApp already follows.
     """
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, dict):
-        return None
-    for candidate in (data.get("to"), data.get("recipient")):
+        return []
+    found: list[str] = []
+    for candidate in (data.get("to"), data.get("cc"), data.get("recipient")):
         if isinstance(candidate, str) and candidate.strip():
-            return _address_only(candidate)
-        if isinstance(candidate, list):
+            found.append(_address_only(candidate))
+        elif isinstance(candidate, list):
             for item in candidate:
-                # Resend can deliver dicts, and the agency's own address is not
-                # always first when a lead CCs several people.
                 addr = item.get("email") if isinstance(item, dict) else item
                 if isinstance(addr, str) and addr.strip():
-                    return _address_only(addr)
-    return None
+                    found.append(_address_only(addr))
+    return found
 
 
 def _address_only(value: str) -> str:

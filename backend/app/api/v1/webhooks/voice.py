@@ -31,29 +31,58 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _message(payload: dict[str, Any]) -> dict[str, Any]:
+# The only two VAPI message types that write anything. Everything else is
+# narration and is acknowledged without touching the database.
+_PERSISTING_MESSAGE_TYPES = frozenset({"tool-calls", "end-of-call-report"})
+
+
+def _message(payload: Any) -> dict[str, Any]:
+    """The inner `message` envelope, or the payload itself if it is flat.
+
+    Guards the type: `json.loads` happily returns a list or a bare string for a
+    malformed body, and `.get` on those raised AttributeError — an unhandled 500
+    where a 400 was the honest answer.
+    """
+    if not isinstance(payload, dict):
+        return {}
     inner = payload.get("message")
     return inner if isinstance(inner, dict) else payload
 
 
-def _dialled_number(msg: dict[str, Any]) -> str | None:
-    """The agency's own VAPI number that was called.
+def _dialled_numbers(msg: dict[str, Any]) -> list[str]:
+    """Every key identifying the agency VAPI line that was called.
 
-    VAPI nests it as call.phoneNumber.number, with call.phoneNumberId as the
-    stable id. NOT verified against a live VAPI account — there is none yet — so
-    it is written to return None on any shape it does not recognise, which makes
-    the caller fall back or refuse rather than guess an organization.
+    All of them, because VAPI does not send the same one every time: the
+    end-of-call report inlines `call.phoneNumber.number` while a `tool-calls`
+    message for that same live call may carry only `call.phoneNumberId`. A route
+    mapped by E.164 therefore matched the report and missed the tool call, so
+    the assistant 503'd mid-conversation and could not book a visit — while the
+    transcript still filed correctly afterwards. An operator would be hunting
+    that for days.
+
+    Returning the set lets one `channel_routes` row be found by whichever key
+    the payload happens to carry. Still NOT verified against a live VAPI
+    account — there is none yet — so anything unrecognised yields nothing and
+    the caller falls back or refuses rather than guessing an organization.
     """
     call = msg.get("call") if isinstance(msg.get("call"), dict) else {}
-    number = call.get("phoneNumber") or msg.get("phoneNumber")
-    if isinstance(number, dict):
-        found = number.get("number") or number.get("id")
-        if found:
-            return str(found).strip() or None
-    if isinstance(number, str) and number.strip():
-        return number.strip()
-    pid = call.get("phoneNumberId") or msg.get("phoneNumberId")
-    return str(pid).strip() or None if pid else None
+    found: list[str] = []
+
+    def _add(value: Any) -> None:
+        if isinstance(value, str) and value.strip():
+            found.append(value.strip())
+        elif isinstance(value, (int, float)):
+            found.append(str(value))
+
+    for number in (call.get("phoneNumber"), msg.get("phoneNumber")):
+        if isinstance(number, dict):
+            _add(number.get("number"))
+            _add(number.get("id"))
+        else:
+            _add(number)
+    _add(call.get("phoneNumberId"))
+    _add(msg.get("phoneNumberId"))
+    return found
 
 
 def _customer_number(msg: dict[str, Any]) -> str | None:
@@ -107,12 +136,21 @@ async def voice_inbound(request: Request, db: AsyncSession = Depends(get_db)) ->
     msg = _message(payload)
     mtype = msg.get("type")
 
+    # VAPI narrates a call with several informational messages — status changes,
+    # speech updates, the hangup. They are dropped at the end of this function
+    # without touching the database, so putting the routing gate in front of
+    # them only produced a stream of 503s and provider retries for events that
+    # were never going to be stored. Resolve for the two types that write.
+    if mtype not in _PERSISTING_MESSAGE_TYPES:
+        log.info("Voice webhook: ignoring server message type=%s", mtype)
+        return {"status": "ignored", "type": mtype}
+
     # Which agency's VAPI number was called. Same defensive shape as
-    # _customer_number: if the field is absent this returns None and the caller
-    # falls back to the single-tenant path or refuses, so voice is never the one
-    # channel that silently misfiles.
+    # _customer_number: if the fields are absent this yields nothing and the
+    # caller falls back to the single-tenant path or refuses, so voice is never
+    # the one channel that silently misfiles.
     try:
-        set_org_id(await webhook_org_or_refuse(CHANNEL_VOICE, _dialled_number(msg)))
+        set_org_id(await webhook_org_or_refuse(CHANNEL_VOICE, _dialled_numbers(msg)))
     except WebhookOrgUnresolved as exc:
         log.error("refusing inbound call — %s", exc)
         return JSONResponse({"status": "unrouted"}, status_code=503)
@@ -127,7 +165,13 @@ async def voice_inbound(request: Request, db: AsyncSession = Depends(get_db)) ->
             try:
                 result = await handle_tool_call(name, args, customer_number=number, db=db)
             except Exception as exc:  # noqa: BLE001 — never stall the live call
-                await db.rollback()
+                # No rollback here. `handle_tool_call` owns its own transaction:
+                # it commits each successful tool and rolls back its own
+                # failures. Rolling back again from out here reached across to
+                # whatever an *earlier* tool call in this same batch had left
+                # uncommitted, while that call's success string stayed in
+                # `results` — so the assistant would tell the caller their visit
+                # was booked after the row had been discarded.
                 log.exception("Voice tool dispatch failed (%s): %s", name, exc)
                 result = "Something went wrong on my side. A team member will follow up."
             results.append({"toolCallId": tool_call_id, "result": result})
