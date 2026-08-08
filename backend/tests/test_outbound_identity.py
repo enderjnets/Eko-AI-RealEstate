@@ -21,7 +21,6 @@ from app.models.channel_route import (
 from app.models.organization import DEFAULT_ORG_ID
 from app.services import tenant_resolver
 from app.services.channel_identity import (
-    MissingChannelCredential,
     known_verify_tokens,
     resolve_inbound_secret,
     resolve_outbound_identity,
@@ -146,11 +145,55 @@ async def test_a_reference_to_an_unset_variable_refuses_rather_than_falling_back
     which is the entire bug, reintroduced through a configuration mistake
     nobody would see.
     """
+    from app.config import get_settings
+
     monkeypatch.delenv("TWILIO_AUTH_TOKEN_TYPO", raising=False)
-    await _seed_agency_b(credential_ref="TWILIO_AUTH_TOKEN_TYPO")
+    monkeypatch.delenv("WA_SECRET_TYPO", raising=False)
+    monkeypatch.setattr(get_settings(), "TWILIO_AUTH_TOKEN", "the-operators-token")
+    await _seed_agency_b(
+        credential_ref="TWILIO_AUTH_TOKEN_TYPO",
+        inbound_secret_ref="WA_SECRET_TYPO",
+    )
     try:
-        with org_scope(AGENCY_B), pytest.raises(MissingChannelCredential):
-            await resolve_outbound_identity(CHANNEL_SMS)
+        with org_scope(AGENCY_B):
+            identity = await resolve_outbound_identity(CHANNEL_SMS)
+        # Nothing, rather than the operator's. `send_sms` then refuses to
+        # dispatch and every verifier rejects an empty secret, so both halves
+        # fail closed.
+        assert identity.credential is None
+        assert identity.inbound_secret is None
+        assert identity.credential != "the-operators-token"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_inbound_ref_whose_variable_vanished_never_borrows_the_shared_secret(
+    monkeypatch,
+) -> None:
+    """The branch that had no test, and the one that reaches production.
+
+    An agency with its own Meta app and no outbound credential — the exact
+    configuration this work exists for — takes the `plain` branch. When the
+    named variable is later dropped, renamed or rotated, substituting the
+    operator's secret means anyone holding *that* can sign a message into this
+    agency's tenant. `_validate_refs` only checks the environment when the route
+    is saved, so nothing notices the drift afterwards.
+    """
+    from app.config import get_settings
+
+    monkeypatch.delenv("WA_APP_SECRET_GONE", raising=False)
+    monkeypatch.setattr(get_settings(), "TWILIO_AUTH_TOKEN", "the-operators-token")
+    await _seed_agency_b(inbound_secret_ref="WA_APP_SECRET_GONE")
+    try:
+        with org_scope(AGENCY_B):
+            identity = await resolve_outbound_identity(CHANNEL_SMS)
+        assert identity.inbound_secret is None, (
+            "a named-but-missing agency secret fell back to the operator's"
+        )
+        # Sending still works: that half was never in question, and breaking it
+        # over an inbound variable is what the previous attempt got wrong.
+        assert identity.credential == "the-operators-token"
     finally:
         await _cleanup()
 
@@ -428,5 +471,40 @@ async def test_two_numbers_on_one_channel_each_verify_with_their_own_secret(
         assert second.inbound_secret == "secret-two", (
             "the second number was verified against the first one's secret"
         )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_destination_the_agency_does_not_own_yields_the_global_identity(
+    monkeypatch,
+) -> None:
+    """"Not yours" must answer the shared configuration, never a sibling route.
+
+    Defensive: the inbound path resolves the org *from* a matching route, so
+    today nothing calls this with a foreign destination. But the previous shape
+    fell back to the agency's whole row set and re-picked the lowest-id route's
+    secret — the round-12 defect, one caller away.
+    """
+    monkeypatch.setenv("WA_SECRET_OWNED", "owned-secret")
+    monkeypatch.setattr(
+        __import__("app.config", fromlist=["get_settings"]).get_settings(),
+        "TWILIO_AUTH_TOKEN",
+        "the-operators-token",
+    )
+    await _seed_agency_b(inbound_secret_ref="WA_SECRET_OWNED")
+    try:
+        with org_scope(AGENCY_B):
+            theirs = await resolve_outbound_identity(
+                CHANNEL_SMS, destination=B_NUMBER
+            )
+            foreign = await resolve_outbound_identity(
+                CHANNEL_SMS, destination="+19995551111"
+            )
+        assert theirs.inbound_secret == "owned-secret"
+        assert foreign.inbound_secret == "the-operators-token", (
+            "a destination the agency does not own borrowed one of its routes"
+        )
+        assert foreign.destination != theirs.destination
     finally:
         await _cleanup()

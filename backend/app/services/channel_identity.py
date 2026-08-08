@@ -106,6 +106,27 @@ def _env_or_none(ref: str | None) -> str | None:
         return None
 
 
+
+def _resolve(ref: str | None, fallback: str | None) -> str | None:
+    """The value behind a route's reference, or the global one — never both.
+
+    The distinction that matters: **no ref** means "this agency uses the shared
+    configuration", so the fallback applies. A ref that is *named* but whose
+    variable is missing means the agency has its own credential and we cannot
+    read it — and quietly substituting the operator's would accept, as that
+    agency, anything signed with the secret the operator shares. The previous
+    shape was `_env_or_none(ref) or base`, whose comment claimed to fail closed
+    while the `or` on the same line did the opposite.
+
+    A named-but-unresolvable ref therefore yields None, and every consumer
+    treats None as a refusal: the four signature verifiers reject an empty
+    secret, and each `send_*` refuses to dispatch without its credential.
+    """
+    if not ref:
+        return fallback
+    return _env_or_none(ref)
+
+
 async def resolve_outbound_identity(
     channel: str, *, destination: Destination = None
 ) -> ChannelIdentity:
@@ -148,7 +169,14 @@ async def resolve_outbound_identity(
         keys = {normalize_destination(d) for d in candidates if isinstance(d, str)}
         keys.discard("")
         matched = [r for r in rows if r.destination in keys]
-        rows = matched or rows
+        if not matched:
+            # A destination this organization does not own. Falling back to the
+            # whole row set would re-pick some other route's secret, which is
+            # the round-12 defect one caller away. Unreachable today — the org
+            # is resolved *from* a matching route — but the safe answer to "not
+            # yours" is the global configuration, never a sibling's.
+            return _global_identity(channel, org_id=org_id)
+        rows = matched
 
     routed = next((r for r in rows if r.credential_ref), None)
     if routed is None:
@@ -170,17 +198,12 @@ async def resolve_outbound_identity(
             org_id=org_id,
             channel=channel,
             destination=plain.destination,
-            provider_account=(
-                _env_or_none(plain.provider_account_ref) or base.provider_account
+            provider_account=_resolve(
+                plain.provider_account_ref, base.provider_account
             ),
-            credential=base.credential,
-            # `_env_or_none`, not `_env`: this branch is also the outbound path,
-            # and a variable removed from .env after the route was saved must
-            # not stop the agency sending. None here still fails closed where it
-            # matters — every verifier rejects an empty secret — rather than
-            # silently accepting the operator's.
-            inbound_secret=_env_or_none(plain.inbound_secret_ref) or base.inbound_secret,
-            verify_token=_env_or_none(plain.verify_token_ref) or base.verify_token,
+            credential=_resolve(plain.credential_ref, base.credential),
+            inbound_secret=_resolve(plain.inbound_secret_ref, base.inbound_secret),
+            verify_token=_resolve(plain.verify_token_ref, base.verify_token),
             sender_override=plain.sender_override or base.sender_override,
             webhook_url=plain.webhook_url or base.webhook_url,
         )
@@ -201,10 +224,17 @@ async def resolve_outbound_identity(
         org_id=org_id,
         channel=channel,
         destination=routed.destination,
-        provider_account=_env(routed.provider_account_ref),
-        credential=_env(routed.credential_ref),
-        inbound_secret=_env(routed.inbound_secret_ref),
-        verify_token=_env(routed.verify_token_ref),
+        # `_resolve` per field, not `_env` per field. `_env` raises, and raising
+        # while picking an *inbound* secret because an unrelated *outbound*
+        # variable is unset 503'd every message to that number. Each field is
+        # needed by a different caller, so each fails on its own: a missing
+        # secret becomes None and the verifier rejects; a missing credential
+        # becomes None and the send guard refuses. Neither borrows the
+        # operator's.
+        provider_account=_resolve(routed.provider_account_ref, None),
+        credential=_resolve(routed.credential_ref, None),
+        inbound_secret=_resolve(routed.inbound_secret_ref, None),
+        verify_token=_resolve(routed.verify_token_ref, None),
         sender_override=routed.sender_override,
         webhook_url=routed.webhook_url,
     )
