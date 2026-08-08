@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db.base import get_db
 from app.models.channel_route import CHANNEL_WHATSAPP
-from app.services.channel_identity import resolve_inbound_secret
+from app.services.channel_identity import inbound_secret_or_503
 from app.services.conversation import handle_inbound_message
 from app.services.tenant_context import set_org_id
 from app.services.tenant_resolver import WebhookOrgUnresolved, webhook_org_or_refuse
@@ -96,7 +96,7 @@ async def whatsapp_inbound(
     # email: the parse only selects a key. It is verified against the original
     # raw bytes, never a re-serialization of what was parsed.
     if not s.WHATSAPP_SIMULATED:
-        identity = await resolve_inbound_secret(
+        identity = await inbound_secret_or_503(
             CHANNEL_WHATSAPP, _business_number(payload)
         )
         if not verify_signature(raw, sig, identity.inbound_secret or ""):

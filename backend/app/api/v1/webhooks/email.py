@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db.base import get_db
 from app.models.channel_route import CHANNEL_EMAIL
-from app.services.channel_identity import resolve_inbound_secret
+from app.services.channel_identity import inbound_secret_or_503
 from app.services.conversation import handle_inbound_message
 from app.services.email import fetch_inbound_email, parse_inbound_email, verify_resend_signature
 from app.services.tenant_context import set_org_id
@@ -56,7 +56,7 @@ async def email_inbound(
         # names no route, so the global secret applies, or names another
         # agency's, whose signature the forger cannot produce. The HMAC is still
         # computed over the original raw bytes, never a re-serialization.
-        identity = await resolve_inbound_secret(CHANNEL_EMAIL, _mailboxes(payload))
+        identity = await inbound_secret_or_503(CHANNEL_EMAIL, _mailboxes(payload))
         ok = verify_resend_signature(
             raw,
             svix_id=svix_id,
@@ -93,10 +93,23 @@ async def email_inbound(
         if email_id:
             try:
                 detail = await fetch_inbound_email(email_id)
-                if detail:
-                    payload = {"type": "email.received", "data": detail}
             except Exception as exc:  # noqa: BLE001
+                detail = None
                 log.warning("Could not fetch full inbound email %s: %s", email_id, exc)
+            if detail:
+                payload = {"type": "email.received", "data": detail}
+            else:
+                # 503, not a 200 with an empty body. A real `email.received`
+                # webhook is metadata only, so without the fetch the agent
+                # answers a message it never read — confidently, and to a lead.
+                # Returning success meant Resend never redelivered and nobody
+                # found out; the reorder above fixed the cause of the failure
+                # but left this outcome untouched.
+                log.error("inbound email %s has no body to answer", email_id)
+                return JSONResponse(
+                    {"status": "body_unavailable", "external_id": email_id},
+                    status_code=503,
+                )
 
     parsed_messages = parse_inbound_email(payload)
     if not parsed_messages:

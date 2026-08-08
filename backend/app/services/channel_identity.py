@@ -239,6 +239,34 @@ async def known_verify_tokens(channel: str) -> list[str]:
     return tokens
 
 
+async def inbound_secret_or_503(channel: str, destination: object) -> ChannelIdentity:
+    """`resolve_inbound_secret`, with its two failure modes turned into a 503.
+
+    Both mean "this message cannot be handled safely right now", and both used
+    to surface as an unhandled 500 before the signature was even checked:
+
+    - the payload names two agencies, so there is no single secret to verify
+      against and no single tenant to file it under;
+    - a route names an environment variable nobody set, which is deterministic
+      — every inbound message to that number 500s until someone redeploys, and
+      the only clue is one log line.
+
+    503 is the honest answer: the provider retries, and the operator sees a
+    service error instead of a crash blamed on the signature.
+    """
+    from fastapi import HTTPException
+
+    from app.services.tenant_resolver import WebhookOrgUnresolved
+
+    try:
+        return await resolve_inbound_secret(channel, destination)
+    except (MissingChannelCredential, WebhookOrgUnresolved) as exc:
+        logger.error("cannot verify inbound %s — %s", channel, exc)
+        raise HTTPException(
+            status_code=503, detail="inbound verification unavailable"
+        ) from exc
+
+
 async def resolve_inbound_secret(channel: str, destination: object) -> ChannelIdentity:
     """The identity that owns an inbound destination, for signature checking.
 
@@ -248,12 +276,17 @@ async def resolve_inbound_secret(channel: str, destination: object) -> ChannelId
     forged one either names no route, and the global secret applies, or names
     another agency's, whose signature the forger cannot produce.
     """
-    from app.services.tenant_resolver import resolve_org_by_destination
+    from app.services.tenant_resolver import (
+        resolve_org_by_destination,
+    )
 
-    try:
-        org_id = await resolve_org_by_destination(channel, destination)  # type: ignore[arg-type]
-    except Exception:  # noqa: BLE001 — an ambiguous destination is not our call
-        org_id = None
+    # `WebhookOrgUnresolved` propagates on purpose. It means the payload names
+    # two agencies at once, and the handler turns that into a 503. Swallowing it
+    # here — as a bare `except` did — quietly picked the operator's secret
+    # instead, so a message legitimately signed with an agency's own key failed
+    # verification and the log blamed the signature. The same `except` also
+    # turned pool timeouts and database errors into a silent global fallback.
+    org_id = await resolve_org_by_destination(channel, destination)  # type: ignore[arg-type]
     if org_id is None:
         return _global_identity(channel, org_id=None)
 

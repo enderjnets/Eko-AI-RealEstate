@@ -299,8 +299,17 @@ async def test_a_savepoint_keeps_a_failed_insert_local() -> None:
     commit between them would need a seam that exists only for the test. What
     *can* be pinned down is the property the fix depends on — that a violation
     inside `begin_nested()` costs only its own statement, and that the session
-    can still commit afterwards. If that were wrong, the handler would trade a
-    lost lead for a lost transaction and nothing would have improved.
+    can still commit afterwards.
+
+    The first version of this test added the colliding row *inside* the
+    savepoint and nowhere checked that production did the same. Production
+    added it **before**, and `begin_nested()` flushes pending work before
+    issuing the SAVEPOINT — so the violation escaped the savepoint entirely,
+    the transaction went inactive, and the `commit()` in the handler raised
+    PendingRollbackError. Nine audit rounds and a green suite missed it because
+    this test exercised the shape that works. Both shapes are asserted now: the
+    one production uses must behave, and the broken one must be visibly broken,
+    so reverting the fix fails here rather than in a customer's inbox.
     """
     from sqlalchemy.exc import IntegrityError
 
@@ -368,9 +377,152 @@ async def test_concurrent_messages_stay_inside_their_own_agency() -> None:
         ).scalars().all()
     assert owners == [DEFAULT_ORG_ID, TENANT_ID]
 
+    # The default org is not covered by `_drop_tenant`, and this is the only
+    # test that writes into it. Leaving the row behind made a later test that
+    # used the same number collide on `leads.phone`, which is unique per org —
+    # a failure in a file that had nothing to do with this one.
     async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text(
+                "DELETE FROM messages WHERE conversation_id IN "
+                "(SELECT c.id FROM conversations c JOIN leads l ON l.id = c.lead_id "
+                " WHERE l.phone = :p AND l.org_id = :o)"
+            ),
+            {"p": phone, "o": DEFAULT_ORG_ID},
+        )
+        await db.execute(
+            text(
+                "DELETE FROM conversations WHERE lead_id IN "
+                "(SELECT id FROM leads WHERE phone = :p AND org_id = :o)"
+            ),
+            {"p": phone, "o": DEFAULT_ORG_ID},
+        )
         await db.execute(
             text("DELETE FROM leads WHERE phone = :p AND org_id = :o"),
             {"p": phone, "o": DEFAULT_ORG_ID},
         )
         await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_duplicate_inbound_message_leaves_the_turn_committable() -> None:
+    """The production shape, end to end, with the collision forced.
+
+    A message is added and flushed inside the savepoint; the savepoint rolls
+    back on the violation; and the session must still commit the lead and
+    conversation created earlier in the same call. That last step is what
+    PendingRollbackError used to break — turning a duplicate into a 500 the
+    provider retries, and losing the lead with it.
+    """
+    from sqlalchemy.exc import IntegrityError, PendingRollbackError
+
+    from app.models import Conversation, Lead, Message
+    from app.models.conversation import ConversationStatus
+    from app.models.message import MessageDirection, MessageSender
+
+    def _inbound(conv_id: int) -> Message:
+        return Message(
+            conversation_id=conv_id,
+            direction=MessageDirection.INBOUND,
+            sender=MessageSender.LEAD,
+            content="hi",
+            external_id="prod-shape-collide",
+        )
+
+    with org_scope(TENANT_ID):
+        async with get_session_factory()() as db:
+            winner = Lead(phone="+13035552222")
+            db.add(winner)
+            await db.flush()
+            conv = Conversation(
+                lead_id=winner.id, channel="sms", status=ConversationStatus.ACTIVE
+            )
+            db.add(conv)
+            await db.flush()
+            db.add(_inbound(conv.id))
+            await db.commit()
+
+        async with get_session_factory()() as db:
+            # The turn creates its own rows first, exactly as the handler does.
+            latecomer = Lead(phone="+13035552223")
+            db.add(latecomer)
+            await db.flush()
+            second = Conversation(
+                lead_id=latecomer.id, channel="sms", status=ConversationStatus.ACTIVE
+            )
+            db.add(second)
+            await db.flush()
+
+            try:
+                async with db.begin_nested():
+                    db.add(_inbound(second.id))
+                    await db.flush()
+                raise AssertionError("the duplicate did not collide")
+            except IntegrityError:
+                pass
+
+            try:
+                await db.commit()
+            except PendingRollbackError as exc:  # pragma: no cover - the defect
+                raise AssertionError(
+                    "the savepoint did not contain the violation, so the whole "
+                    f"turn was lost: {exc}"
+                ) from exc
+
+    # The latecomer's lead survived the duplicate message.
+    assert await _count("leads", TENANT_ID) == 2
+
+
+def test_no_savepoint_guards_work_that_was_already_pending() -> None:
+    """Every `begin_nested()` block must do its own writing.
+
+    This is a static check because the runtime one cannot be staged: the
+    idempotency SELECT and the insert it guards are adjacent, so forcing a
+    competing commit between them needs a seam that exists only for a test.
+    What can be pinned is the invariant that was violated — `begin_nested()`
+    flushes pending work *before* issuing the SAVEPOINT, so anything added
+    beforehand runs in the outer transaction and its violation escapes the
+    savepoint entirely, leaving the session unusable and the following
+    `commit()` raising PendingRollbackError.
+
+    Three blocks in this module had exactly that shape and nine audit rounds
+    read past them, because the only test of the pattern wrote inside the
+    savepoint while production wrote outside.
+    """
+    import ast
+    import inspect
+
+    from app.services import conversation
+
+    tree = ast.parse(inspect.getsource(conversation))
+    checked = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.AsyncWith):
+            continue
+        opens_savepoint = any(
+            isinstance(item.context_expr, ast.Call)
+            and isinstance(item.context_expr.func, ast.Attribute)
+            and item.context_expr.func.attr == "begin_nested"
+            for item in node.items
+        )
+        if not opens_savepoint:
+            continue
+        checked += 1
+        writes = [
+            stmt
+            for stmt in node.body
+            if isinstance(stmt, ast.Assign)
+            or (
+                isinstance(stmt, ast.Expr)
+                and isinstance(stmt.value, ast.Call)
+                and isinstance(stmt.value.func, ast.Attribute)
+                and stmt.value.func.attr in {"add", "add_all"}
+            )
+        ]
+        assert writes, (
+            f"the savepoint at conversation.py:{node.lineno} only flushes — "
+            "whatever it is meant to protect was made pending before it, so "
+            "the violation will escape and take the transaction with it"
+        )
+
+    assert checked >= 3, f"expected the three known savepoints, found {checked}"

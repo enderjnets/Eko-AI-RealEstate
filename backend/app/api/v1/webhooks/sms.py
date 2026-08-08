@@ -23,7 +23,7 @@ from app.config import get_settings
 from app.db.base import get_db
 from app.models import Message, MessageStatus
 from app.models.channel_route import CHANNEL_SMS
-from app.services.channel_identity import resolve_inbound_secret
+from app.services.channel_identity import inbound_secret_or_503
 from app.services.conversation import handle_inbound_message
 from app.services.sms import parse_inbound_sms, twilio_status_to_delivery, verify_twilio_signature
 from app.services.tenant_context import set_org_id
@@ -57,7 +57,7 @@ async def sms_inbound(request: Request, db: AsyncSession = Depends(get_db)) -> R
         # signature check and covered by it, so an agency with its own Twilio
         # account can be identified without trusting anything unverified. A
         # forged `To` only picks a key whose signature the forger cannot make.
-        identity = await resolve_inbound_secret(CHANNEL_SMS, form.get("To"))
+        identity = await inbound_secret_or_503(CHANNEL_SMS, form.get("To"))
         url = _public_url(request, identity.webhook_url or s.TWILIO_WEBHOOK_URL)
         ok = verify_twilio_signature(
             url,
@@ -115,7 +115,7 @@ async def sms_status_callback(request: Request, db: AsyncSession = Depends(get_d
     if not s.SMS_SIMULATED:
         # `From` on a status callback is the agency's own number — the same key
         # the org is resolved by below.
-        identity = await resolve_inbound_secret(CHANNEL_SMS, form.get("From"))
+        identity = await inbound_secret_or_503(CHANNEL_SMS, form.get("From"))
         url = _public_url(request, s.TWILIO_STATUS_CALLBACK_URL)
         ok = verify_twilio_signature(
             url,

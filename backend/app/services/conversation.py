@@ -486,8 +486,8 @@ async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | b
     # ── 4. Persist transcript turns (skip if this call was already ingested) ──
     stored = 0
     if not already_ingested:
-        for i, (role, text) in enumerate(report.turns):
-            msg = Message(
+        turns = [
+            Message(
                 conversation_id=conv.id,
                 direction=(
                     MessageDirection.INBOUND if role == "user" else MessageDirection.OUTBOUND
@@ -497,17 +497,21 @@ async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | b
                 external_id=f"{report.call_id}#{i}",
                 delivery_status=MessageStatus.DELIVERED,
             )
-            db.add(msg)
-            stored += 1
+            for i, (role, text) in enumerate(report.turns)
+        ]
+        stored = len(turns)
         if stored:
             lead.last_message_at = datetime.now(UTC)
             try:
-                # A savepoint, not the whole transaction. The rollback here used
-                # to discard the lead and conversation created moments earlier
-                # in this same call, so a duplicate *transcript* threw away a
-                # brand-new caller — and then reported their id, which by then
-                # was None.
+                # Built first, added INSIDE the savepoint. `begin_nested()`
+                # flushes anything already pending before issuing the SAVEPOINT,
+                # so adding them beforehand ran the duplicate INSERT in the
+                # outer transaction: the violation escaped `begin_nested()`
+                # itself, the transaction went inactive, and the commit below
+                # raised PendingRollbackError — losing the caller, transcript
+                # and summary, and returning a 500 that VAPI redelivers.
                 async with db.begin_nested():
+                    db.add_all(turns)
                     await db.flush()
             except IntegrityError:
                 log.info("Race-condition idempotent skip for voice call_id=%s", report.call_id)
@@ -629,13 +633,17 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         delivery_status=MessageStatus.DELIVERED,
         subject=parsed.subject,
     )
-    db.add(inbound)
     lead.last_message_at = datetime.now(UTC)
     try:
-        # Savepoint: only the duplicate message is discarded. Rolling the whole
-        # transaction back threw away the lead and conversation created earlier
-        # in this call, then returned a lead_id that had reverted to None.
+        # `db.add` goes INSIDE. `begin_nested()` flushes whatever is already
+        # pending before it issues the SAVEPOINT, so adding first meant the
+        # duplicate INSERT ran in the outer transaction: the IntegrityError came
+        # out of `begin_nested()` itself, the root transaction went inactive,
+        # and the `await db.commit()` below raised PendingRollbackError. The
+        # savepoint protected nothing and turned a duplicate into a 500 that the
+        # provider retries forever.
         async with db.begin_nested():
+            db.add(inbound)
             await db.flush()
     except IntegrityError:
         log.info("Race-condition idempotent skip for external_id=%s", parsed.external_id)
@@ -798,16 +806,20 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
             in_reply_to=parsed.external_id if parsed.channel == "email" else None,
             references=email_references,
         )
-        outbound.external_id = external_id
-        outbound.delivery_status = MessageStatus.SENT
         try:
-            # Stamping the provider's id is done inside a savepoint because it
-            # can collide on `uq_messages_external_id` — a provider replaying an
-            # id, or two replies landing on the same one. The reply really was
-            # sent, and this transaction also holds the lead, the conversation
-            # and the inbound message: none of that may be thrown away because
-            # a bookkeeping column would not fit.
+            # The assignments go INSIDE the savepoint: `begin_nested()` flushes
+            # pending work before opening it, so setting them first put the
+            # colliding UPDATE in the outer transaction and left the session
+            # unusable rather than protected.
+            #
+            # Stamping the provider's id can collide on uq_messages_external_id
+            # — a provider replaying an id, or two replies landing on the same
+            # one. The reply really was sent, and this transaction also holds
+            # the lead, the conversation and the inbound message: none of that
+            # may be thrown away because a bookkeeping column would not fit.
             async with db.begin_nested():
+                outbound.external_id = external_id
+                outbound.delivery_status = MessageStatus.SENT
                 await db.flush()
         except IntegrityError:
             log.warning(
