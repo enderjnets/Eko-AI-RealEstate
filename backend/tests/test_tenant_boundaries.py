@@ -60,6 +60,12 @@ def _auth_on(monkeypatch) -> object:
     # Required once auth is on: minting refuses to sign with the constant this
     # repository would otherwise derive. That guard firing here is correct.
     monkeypatch.setattr(get_settings(), "AUTH_SECRET", "test-only-signing-secret")
+    # The platform gate re-reads the operator list on every request, so a
+    # token is not enough on its own — designating the caller is part of the
+    # configuration these tests are exercising.
+    monkeypatch.setattr(
+        get_settings(), "PLATFORM_ADMIN_EMAILS", "a@x.test"
+    )
     yield
     tenant_resolver.reset_cache()
 

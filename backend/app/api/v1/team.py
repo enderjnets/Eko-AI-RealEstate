@@ -24,8 +24,9 @@ from app.api.v1.auth import require_platform_admin
 from app.config import get_settings
 from app.db.base import get_bypass_db, get_db
 from app.models import Account, AllowedUser, UserActivity
-from app.models.organization import DEMO_ORG_ID
+from app.models.organization import DEFAULT_ORG_ID, DEMO_ORG_ID
 from app.services.auth import ROLE_ADMIN, ROLE_MEMBER, ROLE_VIEWER
+from app.services.tenant_context import get_org_id
 
 router = APIRouter()
 
@@ -59,11 +60,25 @@ class TeamRoleIn(BaseModel):
 
 
 async def _other_admins_remain(db: AsyncSession, *, excluding: str) -> bool:
-    """True if at least one admin would remain after excluding `email` — counting
-    env-pinned admins (always present) plus other DB admin rows."""
-    pinned = {e for e in get_settings().google_admin_emails_list if e != excluding}
-    if pinned:
-        return True
+    """True if at least one admin of THIS organization would remain.
+
+    The env-pinned admins count only for the organization they actually belong
+    to. They are seeded into, and resolve to, the default org alone — so
+    counting them for every tenant told agency five that an admin remained on
+    the strength of an operator account in agency one, and let their sole admin
+    demote or delete themselves into a locked-out dashboard.
+
+    The DB query needs no org filter: it runs on the RLS session, which already
+    sees only the acting organization's rows.
+    """
+    acting = get_org_id()
+    if acting == DEFAULT_ORG_ID:
+        pinned = {e for e in get_settings().google_admin_emails_list if e != excluding}
+        pinned |= {
+            e for e in get_settings().platform_admin_emails_list if e != excluding
+        }
+        if pinned:
+            return True
     rows = (await db.execute(select(AllowedUser.email).where(AllowedUser.role == ROLE_ADMIN))).all()
     return any(r[0] != excluding for r in rows)
 

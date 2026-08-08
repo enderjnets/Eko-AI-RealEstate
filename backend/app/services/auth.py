@@ -82,28 +82,36 @@ class InsecureAuthConfig(RuntimeError):
 
 
 def _secret() -> bytes:
+    """The session signing key. AUTH_SECRET or nothing.
+
+    It used to fall back to `sha256("eko-auth::" + DASHBOARD_PASSWORD)`, and
+    that quietly undid the whole platform boundary. The password is the
+    *agency's* — the office shares it with whoever answers the phone — so its
+    holder could derive the key offline and mint a token claiming `su` and any
+    organization they liked. Removing `superuser=True` from the password login
+    achieved nothing while that derivation stood: the same person could sign
+    the claim themselves.
+
+    A key must not be derivable from a credential with a wider audience than
+    the key. AUTH_SECRET has exactly one audience, so it is the only source.
+    """
     s = get_settings()
-    material = s.AUTH_SECRET or (
-        f"eko-auth::{s.DASHBOARD_PASSWORD}" if s.DASHBOARD_PASSWORD else ""
-    )
-    if not material:
-        # With both unset the key used to be sha256("eko-auth::") — a constant
-        # anyone can derive from this repository, so a session token could be
-        # forged naming any role AND any organization, which under multi-tenancy
-        # means reading any client agency's data. Reachable in the documented
-        # Google-Sign-In-only setup, where an operator has no reason to set
-        # DASHBOARD_PASSWORD. Refusing is the only safe answer; the installer
-        # already generates a random AUTH_SECRET.
-        if s.AUTH_ENABLED:
-            raise InsecureAuthConfig(
-                "AUTH_ENABLED is true but neither AUTH_SECRET nor DASHBOARD_PASSWORD "
-                "is set — session tokens would be signed with a key published in "
-                "this repository. Set AUTH_SECRET to a random value."
-            )
-        # Auth off: tokens are not a security boundary anyway (require_auth is a
-        # no-op), so a fixed dev key is fine and keeps local work frictionless.
-        material = "eko-auth::insecure-dev-only"
-    return hashlib.sha256(material.encode("utf-8")).digest()
+    if s.AUTH_SECRET:
+        return hashlib.sha256(s.AUTH_SECRET.encode("utf-8")).digest()
+
+    if s.AUTH_ENABLED:
+        raise InsecureAuthConfig(
+            "AUTH_ENABLED is true but AUTH_SECRET is not set. Session tokens "
+            "carry the organization and the platform-operator claim, so the key "
+            "cannot be derived from DASHBOARD_PASSWORD (which the agency knows) "
+            "or from a constant in this repository. Set AUTH_SECRET to a random "
+            "value — scripts/install.sh generates one."
+        )
+    # Auth off. Tokens genuinely are not a boundary in this mode: require_auth
+    # is a no-op and the platform routes refuse outright (see
+    # require_platform_admin), so nothing is gated on this signature. The fixed
+    # key keeps local work frictionless and is deliberately recognisable.
+    return hashlib.sha256(b"eko-auth::insecure-dev-only").digest()
 
 
 def check_password(password: str) -> bool:

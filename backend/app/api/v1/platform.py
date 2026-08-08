@@ -16,7 +16,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -182,21 +182,59 @@ class RouteOut(BaseModel):
 # — the field names invite exactly that.
 _ENV_REF = r"^[A-Z][A-Z0-9_]{2,119}$"
 
-# Names an operator must not be able to point a route at. The resolved value is
-# sent to the provider as a bearer token or basic-auth password, so referencing
-# one of these would post the deployment's own secrets to Twilio or Meta. The
-# operator is trusted, but this is a typo away and a typo has no undo.
-_FORBIDDEN_REFS = frozenset(
-    {
-        "AUTH_SECRET",
-        "DASHBOARD_PASSWORD",
-        "DATABASE_URL",
-        "DATABASE_URL_APP",
+def _forbidden_refs() -> frozenset[str]:
+    """Environment variable names a route may not point at.
+
+    Every field of Settings, computed rather than listed. The resolved value is
+    handed to a provider as a bearer token or basic-auth password, so a ref
+    naming AUTH_SECRET would post the deployment's signing key to Twilio, and
+    one naming DATABASE_URL would post the database credentials to Meta. A
+    hand-written denylist covered seven names and missed fifteen — including
+    every provider secret, so an operator could also point one agency's route at
+    another agency's variable, letting the second sign inbound messages into the
+    first.
+
+    The rule that generalises: an agency's credential lives in a variable of its
+    own (TWILIO_AUTH_TOKEN_ACME), never in one this application already reads.
+    """
+    from app.config import Settings
+
+    return frozenset(Settings.model_fields) | {
         "DATABASE_URL_BYPASS",
-        "REDIS_URL",
         "SECRET_KEY",
+        "POSTGRES_PASSWORD",
     }
-)
+
+
+def _validate_refs(body: RouteIdentityIn) -> None:
+    """Shared by create and patch. It lived only in patch, so the create path
+    wrote whatever it was given — the control was bypassed by using the other
+    endpoint."""
+    named = [
+        ref
+        for ref in (
+            body.provider_account_ref,
+            body.credential_ref,
+            body.inbound_secret_ref,
+            body.verify_token_ref,
+        )
+        if ref
+    ]
+    forbidden = sorted({r for r in named if r in _forbidden_refs()})
+    if forbidden:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "refers_to_a_deployment_secret", "names": forbidden},
+        )
+    missing = [ref for ref in named if not os.environ.get(ref)]
+    if missing:
+        # Saving a reference to a variable that is not set produces a route that
+        # refuses every send at runtime. Better to fail here, where the operator
+        # is looking, than during a lead's first message.
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "environment_variables_not_set", "names": missing},
+        )
 
 
 class RouteIdentityIn(BaseModel):
@@ -250,6 +288,7 @@ async def create_route(
         # drops anonymous visitors into as viewers, so a live route pointed at
         # it publishes real leads' phone numbers and transcripts.
         raise HTTPException(status_code=400, detail="cannot_route_to_demo_org")
+    _validate_refs(body)
 
     route = ChannelRoute(
         org_id=body.org_id,
@@ -293,7 +332,9 @@ async def delete_route(route_id: int, db: AsyncSession = Depends(get_bypass_db))
 
 @router.delete("/members/{email}")
 async def release_member(
-    email: str, db: AsyncSession = Depends(get_bypass_db)
+    email: str,
+    force: bool = False,
+    db: AsyncSession = Depends(get_bypass_db),
 ) -> dict:
     """Free a globally-unique email that is held by the wrong organization.
 
@@ -317,6 +358,39 @@ async def release_member(
     if row is None:
         raise HTTPException(status_code=404, detail="email_not_found")
     held_by = row.org_id
+
+    if row.role == ROLE_ADMIN and not force:
+        remaining = (
+            await db.execute(
+                select(func.count())
+                .select_from(AllowedUser)
+                .where(
+                    AllowedUser.org_id == held_by,
+                    AllowedUser.role == ROLE_ADMIN,
+                    AllowedUser.email != normalised,
+                )
+            )
+        ).scalar_one()
+        if remaining == 0:
+            # The team router refuses this for the same reason: an agency with no
+            # admin cannot reach /settings or /team, both of which require one,
+            # so its staff are locked out of their own dashboard with only the
+            # operator able to repair it. Freeing a squatted address must not be
+            # able to do that by accident.
+            # `force` exists because the two rules genuinely conflict: a squatted
+            # row can also be the holding org's only admin, and refusing outright
+            # would make the squat permanent again — which is the thing this
+            # route was added to end. The operator gets told what they are about
+            # to do rather than being stopped by it.
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "would_leave_organization_without_an_admin",
+                    "org_id": held_by,
+                    "hint": "re-send with ?force=true, then invite an admin",
+                },
+            )
+
     await db.delete(row)
     await db.commit()
     return {"ok": True, "email": normalised, "was_held_by_org": held_by}
@@ -345,31 +419,7 @@ async def set_route_identity(
     if route is None:
         raise HTTPException(status_code=404, detail="route_not_found")
 
-    named = [
-        ref
-        for ref in (
-            body.provider_account_ref,
-            body.credential_ref,
-            body.inbound_secret_ref,
-            body.verify_token_ref,
-        )
-        if ref
-    ]
-    forbidden = sorted({r for r in named if r in _FORBIDDEN_REFS})
-    if forbidden:
-        raise HTTPException(
-            status_code=400,
-            detail={"error": "refers_to_a_deployment_secret", "names": forbidden},
-        )
-    missing = [ref for ref in named if not os.environ.get(ref)]
-    if missing:
-        # Saving a reference to a variable that is not set produces a route that
-        # refuses every send at runtime. Better to fail here, where the operator
-        # is looking, than during a lead's first message.
-        raise HTTPException(
-            status_code=400,
-            detail={"error": "environment_variables_not_set", "names": missing},
-        )
+    _validate_refs(body)
 
     for field, value in body.model_dump().items():
         setattr(route, field, value)

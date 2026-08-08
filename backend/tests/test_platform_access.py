@@ -90,6 +90,12 @@ def _auth_on(monkeypatch) -> object:
 
     monkeypatch.setattr(get_settings(), "AUTH_ENABLED", True)
     monkeypatch.setattr(get_settings(), "AUTH_SECRET", "platform-access-test-secret")
+    # The platform gate re-reads the operator list on every request, so a
+    # token is not enough on its own — designating the caller is part of the
+    # configuration these tests are exercising.
+    monkeypatch.setattr(
+        get_settings(), "PLATFORM_ADMIN_EMAILS", "op@eko.com"
+    )
     yield
     tenant_resolver.reset_cache()
 
@@ -582,6 +588,16 @@ async def test_an_operator_can_free_an_email_another_agency_is_holding() -> None
     await _make_org(SECOND_ORG_ID, SECOND_SLUG)
     try:
         async with get_bypass_session_factory()() as db:
+            # The squatting agency has an admin of its own, as any operating
+            # agency does — freeing the squat must not disturb it.
+            db.add(
+                AllowedUser(
+                    email="real.admin@agency-b.test",
+                    role="admin",
+                    added_by="platform",
+                    org_id=SECOND_ORG_ID,
+                )
+            )
             db.add(
                 AllowedUser(
                     email="owner@agency-a.test",
@@ -600,10 +616,29 @@ async def test_an_operator_can_free_an_email_another_agency_is_holding() -> None
             assert (
                 await c.delete("/api/v1/platform/members/owner@agency-a.test")
             ).status_code == 404
+
+            # Their own admin is untouched, and removing THAT one is refused —
+            # an agency with no admin cannot reach /settings or /team, so its
+            # staff are locked out of their own dashboard.
+            last = await c.delete("/api/v1/platform/members/real.admin@agency-b.test")
+            assert last.status_code == 409, last.text
+            assert last.json()["detail"]["error"] == (
+                "would_leave_organization_without_an_admin"
+            )
+            # Unless the operator says so explicitly: the squat and the last
+            # admin can be the same row, and refusing outright would make the
+            # squat permanent again.
+            forced = await c.delete(
+                "/api/v1/platform/members/real.admin@agency-b.test?force=true"
+            )
+            assert forced.status_code == 200, forced.text
     finally:
         async with get_bypass_session_factory()() as db:
             await db.execute(
-                text("DELETE FROM allowed_users WHERE email = 'owner@agency-a.test'")
+                text(
+                    "DELETE FROM allowed_users WHERE email IN "
+                    "('owner@agency-a.test', 'real.admin@agency-b.test')"
+                )
             )
             await db.commit()
         await _drop_org(SECOND_ORG_ID)
@@ -647,6 +682,171 @@ async def test_a_route_cannot_reference_a_deployment_secret() -> None:
             await db.execute(
                 text("DELETE FROM channel_routes WHERE destination = :d"),
                 {"d": normalize_destination("+13035558123")},
+            )
+            await db.commit()
+        await _drop_org(SECOND_ORG_ID)
+
+
+# ── Round 9: the claim is only as good as the key that signs it ──────────────
+
+
+def test_the_signing_key_is_never_derived_from_the_agencys_password() -> None:
+    """The platform boundary is an HMAC, so it is worth exactly what its key is.
+
+    The key used to fall back to `sha256("eko-auth::" + DASHBOARD_PASSWORD)`.
+    That password is the *agency's* — install.sh calls it "protects /leads" and
+    the office shares it with whoever answers the phone — so its holder could
+    derive the key offline and sign themselves a token claiming `su` and any
+    organization they liked. Removing `superuser=True` from the password login
+    achieved nothing while that stood: the same person could mint the claim.
+    """
+    from app.config import get_settings
+    from app.services.auth import InsecureAuthConfig, _secret
+
+    s = get_settings()
+    with patch.object(s, "AUTH_ENABLED", True), \
+         patch.object(s, "AUTH_SECRET", ""), \
+         patch.object(s, "DASHBOARD_PASSWORD", "office-password"):
+        with pytest.raises(InsecureAuthConfig):
+            _secret()
+
+    # And with a real secret it does not mix the password in, so changing the
+    # office password cannot silently invalidate or weaken every session.
+    with patch.object(s, "AUTH_ENABLED", True), \
+         patch.object(s, "AUTH_SECRET", "a-real-secret"), \
+         patch.object(s, "DASHBOARD_PASSWORD", "office-password"):
+        first = _secret()
+    with patch.object(s, "AUTH_ENABLED", True), \
+         patch.object(s, "AUTH_SECRET", "a-real-secret"), \
+         patch.object(s, "DASHBOARD_PASSWORD", "a-different-password"):
+        assert _secret() == first
+
+
+@pytest.mark.asyncio
+async def test_a_token_forged_with_the_dev_key_reaches_nothing(monkeypatch) -> None:
+    """With auth off the key is a constant published in this repository.
+
+    Anyone could compute sha256(b"eko-auth::insecure-dev-only"), sign
+    {"role":"admin","org":1,"su":true}, and — while the gate trusted the claim
+    alone — read every tenant, re-point another agency's phone number at an org
+    they created, and impersonate into any of them. The gate refuses in this
+    mode outright, because a signature nobody has to know is not evidence.
+    """
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "AUTH_ENABLED", False)
+    # Forged AS a designated operator. Their address is not a secret — it is in
+    # the deployment's own configuration and on their business card — so a test
+    # that forges some other name would pass on the email check alone and prove
+    # nothing about the key.
+    monkeypatch.setattr(get_settings(), "PLATFORM_ADMIN_EMAILS", "op@eko.com")
+    forged = make_token(
+        email="op@eko.com",
+        role="admin",
+        org_id=DEFAULT_ORG_ID,
+        superuser=True,
+    )
+    async with await _client(**{COOKIE_NAME: forged}) as c:
+        for method, path in (
+            ("get", "/api/v1/platform/organizations"),
+            ("get", "/api/v1/platform/routes"),
+            ("post", f"/api/v1/platform/impersonate/{DEFAULT_ORG_ID}"),
+        ):
+            r = await getattr(c, method)(path)
+            assert r.status_code == 403, f"{method.upper()} {path} → {r.status_code}"
+
+
+@pytest.mark.asyncio
+async def test_a_retired_operator_loses_access_on_their_next_request() -> None:
+    """The gate re-reads the list rather than trusting the `su` bit.
+
+    Sessions last a week. Trusting the claim alone meant removing someone from
+    PLATFORM_ADMIN_EMAILS did nothing until their cookie happened to expire,
+    which is not what an operator believes they are doing when they take a name
+    off that list.
+    """
+    from app.config import get_settings
+
+    s = get_settings()
+    token = make_token(
+        email="op@eko.com", role="admin", org_id=DEFAULT_ORG_ID, superuser=True
+    )
+    async with await _client(**{COOKIE_NAME: token}) as c:
+        assert (await c.get("/api/v1/platform/organizations")).status_code == 200
+
+    with patch.object(s, "PLATFORM_ADMIN_EMAILS", "someone.else@eko.com"):
+        async with await _client(**{COOKIE_NAME: token}) as c:
+            assert (await c.get("/api/v1/platform/organizations")).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_creating_a_route_validates_refs_the_same_way_patching_does(
+    monkeypatch,
+) -> None:
+    """The denylist lived only on the patch endpoint.
+
+    So the control was bypassed by using the other one: create the route with
+    `credential_ref: AUTH_SECRET` and the deployment's signing key is handed to
+    Twilio as a basic-auth password on the next reply.
+    """
+    from app.models.channel_route import CHANNEL_SMS
+
+    token = make_token(
+        email="op@eko.com", role="admin", org_id=DEFAULT_ORG_ID, superuser=True
+    )
+    await _make_org(SECOND_ORG_ID, SECOND_SLUG)
+    try:
+        async with await _client(**{COOKIE_NAME: token}) as c:
+            secret = await c.post(
+                "/api/v1/platform/routes",
+                json={
+                    "org_id": SECOND_ORG_ID,
+                    "channel": CHANNEL_SMS,
+                    "destination": "+13035558200",
+                    "credential_ref": "AUTH_SECRET",
+                },
+            )
+            assert secret.status_code == 400, secret.text
+            assert secret.json()["detail"]["error"] == "refers_to_a_deployment_secret"
+
+            # The global provider variables are refused too: an agency's
+            # credential belongs in a variable of its own, and pointing one
+            # agency's route at another's would let that one sign inbound
+            # messages into this one.
+            # Set, so "not set" cannot be the reason it is refused — that is
+            # what made the first version of this assertion pass against a
+            # denylist that did not contain the name at all.
+            monkeypatch.setenv("TWILIO_AUTH_TOKEN", "the-operators-own-token")
+            shared = await c.post(
+                "/api/v1/platform/routes",
+                json={
+                    "org_id": SECOND_ORG_ID,
+                    "channel": CHANNEL_SMS,
+                    "destination": "+13035558201",
+                    "credential_ref": "TWILIO_AUTH_TOKEN",
+                },
+            )
+            assert shared.status_code == 400, shared.text
+            assert shared.json()["detail"]["error"] == "refers_to_a_deployment_secret"
+
+            # And a name that is simply not set fails here, not at a lead's
+            # first message.
+            unset = await c.post(
+                "/api/v1/platform/routes",
+                json={
+                    "org_id": SECOND_ORG_ID,
+                    "channel": CHANNEL_SMS,
+                    "destination": "+13035558202",
+                    "credential_ref": "TWILIO_TOKEN_NOT_SET_ANYWHERE",
+                },
+            )
+            assert unset.status_code == 400, unset.text
+            assert unset.json()["detail"]["error"] == "environment_variables_not_set"
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM channel_routes WHERE org_id = :i"),
+                {"i": SECOND_ORG_ID},
             )
             await db.commit()
         await _drop_org(SECOND_ORG_ID)

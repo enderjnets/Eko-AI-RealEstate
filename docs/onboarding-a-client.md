@@ -18,8 +18,11 @@ platform access, even as a fallback for a fresh install, put every tenant one
 front-door login away from a receptionist.
 
 These routes also stay closed when `AUTH_ENABLED=false`, unlike every other
-gate in the app. Creating and suspending tenants is not something an
-unauthenticated caller does in any configuration, including dev.
+gate in the app — in that mode tokens are signed with a constant published
+in this repository, so a claim proves nothing. They also re-read
+`PLATFORM_ADMIN_EMAILS` on every request rather than trusting the claim, so
+removing someone from that list retires their access immediately instead of
+whenever their week-long session happens to expire.
 
 Being an admin of the default organization is *not* enough, and used not to be
 distinguishable: org 1 is a real client agency (`client-zero`), so its admins

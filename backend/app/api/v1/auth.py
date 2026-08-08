@@ -28,6 +28,7 @@ from app.services.auth import (
     AppleAuthError,
     GoogleAuthError,
     check_password,
+    decode_token,
     hash_password,
     make_token,
     resolve_email_access,
@@ -468,14 +469,34 @@ async def require_platform_admin(request: Request) -> None:
     have inherited platform rights, and so would any token issued before
     multi-tenancy, which carries no org at all.
 
-    Unlike every other gate, this one does NOT stand down when AUTH_ENABLED is
-    false. That flag makes `require_admin` a no-op, which turned these routes
-    into anonymous ones — and `AUTH_ENABLED=false` is the docker-compose
-    default. Anyone who could reach the port could create an organization, and
-    doing so then made the resolver refuse every request in the install,
-    including the route that would undo it. Creating tenants is not a thing an
-    unauthenticated caller does in any configuration.
+    Three conditions, none of which is sufficient alone.
+
+    **Authentication must be on.** With `AUTH_ENABLED=false` — the compose
+    default — tokens are signed with a constant published in this repository,
+    so a `su` claim proves nothing; and `require_admin` is a no-op, which made
+    these routes outright anonymous. There is no configuration in which an
+    unauthenticated caller creates tenants, so this gate does not stand down
+    the way the others do.
+
+    **An operator list must exist.** An empty PLATFORM_ADMIN_EMAILS means
+    nobody has been designated, and the answer to "who may do this" is nobody —
+    not "whoever holds a token".
+
+    **The token's own email must still be on that list**, not merely its `su`
+    bit. Re-reading it is what makes removal take effect: dropping someone from
+    the env retires their access at the next request instead of whenever their
+    week-long cookie happens to expire.
     """
-    if not token_is_superuser(_token_from_request(request)):
+    settings = get_settings()
+    if not settings.AUTH_ENABLED or not settings.platform_admin_emails_list:
         raise HTTPException(status_code=403, detail="Platform operators only")
+
+    token = _token_from_request(request)
+    if not token_is_superuser(token):
+        raise HTTPException(status_code=403, detail="Platform operators only")
+    claims = decode_token(token) or {}
+    email = str(claims.get("email") or "").lower().strip()
+    if email not in settings.platform_admin_emails_list:
+        raise HTTPException(status_code=403, detail="Platform operators only")
+
     await require_admin(request)

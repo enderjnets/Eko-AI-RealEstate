@@ -53,6 +53,12 @@ def _auth_on(monkeypatch) -> object:
 
     monkeypatch.setattr(get_settings(), "AUTH_ENABLED", True)
     monkeypatch.setattr(get_settings(), "AUTH_SECRET", "platform-test-secret")
+    # The gate re-reads the operator list on every request, so being handed a
+    # token is not enough — the caller has to still be designated. `_client`
+    # mints admin<org>@x.test, and only the default org's is an operator.
+    monkeypatch.setattr(
+        get_settings(), "PLATFORM_ADMIN_EMAILS", f"admin{DEFAULT_ORG_ID}@x.test"
+    )
     yield
     tenant_resolver.reset_cache()
 

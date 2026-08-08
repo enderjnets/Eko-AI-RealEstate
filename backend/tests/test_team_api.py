@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import os
 import types
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from unittest.mock import patch
 
 import pytest
@@ -58,26 +60,39 @@ async def _client() -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
-async def _operator_client() -> AsyncClient:
+@asynccontextmanager
+async def _operator_client() -> AsyncIterator[AsyncClient]:
     """A session carrying the platform-operator claim.
 
     The demo-account routes are operator-only: they read and delete signups that
     belong to no client agency. `require_platform_admin` used to stand down when
     AUTH_ENABLED was false, which made them anonymous in the compose default —
-    so these tests passed without ever presenting a credential.
+    so these tests passed without ever presenting a credential. It now refuses
+    outright in that mode, because the signing key with auth off is a constant
+    published in this repository, so a claim proves nothing. Hence the patched
+    settings: this is the configuration the routes actually require.
     """
+    from unittest.mock import patch as _patch
+
     from app.api.v1.auth import COOKIE_NAME
+    from app.config import get_settings
     from app.models.organization import DEFAULT_ORG_ID
     from app.services.auth import make_token
 
-    token = make_token(
-        email="operator@eko.com", role="admin", org_id=DEFAULT_ORG_ID, superuser=True
-    )
-    return AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test",
-        cookies={COOKIE_NAME: token},
-    )
+    s = get_settings()
+    with _patch.object(s, "AUTH_ENABLED", True), \
+         _patch.object(s, "AUTH_SECRET", "operator-client-test-secret"), \
+         _patch.object(s, "PLATFORM_ADMIN_EMAILS", "operator@eko.com"):
+        token = make_token(
+            email="operator@eko.com", role="admin", org_id=DEFAULT_ORG_ID,
+            superuser=True,
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            cookies={COOKIE_NAME: token},
+        ) as client:
+            yield client
 
 
 async def _clear(*emails: str) -> None:
@@ -94,7 +109,9 @@ async def _clear(*emails: str) -> None:
 
 
 def _fake(**over):
-    base = dict(google_admin_emails_list=[])
+    # `platform_admin_emails_list` too: the last-admin guard now counts the
+    # operators, and only for the organization they actually belong to.
+    base = dict(google_admin_emails_list=[], platform_admin_emails_list=[])
     base.update(over)
     return types.SimpleNamespace(**base)
 
@@ -126,7 +143,7 @@ async def test_demo_accounts_list_and_delete(_needs_db: None) -> None:
 
         # Demo signups belong to no client agency, so only an operator lists or
         # deletes them.
-        async with await _operator_client() as op:
+        async with _operator_client() as op:
             listing = (await op.get("/api/v1/team/accounts")).json()
             mine = next((a for a in listing if a["email"] == email), None)
             assert mine is not None
