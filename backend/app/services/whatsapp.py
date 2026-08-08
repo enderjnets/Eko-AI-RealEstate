@@ -17,8 +17,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-import time
 from typing import Any
+from uuid import uuid4
 
 import httpx
 
@@ -126,7 +126,7 @@ async def send_text_message(to_phone: str, text: str) -> dict[str, Any]:
     s = get_settings()
 
     if s.WHATSAPP_SIMULATED:
-        fake_id = f"wamid.SIMULATED_{int(time.time() * 1000)}"
+        fake_id = f"wamid.SIMULATED_{uuid4().hex}"
         log.info(
             "WhatsApp SIMULATED outbound to=%s len=%d text=%r (would-be wamid=%s)",
             to_phone, len(text), text[:120], fake_id,

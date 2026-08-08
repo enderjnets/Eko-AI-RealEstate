@@ -143,7 +143,10 @@ async def voice_inbound(request: Request, db: AsyncSession = Depends(get_db)) ->
         except Exception as exc:  # noqa: BLE001
             await db.rollback()
             log.exception("Error ingesting voice call %s: %s", report.call_id, exc)
-            return {"status": "error", "error": str(exc)}
+            # 500, not a 200 carrying the error in its body. The whole call —
+            # caller, transcript, summary — is lost otherwise, and the provider
+            # is told it succeeded.
+            return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
         return {"status": "ok", "result": result}
 
     log.info("Voice webhook: ignoring server message type=%s", mtype)

@@ -17,7 +17,6 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -81,14 +80,19 @@ async def sms_inbound(request: Request, db: AsyncSession = Depends(get_db)) -> R
 
     try:
         await handle_inbound_message(parsed, db)
-    except IntegrityError:
-        await db.rollback()
-        log.info("Idempotent skip on SMS external_id=%s", parsed.external_id)
     except Exception as exc:  # noqa: BLE001
         await db.rollback()
         log.exception("Error processing SMS %s: %s", parsed.external_id, exc)
+        # 500, not 200. Duplicates are recognised inside handle_inbound_message
+        # and return normally, so anything reaching here means the message was
+        # NOT stored. Answering 200 hid that: the lead was gone, Twilio's console
+        # showed success, and the only trace was a log line reading "idempotent
+        # skip" — which is what made three lost leads look like normal operation.
+        return Response(
+            status_code=500, content=_EMPTY_TWIML, media_type="application/xml"
+        )
 
-    # Always 200 + empty TwiML so Twilio doesn't retry; reply goes out via REST.
+    # 200 + empty TwiML on success; the reply goes out via REST, not TwiML.
     return Response(content=_EMPTY_TWIML, media_type="application/xml")
 
 

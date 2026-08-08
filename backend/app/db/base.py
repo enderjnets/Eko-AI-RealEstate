@@ -5,11 +5,12 @@ no RLS multi-tenant workspace (1 deploy = 1 inmobiliaria), no Celery proxy sessi
 """
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy import event, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -154,6 +155,42 @@ def _inject_org_id(session: Session, transaction: Any, connection: Any) -> None:
         text("SELECT set_config('app.current_org_id', :v, true)"),
         {"v": "" if org_id is None else str(org_id)},
     )
+
+
+async def first_or_create(db: AsyncSession, stmt: Any, build: Callable[[], Any]) -> Any:
+    """Return the row `stmt` selects, creating it once if it is not there yet.
+
+    The plain read-then-insert loses data here, and loses it silently. Two
+    inbound messages arriving together both see nothing, both insert, and one
+    loses the unique index — but the loser's IntegrityError takes down the
+    *whole* transaction, which by then also holds a brand-new lead, its
+    conversation and the message itself. The webhook handler then catches that
+    error, reads it as an idempotent duplicate, and answers 200, so the provider
+    never retries and the lead is gone with a log line that says nothing is
+    wrong. Four concurrent first-contacts to a fresh tenant lost three leads
+    exactly this way.
+
+    A savepoint keeps the failure to the insert, and the loser adopts the
+    winner's row. Postgres blocks the second insert until the first transaction
+    resolves, so by the time the violation surfaces the winner is committed and
+    visible to the re-read under READ COMMITTED.
+    """
+    existing = (await db.execute(stmt)).scalars().first()
+    if existing is not None:
+        return existing
+    try:
+        async with db.begin_nested():
+            created = build()
+            db.add(created)
+            await db.flush()
+        return created
+    except IntegrityError:
+        found = (await db.execute(stmt)).scalars().first()
+        if found is None:
+            # Not the race, then — some other constraint. Let it surface rather
+            # than turning an unexplained failure into a missing row.
+            raise
+        return found
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:

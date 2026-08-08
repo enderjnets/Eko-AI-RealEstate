@@ -6,7 +6,6 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -93,19 +92,24 @@ async def email_inbound(
         return JSONResponse({"status": "unrouted"}, status_code=503)
 
     results = []
+    failed = False
     for parsed in parsed_messages:
         try:
             result = await handle_inbound_message(parsed, db)
             results.append(result)
-        except IntegrityError:
-            await db.rollback()
-            log.info("Idempotent skip on email external_id=%s", parsed.external_id)
-            results.append({"status": "duplicate", "external_id": parsed.external_id})
         except Exception as exc:  # noqa: BLE001
             await db.rollback()
+            failed = True
             log.exception("Error processing email %s: %s", parsed.external_id, exc)
             results.append({"status": "error", "external_id": parsed.external_id, "error": str(exc)})
 
+    if failed:
+        # 500 so Resend redelivers. Duplicates return normally from
+        # handle_inbound_message, so reaching here means nothing was stored.
+        return JSONResponse(
+            {"status": "error", "processed": len(parsed_messages), "results": results},
+            status_code=500,
+        )
     return {"status": "ok", "processed": len(parsed_messages), "results": results}
 
 

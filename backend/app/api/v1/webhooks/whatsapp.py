@@ -10,7 +10,6 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -92,19 +91,26 @@ async def whatsapp_inbound(
         return JSONResponse({"status": "unrouted"}, status_code=503)
 
     results = []
+    failed = False
     for parsed in parsed_messages:
         try:
             result = await handle_inbound_message(parsed, db)
             results.append(result)
-        except IntegrityError:
-            await db.rollback()
-            log.info("Idempotent skip on wa_message_id=%s", parsed.external_id)
-            results.append({"status": "duplicate", "wa_message_id": parsed.external_id})
         except Exception as exc:  # noqa: BLE001
             await db.rollback()
+            failed = True
             log.exception("Error processing inbound %s: %s", parsed.external_id, exc)
             results.append({"status": "error", "wa_message_id": parsed.external_id, "error": str(exc)})
 
+    if failed:
+        # 500 so Meta redelivers. Duplicates are recognised inside
+        # handle_inbound_message and come back as a normal result, so anything
+        # caught above means the message was not stored — and a 200 with the
+        # error tucked into the body meant nobody ever found out.
+        return JSONResponse(
+            {"status": "error", "processed": len(parsed_messages), "results": results},
+            status_code=500,
+        )
     return {"status": "ok", "processed": len(parsed_messages), "results": results}
 
 

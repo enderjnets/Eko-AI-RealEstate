@@ -28,6 +28,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.db.base import first_or_create
 from app.models import (
     AgentSettings,
     Conversation,
@@ -502,10 +503,16 @@ async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | b
         if stored:
             lead.last_message_at = datetime.now(UTC)
             try:
-                await db.flush()
+                # A savepoint, not the whole transaction. The rollback here used
+                # to discard the lead and conversation created moments earlier
+                # in this same call, so a duplicate *transcript* threw away a
+                # brand-new caller — and then reported their id, which by then
+                # was None.
+                async with db.begin_nested():
+                    await db.flush()
             except IntegrityError:
-                await db.rollback()
                 log.info("Race-condition idempotent skip for voice call_id=%s", report.call_id)
+                await db.commit()
                 return {"status": "duplicate", "lead_id": lead.id, "skipped": True}
 
     # ── 5. Apply extracted fields + rescore ──────────────────────────────────
@@ -549,21 +556,26 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         return {"status": "ignored_self_loop", "from": parsed.from_identifier}
 
     # ── 1. Lead upsert ──────────────────────────────────────────────────
-    lead_row = await db.execute(select(Lead).where(Lead.phone == parsed.from_identifier))
-    lead = lead_row.scalar_one_or_none()
-    is_new_lead = lead is None
-    if lead is None:
-        lead = Lead(phone=parsed.from_identifier, name=parsed.from_name)
-        db.add(lead)
-        await db.flush()
+    lead_stmt = select(Lead).where(Lead.phone == parsed.from_identifier)
+    existing_lead = (await db.execute(lead_stmt)).scalars().first()
+    is_new_lead = existing_lead is None
+    lead = await first_or_create(
+        db,
+        lead_stmt,
+        lambda: Lead(phone=parsed.from_identifier, name=parsed.from_name),
+    )
+    if is_new_lead and lead.id is not None:
         log.info("Created lead id=%d channel=%s identifier=%s", lead.id, parsed.channel, lead.phone)
-    elif parsed.from_name and not lead.name:
+    if parsed.from_name and not lead.name:
         lead.name = parsed.from_name
 
     # ── 2. Active conversation ─────────────────────────────────────────
     # Multichannel: one active conversation per (lead, channel). A lead that
-    # writes both email AND whatsapp gets TWO active conversations.
-    conv_row = await db.execute(
+    # writes both email AND whatsapp gets TWO active conversations. The partial
+    # unique index behind this is what lets the get-or-create resolve a race
+    # instead of leaving two ACTIVE rows that make every later message from
+    # that lead raise MultipleResultsFound.
+    conv_stmt = (
         select(Conversation)
         .where(
             Conversation.lead_id == lead.id,
@@ -573,17 +585,17 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         .order_by(Conversation.id.desc())
         .limit(1)
     )
-    conv = conv_row.scalar_one_or_none()
-    if conv is None:
-        conv = Conversation(
+    conv = await first_or_create(
+        db,
+        conv_stmt,
+        lambda: Conversation(
             lead_id=lead.id,
             channel=parsed.channel,
             status=ConversationStatus.ACTIVE,
             external_thread_id=parsed.thread_id,
-        )
-        db.add(conv)
-        await db.flush()
-    elif parsed.thread_id and not conv.external_thread_id:
+        ),
+    )
+    if parsed.thread_id and not conv.external_thread_id:
         conv.external_thread_id = parsed.thread_id
 
     # ── 3. Idempotency check ───────────────────────────────────────────
@@ -610,10 +622,14 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     db.add(inbound)
     lead.last_message_at = datetime.now(UTC)
     try:
-        await db.flush()
+        # Savepoint: only the duplicate message is discarded. Rolling the whole
+        # transaction back threw away the lead and conversation created earlier
+        # in this call, then returned a lead_id that had reverted to None.
+        async with db.begin_nested():
+            await db.flush()
     except IntegrityError:
-        await db.rollback()
         log.info("Race-condition idempotent skip for external_id=%s", parsed.external_id)
+        await db.commit()
         return {"status": "duplicate", "lead_id": lead.id, "skipped": True}
 
     # ── 5. Human takeover check ────────────────────────────────────────
@@ -642,8 +658,8 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # ── 7. Language detection + intent classification ─────────────────
     # Detect on the latest inbound only (avoid letting historical AI replies
     # bias the result). Pick the closest supported language from agent settings.
-    settings_row_pre = await db.execute(select(AgentSettings).where(AgentSettings.org_id == _acting_org()))
-    agent_cfg = settings_row_pre.scalar_one_or_none()
+    agent_cfg_stmt = select(AgentSettings).where(AgentSettings.org_id == _acting_org())
+    agent_cfg = (await db.execute(agent_cfg_stmt)).scalars().first()
     supported_languages = (agent_cfg.languages if agent_cfg else ["en", "es"]) or ["en", "es"]
     detected_lang = detect_language(parsed.content)
     target_lang = pick_supported_language(detected_lang, supported_languages)
@@ -670,9 +686,13 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         # every inbound message for any other tenant die on a primary-key
         # collision — the read filter above was fixed and this write was missed,
         # which moved the crash from the SELECT to the flush instead of ending it.
-        agent_cfg = AgentSettings()
-        db.add(agent_cfg)
-        await db.flush()
+        #
+        # `org_id` is unique here, so on a fresh tenant N simultaneous first
+        # contacts all reach this point, one wins, and the rest used to die at
+        # the flush with their lead, conversation and message already in the
+        # transaction. That is the "3 of 4 leads vanished" case: the handler
+        # read the violation as a duplicate message and answered 200.
+        agent_cfg = await first_or_create(db, agent_cfg_stmt, AgentSettings)
 
     # Persona is authored in Spanish; the language steering line tells the LLM
     # which language to actually answer in (detected from the inbound message).
@@ -770,6 +790,23 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         )
         outbound.external_id = external_id
         outbound.delivery_status = MessageStatus.SENT
+        try:
+            # Stamping the provider's id is done inside a savepoint because it
+            # can collide on `uq_messages_external_id` — a provider replaying an
+            # id, or two replies landing on the same one. The reply really was
+            # sent, and this transaction also holds the lead, the conversation
+            # and the inbound message: none of that may be thrown away because
+            # a bookkeeping column would not fit.
+            async with db.begin_nested():
+                await db.flush()
+        except IntegrityError:
+            log.warning(
+                "Duplicate provider id %s on outbound msg %d; keeping the turn "
+                "and leaving the id unset",
+                external_id, outbound.id,
+            )
+            outbound.external_id = None
+            outbound.delivery_status = MessageStatus.SENT
     except Exception as exc:  # noqa: BLE001
         log.error("Channel %s send failed for outbound msg %d: %s", parsed.channel, outbound.id, exc)
         outbound.delivery_status = MessageStatus.FAILED

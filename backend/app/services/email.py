@@ -22,6 +22,7 @@ import hmac
 import logging
 import time
 from typing import Any
+from uuid import uuid4
 
 import httpx
 
@@ -224,7 +225,7 @@ async def send_email(
     s = get_settings()
 
     if s.EMAIL_SIMULATED:
-        fake_id = f"resend.SIMULATED_{int(time.time() * 1000)}"
+        fake_id = f"resend.SIMULATED_{uuid4().hex}"
         log.info(
             "Email SIMULATED outbound to=%s subject=%r body_len=%d in_reply_to=%s (would-be id=%s)",
             to, subject, len(body_text), in_reply_to, fake_id,

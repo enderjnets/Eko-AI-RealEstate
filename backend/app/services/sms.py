@@ -17,8 +17,8 @@ import base64
 import hashlib
 import hmac
 import logging
-import time
 from typing import Any
+from uuid import uuid4
 
 import httpx
 
@@ -108,7 +108,11 @@ async def send_sms(*, to: str, body: str) -> dict[str, Any]:
     s = get_settings()
 
     if s.SMS_SIMULATED:
-        fake_sid = f"SM_SIMULATED_{int(time.time() * 1000)}"
+        # Random, not a millisecond timestamp. Two replies dispatched in the
+        # same millisecond produced the same "unique" id and collided on
+        # uq_messages_external_id, which took the whole inbound turn down with
+        # it — in the demo and dev modes, which is where nobody is watching.
+        fake_sid = f"SM_SIMULATED_{uuid4().hex}"
         log.info("SMS SIMULATED outbound to=%s body_len=%d (would-be sid=%s)", to, len(body), fake_sid)
         return {"sid": fake_sid, "simulated": True}
 
