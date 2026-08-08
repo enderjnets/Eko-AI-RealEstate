@@ -240,3 +240,56 @@ async def test_the_email_self_loop_guard_uses_the_agencys_own_address(
         assert identity.credential == "b-resend-key"
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_unmapped_destination_is_refused_once_the_agency_owns_its_account(
+    monkeypatch,
+) -> None:
+    """The single-tenant fallback must stop where the shared secret stops.
+
+    With one routable agency, an unmapped destination fell through to that
+    agency. But the *secret* used to verify such a message is the operator's
+    global one — so whoever holds it (staff of a churned or suspended tenant
+    who had console access to the shared provider account) could post a validly
+    signed message with an unmapped `To` and have a lead, a transcript and an
+    AI reply appear inside the live agency, with the reply sent from their
+    number. The principal that proved authenticity was not the tenant receiving
+    the write.
+    """
+    monkeypatch.setenv("TWILIO_TOKEN_AGENCY_B", "b-token")
+    async with get_bypass_session_factory()() as db:
+        # Client zero is suspended so exactly one agency is routable, which is
+        # the state every install has after onboarding its first client.
+        await db.execute(
+            text("UPDATE organizations SET status = 'suspended' WHERE id = :i"),
+            {"i": DEFAULT_ORG_ID},
+        )
+        await db.commit()
+    await _seed_agency_b(credential_ref="TWILIO_TOKEN_AGENCY_B")
+    try:
+        # Their own number still routes.
+        assert await tenant_resolver.webhook_org_or_refuse(CHANNEL_SMS, B_NUMBER) == (
+            AGENCY_B
+        )
+        # An unmapped one does not fall through to them.
+        with pytest.raises(tenant_resolver.WebhookOrgUnresolved):
+            await tenant_resolver.webhook_org_or_refuse(CHANNEL_SMS, "+19998887777")
+    finally:
+        await _cleanup()
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE organizations SET status = 'active' WHERE id = :i"),
+                {"i": DEFAULT_ORG_ID},
+            )
+            await db.commit()
+        tenant_resolver.reset_cache()
+
+
+@pytest.mark.asyncio
+async def test_the_fallback_still_works_for_an_agency_on_the_shared_account() -> None:
+    """The refusal above must not break the ordinary single-customer install,
+    which has no routes at all and relies on that fallback for every message."""
+    assert await tenant_resolver.webhook_org_or_refuse(CHANNEL_SMS, "+19998887777") == (
+        DEFAULT_ORG_ID
+    )

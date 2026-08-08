@@ -53,6 +53,14 @@ services:
       # the tenant policies bind. Pointing this at the owner would leave every
       # isolation test green while isolating nothing.
       DATABASE_URL_APP: ${DATABASE_URL_APP:-postgresql+asyncpg://eko_app:eko_app_local_pass@db:5432/eko_realestate}
+      # Migration 015 creates the eko_app role and reads these HERE, because
+      # `alembic upgrade` runs inside this container. They were missing, so the
+      # role was always created with the literal in the repository while
+      # DATABASE_URL_APP carried whatever the installer generated — either the
+      # tenant-boundary role has a published password, or every request fails
+      # authentication while /health stays green. Both halves must agree.
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-eko_app_local_pass}
+      APP_DB_ROLE: ${APP_DB_ROLE:-eko_app}
       REDIS_URL: ${REDIS_URL}
       # LLM
       LLM_PRIMARY: ${LLM_PRIMARY:-kimi}

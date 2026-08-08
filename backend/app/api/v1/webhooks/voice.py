@@ -162,8 +162,13 @@ async def voice_inbound(request: Request, db: AsyncSession = Depends(get_db)) ->
     try:
         set_org_id(await webhook_org_or_refuse(CHANNEL_VOICE, _dialled_numbers(msg)))
     except WebhookOrgUnresolved as exc:
+        # 200, not 503. This refusal is *permanent*: the line maps to no
+        # agency, or to two, or to a suspended one. Redelivery only produces
+        # the same answer forever, and a provider that keeps seeing failures
+        # backs off or disables the endpoint — taking voice down for every
+        # tenant, not just this one. Nothing is written either way.
         log.error("refusing inbound call — %s", exc)
-        return JSONResponse({"status": "unrouted"}, status_code=503)
+        return {"status": "unrouted"}
 
     # ── Tool calls — answer synchronously so the assistant can speak the result ──
     if mtype == "tool-calls":

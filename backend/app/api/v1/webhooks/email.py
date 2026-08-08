@@ -68,20 +68,27 @@ async def email_inbound(
             log.warning("Resend webhook signature verification failed")
             raise HTTPException(status_code=403, detail="Invalid signature")
 
-    # Real Resend `email.received` webhooks are METADATA-ONLY (no body/headers).
-    # Fetch the full email (text + Message-ID + References) from the Received
-    # Emails API so the agent sees real content AND replies thread correctly.
-    # SIMULATED test payloads already carry the body, so they skip the fetch.
     # Which agency's mailbox was written to. Resolved before any write, and
-    # before the fetch below: that call needs the agency's own Resend key, and
-    # running it first meant it used the operator's — a 401 that the `except`
+    # before the body fetch below: that call needs the agency's own Resend key,
+    # and running it first meant it used the operator's — a 401 the `except`
     # swallowed, leaving the agent to answer an email whose body it never read.
     try:
         set_org_id(await webhook_org_or_refuse(CHANNEL_EMAIL, _mailboxes(payload)))
     except WebhookOrgUnresolved as exc:
+        # 200, not 503. This refusal is *permanent*: the addresses map to no
+        # agency, or to two, or to a suspended one. Asking Resend to redeliver
+        # only produces the same answer forever, and a provider that keeps
+        # seeing failures backs off or disables the endpoint — which would take
+        # the channel down for every tenant, not just this one. Nothing is
+        # written either way; the error log is the signal, and the operator
+        # fixes it by mapping the address.
         log.error("refusing inbound email — %s", exc)
-        return JSONResponse({"status": "unrouted"}, status_code=503)
+        return {"status": "unrouted"}
 
+    # Real Resend `email.received` webhooks are METADATA-ONLY (no body/headers).
+    # Fetch the full email (text + Message-ID + References) from the Received
+    # Emails API so the agent sees real content AND replies thread correctly.
+    # SIMULATED test payloads already carry the body, so they skip the fetch.
     data = payload.get("data") if isinstance(payload, dict) else None
     if (
         not s.EMAIL_SIMULATED

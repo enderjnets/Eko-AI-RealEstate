@@ -170,7 +170,12 @@ class Settings(BaseSettings):
     # Backend logs a WARN at startup if APP_ENV=production AND AUTH_ENABLED=false.
     AUTH_ENABLED: bool = False
     DASHBOARD_PASSWORD: str = ""
-    AUTH_SECRET: str = ""  # token signing key; derived from the password if empty
+    # Session signing key. REQUIRED when AUTH_ENABLED — startup refuses
+    # without it, and without at least 32 characters. It is deliberately
+    # NOT derived from DASHBOARD_PASSWORD any more: the office shares that
+    # with whoever answers the phone, and this key alone authenticates the
+    # organization claim and the platform-operator claim.
+    AUTH_SECRET: str = ""
     AUTH_TTL_HOURS: int = 168  # 7 days
 
     # ─── Google Sign In (Google Identity Services) ───────────────────────

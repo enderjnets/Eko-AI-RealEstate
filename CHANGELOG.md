@@ -2,6 +2,53 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.39.1] — 2026-08-08
+
+Cuatro auditorías independientes más (rondas 8–11) sobre lo que la 0.39.0 dejó.
+Todas devolvieron DO-NOT-SHIP, y en tres de ellas el defecto lo había
+introducido el arreglo de la ronda anterior.
+
+**La clave que firmaba el claim de operador se derivaba de la contraseña de la
+agencia.** Quitar `superuser=True` del login por contraseña no servía de nada
+mientras el token se firmara con `sha256("eko-auth::" + DASHBOARD_PASSWORD)`:
+quien tuviera esa contraseña —la comparte la oficina con quien coge el
+teléfono— podía derivar la clave y firmarse el claim, y de paso cualquier `org`.
+Ahora `AUTH_SECRET` es obligatoria, mínimo 32 caracteres, y el arranque se niega
+sin ella en vez de responder 500 a cada petición con el healthcheck en verde.
+
+**Los tres savepoints hacían flush antes de abrirse.** `begin_nested()`
+materializa lo pendiente **antes** de emitir el `SAVEPOINT`, así que el `db.add`
+que iba delante corría en la transacción externa: la violación escapaba, la
+transacción quedaba inservible y el `commit()` posterior daba
+`PendingRollbackError` — un 500 que el proveedor reintenta, perdiendo el lead.
+Exactamente lo que la 0.39.0 decía haber arreglado. Diez rondas leyeron por
+encima porque el único test del patrón escribía **dentro** del savepoint
+mientras el código escribía fuera.
+
+**Un mensaje firmado con el secreto global se archivaba en una agencia
+concreta.** Con una sola agencia enrutable, un destino sin mapear caía en ella
+— aunque quien firmó fuera el operador y no la agencia. Ahora se rehúsa si esa
+agencia usa su propia cuenta de proveedor.
+
+**Dos agencias podían apuntar a la misma credencial**, lo que dejaba a una
+firmar mensajes dentro del buzón de la otra. El validador afirmaba impedirlo en
+un comentario y no lo comprobaba.
+
+Además: las rutas de plataforma exigen `AUTH_ENABLED`, lista de operadores no
+vacía y que el email del token **siga** en ella; `POST /platform/routes` valida
+las referencias igual que el PATCH; la denylist se calcula de los campos de
+`Settings` en vez de siete nombres a mano; `DELETE /platform/members` no puede
+dejar una agencia sin admin (salvo `?force=true`); y los rechazos permanentes de
+webhook responden 200 en WhatsApp, email y voz — Meta desactiva un endpoint que
+falla, y eso tumbaría el canal para **todos** los inquilinos.
+
+Operación: `APP_DB_PASSWORD` y `APP_DB_ROLE` ya llegan al contenedor (la
+migración crea ahí el rol, y sin ellas el rol que guarda la frontera entre
+inquilinos nacía con la contraseña publicada en el repo), y el dedup de la
+migración 022 funciona aunque el rol no sea superusuario.
+
+---
+
 ## [0.39.0] — 2026-08-08
 
 Séptima ronda de auditoría. Tres auditores independientes resolvieron las cinco

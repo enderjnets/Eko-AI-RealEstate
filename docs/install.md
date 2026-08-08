@@ -107,12 +107,40 @@ docker compose up -d              # start again
 
 ## Upgrading
 
+Stop the backend before migrating. Starting the new image against the old
+schema leaves every org-scoped query failing until the migration lands, and with
+`restart: unless-stopped` a startup check that legitimately refuses becomes a
+restart loop rather than a message you can read.
+
 ```bash
 git pull
 docker compose build
+
+# Back up first: several migrations transform data (022 archives duplicate
+# active conversations, 018 removes duplicate identity rows) and their
+# downgrades do not put it back.
+docker compose exec -T db pg_dump -U eko eko_realestate > backup-$(date +%F).sql
+
+docker compose stop backend
+docker compose run --rm backend alembic upgrade head
 docker compose up -d
-docker compose exec backend alembic upgrade head
+docker compose logs -f backend   # read the startup checks; they refuse loudly
 ```
+
+### Before upgrading to 0.39.x
+
+Three settings became load-bearing. The stack refuses to start without the
+first, so check all three before you begin:
+
+| Setting | Why |
+|---|---|
+| `AUTH_SECRET` | Required once `AUTH_ENABLED=true`, minimum 32 characters. It used to fall back to a value derived from `DASHBOARD_PASSWORD` — which the office shares — and that key signs both the organization and the platform-operator claim. `openssl rand -hex 32` |
+| `PLATFORM_ADMIN_EMAILS` | The only source of platform access. Without it nobody can create an agency or reach Settings → Registrations, and the shared password deliberately cannot grant it. |
+| `APP_DB_PASSWORD` | Must match the password inside `DATABASE_URL_APP`. The migration creates the RLS role inside the backend container and reads it there; left at the default, the role that guards every tenant boundary keeps the password published in this repository. |
+
+Also note: users who were signing in purely on `GOOGLE_ALLOWED_DOMAIN` with no
+`allowed_users` row are now refused rather than placed in the default
+organization. Create their rows first, or they lose access at the cutover.
 
 The Postgres data volume persists across upgrades; migrations are forward-only
 and safe to re-run (`alembic upgrade head` is a no-op when already current).

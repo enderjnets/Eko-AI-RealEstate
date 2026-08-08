@@ -32,6 +32,15 @@ def upgrade() -> None:
     # the rows it forbids, and the databases most likely to have them are the
     # live ones. Keep the oldest — it owns the message history — and archive the
     # rest rather than deleting, so nothing is silently thrown away.
+    # Migration 015 put FORCE ROW LEVEL SECURITY on this table, and the policy
+    # is default-deny when `app.current_org_id` is unset — which it is here. A
+    # superuser bypasses that, and the local Postgres image runs as one, so this
+    # dedup appears to work. On any managed database where the migration role
+    # owns the table but is not a superuser it would silently update zero rows
+    # and the CREATE UNIQUE INDEX below would then abort on the duplicates it
+    # was supposed to have cleared. Lifting FORCE for the statement is something
+    # the owner can always do, and it is restored immediately.
+    op.execute("ALTER TABLE conversations NO FORCE ROW LEVEL SECURITY")
     op.execute(
         """
         WITH ranked AS (
@@ -49,6 +58,7 @@ def upgrade() -> None:
         WHERE c.id = r.id AND r.rn > 1
         """
     )
+    op.execute("ALTER TABLE conversations FORCE ROW LEVEL SECURITY")
     op.execute(
         f"CREATE UNIQUE INDEX {INDEX_NAME} "
         "ON conversations (org_id, lead_id, channel) "

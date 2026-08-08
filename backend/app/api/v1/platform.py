@@ -206,11 +206,52 @@ def _forbidden_refs() -> frozenset[str]:
     }
 
 
-def _validate_refs(body: RouteIdentityIn) -> None:
-    """Shared by create and patch. It lived only in patch, so the create path
-    wrote whatever it was given — the control was bypassed by using the other
-    endpoint."""
-    named = [
+async def _refs_claimed_elsewhere(
+    db: AsyncSession, refs: list[str], *, org_id: int, route_id: int | None
+) -> list[str]:
+    """Which of these variables another organization's route already names.
+
+    A credential belongs to one agency. Copying agency two's route to make
+    agency three's — which is what the manual onboarding flow invites — left
+    three pointing at two's token, so two held the secret that authenticates
+    three's inbound messages and could inject leads and transcripts into their
+    tenant. Nothing checked, and the validator's own comment claimed otherwise.
+    """
+    from sqlalchemy import or_
+
+    from app.models.channel_route import ChannelRoute
+
+    if not refs:
+        return []
+    conditions = [
+        ChannelRoute.provider_account_ref.in_(refs),
+        ChannelRoute.credential_ref.in_(refs),
+        ChannelRoute.inbound_secret_ref.in_(refs),
+        ChannelRoute.verify_token_ref.in_(refs),
+    ]
+    query = select(ChannelRoute).where(
+        ChannelRoute.org_id != org_id, or_(*conditions)
+    )
+    if route_id is not None:
+        query = query.where(ChannelRoute.id != route_id)
+    rows = (await db.execute(query)).scalars().all()
+    claimed = {
+        ref
+        for row in rows
+        for ref in refs
+        if ref
+        in {
+            row.provider_account_ref,
+            row.credential_ref,
+            row.inbound_secret_ref,
+            row.verify_token_ref,
+        }
+    }
+    return sorted(claimed)
+
+
+def _named_refs(body: RouteIdentityIn) -> list[str]:
+    return [
         ref
         for ref in (
             body.provider_account_ref,
@@ -220,6 +261,28 @@ def _validate_refs(body: RouteIdentityIn) -> None:
         )
         if ref
     ]
+
+
+
+async def _refuse_shared_refs(
+    db: AsyncSession, body: RouteIdentityIn, *, org_id: int, route_id: int | None
+) -> None:
+    shared = await _refs_claimed_elsewhere(
+        db, _named_refs(body), org_id=org_id, route_id=route_id
+    )
+    if shared:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "credential_belongs_to_another_organization",
+                    "names": shared},
+        )
+
+
+def _validate_refs(body: RouteIdentityIn) -> None:
+    """Shared by create and patch. It lived only in patch, so the create path
+    wrote whatever it was given — the control was bypassed by using the other
+    endpoint."""
+    named = _named_refs(body)
     forbidden = sorted({r for r in named if r in _forbidden_refs()})
     if forbidden:
         raise HTTPException(
@@ -289,6 +352,7 @@ async def create_route(
         # it publishes real leads' phone numbers and transcripts.
         raise HTTPException(status_code=400, detail="cannot_route_to_demo_org")
     _validate_refs(body)
+    await _refuse_shared_refs(db, body, org_id=body.org_id, route_id=None)
 
     route = ChannelRoute(
         org_id=body.org_id,
@@ -420,6 +484,7 @@ async def set_route_identity(
         raise HTTPException(status_code=404, detail="route_not_found")
 
     _validate_refs(body)
+    await _refuse_shared_refs(db, body, org_id=route.org_id, route_id=route.id)
 
     for field, value in body.model_dump().items():
         setattr(route, field, value)

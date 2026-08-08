@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.39.0";
+export const CURRENT_VERSION = "0.39.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,36 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.39.1",
+    date: "2026-08-08",
+    title: {
+      en: "Hardening found by four more independent audits",
+      es: "Refuerzos encontrados por cuatro auditorías independientes más",
+    },
+    changes: [
+      {
+        en: "Only named operators can create or enter agencies. The shared office password no longer grants that, and it can no longer be used to derive the key that would forge it.",
+        es: "Solo los operadores con nombre pueden crear agencias o entrar en ellas. La contraseña compartida de la oficina ya no lo concede, ni sirve para derivar la clave que lo falsificaría.",
+      },
+      {
+        en: "A message that arrives at an unmapped number is held back rather than filed under whichever agency happens to be the only active one, unless that agency's own provider account authenticated it.",
+        es: "Un mensaje que llega a un número sin mapear se retiene en vez de archivarse en la única agencia activa, salvo que lo haya autenticado la cuenta de proveedor de esa misma agencia.",
+      },
+      {
+        en: "Two agencies can no longer be pointed at the same provider credential, which would have let one of them sign messages into the other's inbox.",
+        es: "Dos agencias ya no pueden apuntar a la misma credencial de proveedor, lo que habría permitido a una firmar mensajes dentro del buzón de la otra.",
+      },
+      {
+        en: "A duplicate message no longer discards the lead that arrived with it — the safeguard for that was opening after the write it was meant to protect.",
+        es: "Un mensaje duplicado ya no descarta el lead que llegó con él: la protección se abría después de la escritura que debía proteger.",
+      },
+      {
+        en: "An email whose body could not be retrieved is retried instead of answered blind.",
+        es: "Un correo cuyo cuerpo no se pudo recuperar se reintenta en vez de responderse a ciegas.",
+      },
+    ],
+  },
   {
     version: "0.39.0",
     date: "2026-08-08",

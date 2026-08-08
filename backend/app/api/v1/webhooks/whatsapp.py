@@ -118,8 +118,15 @@ async def whatsapp_inbound(
             await webhook_org_or_refuse(CHANNEL_WHATSAPP, _business_number(payload))
         )
     except WebhookOrgUnresolved as exc:
+        # 200, not 503. This refusal is *permanent* — the destination maps to
+        # no agency, to two, to a suspended one, or to the demo org — so asking
+        # the provider to redeliver only produces the same answer forever. Meta
+        # retries a non-2xx for days and then disables the subscription, which
+        # would take WhatsApp down for every tenant, not just this one. Nothing
+        # is written either way; the error log is the signal, and the operator
+        # fixes it by mapping the destination.
         log.error("refusing inbound WhatsApp — %s", exc)
-        return JSONResponse({"status": "unrouted"}, status_code=503)
+        return {"status": "unrouted"}
 
     results = []
     failed = False

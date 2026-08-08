@@ -450,6 +450,30 @@ async def _startup() -> None:
     # How many organizations can actually take traffic — the demo org and any
     # suspended tenant do not count, which is why a plain COUNT(*) was the wrong
     # test: every install has the demo org, so it always read as "more than one".
+    if settings.AUTH_ENABLED:
+        # Checked at boot, not at first login. `_secret()` raises on use and
+        # `decode_token` calls it on every request — so a deployment with this
+        # unset booted green, kept /api/v1/health green (it needs no tenant),
+        # and 500'd every authenticated request. A healthcheck-driven rollout
+        # would have reported success while the product was entirely down.
+        #
+        # The length floor matters as much as the presence: this key alone
+        # authenticates the platform-operator claim and the organization claim,
+        # so AUTH_SECRET=changeme is a forgeable `su` with nothing underneath.
+        if not settings.AUTH_SECRET:
+            raise RuntimeError(
+                "AUTH_ENABLED is true but AUTH_SECRET is not set. Session tokens "
+                "carry the acting organization and the platform-operator claim, "
+                "and the key is deliberately no longer derived from "
+                "DASHBOARD_PASSWORD. Generate one: openssl rand -hex 32"
+            )
+        if len(settings.AUTH_SECRET) < 32:
+            raise RuntimeError(
+                f"AUTH_SECRET is {len(settings.AUTH_SECRET)} characters long. It "
+                "is the only thing between a stranger and a forged "
+                "platform-operator token; use at least 32. openssl rand -hex 32"
+            )
+
     from app.models.organization import DEFAULT_ORG_ID
 
     try:

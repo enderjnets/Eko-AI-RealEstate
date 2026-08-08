@@ -51,7 +51,10 @@ OWNED_TABLES = (
 DEFAULT_ORG_ID = 1
 DEMO_ORG_ID = 2
 
-APP_ROLE = "eko_app"
+# Read from the environment like every later migration does. Hardcoding it
+# here meant that setting APP_DB_ROLE created no role at all, and then 021
+# and 023 revoked privileges from a name that did not exist.
+APP_ROLE = os.environ.get("APP_DB_ROLE", "eko_app")
 # Dev/CI convenience only. A real deployment sets APP_DB_PASSWORD before running
 # migrations — otherwise the role that guards every tenant boundary ships with a
 # password that is published in this repository.

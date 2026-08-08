@@ -850,3 +850,76 @@ async def test_creating_a_route_validates_refs_the_same_way_patching_does(
             )
             await db.commit()
         await _drop_org(SECOND_ORG_ID)
+
+
+@pytest.mark.asyncio
+async def test_a_route_cannot_borrow_another_agencys_credential(monkeypatch) -> None:
+    """A credential belongs to one agency.
+
+    The manual onboarding flow is copy-and-edit JSON, so copying agency two's
+    route to make agency three's leaves three pointing at two's token — and two
+    then holds the secret that authenticates three's inbound messages and can
+    inject leads and transcripts into their tenant. The validator's own comment
+    claimed this was prevented; nothing checked it.
+    """
+    from app.models.channel_route import CHANNEL_SMS
+
+    third_org = SECOND_ORG_ID + 1
+    monkeypatch.setenv("TWILIO_TOKEN_AGENCY_TWO", "two-token")
+    token = make_token(
+        email="op@eko.com", role="admin", org_id=DEFAULT_ORG_ID, superuser=True
+    )
+    await _make_org(SECOND_ORG_ID, SECOND_SLUG)
+    await _make_org(third_org, f"{SECOND_SLUG}-three")
+    try:
+        async with await _client(**{COOKIE_NAME: token}) as c:
+            mine = await c.post(
+                "/api/v1/platform/routes",
+                json={
+                    "org_id": SECOND_ORG_ID,
+                    "channel": CHANNEL_SMS,
+                    "destination": "+13035558300",
+                    "credential_ref": "TWILIO_TOKEN_AGENCY_TWO",
+                },
+            )
+            assert mine.status_code == 201, mine.text
+
+            borrowed = await c.post(
+                "/api/v1/platform/routes",
+                json={
+                    "org_id": third_org,
+                    "channel": CHANNEL_SMS,
+                    "destination": "+13035558301",
+                    "credential_ref": "TWILIO_TOKEN_AGENCY_TWO",
+                },
+            )
+            assert borrowed.status_code == 409, borrowed.text
+            assert borrowed.json()["detail"]["error"] == (
+                "credential_belongs_to_another_organization"
+            )
+
+            # And the same check on the patch path, which is where an operator
+            # editing an existing route would hit it.
+            plain = await c.post(
+                "/api/v1/platform/routes",
+                json={
+                    "org_id": third_org,
+                    "channel": CHANNEL_SMS,
+                    "destination": "+13035558302",
+                },
+            )
+            assert plain.status_code == 201, plain.text
+            patched = await c.patch(
+                f"/api/v1/platform/routes/{plain.json()['id']}/identity",
+                json={"credential_ref": "TWILIO_TOKEN_AGENCY_TWO"},
+            )
+            assert patched.status_code == 409, patched.text
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM channel_routes WHERE org_id IN (:a, :b)"),
+                {"a": SECOND_ORG_ID, "b": third_org},
+            )
+            await db.commit()
+        await _drop_org(third_org)
+        await _drop_org(SECOND_ORG_ID)

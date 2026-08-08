@@ -83,6 +83,12 @@ async def sms_inbound(request: Request, db: AsyncSession = Depends(get_db)) -> R
     try:
         set_org_id(await webhook_org_or_refuse(CHANNEL_SMS, form.get("To")))
     except WebhookOrgUnresolved as exc:
+        # 503 here, deliberately unlike the other three channels, which answer
+        # 200 to the same refusal. Twilio does not redeliver inbound SMS at all,
+        # so a non-2xx costs no message — and it surfaces as error 11200 in
+        # their console, which is a place the operator actually looks. Meta and
+        # Resend do redeliver, and keep doing it until they disable the
+        # endpoint, which would take those channels down for every tenant.
         log.error("refusing inbound SMS — %s", exc)
         return Response(
             status_code=503, content=_EMPTY_TWIML, media_type="application/xml"
