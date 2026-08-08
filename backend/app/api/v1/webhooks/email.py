@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db.base import get_db
 from app.models.channel_route import CHANNEL_EMAIL
+from app.services.channel_identity import resolve_inbound_secret
 from app.services.conversation import handle_inbound_message
 from app.services.email import fetch_inbound_email, parse_inbound_email, verify_resend_signature
 from app.services.tenant_context import set_org_id
@@ -41,28 +42,46 @@ async def email_inbound(
     svix_timestamp = request.headers.get("svix-timestamp")
     svix_signature = request.headers.get("svix-signature")
 
-    if not s.EMAIL_SIMULATED:
-        ok = verify_resend_signature(
-            raw,
-            svix_id=svix_id,
-            svix_timestamp=svix_timestamp,
-            svix_signature=svix_signature,
-            secret=s.RESEND_WEBHOOK_SECRET,
-        )
-        if not ok:
-            log.warning("Resend webhook signature verification failed")
-            raise HTTPException(status_code=403, detail="Invalid signature")
-
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
         log.error("Email webhook: invalid JSON: %s", exc)
         raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
 
+    if not s.EMAIL_SIMULATED:
+        # Chicken and egg: with per-agency Resend accounts the signing secret
+        # depends on which mailbox was written to, and that lives inside the
+        # payload the signature authenticates. Parsing first is safe because the
+        # addresses are used only to *look up* a key: a forged recipient either
+        # names no route, so the global secret applies, or names another
+        # agency's, whose signature the forger cannot produce. The HMAC is still
+        # computed over the original raw bytes, never a re-serialization.
+        identity = await resolve_inbound_secret(CHANNEL_EMAIL, _mailboxes(payload))
+        ok = verify_resend_signature(
+            raw,
+            svix_id=svix_id,
+            svix_timestamp=svix_timestamp,
+            svix_signature=svix_signature,
+            secret=identity.inbound_secret or "",
+        )
+        if not ok:
+            log.warning("Resend webhook signature verification failed")
+            raise HTTPException(status_code=403, detail="Invalid signature")
+
     # Real Resend `email.received` webhooks are METADATA-ONLY (no body/headers).
     # Fetch the full email (text + Message-ID + References) from the Received
     # Emails API so the agent sees real content AND replies thread correctly.
     # SIMULATED test payloads already carry the body, so they skip the fetch.
+    # Which agency's mailbox was written to. Resolved before any write, and
+    # before the fetch below: that call needs the agency's own Resend key, and
+    # running it first meant it used the operator's — a 401 that the `except`
+    # swallowed, leaving the agent to answer an email whose body it never read.
+    try:
+        set_org_id(await webhook_org_or_refuse(CHANNEL_EMAIL, _mailboxes(payload)))
+    except WebhookOrgUnresolved as exc:
+        log.error("refusing inbound email — %s", exc)
+        return JSONResponse({"status": "unrouted"}, status_code=503)
+
     data = payload.get("data") if isinstance(payload, dict) else None
     if (
         not s.EMAIL_SIMULATED
@@ -82,14 +101,6 @@ async def email_inbound(
     parsed_messages = parse_inbound_email(payload)
     if not parsed_messages:
         return {"status": "ok", "processed": 0}
-
-    # Which agency's mailbox was written to. Resolved before any write; the
-    # middleware cannot read the body.
-    try:
-        set_org_id(await webhook_org_or_refuse(CHANNEL_EMAIL, _mailboxes(payload)))
-    except WebhookOrgUnresolved as exc:
-        log.error("refusing inbound email — %s", exc)
-        return JSONResponse({"status": "unrouted"}, status_code=503)
 
     results = []
     failed = False

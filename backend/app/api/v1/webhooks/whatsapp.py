@@ -5,6 +5,7 @@ POST /api/v1/webhooks/whatsapp — inbound message envelope (signed with HMAC-SH
 """
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db.base import get_db
 from app.models.channel_route import CHANNEL_WHATSAPP
+from app.services.channel_identity import resolve_inbound_secret
 from app.services.conversation import handle_inbound_message
 from app.services.tenant_context import set_org_id
 from app.services.tenant_resolver import WebhookOrgUnresolved, webhook_org_or_refuse
@@ -35,12 +37,32 @@ async def whatsapp_verify(
     The receiver must echo back `hub.challenge` if `hub.verify_token` matches
     what Meta has on file (which we store as WHATSAPP_VERIFY_TOKEN).
     """
-    s = get_settings()
-    if hub_mode == "subscribe" and hub_verify_token == s.WHATSAPP_VERIFY_TOKEN:
+    if hub_mode == "subscribe" and await _verify_token_is_known(hub_verify_token):
         log.info("WhatsApp webhook verified")
         return hub_challenge
     log.warning("WhatsApp webhook verify rejected: mode=%s", hub_mode)
     raise HTTPException(status_code=403, detail="Invalid verify token")
+
+
+async def _verify_token_is_known(candidate: str | None) -> bool:
+    """Whether this is the handshake token of the operator or of any agency.
+
+    The handshake is the one message that carries no destination at all — only
+    mode, token and challenge — so there is nothing to resolve an organization
+    from. Accepting any configured agency's token is safe because the exchange
+    grants nothing: it echoes back a challenge Meta already sent. Comparison is
+    constant-time; without this an agency with its own WABA could never complete
+    setup.
+    """
+    from app.models.channel_route import CHANNEL_WHATSAPP
+    from app.services.channel_identity import known_verify_tokens
+
+    if not candidate:
+        return False
+    return any(
+        hmac.compare_digest(candidate, known)
+        for known in await known_verify_tokens(CHANNEL_WHATSAPP)
+    )
 
 
 @router.post("/whatsapp")
@@ -59,18 +81,27 @@ async def whatsapp_inbound(
     raw = await request.body()
     sig = request.headers.get("X-Hub-Signature-256") or request.headers.get("x-hub-signature-256")
 
-    # Production: HMAC required. Simulated mode: signature is optional so
-    # curl / scripts work without computing it.
-    if not s.WHATSAPP_SIMULATED:
-        if not verify_signature(raw, sig, s.WHATSAPP_APP_SECRET):
-            log.warning("WhatsApp webhook signature verification failed")
-            raise HTTPException(status_code=403, detail="Invalid signature")
-
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
         log.error("WhatsApp webhook: invalid JSON: %s", exc)
         raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+
+    # Production: HMAC required. Simulated mode: signature is optional so
+    # curl / scripts work without computing it.
+    #
+    # The envelope has to be parsed before the secret can be chosen, because
+    # with per-agency WABAs the secret depends on which business number was
+    # written to and Meta puts that inside the body. Safe for the same reason as
+    # email: the parse only selects a key. It is verified against the original
+    # raw bytes, never a re-serialization of what was parsed.
+    if not s.WHATSAPP_SIMULATED:
+        identity = await resolve_inbound_secret(
+            CHANNEL_WHATSAPP, _business_number(payload)
+        )
+        if not verify_signature(raw, sig, identity.inbound_secret or ""):
+            log.warning("WhatsApp webhook signature verification failed")
+            raise HTTPException(status_code=403, detail="Invalid signature")
 
     parsed_messages = parse_inbound_message(payload)
     if not parsed_messages:

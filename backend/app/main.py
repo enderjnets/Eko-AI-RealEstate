@@ -464,6 +464,40 @@ async def _startup() -> None:
             "AUTH_ENABLED=true."
         )
 
+    if len(real_orgs) > 1:
+        # A second agency without its own provider account is answered from the
+        # first agency's number, so their lead replies to the first agency and
+        # the rest of the conversation is written into the wrong tenant. Name
+        # the agencies still on the shared account rather than saying "check
+        # your configuration".
+        try:
+            from sqlalchemy import select as _select
+
+            from app.db.base import get_bypass_session_factory
+            from app.models.channel_route import ChannelRoute
+
+            async with get_bypass_session_factory()() as session:
+                owning = {
+                    org_id
+                    for (org_id,) in await session.execute(
+                        _select(ChannelRoute.org_id).where(
+                            ChannelRoute.credential_ref.is_not(None)
+                        )
+                    )
+                }
+            sharing = [o for o in real_orgs if o != DEFAULT_ORG_ID and o not in owning]
+            if sharing:
+                logger.warning(
+                    "⚠️  organizations %s have no channel route with their own "
+                    "credentials, so their replies go out from the default "
+                    "organization's number and address. Their leads will answer "
+                    "the wrong agency. Set the *_ref columns via "
+                    "PATCH /api/v1/platform/routes/{id}/identity.",
+                    sharing,
+                )
+        except Exception as exc:  # noqa: BLE001 — a warning must not block startup
+            logger.debug("outbound identity check skipped: %s", exc)
+
     if settings.AUTH_ENABLED and len(real_orgs) > 1 and not settings.platform_admin_emails_list:
         logger.warning(
             "⚠️  %d client agencies and PLATFORM_ADMIN_EMAILS is empty, so the "

@@ -76,6 +76,37 @@ class ChannelRoute(Base):
     destination: Mapped[str] = mapped_column(String(254), nullable=False)
     label: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
+    # ── Outbound identity ────────────────────────────────────────────────
+    # For SMS, WhatsApp and email the `destination` above IS the sending
+    # identity: the number that was texted is the number that replies, the
+    # mailbox that received is the mailbox that answers. What is missing per
+    # agency is the *credentials* to send as it, and the secret to verify what
+    # it receives. Without them a second agency's lead got a reply from the
+    # first agency's number, answered that number, and the rest of their
+    # conversation was written into the first agency's tenant. No adversary
+    # required — that was simply how it worked.
+    #
+    # These hold the NAME of an environment variable, never the secret itself.
+    # Keys stay in `.env`, which is the repo's standing rule, and the database
+    # holds only the mapping: org 2's Twilio token lives in
+    # TWILIO_AUTH_TOKEN_ACME and this row says so. Encrypting secrets at rest
+    # would let agencies self-serve their own credentials; that is a later
+    # decision, and this shape does not block it.
+    #
+    # NULL means "use the global configuration", which is what keeps a
+    # single-customer install working with nothing but a .env file.
+    provider_account_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    credential_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    inbound_secret_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    verify_token_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Not a secret: a messaging-service SID, a `Name <addr>` display form, or a
+    # VAPI assistant id — whatever the channel sends *as* beyond the bare
+    # destination.
+    sender_override: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    # The exact public URL the provider signs. Two agencies on different
+    # tunnels or paths cannot share one, and a mismatch fails every signature.
+    webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

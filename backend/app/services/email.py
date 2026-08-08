@@ -27,7 +27,9 @@ from uuid import uuid4
 import httpx
 
 from app.config import get_settings
+from app.models.channel_route import CHANNEL_EMAIL
 from app.services._common import ParsedMessage
+from app.services.channel_identity import resolve_outbound_identity
 
 log = logging.getLogger(__name__)
 
@@ -232,10 +234,15 @@ async def send_email(
         )
         return {"id": fake_id, "simulated": True}
 
-    if not s.RESEND_API_KEY:
+    # The acting agency's own mailbox and Resend account, falling back to the
+    # global one. Without this, agency B's lead received a reply from agency A's
+    # address and their answer arrived in A's inbox.
+    identity = await resolve_outbound_identity(CHANNEL_EMAIL)
+    if not identity.credential:
         raise RuntimeError(
-            "Email not configured: RESEND_API_KEY must be set, or set "
-            "EMAIL_SIMULATED=true for dev."
+            "Email not configured for this organization: an API key must be "
+            "set, either globally in .env or on the agency's channel route. "
+            "Set EMAIL_SIMULATED=true for dev."
         )
 
     headers: dict[str, str] = {}
@@ -253,7 +260,7 @@ async def send_email(
             headers["References"] = f"<{clean}>"
 
     body: dict[str, Any] = {
-        "from": s.RESEND_FROM,
+        "from": identity.sender_override or identity.destination,
         "to": [to],
         "subject": subject,
         "text": body_text,
@@ -268,7 +275,7 @@ async def send_email(
             "https://api.resend.com/emails",
             json=body,
             headers={
-                "Authorization": f"Bearer {s.RESEND_API_KEY}",
+                "Authorization": f"Bearer {identity.credential}",
                 "Content-Type": "application/json",
             },
         )

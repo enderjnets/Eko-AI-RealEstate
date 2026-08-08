@@ -23,7 +23,9 @@ from uuid import uuid4
 import httpx
 
 from app.config import get_settings
+from app.models.channel_route import CHANNEL_SMS
 from app.services._common import ParsedMessage
+from app.services.channel_identity import resolve_outbound_identity
 
 log = logging.getLogger(__name__)
 
@@ -116,31 +118,41 @@ async def send_sms(*, to: str, body: str) -> dict[str, Any]:
         log.info("SMS SIMULATED outbound to=%s body_len=%d (would-be sid=%s)", to, len(body), fake_sid)
         return {"sid": fake_sid, "simulated": True}
 
+    # Which agency is speaking. Falls back to the global .env configuration when
+    # this organization has no account of its own, so a single-customer install
+    # is unaffected — but when it does have one, the reply must leave from THEIR
+    # number. It used to leave from the first agency's, so the lead answered the
+    # wrong agency and the rest of the conversation landed in the wrong tenant.
+    identity = await resolve_outbound_identity(CHANNEL_SMS)
+    account_sid = identity.provider_account
+    auth_token = identity.credential
+    messaging_service = identity.sender_override
+    from_number = identity.destination
+
     # Need a sender: either a Messaging Service (A2P) or a From number.
-    if not (s.TWILIO_ACCOUNT_SID and s.TWILIO_AUTH_TOKEN) or not (
-        s.TWILIO_MESSAGING_SERVICE_SID or s.TWILIO_PHONE_NUMBER
-    ):
+    if not (account_sid and auth_token) or not (messaging_service or from_number):
         raise RuntimeError(
-            "SMS not configured: TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + "
-            "(TWILIO_MESSAGING_SERVICE_SID or TWILIO_PHONE_NUMBER) must be set, "
-            "or set SMS_SIMULATED=true for dev."
+            "SMS not configured for this organization: account SID + auth token "
+            "+ (messaging service or from number) must be set, either globally "
+            "in .env or on the agency's channel route. Set SMS_SIMULATED=true "
+            "for dev."
         )
 
     data: dict[str, str] = {"To": to, "Body": body}
     # Prefer the Messaging Service (A2P 10DLC): Twilio picks the sender from the
     # registered pool. Fall back to the bare From number.
-    if s.TWILIO_MESSAGING_SERVICE_SID:
-        data["MessagingServiceSid"] = s.TWILIO_MESSAGING_SERVICE_SID
+    if messaging_service:
+        data["MessagingServiceSid"] = messaging_service
     else:
-        data["From"] = s.TWILIO_PHONE_NUMBER
+        data["From"] = from_number
     if s.TWILIO_STATUS_CALLBACK_URL:
         data["StatusCallback"] = s.TWILIO_STATUS_CALLBACK_URL
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         resp = await client.post(
-            f"{_TWILIO_API_ROOT}/Accounts/{s.TWILIO_ACCOUNT_SID}/Messages.json",
+            f"{_TWILIO_API_ROOT}/Accounts/{account_sid}/Messages.json",
             data=data,
-            auth=(s.TWILIO_ACCOUNT_SID, s.TWILIO_AUTH_TOKEN),
+            auth=(account_sid, auth_token),
         )
         if resp.status_code >= 400:
             log.error("Twilio send failed: status=%d body=%s", resp.status_code, resp.text[:400])

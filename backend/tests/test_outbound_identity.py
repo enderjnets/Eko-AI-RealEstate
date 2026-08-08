@@ -1,0 +1,242 @@
+"""Whose number does the reply come from.
+
+Inbound has been attributed by destination for several rounds, but outbound had
+one global identity per channel. The failure needed no adversary: agency B's
+lead was answered from agency A's Twilio number, replied to that number, and
+`To` then matched A's route — so the rest of B's conversation was written into
+A's tenant. It was the last thing blocking a second agency.
+"""
+from __future__ import annotations
+
+import pytest
+from sqlalchemy import text
+
+from app.db.base import get_bypass_session_factory
+from app.models.channel_route import (
+    CHANNEL_EMAIL,
+    CHANNEL_SMS,
+    CHANNEL_WHATSAPP,
+    normalize_destination,
+)
+from app.models.organization import DEFAULT_ORG_ID
+from app.services import tenant_resolver
+from app.services.channel_identity import (
+    MissingChannelCredential,
+    known_verify_tokens,
+    resolve_inbound_secret,
+    resolve_outbound_identity,
+)
+from app.services.tenant_context import org_scope
+
+AGENCY_B = 810
+B_NUMBER = "+13035551234"
+B_MAILBOX = "leads@agency-b.test"
+
+
+async def _seed_agency_b(**route_fields: object) -> None:
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text(
+                "INSERT INTO organizations (id, name, slug, status, plan) "
+                "VALUES (:i, 'Agency B', 'agency-b-identity', 'active', 'pilot') "
+                "ON CONFLICT (id) DO NOTHING"
+            ),
+            {"i": AGENCY_B},
+        )
+        columns = ["org_id", "channel", "destination", *route_fields]
+        values = [f":{c}" for c in columns]
+        await db.execute(
+            text(
+                f"INSERT INTO channel_routes ({', '.join(columns)}) "
+                f"VALUES ({', '.join(values)})"
+            ),
+            {
+                "org_id": AGENCY_B,
+                "channel": CHANNEL_SMS,
+                "destination": normalize_destination(B_NUMBER),
+                **route_fields,
+            },
+        )
+        await db.commit()
+    tenant_resolver.reset_cache()
+
+
+async def _cleanup() -> None:
+    async with get_bypass_session_factory()() as db:
+        await db.execute(text("DELETE FROM channel_routes WHERE org_id = :i"), {"i": AGENCY_B})
+        await db.execute(text("DELETE FROM organizations WHERE id = :i"), {"i": AGENCY_B})
+        await db.commit()
+    tenant_resolver.reset_cache()
+
+
+@pytest.fixture(autouse=True)
+def _clear_cache() -> object:
+    yield
+    tenant_resolver.reset_cache()
+
+
+@pytest.mark.asyncio
+async def test_an_agency_with_its_own_account_replies_from_its_own_number(
+    monkeypatch,
+) -> None:
+    """The fix, stated plainly: B's reply leaves from B's number on B's account.
+
+    Before this, `send_sms` read TWILIO_* straight out of the global settings,
+    so B's lead saw A's number, answered A's number, and became A's lead.
+    """
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN_AGENCY_B", "b-auth-token")
+    monkeypatch.setenv("TWILIO_SID_AGENCY_B", "AC_agency_b")
+    await _seed_agency_b(
+        credential_ref="TWILIO_AUTH_TOKEN_AGENCY_B",
+        provider_account_ref="TWILIO_SID_AGENCY_B",
+    )
+    try:
+        with org_scope(AGENCY_B):
+            identity = await resolve_outbound_identity(CHANNEL_SMS)
+        assert identity.destination == normalize_destination(B_NUMBER)
+        assert identity.credential == "b-auth-token"
+        assert identity.provider_account == "AC_agency_b"
+        assert identity.is_own_account
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_default_organization_keeps_using_the_env_configuration() -> None:
+    """A single-customer install must not need a route row to keep working.
+
+    This is what makes the change safe to deploy: nothing moves until an agency
+    is deliberately given its own account.
+    """
+    from app.config import get_settings
+
+    s = get_settings()
+    with org_scope(DEFAULT_ORG_ID):
+        identity = await resolve_outbound_identity(CHANNEL_SMS)
+    assert identity.credential == (s.TWILIO_AUTH_TOKEN or None)
+    assert identity.destination == (s.TWILIO_PHONE_NUMBER or None)
+    assert not identity.is_own_account or s.TWILIO_AUTH_TOKEN
+
+
+@pytest.mark.asyncio
+async def test_a_route_without_credentials_borrows_the_shared_account() -> None:
+    """An extra number on the operator's own Twilio is a real arrangement: the
+    agency owns the destination but not the account."""
+    await _seed_agency_b()
+    try:
+        with org_scope(AGENCY_B):
+            identity = await resolve_outbound_identity(CHANNEL_SMS)
+        # Their number, the operator's credentials.
+        assert identity.destination == normalize_destination(B_NUMBER)
+        from app.config import get_settings
+
+        assert identity.credential == (get_settings().TWILIO_AUTH_TOKEN or None)
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_reference_to_an_unset_variable_refuses_rather_than_falling_back(
+    monkeypatch,
+) -> None:
+    """The dangerous failure would be silent.
+
+    If a missing environment variable quietly meant "use the global account",
+    then a typo in the variable name would send B's replies from A's number —
+    which is the entire bug, reintroduced through a configuration mistake
+    nobody would see.
+    """
+    monkeypatch.delenv("TWILIO_AUTH_TOKEN_TYPO", raising=False)
+    await _seed_agency_b(credential_ref="TWILIO_AUTH_TOKEN_TYPO")
+    try:
+        with org_scope(AGENCY_B), pytest.raises(MissingChannelCredential):
+            await resolve_outbound_identity(CHANNEL_SMS)
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_inbound_is_verified_with_the_secret_of_the_agency_written_to(
+    monkeypatch,
+) -> None:
+    """An agency on its own provider account signs with its own secret.
+
+    Without this every inbound message from a second agency's number failed
+    signature verification with a 403 — so the channel simply did not work for
+    them, whatever the routing said.
+    """
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN_AGENCY_B", "b-auth-token")
+    await _seed_agency_b(
+        credential_ref="TWILIO_AUTH_TOKEN_AGENCY_B",
+        inbound_secret_ref="TWILIO_AUTH_TOKEN_AGENCY_B",
+    )
+    try:
+        theirs = await resolve_inbound_secret(CHANNEL_SMS, B_NUMBER)
+        assert theirs.inbound_secret == "b-auth-token"
+
+        # An unrouted number is the operator's own, so the global secret stands.
+        from app.config import get_settings
+
+        ours = await resolve_inbound_secret(CHANNEL_SMS, "+19998887777")
+        assert ours.inbound_secret == (get_settings().TWILIO_AUTH_TOKEN or None)
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_whatsapp_handshake_accepts_any_configured_agency(
+    monkeypatch,
+) -> None:
+    """The setup handshake carries mode, token and challenge — no destination.
+
+    There is nothing to resolve an organization from, so an agency with its own
+    WABA could never complete setup against a single global token. Accepting any
+    configured one is safe: the exchange only echoes back a challenge Meta
+    itself sent.
+    """
+    monkeypatch.setenv("WHATSAPP_VERIFY_AGENCY_B", "b-handshake-token")
+    await _seed_agency_b(verify_token_ref="WHATSAPP_VERIFY_AGENCY_B")
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text("UPDATE channel_routes SET channel = :c WHERE org_id = :i"),
+            {"c": CHANNEL_WHATSAPP, "i": AGENCY_B},
+        )
+        await db.commit()
+    try:
+        tokens = await known_verify_tokens(CHANNEL_WHATSAPP)
+        assert "b-handshake-token" in tokens
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_email_self_loop_guard_uses_the_agencys_own_address(
+    monkeypatch,
+) -> None:
+    """A global guard tests against somebody else's address.
+
+    Agency B's own bounces would sail past it and the assistant would answer
+    itself in a loop, while a genuine message from agency A's address would be
+    dropped inside agency B.
+    """
+    monkeypatch.setenv("RESEND_KEY_AGENCY_B", "b-resend-key")
+    await _seed_agency_b(
+        credential_ref="RESEND_KEY_AGENCY_B", sender_override=B_MAILBOX
+    )
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text(
+                "UPDATE channel_routes SET channel = :c, destination = :d "
+                "WHERE org_id = :i"
+            ),
+            {"c": CHANNEL_EMAIL, "d": B_MAILBOX, "i": AGENCY_B},
+        )
+        await db.commit()
+    tenant_resolver.reset_cache()
+    try:
+        with org_scope(AGENCY_B):
+            identity = await resolve_outbound_identity(CHANNEL_EMAIL)
+        assert identity.sender_override == B_MAILBOX
+        assert identity.credential == "b-resend-key"
+    finally:
+        await _cleanup()

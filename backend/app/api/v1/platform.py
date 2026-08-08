@@ -11,6 +11,7 @@ every client at once, and leaves no answer to "who looked at our data?".
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -160,9 +161,35 @@ class RouteOut(BaseModel):
     channel: str
     destination: str
     label: str | None = None
+    # The *names* of the environment variables holding this agency's
+    # credentials, never the values. Safe to return, and the operator needs to
+    # see which variables a route expects in order to set them.
+    provider_account_ref: str | None = None
+    credential_ref: str | None = None
+    inbound_secret_ref: str | None = None
+    verify_token_ref: str | None = None
+    sender_override: str | None = None
+    webhook_url: str | None = None
 
 
-class RouteCreateIn(BaseModel):
+# An environment variable name, not a secret. Rejecting anything else is what
+# stops an operator from pasting a live token into a database column by mistake
+# — the field names invite exactly that.
+_ENV_REF = r"^[A-Z][A-Z0-9_]{2,119}$"
+
+
+class RouteIdentityIn(BaseModel):
+    """The credentials half of a route, set separately from creating it."""
+
+    provider_account_ref: str | None = Field(default=None, pattern=_ENV_REF)
+    credential_ref: str | None = Field(default=None, pattern=_ENV_REF)
+    inbound_secret_ref: str | None = Field(default=None, pattern=_ENV_REF)
+    verify_token_ref: str | None = Field(default=None, pattern=_ENV_REF)
+    sender_override: str | None = Field(default=None, max_length=254)
+    webhook_url: str | None = Field(default=None, max_length=500)
+
+
+class RouteCreateIn(RouteIdentityIn):
     org_id: int
     channel: str = Field(pattern=r"^(whatsapp|sms|email|voice)$")
     destination: str = Field(min_length=3, max_length=254)
@@ -208,6 +235,12 @@ async def create_route(
         channel=body.channel,
         destination=normalize_destination(body.destination),
         label=body.label,
+        provider_account_ref=body.provider_account_ref,
+        credential_ref=body.credential_ref,
+        inbound_secret_ref=body.inbound_secret_ref,
+        verify_token_ref=body.verify_token_ref,
+        sender_override=body.sender_override,
+        webhook_url=body.webhook_url,
     )
     db.add(route)
     try:
@@ -235,6 +268,55 @@ async def delete_route(route_id: int, db: AsyncSession = Depends(get_bypass_db))
     await db.delete(route)
     await db.commit()
     return {"ok": True}
+
+
+@router.patch("/routes/{route_id}/identity")
+async def set_route_identity(
+    route_id: int, body: RouteIdentityIn, db: AsyncSession = Depends(get_bypass_db)
+) -> RouteOut:
+    """Point a route at the agency's own provider account.
+
+    This is what makes a second agency safe to onboard. Until a route names its
+    own credentials, replies to that agency's leads go out from the operator's
+    number — so the lead answers the operator, and the rest of their
+    conversation is written into the operator's tenant.
+
+    The values are environment variable NAMES. Set the variables, restart, then
+    call this. Fields left null are cleared, so an agency can be handed back to
+    the shared account by patching them away.
+    """
+    from app.models.channel_route import ChannelRoute
+
+    route = (
+        await db.execute(select(ChannelRoute).where(ChannelRoute.id == route_id))
+    ).scalar_one_or_none()
+    if route is None:
+        raise HTTPException(status_code=404, detail="route_not_found")
+
+    missing = [
+        ref
+        for ref in (
+            body.provider_account_ref,
+            body.credential_ref,
+            body.inbound_secret_ref,
+            body.verify_token_ref,
+        )
+        if ref and not os.environ.get(ref)
+    ]
+    if missing:
+        # Saving a reference to a variable that is not set produces a route that
+        # refuses every send at runtime. Better to fail here, where the operator
+        # is looking, than during a lead's first message.
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "environment_variables_not_set", "names": missing},
+        )
+
+    for field, value in body.model_dump().items():
+        setattr(route, field, value)
+    await db.commit()
+    await db.refresh(route)
+    return RouteOut.model_validate(route)
 
 
 class InviteIn(BaseModel):

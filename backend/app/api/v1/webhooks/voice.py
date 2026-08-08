@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db.base import get_db
 from app.models.channel_route import CHANNEL_VOICE
+from app.services.channel_identity import resolve_inbound_secret
 from app.services.conversation import ingest_voice_call
 from app.services.tenant_context import set_org_id
 from app.services.tenant_resolver import WebhookOrgUnresolved, webhook_org_or_refuse
@@ -122,11 +123,6 @@ async def voice_inbound(request: Request, db: AsyncSession = Depends(get_db)) ->
     s = get_settings()
     raw = await request.body()
 
-    if not s.VOICE_SIMULATED:
-        if not verify_vapi_secret(request.headers.get("x-vapi-secret"), s.VAPI_WEBHOOK_SECRET):
-            log.warning("VAPI webhook secret verification failed")
-            raise HTTPException(status_code=403, detail="Invalid secret")
-
     try:
         payload = json.loads(raw) if raw else {}
     except json.JSONDecodeError as exc:
@@ -134,6 +130,20 @@ async def voice_inbound(request: Request, db: AsyncSession = Depends(get_db)) ->
         raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
 
     msg = _message(payload)
+
+    if not s.VOICE_SIMULATED:
+        # Parsed first so the agency's own VAPI secret can be selected: with
+        # per-agency accounts the secret depends on which line was called, and
+        # VAPI puts that inside the body. The parse only chooses a key — a
+        # forged line names either no route, leaving the global secret, or
+        # another agency's, whose secret the forger does not have.
+        identity = await resolve_inbound_secret(CHANNEL_VOICE, _dialled_numbers(msg))
+        if not verify_vapi_secret(
+            request.headers.get("x-vapi-secret"), identity.inbound_secret or ""
+        ):
+            log.warning("VAPI webhook secret verification failed")
+            raise HTTPException(status_code=403, detail="Invalid secret")
+
     mtype = msg.get("type")
 
     # VAPI narrates a call with several informational messages — status changes,

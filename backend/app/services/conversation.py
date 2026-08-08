@@ -27,7 +27,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
 from app.db.base import first_or_create
 from app.models import (
     AgentSettings,
@@ -550,10 +549,21 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # agent emails from noreply@<domain>, which is also receivable on that
     # domain — so a reply (or a bounce) addressed back to it would re-enter
     # here and the agent would answer itself forever. Drop it silently.
-    own = parseaddr(get_settings().RESEND_FROM)[1].strip().lower()
-    if parsed.channel == "email" and own and parsed.from_identifier.strip().lower() == own:
-        log.warning("Inbound from our own address %s — ignored (self-loop guard)", own)
-        return {"status": "ignored_self_loop", "from": parsed.from_identifier}
+    if parsed.channel == "email":
+        # The acting agency's own address, not the global one. With per-agency
+        # mailboxes a global guard tests against somebody else's address, so
+        # agency B's own bounces sail past it and the assistant answers itself
+        # in a loop — while a message genuinely from agency A would be dropped
+        # inside agency B.
+        from app.models.channel_route import CHANNEL_EMAIL
+        from app.services.channel_identity import resolve_outbound_identity
+
+        identity = await resolve_outbound_identity(CHANNEL_EMAIL)
+        own = parseaddr(identity.sender_override or identity.destination or "")[1]
+        own = own.strip().lower()
+        if own and parsed.from_identifier.strip().lower() == own:
+            log.warning("Inbound from our own address %s — ignored (self-loop guard)", own)
+            return {"status": "ignored_self_loop", "from": parsed.from_identifier}
 
     # ── 1. Lead upsert ──────────────────────────────────────────────────
     lead_stmt = select(Lead).where(Lead.phone == parsed.from_identifier)
