@@ -138,6 +138,22 @@ first, so check all three before you begin:
 | `PLATFORM_ADMIN_EMAILS` | The only source of platform access. Without it nobody can create an agency or reach Settings → Registrations, and the shared password deliberately cannot grant it. |
 | `APP_DB_PASSWORD` | Must match the password inside `DATABASE_URL_APP`. The migration creates the RLS role inside the backend container and reads it there; left at the default, the role that guards every tenant boundary keeps the password published in this repository. |
 
+**Rotating the RLS role's password.** Migration 015 creates that role with
+`CREATE ROLE IF NOT EXISTS`, so on a database that has already run it, setting
+`APP_DB_PASSWORD` alone changes nothing — the role keeps the old password while
+`DATABASE_URL_APP` starts using the new one, and every request then fails
+Postgres authentication with `/health` still green. Migration 024 issues the
+`ALTER ROLE`, so set `APP_DB_PASSWORD` **before** running the upgrade and both
+halves move together. Verify afterwards:
+
+```bash
+docker compose exec -T db psql "$DATABASE_URL_APP" -c 'select 1'
+```
+
+**Never change `APP_DB_ROLE` after the first migration.** 015 will not re-run,
+so no role by the new name is created, and the later migrations then abort
+granting to something that does not exist.
+
 Also note: users who were signing in purely on `GOOGLE_ALLOWED_DOMAIN` with no
 `allowed_users` row are now refused rather than placed in the default
 organization. Create their rows first, or they lose access at the cutover.

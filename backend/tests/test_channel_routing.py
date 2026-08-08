@@ -651,3 +651,203 @@ def test_destinations_normalise_to_one_key_whatever_the_provider_sends() -> None
     assert normalize_destination("Leads@Agency-B.test") == "leads@agency-b.test"
     assert normalize_destination(None) == ""
     assert normalize_destination("   ") == ""
+
+
+# ── An unroutable message must be dropped, not redelivered forever ───────────
+
+
+@pytest.mark.asyncio
+async def test_an_unroutable_message_is_acknowledged_and_not_written() -> None:
+    """200, and nothing stored — on the three channels whose providers retry.
+
+    Meta redelivers a non-2xx for days and then disables the subscription,
+    which would take that channel down for every tenant rather than for the one
+    unmapped destination. The refusal itself is what protects isolation; the
+    status code only decides whether the provider keeps asking. Both halves are
+    asserted here, because asserting the status alone would pass if the refusal
+    were removed.
+    """
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    org_a, _org_b = await _seed_two_agencies()  # two tenants: no fallback exists
+    try:
+        async with get_bypass_session_factory()() as db:
+            before = (
+                await db.execute(text("SELECT count(*) FROM leads"))
+            ).scalar_one()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            whatsapp = await c.post(
+                "/api/v1/webhooks/whatsapp",
+                json={
+                    "entry": [
+                        {
+                            "changes": [
+                                {
+                                    "value": {
+                                        "metadata": {"phone_number_id": "999000999"},
+                                        "messages": [
+                                            {
+                                                "id": "wamid.unrouted1",
+                                                "from": "+13035550001",
+                                                "type": "text",
+                                                "text": {"body": "hola"},
+                                            }
+                                        ],
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+            )
+            email = await c.post(
+                "/api/v1/webhooks/email",
+                json={
+                    "type": "email.received",
+                    "data": {
+                        "id": "eml-unrouted",
+                        "to": ["nobody@unmapped.test"],
+                        "from": "buyer@gmail.test",
+                        "subject": "hi",
+                        "text": "hello",
+                    },
+                },
+            )
+            voice = await c.post(
+                "/api/v1/webhooks/voice",
+                json={
+                    "message": {
+                        "type": "end-of-call-report",
+                        "call": {
+                            "id": "call-unrouted",
+                            "phoneNumber": {"number": "+19995550000"},
+                        },
+                    }
+                },
+            )
+
+        for name, resp in (("whatsapp", whatsapp), ("email", email), ("voice", voice)):
+            assert resp.status_code == 200, f"{name}: {resp.status_code} {resp.text}"
+
+        async with get_bypass_session_factory()() as db:
+            after = (await db.execute(text("SELECT count(*) FROM leads"))).scalar_one()
+        assert after == before, "an unroutable message was written to a tenant"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_email_naming_two_agencies_is_acknowledged_not_retried() -> None:
+    """The ambiguous case specifically, end to end through the handler.
+
+    It used to raise 503 while picking the secret — *before* the handler could
+    refuse — which made the 200 refusal unreachable in exactly the situation it
+    was written for, and let an unauthenticated caller tell 503 from 403 and so
+    learn which addresses belong to which agency.
+    """
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+    from app.models.channel_route import CHANNEL_EMAIL
+
+    org_a, org_b = await _seed_two_agencies()
+    try:
+        async with get_bypass_session_factory()() as db:
+            for org_id, mailbox in (
+                (org_a, "leads@amb-a.test"),
+                (org_b, "leads@amb-b.test"),
+            ):
+                await db.execute(
+                    text(
+                        "INSERT INTO channel_routes (org_id, channel, destination) "
+                        "VALUES (:o, :c, :d)"
+                    ),
+                    {"o": org_id, "c": CHANNEL_EMAIL, "d": mailbox},
+                )
+            before = (await db.execute(text("SELECT count(*) FROM leads"))).scalar_one()
+            await db.commit()
+        tenant_resolver.reset_cache()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            r = await c.post(
+                "/api/v1/webhooks/email",
+                json={
+                    "type": "email.received",
+                    "data": {
+                        "id": "eml-ambiguous",
+                        "to": ["leads@amb-a.test"],
+                        "cc": ["leads@amb-b.test"],
+                        "from": "buyer@gmail.test",
+                        "subject": "hi",
+                        "text": "hello",
+                    },
+                },
+            )
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "unrouted"
+
+        async with get_bypass_session_factory()() as db:
+            after = (await db.execute(text("SELECT count(*) FROM leads"))).scalar_one()
+        assert after == before, "an ambiguous message was filed under an agency"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_choosing_a_secret_never_short_circuits_the_handlers_refusal() -> None:
+    """An ambiguous destination must not become a 503 while picking the key.
+
+    Asserted at this level because the handlers skip verification entirely in
+    simulated mode, which is what the suite runs in — so the end-to-end test
+    above cannot reach this branch, and would pass with it reverted.
+
+    Raising here had two costs: the handler's 200 refusal became unreachable in
+    exactly the case it exists for, so a provider kept retrying and could
+    disable the endpoint for every tenant; and the 503 arrived before any
+    signature check, letting an unauthenticated caller tell it from a 403 and
+    map which destinations belong to which agency.
+    """
+    from fastapi import HTTPException
+
+    from app.models.channel_route import CHANNEL_EMAIL
+    from app.services.channel_identity import inbound_secret_or_503
+
+    org_a, org_b = await _seed_two_agencies()
+    try:
+        async with get_bypass_session_factory()() as db:
+            for org_id, mailbox in (
+                (org_a, "leads@sec-a.test"),
+                (org_b, "leads@sec-b.test"),
+            ):
+                await db.execute(
+                    text(
+                        "INSERT INTO channel_routes (org_id, channel, destination) "
+                        "VALUES (:o, :c, :d)"
+                    ),
+                    {"o": org_id, "c": CHANNEL_EMAIL, "d": mailbox},
+                )
+            await db.commit()
+        tenant_resolver.reset_cache()
+
+        try:
+            identity = await inbound_secret_or_503(
+                CHANNEL_EMAIL, ["leads@sec-a.test", "leads@sec-b.test"]
+            )
+        except HTTPException as exc:  # pragma: no cover - the defect
+            raise AssertionError(
+                f"picking a secret raised {exc.status_code} instead of falling "
+                "back, so the handler never got to refuse"
+            ) from exc
+
+        # The operator's secret, so a forged payload simply fails the signature
+        # check with a plain 403 and a genuine one reaches the 200 refusal.
+        assert identity.org_id is None
+    finally:
+        await _cleanup()

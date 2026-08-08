@@ -115,9 +115,16 @@ async def resolve_outbound_identity(channel: str) -> ChannelIdentity:
 
     routed = next((r for r in rows if r.credential_ref), None)
     if routed is None:
-        # The agency may still own a destination without owning an account — an
-        # extra number on the operator's Twilio, say. Take its identity and the
-        # global credentials.
+        # The agency may own a destination without owning a sending account —
+        # an extra number on the operator's Twilio, say — and it may equally own
+        # its *inbound* secret without owning the outbound credential: its own
+        # Meta app while replies still go out through the shared WABA. Each ref
+        # is taken on its own merits.
+        #
+        # Reading only `credential_ref` here discarded a per-agency
+        # `inbound_secret_ref` entirely, so their genuine traffic failed
+        # verification against the operator's secret while a message signed with
+        # that shared secret sailed in. Every field falls back independently.
         plain = rows[0] if rows else None
         base = _global_identity(channel, org_id=org_id)
         if plain is None:
@@ -126,10 +133,10 @@ async def resolve_outbound_identity(channel: str) -> ChannelIdentity:
             org_id=org_id,
             channel=channel,
             destination=plain.destination,
-            provider_account=base.provider_account,
+            provider_account=_env(plain.provider_account_ref) or base.provider_account,
             credential=base.credential,
-            inbound_secret=base.inbound_secret,
-            verify_token=base.verify_token,
+            inbound_secret=_env(plain.inbound_secret_ref) or base.inbound_secret,
+            verify_token=_env(plain.verify_token_ref) or base.verify_token,
             sender_override=plain.sender_override or base.sender_override,
             webhook_url=plain.webhook_url or base.webhook_url,
         )
@@ -240,19 +247,23 @@ async def known_verify_tokens(channel: str) -> list[str]:
 
 
 async def inbound_secret_or_503(channel: str, destination: object) -> ChannelIdentity:
-    """`resolve_inbound_secret`, with its two failure modes turned into a 503.
+    """`resolve_inbound_secret`, with a missing credential turned into a 503.
 
-    Both mean "this message cannot be handled safely right now", and both used
-    to surface as an unhandled 500 before the signature was even checked:
+    Only that one. It is a configuration error — a route names an environment
+    variable nobody set — and it is deterministic: without this, every inbound
+    message to that number 500s before the signature is even checked, until
+    someone redeploys, with one log line as the only clue. 503 is honest: the
+    provider retries and the fix makes those retries succeed.
 
-    - the payload names two agencies, so there is no single secret to verify
-      against and no single tenant to file it under;
-    - a route names an environment variable nobody set, which is deterministic
-      — every inbound message to that number 500s until someone redeploys, and
-      the only clue is one log line.
-
-    503 is the honest answer: the provider retries, and the operator sees a
-    service error instead of a crash blamed on the signature.
+    An *ambiguous* destination is not turned into anything. It used to raise
+    503 here, which had two consequences. The handler's own refusal — the one
+    that answers 200 precisely so a provider does not disable the endpoint —
+    became unreachable for that case, so the flagship behaviour was inert
+    wherever it mattered. And the 503 arrived before any signature check, so an
+    unauthenticated caller could tell 503 from 403 and enumerate which numbers
+    belong to which agency. Falling through to the global secret means the
+    signature fails closed with a plain 403, and a genuinely signed message
+    reaches the handler's 200 refusal.
     """
     from fastapi import HTTPException
 
@@ -260,7 +271,9 @@ async def inbound_secret_or_503(channel: str, destination: object) -> ChannelIde
 
     try:
         return await resolve_inbound_secret(channel, destination)
-    except (MissingChannelCredential, WebhookOrgUnresolved) as exc:
+    except WebhookOrgUnresolved:
+        return _global_identity(channel, org_id=None)
+    except MissingChannelCredential as exc:
         logger.error("cannot verify inbound %s — %s", channel, exc)
         raise HTTPException(
             status_code=503, detail="inbound verification unavailable"

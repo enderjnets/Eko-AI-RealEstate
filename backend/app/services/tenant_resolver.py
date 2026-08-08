@@ -235,8 +235,18 @@ async def resolve_org_by_destination(
     return owners.pop()
 
 
-async def _owns_its_own_account(channel: str, org_id: int) -> bool:
-    """Whether this organization has its own provider credentials on `channel`.
+async def _verifies_with_its_own_secret(channel: str, org_id: int) -> bool:
+    """Whether this organization's inbound messages carry its own signature.
+
+    Keyed on `inbound_secret_ref`, not `credential_ref`. The question here is
+    "did this agency authenticate the message?", and that is the *inbound*
+    secret — the outbound credential says only how replies leave. Reading the
+    wrong column left the whole guard inert for the configuration it mattered
+    most in: an agency with its own Meta app but still replying through the
+    shared WABA has an inbound secret and no outbound credential, so a message
+    signed with the operator's shared secret and addressed nowhere still fell
+    through to them. It also refused, wrongly, for an agency that had only an
+    outbound credential — where the shared secret genuinely is the authority.
 
     Read on the bypass session: `channel_routes` is invisible to the app role,
     and this runs before any org is bound.
@@ -253,7 +263,7 @@ async def _owns_its_own_account(channel: str, org_id: int) -> bool:
                 .where(
                     ChannelRoute.channel == channel,
                     ChannelRoute.org_id == org_id,
-                    ChannelRoute.credential_ref.is_not(None),
+                    ChannelRoute.inbound_secret_ref.is_not(None),
                 )
                 .limit(1)
             )
@@ -300,20 +310,21 @@ async def webhook_org_or_refuse(channel: str, destination: Destination) -> int:
 
     candidates = routable_candidates(orgs)
     if len(candidates) == 1:
-        # The single-tenant fallback, but only for an agency that has not been
-        # given its own provider account. If it has, an unmapped destination
-        # means the message was verified against the *operator's* shared secret
-        # while about to be filed under an agency that does not use it — so the
-        # principal that proved authenticity is not the tenant receiving the
-        # write. Anyone holding the shared credential could post a signed
-        # message with an unmapped `To` and have a lead, a transcript and an
-        # AI reply appear inside that agency.
-        if await _owns_its_own_account(channel, candidates[0]):
+        # The single-tenant fallback, but only while the operator's shared
+        # secret is genuinely this agency's authority. Once they sign their own
+        # inbound traffic, an unmapped destination means the message was
+        # verified against the *shared* secret and is about to be filed under an
+        # agency that does not use it — the principal that proved authenticity
+        # is not the tenant receiving the write. Anyone holding the shared
+        # credential could then post a signed message with an unmapped
+        # destination and have a lead, a transcript and an AI reply appear
+        # inside that agency, answered from their number.
+        if await _verifies_with_its_own_secret(channel, candidates[0]):
             raise WebhookOrgUnresolved(
                 f"inbound {channel} to {destination!r} matches no channel_route, "
-                f"and organization {candidates[0]} uses its own provider "
-                "credentials — so this message was not authenticated by them. "
-                "Map the destination in channel_routes."
+                f"and organization {candidates[0]} signs its own inbound "
+                "messages — so this one was not authenticated by them. Map the "
+                "destination in channel_routes."
             )
         return candidates[0]
     if not candidates:

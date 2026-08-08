@@ -177,8 +177,14 @@ when an AI session helped write it.
 Inbound messages are attributed by **destination**, via `channel_routes`
 (destination → org, managed at `/api/v1/platform/routes`). Before adding a
 second tenant, map its Twilio number, WhatsApp `phone_number_id` and mailbox —
-an unmapped destination is refused with 503 rather than filed under the wrong
-agency, and `webhook_org_or_refuse` is the single place that decides.
+an unmapped destination is refused rather than filed under the wrong agency,
+and `webhook_org_or_refuse` is the single place that decides. The refusal is
+acknowledged with 200 on WhatsApp, email and voice — nothing is written, but
+those providers retry a failure until they disable the endpoint, which would
+take the channel down for every tenant. SMS keeps its 503: Twilio does not
+redeliver inbound and shows it as error 11200 where an operator looks. A
+destination left unmapped therefore loses real messages quietly — alert on
+`refusing inbound`.
 
 All four channels are wired: SMS, WhatsApp, email and voice. Voice's
 extractor is **not verified against a live VAPI account** (there is none), so it

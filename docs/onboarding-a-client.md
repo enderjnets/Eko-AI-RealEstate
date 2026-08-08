@@ -43,7 +43,11 @@ Returns the `id`. `status` starts `active`; `plan` defaults to `pilot`.
 
 **This is the step that cannot be skipped.** An inbound message is attributed
 to an agency by *where it arrived* — nothing else can tell tenants apart. An
-unmapped destination is refused with 503 rather than filed under another agency.
+unmapped destination is refused rather than filed under another agency: 200
+on WhatsApp, email and voice so those providers do not disable the endpoint,
+503 on SMS because Twilio does not redeliver and shows it as error 11200.
+Nothing is written either way — but a destination left unmapped loses real
+messages with only a log line, so alert on `refusing inbound`.
 
 ```bash
 # One call per channel the agency uses.

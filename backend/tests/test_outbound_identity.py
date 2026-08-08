@@ -258,6 +258,7 @@ async def test_an_unmapped_destination_is_refused_once_the_agency_owns_its_accou
     the write.
     """
     monkeypatch.setenv("TWILIO_TOKEN_AGENCY_B", "b-token")
+    monkeypatch.setenv("TWILIO_INBOUND_AGENCY_B", "b-token")
     async with get_bypass_session_factory()() as db:
         # Client zero is suspended so exactly one agency is routable, which is
         # the state every install has after onboarding its first client.
@@ -266,7 +267,15 @@ async def test_an_unmapped_destination_is_refused_once_the_agency_owns_its_accou
             {"i": DEFAULT_ORG_ID},
         )
         await db.commit()
-    await _seed_agency_b(credential_ref="TWILIO_TOKEN_AGENCY_B")
+    # `inbound_secret_ref` is what decides this, not `credential_ref`: the
+    # question is whether the agency authenticated the message, and that is the
+    # inbound secret. Keying it on the outbound credential left the guard inert
+    # for an agency with its own Meta app still replying through the shared
+    # account, and made it refuse wrongly for the reverse.
+    await _seed_agency_b(
+        credential_ref="TWILIO_TOKEN_AGENCY_B",
+        inbound_secret_ref="TWILIO_INBOUND_AGENCY_B",
+    )
     try:
         # Their own number still routes.
         assert await tenant_resolver.webhook_org_or_refuse(CHANNEL_SMS, B_NUMBER) == (
@@ -293,3 +302,80 @@ async def test_the_fallback_still_works_for_an_agency_on_the_shared_account() ->
     assert await tenant_resolver.webhook_org_or_refuse(CHANNEL_SMS, "+19998887777") == (
         DEFAULT_ORG_ID
     )
+
+
+@pytest.mark.asyncio
+async def test_an_inbound_only_agency_keeps_its_own_signing_secret(
+    monkeypatch,
+) -> None:
+    """Its own Meta app, replies still through the shared account.
+
+    A supported configuration — `set_route_identity` invites it by clearing
+    unnamed fields — and the one where the fallback guard was inert. Reading
+    only `credential_ref` discarded the agency's `inbound_secret_ref`, so their
+    genuine traffic failed verification against the operator's secret while a
+    message signed with that shared secret sailed straight into their tenant.
+    """
+    monkeypatch.setenv("WA_APP_SECRET_AGENCY_B", "b-app-secret")
+    await _seed_agency_b(inbound_secret_ref="WA_APP_SECRET_AGENCY_B")
+    try:
+        with org_scope(AGENCY_B):
+            identity = await resolve_outbound_identity(CHANNEL_SMS)
+        # Theirs for verifying...
+        assert identity.inbound_secret == "b-app-secret"
+        # ...and the operator's for sending, which is what they asked for.
+        from app.config import get_settings
+
+        assert identity.credential == (get_settings().TWILIO_AUTH_TOKEN or None)
+        assert not identity.is_own_account
+
+        # And the fallback refuses for them, because the shared secret is no
+        # longer their authority.
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE organizations SET status = 'suspended' WHERE id = :i"),
+                {"i": DEFAULT_ORG_ID},
+            )
+            await db.commit()
+        tenant_resolver.reset_cache()
+        with pytest.raises(tenant_resolver.WebhookOrgUnresolved):
+            await tenant_resolver.webhook_org_or_refuse(CHANNEL_SMS, "+19998887777")
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE organizations SET status = 'active' WHERE id = :i"),
+                {"i": DEFAULT_ORG_ID},
+            )
+            await db.commit()
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_outbound_only_agency_is_not_refused(monkeypatch) -> None:
+    """The mirror case, which the wrong key got wrong in the other direction.
+
+    An agency with its own Twilio subaccount for sending, but whose inbound is
+    still signed by the operator's token, must keep working — refusing there
+    drops real leads for a configuration that is perfectly authentic.
+    """
+    monkeypatch.setenv("TWILIO_TOKEN_AGENCY_B", "b-token")
+    await _seed_agency_b(credential_ref="TWILIO_TOKEN_AGENCY_B")
+    try:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE organizations SET status = 'suspended' WHERE id = :i"),
+                {"i": DEFAULT_ORG_ID},
+            )
+            await db.commit()
+        tenant_resolver.reset_cache()
+        assert await tenant_resolver.webhook_org_or_refuse(
+            CHANNEL_SMS, "+19998887777"
+        ) == AGENCY_B
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE organizations SET status = 'active' WHERE id = :i"),
+                {"i": DEFAULT_ORG_ID},
+            )
+            await db.commit()
+        await _cleanup()

@@ -61,6 +61,13 @@ services:
       # authentication while /health stays green. Both halves must agree.
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:-eko_app_local_pass}
       APP_DB_ROLE: ${APP_DB_ROLE:-eko_app}
+      # The role RLS is deliberately bypassed with, for login lookups, the
+      # platform router and the org-list reads that run before any tenant is
+      # bound. Absent here, setting it in .env did nothing and the app silently
+      # kept using DATABASE_URL — which on this stack is a superuser, so FORCE
+      # ROW LEVEL SECURITY was the only thing standing between a bug and every
+      # tenant's rows. Same omission as APP_DB_PASSWORD, one variable over.
+      DATABASE_URL_BYPASS: ${DATABASE_URL_BYPASS:-}
       REDIS_URL: ${REDIS_URL}
       # LLM
       LLM_PRIMARY: ${LLM_PRIMARY:-kimi}

@@ -168,6 +168,23 @@ async def voice_inbound(request: Request, db: AsyncSession = Depends(get_db)) ->
         # backs off or disables the endpoint — taking voice down for every
         # tenant, not just this one. Nothing is written either way.
         log.error("refusing inbound call — %s", exc)
+        if mtype == "tool-calls":
+            # A live call is waiting on this. VAPI reads `results`; anything
+            # else and the assistant stalls mid-sentence rather than saying
+            # something. The caller gets a graceful hand-off instead of silence.
+            return {
+                "results": [
+                    {
+                        "toolCallId": call.get("id")
+                        or (call.get("function") or {}).get("id"),
+                        "result": (
+                            "I can't reach our booking system right now. "
+                            "A team member will follow up with you."
+                        ),
+                    }
+                    for call in _tool_calls(msg)
+                ]
+            }
         return {"status": "unrouted"}
 
     # ── Tool calls — answer synchronously so the assistant can speak the result ──
