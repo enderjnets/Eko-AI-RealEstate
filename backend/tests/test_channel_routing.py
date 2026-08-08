@@ -555,3 +555,99 @@ async def test_informational_voice_events_do_not_need_a_route() -> None:
         assert r.json()["status"] == "ignored"
     finally:
         await _cleanup()
+
+
+# ── Regressions for the edge cases fixed in d3d0232, which shipped untested ───
+
+
+def test_a_batched_envelope_naming_two_agencies_is_refused() -> None:
+    """Meta batches entries per app delivery, and one app serving two WhatsApp
+    Business accounts is the documented multi-tenant setup — so a single
+    envelope really can carry two agencies.
+
+    Returning the first filed both under it. This is the case the fix was for,
+    and it shipped with a test that only ever passed one number in.
+    """
+    from app.api.v1.webhooks.whatsapp import _business_number
+
+    two_agencies = {
+        "entry": [
+            {"changes": [{"value": {"metadata": {"phone_number_id": "111"}}}]},
+            {"changes": [{"value": {"metadata": {"phone_number_id": "222"}}}]},
+        ]
+    }
+    assert _business_number(two_agencies) is None
+
+    # The same number twice is not an ambiguity — Meta batches several messages
+    # to one line constantly, and refusing those would break the common case.
+    same_line_twice = {
+        "entry": [
+            {
+                "changes": [
+                    {"value": {"metadata": {"phone_number_id": "111"}}},
+                    {"value": {"metadata": {"phone_number_id": "111"}}},
+                ]
+            }
+        ]
+    }
+    assert _business_number(same_line_twice) == "111"
+
+    # `display_phone_number` is the fallback when the id is absent.
+    assert (
+        _business_number(
+            {"entry": [{"changes": [{"value": {"metadata": {"display_phone_number": "+1 555"}}}]}]}
+        )
+        == "+1 555"
+    )
+
+
+def test_addresses_are_stripped_of_display_names_before_matching() -> None:
+    """Senders and providers both add them, and a lookup that kept the name
+    never matched a stored route — turning a routable message into a refusal."""
+    from app.api.v1.webhooks.email import _address_only, _mailboxes
+
+    assert _address_only("Agency B <leads@agency-b.test>") == "leads@agency-b.test"
+    assert _address_only("  leads@agency-b.test ") == "leads@agency-b.test"
+    # A name containing angle brackets must not confuse the last-bracket rule.
+    assert _address_only("A <b> C <real@x.test>") == "real@x.test"
+
+    # Dict entries, the shape Resend actually delivers.
+    assert _mailboxes({"data": {"to": [{"email": "Leads@Agency-B.test"}]}}) == [
+        "Leads@Agency-B.test"
+    ]
+    # A bare string rather than a list.
+    assert _mailboxes({"data": {"recipient": "Agency <x@y.test>"}}) == ["x@y.test"]
+    # Not a dict at all — a malformed payload must not 500 the webhook.
+    assert _mailboxes({"data": "nonsense"}) == []
+    assert _mailboxes({}) == []
+
+
+def test_destinations_normalise_to_one_key_whatever_the_provider_sends() -> None:
+    """Providers spell the same number several ways across their own callbacks.
+
+    Each variant that normalised differently was a route that silently stopped
+    matching — which reads as "the second agency's webhook is broken" with
+    nothing in the logs to say why.
+    """
+    from app.models.channel_route import normalize_destination
+
+    canonical = normalize_destination("+1 (555) 111-0000")
+    for variant in (
+        "+15551110000",
+        "15551110000",
+        "+1-555-111-0000",
+        "0015551110000",      # international 00 prefix
+        "+15551110000;ext=42",  # SIP-style extension
+        "+15551110000,123",     # pause-dial suffix
+        "+15551110000 x99",     # spoken extension
+    ):
+        assert normalize_destination(variant) == canonical, variant
+
+    # Opaque provider ids are identifiers, not numbers: stripping non-digits
+    # would turn "pn_abc123" into "123" and collide it with a phone number.
+    assert normalize_destination("pn_abc123") == "pn_abc123"
+    assert normalize_destination("wamid.HBgL") == "wamid.hbgl"
+    # Email keeps its shape, lowercased.
+    assert normalize_destination("Leads@Agency-B.test") == "leads@agency-b.test"
+    assert normalize_destination(None) == ""
+    assert normalize_destination("   ") == ""
