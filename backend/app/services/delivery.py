@@ -154,23 +154,27 @@ async def _retry_one(db: AsyncSession, message_id: int, now: datetime) -> str:
     )
     if message is None:
         # Another worker took it, or it stopped qualifying between the two
-        # passes. Either way it is not ours.
+        # passes. Either way it is not ours. Roll back so the session is not
+        # left idle in a transaction for the rest of the batch.
+        await db.rollback()
         return "skipped"
 
     recipient, channel, in_reply_to = await _recipient_of(message, db)
     if not recipient or not channel:
-        # Nothing to send to. Retiring it explicitly: clearing the schedule used
-        # to be enough, but a PENDING row with no schedule now re-qualifies, so
-        # this looped on every tick forever and silently held a slot.
-        message.send_attempts = MAX_ATTEMPTS
-        message.delivery_status = MessageStatus.FAILED
-        message.next_attempt_at = None
-        message.last_error = "no address for this conversation"
+        # No address right now. Counted as a failure and backed off like any
+        # other, NOT retired on the spot: `_recipient_of` also returns nothing
+        # when the lead is momentarily invisible — an unbound org on the RLS
+        # session, a row mid-write — and jumping straight to the attempt cap
+        # let one bad tick delete a pending reply for good.
+        schedule_retry(message, "no address for this conversation yet")
         log.warning(
-            "message %s cannot be delivered: no address for its lead", message.id
+            "message %s has no address to go to (attempt %d of %d)",
+            message.id,
+            message.send_attempts,
+            MAX_ATTEMPTS,
         )
         await db.commit()
-        return "skipped"
+        return "failed"
 
     try:
         external_id, _ = await _dispatch_send(

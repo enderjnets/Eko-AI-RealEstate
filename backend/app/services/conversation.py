@@ -314,7 +314,10 @@ async def generate_reply_suggestions(
     llm_messages = [
         {
             "role": "user" if m.direction == MessageDirection.INBOUND else "assistant",
-            "content": m.content,
+            # Without the attribution footer: it lives in `content`, so the
+            # model read three credit lines back for every past turn and
+            # dutifully repeated them.
+            "content": strip_broker_credits(m.content),
         }
         for m in history
     ]
@@ -744,33 +747,67 @@ async def _real_slots_note(
 _SMS_MAX_CHARS = 1500
 
 
+# What separates a reply that shows a listing from one that does not. Kept
+# generous on purpose: a miss is an uncredited listing, a false positive is a
+# redundant line.
+_MONEY = re.compile(r"[$€]\s?\d|\d{3}[.,]\d{3}|\b\d{3}\s?k\b", re.IGNORECASE)
+
+
+def _reply_shows(reply: str, title: str | None, address: str | None) -> bool:
+    """Whether this reply puts a listing's details in front of the consumer.
+
+    Attribution is owed when a listing's data is shown, so this is the right
+    question — the earlier versions just answered it badly, by looking for one
+    exact string the model was free to paraphrase away. Several signals now,
+    any of which is enough: the title, the address, the street number, or a
+    price anywhere in the reply. "Abrimos de 9 a 6" matches none of them; "the
+    Wash Park house is $650k" matches on the price alone.
+    """
+    haystack = reply.lower()
+    for value in (title, address):
+        if not value or not value.strip():
+            continue
+        if value.strip().lower() in haystack:
+            return True
+        # And the part before the first comma — "Coldwell Banker Tower, Unit 5"
+        # gets referred to as "the Coldwell Banker Tower unit", which carries
+        # the listing's identity without matching the whole string.
+        head = value.split(",", 1)[0].strip().lower()
+        if len(head) >= 8 and head in haystack:
+            return True
+    if address:
+        number = address.strip().split(" ", 1)[0]
+        if number.isdigit() and number in reply:
+            return True
+    return bool(_MONEY.search(reply))
+
+
 def _with_broker_credits(
     reply: str, offered: list[tuple[str, str, str | None]], channel: str
 ) -> str:
     """Append the listing brokers' credits to the message that reaches the lead.
 
-    Colorado requires the broker to be named wherever a listing reaches a
-    consumer. Three versions of this tried to work out whether the reply had
-    actually offered a given listing — first by looking for the credit itself
-    (which credited only what was already credited), then by looking for the
-    listing's title or address. Both fail the ordinary case: the lead writes in
-    English, the model renders "Casa en Wash Park" as "the Wash Park house",
-    the substring is gone, and a listing reaches a consumer uncredited.
-
-    So it no longer guesses. Every broker whose listing was put in front of the
-    model this turn is credited. `match_properties_for_lead` caps that at a
-    handful, and this only runs on turns where listings were offered at all, so
-    the footer is short and bounded. Crediting a broker whose listing the reply
-    did not end up mentioning is noise; the other way round is a licence
-    problem, and only one of those is worth being wrong about.
+    Colorado requires the broker to be named wherever a listing's details reach
+    a consumer. Crediting on every turn regardless — which is what dropping the
+    detection altogether produced — staples three brokers onto "we open at
+    nine", on every message for the rest of the conversation. Crediting only on
+    an exact title match misses the moment the model paraphrases. So: credit
+    when the reply shows listing data at all, and then credit every broker
+    whose listing was offered, because which of them the model actually used is
+    not knowable from the text.
     """
+    if not offered or not any(broker for broker, _t, _a in offered):
+        return reply
+    if not any(_reply_shows(reply, title, address) for _b, title, address in offered):
+        return reply
+
     lines: list[str] = []
     for broker, _title, _address in offered:
         if not broker:
             continue
         line = f"Cortesía de {broker}"
-        # Skip only when this exact credit is already in the text — matching the
-        # bare name also matched a broker's name inside a listing's own title.
+        # This exact credit, not the bare name — a listing titled "Coldwell
+        # Banker Tower" otherwise suppressed Coldwell Banker's credit.
         if line.lower() in reply.lower() or line in lines:
             continue
         lines.append(line)
@@ -780,19 +817,31 @@ def _with_broker_credits(
     if channel not in ("sms", "whatsapp"):
         return reply.rstrip() + "\n\n" + " · ".join(lines)
 
-    # Twilio hard-rejects past its limit, and a rejected message is now retried
-    # five times before being given up on. Fit the credits first and let the
-    # prose give way — but never produce something still over the limit, which
-    # is what subtracting an oversized footer from the budget did.
+    # Twilio hard-rejects past its limit, and a rejected message is retried five
+    # times before being given up on. Fit the credits and let the prose give
+    # way — but never return something still over the limit, which is what
+    # subtracting an oversized footer from the budget did.
     footer = "\n\n" + " · ".join(lines)
-    while lines and len(footer) > _SMS_MAX_CHARS // 2:
+    while len(lines) > 1 and len(footer) > _SMS_MAX_CHARS // 2:
         lines.pop()
-        footer = "\n\n" + " · ".join(lines)
-    if not lines:
-        return reply[:_SMS_MAX_CHARS]
+        footer = "\n\n" + " · ".join(lines) + " · y otros corredores listantes"
+    if len(footer) > _SMS_MAX_CHARS // 2:
+        # One name too long to fit is still a listing that must be credited.
+        footer = "\n\nCortesía de los corredores listantes"
     room = _SMS_MAX_CHARS - len(footer)
     body = reply if len(reply) <= room else reply[: max(0, room - 1)].rstrip() + "…"
     return body.rstrip() + footer
+
+
+def strip_broker_credits(content: str) -> str:
+    """The message without its attribution footer.
+
+    The footer lives in `Message.content`, which is also what conversation
+    history is built from — so without this the model reads three credit lines
+    back for every past turn, and repeats them.
+    """
+    marker = "\n\nCortesía de"
+    return content.split(marker, 1)[0].rstrip() if marker in content else content
 
 
 def _fallback_reply(agent_cfg: AgentSettings | None, target_lang: str) -> LLMResult:
@@ -999,7 +1048,10 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     llm_messages = [
         {
             "role": "user" if m.direction == MessageDirection.INBOUND else "assistant",
-            "content": m.content,
+            # Without the attribution footer: it lives in `content`, so the
+            # model read three credit lines back for every past turn and
+            # dutifully repeated them.
+            "content": strip_broker_credits(m.content),
         }
         for m in history
     ]

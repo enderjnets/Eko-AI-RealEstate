@@ -297,11 +297,13 @@ async def test_a_message_still_in_flight_is_left_alone() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_message_with_nowhere_to_go_is_retired_not_looped() -> None:
+async def test_a_message_with_nowhere_to_go_backs_off_and_then_stops() -> None:
     """Clearing the schedule used to remove a row from the sweep. Once PENDING
     rows with no schedule became eligible — the fix for the crash case — an
     undeliverable one re-qualified on every tick, silently holding a slot in
-    every batch forever."""
+    every batch forever. Retiring it on the spot fixed that and broke something
+    worse: a transient empty read deleted a real pending reply. It backs off
+    like any other failure and gives up after the same cap."""
     from app.models.message import MessageStatus as Status
     from app.services.delivery import MAX_ATTEMPTS as CAP
 
@@ -329,21 +331,40 @@ async def test_a_message_with_nowhere_to_go_is_retired_not_looped() -> None:
                 await db.commit()
                 orphan_id = orphan.id
 
+            # One tick costs one attempt, not the message: `_recipient_of` also
+            # comes back empty when the lead is momentarily invisible, and
+            # retiring on the spot deleted a pending reply for a transient read.
             async with get_session_factory()() as db:
-                await retry_pending_sends(db)
+                assert await retry_pending_sends(db) == {"sent": 0, "failed": 1}
 
             async with get_session_factory()() as db:
                 after = (
                     await db.execute(select(Message).where(Message.id == orphan_id))
                 ).scalar_one()
-                assert after.send_attempts >= CAP, (
-                    "still eligible; it will be re-resolved on every tick forever"
-                )
+                assert after.send_attempts == 1
                 assert after.delivery_status is Status.FAILED
+                assert after.next_attempt_at is not None
 
-            # And a second sweep does not pick it up again.
+            # It backs off rather than spinning: nothing is due yet.
             async with get_session_factory()() as db:
                 assert await retry_pending_sends(db) == {"sent": 0, "failed": 0}
+
+            # And after CAP attempts it stops for good.
+            async with get_session_factory()() as db:
+                due = (
+                    await db.execute(select(Message).where(Message.id == orphan_id))
+                ).scalar_one()
+                due.send_attempts = CAP - 1
+                due.next_attempt_at = datetime.now(UTC) - timedelta(minutes=1)
+                await db.commit()
+            async with get_session_factory()() as db:
+                assert await retry_pending_sends(db) == {"sent": 0, "failed": 1}
+            async with get_session_factory()() as db:
+                assert await retry_pending_sends(db) == {"sent": 0, "failed": 0}
+                final = (
+                    await db.execute(select(Message).where(Message.id == orphan_id))
+                ).scalar_one()
+                assert final.next_attempt_at is None
     finally:
         await _cleanup()
 

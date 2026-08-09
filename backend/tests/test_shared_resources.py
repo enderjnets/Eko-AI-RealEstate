@@ -954,6 +954,13 @@ def test_the_broker_credit_is_added_when_it_is_missing() -> None:
         "Abrimos los sábados."
     )
 
+    # And a reply that shows no listing data at all gets no footer, even though
+    # listings were offered to the model this turn. Crediting regardless
+    # stapled three brokers onto "we open at nine" for the rest of the
+    # conversation.
+    hours = "Abrimos de 9 a 6, de lunes a viernes."
+    assert _with_broker_credits(hours, offered, "whatsapp") == hours
+
 
 def test_the_credit_survives_a_reply_too_long_for_sms() -> None:
     """Twilio hard-rejects over 1600 characters, and a rejected message is now
@@ -1033,3 +1040,20 @@ async def test_a_shared_mailbox_does_not_merge_two_people() -> None:
             assert total == 3
     finally:
         await _cleanup()
+
+
+def test_the_footer_is_not_read_back_to_the_model() -> None:
+    """The credit lives in `Message.content`, which is also what conversation
+    history is built from — so the model read three credit lines back for every
+    past turn and dutifully repeated them, and the inbox preview showed them
+    instead of the answer."""
+    from app.services.conversation import strip_broker_credits
+
+    with_footer = (
+        "Tengo una casa en Wash Park por $650k.\n\nCortesía de Kentwood Real Estate"
+    )
+    assert strip_broker_credits(with_footer) == "Tengo una casa en Wash Park por $650k."
+    # A message that never had one is untouched, including one that merely
+    # mentions a broker mid-sentence.
+    plain = "Cortesía de la casa, el café es gratis."
+    assert strip_broker_credits(plain) == plain
