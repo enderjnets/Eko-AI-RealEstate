@@ -201,8 +201,22 @@ def _cookie_is_secure(request: Request | None) -> bool:
         # No request in hand — take the strict answer.
         return True
     forwarded = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
-    scheme = forwarded or request.url.scheme
-    return scheme == "https"
+    if forwarded:
+        return forwarded == "https"
+    # No proxy header. Two hops sit in front of this on the domain — a
+    # Cloudflare tunnel, then the dashboard's own rewrite — and whether the
+    # header survives both is a property of their defaults, not something this
+    # code should assume. `Origin` is sent by the browser on every
+    # cookie-setting POST and is forwarded as an ordinary request header, so it
+    # answers the same question without depending on proxy behaviour.
+    # Used as evidence of TLS, never as evidence against it. A plain-http
+    # Origin does not mean the request reached us unencrypted, and mutation
+    # testing showed that branch could strip Secure from a connection that
+    # genuinely had TLS. Absent that evidence, the connection speaks for itself.
+    origin = (request.headers.get("origin") or "").strip().lower()
+    if origin.startswith("https://"):
+        return True
+    return request.url.scheme == "https"
 
 
 def _is_platform_operator(email: str | None) -> bool:

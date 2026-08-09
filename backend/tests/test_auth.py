@@ -402,11 +402,15 @@ def test_the_session_cookie_is_secure_behind_tls_and_usable_without_it() -> None
 
     from app.api.v1.auth import _cookie_is_secure
 
-    def _request(scheme: str, forwarded: str | None = None) -> object:
-        return SimpleNamespace(
-            url=SimpleNamespace(scheme=scheme),
-            headers={"x-forwarded-proto": forwarded} if forwarded else {},
-        )
+    def _request(
+        scheme: str, forwarded: str | None = None, origin: str | None = None
+    ) -> object:
+        headers: dict[str, str] = {}
+        if forwarded:
+            headers["x-forwarded-proto"] = forwarded
+        if origin:
+            headers["origin"] = origin
+        return SimpleNamespace(url=SimpleNamespace(scheme=scheme), headers=headers)
 
     # Straight https, and the LAN address on plain http.
     assert _cookie_is_secure(_request("https")) is True
@@ -419,6 +423,21 @@ def test_the_session_cookie_is_secure_behind_tls_and_usable_without_it() -> None
     # A proxy chain lists the client's protocol first.
     assert _cookie_is_secure(_request("http", "https, http")) is True
     assert _cookie_is_secure(_request("https", "http")) is False
+
+    # Two hops sit in front of this on the domain — a Cloudflare tunnel, then
+    # the dashboard's own rewrite — so whether `x-forwarded-proto` survives both
+    # is their defaults' business, not something to bet a security flag on. The
+    # browser's `Origin` answers the same question and is an ordinary header.
+    assert _cookie_is_secure(_request("http", origin="https://inmo.example.com")) is (
+        True
+    )
+    assert _cookie_is_secure(_request("http", origin="http://10.0.0.240:3004")) is (
+        False
+    )
+    # The proxy header still wins when it is there.
+    assert _cookie_is_secure(
+        _request("http", forwarded="https", origin="http://whatever")
+    ) is True
 
     # No request to look at: take the strict answer rather than guessing.
     assert _cookie_is_secure(None) is True
