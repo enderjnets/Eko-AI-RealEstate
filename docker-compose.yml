@@ -132,7 +132,10 @@ services:
       # addresses reach /api/v1/platform. Empty means nobody can, which is the
       # correct default — the shared DASHBOARD_PASSWORD is the agency's own
       # password and deliberately cannot grant it.
-      APP_VERSION: ${APP_VERSION:-0.39.2}
+      # APP_VERSION is deliberately not passed. The application carries it in
+      # `backend/app/config.py`, which the release bumps. The copy that used to
+      # live here was thirty releases behind, and `${APP_VERSION:-}` would be
+      # worse still — an empty string overrides the real one.
       PLATFORM_ADMIN_EMAILS: ${PLATFORM_ADMIN_EMAILS:-}
       # Public signup into the demo org. The flag was advertised in /auth/me
       # and read nowhere, so it could not turn signup off.

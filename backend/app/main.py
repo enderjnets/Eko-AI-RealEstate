@@ -49,6 +49,10 @@ app = FastAPI(
     ),
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url=None,
+    # The schema too. Gating only the UI left `/openapi.json` serving the full
+    # route and model inventory the DEBUG gate exists to withhold — confirmed
+    # 200 on the live host with DEBUG=false.
+    openapi_url="/openapi.json" if settings.DEBUG else None,
 )
 
 

@@ -26,6 +26,19 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      # `REDIS_URL` was set with nothing listening on it. Anything that reaches
+      # for Redis in CI fails or silently degrades, and the failure looks like a
+      # test bug rather than a missing service.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       # Real Postgres service above → the DB-backed tests actually run (not skipped).
       DATABASE_URL: "postgresql+asyncpg://eko:eko@localhost:5432/eko_realestate"

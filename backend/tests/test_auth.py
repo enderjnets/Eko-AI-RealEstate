@@ -499,3 +499,32 @@ async def test_the_cookie_the_app_actually_sends_carries_the_right_flags() -> No
             )
             assert login.status_code == 200, login.text
             assert "secure" in login.headers["set-cookie"].lower()
+
+
+def test_the_api_schema_is_closed_when_the_docs_are(monkeypatch) -> None:
+    """Gating only the Swagger UI left `/openapi.json` serving the full route
+    and model inventory — confirmed 200 on the live host with DEBUG=false. The
+    schema is the thing worth withholding; the UI is just a viewer for it."""
+    import importlib
+
+    from app.config import get_settings
+
+    def _app_with(debug: str):  # noqa: ANN202
+        monkeypatch.setenv("DEBUG", debug)
+        get_settings.cache_clear()
+        return importlib.reload(importlib.import_module("app.main")).app
+
+    try:
+        closed = _app_with("false")
+        assert closed.docs_url is None
+        assert closed.openapi_url is None, (
+            "the schema is still served with the docs turned off"
+        )
+
+        open_app = _app_with("true")
+        assert open_app.docs_url == "/docs"
+        assert open_app.openapi_url == "/openapi.json"
+    finally:
+        monkeypatch.undo()
+        get_settings.cache_clear()
+        importlib.reload(importlib.import_module("app.main"))
