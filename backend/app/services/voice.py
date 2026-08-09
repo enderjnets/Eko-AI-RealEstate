@@ -273,6 +273,55 @@ async def handle_tool_call(
             # agency's booking contact rather than failing.
             attendee_email = lead.email or (lead.phone if "@" in (lead.phone or "") else None)
             attendee_phone = lead.phone if "@" not in lead.phone else None
+
+            # Check before booking. Going straight to Cal.com meant a taken slot
+            # came back as a 4xx, which the outer handler turns into "I'm having
+            # trouble with the calendar" — so a caller who asked for a time
+            # somebody else had hung up unbooked, told the system was broken
+            # rather than offered another time.
+            from app.api.v1.visits import _busy_starts
+
+            free = await list_available_slots(
+                start=when - timedelta(minutes=1),
+                end=when + timedelta(days=1),
+                timezone_name=tz_name,
+                busy_starts=await _busy_starts(
+                    db, since=when - timedelta(days=1), until=when + timedelta(days=2)
+                ),
+            )
+            if not any(slot.start == when for slot in free):
+                alternatives = ", ".join(
+                    slot.start.astimezone(zone).strftime("%A at %-I:%M %p")
+                    for slot in free[:3]
+                )
+                if not alternatives:
+                    return (
+                        "That time isn't available, and I don't have anything "
+                        "else open that day. What other day works for you?"
+                    )
+                return f"That time is taken. I do have {alternatives}. Any of those?"
+
+            # Idempotency. A replayed tool-call webhook — VAPI retries, and the
+            # model can call the same tool twice in one turn — otherwise made a
+            # second Cal.com booking, a second visit and a second set of
+            # reminders for the same caller and the same hour.
+            existing = (
+                await db.execute(
+                    select(Visit).where(
+                        Visit.lead_id == lead.id,
+                        Visit.scheduled_at == when,
+                        Visit.status.in_(
+                            [VisitStatus.SCHEDULED, VisitStatus.CONFIRMED]
+                        ),
+                    )
+                )
+            ).scalars().first()
+            if existing is not None:
+                return (
+                    f"You're already booked for {when.astimezone(zone).strftime('%A at %-I:%M %p')}. "
+                    "See you then."
+                )
+
             booking = await create_booking(
                 start_time=when,
                 attendee_name=lead.name or "Caller",

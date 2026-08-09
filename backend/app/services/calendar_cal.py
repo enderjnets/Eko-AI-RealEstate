@@ -177,15 +177,21 @@ async def _booking_contact_email() -> str | None:
                 .scalars()
                 .first()
             )
-    except Exception as exc:  # noqa: BLE001 — the caller raises a clear error
-        log.warning("could not read the booking contact address: %s", exc)
-        return None
+    except Exception as exc:  # noqa: BLE001 — never fail a booking on a lookup
+        # Re-raised as itself rather than folded into "no address configured".
+        # A pool timeout, an unbound organization and a database outage all
+        # surfaced as "set the agency's booking contact address in Settings",
+        # sending an operator to change a setting that was never the problem.
+        raise CalComError(
+            f"could not read the agency's booking contact address: {exc}"
+        ) from exc
     return (found or "").strip() or None
 
 
 async def create_booking(
     *,
     start_time: datetime,
+    booking_contact: str | None = None,
     attendee_name: str,
     attendee_email: str | None = None,
     attendee_phone: str | None = None,
@@ -230,7 +236,10 @@ async def create_booking(
             "this lead's name, email and phone in front of another agency."
         )
     if not attendee_email:
-        attendee_email = await _booking_contact_email()
+        # Preferably handed in by a caller that already holds a session — this
+        # runs inside an in-flight request, and opening a second pooled
+        # connection per booking starves the pool under concurrency.
+        attendee_email = booking_contact or await _booking_contact_email()
     if not attendee_email:
         raise CalComError(
             "this booking has no attendee email, and Cal.com requires one. Set "

@@ -5,7 +5,15 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, pg_enum
@@ -67,6 +75,14 @@ class Message(Base):
         default=MessageStatus.PENDING,
         nullable=False,
     )
+    # Delivery is one HTTP POST to a provider that can be down, rate-limiting,
+    # or slow. Without these a 503 meant the reply was stamped FAILED and
+    # forgotten — no retry, and no worker looking for the ones left behind.
+    send_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Email-only (NULL for other channels).
     subject: Mapped[str | None] = mapped_column(String(500), nullable=True)

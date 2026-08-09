@@ -77,6 +77,10 @@ class LeadOut(BaseModel):
 
     id: int
     phone: str
+    # Usually null — a WhatsApp lead gives a phone and nothing else — but it is
+    # what makes the booking confirmation reach the client rather than only the
+    # agency, so the realtor needs to see whether they have it.
+    email: str | None
     name: str | None
     status: LeadStatus
     intent: LeadIntent | None

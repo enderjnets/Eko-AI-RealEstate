@@ -24,6 +24,7 @@ export type MessageStatus = "pending" | "sent" | "delivered" | "read" | "failed"
 export interface Lead {
   id: number;
   phone: string;
+  email: string | null;
   name: string | null;
   status: LeadStatus;
   intent: LeadIntent | null;

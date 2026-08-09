@@ -234,6 +234,7 @@ app.include_router(discovery.router, prefix="/api/v1/discovery", tags=["discover
 # loops behind a leader lock or into their own service first.
 _followups_task: asyncio.Task | None = None
 _enrichment_task: asyncio.Task | None = None
+_delivery_retry_task: asyncio.Task | None = None
 _listings_sync_task: asyncio.Task | None = None
 
 
@@ -290,6 +291,43 @@ async def _enrichment_loop() -> None:
         finally:
             # In `finally`, so a raising tick does not carry its counts into the
             # next one and report them again.
+            totals.clear()
+
+
+async def _delivery_retry_loop() -> None:
+    """Send again the replies whose first attempt did not land.
+
+    Every channel adapter is a single POST. Before this, a Meta 503 or a Twilio
+    429 stamped the message FAILED and nothing ever looked at it again — the
+    AI's answer to a lead who wrote at midnight was simply gone, with a status
+    column as the only trace.
+    """
+    from app.services.delivery import retry_pending_sends
+    from app.services.tenant_context import run_for_every_org
+
+    interval = max(30, settings.DELIVERY_RETRY_INTERVAL_SECONDS)
+    totals: dict[str, int] = {}
+
+    async def _retry_one_org(session) -> None:
+        one = await retry_pending_sends(session, limit=20)
+        for key, value in one.items():
+            totals[key] = totals.get(key, 0) + value
+
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await run_for_every_org(_retry_one_org)
+            if totals.get("sent") or totals.get("failed"):
+                logger.info(
+                    "Delivery retry: %d resent, %d still failing across all orgs",
+                    totals.get("sent", 0),
+                    totals.get("failed", 0),
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Delivery retry tick failed: %s", exc)
+        finally:
             totals.clear()
 
 
@@ -703,6 +741,14 @@ async def _startup() -> None:
         _enrichment_task = asyncio.create_task(_enrichment_loop())
         logger.info("Enrichment worker started (every %ds)", settings.ENRICHMENT_INTERVAL_SECONDS)
 
+    if settings.DELIVERY_RETRY_ENABLED:
+        global _delivery_retry_task
+        _delivery_retry_task = asyncio.create_task(_delivery_retry_loop())
+        logger.info(
+            "Delivery retry worker started (every %ds)",
+            settings.DELIVERY_RETRY_INTERVAL_SECONDS,
+        )
+
     if settings.LISTINGS_SYNC_ENABLED:
         global _listings_sync_task
         _listings_sync_task = asyncio.create_task(_listings_sync_loop())
@@ -713,7 +759,7 @@ async def _startup() -> None:
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    for task in (_followups_task, _enrichment_task, _listings_sync_task):
+    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task):
         if task is not None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

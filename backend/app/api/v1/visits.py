@@ -141,6 +141,17 @@ async def _office_tz(db: AsyncSession) -> str:
     return (cfg.timezone if cfg and cfg.timezone else "UTC")
 
 
+
+async def _booking_contact(db: AsyncSession) -> str | None:
+    """The agency's booking contact, read on the session we already hold."""
+    from app.models.agent_settings import AgentSettings
+
+    found = (
+        await db.execute(select(AgentSettings.booking_contact_email))
+    ).scalars().first()
+    return (found or "").strip() or None
+
+
 async def _busy_starts(
     db: AsyncSession, *, since: datetime, until: datetime
 ) -> set[datetime]:
@@ -216,6 +227,7 @@ async def book_slot(
             start_time=body.start_time,
             attendee_name=attendee_name,
             attendee_email=attendee_email,
+            booking_contact=await _booking_contact(db),
             attendee_phone=attendee_phone,
             notes=body.notes,
             timezone_name=tz,

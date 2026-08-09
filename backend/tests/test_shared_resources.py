@@ -681,6 +681,20 @@ def test_the_settings_a_customer_fills_in_actually_reach_the_agent() -> None:
     assert not _office_is_open(
         datetime(2026, 8, 9, 12, 0, tzinfo=ZoneInfo("America/Denver")), None
     )
+    # An evening span that crosses midnight. Compared straight, the condition
+    # is unsatisfiable, so an agency open 22:00–02:00 had every single reply
+    # told the office was shut.
+    evening = {"open": "22:00", "close": "02:00"}
+    assert _office_is_open(
+        datetime(2026, 8, 10, 23, 30, tzinfo=ZoneInfo("America/Denver")), evening
+    )
+    assert _office_is_open(
+        datetime(2026, 8, 10, 1, 0, tzinfo=ZoneInfo("America/Denver")), evening
+    )
+    assert not _office_is_open(
+        datetime(2026, 8, 10, 12, 0, tzinfo=ZoneInfo("America/Denver")), evening
+    )
+
     # A malformed row must not turn every reply into an out-of-hours one.
     assert _office_is_open(
         datetime(2026, 8, 10, 23, 0, tzinfo=ZoneInfo("America/Denver")),
@@ -709,12 +723,19 @@ async def test_the_agent_offers_real_times_or_none_at_all(monkeypatch) -> None:
     async def _slots(**kwargs: object) -> list[object]:
         return [SimpleNamespace(start=when)]
 
-    with patch.object(conv, "_SCHEDULING_WORDS", conv._SCHEDULING_WORDS), patch(
-        "app.services.calendar_cal.list_available_slots", _slots
+    async def _no_busy(*a: object, **k: object) -> set[object]:
+        return set()
+
+    with patch("app.services.calendar_cal.list_available_slots", _slots), patch(
+        "app.api.v1.visits._busy_starts", _no_busy
     ):
         # Not asking about a time: no calendar call, nothing added.
-        assert await conv._real_slots_note(cfg, "how much is the condo?") == ""
-        note = await conv._real_slots_note(cfg, "can I see it this week?")
+        assert await conv._real_slots_note(cfg, "how much is the condo?", None) == ""
+        # And a word that only CONTAINS one: "necesita" holds "cita", which as a
+        # substring spent a calendar call on every routine Spanish message.
+        assert await conv._real_slots_note(cfg, "necesita algo mas?", None) == ""
+        assert await conv._real_slots_note(cfg, "vi esto en Facebook", None) == ""
+        note = await conv._real_slots_note(cfg, "can I book a viewing?", None)
     assert "10:00" in note, f"the office-local time is missing from {note!r}"
     assert "NUNCA inventes" in note
 
@@ -722,5 +743,7 @@ async def test_the_agent_offers_real_times_or_none_at_all(monkeypatch) -> None:
     async def _boom(**kwargs: object) -> list[object]:
         raise RuntimeError("cal.com is down")
 
-    with patch("app.services.calendar_cal.list_available_slots", _boom):
-        assert await conv._real_slots_note(cfg, "can I book a viewing?") == ""
+    with patch("app.services.calendar_cal.list_available_slots", _boom), patch(
+        "app.api.v1.visits._busy_starts", _no_busy
+    ):
+        assert await conv._real_slots_note(cfg, "can I book a viewing?", None) == ""

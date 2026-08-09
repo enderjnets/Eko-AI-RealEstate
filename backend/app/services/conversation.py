@@ -19,7 +19,9 @@ on partial failures):
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 from datetime import UTC, datetime, time
 from email.utils import parseaddr
 
@@ -41,6 +43,7 @@ from app.models import (
 )
 from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
+from app.services.delivery import schedule_retry
 from app.services.i18n import detect_language, language_instruction, pick_supported_language
 from app.services.llm import LLMResult, LLMUnavailable, generate_reply
 from app.services.scoring import rescore_lead
@@ -556,6 +559,14 @@ def _address_or_none(identifier: str | None) -> str | None:
 
 
 
+# Fixed, not `strftime("%A")`: that follows the container's locale, so an image
+# with LC_TIME=es_* produced "lunes" and matched nothing, silently disabling
+# every hours check.
+_WEEKDAYS = (
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+)
+
+
 def _office_hours_note(agent_cfg: AgentSettings) -> str:
     """Tell the model what time it is at the office, and whether anyone is in.
 
@@ -579,10 +590,10 @@ def _office_hours_note(agent_cfg: AgentSettings) -> str:
     hours = agent_cfg.business_hours if isinstance(agent_cfg.business_hours, dict) else {}
     if not hours:
         return note
-    today = hours.get(now.strftime("%A").lower())
+    today = hours.get(_WEEKDAYS[now.weekday()])
     if isinstance(today, dict) and today.get("open") and today.get("close"):
         note += f" HORARIO DE HOY: {today['open']}–{today['close']}."
-    elif today is None and now.strftime("%A").lower() in hours:
+    elif today is None and _WEEKDAYS[now.weekday()] in hours:
         note += " HOY LA OFICINA NO ABRE."
     else:
         return note
@@ -610,7 +621,12 @@ def _office_is_open(now: datetime, today: object) -> bool:
         closes = time.fromisoformat(str(today["close"]))
     except (KeyError, TypeError, ValueError):
         return True
-    return opens <= now.time() <= closes
+    if opens <= closes:
+        return opens <= now.time() <= closes
+    # An evening span that crosses midnight — 22:00–02:00. Compared straight,
+    # that condition is unsatisfiable, so an agency with evening hours had every
+    # reply told the office was shut.
+    return now.time() >= opens or now.time() <= closes
 
 
 def _greeting_note(agent_cfg: AgentSettings) -> str:
@@ -635,14 +651,29 @@ def _greeting_note(agent_cfg: AgentSettings) -> str:
 # spend one calendar call, and a missed match costs a generic answer rather
 # than a wrong one.
 _SCHEDULING_WORDS = (
-    "visit", "viewing", "tour", "see the", "see it", "appointment", "schedule",
-    "book", "available", "when can", "what time", "cita", "visita", "ver el",
-    "ver la", "verlo", "verla", "agendar", "disponible", "cuándo", "cuando pued",
-    "horario",
+    "visit", "visits", "viewing", "viewings", "tour", "appointment", "schedule",
+    "book", "booking", "available", "availability", "cita", "citas", "visita",
+    "visitar", "verlo", "verla", "agendar", "agenda", "disponible",
+    "disponibilidad", "horario", "horarios",
+)
+
+# Phrases are checked as-is; single words are checked on word boundaries. As
+# substrings they matched constantly — "cita" inside necesita, solicita and
+# felicita, "book" inside Facebook and bookkeeping, "tour" inside detour — so a
+# routine Spanish thread spent a calendar call per message.
+_SCHEDULING_PHRASES = ("see the", "see it", "when can", "what time", "cuando pued")
+
+_SCHEDULING_RE = re.compile(
+    r"\b(?:" + "|".join(_SCHEDULING_WORDS) + r")\b", re.IGNORECASE
 )
 
 
-async def _real_slots_note(agent_cfg: AgentSettings, message: str | None) -> str:
+_SLOTS_BUDGET_SECONDS = 4.0
+
+
+async def _real_slots_note(
+    agent_cfg: AgentSettings, message: str | None, db: AsyncSession
+) -> str:
     """The agency's actual next openings, when the lead is asking for a time.
 
     The chat agent has no tools wired, so it cannot query a calendar or make a
@@ -652,18 +683,37 @@ async def _real_slots_note(agent_cfg: AgentSettings, message: str | None) -> str
     Booking still happens from the dashboard or by phone.
     """
     text = (message or "").lower()
-    if not any(word in text for word in _SCHEDULING_WORDS):
+    if not _SCHEDULING_RE.search(text) and not any(
+        phrase in text for phrase in _SCHEDULING_PHRASES
+    ):
         return ""
     from datetime import timedelta
 
+    from app.api.v1.visits import _busy_starts
     from app.services.calendar_cal import list_available_slots
 
     now = datetime.now(UTC)
     try:
-        slots = await list_available_slots(
-            start=now,
-            end=now + timedelta(days=7),
-            timezone_name=agent_cfg.timezone or "UTC",
+        # The agency's own diary, not just Cal.com's: a visit entered by hand in
+        # the dashboard exists only in `visits`, and offering that hour sends a
+        # realtor to two houses.
+        busy = await _busy_starts(db, since=now, until=now + timedelta(days=7))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("could not read booked visits for the reply: %s", exc)
+        busy = set()
+    try:
+        # Hard budget. This runs inline in the webhook, ahead of a 30s LLM call,
+        # and Cal.com's own client waits 15s — enough on its own to push an SMS
+        # turn past Twilio's window and earn an 11200, or make Meta redeliver.
+        # Real openings are worth having; they are not worth the turn.
+        slots = await asyncio.wait_for(
+            list_available_slots(
+                start=now,
+                end=now + timedelta(days=7),
+                timezone_name=agent_cfg.timezone or "UTC",
+                busy_starts=busy,
+            ),
+            timeout=_SLOTS_BUDGET_SECONDS,
         )
     except Exception as exc:  # noqa: BLE001 — a calendar blip must not cost a reply
         log.warning("could not read availability for the reply: %s", exc)
@@ -686,7 +736,7 @@ async def _real_slots_note(agent_cfg: AgentSettings, message: str | None) -> str
     )
 
 
-def _fallback_reply(agent_cfg: AgentSettings | None) -> LLMResult:
+def _fallback_reply(agent_cfg: AgentSettings | None, target_lang: str) -> LLMResult:
     """What to say when every language model is unreachable.
 
     Deliberately not an apology for a technical fault the lead did not cause,
@@ -695,15 +745,24 @@ def _fallback_reply(agent_cfg: AgentSettings | None) -> LLMResult:
     11pm when the alternative is silence.
     """
     who = (agent_cfg.agency_name if agent_cfg else None) or "the team"
+    # In the language the lead wrote in. `target_lang` was in scope and unused,
+    # so a Spanish WhatsApp lead at 11pm got an English apology.
+    if (target_lang or "").lower().startswith("es"):
+        text = (
+            f"Gracias por tu mensaje — {who} lo ha recibido y alguien te "
+            "responderá en breve."
+        )
+    else:
+        text = (
+            f"Thanks for your message — {who} has received it and someone will "
+            "get back to you shortly."
+        )
     # An LLMResult, not a bare string: everything downstream reads `.text`,
     # `.provider` and `.model` off this, and `provider="fallback"` is what the
     # dashboard and the analytics need to see to tell a canned line apart from
     # something the model wrote.
     return LLMResult(
-        text=(
-            f"Thanks for your message — {who} has received it and someone will "
-            "get back to you shortly."
-        ),
+        text=text,
         provider="fallback",
         model="none",
         input_tokens=0,
@@ -895,7 +954,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     system_prompt += _office_hours_note(agent_cfg)
     if is_new_lead:
         system_prompt += _greeting_note(agent_cfg)
-    system_prompt += await _real_slots_note(agent_cfg, inbound.content)
+    system_prompt += await _real_slots_note(agent_cfg, inbound.content, db)
 
     # Phase 10: if the lead is property-shopping and we know the zone, give the
     # LLM the REAL matching listings so it can offer them (and never invent any).
@@ -936,7 +995,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         # never redelivers — silence here means a lead who wrote at 11pm gets
         # nothing at all and no one finds out until they have gone elsewhere.
         # A short human note costs nothing and keeps the conversation open.
-        reply = _fallback_reply(agent_cfg)
+        reply = _fallback_reply(agent_cfg, target_lang)
 
     # ── 9. Persist outbound (status=PENDING) ──────────────────────────
     reply_subject = None
@@ -1008,7 +1067,9 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
             outbound.delivery_status = MessageStatus.SENT
     except Exception as exc:  # noqa: BLE001
         log.error("Channel %s send failed for outbound msg %d: %s", parsed.channel, outbound.id, exc)
-        outbound.delivery_status = MessageStatus.FAILED
+        # Not just FAILED. A provider blip used to end the reply's life here:
+        # one POST, no retry, and no sweep looking for what was left behind.
+        schedule_retry(outbound, str(exc))
 
     await rescore_lead(lead, db, commit=False)
     await db.commit()

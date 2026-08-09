@@ -97,6 +97,10 @@ class Settings(BaseSettings):
     # got 14:00 UTC. Wrong by six or seven hours until someone opened Settings.
     DEFAULT_TIMEZONE: str = "America/Denver"
 
+    # A reply that hit a provider blip used to be stamped FAILED and forgotten.
+    DELIVERY_RETRY_ENABLED: bool = True
+    DELIVERY_RETRY_INTERVAL_SECONDS: int = 120
+
     CALCOM_BASE_URL: str = "https://api.cal.com"
     CALCOM_API_KEY: str = ""
     CALCOM_EVENT_TYPE_ID: str = ""

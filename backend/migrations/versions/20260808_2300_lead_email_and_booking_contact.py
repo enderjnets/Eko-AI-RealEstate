@@ -33,7 +33,18 @@ def upgrade() -> None:
     )
     # Backfill from what is already there: an email-channel lead's identifier
     # IS its address, and it has been sitting in `phone` all along.
+    #
+    # NO FORCE around it, the same way the earlier dedup migrations do. `leads`
+    # carries FORCE ROW LEVEL SECURITY, and alembic never sets
+    # `app.current_org_id`, so the policy evaluates against NULL and the UPDATE
+    # matches nothing — reporting success while doing exactly nothing. On this
+    # stack the owner happens to be a superuser and it worked by accident; on a
+    # managed Postgres, where it does not, the bug this migration exists to fix
+    # would have survived it, invisibly, in the only deployments with a real
+    # Cal.com key.
+    op.execute("ALTER TABLE leads NO FORCE ROW LEVEL SECURITY")
     op.execute("UPDATE leads SET email = phone WHERE phone LIKE '%@%'")
+    op.execute("ALTER TABLE leads FORCE ROW LEVEL SECURITY")
 
 
 def downgrade() -> None:
