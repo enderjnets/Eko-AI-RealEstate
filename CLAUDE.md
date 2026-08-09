@@ -229,14 +229,29 @@ agency, so its admins would have inherited it.
 
 | What | URL |
 |---|---|
+| **Dashboard — sign in here** | **https://inmo-demo.ekoaiautomation.com** |
 | Backend OpenAPI | http://10.0.0.240:8011/docs (or http://100.88.47.99:8011/docs via Tailscale) |
 | Backend health | http://10.0.0.240:8011/api/v1/health |
-| Frontend (landing placeholder) | http://10.0.0.240:3004 |
+| Frontend, direct on the LAN | http://10.0.0.240:3004 — works, but **Google sign-in cannot** |
 | Postgres | `localhost:5434` (bound only to 127.0.0.1 on the ROG; tunnel via Tailscale for remote) |
 | Redis | `localhost:6381` (same) |
 
-`inmo-demo.ekoaiautomation.com` is reserved for Phase 5 (Cloudflare tunnel
-ingress to be added when we go to first pilot).
+`inmo-demo.ekoaiautomation.com` is live: a Cloudflare tunnel on the ROG points
+it at this install.
+
+**Sign in on the domain, not on the IP.** The Google button builds its redirect
+from `window.location.origin`, so on the LAN address it asks Google for
+`http://10.0.0.240:3004/api/v1/auth/login/google/callback` and gets
+`Error 400: redirect_uri_mismatch`. Adding that URI to the Google console is
+not an option — Google rejects raw IP addresses as origins and redirect URIs on
+Web clients, accepting only `localhost` and public domains. The IP is fine for
+`curl`, for `/docs` and for the password login; it can never do Google, which
+is the only path that issues the `su` claim.
+
+**Getting in as the platform operator**: sign in with Google at the domain as an
+address listed in `PLATFORM_ADMIN_EMAILS`. The office password deliberately
+does not grant `su` (see `app/services/auth.py`), so it opens the dashboard but
+not `/api/v1/platform`.
 
 ## Phase status (post-USA-pivot 2026-05-25)
 

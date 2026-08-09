@@ -6,11 +6,14 @@ import { useRouter } from "next/navigation";
 import { Loader2, Lock, Mail, Zap } from "lucide-react";
 import { GoogleOAuthProvider, GoogleLogin, type CredentialResponse } from "@react-oauth/google";
 import { authApi } from "@/lib/api";
+import { googleCanSignInHere } from "@/lib/googleOrigin";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { AppleSignInButton } from "@/components/ui/AppleSignInButton";
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+// Where to send someone who opened the dashboard somewhere Google cannot work.
+const CANONICAL_URL = process.env.NEXT_PUBLIC_CANONICAL_URL || "";
 const APPLE_CLIENT_ID = process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || "";
 
 export default function LoginPage() {
@@ -26,6 +29,14 @@ export default function LoginPage() {
   const [demoEmail, setDemoEmail] = useState("");
   const [demoPw, setDemoPw] = useState("");
   const [demoLoading, setDemoLoading] = useState(false);
+
+  // Whether this origin can do Google at all. An install opened on its LAN
+  // address cannot: Google refuses raw IPs, so the button would only lead to
+  // "Access blocked: this app's request is invalid".
+  const [googleUsableHere, setGoogleUsableHere] = useState(true);
+  useEffect(() => {
+    setGoogleUsableHere(googleCanSignInHere());
+  }, []);
 
   useEffect(() => {
     authApi
@@ -153,7 +164,18 @@ export default function LoginPage() {
               <div className="flex-1 h-px bg-white/10" />
             </div>
             <div className="flex flex-col items-center gap-3">
+              {(googleEnabled || appleEnabled) && !googleUsableHere && (
+                // Configured, but unreachable from here. Say where to go
+                // instead of rendering a button whose only destination is a
+                // Google error page.
+                <p className="max-w-[280px] text-center text-[11px] leading-relaxed text-gray-500">
+                  {CANONICAL_URL
+                    ? t("auth.googleWrongOriginWithUrl").replace("{url}", CANONICAL_URL)
+                    : t("auth.googleWrongOrigin")}
+                </p>
+              )}
               {googleEnabled &&
+                googleUsableHere &&
                 (googleLoading ? (
                   <div className="flex items-center gap-2 text-xs text-gray-400">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -171,7 +193,7 @@ export default function LoginPage() {
                     width="280"
                   />
                 ))}
-              {appleEnabled && (
+              {appleEnabled && googleUsableHere && (
                 <AppleSignInButton onError={(key) => setError(key ? t(key) : null)} />
               )}
             </div>
