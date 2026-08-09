@@ -220,6 +220,7 @@ async def resolve_outbound_identity(
             routed.destination,
         )
 
+    credential = _resolve(routed.credential_ref, None)
     return ChannelIdentity(
         org_id=org_id,
         channel=channel,
@@ -232,8 +233,17 @@ async def resolve_outbound_identity(
         # becomes None and the send guard refuses. Neither borrows the
         # operator's.
         provider_account=_resolve(routed.provider_account_ref, None),
-        credential=_resolve(routed.credential_ref, None),
-        inbound_secret=_resolve(routed.inbound_secret_ref, None),
+        credential=credential,
+        # Twilio signs inbound with the same auth token used to send, so a route
+        # that names `credential_ref` and leaves `inbound_secret_ref` NULL is the
+        # natural onboarding shape — and it silently 403'd every inbound message
+        # for that agency as error 11200, which `_validate_refs` cannot detect.
+        # Their own token, never the operator's: this only reuses what the same
+        # row already named.
+        inbound_secret=(
+            _resolve(routed.inbound_secret_ref, None)
+            or (credential if channel == CHANNEL_SMS else None)
+        ),
         verify_token=_resolve(routed.verify_token_ref, None),
         sender_override=routed.sender_override,
         webhook_url=routed.webhook_url,

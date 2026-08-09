@@ -20,6 +20,7 @@ def _fake_settings(**over):
         AUTH_SECRET="unit-test-secret",
         AUTH_TTL_HOURS=168,
         is_production=False,
+        REGISTRATION_ENABLED=True,
         # Google Sign In (defaults: feature configured, no env allow-list).
         GOOGLE_CLIENT_ID="test-client-id.apps.googleusercontent.com",
         GOOGLE_ALLOWED_DOMAIN="",

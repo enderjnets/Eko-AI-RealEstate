@@ -608,8 +608,21 @@ def test_addresses_are_stripped_of_display_names_before_matching() -> None:
 
     assert _address_only("Agency B <leads@agency-b.test>") == "leads@agency-b.test"
     assert _address_only("  leads@agency-b.test ") == "leads@agency-b.test"
-    # A name containing angle brackets must not confuse the last-bracket rule.
-    assert _address_only("A <b> C <real@x.test>") == "real@x.test"
+    # A display name containing angle brackets, quoted as RFC 5322 requires.
+    assert _address_only('"A <b>" <real@x.test>') == "real@x.test"
+    # And a header too malformed to parse yields nothing usable, so it matches
+    # no route and the message is refused rather than attributed to a guess.
+    assert _address_only("A <b> C <real@x.test>") == "A <b> C <real@x.test>"
+
+    # The case that matters: one header naming two agencies must produce BOTH,
+    # so the resolver sees the ambiguity. Taking the last angle-bracket pair
+    # returned one address, the two lookups agreed on it, and the "two agencies
+    # were addressed" refusal never fired.
+    assert _mailboxes(
+        {"data": {"to": "Agency A <a@agency-a.test>, Agency B <b@agency-b.test>"}}
+    ) == ["a@agency-a.test", "b@agency-b.test"]
+    # A comma inside a quoted display name is not a separator.
+    assert _mailboxes({"data": {"to": '"Smith, John" <j@x.test>'}}) == ["j@x.test"]
 
     # Dict entries, the shape Resend actually delivers.
     assert _mailboxes({"data": {"to": [{"email": "Leads@Agency-B.test"}]}}) == [
@@ -849,5 +862,44 @@ async def test_choosing_a_secret_never_short_circuits_the_handlers_refusal() -> 
         # The operator's secret, so a forged payload simply fails the signature
         # check with a plain 403 and a genuine one reaches the 200 refusal.
         assert identity.org_id is None
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_header_naming_two_agencies_is_refused_end_to_end() -> None:
+    """The string form of the CC case, through the resolver.
+
+    Both the secret lookup and the attribution read the same header, so
+    collapsing it to one address made them agree — and agreeing is exactly what
+    silences the ambiguity refusal.
+    """
+    from app.api.v1.webhooks.email import _mailboxes
+    from app.models.channel_route import CHANNEL_EMAIL
+
+    org_a, org_b = await _seed_two_agencies()
+    try:
+        async with get_bypass_session_factory()() as db:
+            for org_id, mailbox in (
+                (org_a, "leads@str-a.test"),
+                (org_b, "leads@str-b.test"),
+            ):
+                await db.execute(
+                    text(
+                        "INSERT INTO channel_routes (org_id, channel, destination) "
+                        "VALUES (:o, :c, :d)"
+                    ),
+                    {"o": org_id, "c": CHANNEL_EMAIL, "d": mailbox},
+                )
+            await db.commit()
+        tenant_resolver.reset_cache()
+
+        joined = {
+            "data": {"to": "Agency A <leads@str-a.test>, Agency B <leads@str-b.test>"}
+        }
+        with pytest.raises(tenant_resolver.WebhookOrgUnresolved):
+            await tenant_resolver.webhook_org_or_refuse(
+                CHANNEL_EMAIL, _mailboxes(joined)
+            )
     finally:
         await _cleanup()

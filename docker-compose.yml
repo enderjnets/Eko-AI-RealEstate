@@ -133,6 +133,9 @@ services:
       # correct default — the shared DASHBOARD_PASSWORD is the agency's own
       # password and deliberately cannot grant it.
       PLATFORM_ADMIN_EMAILS: ${PLATFORM_ADMIN_EMAILS:-}
+      # Public signup into the demo org. The flag was advertised in /auth/me
+      # and read nowhere, so it could not turn signup off.
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
       # Sign in with Apple — APPLE_CLIENT_ID is the Services ID, also the token
       # `aud` the backend validates. Shares the same allow-list as Google.
       APPLE_CLIENT_ID: ${APPLE_CLIENT_ID:-}

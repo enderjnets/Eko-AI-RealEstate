@@ -121,7 +121,74 @@ async def fetch_inbound_email(email_id: str) -> dict[str, Any] | None:
             headers={"Authorization": f"Bearer {identity.credential}"},
         )
         resp.raise_for_status()
-        return resp.json()
+        detail = resp.json()
+
+    # The id came from the request body, and on the shared Resend account the
+    # key can read every agency's mail. So an agency that legitimately knows the
+    # shared webhook secret could sign a message naming its own mailbox — which
+    # resolves the org to itself — while pointing `data.id` at another agency's
+    # message, and the body would be fetched and stored inside theirs. Confirm
+    # what came back was actually addressed to this organization.
+    if not await _addressed_to_acting_org(detail):
+        log.error(
+            "refusing inbound email %s: the fetched message is not addressed to "
+            "the organization the webhook resolved to",
+            email_id,
+        )
+        return None
+    return detail
+
+
+async def _addressed_to_acting_org(detail: dict[str, Any] | None) -> bool:
+    """Whether a fetched message names a destination the acting org owns.
+
+    Only meaningful when the org has its own routes; an agency on the shared
+    account and the shared mailbox has nothing to distinguish it, and for a
+    single-customer install every message is theirs by definition.
+    """
+    if not isinstance(detail, dict):
+        return False
+
+    from app.api.v1.webhooks.email import _mailboxes
+    from app.services.tenant_context import get_org_id
+    from app.services.tenant_resolver import resolve_org_by_destination
+
+    org_id = get_org_id()
+    if org_id is None:
+        return True
+
+    addresses = _mailboxes({"data": detail})
+    if not addresses:
+        return True
+    try:
+        owner = await resolve_org_by_destination(CHANNEL_EMAIL, addresses)
+    except Exception:  # noqa: BLE001 — ambiguity here is a refusal, not a crash
+        return False
+    if owner is None:
+        # No route claims any of these addresses, so nobody can be impersonated
+        # through them: the shared mailbox belongs to whoever the single-tenant
+        # fallback already chose.
+        return not await _org_owns_any_email_route(org_id)
+    return owner == org_id
+
+
+async def _org_owns_any_email_route(org_id: int) -> bool:
+    from sqlalchemy import select
+
+    from app.db.base import get_bypass_session_factory
+    from app.models.channel_route import ChannelRoute
+
+    async with get_bypass_session_factory()() as db:
+        return (
+            await db.execute(
+                select(ChannelRoute.id)
+                .where(
+                    ChannelRoute.channel == CHANNEL_EMAIL,
+                    ChannelRoute.org_id == org_id,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none() is not None
 
 
 def _strip_quoted_reply(text: str) -> str:

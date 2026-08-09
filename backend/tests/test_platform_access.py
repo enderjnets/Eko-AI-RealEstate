@@ -39,6 +39,7 @@ def _fake_settings(**overrides) -> SimpleNamespace:
         google_allowed_emails_list=[],
         platform_admin_emails_list=[],
         is_production=False,
+        REGISTRATION_ENABLED=True,
     )
     base.update(overrides)
     return SimpleNamespace(**base)

@@ -204,6 +204,11 @@ class Settings(BaseSettings):
     # you to set the password to a random string nobody knows) could never
     # onboard a second agency at all. It also gives impersonation a named actor
     # to record instead of "whoever had the office password".
+    # Public self-registration into the demo organization. Advertised in
+    # /auth/me since it shipped, and read nowhere — so the flag the frontend
+    # renders a signup form from could never actually turn signup off.
+    REGISTRATION_ENABLED: bool = True
+
     PLATFORM_ADMIN_EMAILS: str = ""  # comma-separated; empty = password-only
 
     @property

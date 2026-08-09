@@ -7,6 +7,7 @@ that is exactly the bug being fixed.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -132,7 +133,7 @@ async def test_sms_sends_on_the_acting_agencys_account(monkeypatch) -> None:
     try:
         from app.services.sms import send_sms
 
-        with patch("app.services.sms.httpx.AsyncClient", lambda **_kw: captured), \
+        with patch("app.services.sms.httpx", SimpleNamespace(AsyncClient=lambda **_kw: captured)), \
              org_scope(AGENCY_B):
             await send_sms(to="+13035550001", body="hello")
 
@@ -151,7 +152,7 @@ async def test_whatsapp_sends_from_the_agencys_own_line(monkeypatch) -> None:
     try:
         from app.services.whatsapp import send_text_message
 
-        with patch("app.services.whatsapp.httpx.AsyncClient", lambda **_kw: captured), \
+        with patch("app.services.whatsapp.httpx", SimpleNamespace(AsyncClient=lambda **_kw: captured)), \
              org_scope(AGENCY_B):
             await send_text_message("+13035550001", "hello")
 
@@ -169,7 +170,7 @@ async def test_email_sends_from_the_agencys_own_mailbox(monkeypatch) -> None:
     try:
         from app.services.email import send_email
 
-        with patch("app.services.email.httpx.AsyncClient", lambda **_kw: captured), \
+        with patch("app.services.email.httpx", SimpleNamespace(AsyncClient=lambda **_kw: captured)), \
              org_scope(AGENCY_B):
             await send_email(to="buyer@gmail.test", subject="Re: Wash Park", body_text="hi")
 
@@ -197,7 +198,7 @@ async def test_the_default_organization_still_sends_on_the_env_account(
     from app.models.organization import DEFAULT_ORG_ID
     from app.services.sms import send_sms
 
-    with patch("app.services.sms.httpx.AsyncClient", lambda **_kw: captured), \
+    with patch("app.services.sms.httpx", SimpleNamespace(AsyncClient=lambda **_kw: captured)), \
          org_scope(DEFAULT_ORG_ID):
         await send_sms(to="+13035550001", body="hello")
 
@@ -229,7 +230,7 @@ async def test_the_reply_leaves_from_the_number_the_lead_wrote_to(monkeypatch) -
         org_id = await tenant_resolver.webhook_org_or_refuse(CHANNEL_SMS, inbound_to)
         assert org_id == AGENCY_B
 
-        with patch("app.services.sms.httpx.AsyncClient", lambda **_kw: captured), \
+        with patch("app.services.sms.httpx", SimpleNamespace(AsyncClient=lambda **_kw: captured)), \
              org_scope(org_id):
             await send_sms(to="+13035550001", body="hello back")
 

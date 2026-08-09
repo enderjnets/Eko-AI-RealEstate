@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+from email.utils import getaddresses
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -160,21 +161,36 @@ def _mailboxes(payload: dict) -> list[str]:
     found: list[str] = []
     for candidate in (data.get("to"), data.get("cc"), data.get("recipient")):
         if isinstance(candidate, str) and candidate.strip():
-            found.append(_address_only(candidate))
+            found.extend(_addresses_in(candidate))
         elif isinstance(candidate, list):
             for item in candidate:
                 addr = item.get("email") if isinstance(item, dict) else item
                 if isinstance(addr, str) and addr.strip():
-                    found.append(_address_only(addr))
+                    found.extend(_addresses_in(addr))
     return found
 
 
-def _address_only(value: str) -> str:
-    """Strip a display name: `Agency A <a@x.com>` -> `a@x.com`.
+def _addresses_in(value: str) -> list[str]:
+    """Every address in a header value, display names stripped.
 
-    Senders and providers both add these, and a lookup that kept the name never
-    matched a stored route — turning a routable message into a refusal.
+    One header string may name several recipients:
+    `Agency A <a@x.com>, Agency B <b@y.com>`. The previous version took the
+    *last* angle-bracket pair and returned a single address, so a mail
+    addressed to two agencies collapsed to whichever came last — and the secret
+    lookup and the attribution then agreed on that one, so the "two agencies
+    were addressed, refuse" rule never fired and the other agency's lead,
+    transcript and reply were written into theirs. The same defect that was
+    fixed for the list form, still live in the string form.
+
+    `getaddresses` is the standard library's RFC 5322 parser, so a comma inside
+    a quoted display name does not split the header.
     """
-    if "<" in value and ">" in value:
-        return value[value.rindex("<") + 1 : value.rindex(">")].strip()
-    return value.strip()
+    return [
+        addr.strip() for _name, addr in getaddresses([value]) if addr and addr.strip()
+    ]
+
+
+def _address_only(value: str) -> str:
+    """One address, display name stripped. For genuinely single-valued fields."""
+    parsed = _addresses_in(value)
+    return parsed[0] if parsed else value.strip()

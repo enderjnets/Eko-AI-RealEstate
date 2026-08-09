@@ -351,6 +351,12 @@ async def register(
     in (sets the session cookie) so they land straight in the dashboard. These
     accounts can browse everything but cannot mutate anything (enforced server-side
     in require_auth)."""
+    if not get_settings().REGISTRATION_ENABLED:
+        # The flag was advertised in /auth/me from the day it shipped and
+        # read nowhere else, so the switch the frontend renders its signup
+        # form from could never actually turn signup off.
+        raise HTTPException(status_code=403, detail="registration_disabled")
+
     from app.models import Account
 
     email = body.email.strip().lower()
@@ -445,6 +451,7 @@ async def me(request: Request) -> MeOut:
             role=ROLE_ADMIN,
             google_signin_enabled=google_enabled,
             apple_signin_enabled=apple_enabled,
+            registration_enabled=s.REGISTRATION_ENABLED,
         )
     authed = verify_token(_token_from_request(request))
     return MeOut(
@@ -453,6 +460,7 @@ async def me(request: Request) -> MeOut:
         role=current_role(request) if authed else ROLE_MEMBER,
         google_signin_enabled=google_enabled,
         apple_signin_enabled=apple_enabled,
+        registration_enabled=s.REGISTRATION_ENABLED,
     )
 
 

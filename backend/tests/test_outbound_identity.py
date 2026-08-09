@@ -508,3 +508,28 @@ async def test_a_destination_the_agency_does_not_own_yields_the_global_identity(
         assert foreign.destination != theirs.destination
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_sms_route_verifies_with_the_token_it_already_names(
+    monkeypatch,
+) -> None:
+    """Twilio signs inbound with the same auth token used to send.
+
+    So a route naming `credential_ref` and leaving `inbound_secret_ref` NULL is
+    the natural onboarding shape — and it silently 403'd every inbound message
+    for that agency as Twilio error 11200, which `_validate_refs` cannot detect
+    because both fields are individually valid. It reuses what the same row
+    already names, never the operator's.
+    """
+    from app.config import get_settings
+
+    monkeypatch.setenv("TWILIO_TOKEN_ONLY", "their-own-token")
+    monkeypatch.setattr(get_settings(), "TWILIO_AUTH_TOKEN", "the-operators-token")
+    await _seed_agency_b(credential_ref="TWILIO_TOKEN_ONLY")
+    try:
+        identity = await resolve_inbound_secret(CHANNEL_SMS, B_NUMBER)
+        assert identity.inbound_secret == "their-own-token"
+        assert identity.inbound_secret != "the-operators-token"
+    finally:
+        await _cleanup()
