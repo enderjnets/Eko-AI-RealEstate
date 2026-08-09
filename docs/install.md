@@ -136,7 +136,7 @@ first, so check all three before you begin:
 |---|---|
 | `AUTH_SECRET` | Required once `AUTH_ENABLED=true`, minimum 32 characters. It used to fall back to a value derived from `DASHBOARD_PASSWORD` — which the office shares — and that key signs both the organization and the platform-operator claim. `openssl rand -hex 32` |
 | `PLATFORM_ADMIN_EMAILS` | The only source of platform access. Without it nobody can create an agency or reach Settings → Registrations, and the shared password deliberately cannot grant it. |
-| `APP_DB_PASSWORD` | Must match the password inside `DATABASE_URL_APP`. The migration creates the RLS role inside the backend container and reads it there; left at the default, the role that guards every tenant boundary keeps the password published in this repository. |
+| `APP_DB_PASSWORD` | Must match the password inside `DATABASE_URL_APP`. The migration creates the RLS role inside the backend container and reads it there. There is no longer a default: compose refuses to start without both, because the default that used to be there was the password of the role that guards every tenant boundary, committed to this repository. An install upgrading from before this change must put both in `.env` before the next `docker compose up`, or it will refuse — deliberately, and with the variable named in the error. |
 
 **Rotating the RLS role's password.** Migration 015 creates that role with
 `CREATE ROLE IF NOT EXISTS`, so on a database that has already run it, setting
