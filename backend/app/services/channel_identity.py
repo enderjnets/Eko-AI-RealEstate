@@ -302,33 +302,8 @@ def _global_identity(channel: str, *, org_id: int | None) -> ChannelIdentity:
         )
     return ChannelIdentity(org_id=org_id, channel=channel)
 
-
-
-async def _has_own_credential(channel: str, org_id: int) -> bool:
-    """Whether this organization's row on this channel names its own credential."""
-    from sqlalchemy import func, select
-
-    from app.db.base import get_bypass_session_factory
-    from app.models.channel_route import ChannelRoute
-
-    async with get_bypass_session_factory()() as db:
-        return bool(
-            (
-                await db.execute(
-                    select(func.count())
-                    .select_from(ChannelRoute)
-                    .where(
-                        ChannelRoute.channel == channel,
-                        ChannelRoute.org_id == org_id,
-                        ChannelRoute.credential_ref.is_not(None),
-                    )
-                )
-            ).scalar()
-        )
-
-
 async def resolve_calendar_identity() -> ChannelIdentity:
-    """The calendar this organization books on, refusing the shared one.
+    """The calendar this organization books on, never the operator's.
 
     Every other channel may legitimately fall back to the operator's account —
     an extra Twilio number on their subaccount is a real arrangement. A
@@ -336,34 +311,38 @@ async def resolve_calendar_identity() -> ChannelIdentity:
     as an attendee, so falling back puts one agency's client in front of
     another's realtors and lets their bookings blank out each other's slots.
 
-    The fallback stays for a single-customer install, which has nobody to
-    collide with, and for the default organization, whose calendar the global
-    configuration describes.
+    Four rounds of audit went into stating the condition. Each earlier attempt
+    was a proxy that something legal could satisfy: "has a credential" (the
+    global one is a credential), "has a calendar row" (a row may carry only an
+    event type), "names a credential_ref" (it may name the operator's own
+    variable, or a copy of their key). The only question that means what it
+    says is whether the credential in hand is the operator's.
+
+    The default organization is what the global configuration describes, so it
+    keeps using it. Any organization beyond it must bring its own — deliberately
+    not conditioned on how many agencies are active, because that count is
+    cached and a stale answer would fail open, which is how the last attempt
+    broke.
     """
     from app.models.organization import DEFAULT_ORG_ID
-    from app.services.tenant_resolver import active_orgs, routable_candidates
 
     identity = await resolve_outbound_identity(CHANNEL_CALENDAR)
     org_id = get_org_id()
     if org_id is None or org_id == DEFAULT_ORG_ID:
         return identity
-    # Cheap, cached check first: a single-customer install has nobody to
-    # collide with, and this runs on every availability request, booking and
-    # cancellation.
-    if len(routable_candidates(await active_orgs())) < 2:
+    if identity.credential is None:
+        # Already fail-closed: the caller turns this into "calendar not
+        # configured" rather than booking anywhere.
         return identity
-    # Then the real question. Not `is_own_account` — that only asks whether a
-    # credential was found, and the global fallback supplies one. Not "has a
-    # calendar row" either: a row carrying only an event type id is a legal
-    # onboarding shape, and `resolve_outbound_identity` fills its credential
-    # from the operator's key, so the booking still lands on the operator's
-    # calendar. What matters is that the credential came from THIS agency.
-    if await _has_own_credential(CHANNEL_CALENDAR, org_id):
+
+    shared = _global_identity(CHANNEL_CALENDAR, org_id=None)
+    if identity.credential != shared.credential:
         return identity
     raise MissingChannelCredential(
-        f"organization {org_id} has no calendar of its own, and there is more "
-        "than one agency — booking would put this lead's name, email and phone "
-        "on the operator's calendar. Add a `calendar` channel route."
+        f"organization {org_id} resolves to the operator's own Cal.com "
+        "credential, so booking would put this lead's name, email and phone on "
+        "a calendar another agency can read. Give this agency a `calendar` "
+        "channel route whose credential_ref names its own API key."
     )
 
 

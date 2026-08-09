@@ -283,7 +283,9 @@ async def test_cancelling_survives_a_calendar_that_is_not_configured() -> None:
 
     with patch.object(visits_mod, "cancel_booking", _boom):
         with pytest.raises(HTTPException) as caught:
-            await visits_mod.cancel_visit(visit_id=1, body=None, db=_Db())
+            await visits_mod.cancel_visit(
+                visit_id=1, body=None, local_only=False, db=_Db()
+            )
     assert caught.value.status_code == 503
     assert visit.status is VisitStatus.SCHEDULED, (
         "the visit was left cancelled locally while the booking still stands"
@@ -310,3 +312,205 @@ def test_startup_refuses_only_when_isolation_is_actually_missing() -> None:
     # agency" and silenced this, which is exactly what an unreadable count
     # means: the bypass session came back empty because it is not bypassing.
     assert _must_refuse_to_serve(True, [], False)
+
+
+@pytest.mark.asyncio
+async def test_a_route_naming_the_operators_own_key_is_not_a_calendar_of_ones_own(
+    monkeypatch,
+) -> None:
+    """Fourth attempt at one condition, and the first that says it.
+
+    Every earlier guard was a proxy something legal could satisfy. This is the
+    one that survived: an agency whose `credential_ref` points at a variable
+    holding the operator's key — the documented global one, or a copy under
+    another name — resolves to the operator's calendar, and the guard has to
+    notice that whatever the route looks like.
+    """
+    from app.config import get_settings
+    from app.services.channel_identity import (
+        MissingChannelCredential,
+        resolve_calendar_identity,
+    )
+
+    monkeypatch.setattr(get_settings(), "CALCOM_API_KEY", "the-operators-cal-key")
+    monkeypatch.setattr(get_settings(), "CALCOM_EVENT_TYPE_ID", 11)
+    # A copy of the operator's key under an agency-looking name. The route is
+    # well-formed, the ref is unique to this agency, the variable is set.
+    monkeypatch.setenv("CALCOM_KEY_ACME", "the-operators-cal-key")
+    await _make_agency(credential_ref="CALCOM_KEY_ACME", _dest="42")
+    try:
+        with org_scope(AGENCY), pytest.raises(MissingChannelCredential):
+            await resolve_calendar_identity()
+
+        # And a genuinely different key is accepted.
+        monkeypatch.setenv("CALCOM_KEY_ACME", "acmes-own-cal-key")
+        with org_scope(AGENCY):
+            theirs = await resolve_calendar_identity()
+        assert theirs.credential == "acmes-own-cal-key"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_second_agency_is_refused_even_while_it_looks_like_the_only_one(
+    monkeypatch,
+) -> None:
+    """The previous guard asked how many agencies were active first, and that
+    count is cached for fifteen seconds. A stale answer meant "one customer,
+    fall back" — booking on the operator's calendar rather than refusing. The
+    count is gone from this path: anything past the default organization brings
+    its own calendar, cache or no cache."""
+    from app.config import get_settings
+    from app.services import tenant_resolver
+    from app.services.channel_identity import (
+        MissingChannelCredential,
+        resolve_calendar_identity,
+    )
+
+    monkeypatch.setattr(get_settings(), "CALCOM_API_KEY", "the-operators-cal-key")
+    monkeypatch.setattr(get_settings(), "CALCOM_EVENT_TYPE_ID", 11)
+    await _make_agency()
+    # A cache that has not yet seen the new agency, exactly as it looks in
+    # the fifteen seconds after onboarding.
+    tenant_resolver._cache = (1e18, {DEFAULT_ORG_ID: "active"})
+    try:
+        with org_scope(AGENCY), pytest.raises(MissingChannelCredential):
+            await resolve_calendar_identity()
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_visit_is_never_stuck_uncancellable() -> None:
+    """`cancel` is the only route that changes a visit's status, and round 21
+    made it 503 whenever the calendar is unreachable. An org whose credential
+    variable was rotated out of `.env` then had visits that could not be
+    cancelled from anywhere, while the follow-up worker kept sending reminders
+    for them."""
+    import app.api.v1.visits as visits_mod
+    from app.models.visit import VisitStatus
+    from app.services.calendar_cal import CalComError
+
+    async def _boom(*a: object, **k: object) -> bool:
+        raise CalComError("no calendar for this organization")
+
+    visit = SimpleNamespace(
+        id=1,
+        status=VisitStatus.SCHEDULED,
+        calendar_provider="calcom",
+        external_booking_id="cal-1",
+        notes=None,
+    )
+
+    class _Result:
+        def scalar_one_or_none(self) -> object:
+            return visit
+
+    class _Db:
+        committed = False
+
+        async def execute(self, *a: object, **k: object) -> _Result:
+            return _Result()
+
+        async def commit(self) -> None:
+            self.committed = True
+
+        async def refresh(self, *a: object, **k: object) -> None:
+            return None
+
+    db = _Db()
+    with patch.object(visits_mod, "cancel_booking", _boom), patch.object(
+        visits_mod.VisitOut, "model_validate", staticmethod(lambda v: v)
+    ):
+        await visits_mod.cancel_visit(
+            visit_id=1, body=None, local_only=True, db=db
+        )
+    assert visit.status is VisitStatus.CANCELLED
+    assert db.committed
+    assert "check the calendar" in (visit.notes or ""), (
+        "cancelled locally without recording that the booking may still stand"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_first_boot_is_not_mistaken_for_a_broken_one() -> None:
+    """The refusal added last round would have bricked every new install.
+
+    Migrations run *after* the container starts, so on a first boot the
+    organizations table does not exist yet, the count is unreadable, and a
+    refusal crash-loops the container — which means the migration that creates
+    the RLS role can never run and the documented install has no way out. The
+    same unreadable count after migrations is the real symptom, so the two have
+    to be told apart.
+    """
+    import contextlib
+
+    import app.main as main_mod
+
+    # Against the real database, where the table exists: not a first boot.
+    assert await main_mod._schema_is_empty() is False
+
+    class _Conn:
+        async def execute(self, *a: object, **k: object) -> object:
+            return SimpleNamespace(scalar=lambda: None)  # to_regclass → NULL
+
+    class _Engine:
+        @contextlib.asynccontextmanager
+        async def _c(self):  # noqa: ANN202
+            yield _Conn()
+
+        def connect(self):  # noqa: ANN201
+            return self._c()
+
+    import app.db.base as base_mod
+
+    with patch.object(base_mod, "get_bypass_engine", lambda: _Engine()):
+        assert await main_mod._schema_is_empty() is True, (
+            "a pre-migration boot reads as a broken one and crash-loops"
+        )
+
+
+@pytest.mark.asyncio
+async def test_the_app_boots_against_a_database_with_no_schema_yet() -> None:
+    """The end-to-end version of the previous test, against a real empty
+    database. `docker compose up` starts the container and only then runs
+    `alembic upgrade`, so this is literally the first boot of every new
+    install. It must not raise."""
+    import os
+
+    from app.db.base import dispose_engine
+    from app.main import _schema_is_empty, _startup_isolation_state
+
+    empty = "postgresql+asyncpg://eko:eko_local_pass@localhost:5434/eko_firstboot"
+    previous = {
+        k: os.environ.get(k)
+        for k in ("DATABASE_URL", "DATABASE_URL_APP", "DATABASE_URL_BYPASS")
+    }
+    await dispose_engine()
+    try:
+        for key in previous:
+            os.environ[key] = empty
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+        assert await _schema_is_empty() is True
+        rls_off, real_orgs, known = await _startup_isolation_state()
+        # The owner role IS a superuser, so RLS is genuinely not enforced here —
+        # which is exactly the state that must NOT refuse before migrations.
+        assert rls_off is True
+        assert known is True and real_orgs == []
+        from app.main import _must_refuse_to_serve
+
+        assert not _must_refuse_to_serve(rls_off, real_orgs, known), (
+            "a brand-new install crash-loops before its migrations can run"
+        )
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+        await dispose_engine()

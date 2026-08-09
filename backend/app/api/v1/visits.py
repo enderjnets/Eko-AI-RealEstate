@@ -265,6 +265,14 @@ async def list_visits_for_lead(
 async def cancel_visit(
     visit_id: int,
     body: CancelIn | None = None,
+    local_only: bool = Query(
+        default=False,
+        description=(
+            "Cancel in Eko without calling the calendar. For a booking already "
+            "cancelled in Cal.com, or a calendar that is misconfigured — "
+            "otherwise the visit can never be cancelled from anywhere."
+        ),
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> VisitOut:
     visit = (await db.execute(select(Visit).where(Visit.id == visit_id))).scalar_one_or_none()
@@ -275,7 +283,7 @@ async def cancel_visit(
 
     reason = (body.reason if body else None) or "Cancelled from dashboard"
     # Manual events aren't on Cal.com — skip the provider call for them.
-    if visit.calendar_provider != "manual":
+    if visit.calendar_provider != "manual" and not local_only:
         try:
             ok = await cancel_booking(visit.external_booking_id, reason=reason)
         except CalComError as exc:
@@ -285,11 +293,28 @@ async def cancel_visit(
             # 503, and the visit stays as it was, so a retry is meaningful.
             log.warning("cancel refused, calendar unavailable: %s", exc)
             raise HTTPException(
-                status_code=503, detail="Calendar unavailable; visit not cancelled"
+                status_code=503,
+                detail=(
+                    "Calendar unavailable; visit not cancelled. Retry, or use "
+                    "?local_only=true to cancel in Eko alone."
+                ),
             ) from exc
         if not ok:
-            raise HTTPException(status_code=503, detail="Cal.com cancellation failed")
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Cal.com cancellation failed. Retry, or use "
+                    "?local_only=true if it is already cancelled there."
+                ),
+            )
     visit.status = VisitStatus.CANCELLED
+    if local_only:
+        # Recorded, because the two states now differ: this visit is cancelled
+        # here and may still stand on the calendar.
+        reason = f"{reason} (cancelled in Eko only; check the calendar)"
+        log.warning(
+            "visit %s cancelled locally without calling the calendar", visit.id
+        )
     if reason and not visit.notes:
         visit.notes = f"Cancelled: {reason}"
     await db.commit()

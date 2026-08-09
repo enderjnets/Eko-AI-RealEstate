@@ -457,7 +457,12 @@ def _viewer_is_operator(request: Request) -> bool:
     # `su` and the email list showed the button to an operator signed in as a
     # member, or holding a token minted before organizations existed — a 403
     # on a control that had just been made visible to fix a 403.
-    if payload.get("role", ROLE_ADMIN) != ROLE_ADMIN or payload.get("org") is None:
+    # Via the same readers the real gate uses. Reading `org` straight off the
+    # payload was stricter than `token_org_id`, which maps a missing claim to
+    # the default organization — so a `su` token minted before organizations
+    # existed was refused the button while the API accepted it. The inverse of
+    # the bug this function was added to fix.
+    if token_role(token) != ROLE_ADMIN or token_org_id(token) is None:
         return False
     return _is_platform_operator(payload.get("email"))
 

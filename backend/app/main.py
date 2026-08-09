@@ -389,37 +389,42 @@ async def _seed_admin_users() -> None:
                 )
 
 
-def _must_refuse_to_serve(
-    rls_is_off: bool, real_orgs: list[int], org_count_known: bool
-) -> bool:
-    """Whether starting up would put agencies inside each other's data.
 
-    A function, not an inline condition, so it can be tested without standing
-    up a second database. Two ways to get here: RLS is off and more than one
-    agency is active, or RLS is off and we could not find out how many there
-    are — which is itself a symptom, since the count is read on the session
-    that is supposed to bypass RLS.
+async def _schema_is_empty() -> bool:
+    """Whether `organizations` does not exist — i.e. migrations have not run.
+
+    The distinction matters because an unreadable org count means two opposite
+    things. Before migrations it means the install is new and there is nothing
+    to isolate. Afterwards it means the session that is supposed to bypass RLS
+    came back empty, which is the failure the checks exist for.
     """
-    if not rls_is_off:
-        return False
-    return len(real_orgs) > 1 or not org_count_known
-
-
-@app.on_event("startup")
-async def _startup() -> None:
-    logger.info(
-        "Eko AI Realtors %s starting · env=%s · LLM primary=%s fallback=%s",
-        settings.APP_VERSION, settings.APP_ENV, settings.LLM_PRIMARY, settings.LLM_FALLBACK,
-    )
     try:
-        await _seed_admin_users()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Bootstrap admin seed skipped: %s", exc)
+        from sqlalchemy import text
+
+        from app.db.base import get_bypass_engine
+
+        async with get_bypass_engine().connect() as conn:
+            found = (
+                await conn.execute(text("SELECT to_regclass('public.organizations')"))
+            ).scalar()
+        return found is None
+    except Exception:  # noqa: BLE001 — cannot prove it is new, so assume it is not
+        return False
+
+
+
+async def _startup_isolation_state() -> tuple[bool, list[int], bool]:
+    """Probe the three facts the startup refusals are made of.
+
+    Returns (row-level security is not being enforced, the organizations that
+    can take traffic, whether that list could be read at all). A function
+    rather than inline code so the dangerous combinations can be tested without
+    booting a container — the version of this that lived inline shipped twice
+    with the wrong condition.
+    """
     # How many organizations can actually take traffic — the demo org and any
     # suspended tenant do not count, which is why a plain COUNT(*) was the wrong
     # test: every install has the demo org, so it always read as "more than one".
-    from app.models.organization import DEFAULT_ORG_ID
-
     org_count_known = True
     try:
         from app.services.tenant_resolver import active_orgs, routable_candidates
@@ -430,9 +435,18 @@ async def _startup() -> None:
         # that role does not in fact bypass RLS, default-deny returns no rows
         # and an empty list silently disabled BOTH refusals below — a green
         # boot with RLS off and every agency sharing one dataset.
-        logger.error("could not count active organizations: %s", exc)
         real_orgs = []
-        org_count_known = False
+        org_count_known = await _schema_is_empty()
+        if org_count_known:
+            # A first boot, before `alembic upgrade` has run. `organizations`
+            # does not exist yet, so "no agencies" is the truth rather than a
+            # symptom. Refusing here would be fatal in a way nothing could
+            # recover: migrations run *after* the container starts, so a
+            # crash-loop means the migration that creates the RLS role can
+            # never run, and the documented install has no way out.
+            logger.info("no organizations table yet; first boot before migrations")
+        else:
+            logger.error("could not count active organizations: %s", exc)
 
     # Assert the two database roles are what the isolation design assumes. Both
     # failure modes are silent: an app role that bypasses RLS isolates nothing,
@@ -484,6 +498,39 @@ async def _startup() -> None:
             )
     except Exception as exc:  # noqa: BLE001 — a check must not block startup
         logger.warning("database role check skipped: %s", exc)
+    return rls_is_off, real_orgs, org_count_known
+
+
+def _must_refuse_to_serve(
+    rls_is_off: bool, real_orgs: list[int], org_count_known: bool
+) -> bool:
+    """Whether starting up would put agencies inside each other's data.
+
+    A function, not an inline condition, so it can be tested without standing
+    up a second database. Two ways to get here: RLS is off and more than one
+    agency is active, or RLS is off and we could not find out how many there
+    are — which is itself a symptom, since the count is read on the session
+    that is supposed to bypass RLS.
+    """
+    if not rls_is_off:
+        return False
+    return len(real_orgs) > 1 or not org_count_known
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    logger.info(
+        "Eko AI Realtors %s starting · env=%s · LLM primary=%s fallback=%s",
+        settings.APP_VERSION, settings.APP_ENV, settings.LLM_PRIMARY, settings.LLM_FALLBACK,
+    )
+    try:
+        await _seed_admin_users()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Bootstrap admin seed skipped: %s", exc)
+    from app.models.organization import DEFAULT_ORG_ID
+
+    rls_is_off, real_orgs, org_count_known = await _startup_isolation_state()
+
 
     if settings.GOOGLE_ALLOWED_DOMAIN or settings.google_allowed_emails_list:
         logger.warning(
@@ -535,7 +582,7 @@ async def _startup() -> None:
             "at a NOSUPERUSER NOBYPASSRLS role before serving traffic."
         )
 
-    if not settings.AUTH_ENABLED and len(real_orgs) > 1:
+    if not settings.AUTH_ENABLED and (len(real_orgs) > 1 or not org_count_known):
         # Hard failure, not a warning. With auth off there is no token, so every
         # request resolves to the default organization no matter who sent it:
         # agency B's dashboard is unreachable and every write it makes lands in
