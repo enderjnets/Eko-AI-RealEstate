@@ -147,12 +147,26 @@ Postgres authentication with `/health` still green. Migration 024 issues the
 halves move together. Verify afterwards:
 
 ```bash
-docker compose exec -T db psql "$DATABASE_URL_APP" -c 'select 1'
+# Note the driver is stripped: DATABASE_URL_APP is a postgresql+asyncpg:// URI
+# and psql rejects that scheme, so pasting it verbatim always fails — which
+# would make the one check for this failure impossible to pass.
+docker compose exec -T db psql -U eko_app -d eko_realestate -c 'select 1'
 ```
 
 **Never change `APP_DB_ROLE` after the first migration.** 015 will not re-run,
 so no role by the new name is created, and the later migrations then abort
 granting to something that does not exist.
+
+**Everyone will be signed out.** Setting `AUTH_SECRET` changes the key that
+signs session cookies, so every open session becomes invalid at cutover. Tell
+the office before you deploy, not after.
+
+**There is no rollback below revision 023.** `alembic downgrade` is not a way
+back: 015's downgrade drops `organizations` and every `org_id` column, 018
+deletes duplicate identity rows and 022 archives duplicate conversations, and
+none of those downgrades restore what they removed. The real rollback is
+restoring the `pg_dump` above and redeploying the previous image. Take the dump
+and verify it opens before you start.
 
 Also note: users who were signing in purely on `GOOGLE_ALLOWED_DOMAIN` with no
 `allowed_users` row are now refused rather than placed in the default

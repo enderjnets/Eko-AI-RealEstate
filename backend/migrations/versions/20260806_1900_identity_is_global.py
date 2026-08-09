@@ -89,7 +89,17 @@ def _dedupe_before_unique(table: str) -> None:
 
 def upgrade() -> None:
     for name, table, cols in IDENTITY_INDEXES:
+        # Migration 015 put FORCE ROW LEVEL SECURITY on these tables with a
+        # default-deny policy, and `app.current_org_id` is unset here. A
+        # superuser bypasses that — the local Postgres image runs as one, which
+        # is why this looked fine — but on a managed database where the
+        # migration role owns the table and is not a superuser the dedup would
+        # touch zero rows and the CREATE UNIQUE INDEX below would then abort on
+        # the duplicates it was meant to clear. Lifting FORCE for the statement
+        # is something the owner can always do; migration 022 does the same.
+        op.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
         _dedupe_before_unique(table)
+        op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
         op.drop_index(name, table_name=table)
         op.create_index(name, table, cols, unique=True)
 

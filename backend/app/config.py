@@ -9,7 +9,10 @@ class Settings(BaseSettings):
 
     # App
     APP_NAME: str = "Eko AI Realtors"
-    APP_VERSION: str = "0.0.1"
+    # Reported by / and /api/v1/health and printed at startup. Kept in step
+    # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
+    # so the API could not tell an operator which build was live.
+    APP_VERSION: str = "0.39.2"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
