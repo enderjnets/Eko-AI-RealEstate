@@ -25,7 +25,7 @@ import re
 from datetime import UTC, datetime, time
 from email.utils import parseaddr
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -738,15 +738,54 @@ async def _real_slots_note(
 
 
 
-def _reply_mentions_its_listing(reply: str, credit: str) -> bool:
-    """Whether the reply already carries this listing's broker credit.
+# Twilio hard-rejects above this, and a rejected message is now retried five
+# times before it is given up on. WhatsApp's limit is far higher; SMS sets the
+# floor, so use it for both.
+_SMS_MAX_CHARS = 1500
 
-    Cheap and deliberately generous: if the model happened to include the
-    credit, do not repeat it; otherwise add it. Erring towards adding it is the
-    right way to be wrong, since the obligation is to credit, not to be tidy.
+
+def _with_broker_credits(
+    reply: str, offered: list[tuple[str, str, str | None]], channel: str
+) -> str:
+    """Append the listing broker's credit to the message that reaches the lead.
+
+    Colorado requires the broker to be named wherever a listing reaches a
+    consumer, so this cannot be left to whether a model chose to repeat a line
+    from its prompt.
+
+    Keyed on the listing, not on the office name — the first version of this
+    asked whether the reply already contained the credit and then kept exactly
+    those, which appended the credit only when it was already there and never
+    when it was missing. The inverse of the obligation.
     """
-    office = credit.removeprefix("Cortesía de ").strip()
-    return bool(office) and office.lower() in reply.lower()
+    credits: list[str] = []
+    for credit, title, address in offered:
+        if not credit:
+            continue
+        # Did the reply actually offer this listing? Only then is a credit owed,
+        # and only then would one make sense to the reader.
+        haystack = reply.lower()
+        referenced = (title and title.lower() in haystack) or (
+            address and address.lower() in haystack
+        )
+        if not referenced:
+            continue
+        line = f"Cortesía de {credit}"
+        if credit.lower() in haystack:
+            continue  # the model already named them; do not say it twice
+        if line not in credits:
+            credits.append(line)
+    if not credits:
+        return reply
+
+    footer = "\n\n" + " · ".join(credits)
+    if channel in ("sms", "whatsapp"):
+        room = _SMS_MAX_CHARS - len(footer)
+        if len(reply) > room:
+            # The credit stays and the prose gives way. A truncated sentence is
+            # a worse message; an uncredited listing is a licence problem.
+            reply = reply[: max(0, room - 1)].rstrip() + "…"
+    return reply.rstrip() + footer
 
 
 def _fallback_reply(agent_cfg: AgentSettings | None, target_lang: str) -> LLMResult:
@@ -824,16 +863,34 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # address is the same person. A phone number is never matched against an
     # address, and two different phone numbers stay two leads — guessing
     # further would merge strangers.
-    identifier_is_address = _address_or_none(parsed.from_identifier) is not None
-    if identifier_is_address:
-        lead_stmt = select(Lead).where(
-            or_(
-                Lead.phone == parsed.from_identifier,
-                Lead.email == parsed.from_identifier,
+    # Prefer the lead keyed on this exact identifier. Only when there is none,
+    # and exactly one other lead carries this address, treat it as the same
+    # person. Taking the oldest of several matches — which the first version of
+    # this did — silently picked one and left the other's conversations, score
+    # and funnel row orphaned, while the code believed it had merged them.
+    lead_stmt = select(Lead).where(Lead.phone == parsed.from_identifier)
+    if _address_or_none(parsed.from_identifier) is not None:
+        already = (await db.execute(lead_stmt)).scalars().first()
+        if already is None:
+            by_address = (
+                (
+                    await db.execute(
+                        select(Lead).where(Lead.email == parsed.from_identifier)
+                    )
+                )
+                .scalars()
+                .all()
             )
-        ).order_by(Lead.id)
-    else:
-        lead_stmt = select(Lead).where(Lead.phone == parsed.from_identifier)
+            if len(by_address) == 1:
+                lead_stmt = select(Lead).where(Lead.id == by_address[0].id)
+            elif len(by_address) > 1:
+                # A shared mailbox — info@, or a family address. Merging any of
+                # them would put one person's conversation in front of another.
+                log.warning(
+                    "%d leads share the address %s; keeping them separate",
+                    len(by_address),
+                    parsed.from_identifier,
+                )
     existing_lead = (await db.execute(lead_stmt)).scalars().first()
     is_new_lead = existing_lead is None
     lead = await first_or_create(
@@ -993,7 +1050,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # Collected here and appended to the reply itself further down. Putting the
     # credit only in the system prompt made a licence obligation depend on the
     # model choosing to repeat it, which it will not always do.
-    offered_credits: list[str] = []
+    offered_listings: list[tuple[str, str, str | None]] = []
     if lead.intent in (LeadIntent.BUY, LeadIntent.RENT) and lead.zone:
         try:
             from app.services.listings import match_properties_for_lead  # lazy import
@@ -1010,8 +1067,8 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
                 specs = " ".join(x for x in (beds, baths) if x)
                 broker = listing_broker((p.raw or {}).get("list_office_name"), p.source)
                 credit = f"Cortesía de {broker}" if broker else ""
-                if credit:
-                    offered_credits.append(credit)
+                if broker:
+                    offered_listings.append((broker, p.title, p.address))
                 lines.append(
                     f"- {p.title} — {price}{(' · ' + specs) if specs else ''}"
                     f"{(' · ' + p.address) if p.address else ''}{(' · ' + p.url) if p.url else ''}"
@@ -1049,14 +1106,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # Only for the listings the reply mentions, and only once each — otherwise a
     # long conversation accumulates a footer nobody reads and the credit stops
     # meaning anything.
-    reply_text = reply.text
-    mentioned = [
-        credit
-        for credit in dict.fromkeys(offered_credits)
-        if _reply_mentions_its_listing(reply_text, credit)
-    ]
-    if mentioned:
-        reply_text = reply_text.rstrip() + "\n\n" + " · ".join(mentioned)
+    reply_text = _with_broker_credits(reply.text, offered_listings, parsed.channel)
 
     outbound = Message(
         conversation_id=conv.id,

@@ -216,3 +216,81 @@ async def test_the_turn_itself_marks_a_failed_send_as_retryable() -> None:
             assert outbound.send_attempts == 1
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_message_abandoned_mid_send_is_picked_up() -> None:
+    """The scenario the sweep exists for, and the one it could not see.
+
+    `next_attempt_at` is only ever written by `schedule_retry`, which runs when
+    a send *fails*. A worker killed between the insert and the POST leaves a row
+    PENDING with nothing scheduled — so requiring a schedule excluded exactly
+    the crash the module docstring names.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead = Lead(phone="+13035553333")
+                db.add(lead)
+                await db.flush()
+                conversation = Conversation(lead_id=lead.id, channel="whatsapp")
+                db.add(conversation)
+                await db.flush()
+                abandoned = Message(
+                    conversation_id=conversation.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
+                    content="Never left the building.",
+                    delivery_status=MessageStatus.PENDING,
+                )
+                db.add(abandoned)
+                await db.flush()
+                # Older than the in-flight grace period.
+                abandoned.created_at = datetime.now(UTC) - timedelta(minutes=30)
+                await db.commit()
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                return "wamid.rescued", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.conversation._dispatch_send", _ok):
+                    assert await retry_pending_sends(db) == {"sent": 1, "failed": 0}
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_message_still_in_flight_is_left_alone() -> None:
+    """The other side of it: a PENDING row seconds old is a send in progress,
+    not an abandoned one. Picking it up would race the live turn and deliver
+    the same reply twice."""
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead = Lead(phone="+13035552222")
+                db.add(lead)
+                await db.flush()
+                conversation = Conversation(lead_id=lead.id, channel="whatsapp")
+                db.add(conversation)
+                await db.flush()
+                db.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        direction=MessageDirection.OUTBOUND,
+                        sender=MessageSender.AGENT,
+                        content="Going out right now.",
+                        delivery_status=MessageStatus.PENDING,
+                    )
+                )
+                await db.commit()
+
+            async def _boom(*a: object, **k: object) -> tuple[str, None]:
+                raise AssertionError("raced a send that was still in flight")
+
+            async with get_session_factory()() as db:
+                with patch("app.services.conversation._dispatch_send", _boom):
+                    assert await retry_pending_sends(db) == {"sent": 0, "failed": 0}
+    finally:
+        await _cleanup()

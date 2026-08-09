@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import lazyload
 
@@ -39,6 +39,11 @@ MAX_ATTEMPTS = 5
 # failures are transient; the later ones are spaced so a real outage is not
 # hammered.
 _BACKOFF_MINUTES = (1, 5, 15, 60)
+
+# How long a PENDING message with no schedule has to sit before it counts as
+# abandoned rather than in flight. Long enough that a slow provider call is not
+# raced by the sweep; short enough that a lead is not left waiting.
+_ABANDONED_AFTER = timedelta(minutes=5)
 
 
 def backoff_for(attempts: int) -> timedelta:
@@ -91,8 +96,20 @@ async def retry_pending_sends(db: AsyncSession, *, limit: int = 20) -> dict[str,
                         [MessageStatus.PENDING, MessageStatus.FAILED]
                     ),
                     Message.external_id.is_(None),
-                    Message.next_attempt_at.is_not(None),
-                    Message.next_attempt_at <= now,
+                    # Either scheduled and due, or PENDING with nothing
+                    # scheduled at all — which is what a worker killed between
+                    # the insert and the POST leaves behind, and the case the
+                    # sweep was written for. `next_attempt_at` is only ever
+                    # written by `schedule_retry`, so requiring it excluded
+                    # exactly those rows.
+                    or_(
+                        Message.next_attempt_at <= now,
+                        and_(
+                            Message.next_attempt_at.is_(None),
+                            Message.delivery_status == MessageStatus.PENDING,
+                            Message.created_at < now - _ABANDONED_AFTER,
+                        ),
+                    ),
                     Message.send_attempts < MAX_ATTEMPTS,
                 )
                 .order_by(Message.next_attempt_at)
@@ -108,7 +125,7 @@ async def retry_pending_sends(db: AsyncSession, *, limit: int = 20) -> dict[str,
 
     sent = failed = 0
     for message in due:
-        recipient, channel = await _recipient_of(message, db)
+        recipient, channel, in_reply_to = await _recipient_of(message, db)
         if not recipient or not channel:
             # Nothing to send to. Stop retrying rather than looping forever on a
             # row we cannot address.
@@ -117,10 +134,19 @@ async def retry_pending_sends(db: AsyncSession, *, limit: int = 20) -> dict[str,
             continue
         try:
             external_id, _ = await _dispatch_send(
-                channel, to=recipient, text=message.content
+                channel,
+                to=recipient,
+                text=message.content,
+                # The row was holding all three. Without them the retry arrived
+                # as a brand-new email titled "Tu consulta", detached from the
+                # thread the lead was reading.
+                subject=message.subject,
+                in_reply_to=in_reply_to,
+                references=in_reply_to,
             )
         except Exception as exc:  # noqa: BLE001 — the point is to survive this
             schedule_retry(message, str(exc))
+            await db.commit()
             failed += 1
             continue
         message.delivery_status = MessageStatus.SENT
@@ -132,6 +158,10 @@ async def retry_pending_sends(db: AsyncSession, *, limit: int = 20) -> dict[str,
             # rather than swallowing. The sweep is not in a request path.
             message.external_id = external_id
         sent += 1
+        # Per message, deliberately. With one commit after the loop, a
+        # CancelledError on the last of twenty rolled back the nineteen already
+        # delivered — and the next tick sent all nineteen again.
+        await db.commit()
 
     if sent or failed:
         log.info("delivery retry: %d sent, %d still failing", sent, failed)
@@ -141,8 +171,8 @@ async def retry_pending_sends(db: AsyncSession, *, limit: int = 20) -> dict[str,
 
 async def _recipient_of(
     message: Message, db: AsyncSession
-) -> tuple[str | None, str | None]:
-    """Who this message was for, and on which channel."""
+) -> tuple[str | None, str | None, str | None]:
+    """Who this message was for, on which channel, and what it was replying to."""
     from app.models.conversation import Conversation
     from app.models.lead import Lead
 
@@ -152,13 +182,30 @@ async def _recipient_of(
         )
     ).scalar_one_or_none()
     if conversation is None:
-        return None, None
+        return None, None, None
     lead = (
         await db.execute(select(Lead).where(Lead.id == conversation.lead_id))
     ).scalar_one_or_none()
     if lead is None:
-        return None, None
+        return None, None, None
     channel = getattr(conversation.channel, "value", conversation.channel)
     if channel == "email":
-        return (lead.email or lead.phone), channel
-    return lead.phone, channel
+        # 6) An address or nothing. Falling back to `lead.phone` posted a phone
+        # number as a `to:` address and earned five identical 422s.
+        address = lead.email or (lead.phone if "@" in (lead.phone or "") else None)
+        thread = (
+            (
+                await db.execute(
+                    select(Message.external_id)
+                    .where(
+                        Message.conversation_id == conversation.id,
+                        Message.direction == MessageDirection.INBOUND,
+                        Message.external_id.is_not(None),
+                    )
+                    .order_by(Message.created_at.desc())
+                    .limit(1)
+                )
+            ).scalars().first()
+        )
+        return address, channel, thread
+    return lead.phone, channel, None

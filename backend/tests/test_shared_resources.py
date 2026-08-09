@@ -912,3 +912,105 @@ async def test_the_same_person_on_two_channels_is_one_lead() -> None:
                 )
             await db.commit()
         await _cleanup()
+
+
+def test_the_broker_credit_is_added_when_it_is_missing() -> None:
+    """The first version of this asked whether the reply already contained the
+    credit — and then kept exactly those, appending the credit only when it was
+    already there and never when it was absent. The inverse of the obligation,
+    and every test of it passed on the duplicate case."""
+    from app.services.conversation import _with_broker_credits
+
+    offered = [("Kentwood Real Estate", "Casa en Wash Park", "1200 S Gaylord St")]
+
+    # The case that matters: the model offered the listing and named no broker.
+    plain = "Tengo una casa en Wash Park por $650k, ¿te interesa?"
+    out = _with_broker_credits(plain, offered, "whatsapp")
+    assert "Cortesía de Kentwood Real Estate" in out
+
+    # Already credited: do not say it twice.
+    credited = plain + " Cortesía de Kentwood Real Estate."
+    assert _with_broker_credits(credited, offered, "whatsapp").count("Kentwood") == 1
+
+    # A reply that does not offer this listing gets no credit for it — a credit
+    # for something never mentioned is noise, not compliance.
+    unrelated = "Sí, atendemos los sábados."
+    assert _with_broker_credits(unrelated, offered, "whatsapp") == unrelated
+
+
+def test_the_credit_survives_a_reply_too_long_for_sms() -> None:
+    """Twilio hard-rejects over 1600 characters, and a rejected message is now
+    retried five times before it is given up on. The prose gives way; the
+    credit does not."""
+    from app.services.conversation import _SMS_MAX_CHARS, _with_broker_credits
+
+    offered = [("Kentwood Real Estate", "Casa en Wash Park", None)]
+    long_reply = "Casa en Wash Park. " + ("detalle " * 400)
+    out = _with_broker_credits(long_reply, offered, "sms")
+    assert "Cortesía de Kentwood Real Estate" in out
+    assert len(out) <= _SMS_MAX_CHARS
+
+
+@pytest.mark.asyncio
+async def test_a_shared_mailbox_does_not_merge_two_people() -> None:
+    """`info@agency.com` on two leads is not one person. Taking the oldest of
+    several matches picked one and orphaned the other's conversations, score
+    and funnel row — while the code believed it had merged them."""
+    from sqlalchemy import func, select
+
+    from app.models import Lead
+    from app.services._common import ParsedMessage
+    from app.services.conversation import handle_inbound_message
+    from app.services.llm import LLMResult
+
+    async def _reply(**kwargs: object) -> LLMResult:
+        return LLMResult(
+            text="Claro.", provider="kimi", model="k2",
+            input_tokens=1, output_tokens=1,
+        )
+
+    async def _sent(*a: object, **k: object) -> tuple[str, None]:
+        return "id-shared", None
+
+    await _make_agency()
+    try:
+        with org_scope(AGENCY):
+            async with get_session_factory()() as db:
+                db.add_all(
+                    [
+                        Lead(phone="+13035551111", email="info@shared.test"),
+                        Lead(phone="+13035552222", email="info@shared.test"),
+                    ]
+                )
+                await db.commit()
+
+            async with get_session_factory()() as db:
+                with patch(
+                    "app.services.conversation.generate_reply", _reply
+                ), patch("app.services.conversation._dispatch_send", _sent):
+                    await handle_inbound_message(
+                        ParsedMessage(
+                            channel="email",
+                            external_id="msg-shared-1",
+                            from_identifier="info@shared.test",
+                            from_name=None,
+                            content="Hola",
+                        ),
+                        db,
+                    )
+
+            async with get_session_factory()() as db:
+                total = (
+                    await db.execute(select(func.count()).select_from(Lead))
+                ).scalar()
+            # A third lead, keyed on the address itself — not one of the two
+            # strangers who happen to share a mailbox.
+            assert total == 3
+    finally:
+        async with get_bypass_session_factory()() as db:
+            for table in ("messages", "conversations", "leads"):
+                await db.execute(
+                    text(f"DELETE FROM {table} WHERE org_id = :i"), {"i": AGENCY}
+                )
+            await db.commit()
+        await _cleanup()
