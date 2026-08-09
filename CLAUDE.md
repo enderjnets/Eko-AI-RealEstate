@@ -278,3 +278,17 @@ gastan en bloque (`/properties/sync`, todo `/discovery`). Lo que queda abierto
 es el gasto por conversación: una agencia con mucho tráfico entrante consume
 LLM que las demás necesitan para responder, y no hay cuota por organización
 contra la que cobrarlo. Antes de cobrar por uso hay que medirlo por `org_id`.
+
+### Precondición dura para escalar: un solo worker, una sola réplica
+
+`tenant_resolver._cache` (TTL 15 s) y `reset_cache()` viven **en el proceso**.
+Con el despliegue actual —`Dockerfile` arranca uvicorn sin `--workers`, una
+sola réplica en compose— es correcto. En cuanto haya N workers o N réplicas,
+crear una agencia solo invalida la caché del worker que atendió el POST: los
+demás siguen viendo una sola organización hasta 15 s, y en esa ventana un
+mensaje entrante sin ruta cae en la primera agencia. Eso es una escritura
+cruzada entre inquilinos, y es permanente.
+
+**Antes de añadir `--workers` o una segunda réplica**, la invalidación de esa
+caché tiene que dejar de ser local al proceso (Redis pub/sub, o releer el
+`updated_at` máximo de `organizations` en cada resolución).
