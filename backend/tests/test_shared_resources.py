@@ -1,0 +1,156 @@
+"""Resources every agency touches, and the ones that only look shared.
+
+Eighteen audit rounds went through the inbound webhooks, the platform routes
+and the credential model. These cover what those rounds did not: the calendar,
+the MLS feed, and the slot arithmetic — where a defect is not a broken boundary
+but a client's phone number appearing on somebody else's screen.
+"""
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import text
+
+from app.db.base import get_bypass_session_factory, get_session_factory
+from app.models.channel_route import CHANNEL_CALENDAR, normalize_destination
+from app.models.organization import DEFAULT_ORG_ID
+from app.services import tenant_resolver
+from app.services.channel_identity import resolve_outbound_identity
+from app.services.tenant_context import org_scope
+
+AGENCY = 930
+
+
+async def _make_agency(**route: object) -> None:
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text(
+                "INSERT INTO organizations (id, name, slug, status, plan) "
+                "VALUES (:i, 'Cal Agency', 'cal-agency', 'active', 'pilot') "
+                "ON CONFLICT (id) DO NOTHING"
+            ),
+            {"i": AGENCY},
+        )
+        if route:
+            dest = normalize_destination(str(route.pop("_dest", "77")))
+            cols = ["org_id", "channel", "destination", *route]
+            await db.execute(
+                text(
+                    f"INSERT INTO channel_routes ({', '.join(cols)}) "
+                    f"VALUES ({', '.join(':' + c for c in cols)})"
+                ),
+                {
+                    "org_id": AGENCY,
+                    "channel": CHANNEL_CALENDAR,
+                    "destination": dest,
+                    **route,
+                },
+            )
+        await db.commit()
+    tenant_resolver.reset_cache()
+
+
+async def _cleanup() -> None:
+    async with get_bypass_session_factory()() as db:
+        await db.execute(text("DELETE FROM channel_routes WHERE org_id = :i"), {"i": AGENCY})
+        await db.execute(text("DELETE FROM visits WHERE org_id = :i"), {"i": AGENCY})
+        await db.execute(text("DELETE FROM leads WHERE org_id = :i"), {"i": AGENCY})
+        await db.execute(text("DELETE FROM organizations WHERE id = :i"), {"i": AGENCY})
+        await db.commit()
+    tenant_resolver.reset_cache()
+
+
+@pytest.mark.asyncio
+async def test_an_agency_books_onto_its_own_calendar(monkeypatch) -> None:
+    """Every channel was given per-agency credentials; the calendar was not.
+
+    So a booking made by agency B landed on the operator's Cal.com with the
+    lead's name, email and phone as an attendee — visible to whoever else uses
+    that calendar — and B's bookings blanked out slots for everyone. It never
+    showed up in dev because CALENDAR_SIMULATED short-circuits before the HTTP
+    call.
+    """
+    from app.config import get_settings
+
+    monkeypatch.setenv("CALCOM_KEY_AGENCY", "their-cal-key")
+    monkeypatch.setattr(get_settings(), "CALCOM_API_KEY", "the-operators-cal-key")
+    monkeypatch.setattr(get_settings(), "CALCOM_EVENT_TYPE_ID", 11)
+    await _make_agency(credential_ref="CALCOM_KEY_AGENCY", _dest="42")
+    try:
+        with org_scope(AGENCY):
+            theirs = await resolve_outbound_identity(CHANNEL_CALENDAR)
+        assert theirs.credential == "their-cal-key"
+        assert theirs.destination == "42"
+
+        # And the single-customer install is untouched.
+        with org_scope(DEFAULT_ORG_ID):
+            ours = await resolve_outbound_identity(CHANNEL_CALENDAR)
+        assert ours.credential == "the-operators-cal-key"
+        assert ours.destination == "11"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_calendar_refuses_rather_than_booking_onto_the_operators(
+    monkeypatch,
+) -> None:
+    """With no key at all there is nothing to book against, and guessing means
+    putting a stranger's client on the operator's calendar."""
+    from app.config import get_settings
+    from app.services.calendar_cal import CalComError, create_booking
+
+    monkeypatch.setattr(get_settings(), "CALENDAR_SIMULATED", False)
+    monkeypatch.setattr(get_settings(), "CALCOM_API_KEY", "")
+    await _make_agency()
+    try:
+        with org_scope(AGENCY), pytest.raises(CalComError):
+            await create_booking(
+                start_time=datetime.now(UTC) + timedelta(days=1),
+                attendee_name="A Lead",
+                attendee_email="lead@x.test",
+                attendee_phone="+13035550000",
+                timezone_name="America/Denver",
+            )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_two_leads_are_not_offered_the_same_half_hour() -> None:
+    """A realtor's diary belongs to the agency, not to whoever is asking.
+
+    De-conflicting per lead offered the same slot to two different leads and
+    let both bookings succeed, sending one realtor to two houses at once.
+    """
+    from app.api.v1.visits import _busy_starts
+    from app.models import Lead, Visit
+    from app.models.visit import VisitStatus
+
+    when = datetime.now(UTC).replace(microsecond=0) + timedelta(days=2)
+    await _make_agency()
+    try:
+        with org_scope(AGENCY):
+            async with get_session_factory()() as db:
+                first = Lead(phone="+13035551000")
+                second = Lead(phone="+13035552000")
+                db.add_all([first, second])
+                await db.flush()
+                db.add(
+                    Visit(
+                        lead_id=first.id,
+                        scheduled_at=when,
+                        status=VisitStatus.SCHEDULED,
+                        external_booking_id="cal-busy-1",
+                    )
+                )
+                await db.commit()
+
+            async with get_session_factory()() as db:
+                busy = await _busy_starts(db)
+        assert when in busy, (
+            "the other lead's booking was invisible, so both would be offered it"
+        )
+    finally:
+        await _cleanup()

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -27,6 +29,41 @@ def database_url() -> str:
 
 async def _client() -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+@asynccontextmanager
+async def _operator_client() -> AsyncIterator[AsyncClient]:
+    """A platform-operator session.
+
+    `POST /properties/sync` drives the shared REcolorado feed — one licence
+    quota and one cursor that every agency depends on — so it is operator-only
+    rather than "any authenticated member". The routes refuse outright when
+    AUTH_ENABLED is false, because the signing key in that mode is a constant
+    published in this repository, so these settings are the configuration the
+    endpoint actually requires.
+    """
+    from unittest.mock import patch as _patch
+
+    from app.api.v1.auth import COOKIE_NAME
+    from app.config import get_settings
+    from app.models.organization import DEFAULT_ORG_ID
+    from app.services.auth import make_token
+
+    s = get_settings()
+    with _patch.object(s, "AUTH_ENABLED", True), \
+         _patch.object(s, "AUTH_SECRET", "properties-test-signing-secret"), \
+         _patch.object(s, "PLATFORM_ADMIN_EMAILS", "operator@eko.com"):
+        token = make_token(
+            email="operator@eko.com", role="admin", org_id=DEFAULT_ORG_ID,
+            superuser=True,
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            cookies={COOKIE_NAME: token},
+        ) as client:
+            yield client
+
 
 
 async def _insert_lead(database_url: str, **kw) -> int:
@@ -69,7 +106,7 @@ async def test_sync_status_is_not_parsed_as_a_property_id(database_url: str) -> 
 @pytest.mark.asyncio
 async def test_sync_is_idempotent(database_url: str) -> None:
     """First sync may create; a second sync creates nothing (all updates)."""
-    async with await _client() as c:
+    async with _operator_client() as c:
         r1 = await c.post("/api/v1/properties/sync")
         assert r1.status_code == 200, r1.text
         r2 = await c.post("/api/v1/properties/sync")

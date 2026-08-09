@@ -4,11 +4,12 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.auth import require_platform_admin
 from app.db.base import get_db
 from app.models import Lead, Property, PropertySource, PropertyStatus, SyncState
 from app.services.listings import RESO_SOURCE_KEY, match_properties_for_lead, sync_listings
@@ -96,12 +97,23 @@ async def list_properties(
     return PropertyListOut(total=total, items=[PropertyOut.model_validate(r) for r in rows])
 
 
-@router.post("/sync", response_model=SyncResult)
+@router.post(
+    "/sync",
+    response_model=SyncResult,
+    dependencies=[Depends(require_platform_admin)],
+)
 async def sync_properties(
     city: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> SyncResult:
-    """Ingest listings from the configured feed (SIMULATED curated set or RESO)."""
+    """Ingest listings from the configured feed (SIMULATED curated set or RESO).
+
+    Operator-only. `properties` and `sync_state` are deliberately shared — there
+    is one REcolorado feed — so this drives a resource every agency depends on:
+    the licence quota, and the cursor that decides what the next run fetches.
+    Behind `require_auth` alone, any member of any agency could exhaust the
+    quota or move the cursor for everyone.
+    """
     result = await sync_listings(db, city=city)
     return SyncResult(**result)
 
@@ -119,13 +131,27 @@ class SyncStatusOut(BaseModel):
 
 # Declared before /{property_id} so "sync-status" is not parsed as an id.
 @router.get("/sync-status", response_model=SyncStatusOut | None)
-async def get_sync_status(db: AsyncSession = Depends(get_db)) -> SyncStatusOut | None:
+async def get_sync_status(
+    request: Request, db: AsyncSession = Depends(get_db)
+) -> SyncStatusOut | None:
     """Replication health for the MLS Grid feed — the only window into the background
     worker, which otherwise fails silently in the logs. Null before the first run."""
     row = (
         await db.execute(select(SyncState).where(SyncState.source == RESO_SOURCE_KEY))
     ).scalar_one_or_none()
-    return SyncStatusOut.model_validate(row) if row else None
+    if row is None:
+        return None
+    out = SyncStatusOut.model_validate(row)
+    # `last_error` is the provider's own message about a feed every agency
+    # shares, so it can name the operator's account, quota or credentials.
+    # Agencies see whether replication is healthy; only the operator sees why
+    # it is not.
+    from app.api.v1.auth import _token_from_request
+    from app.services.auth import token_is_superuser
+
+    if out.last_error and not token_is_superuser(_token_from_request(request)):
+        out = out.model_copy(update={"last_error": "unavailable"})
+    return out
 
 
 @router.get("/{property_id}", response_model=PropertyOut)

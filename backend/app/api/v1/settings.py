@@ -22,7 +22,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_db
 from app.models import AgentSettings
-from app.models.organization import DEFAULT_ORG_ID
 from app.services.tenant_context import get_org_id
 
 router = APIRouter()
@@ -127,4 +126,15 @@ async def update_settings(
 
 def _acting_org() -> int:
     """The org whose settings row applies to this call."""
-    return get_org_id() or DEFAULT_ORG_ID
+    org_id = get_org_id()
+    if org_id is None:
+        # Was `or DEFAULT_ORG_ID`. It fails closed today because these paths run
+        # on the RLS session — an unset org reads nothing and cannot write — but
+        # the fallback is one `get_bypass_db` away from silently reading and
+        # overwriting client zero's row, and there are six of these. Say so
+        # instead of guessing.
+        raise RuntimeError(
+            "no acting organization is bound; refusing to fall back to the "
+            "default one"
+        )
+    return org_id

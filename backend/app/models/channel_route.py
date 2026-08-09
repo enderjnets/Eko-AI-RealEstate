@@ -25,8 +25,22 @@ CHANNEL_WHATSAPP = "whatsapp"
 CHANNEL_SMS = "sms"
 CHANNEL_EMAIL = "email"
 CHANNEL_VOICE = "voice"
+# Not an inbound channel: nothing is ever delivered TO it. It rides here so a
+# calendar gets the same per-organization credential handling as the rest —
+# without it every agency booked visits onto the operator's own Cal.com,
+# putting their leads' names, emails and phone numbers in front of another
+# agency's realtors.
+CHANNEL_CALENDAR = "calendar"
 
-CHANNELS = (CHANNEL_WHATSAPP, CHANNEL_SMS, CHANNEL_EMAIL, CHANNEL_VOICE)
+CHANNELS = (
+    CHANNEL_WHATSAPP,
+    CHANNEL_SMS,
+    CHANNEL_EMAIL,
+    CHANNEL_VOICE,
+    CHANNEL_CALENDAR,
+)
+# The ones a provider actually delivers to.
+INBOUND_CHANNELS = (CHANNEL_WHATSAPP, CHANNEL_SMS, CHANNEL_EMAIL, CHANNEL_VOICE)
 
 
 def normalize_destination(value: str | None) -> str:

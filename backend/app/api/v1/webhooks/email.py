@@ -158,8 +158,24 @@ def _mailboxes(payload: dict) -> list[str]:
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, dict):
         return []
+    # The envelope first, and alone when it is there. `to` and `cc` are written
+    # by the SENDER: anyone can mail an unrouted mailbox on the operator's own
+    # domain with an agency's address in `To:`, and the message is then
+    # genuinely signed by the operator's Resend account. The envelope recipient
+    # is what the provider actually delivered to, so when the payload carries
+    # one it is the only honest routing key.
+    envelope = data.get("envelope")
+    envelope_to = (
+        envelope.get("to") if isinstance(envelope, dict) else None
+    ) or data.get("envelope_to")
+    sources = (
+        (envelope_to,)
+        if envelope_to
+        else (data.get("to"), data.get("cc"), data.get("recipient"))
+    )
+
     found: list[str] = []
-    for candidate in (data.get("to"), data.get("cc"), data.get("recipient")):
+    for candidate in sources:
         if isinstance(candidate, str) and candidate.strip():
             found.extend(_addresses_in(candidate))
         elif isinstance(candidate, list):
@@ -225,13 +241,18 @@ def _parse_clean(value: str) -> list[str] | None:
         return None
     if header.defects:
         return None
+    # Any named group and the whole header is untrusted, not just that group.
+    # Dropping only its members stopped a sender ADDING an address and handed
+    # them the power to REMOVE one: `undisclosed:hello@operator.test;,
+    # leads@agencyb.test` deleted the honest recipient from the set, so the
+    # "two agencies named, refuse" rule saw one owner and filed the lead,
+    # transcript and reply into agency B. Group syntax never appears in mail a
+    # lead actually sends, so refusing the header costs nothing real.
+    if any(group.display_name is not None for group in header.groups):
+        return None
     return [
         entry.addr_spec.strip()
-        # A group carrying a display name is RFC 5322 group syntax, and its
-        # members are not recipients we may route on. Ordinary address lists
-        # arrive as one unnamed group, which is where real mail lives.
         for group in header.groups
-        if group.display_name is None
         for entry in group.addresses
         if entry.addr_spec and "@" in entry.addr_spec
     ]
@@ -243,7 +264,19 @@ def _split_top_level(value: str, separator: str) -> list[str]:
     current: list[str] = []
     in_quotes = False
     in_angles = False
+    escaped = False
     for char in value:
+        if escaped:
+            escaped = False
+            current.append(char)
+            continue
+        if char == "\\" and in_quotes:
+            # A backslash-escaped quote inside a quoted string is not a
+            # terminator. Treating it as one desynchronised this from the RFC
+            # parser, so a legitimate display name silently lost the message.
+            escaped = True
+            current.append(char)
+            continue
         if char == '"':
             in_quotes = not in_quotes
         elif char == "<" and not in_quotes:

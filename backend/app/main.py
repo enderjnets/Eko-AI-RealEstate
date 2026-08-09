@@ -283,11 +283,14 @@ async def _enrichment_loop() -> None:
                     "Enrichment worker: enriched %d discovery lead(s) across all orgs",
                     totals["enriched"],
                 )
-            totals.clear()
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.error("Enrichment worker tick failed: %s", exc)
+        finally:
+            # In `finally`, so a raising tick does not carry its counts into the
+            # next one and report them again.
+            totals.clear()
 
 
 async def _listings_sync_loop() -> None:
@@ -396,10 +399,24 @@ async def _startup() -> None:
         await _seed_admin_users()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Bootstrap admin seed skipped: %s", exc)
+    # How many organizations can actually take traffic — the demo org and any
+    # suspended tenant do not count, which is why a plain COUNT(*) was the wrong
+    # test: every install has the demo org, so it always read as "more than one".
+    from app.models.organization import DEFAULT_ORG_ID
+
+    try:
+        from app.services.tenant_resolver import active_orgs, routable_candidates
+
+        real_orgs = routable_candidates(await active_orgs())
+    except Exception as exc:  # noqa: BLE001 — a check must not block startup
+        logger.debug("org count check skipped: %s", exc)
+        real_orgs = []
+
     # Assert the two database roles are what the isolation design assumes. Both
     # failure modes are silent: an app role that bypasses RLS isolates nothing,
     # and a bypass role that does NOT bypass makes every login deny and every
     # worker sweep zero organizations, with nothing in the logs either way.
+    rls_is_off = False
     try:
         from sqlalchemy import text
 
@@ -414,12 +431,20 @@ async def _startup() -> None:
                 )
             ).one()
         if app_role.rolsuper or app_role.rolbypassrls:
-            logger.error(
+            message = (
                 "🔴 DATABASE_URL_APP connects as a superuser or a BYPASSRLS role. "
                 "Row-level security is NOT being enforced and every agency can "
                 "read every other agency's data. Point it at a role created with "
                 "NOSUPERUSER NOBYPASSRLS."
             )
+            # A log line was not enough. `db/base.py` falls back to DATABASE_URL
+            # when DATABASE_URL_APP is blank, and that role owns the tables — so
+            # one empty environment variable turns every endpoint into a
+            # cross-tenant read and write, with this line as the only trace.
+            # Refuse to serve more than one agency in that state; a
+            # single-customer install has nothing to separate, so it may run.
+            rls_is_off = True
+            logger.error(message)
 
         async with get_bypass_engine().connect() as conn:
             bypass_role = (
@@ -474,15 +499,15 @@ async def _startup() -> None:
                 "platform-operator token; use at least 32. openssl rand -hex 32"
             )
 
-    from app.models.organization import DEFAULT_ORG_ID
-
-    try:
-        from app.services.tenant_resolver import active_orgs, routable_candidates
-
-        real_orgs = routable_candidates(await active_orgs())
-    except Exception as exc:  # noqa: BLE001 — a check must not block startup
-        logger.debug("org count check skipped: %s", exc)
-        real_orgs = []
+    if rls_is_off and len(real_orgs) > 1:
+        # Outside the role check's own try/except on purpose, so the refusal is
+        # not swallowed by the handler that logs role-probe failures.
+        raise RuntimeError(
+            f"Row-level security is not being enforced and {len(real_orgs)} "
+            "agencies are active, so every one of them can read and write the "
+            "others' data. Point DATABASE_URL_APP at a NOSUPERUSER NOBYPASSRLS "
+            "role before serving more than one tenant."
+        )
 
     if not settings.AUTH_ENABLED and len(real_orgs) > 1:
         # Hard failure, not a warning. With auth off there is no token, so every

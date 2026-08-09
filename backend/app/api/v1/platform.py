@@ -28,6 +28,7 @@ from app.api.v1.auth import (
 from app.config import get_settings
 from app.db.base import get_bypass_db
 from app.models.channel_route import (
+    CHANNEL_CALENDAR,
     CHANNEL_EMAIL,
     CHANNEL_SMS,
     CHANNEL_VOICE,
@@ -348,7 +349,7 @@ async def _refuse_if_channel_is_simulated(channel: str) -> None:
         CHANNEL_EMAIL: settings.EMAIL_SIMULATED,
         CHANNEL_VOICE: settings.VOICE_SIMULATED,
     }
-    if not simulated.get(channel):
+    if channel == CHANNEL_CALENDAR or not simulated.get(channel):
         return
     real = tenant_resolver.routable_candidates(await tenant_resolver.active_orgs())
     if len(real) < 2:
@@ -392,7 +393,9 @@ def _refuse_a_route_that_cannot_verify(body: RouteCreateIn | RouteIdentityIn,
     message for that agency 403s forever with nothing to explain it. Both
     fields are individually valid, so no other check can see it.
     """
-    if channel == CHANNEL_SMS:
+    if channel in (CHANNEL_SMS, CHANNEL_CALENDAR):
+        # Twilio signs inbound with the sending token, and nothing is ever
+        # delivered TO a calendar.
         return
     if body.credential_ref and not body.inbound_secret_ref:
         raise HTTPException(
@@ -444,7 +447,7 @@ class RouteIdentityIn(BaseModel):
 
 class RouteCreateIn(RouteIdentityIn):
     org_id: int
-    channel: str = Field(pattern=r"^(whatsapp|sms|email|voice)$")
+    channel: str = Field(pattern=r"^(whatsapp|sms|email|voice|calendar)$")
     destination: str = Field(min_length=3, max_length=254)
     label: str | None = Field(default=None, max_length=120)
 

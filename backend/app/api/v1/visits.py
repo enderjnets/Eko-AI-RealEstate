@@ -27,7 +27,6 @@ from app.models import (
     Visit,
     VisitStatus,
 )
-from app.models.organization import DEFAULT_ORG_ID
 from app.services.calendar_cal import (
     CalComError,
     cancel_booking,
@@ -142,13 +141,19 @@ async def _office_tz(db: AsyncSession) -> str:
     return (cfg.timezone if cfg and cfg.timezone else "UTC")
 
 
-async def _busy_starts_for_lead(lead_id: int, db: AsyncSession) -> set[datetime]:
-    """The lead's already-scheduled visit start times — filtered out of /slots
-    so we never offer a slot that conflicts with another booking for THIS lead."""
+async def _busy_starts(db: AsyncSession) -> set[datetime]:
+    """Every start time this agency already has a visit at.
+
+    Filtered by the acting organization, not by lead — the RLS session does the
+    filtering, so no `org_id` clause is needed here and none is possible from
+    another tenant. Scoping it to one lead meant two different leads were
+    offered the same half-hour and both bookings succeeded, sending one realtor
+    to two houses at once. A realtor's diary is a property of the agency, not
+    of whoever happens to be asking.
+    """
     rows = (
         await db.execute(
             select(Visit.scheduled_at).where(
-                Visit.lead_id == lead_id,
                 Visit.status.in_([VisitStatus.SCHEDULED, VisitStatus.CONFIRMED]),
             )
         )
@@ -170,7 +175,7 @@ async def list_slots(
     now = datetime.now(UTC)
     start = now.replace(minute=0, second=0, microsecond=0)
     end = start + timedelta(days=days)
-    busy = await _busy_starts_for_lead(lead_id, db)
+    busy = await _busy_starts(db)
     try:
         slots = await list_available_slots(start=start, end=end, timezone_name=tz, busy_starts=busy)
     except CalComError as exc:
@@ -415,4 +420,15 @@ async def visits_agenda(
 
 def _acting_org() -> int:
     """The org whose settings row applies to this call."""
-    return get_org_id() or DEFAULT_ORG_ID
+    org_id = get_org_id()
+    if org_id is None:
+        # Was `or DEFAULT_ORG_ID`. It fails closed today because these paths run
+        # on the RLS session — an unset org reads nothing and cannot write — but
+        # the fallback is one `get_bypass_db` away from silently reading and
+        # overwriting client zero's row, and there are six of these. Say so
+        # instead of guessing.
+        raise RuntimeError(
+            "no acting organization is bound; refusing to fall back to the "
+            "default one"
+        )
+    return org_id

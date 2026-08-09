@@ -953,11 +953,13 @@ def test_group_syntax_cannot_name_another_agency() -> None:
 
     assert _addresses_in("undisclosed:victim@agency.test;") == []
     assert _addresses_in("grp: V <victim@agency.test>;") == []
-    # A real recipient alongside a group keeps only the real one, so the
-    # message is attributed to where it was actually delivered.
-    assert _addresses_in(
-        "hello@operator.test, undisclosed:victim@agency.test;"
-    ) == ["hello@operator.test"]
+    # A group anywhere in the header makes the WHOLE header untrusted, not just
+    # that group. Dropping only its members stopped a sender adding an address
+    # and handed them the power to remove one: putting the honest recipient
+    # inside the group deleted it from the set, so the "two agencies named"
+    # refusal saw a single owner and filed the lead into the other agency.
+    assert _addresses_in("hello@operator.test, undisclosed:victim@agency.test;") == []
+    assert _addresses_in("undisclosed:hello@operator.test;, victim@agency.test") == []
 
     # An unquoted display name that looks like an address is a parse defect the
     # parser settles in the sender's favour — so the header is not trusted at

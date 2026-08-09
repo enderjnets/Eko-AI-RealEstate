@@ -5,8 +5,12 @@ generated for the next 7 weekdays at 10/11/14/15/16 in the requested timezone,
 bookings get synthetic `calcom-sim-<uuid>` ids, cancellation flips status only.
 Lets us develop the dashboard + tests without a Cal.com account or event type.
 
-When SIMULATED is off, real Cal.com v2 API is hit with CALCOM_API_KEY +
-CALCOM_EVENT_TYPE_ID. The v2 shape can shift; if a real piloto fails, the
+When SIMULATED is off, the real Cal.com v2 API is hit with the acting
+organization's own key and event type — a `calendar` row in `channel_routes`,
+falling back to CALCOM_API_KEY + CALCOM_EVENT_TYPE_ID. Every agency booking
+onto one shared calendar put their leads' names, emails and phone numbers in
+front of another agency's realtors, and let one agency's bookings blank out
+another's availability. The v2 shape can shift; if a real piloto fails, the
 fix is here (no schema/orchestrator changes needed).
 """
 from __future__ import annotations
@@ -20,6 +24,8 @@ from typing import Any
 import httpx
 
 from app.config import get_settings
+from app.models.channel_route import CHANNEL_CALENDAR
+from app.services.channel_identity import resolve_outbound_identity
 
 log = logging.getLogger(__name__)
 
@@ -91,22 +97,24 @@ async def list_available_slots(
     if s.CALENDAR_SIMULATED:
         return _simulated_slots(start, end, busy_starts=busy_starts)
 
-    if not s.CALCOM_API_KEY or not s.CALCOM_EVENT_TYPE_ID:
+    identity = await resolve_outbound_identity(CHANNEL_CALENDAR)
+    if not identity.credential or not identity.destination:
         raise CalComError(
-            "Cal.com not configured: CALCOM_API_KEY + CALCOM_EVENT_TYPE_ID must be "
-            "set, or set CALENDAR_SIMULATED=true for dev."
+            "Cal.com not configured for this organization: an API key and an "
+            "event type must be set, either globally in .env or on the agency's "
+            "calendar route. Set CALENDAR_SIMULATED=true for dev."
         )
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.get(
             f"{s.CALCOM_BASE_URL}/v2/slots/available",
             params={
-                "eventTypeId": s.CALCOM_EVENT_TYPE_ID,
+                "eventTypeId": identity.destination,
                 "startTime": start.isoformat(),
                 "endTime": end.isoformat(),
                 "timeZone": timezone_name,
             },
-            headers={"Authorization": f"Bearer {s.CALCOM_API_KEY}"},
+            headers={"Authorization": f"Bearer {identity.credential}"},
         )
         if resp.status_code >= 400:
             log.error("Cal.com slots fetch failed: %d %s", resp.status_code, resp.text[:300])
@@ -168,13 +176,19 @@ async def create_booking(
             simulated=True,
         )
 
-    if not s.CALCOM_API_KEY or not s.CALCOM_EVENT_TYPE_ID:
-        raise CalComError("Cal.com not configured (CALCOM_API_KEY + CALCOM_EVENT_TYPE_ID required).")
+    identity = await resolve_outbound_identity(CHANNEL_CALENDAR)
+    if not identity.credential or not identity.destination:
+        raise CalComError(
+            "Cal.com not configured for this organization: an API key and an "
+            "event type must be set, either globally or on the agency's "
+            "calendar route. Booking onto the operator's calendar would put "
+            "this lead's name, email and phone in front of another agency."
+        )
     if not attendee_email:
         raise CalComError("attendee_email is required for real Cal.com bookings.")
 
     body: dict[str, Any] = {
-        "eventTypeId": int(s.CALCOM_EVENT_TYPE_ID),
+        "eventTypeId": int(identity.destination),
         "start": start_time.isoformat(),
         "attendee": {
             "name": attendee_name,
@@ -193,7 +207,7 @@ async def create_booking(
             f"{s.CALCOM_BASE_URL}/v2/bookings",
             json=body,
             headers={
-                "Authorization": f"Bearer {s.CALCOM_API_KEY}",
+                "Authorization": f"Bearer {identity.credential}",
                 "Content-Type": "application/json",
                 "cal-api-version": "2024-08-13",
             },
@@ -224,15 +238,16 @@ async def cancel_booking(external_booking_id: str, *, reason: str | None = None)
         log.info("Cal.com SIMULATED cancel id=%s reason=%r", external_booking_id, reason)
         return True
 
-    if not s.CALCOM_API_KEY:
-        raise CalComError("Cal.com not configured.")
+    identity = await resolve_outbound_identity(CHANNEL_CALENDAR)
+    if not identity.credential:
+        raise CalComError("Cal.com not configured for this organization.")
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(
             f"{s.CALCOM_BASE_URL}/v2/bookings/{external_booking_id}/cancel",
             json={"cancellationReason": reason or "Cancelled from dashboard"},
             headers={
-                "Authorization": f"Bearer {s.CALCOM_API_KEY}",
+                "Authorization": f"Bearer {identity.credential}",
                 "Content-Type": "application/json",
                 "cal-api-version": "2024-08-13",
             },

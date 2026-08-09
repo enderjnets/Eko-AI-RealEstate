@@ -30,6 +30,7 @@ from dataclasses import dataclass
 
 from app.config import get_settings
 from app.models.channel_route import (
+    CHANNEL_CALENDAR,
     CHANNEL_EMAIL,
     CHANNEL_SMS,
     CHANNEL_VOICE,
@@ -280,6 +281,15 @@ def _global_identity(channel: str, *, org_id: int | None) -> ChannelIdentity:
             destination=s.RESEND_FROM or None,
             credential=s.RESEND_API_KEY or None,
             inbound_secret=s.RESEND_WEBHOOK_SECRET or None,
+        )
+    if channel == CHANNEL_CALENDAR:
+        return ChannelIdentity(
+            org_id=org_id,
+            channel=channel,
+            # The event type is the "destination": which calendar a booking
+            # lands on.
+            destination=str(s.CALCOM_EVENT_TYPE_ID or "") or None,
+            credential=s.CALCOM_API_KEY or None,
         )
     if channel == CHANNEL_VOICE:
         return ChannelIdentity(

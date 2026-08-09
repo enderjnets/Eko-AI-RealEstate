@@ -29,7 +29,6 @@ from app.models import (
     Visit,
     VisitStatus,
 )
-from app.models.organization import DEFAULT_ORG_ID
 from app.services.conversation import _dispatch_send, _latest_active_conversation
 from app.services.i18n import detect_language, pick_supported_language
 from app.services.tenant_context import get_org_id
@@ -251,4 +250,15 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
 
 def _acting_org() -> int:
     """The org whose settings row applies to this call."""
-    return get_org_id() or DEFAULT_ORG_ID
+    org_id = get_org_id()
+    if org_id is None:
+        # Was `or DEFAULT_ORG_ID`. It fails closed today because these paths run
+        # on the RLS session — an unset org reads nothing and cannot write — but
+        # the fallback is one `get_bypass_db` away from silently reading and
+        # overwriting client zero's row, and there are six of these. Say so
+        # instead of guessing.
+        raise RuntimeError(
+            "no acting organization is bound; refusing to fall back to the "
+            "default one"
+        )
+    return org_id
