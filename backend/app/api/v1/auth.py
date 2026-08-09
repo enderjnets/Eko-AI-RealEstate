@@ -168,17 +168,41 @@ class MeOut(BaseModel):
     is_platform_operator: bool = False
 
 
-def _set_session_cookie(response: Response, token: str) -> None:
+def _set_session_cookie(
+    response: Response, token: str, request: Request | None
+) -> None:
     s = get_settings()
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
         httponly=True,
         samesite="lax",
-        secure=s.is_production,
+        secure=_cookie_is_secure(request),
         max_age=s.AUTH_TTL_HOURS * 3600,
         path="/",
     )
+
+
+def _cookie_is_secure(request: Request | None) -> bool:
+    """Whether to mark the session cookie `Secure`.
+
+    Decided per request rather than from `APP_ENV`. The same install is reached
+    two ways: over TLS at its domain, and over plain http on the LAN. Keying
+    `Secure` off the environment forces one answer for both — in production the
+    browser refuses to keep the cookie on the LAN address and nobody can hold a
+    session there, which is why this install was still marked `development` and
+    therefore sending session cookies over http on the domain too.
+
+    Per request, each gets the right answer: `Secure` behind TLS, and a working
+    session on the LAN, with no environment flag deciding a security property
+    it cannot actually observe.
+    """
+    if request is None:
+        # No request in hand — take the strict answer.
+        return True
+    forwarded = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    scheme = forwarded or request.url.scheme
+    return scheme == "https"
 
 
 def _is_platform_operator(email: str | None) -> bool:
@@ -215,7 +239,7 @@ async def _sso_session(
 
 
 @router.post("/login")
-async def login(body: LoginIn, response: Response) -> dict[str, bool]:
+async def login(body: LoginIn, request: Request, response: Response) -> dict[str, bool]:
     s = get_settings()
     if not s.AUTH_ENABLED:
         return {"ok": True, "auth_enabled": False}
@@ -236,6 +260,7 @@ async def login(body: LoginIn, response: Response) -> dict[str, bool]:
     _set_session_cookie(
         response,
         make_token(role=ROLE_ADMIN, org_id=DEFAULT_ORG_ID),
+        request,
     )
     return {"ok": True, "auth_enabled": True}
 
@@ -266,6 +291,7 @@ async def login_google(
     _set_session_cookie(
         response,
         make_token(email=email, role=role, org_id=org_id, superuser=superuser),
+        request,
     )
     await _safe_record_login(db, email, "google", request, org_id)
     return {"ok": True, "auth_enabled": True}
@@ -305,7 +331,9 @@ async def login_google_callback(
     role, org_id, superuser = session
     resp = RedirectResponse("/leads", status_code=303)
     _set_session_cookie(
-        resp, make_token(email=email, role=role, org_id=org_id, superuser=superuser)
+        resp,
+        make_token(email=email, role=role, org_id=org_id, superuser=superuser),
+        request,
     )
     await _safe_record_login(db, email, "google", request, org_id)
     return resp
@@ -337,6 +365,7 @@ async def login_apple(
     _set_session_cookie(
         response,
         make_token(email=email, role=role, org_id=org_id, superuser=superuser),
+        request,
     )
     await _safe_record_login(db, email, "apple", request, org_id)
     return {"ok": True, "auth_enabled": True}
@@ -395,7 +424,9 @@ async def register(
     # Sign them in immediately (cookie). When AUTH_ENABLED is false the cookie is
     # simply ignored — the dashboard is already open in that mode.
     _set_session_cookie(
-        response, make_token(email=email, role=ROLE_VIEWER, org_id=DEMO_ORG_ID)
+        response,
+        make_token(email=email, role=ROLE_VIEWER, org_id=DEMO_ORG_ID),
+        request,
     )
     await _safe_record_login(db, email, "account", request, account_org_id)
     return {"ok": True, "role": ROLE_VIEWER, "auth_enabled": get_settings().AUTH_ENABLED}
@@ -427,6 +458,7 @@ async def login_account(
             role=account.role or ROLE_VIEWER,
             org_id=account.org_id or DEMO_ORG_ID,
         ),
+        request,
     )
     await _safe_record_login(db, email, "account", request, account_org_id)
     return {"ok": True, "role": account.role or ROLE_VIEWER, "auth_enabled": get_settings().AUTH_ENABLED}

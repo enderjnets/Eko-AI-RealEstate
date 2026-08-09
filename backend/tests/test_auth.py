@@ -385,3 +385,40 @@ async def test_apple_login_db_member_then_denied(_needs_db: None) -> None:
                     assert r.json()["detail"] == "email_not_in_allow_list"
     finally:
         await _clear_allowed("amember@eko.com", "astranger@eko.com")
+
+
+def test_the_session_cookie_is_secure_behind_tls_and_usable_without_it() -> None:
+    """`secure` used to come from APP_ENV, which cannot see how the request
+    arrived.
+
+    The same install is reached two ways: over TLS at its domain, and over plain
+    http on the LAN. One environment flag has to answer for both — so marking it
+    production made the browser refuse to keep the cookie on the LAN address and
+    nobody could hold a session there, which is exactly why this install was
+    left on `development` and was therefore sending session cookies over plain
+    http on the domain as well.
+    """
+    from types import SimpleNamespace
+
+    from app.api.v1.auth import _cookie_is_secure
+
+    def _request(scheme: str, forwarded: str | None = None) -> object:
+        return SimpleNamespace(
+            url=SimpleNamespace(scheme=scheme),
+            headers={"x-forwarded-proto": forwarded} if forwarded else {},
+        )
+
+    # Straight https, and the LAN address on plain http.
+    assert _cookie_is_secure(_request("https")) is True
+    assert _cookie_is_secure(_request("http")) is False
+
+    # Behind the Cloudflare tunnel the app itself sees http; the header is what
+    # says the browser used TLS. Missing this would ship a non-Secure cookie on
+    # the very origin that has TLS.
+    assert _cookie_is_secure(_request("http", "https")) is True
+    # A proxy chain lists the client's protocol first.
+    assert _cookie_is_secure(_request("http", "https, http")) is True
+    assert _cookie_is_secure(_request("https", "http")) is False
+
+    # No request to look at: take the strict answer rather than guessing.
+    assert _cookie_is_secure(None) is True

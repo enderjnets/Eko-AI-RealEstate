@@ -164,6 +164,7 @@ async def impersonate(
         make_token(
             email=None, role=ROLE_ADMIN, org_id=org_id, impersonating=True
         ),
+        request,
     )
     return {"ok": True, "org_id": org_id, "slug": org.slug}
 
