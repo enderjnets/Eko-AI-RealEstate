@@ -294,3 +294,110 @@ async def test_a_message_still_in_flight_is_left_alone() -> None:
                     assert await retry_pending_sends(db) == {"sent": 0, "failed": 0}
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_message_with_nowhere_to_go_is_retired_not_looped() -> None:
+    """Clearing the schedule used to remove a row from the sweep. Once PENDING
+    rows with no schedule became eligible — the fix for the crash case — an
+    undeliverable one re-qualified on every tick, silently holding a slot in
+    every batch forever."""
+    from app.models.message import MessageStatus as Status
+    from app.services.delivery import MAX_ATTEMPTS as CAP
+
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                # An email conversation for a lead with no address at all.
+                lead = Lead(phone="+13035551212")
+                db.add(lead)
+                await db.flush()
+                conversation = Conversation(lead_id=lead.id, channel="email")
+                db.add(conversation)
+                await db.flush()
+                orphan = Message(
+                    conversation_id=conversation.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
+                    content="Nowhere to send this.",
+                    delivery_status=Status.PENDING,
+                )
+                db.add(orphan)
+                await db.flush()
+                orphan.created_at = datetime.now(UTC) - timedelta(minutes=30)
+                await db.commit()
+                orphan_id = orphan.id
+
+            async with get_session_factory()() as db:
+                await retry_pending_sends(db)
+
+            async with get_session_factory()() as db:
+                after = (
+                    await db.execute(select(Message).where(Message.id == orphan_id))
+                ).scalar_one()
+                assert after.send_attempts >= CAP, (
+                    "still eligible; it will be re-resolved on every tick forever"
+                )
+                assert after.delivery_status is Status.FAILED
+
+            # And a second sweep does not pick it up again.
+            async with get_session_factory()() as db:
+                assert await retry_pending_sends(db) == {"sent": 0, "failed": 0}
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_two_workers_cannot_send_the_same_message() -> None:
+    """The sweep runs in every replica. Locking the whole batch and committing
+    per message released the locks on every row still waiting, so a second
+    worker picked them up and the lead got the same answer twice — caused by
+    the commit added to stop a cancellation replaying the batch."""
+    import asyncio
+
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead = Lead(phone="+13035559999")
+                db.add(lead)
+                await db.flush()
+                conversation = Conversation(lead_id=lead.id, channel="whatsapp")
+                db.add(conversation)
+                await db.flush()
+                one = Message(
+                    conversation_id=conversation.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
+                    content="Exactly once, please.",
+                    delivery_status=MessageStatus.FAILED,
+                )
+                one.send_attempts = 1
+                one.next_attempt_at = datetime.now(UTC) - timedelta(minutes=1)
+                db.add(one)
+                await db.commit()
+
+            deliveries: list[str] = []
+            started = asyncio.Event()
+
+            async def _slow_send(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                deliveries.append(to)
+                started.set()
+                # Long enough that the second worker is inside its SELECT while
+                # the first still holds the row.
+                await asyncio.sleep(0.4)
+                return f"wamid.{len(deliveries)}", None
+
+            async def _worker() -> dict[str, int]:
+                async with get_session_factory()() as db:
+                    with patch("app.services.conversation._dispatch_send", _slow_send):
+                        return await retry_pending_sends(db)
+
+            first, second = await asyncio.gather(_worker(), _worker())
+        assert len(deliveries) == 1, (
+            f"delivered {len(deliveries)} times; the lead sees the same reply twice"
+        )
+        assert (first["sent"], second["sent"]) in ((1, 0), (0, 1))
+    finally:
+        await _cleanup()

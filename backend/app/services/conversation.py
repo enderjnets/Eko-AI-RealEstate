@@ -747,45 +747,52 @@ _SMS_MAX_CHARS = 1500
 def _with_broker_credits(
     reply: str, offered: list[tuple[str, str, str | None]], channel: str
 ) -> str:
-    """Append the listing broker's credit to the message that reaches the lead.
+    """Append the listing brokers' credits to the message that reaches the lead.
 
     Colorado requires the broker to be named wherever a listing reaches a
-    consumer, so this cannot be left to whether a model chose to repeat a line
-    from its prompt.
+    consumer. Three versions of this tried to work out whether the reply had
+    actually offered a given listing — first by looking for the credit itself
+    (which credited only what was already credited), then by looking for the
+    listing's title or address. Both fail the ordinary case: the lead writes in
+    English, the model renders "Casa en Wash Park" as "the Wash Park house",
+    the substring is gone, and a listing reaches a consumer uncredited.
 
-    Keyed on the listing, not on the office name — the first version of this
-    asked whether the reply already contained the credit and then kept exactly
-    those, which appended the credit only when it was already there and never
-    when it was missing. The inverse of the obligation.
+    So it no longer guesses. Every broker whose listing was put in front of the
+    model this turn is credited. `match_properties_for_lead` caps that at a
+    handful, and this only runs on turns where listings were offered at all, so
+    the footer is short and bounded. Crediting a broker whose listing the reply
+    did not end up mentioning is noise; the other way round is a licence
+    problem, and only one of those is worth being wrong about.
     """
-    credits: list[str] = []
-    for credit, title, address in offered:
-        if not credit:
+    lines: list[str] = []
+    for broker, _title, _address in offered:
+        if not broker:
             continue
-        # Did the reply actually offer this listing? Only then is a credit owed,
-        # and only then would one make sense to the reader.
-        haystack = reply.lower()
-        referenced = (title and title.lower() in haystack) or (
-            address and address.lower() in haystack
-        )
-        if not referenced:
+        line = f"Cortesía de {broker}"
+        # Skip only when this exact credit is already in the text — matching the
+        # bare name also matched a broker's name inside a listing's own title.
+        if line.lower() in reply.lower() or line in lines:
             continue
-        line = f"Cortesía de {credit}"
-        if credit.lower() in haystack:
-            continue  # the model already named them; do not say it twice
-        if line not in credits:
-            credits.append(line)
-    if not credits:
+        lines.append(line)
+    if not lines:
         return reply
 
-    footer = "\n\n" + " · ".join(credits)
-    if channel in ("sms", "whatsapp"):
-        room = _SMS_MAX_CHARS - len(footer)
-        if len(reply) > room:
-            # The credit stays and the prose gives way. A truncated sentence is
-            # a worse message; an uncredited listing is a licence problem.
-            reply = reply[: max(0, room - 1)].rstrip() + "…"
-    return reply.rstrip() + footer
+    if channel not in ("sms", "whatsapp"):
+        return reply.rstrip() + "\n\n" + " · ".join(lines)
+
+    # Twilio hard-rejects past its limit, and a rejected message is now retried
+    # five times before being given up on. Fit the credits first and let the
+    # prose give way — but never produce something still over the limit, which
+    # is what subtracting an oversized footer from the budget did.
+    footer = "\n\n" + " · ".join(lines)
+    while lines and len(footer) > _SMS_MAX_CHARS // 2:
+        lines.pop()
+        footer = "\n\n" + " · ".join(lines)
+    if not lines:
+        return reply[:_SMS_MAX_CHARS]
+    room = _SMS_MAX_CHARS - len(footer)
+    body = reply if len(reply) <= room else reply[: max(0, room - 1)].rstrip() + "…"
+    return body.rstrip() + footer
 
 
 def _fallback_reply(agent_cfg: AgentSettings | None, target_lang: str) -> LLMResult:

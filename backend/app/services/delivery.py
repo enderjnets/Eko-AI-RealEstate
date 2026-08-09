@@ -78,45 +78,22 @@ async def retry_pending_sends(db: AsyncSession, *, limit: int = 20) -> dict[str,
 
     Runs inside one organization's scope — the caller supplies that — so the
     retry goes out with the same agency identity the original would have used.
-    """
-    from app.services.conversation import _dispatch_send
 
+    Two passes on purpose. The first reads only ids, with no lock held; the
+    second locks and sends one message at a time, committing each. Locking the
+    whole batch and committing per message did both things wrong at once: the
+    commit released the locks on every row still waiting, so a second worker
+    picked them up and the lead got the same answer twice — from the very
+    commit added to stop a cancellation replaying the batch.
+    """
     now = datetime.now(UTC)
-    due = (
+    candidates = (
         (
             await db.execute(
-                select(Message)
-                # The model eager-loads its lead and conversation, and Postgres
-                # refuses FOR UPDATE on the nullable side of an outer join.
-                # Nothing here needs them: the recipient is looked up per row.
-                .options(lazyload("*"))
-                .where(
-                    Message.direction == MessageDirection.OUTBOUND,
-                    Message.delivery_status.in_(
-                        [MessageStatus.PENDING, MessageStatus.FAILED]
-                    ),
-                    Message.external_id.is_(None),
-                    # Either scheduled and due, or PENDING with nothing
-                    # scheduled at all — which is what a worker killed between
-                    # the insert and the POST leaves behind, and the case the
-                    # sweep was written for. `next_attempt_at` is only ever
-                    # written by `schedule_retry`, so requiring it excluded
-                    # exactly those rows.
-                    or_(
-                        Message.next_attempt_at <= now,
-                        and_(
-                            Message.next_attempt_at.is_(None),
-                            Message.delivery_status == MessageStatus.PENDING,
-                            Message.created_at < now - _ABANDONED_AFTER,
-                        ),
-                    ),
-                    Message.send_attempts < MAX_ATTEMPTS,
-                )
-                .order_by(Message.next_attempt_at)
+                select(Message.id)
+                .where(_still_owed(now))
+                .order_by(Message.next_attempt_at.nulls_last(), Message.created_at)
                 .limit(limit)
-                # Skip anything another worker holds rather than queueing behind
-                # it; the next tick will find whatever was skipped.
-                .with_for_update(skip_locked=True)
             )
         )
         .scalars()
@@ -124,49 +101,101 @@ async def retry_pending_sends(db: AsyncSession, *, limit: int = 20) -> dict[str,
     )
 
     sent = failed = 0
-    for message in due:
-        recipient, channel, in_reply_to = await _recipient_of(message, db)
-        if not recipient or not channel:
-            # Nothing to send to. Stop retrying rather than looping forever on a
-            # row we cannot address.
-            message.next_attempt_at = None
-            message.last_error = "no recipient for this message"
-            continue
-        try:
-            external_id, _ = await _dispatch_send(
-                channel,
-                to=recipient,
-                text=message.content,
-                # The row was holding all three. Without them the retry arrived
-                # as a brand-new email titled "Tu consulta", detached from the
-                # thread the lead was reading.
-                subject=message.subject,
-                in_reply_to=in_reply_to,
-                references=in_reply_to,
-            )
-        except Exception as exc:  # noqa: BLE001 — the point is to survive this
-            schedule_retry(message, str(exc))
-            await db.commit()
+    for message_id in candidates:
+        outcome = await _retry_one(db, message_id, now)
+        if outcome == "sent":
+            sent += 1
+        elif outcome == "failed":
             failed += 1
-            continue
-        message.delivery_status = MessageStatus.SENT
-        message.next_attempt_at = None
-        message.last_error = None
-        if external_id:
-            # Not inside a savepoint on purpose: a collision here would mean the
-            # provider handed back an id we already hold, which is worth seeing
-            # rather than swallowing. The sweep is not in a request path.
-            message.external_id = external_id
-        sent += 1
-        # Per message, deliberately. With one commit after the loop, a
-        # CancelledError on the last of twenty rolled back the nineteen already
-        # delivered — and the next tick sent all nineteen again.
-        await db.commit()
 
     if sent or failed:
         log.info("delivery retry: %d sent, %d still failing", sent, failed)
-    await db.commit()
     return {"sent": sent, "failed": failed}
+
+
+def _still_owed(now: datetime):  # noqa: ANN201 — a SQLAlchemy clause
+    """Outbound messages that have not reached a provider."""
+    return and_(
+        Message.direction == MessageDirection.OUTBOUND,
+        Message.delivery_status.in_([MessageStatus.PENDING, MessageStatus.FAILED]),
+        Message.external_id.is_(None),
+        Message.send_attempts < MAX_ATTEMPTS,
+        or_(
+            Message.next_attempt_at <= now,
+            # PENDING with nothing scheduled is what a worker killed between
+            # the insert and the POST leaves behind — the case the sweep exists
+            # for, and the one `next_attempt_at IS NOT NULL` used to exclude.
+            and_(
+                Message.next_attempt_at.is_(None),
+                Message.delivery_status == MessageStatus.PENDING,
+                Message.created_at < now - _ABANDONED_AFTER,
+            ),
+        ),
+    )
+
+
+async def _retry_one(db: AsyncSession, message_id: int, now: datetime) -> str:
+    """Send one message, in its own transaction, holding only its own row."""
+    from app.services.conversation import _dispatch_send
+
+    message = (
+        (
+            await db.execute(
+                select(Message)
+                # The model eager-loads its lead and conversation, and Postgres
+                # refuses FOR UPDATE on the nullable side of an outer join.
+                .options(lazyload("*"))
+                .where(Message.id == message_id, _still_owed(now))
+                .with_for_update(skip_locked=True)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if message is None:
+        # Another worker took it, or it stopped qualifying between the two
+        # passes. Either way it is not ours.
+        return "skipped"
+
+    recipient, channel, in_reply_to = await _recipient_of(message, db)
+    if not recipient or not channel:
+        # Nothing to send to. Retiring it explicitly: clearing the schedule used
+        # to be enough, but a PENDING row with no schedule now re-qualifies, so
+        # this looped on every tick forever and silently held a slot.
+        message.send_attempts = MAX_ATTEMPTS
+        message.delivery_status = MessageStatus.FAILED
+        message.next_attempt_at = None
+        message.last_error = "no address for this conversation"
+        log.warning(
+            "message %s cannot be delivered: no address for its lead", message.id
+        )
+        await db.commit()
+        return "skipped"
+
+    try:
+        external_id, _ = await _dispatch_send(
+            channel,
+            to=recipient,
+            text=message.content,
+            # The row was holding all three. Without them the retry arrived as a
+            # brand-new email titled "Tu consulta", detached from the thread the
+            # lead was reading.
+            subject=message.subject,
+            in_reply_to=in_reply_to,
+            references=in_reply_to,
+        )
+    except Exception as exc:  # noqa: BLE001 — surviving this is the whole point
+        schedule_retry(message, str(exc))
+        await db.commit()
+        return "failed"
+
+    message.delivery_status = MessageStatus.SENT
+    message.next_attempt_at = None
+    message.last_error = None
+    if external_id:
+        message.external_id = external_id
+    await db.commit()
+    return "sent"
 
 
 async def _recipient_of(

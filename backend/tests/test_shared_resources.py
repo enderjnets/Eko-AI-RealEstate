@@ -921,27 +921,38 @@ async def test_the_same_person_on_two_channels_is_one_lead() -> None:
 
 
 def test_the_broker_credit_is_added_when_it_is_missing() -> None:
-    """The first version of this asked whether the reply already contained the
-    credit — and then kept exactly those, appending the credit only when it was
-    already there and never when it was absent. The inverse of the obligation,
-    and every test of it passed on the duplicate case."""
+    """Three versions of this tried to detect whether the reply had offered a
+    given listing — first by looking for the credit itself, which credited only
+    what was already credited; then by looking for the title or address, which
+    misses the moment the model paraphrases or translates. It no longer
+    guesses: every broker whose listing was put in front of the model is
+    credited."""
     from app.services.conversation import _with_broker_credits
 
     offered = [("Kentwood Real Estate", "Casa en Wash Park", "1200 S Gaylord St")]
 
-    # The case that matters: the model offered the listing and named no broker.
-    plain = "Tengo una casa en Wash Park por $650k, ¿te interesa?"
-    out = _with_broker_credits(plain, offered, "whatsapp")
-    assert "Cortesía de Kentwood Real Estate" in out
+    # The case that matters: the model paraphrased the title out of existence.
+    paraphrased = "I have a great place near Wash Park for $650k, interested?"
+    assert "Cortesía de Kentwood Real Estate" in _with_broker_credits(
+        paraphrased, offered, "whatsapp"
+    )
 
     # Already credited: do not say it twice.
-    credited = plain + " Cortesía de Kentwood Real Estate."
+    credited = paraphrased + " Cortesía de Kentwood Real Estate."
     assert _with_broker_credits(credited, offered, "whatsapp").count("Kentwood") == 1
 
-    # A reply that does not offer this listing gets no credit for it — a credit
-    # for something never mentioned is noise, not compliance.
-    unrelated = "Sí, atendemos los sábados."
-    assert _with_broker_credits(unrelated, offered, "whatsapp") == unrelated
+    # A broker's own name inside a listing title is not a credit. Matching the
+    # bare name treated it as one and dropped the real credit.
+    tricky = [("Coldwell Banker", "Coldwell Banker Tower, Unit 5", None)]
+    out = _with_broker_credits(
+        "The Coldwell Banker Tower unit is available.", tricky, "whatsapp"
+    )
+    assert "Cortesía de Coldwell Banker" in out
+
+    # Nothing offered, nothing appended.
+    assert _with_broker_credits("Abrimos los sábados.", [], "whatsapp") == (
+        "Abrimos los sábados."
+    )
 
 
 def test_the_credit_survives_a_reply_too_long_for_sms() -> None:
@@ -954,6 +965,14 @@ def test_the_credit_survives_a_reply_too_long_for_sms() -> None:
     long_reply = "Casa en Wash Park. " + ("detalle " * 400)
     out = _with_broker_credits(long_reply, offered, "sms")
     assert "Cortesía de Kentwood Real Estate" in out
+    assert len(out) <= _SMS_MAX_CHARS
+
+    # And a footer that cannot fit at all must not produce a message that is
+    # still over the limit. Subtracting an oversized footer from the budget
+    # gave a body of "…" and returned "…" plus the footer — mangled AND
+    # rejected, which is the worst of both.
+    many = [(f"Very Long Brokerage Name Number {i}" * 12, "T", None) for i in range(8)]
+    out = _with_broker_credits(long_reply, many, "sms")
     assert len(out) <= _SMS_MAX_CHARS
 
 
