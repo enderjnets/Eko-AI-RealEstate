@@ -162,6 +162,10 @@ class MeOut(BaseModel):
     google_signin_enabled: bool = False
     apple_signin_enabled: bool = False
     registration_enabled: bool = True
+    # Operator-only controls hide themselves when this is false — the MLS sync
+    # button, discovery. The gate is the backend's; this only spares a tenant a
+    # 403 on a button they were invited to press.
+    is_platform_operator: bool = False
 
 
 def _set_session_cookie(response: Response, token: str) -> None:
@@ -434,6 +438,24 @@ async def logout(response: Response) -> dict[str, bool]:
     return {"ok": True}
 
 
+def _viewer_is_operator(request: Request) -> bool:
+    """Whether this session would pass `require_platform_admin`.
+
+    Deliberately re-reads the email from the token and re-checks the env list,
+    rather than trusting the `su` claim alone — the same order the real gate
+    uses, so the button cannot appear for someone the gate would refuse.
+    """
+    if not get_settings().platform_admin_emails_list:
+        return False
+    from app.services.auth import decode_token, token_is_superuser
+
+    token = _token_from_request(request)
+    if not token_is_superuser(token):
+        return False
+    email = (decode_token(token) or {}).get("email")
+    return _is_platform_operator(email)
+
+
 @router.get("/me", response_model=MeOut)
 async def me(request: Request) -> MeOut:
     s = get_settings()
@@ -461,6 +483,7 @@ async def me(request: Request) -> MeOut:
         google_signin_enabled=google_enabled,
         apple_signin_enabled=apple_enabled,
         registration_enabled=s.REGISTRATION_ENABLED,
+        is_platform_operator=authed and _viewer_is_operator(request),
     )
 
 

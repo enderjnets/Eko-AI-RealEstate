@@ -303,6 +303,63 @@ def _global_identity(channel: str, *, org_id: int | None) -> ChannelIdentity:
     return ChannelIdentity(org_id=org_id, channel=channel)
 
 
+
+async def _has_route(channel: str, org_id: int) -> bool:
+    """Whether this organization has a row of its own on this channel."""
+    from sqlalchemy import func, select
+
+    from app.db.base import get_bypass_session_factory
+    from app.models.channel_route import ChannelRoute
+
+    async with get_bypass_session_factory()() as db:
+        return bool(
+            (
+                await db.execute(
+                    select(func.count())
+                    .select_from(ChannelRoute)
+                    .where(
+                        ChannelRoute.channel == channel,
+                        ChannelRoute.org_id == org_id,
+                    )
+                )
+            ).scalar()
+        )
+
+
+async def resolve_calendar_identity() -> ChannelIdentity:
+    """The calendar this organization books on, refusing the shared one.
+
+    Every other channel may legitimately fall back to the operator's account —
+    an extra Twilio number on their subaccount is a real arrangement. A
+    calendar is not: a booking writes the lead's name, email and phone onto it
+    as an attendee, so falling back puts one agency's client in front of
+    another's realtors and lets their bookings blank out each other's slots.
+
+    The fallback stays for a single-customer install, which has nobody to
+    collide with, and for the default organization, whose calendar the global
+    configuration describes.
+    """
+    from app.models.organization import DEFAULT_ORG_ID
+    from app.services.tenant_resolver import active_orgs, routable_candidates
+
+    identity = await resolve_outbound_identity(CHANNEL_CALENDAR)
+    org_id = get_org_id()
+    if org_id is None or org_id == DEFAULT_ORG_ID:
+        return identity
+    # `is_own_account` is the wrong question here: it only asks whether a
+    # credential was found, and the global fallback supplies one. Ask whether
+    # this organization has a calendar row of its own.
+    if await _has_route(CHANNEL_CALENDAR, org_id):
+        return identity
+    if len(routable_candidates(await active_orgs())) < 2:
+        return identity
+    raise MissingChannelCredential(
+        f"organization {org_id} has no calendar of its own, and there is more "
+        "than one agency — booking would put this lead's name, email and phone "
+        "on the operator's calendar. Add a `calendar` channel route."
+    )
+
+
 async def known_verify_tokens(channel: str) -> list[str]:
     """Every handshake token configured for this channel, operator's included.
 

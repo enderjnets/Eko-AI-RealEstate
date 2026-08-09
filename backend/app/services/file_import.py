@@ -112,12 +112,14 @@ async def extract_leads(text: str) -> list[BusinessDTO]:
 
     match = re.search(r"\[.*\]", result.text, re.DOTALL)
     if not match:
-        log.warning("File-import: no JSON array in LLM output: %r", result.text[:200])
+        # Length, not content: the model is quoting an uploaded lead list back,
+        # so the first 200 characters are somebody's name and phone number.
+        log.warning("File-import: no JSON array in LLM output (%d chars)", len(result.text))
         return []
     try:
         rows = json.loads(match.group(0))
     except json.JSONDecodeError:
-        log.warning("File-import: invalid JSON: %r", result.text[:200])
+        log.warning("File-import: invalid JSON in LLM output (%d chars)", len(result.text))
         return []
     if not isinstance(rows, list):
         return []

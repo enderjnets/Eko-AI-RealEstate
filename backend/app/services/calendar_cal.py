@@ -24,8 +24,10 @@ from typing import Any
 import httpx
 
 from app.config import get_settings
-from app.models.channel_route import CHANNEL_CALENDAR
-from app.services.channel_identity import resolve_outbound_identity
+from app.services.channel_identity import (
+    MissingChannelCredential,
+    resolve_calendar_identity,
+)
 
 log = logging.getLogger(__name__)
 
@@ -97,7 +99,13 @@ async def list_available_slots(
     if s.CALENDAR_SIMULATED:
         return _simulated_slots(start, end, busy_starts=busy_starts)
 
-    identity = await resolve_outbound_identity(CHANNEL_CALENDAR)
+    try:
+        identity = await resolve_calendar_identity()
+    except MissingChannelCredential as exc:
+        # As a CalComError, so the callers that already degrade gracefully on a
+        # calendar outage — the voice tool, the visits endpoint — keep doing so
+        # instead of turning a missing route into a 500.
+        raise CalComError(str(exc)) from exc
     if not identity.credential or not identity.destination:
         raise CalComError(
             "Cal.com not configured for this organization: an API key and an "
@@ -176,7 +184,13 @@ async def create_booking(
             simulated=True,
         )
 
-    identity = await resolve_outbound_identity(CHANNEL_CALENDAR)
+    try:
+        identity = await resolve_calendar_identity()
+    except MissingChannelCredential as exc:
+        # As a CalComError, so the callers that already degrade gracefully on a
+        # calendar outage — the voice tool, the visits endpoint — keep doing so
+        # instead of turning a missing route into a 500.
+        raise CalComError(str(exc)) from exc
     if not identity.credential or not identity.destination:
         raise CalComError(
             "Cal.com not configured for this organization: an API key and an "
@@ -238,7 +252,13 @@ async def cancel_booking(external_booking_id: str, *, reason: str | None = None)
         log.info("Cal.com SIMULATED cancel id=%s reason=%r", external_booking_id, reason)
         return True
 
-    identity = await resolve_outbound_identity(CHANNEL_CALENDAR)
+    try:
+        identity = await resolve_calendar_identity()
+    except MissingChannelCredential as exc:
+        # As a CalComError, so the callers that already degrade gracefully on a
+        # calendar outage — the voice tool, the visits endpoint — keep doing so
+        # instead of turning a missing route into a 500.
+        raise CalComError(str(exc)) from exc
     if not identity.credential:
         raise CalComError("Cal.com not configured for this organization.")
 

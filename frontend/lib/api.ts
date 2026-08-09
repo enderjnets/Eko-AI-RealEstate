@@ -483,6 +483,8 @@ export interface MeResult {
   google_signin_enabled?: boolean;
   apple_signin_enabled?: boolean;
   registration_enabled?: boolean;
+  /** Runs the platform, not an agency. Operator-only controls key off this. */
+  is_platform_operator?: boolean;
 }
 
 export interface RegisterPayload {

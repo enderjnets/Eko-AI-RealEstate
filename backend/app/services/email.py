@@ -285,7 +285,15 @@ def parse_inbound_email(payload: dict[str, Any]) -> list[ParsedMessage]:
 
     from_addr = data.get("from") or ""
     if not from_addr:
-        log.warning("Email payload has no `from` — skipping: %r", data)
+        # The keys, not the values. This used to dump the whole payload, which
+        # carries the lead's address, name and the body of what they wrote — so
+        # any operator shipping logs anywhere exported several agencies' lead
+        # PII into one stream. The shape is what makes a malformed payload
+        # diagnosable; the contents never were.
+        log.warning(
+            "Email payload has no `from` — skipping. Fields present: %s",
+            sorted(data) if isinstance(data, dict) else type(data).__name__,
+        )
         return []
     from_name = data.get("from_name")
 

@@ -141,7 +141,9 @@ async def _office_tz(db: AsyncSession) -> str:
     return (cfg.timezone if cfg and cfg.timezone else "UTC")
 
 
-async def _busy_starts(db: AsyncSession) -> set[datetime]:
+async def _busy_starts(
+    db: AsyncSession, *, since: datetime, until: datetime
+) -> set[datetime]:
     """Every start time this agency already has a visit at.
 
     Filtered by the acting organization, not by lead — the RLS session does the
@@ -155,6 +157,11 @@ async def _busy_starts(db: AsyncSession) -> set[datetime]:
         await db.execute(
             select(Visit.scheduled_at).where(
                 Visit.status.in_([VisitStatus.SCHEDULED, VisitStatus.CONFIRMED]),
+                # Bounded to the window being offered. Unbounded, an agency with
+                # years of history loaded its whole visit table into a Python
+                # set on every availability request.
+                Visit.scheduled_at >= since,
+                Visit.scheduled_at < until,
             )
         )
     ).scalars().all()
@@ -175,7 +182,7 @@ async def list_slots(
     now = datetime.now(UTC)
     start = now.replace(minute=0, second=0, microsecond=0)
     end = start + timedelta(days=days)
-    busy = await _busy_starts(db)
+    busy = await _busy_starts(db, since=start, until=end)
     try:
         slots = await list_available_slots(start=start, end=end, timezone_name=tz, busy_starts=busy)
     except CalComError as exc:

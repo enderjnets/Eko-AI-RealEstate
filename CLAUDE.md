@@ -267,3 +267,14 @@ For per-phase details see [`docs/roadmap.md`](docs/roadmap.md).
   `~/.claude/projects/-Users-enderj/memory/project_eko_ai_realestate.md`
 - **Active plan**:
   `~/.claude/plans/puedes-verificar-a-ver-delegated-teacup.md` (Phase 1)
+
+### Hueco conocido: no hay rate limiting (aceptado, documentado)
+
+No existe límite de peticiones en ninguna capa. Los recursos que se pagan una
+sola vez para toda la instalación — el presupuesto de LLM (Kimi/MiniMax), el
+saldo de Twilio del operador cuando una agencia no trae el suyo, la licencia de
+REcolorado — están ahora tras `require_platform_admin` en los sitios donde se
+gastan en bloque (`/properties/sync`, todo `/discovery`). Lo que queda abierto
+es el gasto por conversación: una agencia con mucho tráfico entrante consume
+LLM que las demás necesitan para responder, y no hay cuota por organización
+contra la que cobrarlo. Antes de cobrar por uso hay que medirlo por `org_id`.

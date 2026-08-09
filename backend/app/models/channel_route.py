@@ -127,3 +127,19 @@ class ChannelRoute(Base):
 
     def __repr__(self) -> str:
         return f"<ChannelRoute {self.channel}:{self.destination} → org {self.org_id}>"
+
+
+def mask_destination(value: str | None) -> str:
+    """A phone number or address recognisable to an operator, useless to a leak.
+
+    Logs are the one place a lead's contact details cross tenant boundaries:
+    every agency's traffic lands in one stream, which an operator may ship
+    somewhere else entirely. Keep enough to correlate a delivery failure, drop
+    enough that the stream is not a lead list.
+    """
+    if not value:
+        return "-"
+    if "@" in value:
+        local, _, domain = value.partition("@")
+        return f"{local[:2]}***@{domain}"
+    return f"***{value[-4:]}" if len(value) > 4 else "***"

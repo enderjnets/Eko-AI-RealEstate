@@ -23,7 +23,7 @@ from uuid import uuid4
 import httpx
 
 from app.config import get_settings
-from app.models.channel_route import CHANNEL_SMS
+from app.models.channel_route import CHANNEL_SMS, mask_destination
 from app.services._common import ParsedMessage
 from app.services.channel_identity import resolve_outbound_identity
 
@@ -115,7 +115,12 @@ async def send_sms(*, to: str, body: str) -> dict[str, Any]:
         # uq_messages_external_id, which took the whole inbound turn down with
         # it — in the demo and dev modes, which is where nobody is watching.
         fake_sid = f"SM_SIMULATED_{uuid4().hex}"
-        log.info("SMS SIMULATED outbound to=%s body_len=%d (would-be sid=%s)", to, len(body), fake_sid)
+        log.info(
+            "SMS SIMULATED outbound to=%s body_len=%d (would-be sid=%s)",
+            mask_destination(to),
+            len(body),
+            fake_sid,
+        )
         return {"sid": fake_sid, "simulated": True}
 
     # Which agency is speaking. Falls back to the global .env configuration when

@@ -148,9 +148,67 @@ async def test_two_leads_are_not_offered_the_same_half_hour() -> None:
                 await db.commit()
 
             async with get_session_factory()() as db:
-                busy = await _busy_starts(db)
+                busy = await _busy_starts(
+                    db,
+                    since=when - timedelta(days=1),
+                    until=when + timedelta(days=1),
+                )
         assert when in busy, (
             "the other lead's booking was invisible, so both would be offered it"
         )
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_upgrade_path_does_not_hand_agency_b_the_operators_calendar(
+    monkeypatch,
+) -> None:
+    """The round-19 fix only covered a fresh install.
+
+    Every pilot being upgraded already has CALCOM_API_KEY in its `.env`, and the
+    global fallback answered with it — so onboarding agency B before creating
+    their calendar route put their lead's name, email and phone on the
+    operator's calendar anyway. Falling back is right for one customer and
+    wrong the moment there are two.
+    """
+    from app.config import get_settings
+    from app.services.channel_identity import (
+        MissingChannelCredential,
+        resolve_calendar_identity,
+    )
+
+    monkeypatch.setattr(get_settings(), "CALCOM_API_KEY", "the-operators-cal-key")
+    monkeypatch.setattr(get_settings(), "CALCOM_EVENT_TYPE_ID", 11)
+    await _make_agency()  # active, routable, and no calendar route
+    try:
+        with org_scope(AGENCY), pytest.raises(MissingChannelCredential):
+            await resolve_calendar_identity()
+
+        # The single-customer install still books on the configured calendar.
+        with org_scope(DEFAULT_ORG_ID):
+            mine = await resolve_calendar_identity()
+        assert mine.credential == "the-operators-cal-key"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_tenant_cannot_spend_the_operators_discovery_credit() -> None:
+    """Outscraper, Yelp and SerpApi are billed to the operator and metered per
+    install, not per agency, so an agency member looping /discovery/search
+    drains the credit every other agency's replies depend on."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        for path, body in (
+            ("/api/v1/discovery/search", {"query": "realtors denver"}),
+            ("/api/v1/discovery/enrich-pending", {}),
+        ):
+            resp = await client.post(path, json=body)
+            assert resp.status_code in (401, 403), (
+                f"{path} answered {resp.status_code} to an unauthenticated caller"
+            )
