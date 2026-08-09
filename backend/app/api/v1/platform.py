@@ -79,6 +79,8 @@ async def list_organizations(db: AsyncSession = Depends(get_bypass_db)) -> list[
 async def create_organization(
     body: OrgCreateIn, db: AsyncSession = Depends(get_bypass_db)
 ) -> OrgOut:
+    await _refuse_if_onboarding_opens_a_simulated_channel(db)
+
     org = Organization(name=body.name.strip(), slug=body.slug, plan=body.plan)
     db.add(org)
     try:
@@ -289,6 +291,47 @@ def _named_refs(body: RouteIdentityIn) -> list[str]:
 
 
 
+async def _refuse_if_onboarding_opens_a_simulated_channel(db: AsyncSession) -> None:
+    """The mirror of `_refuse_if_channel_is_simulated`, for the other order.
+
+    A single-tenant install may legitimately run a simulated channel with a
+    route on it — nothing to misattribute. Creating the *second* organization
+    is what turns that into "anyone who knows the first agency's number can
+    write into their tenant", and this endpoint had no check, so the invariant
+    startup refuses was violable at runtime by onboarding.
+    """
+    from sqlalchemy import select as _select
+
+    from app.models.channel_route import ChannelRoute
+
+    settings = get_settings()
+    simulated = {
+        CHANNEL_SMS: settings.SMS_SIMULATED,
+        CHANNEL_WHATSAPP: settings.WHATSAPP_SIMULATED,
+        CHANNEL_EMAIL: settings.EMAIL_SIMULATED,
+        CHANNEL_VOICE: settings.VOICE_SIMULATED,
+    }
+    if not any(simulated.values()):
+        return
+    routed = {c for (c,) in await db.execute(_select(ChannelRoute.channel).distinct())}
+    exposed = sorted(c for c in routed if simulated.get(c))
+    if not exposed:
+        return
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "error": "channels_in_simulated_mode_are_routed",
+            "channels": exposed,
+            "hint": (
+                "These accept unsigned inbound and already have destinations "
+                "mapped. A second organization makes that exploitable. Set "
+                + ", ".join(f"{c.upper()}_SIMULATED=false" for c in exposed)
+                + " and configure the provider secrets first."
+            ),
+        },
+    )
+
+
 async def _refuse_if_channel_is_simulated(channel: str) -> None:
     """A simulated channel accepts unsigned inbound; a route makes it reachable.
 
@@ -335,6 +378,34 @@ async def _refuse_shared_refs(
             status_code=409,
             detail={"error": "credential_belongs_to_another_organization",
                     "names": shared},
+        )
+
+
+def _refuse_a_route_that_cannot_verify(body: RouteCreateIn | RouteIdentityIn,
+                                       channel: str) -> None:
+    """An agency on its own account must be able to receive, not only send.
+
+    For Twilio the auth token is both, so `credential_ref` alone is complete.
+    Everywhere else the sending credential and the signing secret are different
+    values — Meta's access token is not its app secret — so naming only the
+    credential leaves `inbound_secret` unresolvable, and every genuine inbound
+    message for that agency 403s forever with nothing to explain it. Both
+    fields are individually valid, so no other check can see it.
+    """
+    if channel == CHANNEL_SMS:
+        return
+    if body.credential_ref and not body.inbound_secret_ref:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "inbound_secret_ref_required",
+                "channel": channel,
+                "hint": (
+                    f"On {channel} the sending credential and the signing secret "
+                    "are different values, so a route with only credential_ref "
+                    "would reject every inbound message. Name both."
+                ),
+            },
         )
 
 
@@ -412,6 +483,7 @@ async def create_route(
         # it publishes real leads' phone numbers and transcripts.
         raise HTTPException(status_code=400, detail="cannot_route_to_demo_org")
     _validate_refs(body)
+    _refuse_a_route_that_cannot_verify(body, body.channel)
     await _refuse_if_channel_is_simulated(body.channel)
     await _refuse_shared_refs(db, body, org_id=body.org_id, route_id=None)
 
@@ -545,6 +617,7 @@ async def set_route_identity(
         raise HTTPException(status_code=404, detail="route_not_found")
 
     _validate_refs(body)
+    _refuse_a_route_that_cannot_verify(body, route.channel)
     await _refuse_shared_refs(db, body, org_id=route.org_id, route_id=route.id)
 
     for field, value in body.model_dump().items():

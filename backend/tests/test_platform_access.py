@@ -971,3 +971,94 @@ async def test_a_route_cannot_be_created_while_the_channel_is_simulated(
             )
             await db.commit()
         await _drop_org(SECOND_ORG_ID)
+
+
+@pytest.mark.asyncio
+async def test_onboarding_is_refused_while_a_simulated_channel_is_routed(
+    monkeypatch,
+) -> None:
+    """The other order of the same invariant.
+
+    A single-tenant install may run a simulated channel with a route on it —
+    there is nothing to misattribute. Creating the *second* organization is what
+    turns that into "anyone who knows the first agency's number can write into
+    their tenant", and this endpoint had no check, so round 16's fix was
+    violable simply by onboarding before routing.
+    """
+    from app.config import get_settings
+    from app.models.channel_route import CHANNEL_SMS, normalize_destination
+
+    token = make_token(
+        email="op@eko.com", role="admin", org_id=DEFAULT_ORG_ID, superuser=True
+    )
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text(
+                "INSERT INTO channel_routes (org_id, channel, destination) "
+                "VALUES (:o, :c, :d)"
+            ),
+            {
+                "o": DEFAULT_ORG_ID,
+                "c": CHANNEL_SMS,
+                "d": normalize_destination("+13035558500"),
+            },
+        )
+        await db.commit()
+    monkeypatch.setattr(get_settings(), "SMS_SIMULATED", True)
+    try:
+        async with await _client(**{COOKIE_NAME: token}) as c:
+            r = await c.post(
+                "/api/v1/platform/organizations",
+                json={"name": "Second", "slug": "sim-onboard-block"},
+            )
+        assert r.status_code == 409, r.text
+        assert r.json()["detail"]["error"] == "channels_in_simulated_mode_are_routed"
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM organizations WHERE slug = 'sim-onboard-block'")
+            )
+            await db.execute(
+                text("DELETE FROM channel_routes WHERE org_id = :o"),
+                {"o": DEFAULT_ORG_ID},
+            )
+            await db.commit()
+        tenant_resolver.reset_cache()
+
+
+@pytest.mark.asyncio
+async def test_a_route_that_could_never_verify_inbound_is_refused(monkeypatch) -> None:
+    """Naming a sending credential and no signing secret is a silent trap.
+
+    Off Twilio the two are different values, so such a route rejects every
+    inbound message for that agency forever — and both fields are individually
+    valid, so nothing else can see it.
+    """
+    from app.models.channel_route import CHANNEL_WHATSAPP
+
+    monkeypatch.setenv("WA_TOKEN_ONLY", "an-access-token")
+    token = make_token(
+        email="op@eko.com", role="admin", org_id=DEFAULT_ORG_ID, superuser=True
+    )
+    await _make_org(SECOND_ORG_ID, SECOND_SLUG)
+    try:
+        async with await _client(**{COOKIE_NAME: token}) as c:
+            r = await c.post(
+                "/api/v1/platform/routes",
+                json={
+                    "org_id": SECOND_ORG_ID,
+                    "channel": CHANNEL_WHATSAPP,
+                    "destination": "111222333",
+                    "credential_ref": "WA_TOKEN_ONLY",
+                },
+            )
+        assert r.status_code == 400, r.text
+        assert r.json()["detail"]["error"] == "inbound_secret_ref_required"
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM channel_routes WHERE org_id = :i"),
+                {"i": SECOND_ORG_ID},
+            )
+            await db.commit()
+        await _drop_org(SECOND_ORG_ID)

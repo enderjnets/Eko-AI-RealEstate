@@ -910,3 +910,29 @@ async def test_a_header_naming_two_agencies_is_refused_end_to_end() -> None:
             )
     finally:
         await _cleanup()
+
+
+def test_a_display_name_cannot_smuggle_in_another_agencys_address() -> None:
+    """Header text a sender controls must never become a routing key.
+
+    A regex scan over the raw header was tried as a floor under the RFC parser
+    and had to be removed: it harvested addresses out of quoted display names
+    and comments — exactly the text the parser discards, and exactly the text a
+    sender writes. Anyone could then mail an unrouted address on the operator's
+    own domain with `To: "leads@agencyb.com" <hello@operator.com>`, have the
+    message verify against the operator's secret because that is genuinely who
+    it was delivered to, and land a lead, a transcript and an AI reply inside
+    agency B.
+    """
+    from app.api.v1.webhooks.email import _addresses_in
+
+    assert _addresses_in('"leads@agencyb.com" <hello@operator.test>') == [
+        "hello@operator.test"
+    ]
+    assert _addresses_in("Support (leads@agencyb.com) <hello@operator.test>") == [
+        "hello@operator.test"
+    ]
+    # And the separator shapes the floor was introduced for still work, because
+    # they are fixed in the input rather than scanned out of it.
+    assert _addresses_in("b@y.test,") == ["b@y.test"]
+    assert _addresses_in("a@x.test; b@y.test") == ["a@x.test", "b@y.test"]
