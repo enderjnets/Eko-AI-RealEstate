@@ -168,9 +168,9 @@ async def test_the_turn_itself_marks_a_failed_send_as_retryable() -> None:
     `next_attempt_at` null, and the sweep's query requires it. The message sits
     there looking handled, forever.
     """
+    from app.services._common import ParsedMessage
     from app.services.conversation import handle_inbound_message
     from app.services.llm import LLMResult
-    from app.services._common import ParsedMessage
 
     await _agency()
     try:
