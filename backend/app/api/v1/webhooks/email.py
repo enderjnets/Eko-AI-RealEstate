@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
-from email.utils import getaddresses
+from email.policy import default as _email_policy
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -171,38 +171,89 @@ def _mailboxes(payload: dict) -> list[str]:
 
 
 def _addresses_in(value: str) -> list[str]:
-    """Every address in a header value, display names stripped.
+    """Every address a header genuinely names, as tenant routing keys.
 
-    One header string may name several recipients:
-    `Agency A <a@x.com>, Agency B <b@y.com>`. The previous version took the
-    *last* angle-bracket pair and returned a single address, so a mail
-    addressed to two agencies collapsed to whichever came last — and the secret
-    lookup and the attribution then agreed on that one, so the "two agencies
-    were addressed, refuse" rule never fired and the other agency's lead,
-    transcript and reply were written into theirs. The same defect that was
-    fixed for the list form, still live in the string form.
+    Whatever comes back here decides which agency an inbound email belongs to
+    AND which agency's secret verifies it, so anything a *sender* controls must
+    not reach this list. Two shapes did:
 
-    `getaddresses` is the standard library's RFC 5322 parser, so a comma inside
-    a quoted display name does not split the header.
+    - **RFC 5322 group syntax.** `To: undisclosed:victim@agency.test;` is a
+      named group, and `getaddresses` flattens its members into ordinary
+      addresses. A message genuinely delivered to an unrouted mailbox on the
+      operator's own domain therefore reported exactly one address — the
+      victim's — so the "two agencies named, refuse" rule never fired and the
+      lead, transcript and AI reply landed in their tenant. Named groups are
+      dropped.
+    - **A malformed header whose display name looks like an address.**
+      `To: victim@agency.test <hello@operator.com>` resolves to the *display*
+      text, because an unquoted `@` there is a defect the parser settles in the
+      sender's favour. A header the parser reports defects on is not trusted to
+      name a tenant.
+
+    The one defect worth recovering from is Outlook's semicolon separator,
+    which is common and unambiguous: retry by splitting at top-level semicolons
+    and keep the result only if every piece then parses cleanly.
     """
-    # Normalise *before* parsing, and parse with nothing else. A regex scan over
-    # the raw value was tried here and had to be removed: it harvested addresses
-    # out of quoted display names and RFC comments — precisely the text
-    # `getaddresses` discards, and precisely the text a sender controls. Anyone
-    # could then mail an unrouted address on the operator's domain with
-    # `To: "leads@agencyb.com" <hello@operator.com>`, have the message verify on
-    # the operator's own secret, and land a lead, a transcript and an AI reply
-    # inside agency B.
-    #
-    # The shapes that genuinely needed help are separator noise, so they are
-    # fixed in the input: a trailing comma, and Outlook's semicolons. Both are
-    # only touched outside address syntax, so a semicolon inside a display name
-    # or a group header is left alone.
-    cleaned = value.strip().rstrip(",; \t")
-    if ";" in cleaned and "<" not in cleaned:
-        cleaned = cleaned.replace(";", ",")
+    unfolded = " ".join(value.splitlines())
+    found = _parse_clean(unfolded)
+    if found is not None:
+        return found
+
+    pieces = _split_top_level(unfolded, ";")
+    if len(pieces) < 2:
+        return []
+    recovered: list[str] = []
+    for piece in pieces:
+        part = _parse_clean(piece)
+        if part is None:
+            return []
+        recovered.extend(part)
+    return recovered
+
+
+def _parse_clean(value: str) -> list[str] | None:
+    """Addresses from a header that parses without defects, or None.
+
+    None means "do not trust this", which is not the same as "names nobody".
+    """
+    cleaned = value.strip().rstrip(", \t")
+    if not cleaned:
+        return []
+    try:
+        header = _email_policy.header_factory("to", cleaned)
+    except Exception:  # noqa: BLE001 — an unparseable header names nobody
+        return None
+    if header.defects:
+        return None
     return [
-        addr.strip()
-        for _name, addr in getaddresses([cleaned])
-        if addr and addr.strip()
+        entry.addr_spec.strip()
+        # A group carrying a display name is RFC 5322 group syntax, and its
+        # members are not recipients we may route on. Ordinary address lists
+        # arrive as one unnamed group, which is where real mail lives.
+        for group in header.groups
+        if group.display_name is None
+        for entry in group.addresses
+        if entry.addr_spec and "@" in entry.addr_spec
     ]
+
+
+def _split_top_level(value: str, separator: str) -> list[str]:
+    """Split on `separator` outside quoted strings and angle brackets."""
+    pieces: list[str] = []
+    current: list[str] = []
+    in_quotes = False
+    in_angles = False
+    for char in value:
+        if char == '"':
+            in_quotes = not in_quotes
+        elif char == "<" and not in_quotes:
+            in_angles = True
+        elif char == ">" and not in_quotes:
+            in_angles = False
+        if char == separator and not in_quotes and not in_angles:
+            pieces.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+    pieces.append("".join(current))
+    return [p for p in (piece.strip() for piece in pieces) if p]

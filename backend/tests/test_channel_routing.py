@@ -936,3 +936,38 @@ def test_a_display_name_cannot_smuggle_in_another_agencys_address() -> None:
     # they are fixed in the input rather than scanned out of it.
     assert _addresses_in("b@y.test,") == ["b@y.test"]
     assert _addresses_in("a@x.test; b@y.test") == ["a@x.test", "b@y.test"]
+
+
+def test_group_syntax_cannot_name_another_agency() -> None:
+    """`To: undisclosed:victim@agency.test;` is a named RFC 5322 group.
+
+    `getaddresses` flattens a group's members into ordinary addresses, so a
+    message genuinely delivered to an unrouted mailbox on the operator's own
+    domain reported exactly one address — the victim's. One owner matched, the
+    "two agencies named, refuse" rule never fired, and the lead, transcript and
+    AI reply were written into their tenant, answered from their address. No
+    credential needed, and the fetch-scope guard reads the same header so it
+    agreed.
+    """
+    from app.api.v1.webhooks.email import _addresses_in
+
+    assert _addresses_in("undisclosed:victim@agency.test;") == []
+    assert _addresses_in("grp: V <victim@agency.test>;") == []
+    # A real recipient alongside a group keeps only the real one, so the
+    # message is attributed to where it was actually delivered.
+    assert _addresses_in(
+        "hello@operator.test, undisclosed:victim@agency.test;"
+    ) == ["hello@operator.test"]
+
+    # An unquoted display name that looks like an address is a parse defect the
+    # parser settles in the sender's favour — so the header is not trusted at
+    # all rather than trusted to mean the display text.
+    assert _addresses_in("victim@agency.test <hello@operator.test>") == []
+
+    # And the shapes that carry real mail still work, including the Outlook
+    # semicolon list, which the previous version dropped entirely whenever the
+    # addresses had display names — i.e. always.
+    assert _addresses_in("A <a@x.test>, B <b@y.test>") == ["a@x.test", "b@y.test"]
+    assert _addresses_in("A <a@x.test>; B <b@y.test>") == ["a@x.test", "b@y.test"]
+    assert _addresses_in('"Smith, John" <j@x.test>') == ["j@x.test"]
+    assert _addresses_in("b@y.test,") == ["b@y.test"]
