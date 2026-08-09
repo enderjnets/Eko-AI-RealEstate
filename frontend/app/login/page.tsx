@@ -164,7 +164,7 @@ export default function LoginPage() {
               <div className="flex-1 h-px bg-white/10" />
             </div>
             <div className="flex flex-col items-center gap-3">
-              {googleEnabled && !googleUsableHere && (
+              {(googleEnabled || appleEnabled) && !googleUsableHere && (
                 // Configured, but unreachable from here. Say where to go
                 // instead of rendering a button whose only destination is a
                 // Google error page.
@@ -193,7 +193,7 @@ export default function LoginPage() {
                     width="280"
                   />
                 ))}
-              {appleEnabled && (
+              {appleEnabled && googleUsableHere && (
                 <AppleSignInButton onError={(key) => setError(key ? t(key) : null)} />
               )}
             </div>

@@ -213,8 +213,15 @@ def _cookie_is_secure(request: Request | None) -> bool:
     # Origin does not mean the request reached us unencrypted, and mutation
     # testing showed that branch could strip Secure from a connection that
     # genuinely had TLS. Absent that evidence, the connection speaks for itself.
+    #
+    # And only OUR origin counts. Google's sign-in callback is a cross-site form
+    # POST carrying `Origin: https://accounts.google.com`, which says nothing
+    # about how the browser reached us — on a plain-http dev install it would
+    # mark the cookie Secure, Safari would drop it, and the user would land back
+    # on the login page with no error. Same-site or it does not count.
     origin = (request.headers.get("origin") or "").strip().lower()
-    if origin.startswith("https://"):
+    host = (request.headers.get("host") or "").strip().lower()
+    if host and origin == f"https://{host}":
         return True
     return request.url.scheme == "https"
 
@@ -479,8 +486,17 @@ async def login_account(
 
 
 @router.post("/logout")
-async def logout(response: Response) -> dict[str, bool]:
-    response.delete_cookie(key=COOKIE_NAME, path="/")
+async def logout(request: Request, response: Response) -> dict[str, bool]:
+    # Same flags the cookie was set with. Deletion matches on name, path and
+    # domain, so this works either way today — but a mismatch is the kind of
+    # thing that starts failing the moment one of them begins to matter.
+    response.delete_cookie(
+        key=COOKIE_NAME,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=_cookie_is_secure(request),
+    )
     return {"ok": True}
 
 

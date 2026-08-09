@@ -97,6 +97,11 @@ if [ "${SKIP_ENV:-0}" -ne 1 ]; then
   KIMI_API_KEY="${KIMI_API_KEY:-$(ask_secret 'Kimi API key (sk-kimi-…) — blank to set later')}"
   MINIMAX_API_KEY="${MINIMAX_API_KEY:-$(ask_secret 'MiniMax API key (sk-cp-…) — blank to set later')}"
 
+  # Where this dashboard will be reached. Google and Apple sign-in refuse raw
+  # IP addresses, so an install answered only on a LAN address can never offer
+  # them — the login page says so and names this address instead.
+  CANONICAL_URL="${CANONICAL_URL:-$(ask 'Public URL of the dashboard (https://…) — blank if local only' '')}"
+
   PG_PASS="$(gen_secret)"
   APP_DB_PASS="$(gen_secret)"
   WA_VERIFY="$(gen_secret)"
@@ -141,7 +146,14 @@ APP_DB_PASSWORD=${APP_DB_PASS}
 DATABASE_URL_APP=postgresql+asyncpg://eko_app:${APP_DB_PASS}@db:5432/eko_realestate
 REDIS_URL=redis://redis:6379/0
 INTERNAL_API_URL=http://backend:8000
+# Not read by the app — `lib/api.ts` uses relative paths and next.config.js
+# rewrites them — kept only so an older value cannot leak into a build.
 NEXT_PUBLIC_API_URL=/api
+# The address this dashboard is reached at. Shown to anyone who opens it
+# somewhere Google and Apple sign-in cannot work — an IP, or plain http — so
+# they are told where to go instead of hitting the provider's error page.
+# Inlined at build time: changing it needs a rebuild, not a restart.
+NEXT_PUBLIC_CANONICAL_URL=${CANONICAL_URL}
 
 LLM_PRIMARY=kimi
 LLM_FALLBACK=minimax

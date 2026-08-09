@@ -403,13 +403,18 @@ def test_the_session_cookie_is_secure_behind_tls_and_usable_without_it() -> None
     from app.api.v1.auth import _cookie_is_secure
 
     def _request(
-        scheme: str, forwarded: str | None = None, origin: str | None = None
+        scheme: str,
+        forwarded: str | None = None,
+        origin: str | None = None,
+        host: str | None = None,
     ) -> object:
         headers: dict[str, str] = {}
         if forwarded:
             headers["x-forwarded-proto"] = forwarded
         if origin:
             headers["origin"] = origin
+        if host:
+            headers["host"] = host
         return SimpleNamespace(url=SimpleNamespace(scheme=scheme), headers=headers)
 
     # Straight https, and the LAN address on plain http.
@@ -428,12 +433,20 @@ def test_the_session_cookie_is_secure_behind_tls_and_usable_without_it() -> None
     # the dashboard's own rewrite — so whether `x-forwarded-proto` survives both
     # is their defaults' business, not something to bet a security flag on. The
     # browser's `Origin` answers the same question and is an ordinary header.
-    assert _cookie_is_secure(_request("http", origin="https://inmo.example.com")) is (
-        True
-    )
-    assert _cookie_is_secure(_request("http", origin="http://10.0.0.240:3004")) is (
-        False
-    )
+    assert _cookie_is_secure(
+        _request("http", origin="https://inmo.test", host="inmo.test")
+    ) is True
+    assert _cookie_is_secure(
+        _request("http", origin="http://10.0.0.240:3004", host="10.0.0.240:3004")
+    ) is False
+    # Somebody else's https origin says nothing about how the browser reached
+    # us. Google's sign-in callback is a cross-site form POST carrying
+    # `Origin: https://accounts.google.com`; trusting it marked the cookie
+    # Secure on a plain-http dev install, Safari dropped it, and the user landed
+    # back on the login page with no error at all.
+    assert _cookie_is_secure(
+        _request("http", origin="https://accounts.google.com", host="localhost:8000")
+    ) is False
     # The proxy header still wins when it is there.
     assert _cookie_is_secure(
         _request("http", forwarded="https", origin="http://whatever")
@@ -441,3 +454,48 @@ def test_the_session_cookie_is_secure_behind_tls_and_usable_without_it() -> None
 
     # No request to look at: take the strict answer rather than guessing.
     assert _cookie_is_secure(None) is True
+
+
+@pytest.mark.asyncio
+async def test_the_cookie_the_app_actually_sends_carries_the_right_flags() -> None:
+    """End to end, not the helper in isolation.
+
+    The helper's `request` argument started out optional with a strict default,
+    so three call sites forgot to pass it and issued a cookie the browser
+    silently dropped — a login that returns 200 and then 401s on the next call.
+    Testing only the helper could not see that, and still cannot: this drives
+    the real endpoint over both an http and an https base URL and reads the
+    header that goes out.
+    """
+    fake = _fake_settings()
+    with patch("app.api.v1.auth.get_settings", return_value=fake), patch(
+        "app.services.auth.get_settings", return_value=fake
+    ):
+        transport = ASGITransport(app=app)
+        # Plain http, as the dashboard is reached on the LAN. A Secure cookie
+        # here is one the browser will not keep.
+        async with AsyncClient(transport=transport, base_url="http://lan.test") as c:
+            login = await c.post(
+                "/api/v1/auth/login", json={"password": "s3cret-pass"}
+            )
+            assert login.status_code == 200, login.text
+            assert "secure" not in login.headers["set-cookie"].lower()
+            assert "httponly" in login.headers["set-cookie"].lower()
+
+        # Behind TLS, where the flag is the whole point.
+        async with AsyncClient(transport=transport, base_url="https://inmo.test") as c:
+            login = await c.post(
+                "/api/v1/auth/login", json={"password": "s3cret-pass"}
+            )
+            assert login.status_code == 200, login.text
+            assert "secure" in login.headers["set-cookie"].lower()
+
+        # And through a proxy that terminates TLS in front of us.
+        async with AsyncClient(transport=transport, base_url="http://inmo.test") as c:
+            login = await c.post(
+                "/api/v1/auth/login",
+                json={"password": "s3cret-pass"},
+                headers={"x-forwarded-proto": "https"},
+            )
+            assert login.status_code == 200, login.text
+            assert "secure" in login.headers["set-cookie"].lower()
