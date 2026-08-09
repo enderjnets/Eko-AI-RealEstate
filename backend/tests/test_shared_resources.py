@@ -288,3 +288,25 @@ async def test_cancelling_survives_a_calendar_that_is_not_configured() -> None:
     assert visit.status is VisitStatus.SCHEDULED, (
         "the visit was left cancelled locally while the booking still stands"
     )
+
+
+def test_startup_refuses_only_when_isolation_is_actually_missing() -> None:
+    """The guard has to fire on the dangerous states and on nothing else.
+
+    Verified live against the real database as well: pointing DATABASE_URL_APP
+    at the owner role boots with one agency and refuses with two. This pins the
+    decision so a later change cannot quietly widen or silence it.
+    """
+    from app.main import _must_refuse_to_serve
+
+    # RLS enforced: never refuse, whatever the count says.
+    assert not _must_refuse_to_serve(False, [1, 2, 3], True)
+    assert not _must_refuse_to_serve(False, [], False)
+    # RLS off, one customer: nobody to leak to, so it may run — loudly.
+    assert not _must_refuse_to_serve(True, [1], True)
+    # RLS off and more than one agency: the whole point.
+    assert _must_refuse_to_serve(True, [1, 3], True)
+    # RLS off and the count unreadable. An empty list used to look like "one
+    # agency" and silenced this, which is exactly what an unreadable count
+    # means: the bypass session came back empty because it is not bypassing.
+    assert _must_refuse_to_serve(True, [], False)

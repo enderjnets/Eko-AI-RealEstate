@@ -389,6 +389,22 @@ async def _seed_admin_users() -> None:
                 )
 
 
+def _must_refuse_to_serve(
+    rls_is_off: bool, real_orgs: list[int], org_count_known: bool
+) -> bool:
+    """Whether starting up would put agencies inside each other's data.
+
+    A function, not an inline condition, so it can be tested without standing
+    up a second database. Two ways to get here: RLS is off and more than one
+    agency is active, or RLS is off and we could not find out how many there
+    are — which is itself a symptom, since the count is read on the session
+    that is supposed to bypass RLS.
+    """
+    if not rls_is_off:
+        return False
+    return len(real_orgs) > 1 or not org_count_known
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     logger.info(
@@ -505,7 +521,7 @@ async def _startup() -> None:
                 "platform-operator token; use at least 32. openssl rand -hex 32"
             )
 
-    if rls_is_off and (len(real_orgs) > 1 or not org_count_known):
+    if _must_refuse_to_serve(rls_is_off, real_orgs, org_count_known):
         # Outside the role check's own try/except on purpose, so the refusal is
         # not swallowed by the handler that logs role-probe failures.
         how_many = (
