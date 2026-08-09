@@ -64,6 +64,38 @@ async def _cleanup() -> None:
     tenant_resolver.reset_cache()
 
 
+async def _make_empty_database(name: str) -> None:
+    """A real database with no schema in it, for the first-boot test."""
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    engine = create_async_engine(
+        "postgresql+asyncpg://eko:eko_local_pass@localhost:5434/postgres",
+        isolation_level="AUTOCOMMIT",
+    )
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text(f'DROP DATABASE IF EXISTS "{name}"'))
+            await conn.execute(text(f'CREATE DATABASE "{name}"'))
+    finally:
+        await engine.dispose()
+
+
+async def _drop_database(name: str) -> None:
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    engine = create_async_engine(
+        "postgresql+asyncpg://eko:eko_local_pass@localhost:5434/postgres",
+        isolation_level="AUTOCOMMIT",
+    )
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text(f'DROP DATABASE IF EXISTS "{name}"'))
+    except Exception:  # noqa: BLE001 — cleanup must not fail the run
+        pass
+    finally:
+        await engine.dispose()
+
+
 @pytest.mark.asyncio
 async def test_an_agency_books_onto_its_own_calendar(monkeypatch) -> None:
     """Every channel was given per-agency credentials; the calendar was not.
@@ -482,6 +514,9 @@ async def test_the_app_boots_against_a_database_with_no_schema_yet() -> None:
     from app.main import _schema_is_empty, _startup_isolation_state
 
     empty = "postgresql+asyncpg://eko:eko_local_pass@localhost:5434/eko_firstboot"
+    # Created here rather than assumed: a test that silently skips its own
+    # premise is the kind of green this whole audit has been about.
+    await _make_empty_database("eko_firstboot")
     previous = {
         k: os.environ.get(k)
         for k in ("DATABASE_URL", "DATABASE_URL_APP", "DATABASE_URL_BYPASS")
@@ -514,3 +549,4 @@ async def test_the_app_boots_against_a_database_with_no_schema_yet() -> None:
 
         get_settings.cache_clear()
         await dispose_engine()
+        await _drop_database("eko_firstboot")
