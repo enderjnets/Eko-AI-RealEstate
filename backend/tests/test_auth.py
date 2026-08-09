@@ -506,8 +506,11 @@ def test_the_api_schema_is_closed_when_the_docs_are(monkeypatch) -> None:
     and model inventory — confirmed 200 on the live host with DEBUG=false. The
     schema is the thing worth withholding; the UI is just a viewer for it."""
     import importlib
+    import sys
 
     from app.config import get_settings
+
+    original = sys.modules["app.main"]
 
     def _app_with(debug: str):  # noqa: ANN202
         monkeypatch.setenv("DEBUG", debug)
@@ -525,6 +528,10 @@ def test_the_api_schema_is_closed_when_the_docs_are(monkeypatch) -> None:
         assert open_app.docs_url == "/docs"
         assert open_app.openapi_url == "/openapi.json"
     finally:
+        # Put the ORIGINAL module object back rather than reloading a third
+        # time: two dozen test modules bound `app.main.app` at collection, and
+        # a fresh object means anything they register on it — a dependency
+        # override, an app-scoped fixture — silently misses.
         monkeypatch.undo()
         get_settings.cache_clear()
-        importlib.reload(importlib.import_module("app.main"))
+        sys.modules["app.main"] = original

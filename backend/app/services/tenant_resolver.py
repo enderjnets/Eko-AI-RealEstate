@@ -33,6 +33,9 @@ PLATFORM_PREFIX = "/api/v1/platform"
 # Paths that must answer without touching the database. `/health` exists to be
 # reachable during an outage — routing it through the org-status lookup made it
 # hang exactly when a monitor needs a straight answer.
+# `/docs`, `/redoc` and `/openapi.json` are all `None` outside DEBUG now, so
+# these three are only reachable on a development install — kept so the tenant
+# layer does not 503 them there.
 NO_TENANT_PREFIXES = ("/api/v1/health", "/docs", "/redoc", "/openapi.json")
 
 
