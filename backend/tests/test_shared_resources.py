@@ -644,3 +644,83 @@ async def test_a_whatsapp_lead_can_actually_be_booked(monkeypatch) -> None:
             )
             await db.commit()
         await _cleanup()
+
+
+def test_the_settings_a_customer_fills_in_actually_reach_the_agent() -> None:
+    """`business_hours` and `greeting_template` were stored, editable in the
+    Settings UI, and read by nothing. An agency set their opening line and the
+    agent opened with something else; they set 9–7 and at 11pm the agent still
+    said someone would call right back."""
+    from zoneinfo import ZoneInfo
+
+    from app.models.agent_settings import AgentSettings
+    from app.services.conversation import (
+        _greeting_note,
+        _office_hours_note,
+        _office_is_open,
+    )
+
+    cfg = AgentSettings(agency_name="Acme")
+    cfg.timezone = "America/Denver"
+    cfg.business_hours = {
+        "monday": {"open": "09:00", "close": "19:00"},
+        "sunday": None,
+    }
+    cfg.greeting_template = "Hola, soy el asistente de {agency_name}."
+
+    note = _office_hours_note(cfg)
+    assert "America/Denver" in note
+
+    monday_hours = cfg.business_hours["monday"]
+    assert _office_is_open(
+        datetime(2026, 8, 10, 12, 0, tzinfo=ZoneInfo("America/Denver")), monday_hours
+    )
+    assert not _office_is_open(
+        datetime(2026, 8, 10, 23, 0, tzinfo=ZoneInfo("America/Denver")), monday_hours
+    )
+    assert not _office_is_open(
+        datetime(2026, 8, 9, 12, 0, tzinfo=ZoneInfo("America/Denver")), None
+    )
+    # A malformed row must not turn every reply into an out-of-hours one.
+    assert _office_is_open(
+        datetime(2026, 8, 10, 23, 0, tzinfo=ZoneInfo("America/Denver")),
+        {"open": "nonsense"},
+    )
+
+    assert "Acme" in _greeting_note(cfg)
+    cfg.greeting_template = None
+    assert _greeting_note(cfg) == ""
+
+
+@pytest.mark.asyncio
+async def test_the_agent_offers_real_times_or_none_at_all(monkeypatch) -> None:
+    """The chat agent has no tools wired, so it cannot query a calendar — and
+    left to itself it invents plausible viewing times, which is worse than
+    saying nothing. It is now handed the real openings, the same way it is
+    handed real listings, and only when the lead is actually asking."""
+    from app.models.agent_settings import AgentSettings
+    from app.services import conversation as conv
+
+    cfg = AgentSettings(agency_name="Acme")
+    cfg.timezone = "America/Denver"
+
+    when = datetime(2026, 8, 12, 16, 0, tzinfo=UTC)
+
+    async def _slots(**kwargs: object) -> list[object]:
+        return [SimpleNamespace(start=when)]
+
+    with patch.object(conv, "_SCHEDULING_WORDS", conv._SCHEDULING_WORDS), patch(
+        "app.services.calendar_cal.list_available_slots", _slots
+    ):
+        # Not asking about a time: no calendar call, nothing added.
+        assert await conv._real_slots_note(cfg, "how much is the condo?") == ""
+        note = await conv._real_slots_note(cfg, "can I see it this week?")
+    assert "10:00" in note, f"the office-local time is missing from {note!r}"
+    assert "NUNCA inventes" in note
+
+    # A calendar that is down costs a slot list, never the reply.
+    async def _boom(**kwargs: object) -> list[object]:
+        raise RuntimeError("cal.com is down")
+
+    with patch("app.services.calendar_cal.list_available_slots", _boom):
+        assert await conv._real_slots_note(cfg, "can I book a viewing?") == ""

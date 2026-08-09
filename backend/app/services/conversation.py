@@ -20,7 +20,7 @@ on partial failures):
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from email.utils import parseaddr
 
 from sqlalchemy import select
@@ -555,6 +555,137 @@ def _address_or_none(identifier: str | None) -> str | None:
     return value if "@" in value else None
 
 
+
+def _office_hours_note(agent_cfg: AgentSettings) -> str:
+    """Tell the model what time it is at the office, and whether anyone is in.
+
+    `business_hours` and `timezone` were stored, editable in Settings, and read
+    by nothing: outside hours the agent replied exactly as it does at noon,
+    promising a callback nobody was there to make. The hours are guidance for
+    what to say, not a gate on replying — a lead who writes at 11pm should get
+    an answer, just not one that implies someone is at a desk.
+    """
+    from zoneinfo import ZoneInfo
+
+    try:
+        zone = ZoneInfo(agent_cfg.timezone or "UTC")
+    except Exception:  # noqa: BLE001 — a bad timezone must not cost a reply
+        return ""
+    now = datetime.now(zone)
+    note = (
+        f"\n\nHORA LOCAL DE LA OFICINA: {now.strftime('%A %H:%M')} "
+        f"({agent_cfg.timezone})."
+    )
+    hours = agent_cfg.business_hours if isinstance(agent_cfg.business_hours, dict) else {}
+    if not hours:
+        return note
+    today = hours.get(now.strftime("%A").lower())
+    if isinstance(today, dict) and today.get("open") and today.get("close"):
+        note += f" HORARIO DE HOY: {today['open']}–{today['close']}."
+    elif today is None and now.strftime("%A").lower() in hours:
+        note += " HOY LA OFICINA NO ABRE."
+    else:
+        return note
+    if not _office_is_open(now, today):
+        note += (
+            " Está CERRADA ahora mismo: responde igual y con la misma utilidad, "
+            "pero no prometas que alguien llamará de inmediato — di cuándo abre."
+        )
+    return note
+
+
+def _office_is_open(now: datetime, today: object) -> bool:
+    """Whether the office is open, given one day of `business_hours`.
+
+    A day is `{"open": "09:00", "close": "19:00"}` or None for closed. Anything
+    it cannot read counts as open, so a malformed row never turns every reply
+    into an out-of-hours one.
+    """
+    if today is None:
+        return False
+    if not isinstance(today, dict):
+        return True
+    try:
+        opens = time.fromisoformat(str(today["open"]))
+        closes = time.fromisoformat(str(today["close"]))
+    except (KeyError, TypeError, ValueError):
+        return True
+    return opens <= now.time() <= closes
+
+
+def _greeting_note(agent_cfg: AgentSettings) -> str:
+    """The agency's own opening line, for a lead we have never heard from.
+
+    Also stored, editable and previously unused, so an agency that wrote one
+    watched the agent open with something else every time.
+    """
+    template = (agent_cfg.greeting_template or "").strip()
+    if not template:
+        return ""
+    opening = template.replace("{agency_name}", agent_cfg.agency_name or "")
+    return (
+        "\n\nES EL PRIMER MENSAJE DE ESTE LEAD. Abre con esta línea de la "
+        f"agencia, adaptada al idioma del lead: {opening}"
+    )
+
+
+
+# Words that mean the lead is trying to arrange a time, in the two languages
+# the agent speaks. Deliberately a plain list: this only decides whether to
+# spend one calendar call, and a missed match costs a generic answer rather
+# than a wrong one.
+_SCHEDULING_WORDS = (
+    "visit", "viewing", "tour", "see the", "see it", "appointment", "schedule",
+    "book", "available", "when can", "what time", "cita", "visita", "ver el",
+    "ver la", "verlo", "verla", "agendar", "disponible", "cuándo", "cuando pued",
+    "horario",
+)
+
+
+async def _real_slots_note(agent_cfg: AgentSettings, message: str | None) -> str:
+    """The agency's actual next openings, when the lead is asking for a time.
+
+    The chat agent has no tools wired, so it cannot query a calendar or make a
+    booking — and left to itself it invents plausible times, which is worse
+    than saying nothing. Handing it the real slots is the same trick already
+    used for listings: the model never guesses, it picks from what is true.
+    Booking still happens from the dashboard or by phone.
+    """
+    text = (message or "").lower()
+    if not any(word in text for word in _SCHEDULING_WORDS):
+        return ""
+    from datetime import timedelta
+
+    from app.services.calendar_cal import list_available_slots
+
+    now = datetime.now(UTC)
+    try:
+        slots = await list_available_slots(
+            start=now,
+            end=now + timedelta(days=7),
+            timezone_name=agent_cfg.timezone or "UTC",
+        )
+    except Exception as exc:  # noqa: BLE001 — a calendar blip must not cost a reply
+        log.warning("could not read availability for the reply: %s", exc)
+        return ""
+    if not slots:
+        return ""
+    from zoneinfo import ZoneInfo
+
+    try:
+        zone = ZoneInfo(agent_cfg.timezone or "UTC")
+    except Exception:  # noqa: BLE001
+        zone = UTC
+    offered = ", ".join(
+        slot.start.astimezone(zone).strftime("%A %d %H:%M") for slot in slots[:5]
+    )
+    return (
+        "\n\nHUECOS REALES DISPONIBLES (zona de la oficina): "
+        f"{offered}. Ofrece SOLO estos si el lead pide cita; NUNCA inventes "
+        "otros. Para confirmar, dile que un agente cierra la cita enseguida."
+    )
+
+
 def _fallback_reply(agent_cfg: AgentSettings | None) -> LLMResult:
     """What to say when every language model is unreachable.
 
@@ -761,6 +892,10 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # which language to actually answer in (detected from the inbound message).
     system_prompt = agent_cfg.agent_persona.replace("{agency_name}", agent_cfg.agency_name)
     system_prompt += language_instruction(target_lang, persona_locale="es")
+    system_prompt += _office_hours_note(agent_cfg)
+    if is_new_lead:
+        system_prompt += _greeting_note(agent_cfg)
+    system_prompt += await _real_slots_note(agent_cfg, inbound.content)
 
     # Phase 10: if the lead is property-shopping and we know the zone, give the
     # LLM the REAL matching listings so it can offer them (and never invent any).
