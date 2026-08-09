@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 import types
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -22,6 +24,41 @@ def _needs_db() -> None:
 
 async def _client() -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+@asynccontextmanager
+async def _operator_client() -> AsyncIterator[AsyncClient]:
+    """A session carrying the platform-operator claim.
+
+    The demo-account routes are operator-only: they read and delete signups that
+    belong to no client agency. `require_platform_admin` used to stand down when
+    AUTH_ENABLED was false, which made them anonymous in the compose default —
+    so these tests passed without ever presenting a credential. It now refuses
+    outright in that mode, because the signing key with auth off is a constant
+    published in this repository, so a claim proves nothing. Hence the patched
+    settings: this is the configuration the routes actually require.
+    """
+    from unittest.mock import patch as _patch
+
+    from app.api.v1.auth import COOKIE_NAME
+    from app.config import get_settings
+    from app.models.organization import DEFAULT_ORG_ID
+    from app.services.auth import make_token
+
+    s = get_settings()
+    with _patch.object(s, "AUTH_ENABLED", True), \
+         _patch.object(s, "AUTH_SECRET", "operator-client-test-secret"), \
+         _patch.object(s, "PLATFORM_ADMIN_EMAILS", "operator@eko.com"):
+        token = make_token(
+            email="operator@eko.com", role="admin", org_id=DEFAULT_ORG_ID,
+            superuser=True,
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            cookies={COOKIE_NAME: token},
+        ) as client:
+            yield client
 
 
 async def _clear_activity(*emails: str) -> None:
@@ -114,11 +151,17 @@ async def test_account_role_change_viewer_to_member(_needs_db: None) -> None:
             )
             assert reg.status_code == 201 and reg.json()["role"] == "viewer"
 
+        # Demo accounts belong to no client agency, so listing and promoting
+        # them is an operator action, not one any tenant admin may take.
+        async with _operator_client() as op:
             acct_id = next(
-                a["id"] for a in (await c.get("/api/v1/team/accounts")).json() if a["email"] == email
+                a["id"] for a in (await op.get("/api/v1/team/accounts")).json()
+                if a["email"] == email
             )
-            up = await c.patch(f"/api/v1/team/accounts/{acct_id}", json={"role": "member"})
+            up = await op.patch(f"/api/v1/team/accounts/{acct_id}", json={"role": "member"})
             assert up.status_code == 200 and up.json()["role"] == "member"
+
+        async with await _client() as c:
 
             # Logging in now yields a member session (not viewer).
             login = await c.post(

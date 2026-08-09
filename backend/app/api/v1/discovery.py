@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.auth import require_platform_admin
 from app.config import get_settings
 from app.db.base import get_db
 from app.models import Lead
@@ -22,6 +23,14 @@ from app.services.file_import import extract_leads, extract_text
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
+# Discovery drives providers the OPERATOR pays for — Outscraper, Yelp, SerpApi —
+# and the shared LLM budget, none of which is metered per agency. Behind
+# `require_auth` alone, one tenant looping a search at max_results could drain
+# credit that every other tenant's inbound replies depend on. Same reasoning as
+# the shared MLS feed: operator-funded, so operator-gated, until there is a
+# per-organization quota to charge it against.
+
 
 
 class BusinessOut(BaseModel):
@@ -81,7 +90,7 @@ def _dto(b: BusinessOut) -> BusinessDTO:
     )
 
 
-@router.post("/search", response_model=ResultsOut)
+@router.post("/search", response_model=ResultsOut, dependencies=[Depends(require_platform_admin)])
 async def search(body: SearchIn) -> ResultsOut:
     if body.category not in LEAD_CATEGORIES:
         raise HTTPException(status_code=422, detail=f"Unknown category: {body.category}")
@@ -92,7 +101,7 @@ async def search(body: SearchIn) -> ResultsOut:
     return ResultsOut(results=[BusinessOut(**b.to_public()) for b in results])
 
 
-@router.post("/upload", response_model=ResultsOut)
+@router.post("/upload", response_model=ResultsOut, dependencies=[Depends(require_platform_admin)])
 async def upload(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)) -> ResultsOut:
     s = get_settings()
     content = await file.read()
@@ -108,7 +117,7 @@ async def upload(file: UploadFile = File(...), db: AsyncSession = Depends(get_db
     return ResultsOut(results=[BusinessOut(**b.to_public()) for b in leads])
 
 
-@router.post("/import", response_model=ImportResult)
+@router.post("/import", response_model=ImportResult, dependencies=[Depends(require_platform_admin)])
 async def do_import(body: ImportIn, db: AsyncSession = Depends(get_db)) -> ImportResult:
     if not body.leads:
         raise HTTPException(status_code=400, detail="No leads to import")
@@ -118,7 +127,7 @@ async def do_import(body: ImportIn, db: AsyncSession = Depends(get_db)) -> Impor
     return ImportResult(**result)
 
 
-@router.post("/enrich/{lead_id}", response_model=EnrichResult)
+@router.post("/enrich/{lead_id}", response_model=EnrichResult, dependencies=[Depends(require_platform_admin)])
 async def enrich(lead_id: int, db: AsyncSession = Depends(get_db)) -> EnrichResult:
     lead = (await db.execute(select(Lead).where(Lead.id == lead_id))).scalar_one_or_none()
     if lead is None:
@@ -127,7 +136,7 @@ async def enrich(lead_id: int, db: AsyncSession = Depends(get_db)) -> EnrichResu
     return EnrichResult(lead_id=lead.id, name=lead.name, enrichment=enrichment)
 
 
-@router.post("/enrich-pending")
+@router.post("/enrich-pending", dependencies=[Depends(require_platform_admin)])
 async def enrich_pending(
     limit: int = 25, db: AsyncSession = Depends(get_db)
 ) -> dict[str, int]:

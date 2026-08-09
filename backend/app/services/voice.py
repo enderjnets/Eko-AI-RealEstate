@@ -180,10 +180,9 @@ def _parse_dt(value: Any, tz: ZoneInfo) -> datetime | None:
 
 
 async def _office_tz_name(db: AsyncSession) -> str:
-    """The office IANA timezone from AgentSettings (singleton), default UTC."""
     from app.models import AgentSettings
 
-    row = await db.execute(select(AgentSettings).where(AgentSettings.id == 1))
+    row = await db.execute(select(AgentSettings).where(AgentSettings.org_id == _acting_org()))
     cfg = row.scalar_one_or_none()
     return (cfg.timezone if cfg and cfg.timezone else "UTC")
 
@@ -195,7 +194,11 @@ async def _resolve_or_create_lead(identifier: str, name: str | None, db: AsyncSe
     row = await db.execute(select(Lead).where(Lead.phone == identifier))
     lead = row.scalar_one_or_none()
     if lead is None:
-        lead = Lead(phone=identifier, name=name)
+        lead = Lead(
+            phone=identifier,
+            name=name,
+            email=identifier if "@" in (identifier or "") else None,
+        )
         db.add(lead)
         await db.flush()
         log.info("Created lead id=%d channel=voice identifier=%s", lead.id, identifier)
@@ -265,8 +268,60 @@ async def handle_tool_call(
             if provided and provided != phone:
                 note += f" · callback: {provided}"
 
-            attendee_email = lead.phone if "@" in lead.phone else None
+            # The lead's own address when we have one; `phone` holds it for
+            # email-channel leads. Neither, and `create_booking` uses the
+            # agency's booking contact rather than failing.
+            attendee_email = lead.email or (lead.phone if "@" in (lead.phone or "") else None)
             attendee_phone = lead.phone if "@" not in lead.phone else None
+
+            # Check before booking. Going straight to Cal.com meant a taken slot
+            # came back as a 4xx, which the outer handler turns into "I'm having
+            # trouble with the calendar" — so a caller who asked for a time
+            # somebody else had hung up unbooked, told the system was broken
+            # rather than offered another time.
+            from app.api.v1.visits import _busy_starts
+
+            free = await list_available_slots(
+                start=when - timedelta(minutes=1),
+                end=when + timedelta(days=1),
+                timezone_name=tz_name,
+                busy_starts=await _busy_starts(
+                    db, since=when - timedelta(days=1), until=when + timedelta(days=2)
+                ),
+            )
+            if not any(slot.start == when for slot in free):
+                alternatives = ", ".join(
+                    slot.start.astimezone(zone).strftime("%A at %-I:%M %p")
+                    for slot in free[:3]
+                )
+                if not alternatives:
+                    return (
+                        "That time isn't available, and I don't have anything "
+                        "else open that day. What other day works for you?"
+                    )
+                return f"That time is taken. I do have {alternatives}. Any of those?"
+
+            # Idempotency. A replayed tool-call webhook — VAPI retries, and the
+            # model can call the same tool twice in one turn — otherwise made a
+            # second Cal.com booking, a second visit and a second set of
+            # reminders for the same caller and the same hour.
+            existing = (
+                await db.execute(
+                    select(Visit).where(
+                        Visit.lead_id == lead.id,
+                        Visit.scheduled_at == when,
+                        Visit.status.in_(
+                            [VisitStatus.SCHEDULED, VisitStatus.CONFIRMED]
+                        ),
+                    )
+                )
+            ).scalars().first()
+            if existing is not None:
+                return (
+                    f"You're already booked for {when.astimezone(zone).strftime('%A at %-I:%M %p')}. "
+                    "See you then."
+                )
+
             booking = await create_booking(
                 start_time=when,
                 attendee_name=lead.name or "Caller",
@@ -309,3 +364,26 @@ async def handle_tool_call(
         await db.rollback()
         log.exception("Voice tool %s failed: %s", name, exc)
         return "Something went wrong on my side. A team member will follow up with you."
+
+
+def _acting_org() -> int:
+    """The org whose settings row applies to this call.
+
+    RLS already scopes the query in production; naming the org explicitly keeps
+    it correct on a bypass or owner session too, where scalar_one_or_none()
+    would otherwise see every tenant's row and raise.
+    """
+    from app.services.tenant_context import get_org_id
+
+    org_id = get_org_id()
+    if org_id is None:
+        # Was `or DEFAULT_ORG_ID`. It fails closed today because these paths run
+        # on the RLS session — an unset org reads nothing and cannot write — but
+        # the fallback is one `get_bypass_db` away from silently reading and
+        # overwriting client zero's row, and there are six of these. Say so
+        # instead of guessing.
+        raise RuntimeError(
+            "no acting organization is bound; refusing to fall back to the "
+            "default one"
+        )
+    return org_id

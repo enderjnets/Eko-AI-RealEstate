@@ -22,10 +22,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_db
 from app.models import AgentSettings
+from app.services.tenant_context import get_org_id
 
 router = APIRouter()
 
-SINGLETON_ID = 1
 
 
 class SettingsOut(BaseModel):
@@ -33,6 +33,7 @@ class SettingsOut(BaseModel):
 
     agency_name: str
     agency_phone: str | None
+    booking_contact_email: str | None
     agent_persona: str
     greeting_template: str
     languages: list[str]
@@ -51,6 +52,12 @@ class SettingsPatch(BaseModel):
 
     agency_name: str | None = Field(default=None, min_length=1, max_length=160)
     agency_phone: str | None = Field(default=None, max_length=32)
+    # Where Cal.com sends the confirmation for a lead who only gave a
+    # phone number, which is most of them.
+    # Not EmailStr: that pulls in an optional dependency the image does not
+    # carry, and a wrong address here fails visibly at the first booking rather
+    # than silently.
+    booking_contact_email: str | None = Field(default=None, max_length=255)
     agent_persona: str | None = Field(default=None, min_length=1)
     greeting_template: str | None = Field(default=None, min_length=1)
     languages: list[str] | None = Field(default=None, min_length=1)
@@ -60,10 +67,13 @@ class SettingsPatch(BaseModel):
 
 async def _get_or_create(db: AsyncSession) -> AgentSettings:
     row = (
-        await db.execute(select(AgentSettings).where(AgentSettings.id == SINGLETON_ID))
+        await db.execute(select(AgentSettings).where(AgentSettings.org_id == _acting_org()))
     ).scalar_one_or_none()
     if row is None:
-        row = AgentSettings(id=SINGLETON_ID)
+        # No pinned id: there is one settings row per organization now, and
+        # forcing id=1 made the second tenant collide on the primary key.
+        # org_id is stamped on flush from the acting org.
+        row = AgentSettings()
         db.add(row)
         await db.commit()
         await db.refresh(row)
@@ -119,3 +129,19 @@ async def update_settings(
     await db.commit()
     await db.refresh(row)
     return SettingsOut.model_validate(row)
+
+
+def _acting_org() -> int:
+    """The org whose settings row applies to this call."""
+    org_id = get_org_id()
+    if org_id is None:
+        # Was `or DEFAULT_ORG_ID`. It fails closed today because these paths run
+        # on the RLS session — an unset org reads nothing and cannot write — but
+        # the fallback is one `get_bypass_db` away from silently reading and
+        # overwriting client zero's row, and there are six of these. Say so
+        # instead of guessing.
+        raise RuntimeError(
+            "no acting organization is bound; refusing to fall back to the "
+            "default one"
+        )
+    return org_id

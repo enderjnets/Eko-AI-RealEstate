@@ -47,7 +47,27 @@ services:
       redis:
         condition: service_healthy
     environment:
+      # Owns the schema: migrations, the login lookup and the background workers.
       DATABASE_URL: ${DATABASE_URL}
+      # What the request path actually connects as — a role without BYPASSRLS, so
+      # the tenant policies bind. Pointing this at the owner would leave every
+      # isolation test green while isolating nothing.
+      DATABASE_URL_APP: ${DATABASE_URL_APP:?set it in .env — the RLS role, NOSUPERUSER NOBYPASSRLS, with a password that is not in this repo}
+      # Migration 015 creates the eko_app role and reads these HERE, because
+      # `alembic upgrade` runs inside this container. They were missing, so the
+      # role was always created with the literal in the repository while
+      # DATABASE_URL_APP carried whatever the installer generated — either the
+      # tenant-boundary role has a published password, or every request fails
+      # authentication while /health stays green. Both halves must agree.
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set it in .env; migration 024 sets the RLS role to this, so a default here is a password published in the repo}
+      APP_DB_ROLE: ${APP_DB_ROLE:-eko_app}
+      # The role RLS is deliberately bypassed with, for login lookups, the
+      # platform router and the org-list reads that run before any tenant is
+      # bound. Absent here, setting it in .env did nothing and the app silently
+      # kept using DATABASE_URL — which on this stack is a superuser, so FORCE
+      # ROW LEVEL SECURITY was the only thing standing between a bug and every
+      # tenant's rows. Same omission as APP_DB_PASSWORD, one variable over.
+      DATABASE_URL_BYPASS: ${DATABASE_URL_BYPASS:-}
       REDIS_URL: ${REDIS_URL}
       # LLM
       LLM_PRIMARY: ${LLM_PRIMARY:-kimi}
@@ -108,6 +128,15 @@ services:
       GOOGLE_ADMIN_EMAILS: ${GOOGLE_ADMIN_EMAILS:-}
       GOOGLE_ALLOWED_EMAILS: ${GOOGLE_ALLOWED_EMAILS:-}
       GOOGLE_ALLOWED_DOMAIN: ${GOOGLE_ALLOWED_DOMAIN:-}
+      # Who runs the SaaS. The ONLY source of platform access: only these
+      # addresses reach /api/v1/platform. Empty means nobody can, which is the
+      # correct default — the shared DASHBOARD_PASSWORD is the agency's own
+      # password and deliberately cannot grant it.
+      APP_VERSION: ${APP_VERSION:-0.39.2}
+      PLATFORM_ADMIN_EMAILS: ${PLATFORM_ADMIN_EMAILS:-}
+      # Public signup into the demo org. The flag was advertised in /auth/me
+      # and read nowhere, so it could not turn signup off.
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
       # Sign in with Apple — APPLE_CLIENT_ID is the Services ID, also the token
       # `aud` the backend validates. Shares the same allow-list as Google.
       APPLE_CLIENT_ID: ${APPLE_CLIENT_ID:-}

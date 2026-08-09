@@ -29,6 +29,11 @@ jobs:
     env:
       # Real Postgres service above → the DB-backed tests actually run (not skipped).
       DATABASE_URL: "postgresql+asyncpg://eko:eko@localhost:5432/eko_realestate"
+      # CI must exercise the tenant policies, so the suite connects as the
+      # non-superuser role the migration creates. Without this the tests fall
+      # back to the owner, Postgres skips RLS entirely, and every isolation test
+      # passes while proving nothing — the exact false green they exist to catch.
+      DATABASE_URL_APP: "postgresql+asyncpg://eko_app:eko_app_local_pass@localhost:5432/eko_realestate"
       REDIS_URL: "redis://localhost:6379/0"
       KIMI_API_KEY: "ci-dummy"
       MINIMAX_API_KEY: "ci-dummy"

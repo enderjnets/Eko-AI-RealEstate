@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.main import app
-from app.models import Lead, Visit, VisitStatus
+from app.models import Lead
 
 
 @pytest.fixture
@@ -84,7 +84,7 @@ async def test_book_creates_visit_persists_with_calcom_sim_id(database_url: str)
     suffix = uuid.uuid4().hex[:8].upper()
     phone = f"+34666BOK{suffix}"
     lead_id = await _insert_lead(database_url, phone)
-    start_time = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
+    start_time = (datetime.now(UTC) + timedelta(days=1)).replace(
         minute=0, second=0, microsecond=0
     )
     try:
@@ -116,7 +116,7 @@ async def test_list_visits_returns_inserted_one(database_url: str) -> None:
     suffix = uuid.uuid4().hex[:8].upper()
     phone = f"+34666LST{suffix}"
     lead_id = await _insert_lead(database_url, phone)
-    start_time = (datetime.now(timezone.utc) + timedelta(days=2)).replace(
+    start_time = (datetime.now(UTC) + timedelta(days=2)).replace(
         minute=0, second=0, microsecond=0
     )
     try:
@@ -139,7 +139,7 @@ async def test_cancel_visit_flips_status_to_cancelled(database_url: str) -> None
     suffix = uuid.uuid4().hex[:8].upper()
     phone = f"+34666CXL{suffix}"
     lead_id = await _insert_lead(database_url, phone)
-    start_time = (datetime.now(timezone.utc) + timedelta(days=3)).replace(
+    start_time = (datetime.now(UTC) + timedelta(days=3)).replace(
         minute=0, second=0, microsecond=0
     )
     try:
@@ -171,7 +171,7 @@ async def test_slots_excludes_already_booked_starts(database_url: str) -> None:
     phone = f"+34666BSY{suffix}"
     lead_id = await _insert_lead(database_url, phone)
     # Pick the next weekday 10 AM UTC for predictability.
-    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
     target = (now + timedelta(days=1)).replace(hour=10)
     while target.weekday() >= 5:
         target += timedelta(days=1)

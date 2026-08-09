@@ -107,12 +107,70 @@ docker compose up -d              # start again
 
 ## Upgrading
 
+Stop the backend before migrating. Starting the new image against the old
+schema leaves every org-scoped query failing until the migration lands, and with
+`restart: unless-stopped` a startup check that legitimately refuses becomes a
+restart loop rather than a message you can read.
+
 ```bash
 git pull
 docker compose build
+
+# Back up first: several migrations transform data (022 archives duplicate
+# active conversations, 018 removes duplicate identity rows) and their
+# downgrades do not put it back.
+docker compose exec -T db pg_dump -U eko eko_realestate > backup-$(date +%F).sql
+
+docker compose stop backend
+docker compose run --rm backend alembic upgrade head
 docker compose up -d
-docker compose exec backend alembic upgrade head
+docker compose logs -f backend   # read the startup checks; they refuse loudly
 ```
+
+### Before upgrading to 0.39.x
+
+Three settings became load-bearing. The stack refuses to start without the
+first, so check all three before you begin:
+
+| Setting | Why |
+|---|---|
+| `AUTH_SECRET` | Required once `AUTH_ENABLED=true`, minimum 32 characters. It used to fall back to a value derived from `DASHBOARD_PASSWORD` — which the office shares — and that key signs both the organization and the platform-operator claim. `openssl rand -hex 32` |
+| `PLATFORM_ADMIN_EMAILS` | The only source of platform access. Without it nobody can create an agency or reach Settings → Registrations, and the shared password deliberately cannot grant it. |
+| `APP_DB_PASSWORD` | Must match the password inside `DATABASE_URL_APP`. The migration creates the RLS role inside the backend container and reads it there. There is no longer a default: compose refuses to start without both, because the default that used to be there was the password of the role that guards every tenant boundary, committed to this repository. An install upgrading from before this change must put both in `.env` before the next `docker compose up`, or it will refuse — deliberately, and with the variable named in the error. |
+
+**Rotating the RLS role's password.** Migration 015 creates that role with
+`CREATE ROLE IF NOT EXISTS`, so on a database that has already run it, setting
+`APP_DB_PASSWORD` alone changes nothing — the role keeps the old password while
+`DATABASE_URL_APP` starts using the new one, and every request then fails
+Postgres authentication with `/health` still green. Migration 024 issues the
+`ALTER ROLE`, so set `APP_DB_PASSWORD` **before** running the upgrade and both
+halves move together. Verify afterwards:
+
+```bash
+# Note the driver is stripped: DATABASE_URL_APP is a postgresql+asyncpg:// URI
+# and psql rejects that scheme, so pasting it verbatim always fails — which
+# would make the one check for this failure impossible to pass.
+docker compose exec -T db psql -U eko_app -d eko_realestate -c 'select 1'
+```
+
+**Never change `APP_DB_ROLE` after the first migration.** 015 will not re-run,
+so no role by the new name is created, and the later migrations then abort
+granting to something that does not exist.
+
+**Everyone will be signed out.** Setting `AUTH_SECRET` changes the key that
+signs session cookies, so every open session becomes invalid at cutover. Tell
+the office before you deploy, not after.
+
+**There is no rollback below revision 023.** `alembic downgrade` is not a way
+back: 015's downgrade drops `organizations` and every `org_id` column, 018
+deletes duplicate identity rows and 022 archives duplicate conversations, and
+none of those downgrades restore what they removed. The real rollback is
+restoring the `pg_dump` above and redeploying the previous image. Take the dump
+and verify it opens before you start.
+
+Also note: users who were signing in purely on `GOOGLE_ALLOWED_DOMAIN` with no
+`allowed_users` row are now refused rather than placed in the default
+organization. Create their rows first, or they lose access at the cutover.
 
 The Postgres data volume persists across upgrades; migrations are forward-only
 and safe to re-run (`alembic upgrade head` is a no-op when already current).

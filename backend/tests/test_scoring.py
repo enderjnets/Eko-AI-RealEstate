@@ -1,7 +1,7 @@
 """Tests for lead scoring — the pure `compute_lead_score` heuristic + tiers."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from app.models import Lead, LeadIntent, LeadStatus
@@ -12,7 +12,7 @@ from app.services.scoring import (
     score_tier,
 )
 
-NOW = datetime(2026, 5, 26, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 5, 26, 12, 0, tzinfo=UTC)
 
 
 def _lead(**kw) -> Lead:

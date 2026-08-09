@@ -30,7 +30,6 @@ from app.models import (
 from app.services.classifier import IntentEntities, IntentResult  # noqa: F401 — used in tests
 from app.services.llm import LLMResult  # noqa: F401 — used in tests
 
-
 FIXTURES = Path(__file__).parent / "fixtures" / "whatsapp_payloads"
 
 

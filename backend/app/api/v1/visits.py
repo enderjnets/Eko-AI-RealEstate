@@ -33,6 +33,7 @@ from app.services.calendar_cal import (
     create_booking,
     list_available_slots,
 )
+from app.services.tenant_context import get_org_id
 
 log = logging.getLogger(__name__)
 
@@ -136,18 +137,42 @@ async def _get_lead_or_404(lead_id: int, db: AsyncSession) -> Lead:
 
 async def _office_tz(db: AsyncSession) -> str:
     """The office IANA timezone from AgentSettings (singleton), default UTC."""
-    cfg = (await db.execute(select(AgentSettings).where(AgentSettings.id == 1))).scalar_one_or_none()
+    cfg = (await db.execute(select(AgentSettings).where(AgentSettings.org_id == _acting_org()))).scalar_one_or_none()
     return (cfg.timezone if cfg and cfg.timezone else "UTC")
 
 
-async def _busy_starts_for_lead(lead_id: int, db: AsyncSession) -> set[datetime]:
-    """The lead's already-scheduled visit start times — filtered out of /slots
-    so we never offer a slot that conflicts with another booking for THIS lead."""
+
+async def _booking_contact(db: AsyncSession) -> str | None:
+    """The agency's booking contact, read on the session we already hold."""
+    from app.models.agent_settings import AgentSettings
+
+    found = (
+        await db.execute(select(AgentSettings.booking_contact_email))
+    ).scalars().first()
+    return (found or "").strip() or None
+
+
+async def _busy_starts(
+    db: AsyncSession, *, since: datetime, until: datetime
+) -> set[datetime]:
+    """Every start time this agency already has a visit at.
+
+    Filtered by the acting organization, not by lead — the RLS session does the
+    filtering, so no `org_id` clause is needed here and none is possible from
+    another tenant. Scoping it to one lead meant two different leads were
+    offered the same half-hour and both bookings succeeded, sending one realtor
+    to two houses at once. A realtor's diary is a property of the agency, not
+    of whoever happens to be asking.
+    """
     rows = (
         await db.execute(
             select(Visit.scheduled_at).where(
-                Visit.lead_id == lead_id,
                 Visit.status.in_([VisitStatus.SCHEDULED, VisitStatus.CONFIRMED]),
+                # Bounded to the window being offered. Unbounded, an agency with
+                # years of history loaded its whole visit table into a Python
+                # set on every availability request.
+                Visit.scheduled_at >= since,
+                Visit.scheduled_at < until,
             )
         )
     ).scalars().all()
@@ -168,7 +193,7 @@ async def list_slots(
     now = datetime.now(UTC)
     start = now.replace(minute=0, second=0, microsecond=0)
     end = start + timedelta(days=days)
-    busy = await _busy_starts_for_lead(lead_id, db)
+    busy = await _busy_starts(db, since=start, until=end)
     try:
         slots = await list_available_slots(start=start, end=end, timezone_name=tz, busy_starts=busy)
     except CalComError as exc:
@@ -190,7 +215,10 @@ async def book_slot(
     tz = body.timezone or await _office_tz(db)
 
     # Email-or-phone heuristic: lead.phone holds an email when channel is email.
-    attendee_email = lead.phone if "@" in lead.phone else None
+    # The lead's own address when we have one; `phone` holds it for
+    # email-channel leads. Neither, and `create_booking` uses the
+    # agency's booking contact rather than failing.
+    attendee_email = lead.email or (lead.phone if "@" in (lead.phone or "") else None)
     attendee_phone = lead.phone if "@" not in lead.phone else None
     attendee_name = lead.name or "Cliente"
 
@@ -199,6 +227,7 @@ async def book_slot(
             start_time=body.start_time,
             attendee_name=attendee_name,
             attendee_email=attendee_email,
+            booking_contact=await _booking_contact(db),
             attendee_phone=attendee_phone,
             notes=body.notes,
             timezone_name=tz,
@@ -251,6 +280,14 @@ async def list_visits_for_lead(
 async def cancel_visit(
     visit_id: int,
     body: CancelIn | None = None,
+    local_only: bool = Query(
+        default=False,
+        description=(
+            "Cancel in Eko without calling the calendar. For a booking already "
+            "cancelled in Cal.com, or a calendar that is misconfigured — "
+            "otherwise the visit can never be cancelled from anywhere."
+        ),
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> VisitOut:
     visit = (await db.execute(select(Visit).where(Visit.id == visit_id))).scalar_one_or_none()
@@ -261,11 +298,38 @@ async def cancel_visit(
 
     reason = (body.reason if body else None) or "Cancelled from dashboard"
     # Manual events aren't on Cal.com — skip the provider call for them.
-    if visit.calendar_provider != "manual":
-        ok = await cancel_booking(visit.external_booking_id, reason=reason)
+    if visit.calendar_provider != "manual" and not local_only:
+        try:
+            ok = await cancel_booking(visit.external_booking_id, reason=reason)
+        except CalComError as exc:
+            # `list_slots` and `book_slot` already degraded on this; cancel did
+            # not, so a misconfigured calendar turned a cancellation into a 500
+            # and left the visit SCHEDULED — the realtor still shows up.
+            # 503, and the visit stays as it was, so a retry is meaningful.
+            log.warning("cancel refused, calendar unavailable: %s", exc)
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Calendar unavailable; visit not cancelled. Retry, or use "
+                    "?local_only=true to cancel in Eko alone."
+                ),
+            ) from exc
         if not ok:
-            raise HTTPException(status_code=503, detail="Cal.com cancellation failed")
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Cal.com cancellation failed. Retry, or use "
+                    "?local_only=true if it is already cancelled there."
+                ),
+            )
     visit.status = VisitStatus.CANCELLED
+    if local_only:
+        # Recorded, because the two states now differ: this visit is cancelled
+        # here and may still stand on the calendar.
+        reason = f"{reason} (cancelled in Eko only; check the calendar)"
+        log.warning(
+            "visit %s cancelled locally without calling the calendar", visit.id
+        )
     if reason and not visit.notes:
         visit.notes = f"Cancelled: {reason}"
     await db.commit()
@@ -409,3 +473,19 @@ async def visits_agenda(
 
     items.sort(key=lambda i: i.scheduled_at)
     return AgendaOut(items=items, timezone=tz)
+
+
+def _acting_org() -> int:
+    """The org whose settings row applies to this call."""
+    org_id = get_org_id()
+    if org_id is None:
+        # Was `or DEFAULT_ORG_ID`. It fails closed today because these paths run
+        # on the RLS session — an unset org reads nothing and cannot write — but
+        # the fallback is one `get_bypass_db` away from silently reading and
+        # overwriting client zero's row, and there are six of these. Say so
+        # instead of guessing.
+        raise RuntimeError(
+            "no acting organization is bound; refusing to fall back to the "
+            "default one"
+        )
+    return org_id

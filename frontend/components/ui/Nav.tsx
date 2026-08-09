@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { authApi, inboxApi, type InboxItem } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { usePlatformOperator } from "@/lib/useViewer";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { VersionButton } from "@/components/ui/VersionButton";
 
@@ -41,6 +42,7 @@ function channelIcon(ch: string | null) {
 
 export function Nav() {
   const { t } = useI18n();
+  const isOperator = usePlatformOperator();
   const router = useRouter();
   const pathname = usePathname();
   const [authEnabled, setAuthEnabled] = useState(false);
@@ -114,7 +116,8 @@ export function Nav() {
     href === "/leads" ? pathname.startsWith("/leads") : pathname.startsWith(href);
 
   const tabs = [
-    { href: "/discovery", label: t("nav.discovery"), Icon: Search },
+    // Operator-only; see app/discovery/page.tsx.
+    ...(isOperator ? [{ href: "/discovery", label: t("nav.discovery"), Icon: Search }] : []),
     { href: "/leads", label: t("nav.leads"), Icon: Users },
     { href: "/inbox", label: t("nav.inbox"), Icon: Inbox, dot: attention > 0 },
     { href: "/calendar", label: t("nav.calendar"), Icon: CalendarDays },

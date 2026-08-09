@@ -20,11 +20,15 @@ def _fake_settings(**over):
         AUTH_SECRET="unit-test-secret",
         AUTH_TTL_HOURS=168,
         is_production=False,
+        REGISTRATION_ENABLED=True,
         # Google Sign In (defaults: feature configured, no env allow-list).
         GOOGLE_CLIENT_ID="test-client-id.apps.googleusercontent.com",
         GOOGLE_ALLOWED_DOMAIN="",
         google_admin_emails_list=[],
         google_allowed_emails_list=[],
+        # Platform operators (cross-tenant). Empty by default, which is what
+        # keeps the shared password minting `su` for a single-customer install.
+        platform_admin_emails_list=[],
         # Sign in with Apple (default: not configured).
         APPLE_CLIENT_ID="",
     )
@@ -260,8 +264,14 @@ async def test_google_login_db_member_then_denied(_needs_db: None) -> None:
 
 @pytest.mark.asyncio
 async def test_google_callback_success_redirects_to_leads() -> None:
-    """Valid CSRF + token + allowed email → 303 to /leads with a session cookie."""
-    fake = _fake_settings()
+    """Valid CSRF + token + allowed email → 303 to /leads with a session cookie.
+
+    The email is pinned in GOOGLE_ADMIN_EMAILS rather than only granted by
+    `resolve_email_access`: access and organization are resolved separately and
+    both must succeed, so an email nobody has assigned to an agency is refused
+    even when the access half says yes.
+    """
+    fake = _fake_settings(google_admin_emails_list=["owner@eko.com"])
     with patch("app.api.v1.auth.get_settings", return_value=fake), \
          patch("app.services.auth.get_settings", return_value=fake), \
          patch("app.api.v1.auth.verify_google_id_token", return_value="owner@eko.com"), \

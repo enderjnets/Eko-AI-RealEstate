@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -56,7 +56,7 @@ async def _delete(database_url: str, lead_id: int) -> None:
 @pytest.mark.asyncio
 async def test_rescore_then_digest_ranks_and_excludes(database_url: str) -> None:
     sfx = uuid.uuid4().hex[:8].upper()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     hot = await _insert(
         database_url, phone=f"+1HOT{sfx}", name=f"Hot {sfx}",
         status=LeadStatus.QUALIFIED, intent=LeadIntent.BUY,

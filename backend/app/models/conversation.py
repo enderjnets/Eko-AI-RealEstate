@@ -5,7 +5,7 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, pg_enum
@@ -22,8 +22,27 @@ class ConversationStatus(str, enum.Enum):
 
 class Conversation(Base):
     __tablename__ = "conversations"
+    __table_args__ = (
+        # Declared so `alembic revision --autogenerate` does not propose
+        # dropping what migration 022 created. Partial on purpose: closed
+        # conversations are history, and a lead who returns months later
+        # legitimately gets a new one.
+        Index(
+            "uq_conversations_active_per_lead_channel",
+            "org_id",
+            "lead_id",
+            "channel",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     lead_id: Mapped[int] = mapped_column(
         ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True
     )

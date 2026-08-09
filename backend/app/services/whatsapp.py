@@ -17,13 +17,15 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-import time
 from typing import Any
+from uuid import uuid4
 
 import httpx
 
 from app.config import get_settings
+from app.models.channel_route import CHANNEL_WHATSAPP
 from app.services._common import ParsedMessage  # re-export below for backwards-compat
+from app.services.channel_identity import resolve_outbound_identity
 
 log = logging.getLogger(__name__)
 
@@ -126,25 +128,28 @@ async def send_text_message(to_phone: str, text: str) -> dict[str, Any]:
     s = get_settings()
 
     if s.WHATSAPP_SIMULATED:
-        fake_id = f"wamid.SIMULATED_{int(time.time() * 1000)}"
+        fake_id = f"wamid.SIMULATED_{uuid4().hex}"
         log.info(
             "WhatsApp SIMULATED outbound to=%s len=%d text=%r (would-be wamid=%s)",
             to_phone, len(text), text[:120], fake_id,
         )
         return {"messages": [{"id": fake_id}], "simulated": True}
 
-    if not s.WHATSAPP_ACCESS_TOKEN or not s.WHATSAPP_PHONE_NUMBER_ID:
+    # The acting agency's own WhatsApp line, falling back to the global one.
+    identity = await resolve_outbound_identity(CHANNEL_WHATSAPP)
+    if not identity.credential or not identity.destination:
         raise RuntimeError(
-            "WhatsApp not configured: WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID "
-            "must be set, or set WHATSAPP_SIMULATED=true for dev."
+            "WhatsApp not configured for this organization: an access token and "
+            "a phone-number id must be set, either globally in .env or on the "
+            "agency's channel route. Set WHATSAPP_SIMULATED=true for dev."
         )
 
     url = (
         f"https://graph.facebook.com/{s.WHATSAPP_GRAPH_API_VERSION}"
-        f"/{s.WHATSAPP_PHONE_NUMBER_ID}/messages"
+        f"/{identity.destination}/messages"
     )
     headers = {
-        "Authorization": f"Bearer {s.WHATSAPP_ACCESS_TOKEN}",
+        "Authorization": f"Bearer {identity.credential}",
         "Content-Type": "application/json",
     }
     body = {

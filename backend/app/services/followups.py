@@ -31,6 +31,7 @@ from app.models import (
 )
 from app.services.conversation import _dispatch_send, _latest_active_conversation
 from app.services.i18n import detect_language, pick_supported_language
+from app.services.tenant_context import get_org_id
 
 log = logging.getLogger(__name__)
 
@@ -69,14 +70,14 @@ def _first_name(lead: Lead) -> str:
 
 
 async def _agency_name(db: AsyncSession) -> str:
-    cfg = (await db.execute(select(AgentSettings).where(AgentSettings.id == 1))).scalar_one_or_none()
+    cfg = (await db.execute(select(AgentSettings).where(AgentSettings.org_id == _acting_org()))).scalar_one_or_none()
     return cfg.agency_name if cfg and cfg.agency_name else "the team"
 
 
 async def _lead_language(lead: Lead, db: AsyncSession) -> str:
     """Best-effort language for nurture text: from the lead's last inbound, else
     the agency's primary supported language."""
-    cfg = (await db.execute(select(AgentSettings).where(AgentSettings.id == 1))).scalar_one_or_none()
+    cfg = (await db.execute(select(AgentSettings).where(AgentSettings.org_id == _acting_org()))).scalar_one_or_none()
     supported = (cfg.languages if cfg else ["en"]) or ["en"]
     last_in = (
         await db.execute(
@@ -245,3 +246,19 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
     if sent or skipped or failed:
         log.info("Follow-ups processed: sent=%d skipped=%d failed=%d", sent, skipped, failed)
     return {"sent": sent, "skipped": skipped, "failed": failed}
+
+
+def _acting_org() -> int:
+    """The org whose settings row applies to this call."""
+    org_id = get_org_id()
+    if org_id is None:
+        # Was `or DEFAULT_ORG_ID`. It fails closed today because these paths run
+        # on the RLS session — an unset org reads nothing and cannot write — but
+        # the fallback is one `get_bypass_db` away from silently reading and
+        # overwriting client zero's row, and there are six of these. Say so
+        # instead of guessing.
+        raise RuntimeError(
+            "no acting organization is bound; refusing to fall back to the "
+            "default one"
+        )
+    return org_id

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.36.0";
+export const CURRENT_VERSION = "0.41.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,200 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.41.0",
+    date: "2026-08-09",
+    title: {
+      en: "Your replies get through, and every listing is credited",
+      es: "Tus respuestas llegan, y cada propiedad va acreditada",
+    },
+    changes: [
+      {
+        en: "A reply that hit a provider outage used to be lost silently. Failed messages are now retried automatically, backing off over about an hour and a half before giving up.",
+        es: "Una respuesta que topaba con una caída del proveedor se perdía en silencio. Ahora los mensajes fallidos se reintentan solos, espaciándose durante hora y media antes de darse por vencidos.",
+      },
+      {
+        en: "When every AI provider is unreachable, the lead now gets a short note in their own language instead of silence.",
+        es: "Cuando ningún proveedor de IA responde, el lead recibe una nota breve en su idioma en vez de silencio.",
+      },
+      {
+        en: "Listings shown to a lead now carry the listing broker's credit automatically, on the message itself — a Colorado requirement that rested on the AI choosing to repeat it.",
+        es: "Las propiedades que se enseñan a un lead llevan ahora el crédito del corredor listante automáticamente, en el propio mensaje — un requisito de Colorado que dependía de que la IA decidiera repetirlo.",
+      },
+      {
+        en: "One city-filtered property import used to hide every listing outside that city from the automatic sync, permanently — including ones that had just sold.",
+        es: "Una importación filtrada por ciudad ocultaba para siempre del sync automático todas las propiedades de fuera de esa ciudad — incluidas las que acababan de venderse.",
+      },
+      {
+        en: "The properties list now shows active listings by default instead of mixing in sold and pending ones.",
+        es: "La lista de propiedades muestra ahora las activas por defecto, en vez de mezclar vendidas y pendientes.",
+      },
+      {
+        en: "The same person writing from WhatsApp and then from email is now one lead instead of two.",
+        es: "La misma persona escribiendo por WhatsApp y luego por email es ahora un solo lead en vez de dos.",
+      },
+    ],
+  },
+  {
+    version: "0.40.0",
+    date: "2026-08-08",
+    title: {
+      en: "Each agency books on its own calendar",
+      es: "Cada agencia reserva en su propio calendario",
+    },
+    changes: [
+      {
+        en: "Every agency now books on its own Cal.com. Before this, a booking wrote your client's name, email and phone onto the operator's calendar, where another agency's realtors could see it — and your bookings blocked out their availability.",
+        es: "Cada agencia reserva ahora en su propio Cal.com. Antes, una reserva escribía el nombre, email y teléfono de tu cliente en el calendario del operador, donde lo veían los realtors de otra agencia — y tus reservas tapaban su disponibilidad.",
+      },
+      {
+        en: "Two different leads could be offered the same half-hour and both bookings went through, sending one realtor to two houses at once. Availability is now de-conflicted across the whole agency.",
+        es: "A dos leads distintos se les podía ofrecer la misma media hora y ambas reservas prosperaban, mandando a un realtor a dos casas a la vez. La disponibilidad ahora se resuelve para toda la agencia.",
+      },
+      {
+        en: "An email could name another agency inside a group address and route your lead to them. Any grouped address now makes the whole header untrusted, and the delivery envelope wins over what the sender wrote.",
+        es: "Un email podía nombrar a otra agencia dentro de una dirección de grupo y desviarle tu lead. Ahora cualquier dirección agrupada invalida la cabecera entera, y el sobre de entrega manda sobre lo que escribió quien envía.",
+      },
+      {
+        en: "Cancelling a visit returned an error and left it scheduled when the calendar was not set up. It now says the calendar is unavailable and leaves the visit untouched, so retrying means something.",
+        es: "Cancelar una visita devolvía un error y la dejaba agendada si el calendario no estaba configurado. Ahora avisa de que el calendario no está disponible y deja la visita intacta, así reintentar sirve de algo.",
+      },
+      {
+        en: "Lead phone numbers, inbound message payloads and uploaded contact lists are no longer written to the logs in full.",
+        es: "Los teléfonos de los leads, los mensajes entrantes y las listas de contactos subidas ya no se escriben enteros en los logs.",
+      },
+    ],
+  },
+  {
+    version: "0.39.2",
+    date: "2026-08-08",
+    title: {
+      en: "Each phone line verifies with its own key",
+      es: "Cada línea verifica con su propia clave",
+    },
+    changes: [
+      {
+        en: "An agency with two numbers on one channel now has each one checked against its own signing key. Messages to the second number were being checked against the first one's, so they failed and the lead was lost with nothing to explain it.",
+        es: "Una agencia con dos números en un mismo canal comprueba ahora cada uno con su propia clave de firma. Los mensajes al segundo número se comprobaban con la del primero, así que fallaban y el lead se perdía sin explicación.",
+      },
+      {
+        en: "The database role that enforces separation between agencies gets its password rotated on upgrade instead of keeping the one it was created with.",
+        es: "El rol de base de datos que separa a las agencias rota su contraseña al actualizar, en vez de conservar la que se le puso al crearlo.",
+      },
+      {
+        en: "A call whose line is not mapped now hears a hand-off message instead of the assistant going quiet.",
+        es: "Una llamada cuya línea no está mapeada oye ahora un mensaje de traspaso en vez de que el asistente se quede callado.",
+      },
+    ],
+  },
+  {
+    version: "0.39.1",
+    date: "2026-08-08",
+    title: {
+      en: "Hardening found by four more independent audits",
+      es: "Refuerzos encontrados por cuatro auditorías independientes más",
+    },
+    changes: [
+      {
+        en: "Only named operators can create or enter agencies. The shared office password no longer grants that, and it can no longer be used to derive the key that would forge it.",
+        es: "Solo los operadores con nombre pueden crear agencias o entrar en ellas. La contraseña compartida de la oficina ya no lo concede, ni sirve para derivar la clave que lo falsificaría.",
+      },
+      {
+        en: "A message that arrives at an unmapped number is held back rather than filed under whichever agency happens to be the only active one, unless that agency's own provider account authenticated it.",
+        es: "Un mensaje que llega a un número sin mapear se retiene en vez de archivarse en la única agencia activa, salvo que lo haya autenticado la cuenta de proveedor de esa misma agencia.",
+      },
+      {
+        en: "Two agencies can no longer be pointed at the same provider credential, which would have let one of them sign messages into the other's inbox.",
+        es: "Dos agencias ya no pueden apuntar a la misma credencial de proveedor, lo que habría permitido a una firmar mensajes dentro del buzón de la otra.",
+      },
+      {
+        en: "A duplicate message no longer discards the lead that arrived with it — the safeguard for that was opening after the write it was meant to protect.",
+        es: "Un mensaje duplicado ya no descarta el lead que llegó con él: la protección se abría después de la escritura que debía proteger.",
+      },
+      {
+        en: "An email whose body could not be retrieved is retried instead of answered blind.",
+        es: "Un correo cuyo cuerpo no se pudo recuperar se reintenta en vez de responderse a ciegas.",
+      },
+    ],
+  },
+  {
+    version: "0.39.0",
+    date: "2026-08-08",
+    title: {
+      en: "Each agency now replies from its own number",
+      es: "Cada agencia responde ahora desde su propio número",
+    },
+    changes: [
+      {
+        en: "Replies to a lead now go out from the number, WhatsApp line or email address of the agency they wrote to. Previously every reply left from the first agency's number, so the lead answered the wrong agency and the rest of the conversation ended up in the wrong dashboard.",
+        es: "Las respuestas a un lead salen ahora desde el número, la línea de WhatsApp o el correo de la agencia a la que escribieron. Antes toda respuesta salía desde el número de la primera agencia, así que el lead contestaba a la agencia equivocada y el resto de la conversación acababa en el panel que no era.",
+      },
+      {
+        en: "Two messages arriving at the same instant no longer lose leads. Four simultaneous first contacts used to leave one lead out of four, with every delivery reported as successful.",
+        es: "Dos mensajes que llegan a la vez ya no pierden leads. Cuatro primeros contactos simultáneos dejaban un lead de cuatro, y cada entrega se reportaba como correcta.",
+      },
+      {
+        en: "An email that copies two agencies is held back instead of being filed under whichever address happened to come first.",
+        es: "Un correo con copia a dos agencias se retiene en vez de archivarse en la dirección que viniera primero.",
+      },
+      {
+        en: "The voice assistant can book visits again on lines mapped by phone number — it used to fail mid-call while the transcript still saved correctly.",
+        es: "El asistente de voz vuelve a poder agendar visitas en las líneas mapeadas por número — antes fallaba a mitad de llamada mientras el transcript sí se guardaba bien.",
+      },
+      {
+        en: "Platform operators are named by email instead of sharing one password, so entering an agency records who did it.",
+        es: "Los operadores de la plataforma se identifican por correo en vez de compartir una contraseña, así que entrar en una agencia registra quién lo hizo.",
+      },
+    ],
+  },
+  {
+    version: "0.38.0",
+    date: "2026-08-07",
+    title: {
+      en: "Each agency's messages now reach only that agency",
+      es: "Los mensajes de cada agencia llegan solo a esa agencia",
+    },
+    changes: [
+      {
+        en: "Incoming texts, WhatsApp messages and emails are matched to an agency by the number or mailbox they were sent to, so a second agency's leads can never land in another's dashboard.",
+        es: "Los mensajes de texto, WhatsApp y correos entrantes se asignan a una agencia por el número o buzón al que se enviaron, así que los leads de una agencia nunca aparecen en el panel de otra.",
+      },
+      {
+        en: "A message sent to an address nobody has claimed is refused and retried rather than filed under the wrong agency.",
+        es: "Un mensaje enviado a una dirección que nadie ha reclamado se rechaza y se reintenta, en vez de archivarse en la agencia equivocada.",
+      },
+      {
+        en: "Platform operators can create and suspend agencies, and enter one when support is needed — every entry is recorded.",
+        es: "Los operadores de la plataforma pueden crear y suspender agencias, y entrar en una cuando hace falta dar soporte — cada entrada queda registrada.",
+      },
+      {
+        en: "A suspended agency now loses access immediately instead of keeping it.",
+        es: "Una agencia suspendida ahora pierde el acceso de inmediato en vez de conservarlo.",
+      },
+    ],
+  },
+  {
+    version: "0.37.0",
+    date: "2026-08-06",
+    title: {
+      en: "Each agency now has its own separate workspace",
+      es: "Cada agencia tiene ahora su propio espacio separado",
+    },
+    changes: [
+      {
+        en: "Eko AI Realtors now hosts multiple agencies in one installation. Every agency is a separate organization: its leads, conversations, visits and settings are visible only to its own members.",
+        es: "Eko AI Realtors aloja ahora varias agencias en una sola instalación. Cada agencia es una organización aparte: sus leads, conversaciones, visitas y ajustes solo los ven sus propios miembros.",
+      },
+      {
+        en: "Separation is enforced by the database itself, not by the application. A query that forgets to filter returns nothing rather than another agency's data.",
+        es: "La separación la impone la propia base de datos, no la aplicación. Una consulta que olvide filtrar devuelve nada, no los datos de otra agencia.",
+      },
+      {
+        en: "Fixed an error handler in the WhatsApp webhook that crashed while reporting a failure, hiding the original cause.",
+        es: "Corregido un manejador de errores del webhook de WhatsApp que fallaba al reportar un fallo y ocultaba la causa original.",
+      },
+    ],
+  },
   {
     version: "0.36.0",
     date: "2026-07-31",

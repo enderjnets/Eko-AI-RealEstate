@@ -5,6 +5,7 @@ import { ArrowDownWideNarrow, Clock, Loader2, RefreshCw, Search, X } from "lucid
 import { type Property, propertiesApi } from "@/lib/api";
 import { PropertyCard } from "@/components/properties/PropertyCard";
 import { useI18n } from "@/lib/i18n";
+import { usePlatformOperator } from "@/lib/useViewer";
 
 type Sort = "price" | "recent";
 
@@ -19,6 +20,7 @@ export function PropertiesGrid() {
   const [items, setItems] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const isOperator = usePlatformOperator();
   const [error, setError] = useState<string | null>(null);
 
   const [query, setQuery] = useState("");
@@ -150,6 +152,10 @@ export function PropertiesGrid() {
             placeholder={t("properties.maxPrice")}
             className="w-full sm:w-36 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-eko-violet/50"
           />
+          {/* Operator-only: the MLS licence and its quota are shared by every
+              agency on the install, so the backend gates the endpoint. Rendering
+              the button for a tenant only earned them a 403. */}
+          {isOperator && (
           <button
             type="button"
             onClick={handleSync}
@@ -160,6 +166,7 @@ export function PropertiesGrid() {
             {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             {t("properties.sync")}
           </button>
+          )}
         </div>
         <div className="flex items-center gap-2 justify-between flex-wrap">
           <div className="flex items-center gap-1.5 flex-nowrap overflow-x-auto sm:flex-wrap pb-1 sm:pb-0">
@@ -203,8 +210,14 @@ export function PropertiesGrid() {
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-xl border border-white/5 bg-white/[0.02] p-12 text-center text-gray-500 text-sm">
-          {t("properties.empty.pre")} <strong className="text-gray-300">{t("properties.sync")}</strong>{" "}
-          {t("properties.empty.post")}
+          {isOperator ? (
+            <>
+              {t("properties.empty.pre")} <strong className="text-gray-300">{t("properties.sync")}</strong>{" "}
+              {t("properties.empty.post")}
+            </>
+          ) : (
+            t("properties.empty.tenant")
+          )}
         </div>
       ) : (
         <>

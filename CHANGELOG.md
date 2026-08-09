@@ -2,6 +2,333 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.41.0] — 2026-08-09
+
+Rondas 22 a 29. Las rondas 23 y siguientes dejaron de mirar el aislamiento
+entre agencias —veintidós rondas ya lo habían recorrido— y miraron si el
+producto funciona. Encontraron cosas peores.
+
+**Ningún lead llegado por WhatsApp podía reservar una visita.** Cal.com exige
+un email del asistente. Los leads se identifican por `phone` en todos los
+canales, y la dirección se derivaba como "el teléfono, si lleva una arroba" —
+cierto solo para los leads de email. Contra una cuenta real de Cal.com, toda
+reserva por WhatsApp, SMS o voz fallaba: el panel mostraba 503 y quien llamaba
+oía "tengo problemas con el calendario". Invisible fuera de producción porque
+`CALENDAR_SIMULATED` corta antes de la llamada HTTP.
+
+**Una caída de los LLM no respondía nada.** El webhook contesta 200 igual, así
+que el proveedor no reintenta: un lead que escribía a las 11 de la noche
+recibía silencio, y nada en el panel lo decía.
+
+**Una respuesta que fallaba al enviarse se perdía.** Cada adaptador de canal es
+un único POST. Un 503 de Meta o un 429 de Twilio marcaban el mensaje como
+fallido y ahí terminaba: no había reintento ni barrido alguno. Ahora hay uno,
+por organización, que espacia los intentos y se rinde en voz alta.
+
+**Una propiedad llegaba al lead sin acreditar a nadie.** Colorado exige nombrar
+al corredor listante allí donde una propiedad llega a un consumidor, y el
+nombre solo vivía en `raw`, que ninguna respuesta de la API exponía. En el chat
+había una línea de cortesía, pero en el *prompt*: una obligación de licencia
+dependiendo de que un modelo decidiera repetirla. La lógica se reescribió
+cinco veces —una de ellas invertida, acreditando solo cuando ya estaba
+acreditado— hasta quedar en tres señales precisas: el título, la dirección o el
+precio de esa propiedad.
+
+**Un sync filtrado por ciudad ocultaba el resto del feed, para siempre.** El
+filtro se aplica de nuestro lado, así que la corrida veía todos los registros e
+importaba unos pocos — y luego adelantaba el cursor compartido más allá de
+todos. Un solo `POST /properties/sync?city=Denver` volvía invisible cada
+propiedad de Boulder modificada en esa ventana, incluidas las que acababan de
+entrar bajo contrato.
+
+Además: cancelar una visita devolvía 500 y la dejaba agendada; la voz reservaba
+una hora ya ocupada en vez de ofrecer otra; los huecos se ofrecían por lead, no
+por agencia; el arranque se niega si RLS no se aplica con más de una agencia;
+los logs ya no son una lista de leads; `docker-compose.yml` ya no trae la
+contraseña del rol de RLS; la misma persona por WhatsApp y por email es un solo
+lead; y los ajustes que el cliente rellena —horario, saludo, zona horaria—
+por fin cambian lo que el agente dice.
+
+Hueco conocido: **no hay rate limiting**. El gasto en bloque está tras
+`require_platform_admin`; el coste de LLM por conversación no tiene cuota por
+organización.
+
+## [0.40.0] — 2026-08-08
+
+Rondas 14 a 21. Ocho rondas, todas DO-NOT-SHIP, y en casi todas el defecto lo
+había introducido el arreglo de la ronda anterior.
+
+**Nadie le había dado calendario propio a las agencias.** SMS, WhatsApp, email
+y voz se reformaron para tener identidad por organización; el calendario no, y
+ni `channel_routes` ni `agent_settings` tenían dónde ponerlo. Así que la reserva
+de la agencia B escribía nombre, email y teléfono de su cliente como asistente
+en el Cal.com del operador —donde lo ven los realtors de otra agencia— y sus
+reservas tapaban la disponibilidad de la agencia A. Sin atacante y sin
+configuración rara: lo hacía la primera reserva real. Invisible en desarrollo
+porque `CALENDAR_SIMULATED` corta antes de la llamada HTTP.
+
+El guard que lo impide se escribió mal **tres veces**: la primera solo cubría
+instalaciones nuevas (todo piloto que se actualiza ya tiene `CALCOM_API_KEY` en
+su `.env`); la segunda preguntaba si había *alguna* credencial, y la global lo
+es; la tercera, si existía la fila, y una fila con solo el event type es forma
+legal de onboarding. La pregunta correcta —¿la credencial viene de ESTA
+agencia?— tardó tres intentos en enunciarse.
+
+**El parser de email, otra vez, y la misma lección.** Quitar los miembros de un
+grupo RFC 5322 con nombre impedía *añadir* una dirección y regalaba el poder de
+*eliminar* la legítima: `undisclosed:<destinatario real>;, leads@agenciab.test`
+borraba al destinatario honesto, la regla de "dos agencias nombradas, rehúsa"
+veía un solo dueño, y el lead entraba en la agencia B. Ahora un grupo en
+cualquier parte invalida la cabecera entera. Más al fondo: la clave de enrutado
+salía de `to`/`cc`, que **escribe quien envía**; cuando el proveedor incluye
+sobre, manda el sobre.
+
+**Lo que se paga una vez para toda la instalación, ahora es del operador.**
+`/properties/sync` (la licencia de REcolorado) y las cinco rutas de
+`/discovery` (Outscraper, Yelp, SerpApi y el presupuesto de LLM) estaban tras
+`require_auth`: cualquier miembro de cualquier agencia podía agotar el crédito
+del que dependen las respuestas de todas las demás. El frontend oculta esos
+controles en vez de dejar que el inquilino descubra un 403.
+
+**El arranque se niega** si RLS no se está aplicando y hay más de una agencia
+—antes lo registraba en el log y servía tráfico igual— y también si el número
+de agencias no se puede leer, que era la forma silenciosa de desactivar las dos
+comprobaciones a la vez.
+
+**Los logs eran una lista de leads.** Volcados de payload entrante, salida del
+LLM citando ficheros subidos y números de teléfono, en claro, en un stream que
+comparten todas las agencias y que el operador puede exportar. Claves en vez de
+valores, longitudes en vez de contenido, últimos cuatro dígitos en vez del
+número.
+
+Además: cancelar una visita devolvía 500 y la dejaba agendada cuando el
+calendario no estaba configurado (el realtor conduce igual hasta la casa);
+`docker-compose.yml` traía por defecto la contraseña del rol de RLS, publicada
+en el repositorio, y ahora exige ambas variables; la disponibilidad cargaba en
+memoria todas las visitas históricas de la agencia en cada consulta; y los
+huecos se desduplicaban por lead, así que dos leads distintos recibían la misma
+media hora y ambas reservas prosperaban.
+
+Hueco conocido y documentado: **no hay rate limiting**. El gasto en bloque está
+cerrado, pero el coste de LLM por conversación no tiene cuota por organización.
+Medirlo por `org_id` es requisito previo a facturarlo.
+
+## [0.39.2] — 2026-08-08
+
+Rondas 12 y 13. Ambas devolvieron DO-NOT-SHIP, y las dos veces el defecto lo
+había introducido el arreglo anterior.
+
+**El guard de la ronda 11 leía la columna equivocada.** Preguntaba por
+`credential_ref` cuando la pregunta es "¿autenticó esta agencia el mensaje?", y
+eso vive en `inbound_secret_ref`. Quedaba inerte justo en la configuración que
+más importa —agencia con su propia app de Meta que aún responde por la cuenta
+compartida— y rechazaba de más en el caso espejo, tirando leads legítimos.
+
+**La identidad se resolvía por `rows[0]`, ignorando el destino.** Una agencia con
+dos números en un canal (solo `(canal, destino)` es único) verificaba el segundo
+con el secreto del primero: la firma falla, 403, y el lead se pierde sin rastro.
+
+**El rol de RLS conservaba la contraseña publicada.** La migración 015 lo crea con
+`IF NOT EXISTS`, así que pasar `APP_DB_PASSWORD` al contenedor no rotaba nada: la
+024 emite el `ALTER ROLE`.
+
+Además: el rechazo por destino ambiguo ya no responde 503 antes de que el
+handler pueda rehusar (eso hacía inalcanzable el 200 y filtraba 503-vs-403 a un
+atacante sin autenticar); un `tool-calls` sin ruta devuelve la forma que VAPI
+sabe leer, en vez de dejar la llamada muda; `DATABASE_URL_BYPASS` llega al
+contenedor; y una variable borrada del `.env` después de guardar la ruta ya no
+rompe los envíos de esa agencia.
+
+---
+
+## [0.39.1] — 2026-08-08
+
+Cuatro auditorías independientes más (rondas 8–11) sobre lo que la 0.39.0 dejó.
+Todas devolvieron DO-NOT-SHIP, y en tres de ellas el defecto lo había
+introducido el arreglo de la ronda anterior.
+
+**La clave que firmaba el claim de operador se derivaba de la contraseña de la
+agencia.** Quitar `superuser=True` del login por contraseña no servía de nada
+mientras el token se firmara con `sha256("eko-auth::" + DASHBOARD_PASSWORD)`:
+quien tuviera esa contraseña —la comparte la oficina con quien coge el
+teléfono— podía derivar la clave y firmarse el claim, y de paso cualquier `org`.
+Ahora `AUTH_SECRET` es obligatoria, mínimo 32 caracteres, y el arranque se niega
+sin ella en vez de responder 500 a cada petición con el healthcheck en verde.
+
+**Los tres savepoints hacían flush antes de abrirse.** `begin_nested()`
+materializa lo pendiente **antes** de emitir el `SAVEPOINT`, así que el `db.add`
+que iba delante corría en la transacción externa: la violación escapaba, la
+transacción quedaba inservible y el `commit()` posterior daba
+`PendingRollbackError` — un 500 que el proveedor reintenta, perdiendo el lead.
+Exactamente lo que la 0.39.0 decía haber arreglado. Diez rondas leyeron por
+encima porque el único test del patrón escribía **dentro** del savepoint
+mientras el código escribía fuera.
+
+**Un mensaje firmado con el secreto global se archivaba en una agencia
+concreta.** Con una sola agencia enrutable, un destino sin mapear caía en ella
+— aunque quien firmó fuera el operador y no la agencia. Ahora se rehúsa si esa
+agencia usa su propia cuenta de proveedor.
+
+**Dos agencias podían apuntar a la misma credencial**, lo que dejaba a una
+firmar mensajes dentro del buzón de la otra. El validador afirmaba impedirlo en
+un comentario y no lo comprobaba.
+
+Además: las rutas de plataforma exigen `AUTH_ENABLED`, lista de operadores no
+vacía y que el email del token **siga** en ella; `POST /platform/routes` valida
+las referencias igual que el PATCH; la denylist se calcula de los campos de
+`Settings` en vez de siete nombres a mano; `DELETE /platform/members` no puede
+dejar una agencia sin admin (salvo `?force=true`); y los rechazos permanentes de
+webhook responden 200 en WhatsApp, email y voz — Meta desactiva un endpoint que
+falla, y eso tumbaría el canal para **todos** los inquilinos.
+
+Operación: `APP_DB_PASSWORD` y `APP_DB_ROLE` ya llegan al contenedor (la
+migración crea ahí el rol, y sin ellas el rol que guarda la frontera entre
+inquilinos nacía con la contraseña publicada en el repo), y el dedup de la
+migración 022 funciona aunque el rol no sea superusuario.
+
+---
+
+## [0.39.0] — 2026-08-08
+
+Séptima ronda de auditoría. Tres auditores independientes resolvieron las cinco
+sospechas que quedaron abiertas y encontraron doce defectos que ninguna ronda
+anterior vio. Todos corregidos, y cada arreglo revertido uno a uno para
+comprobar que su test se pone en rojo.
+
+### Cada agencia responde desde su propio número (C3)
+
+El bloqueante que arrastrábamos. La entrada se enrutaba por destino desde hacía
+varias rondas, pero la **salida** tenía una sola identidad por canal: un número
+de Twilio, un id de WhatsApp, un remitente de Resend. El lead de la agencia B
+recibía la respuesta desde el número de la agencia A, contestaba a ese número, y
+el resto de su conversación se escribía en el inquilino de A. Sin adversario ni
+error de configuración: funcionaba así.
+
+`channel_routes` gana columnas de identidad que guardan el **nombre** de una
+variable de entorno, nunca el secreto: las claves siguen en `.env` y la base
+solo guarda el mapeo. `PATCH /platform/routes/{id}/identity` las configura y
+rechaza nombres que no estén realmente definidos. Una referencia rota **falla en
+vez de caer al global** — un fallback silencioso significaría que una errata
+envía las respuestas de B desde el número de A, que es el bug original de vuelta.
+
+Nada cambia para la instalación de un solo cliente: sin fila de ruta, se usa
+exactamente la configuración de `.env` de siempre.
+
+### Dejamos de perder leads cuando llegan dos mensajes a la vez
+
+Cuatro webhooks simultáneos contra un inquilino nuevo dejaban **un** lead de
+cuatro. Los cuatro competían por crear la misma fila `agent_settings`, uno
+ganaba, y el `IntegrityError` de los otros destruía una transacción que ya
+contenía su lead, su conversación y su mensaje. El manejador lo leía como
+duplicado y devolvía **200**, así que el proveedor nunca reintentaba y el log
+decía "idempotent skip".
+
+Los cuatro webhooks ahora devuelven 5xx cuando algo falla de verdad. Migración
+022: una conversación activa por lead y canal, que el modelo llevaba
+documentando sin que nada lo hiciera cumplir.
+
+### Enrutado por todos los destinos, no por el primero
+
+Un lead que escribe a la agencia B con copia a la agencia A tenía todo su hilo
+archivado en A, porque se tomaba la primera dirección de `to`. Y en voz, VAPI
+manda unas veces el número E.164 y otras el id opaco, así que una ruta mapeada
+por número daba **503 a mitad de llamada** en las tool-calls: el asistente no
+podía agendar visitas mientras el transcript sí se guardaba bien.
+
+### Acceso de plataforma, que era inalcanzable
+
+El claim `su` solo lo emitía el login por contraseña compartida, y la propia
+documentación recomienda ponerle una cadena aleatoria que nadie sabe en los
+despliegues con Google. En esa configuración era **imposible dar de alta una
+segunda agencia**. `PLATFORM_ADMIN_EMAILS` nombra a los operadores reales.
+
+También: un email permitido por dominio sin fila en `allowed_users` entraba como
+miembro de la agencia 1; la org demo (pública) era enrutable; suspender la org 1
+encerraba al operador fuera de la ruta que lo deshace; `AUTH_ENABLED=false` con
+dos agencias servía la primera a todo el mundo; e invitar como `viewer` daba
+permisos de escritura en silencio.
+
+---
+
+## [0.38.0] — 2026-08-07
+
+### Inbound messages are attributed by destination
+
+`channel_routes` maps a destination — Twilio number, WhatsApp
+`phone_number_id`, mailbox — to an organization, managed at
+`/api/v1/platform/routes`. Before this, every webhook defaulted to the first
+organization: a second agency's leads and their entire conversation transcript
+were written into the first agency's dashboard, while the real recipient saw
+nothing and their follow-ups never fired.
+
+`webhook_org_or_refuse` is the single decision point, deliberately independent
+of `AUTH_ENABLED` — routing it through the request resolver meant that with
+auth off (the dev and single-customer default) an unmapped destination silently
+resolved to the first organization, which is the misfiling the mechanism exists
+to stop.
+
+Uniqueness is global per channel, unlike `leads.phone` which is per-org: a
+number belongs to exactly one agency, and two claiming it is the ambiguity the
+table prevents. Destinations are normalised on write and lookup, since Twilio
+sends `+1555…`, a form post may arrive as `1555…`, and an address in mixed case.
+
+SMS, WhatsApp and email are wired. Voice was wired one commit later; its
+extractor is still **unverified against a live VAPI account** — there is none —
+so it yields nothing on any shape it does not recognise, which makes the caller
+fall back or refuse rather than guess an agency.
+
+### Platform operator routes (Fase 2)
+
+Create and suspend tenants, and enter one explicitly. Impersonation is recorded
+in `user_activity` *before* the session cookie is issued, so the trail survives
+a response that never arrives. Gated by `require_platform_admin`, not
+`require_admin` — the latter authorises the admin of *some* organization, and
+every client agency has one.
+
+### Fixed
+
+- A suspended or deleted organization kept full read and write access; only its
+  background sweeps stopped. Status is now checked per request.
+- `/health` had a database round-trip in front of it and hung during an outage —
+  the one endpoint whose job is to answer then.
+- `TenantMiddleware`'s own 403 and 503 responses skipped CORS, so a browser saw
+  an opaque network error instead of a status the dashboard could act on.
+
+## [0.37.0] — 2026-08-06
+
+### Multi-tenant: one installation, many client agencies
+
+The product stops being one deploy per agency and becomes the mother system.
+Each client is an `Organization`; `properties` and `sync_state` stay shared
+because there is a single REcolorado feed behind one Software Vendor account.
+
+Isolation is enforced by Postgres, not by application discipline:
+
+- `FORCE ROW LEVEL SECURITY` on all nine tenant tables — without FORCE the table
+  owner ignores policies silently.
+- The request path connects as `eko_app`, a role without `BYPASSRLS`
+  (`DATABASE_URL_APP`). Postgres superusers bypass RLS even with FORCE, so
+  connecting as the owner would leave every isolation test green while isolating
+  nothing. `DATABASE_URL` remains for migrations, login and the workers.
+- Default-deny: an unset org resolves to `NULL`, and `org_id = NULL` is never
+  true, so a forgotten scope returns zero rows instead of everyone's.
+- `WITH CHECK` alongside `USING`, since `USING` alone still permits writing into
+  another organization.
+
+`TenantMiddleware` is raw ASGI rather than `@app.middleware("http")`: Starlette's
+`BaseHTTPMiddleware` runs the endpoint in a separate anyio task, so a ContextVar
+set before `call_next` never reaches it.
+
+`test_tenant_isolation.py` is verified by mutation — five of its seven cases fail
+when the app is pointed at a superuser, so it detects the failure mode instead of
+asserting that a policy exists.
+
+### Fixed
+
+- The WhatsApp webhook's error handler referenced `parsed.wa_message_id`, which
+  does not exist on `ParsedMessage`. It only ran when the try block raised, so it
+  had never fired — and when it did, it masked the real exception.
+
 ## [0.36.0] — 2026-07-31
 
 ### REcolorado / MLS Grid replication aligned with the official docs

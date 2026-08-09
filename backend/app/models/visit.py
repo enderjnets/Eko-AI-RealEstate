@@ -11,7 +11,7 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, pg_enum
@@ -30,8 +30,18 @@ class VisitStatus(str, enum.Enum):
 
 class Visit(Base):
     __tablename__ = "visits"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "external_booking_id", name="uq_visits_external_booking_id"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     # Nullable: a lead's property visit links to its lead; a MANUAL calendar event
     # (open house, team meeting, ...) created by the realtor has no lead.
     lead_id: Mapped[int | None] = mapped_column(
@@ -46,7 +56,10 @@ class Visit(Base):
     # SIMULATED bookings the external_booking_id is `calcom-sim-<uuid>` so the
     # cancel/lookup flow still works.
     calendar_provider: Mapped[str] = mapped_column(String(20), default="calcom", nullable=False)
-    external_booking_id: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    # Unique per organization, not globally: two agencies can share one Cal.com
+    # account, and a global constraint made the second booking collide with the
+    # first while RLS reported no such row.
+    external_booking_id: Mapped[str] = mapped_column(String(120), nullable=False)
 
     status: Mapped[VisitStatus] = mapped_column(
         pg_enum(VisitStatus, name="visit_status"),

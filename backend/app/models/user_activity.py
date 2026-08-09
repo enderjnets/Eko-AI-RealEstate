@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Date, DateTime, Integer, String, func
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -18,9 +18,18 @@ from app.db.base import Base
 
 class UserActivity(Base):
     __tablename__ = "user_activity"
+    __table_args__ = (Index("ix_user_activity_email", "org_id", "email", unique=True),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    email: Mapped[str] = mapped_column(String(254), unique=True, nullable=False, index=True)
+    org_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Unique per organization: the same person can be active in more than one,
+    # and a global unique meant every org after the first silently overwrote the
+    # first one's row, carrying that user's IP and device with it.
+    email: Mapped[str] = mapped_column(String(254), nullable=False)
     source: Mapped[str | None] = mapped_column(String(16), nullable=True)  # account|google|apple
 
     first_seen: Mapped[datetime] = mapped_column(

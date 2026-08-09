@@ -9,13 +9,27 @@ class Settings(BaseSettings):
 
     # App
     APP_NAME: str = "Eko AI Realtors"
-    APP_VERSION: str = "0.0.1"
+    # Reported by / and /api/v1/health and printed at startup. Kept in step
+    # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
+    # so the API could not tell an operator which build was live.
+    APP_VERSION: str = "0.41.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://eko:eko_local_pass@db:5432/eko_realestate"
+    # Connects as a role WITHOUT bypassrls, so the tenant policies actually bind.
+    # Postgres superusers ignore RLS even with FORCE — pointing DATABASE_URL at
+    # one makes every isolation test pass while isolating nothing, so the app
+    # role and the migration role are deliberately different connections.
+    DATABASE_URL_APP: str = (
+        "postgresql+asyncpg://eko_app:eko_app_local_pass@db:5432/eko_realestate"
+    )
+    # Reserved for login lookup, background workers and the superuser panel —
+    # the three paths with no single org to act as. Defaults to DATABASE_URL,
+    # which owns the tables.
+    DATABASE_URL_BYPASS: str = ""
 
     # Redis
     REDIS_URL: str = "redis://redis:6379/0"
@@ -77,6 +91,16 @@ class Settings(BaseSettings):
     # flip SIMULATED to false.
     CALENDAR_SIMULATED: bool = True
     CALENDAR_PROVIDER: str = "calcom"  # calcom | google (only calcom in Phase 5)
+    # The office timezone a new agency starts with. "UTC" was the old default
+    # and it silently mis-schedules everything: BookingDialog offered 10:00 and
+    # 14:00 UTC, which is 03:00 and 07:00 in Denver, and a caller who said "2pm"
+    # got 14:00 UTC. Wrong by six or seven hours until someone opened Settings.
+    DEFAULT_TIMEZONE: str = "America/Denver"
+
+    # A reply that hit a provider blip used to be stamped FAILED and forgotten.
+    DELIVERY_RETRY_ENABLED: bool = True
+    DELIVERY_RETRY_INTERVAL_SECONDS: int = 120
+
     CALCOM_BASE_URL: str = "https://api.cal.com"
     CALCOM_API_KEY: str = ""
     CALCOM_EVENT_TYPE_ID: str = ""
@@ -159,7 +183,12 @@ class Settings(BaseSettings):
     # Backend logs a WARN at startup if APP_ENV=production AND AUTH_ENABLED=false.
     AUTH_ENABLED: bool = False
     DASHBOARD_PASSWORD: str = ""
-    AUTH_SECRET: str = ""  # token signing key; derived from the password if empty
+    # Session signing key. REQUIRED when AUTH_ENABLED — startup refuses
+    # without it, and without at least 32 characters. It is deliberately
+    # NOT derived from DASHBOARD_PASSWORD any more: the office shares that
+    # with whoever answers the phone, and this key alone authenticates the
+    # organization claim and the platform-operator claim.
+    AUTH_SECRET: str = ""
     AUTH_TTL_HOURS: int = 168  # 7 days
 
     # ─── Google Sign In (Google Identity Services) ───────────────────────
@@ -178,6 +207,23 @@ class Settings(BaseSettings):
     GOOGLE_ALLOWED_EMAILS: str = ""  # comma-separated lowercased emails (members)
     GOOGLE_ALLOWED_DOMAIN: str = ""  # e.g. "ekoaiautomation.com" (any user @ this domain)
 
+    # ─── Platform operators (cross-tenant) ───────────────────────────────
+    # The people who run the SaaS, as opposed to an admin of a client agency.
+    # Only these emails get the `su` claim that unlocks /api/v1/platform — the
+    # routes that create agencies, map their phone numbers and impersonate them.
+    #
+    # Without this, the only way to hold `su` was the shared DASHBOARD_PASSWORD
+    # session, so a Google-only deployment (docs/setup-google-signin.md tells
+    # you to set the password to a random string nobody knows) could never
+    # onboard a second agency at all. It also gives impersonation a named actor
+    # to record instead of "whoever had the office password".
+    # Public self-registration into the demo organization. Advertised in
+    # /auth/me since it shipped, and read nowhere — so the flag the frontend
+    # renders a signup form from could never actually turn signup off.
+    REGISTRATION_ENABLED: bool = True
+
+    PLATFORM_ADMIN_EMAILS: str = ""  # comma-separated; empty = password-only
+
     @property
     def google_allowed_emails_list(self) -> list[str]:
         return [e.strip().lower() for e in self.GOOGLE_ALLOWED_EMAILS.split(",") if e.strip()]
@@ -185,6 +231,12 @@ class Settings(BaseSettings):
     @property
     def google_admin_emails_list(self) -> list[str]:
         return [e.strip().lower() for e in self.GOOGLE_ADMIN_EMAILS.split(",") if e.strip()]
+
+    @property
+    def platform_admin_emails_list(self) -> list[str]:
+        return [
+            e.strip().lower() for e in self.PLATFORM_ADMIN_EMAILS.split(",") if e.strip()
+        ]
 
     # ─── Sign in with Apple ──────────────────────────────────────────────
     # Coexists with Google + password. When APPLE_CLIENT_ID (the Services ID,

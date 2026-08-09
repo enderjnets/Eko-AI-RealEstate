@@ -16,6 +16,7 @@ from app.services import auth as auth_svc
 
 def _fake_settings(**over):
     base = dict(
+        REGISTRATION_ENABLED=True,
         AUTH_ENABLED=True,
         DASHBOARD_PASSWORD="s3cret-pass",
         AUTH_SECRET="unit-test-secret",

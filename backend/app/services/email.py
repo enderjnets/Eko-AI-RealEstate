@@ -22,11 +22,14 @@ import hmac
 import logging
 import time
 from typing import Any
+from uuid import uuid4
 
 import httpx
 
 from app.config import get_settings
+from app.models.channel_route import CHANNEL_EMAIL
 from app.services._common import ParsedMessage
+from app.services.channel_identity import resolve_outbound_identity
 
 log = logging.getLogger(__name__)
 
@@ -98,17 +101,124 @@ async def fetch_inbound_email(email_id: str) -> dict[str, Any] | None:
 
     The `email.received` webhook is metadata-only (no body/headers), so to get the
     text + RFC822 Message-ID + References — needed for real content AND correct
-    Gmail threading — we GET /emails/inbound/{id} after the webhook fires."""
-    s = get_settings()
-    if not s.RESEND_API_KEY:
+    Gmail threading — we GET /emails/inbound/{id} after the webhook fires.
+
+    Reads on the acting agency's own Resend account. It used to use the global
+    key unconditionally, and a previous commit claimed to have fixed that by
+    moving the call after the org was bound — which changed the ordering and
+    nothing else, because this function never consulted the identity. Two ways
+    that bites: an agency on its own Resend account gets a 401 that the caller
+    swallows, so the agent answers an email whose body it never read; and an
+    agency that knows its own webhook secret could name any message id and have
+    the server fetch it from the *operator's* account.
+    """
+    identity = await resolve_outbound_identity(CHANNEL_EMAIL)
+    if not identity.credential:
         return None
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.get(
             f"https://api.resend.com/emails/inbound/{email_id}",
-            headers={"Authorization": f"Bearer {s.RESEND_API_KEY}"},
+            headers={"Authorization": f"Bearer {identity.credential}"},
         )
         resp.raise_for_status()
-        return resp.json()
+        detail = resp.json()
+
+    # The id came from the request body, and on the shared Resend account the
+    # key can read every agency's mail. So an agency that legitimately knows the
+    # shared webhook secret could sign a message naming its own mailbox — which
+    # resolves the org to itself — while pointing `data.id` at another agency's
+    # message, and the body would be fetched and stored inside theirs. Confirm
+    # what came back was actually addressed to this organization.
+    if not await _addressed_to_acting_org(detail):
+        log.error(
+            "refusing inbound email %s: the fetched message is not addressed to "
+            "the organization the webhook resolved to",
+            email_id,
+        )
+        return None
+    return detail
+
+
+async def _addressed_to_acting_org(detail: dict[str, Any] | None) -> bool:
+    """Whether a fetched message names a destination the acting org owns.
+
+    Only meaningful when the org has its own routes; an agency on the shared
+    account and the shared mailbox has nothing to distinguish it, and for a
+    single-customer install every message is theirs by definition.
+    """
+    if not isinstance(detail, dict):
+        return False
+
+    from app.api.v1.webhooks.email import _mailboxes
+    from app.services.tenant_context import get_org_id
+    from app.services.tenant_resolver import resolve_org_by_destination
+
+    org_id = get_org_id()
+    if org_id is None:
+        return True
+
+    # Only meaningful when some *other* agency has an email route: they are the
+    # only party who could be impersonated through a borrowed message id. On a
+    # single-customer install, or before a second agency is onboarded, every
+    # message is theirs by definition and this must not start refusing mail.
+    if not await _another_org_owns_email_routes(org_id):
+        return True
+
+    addresses = _mailboxes({"data": detail})
+    if not addresses:
+        # Refuse. This used to answer True, and it is reachable: the header of
+        # a BCC-only delivery is the literal `undisclosed-recipients:;`, which
+        # parses to nothing — so naming another agency's message id and letting
+        # the recipient list come back empty walked straight past the check.
+        return False
+    try:
+        owner = await resolve_org_by_destination(CHANNEL_EMAIL, addresses)
+    except Exception:  # noqa: BLE001 — ambiguity here is a refusal, not a crash
+        return False
+    if owner is None:
+        # No route claims any of these addresses. Safe only if this agency has
+        # no route of its own either — otherwise it is asking for a message
+        # addressed somewhere it does not own.
+        return not await _org_owns_any_email_route(org_id)
+    return owner == org_id
+
+
+async def _another_org_owns_email_routes(org_id: int) -> bool:
+    from sqlalchemy import select
+
+    from app.db.base import get_bypass_session_factory
+    from app.models.channel_route import ChannelRoute
+
+    async with get_bypass_session_factory()() as db:
+        return (
+            await db.execute(
+                select(ChannelRoute.id)
+                .where(
+                    ChannelRoute.channel == CHANNEL_EMAIL,
+                    ChannelRoute.org_id != org_id,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none() is not None
+
+
+async def _org_owns_any_email_route(org_id: int) -> bool:
+    from sqlalchemy import select
+
+    from app.db.base import get_bypass_session_factory
+    from app.models.channel_route import ChannelRoute
+
+    async with get_bypass_session_factory()() as db:
+        return (
+            await db.execute(
+                select(ChannelRoute.id)
+                .where(
+                    ChannelRoute.channel == CHANNEL_EMAIL,
+                    ChannelRoute.org_id == org_id,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none() is not None
 
 
 def _strip_quoted_reply(text: str) -> str:
@@ -175,7 +285,15 @@ def parse_inbound_email(payload: dict[str, Any]) -> list[ParsedMessage]:
 
     from_addr = data.get("from") or ""
     if not from_addr:
-        log.warning("Email payload has no `from` — skipping: %r", data)
+        # The keys, not the values. This used to dump the whole payload, which
+        # carries the lead's address, name and the body of what they wrote — so
+        # any operator shipping logs anywhere exported several agencies' lead
+        # PII into one stream. The shape is what makes a malformed payload
+        # diagnosable; the contents never were.
+        log.warning(
+            "Email payload has no `from` — skipping. Fields present: %s",
+            sorted(data) if isinstance(data, dict) else type(data).__name__,
+        )
         return []
     from_name = data.get("from_name")
 
@@ -224,17 +342,22 @@ async def send_email(
     s = get_settings()
 
     if s.EMAIL_SIMULATED:
-        fake_id = f"resend.SIMULATED_{int(time.time() * 1000)}"
+        fake_id = f"resend.SIMULATED_{uuid4().hex}"
         log.info(
             "Email SIMULATED outbound to=%s subject=%r body_len=%d in_reply_to=%s (would-be id=%s)",
             to, subject, len(body_text), in_reply_to, fake_id,
         )
         return {"id": fake_id, "simulated": True}
 
-    if not s.RESEND_API_KEY:
+    # The acting agency's own mailbox and Resend account, falling back to the
+    # global one. Without this, agency B's lead received a reply from agency A's
+    # address and their answer arrived in A's inbox.
+    identity = await resolve_outbound_identity(CHANNEL_EMAIL)
+    if not identity.credential:
         raise RuntimeError(
-            "Email not configured: RESEND_API_KEY must be set, or set "
-            "EMAIL_SIMULATED=true for dev."
+            "Email not configured for this organization: an API key must be "
+            "set, either globally in .env or on the agency's channel route. "
+            "Set EMAIL_SIMULATED=true for dev."
         )
 
     headers: dict[str, str] = {}
@@ -252,7 +375,7 @@ async def send_email(
             headers["References"] = f"<{clean}>"
 
     body: dict[str, Any] = {
-        "from": s.RESEND_FROM,
+        "from": identity.sender_override or identity.destination,
         "to": [to],
         "subject": subject,
         "text": body_text,
@@ -267,7 +390,7 @@ async def send_email(
             "https://api.resend.com/emails",
             json=body,
             headers={
-                "Authorization": f"Bearer {s.RESEND_API_KEY}",
+                "Authorization": f"Bearer {identity.credential}",
                 "Content-Type": "application/json",
             },
         )

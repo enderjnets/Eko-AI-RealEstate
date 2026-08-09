@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n";
 import { SettingsForm } from "@/components/settings/SettingsForm";
 import { TeamPanel } from "@/components/settings/TeamPanel";
 import { RegistrationsPanel } from "@/components/settings/RegistrationsPanel";
+import { usePlatformOperator } from "@/lib/useViewer";
 
 /**
  * Settings is admin-only. The Nav hides the link for members, but a member could
@@ -17,6 +18,7 @@ import { RegistrationsPanel } from "@/components/settings/RegistrationsPanel";
  * server-side with require_admin.
  */
 export function SettingsContent() {
+  const isOperator = usePlatformOperator();
   const router = useRouter();
   const { t } = useI18n();
   const [ready, setReady] = useState(false);
@@ -47,7 +49,10 @@ export function SettingsContent() {
   return (
     <div className="space-y-8">
       <TeamPanel />
-      <RegistrationsPanel />
+      {/* Operator-only: it calls GET /team/accounts, which is
+          require_platform_admin, so every agency admin got a permanent red 403
+          box on their Settings page from day one. */}
+      {isOperator && <RegistrationsPanel />}
       <SettingsForm />
     </div>
   );

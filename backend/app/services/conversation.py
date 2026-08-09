@@ -19,15 +19,18 @@ on partial failures):
 """
 from __future__ import annotations
 
+import asyncio
 import logging
-from datetime import UTC, datetime
+import re
+from dataclasses import dataclass
+from datetime import UTC, datetime, time
 from email.utils import parseaddr
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
+from app.db.base import first_or_create
 from app.models import (
     AgentSettings,
     Conversation,
@@ -41,9 +44,12 @@ from app.models import (
 )
 from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
+from app.services.delivery import schedule_retry
 from app.services.i18n import detect_language, language_instruction, pick_supported_language
-from app.services.llm import LLMUnavailable, generate_reply
+from app.services.listings import listing_broker
+from app.services.llm import LLMResult, LLMUnavailable, generate_reply
 from app.services.scoring import rescore_lead
+from app.services.tenant_context import get_org_id
 from app.services.whatsapp import send_text_message as whatsapp_send
 
 log = logging.getLogger(__name__)
@@ -309,13 +315,16 @@ async def generate_reply_suggestions(
     llm_messages = [
         {
             "role": "user" if m.direction == MessageDirection.INBOUND else "assistant",
-            "content": m.content,
+            # Without the attribution footer: it lives in `content`, so the
+            # model read three credit lines back for every past turn and
+            # dutifully repeated them.
+            "content": history_content(m),
         }
         for m in history
     ]
 
     # Language steering from the latest inbound.
-    settings_row = await db.execute(select(AgentSettings).where(AgentSettings.id == 1))
+    settings_row = await db.execute(select(AgentSettings).where(AgentSettings.org_id == _acting_org()))
     agent_cfg = settings_row.scalar_one_or_none()
     supported = (agent_cfg.languages if agent_cfg else ["en", "es"]) or ["en", "es"]
     last_user_content = next(
@@ -457,7 +466,11 @@ async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | b
     lead = lead_row.scalar_one_or_none()
     is_new_lead = lead is None
     if lead is None:
-        lead = Lead(phone=report.from_identifier, name=report.from_name)
+        lead = Lead(
+            phone=report.from_identifier,
+            name=report.from_name,
+            email=_address_or_none(report.from_identifier),
+        )
         db.add(lead)
         await db.flush()
         log.info("Created lead id=%d channel=voice identifier=%s", lead.id, lead.phone)
@@ -484,8 +497,8 @@ async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | b
     # ── 4. Persist transcript turns (skip if this call was already ingested) ──
     stored = 0
     if not already_ingested:
-        for i, (role, text) in enumerate(report.turns):
-            msg = Message(
+        turns = [
+            Message(
                 conversation_id=conv.id,
                 direction=(
                     MessageDirection.INBOUND if role == "user" else MessageDirection.OUTBOUND
@@ -495,15 +508,25 @@ async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | b
                 external_id=f"{report.call_id}#{i}",
                 delivery_status=MessageStatus.DELIVERED,
             )
-            db.add(msg)
-            stored += 1
+            for i, (role, text) in enumerate(report.turns)
+        ]
+        stored = len(turns)
         if stored:
             lead.last_message_at = datetime.now(UTC)
             try:
-                await db.flush()
+                # Built first, added INSIDE the savepoint. `begin_nested()`
+                # flushes anything already pending before issuing the SAVEPOINT,
+                # so adding them beforehand ran the duplicate INSERT in the
+                # outer transaction: the violation escaped `begin_nested()`
+                # itself, the transaction went inactive, and the commit below
+                # raised PendingRollbackError — losing the caller, transcript
+                # and summary, and returning a 500 that VAPI redelivers.
+                async with db.begin_nested():
+                    db.add_all(turns)
+                    await db.flush()
             except IntegrityError:
-                await db.rollback()
                 log.info("Race-condition idempotent skip for voice call_id=%s", report.call_id)
+                await db.commit()
                 return {"status": "duplicate", "lead_id": lead.id, "skipped": True}
 
     # ── 5. Apply extracted fields + rescore ──────────────────────────────────
@@ -527,6 +550,409 @@ async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | b
     }
 
 
+
+
+def _address_or_none(identifier: str | None) -> str | None:
+    """The identifier, when it is an email address rather than a phone.
+
+    Leads are keyed by `phone` on every channel, so an email lead's address has
+    always been sitting in that column. Copying it into `email` is what lets a
+    booking name the actual person instead of the agency's inbox.
+    """
+    value = (identifier or "").strip()
+    return value if "@" in value else None
+
+
+
+# Fixed, not `strftime("%A")`: that follows the container's locale, so an image
+# with LC_TIME=es_* produced "lunes" and matched nothing, silently disabling
+# every hours check.
+_WEEKDAYS = (
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+)
+
+
+def _office_hours_note(agent_cfg: AgentSettings) -> str:
+    """Tell the model what time it is at the office, and whether anyone is in.
+
+    `business_hours` and `timezone` were stored, editable in Settings, and read
+    by nothing: outside hours the agent replied exactly as it does at noon,
+    promising a callback nobody was there to make. The hours are guidance for
+    what to say, not a gate on replying — a lead who writes at 11pm should get
+    an answer, just not one that implies someone is at a desk.
+    """
+    from zoneinfo import ZoneInfo
+
+    try:
+        zone = ZoneInfo(agent_cfg.timezone or "UTC")
+    except Exception:  # noqa: BLE001 — a bad timezone must not cost a reply
+        return ""
+    now = datetime.now(zone)
+    note = (
+        f"\n\nHORA LOCAL DE LA OFICINA: {now.strftime('%A %H:%M')} "
+        f"({agent_cfg.timezone})."
+    )
+    hours = agent_cfg.business_hours if isinstance(agent_cfg.business_hours, dict) else {}
+    if not hours:
+        return note
+    today = hours.get(_WEEKDAYS[now.weekday()])
+    if isinstance(today, dict) and today.get("open") and today.get("close"):
+        note += f" HORARIO DE HOY: {today['open']}–{today['close']}."
+    elif today is None and _WEEKDAYS[now.weekday()] in hours:
+        note += " HOY LA OFICINA NO ABRE."
+    else:
+        return note
+    if not _office_is_open(now, today):
+        note += (
+            " Está CERRADA ahora mismo: responde igual y con la misma utilidad, "
+            "pero no prometas que alguien llamará de inmediato — di cuándo abre."
+        )
+    return note
+
+
+def _office_is_open(now: datetime, today: object) -> bool:
+    """Whether the office is open, given one day of `business_hours`.
+
+    A day is `{"open": "09:00", "close": "19:00"}` or None for closed. Anything
+    it cannot read counts as open, so a malformed row never turns every reply
+    into an out-of-hours one.
+    """
+    if today is None:
+        return False
+    if not isinstance(today, dict):
+        return True
+    try:
+        opens = time.fromisoformat(str(today["open"]))
+        closes = time.fromisoformat(str(today["close"]))
+    except (KeyError, TypeError, ValueError):
+        return True
+    if opens <= closes:
+        return opens <= now.time() <= closes
+    # An evening span that crosses midnight — 22:00–02:00. Compared straight,
+    # that condition is unsatisfiable, so an agency with evening hours had every
+    # reply told the office was shut.
+    return now.time() >= opens or now.time() <= closes
+
+
+def _greeting_note(agent_cfg: AgentSettings) -> str:
+    """The agency's own opening line, for a lead we have never heard from.
+
+    Also stored, editable and previously unused, so an agency that wrote one
+    watched the agent open with something else every time.
+    """
+    template = (agent_cfg.greeting_template or "").strip()
+    if not template:
+        return ""
+    opening = template.replace("{agency_name}", agent_cfg.agency_name or "")
+    return (
+        "\n\nES EL PRIMER MENSAJE DE ESTE LEAD. Abre con esta línea de la "
+        f"agencia, adaptada al idioma del lead: {opening}"
+    )
+
+
+
+# Words that mean the lead is trying to arrange a time, in the two languages
+# the agent speaks. Deliberately a plain list: this only decides whether to
+# spend one calendar call, and a missed match costs a generic answer rather
+# than a wrong one.
+_SCHEDULING_WORDS = (
+    "visit", "visits", "viewing", "viewings", "tour", "appointment", "schedule",
+    "book", "booking", "available", "availability", "cita", "citas", "visita",
+    "visitar", "verlo", "verla", "agendar", "agenda", "disponible",
+    "disponibilidad", "horario", "horarios",
+)
+
+# Phrases are checked as-is; single words are checked on word boundaries. As
+# substrings they matched constantly — "cita" inside necesita, solicita and
+# felicita, "book" inside Facebook and bookkeeping, "tour" inside detour — so a
+# routine Spanish thread spent a calendar call per message.
+_SCHEDULING_PHRASES = ("see the", "see it", "when can", "what time", "cuando pued")
+
+_SCHEDULING_RE = re.compile(
+    r"\b(?:" + "|".join(_SCHEDULING_WORDS) + r")\b", re.IGNORECASE
+)
+
+
+_SLOTS_BUDGET_SECONDS = 4.0
+
+
+async def _real_slots_note(
+    agent_cfg: AgentSettings, message: str | None, db: AsyncSession
+) -> str:
+    """The agency's actual next openings, when the lead is asking for a time.
+
+    The chat agent has no tools wired, so it cannot query a calendar or make a
+    booking — and left to itself it invents plausible times, which is worse
+    than saying nothing. Handing it the real slots is the same trick already
+    used for listings: the model never guesses, it picks from what is true.
+    Booking still happens from the dashboard or by phone.
+    """
+    text = (message or "").lower()
+    if not _SCHEDULING_RE.search(text) and not any(
+        phrase in text for phrase in _SCHEDULING_PHRASES
+    ):
+        return ""
+    from datetime import timedelta
+
+    from app.api.v1.visits import _busy_starts
+    from app.services.calendar_cal import list_available_slots
+
+    now = datetime.now(UTC)
+    try:
+        # The agency's own diary, not just Cal.com's: a visit entered by hand in
+        # the dashboard exists only in `visits`, and offering that hour sends a
+        # realtor to two houses.
+        busy = await _busy_starts(db, since=now, until=now + timedelta(days=7))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("could not read booked visits for the reply: %s", exc)
+        busy = set()
+    try:
+        # Hard budget. This runs inline in the webhook, ahead of a 30s LLM call,
+        # and Cal.com's own client waits 15s — enough on its own to push an SMS
+        # turn past Twilio's window and earn an 11200, or make Meta redeliver.
+        # Real openings are worth having; they are not worth the turn.
+        slots = await asyncio.wait_for(
+            list_available_slots(
+                start=now,
+                end=now + timedelta(days=7),
+                timezone_name=agent_cfg.timezone or "UTC",
+                busy_starts=busy,
+            ),
+            timeout=_SLOTS_BUDGET_SECONDS,
+        )
+    except Exception as exc:  # noqa: BLE001 — a calendar blip must not cost a reply
+        log.warning("could not read availability for the reply: %s", exc)
+        return ""
+    if not slots:
+        return ""
+    from zoneinfo import ZoneInfo
+
+    try:
+        zone = ZoneInfo(agent_cfg.timezone or "UTC")
+    except Exception:  # noqa: BLE001
+        zone = UTC
+    offered = ", ".join(
+        slot.start.astimezone(zone).strftime("%A %d %H:%M") for slot in slots[:5]
+    )
+    return (
+        "\n\nHUECOS REALES DISPONIBLES (zona de la oficina): "
+        f"{offered}. Ofrece SOLO estos si el lead pide cita; NUNCA inventes "
+        "otros. Para confirmar, dile que un agente cierra la cita enseguida."
+    )
+
+
+
+# Twilio hard-rejects above this, and a rejected message is now retried five
+# times before it is given up on. WhatsApp's limit is far higher; SMS sets the
+# floor, so use it for both.
+_SMS_MAX_CHARS = 1500
+# WhatsApp accepts 4096. Applying the SMS floor to it amputated ordinary
+# replies on the product's main channel for no reason.
+_CHANNEL_MAX_CHARS = {"sms": _SMS_MAX_CHARS, "whatsapp": 4000}
+
+
+
+@dataclass(frozen=True)
+class OfferedListing:
+    """One listing put in front of the model this turn, and who to credit."""
+
+    broker: str
+    title: str | None
+    address: str | None
+    price: object
+
+
+
+def _price_patterns(price: object) -> list[re.Pattern[str]]:
+    """How this listing's price might be written, matched as a whole number.
+
+    Substring matching was wrong in both directions at once. "1k" — the form
+    for a $1,200 rental — is inside "451k", so an unrelated sale credited the
+    rental's broker; and "1,200" is inside "1,200 sq ft", so a floor area did
+    too. Word boundaries fix the first. For the second, a number small enough
+    to be a room count, a year or a square footage has to arrive with a
+    currency marker before it; a six-figure number does not, because nothing
+    else in a property conversation looks like that.
+    """
+    try:
+        whole = int(float(price))  # type: ignore[arg-type]
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError included deliberately: a Decimal("Infinity") is a legal
+        # numeric column value, and this runs after the reply is generated but
+        # before it is saved — an exception here loses the answer entirely.
+        return []
+    if whole <= 0:
+        return []
+
+    forms = {str(whole), f"{whole:,}", f"{whole:,}".replace(",", ".")}
+    if whole >= 1000:
+        forms.add(f"{whole // 1000}k")
+    needs_currency = whole < 10_000
+    prefix = r"[$€]\s?" if needs_currency else r"[$€]?\s?"
+    return [
+        # The boundaries exclude a longer number on either side — "1k" inside
+        # "451k", "650" inside "1650" — but not ordinary punctuation, which the
+        # first attempt did: "$650k," failed on its own comma.
+        re.compile(
+            rf"(?<!\d)(?<!\d[.,]){prefix}{re.escape(form)}(?!\d)(?![.,]\d)",
+            re.IGNORECASE,
+        )
+        for form in forms
+    ]
+
+
+def _reply_shows(reply: str, listing: OfferedListing) -> bool:
+    """Whether this reply puts THIS listing's details in front of the consumer.
+
+    Three signals: the full title, the full address, or this listing's own
+    price. A listing that offers none of them — a short generated title, no
+    address, no price ("price on request" is a real state) — counts as shown,
+    because a listing that can never satisfy the test can never be credited,
+    and silence is the failure that costs a licence.
+    """
+    haystack = reply.lower()
+    usable = False
+    for value in (listing.title, listing.address):
+        if value and len(value.strip()) >= 8:
+            usable = True
+            if value.strip().lower() in haystack:
+                return True
+    patterns = _price_patterns(listing.price)
+    usable = usable or bool(patterns)
+    if any(pattern.search(reply) for pattern in patterns):
+        return True
+    return not usable
+
+
+def _with_broker_credits(
+    reply: str, offered: list[OfferedListing], channel: str
+) -> str:
+    """Append the listing brokers' credits to the message that reaches the lead.
+
+    Colorado requires the broker to be named wherever a listing's details reach
+    a consumer. Which of the offered listings the model actually used is not
+    knowable from the text, so once the reply shows any of them, all of their
+    brokers are credited: over-crediting is a redundant line, under-crediting
+    is a licence problem.
+    """
+    shown = [item for item in offered if item.broker and _reply_shows(reply, item)]
+    lines: list[str] = []
+    for item in offered if shown else []:
+        if not item.broker:
+            continue
+        line = f"Cortesía de {item.broker}"
+        # This exact credit, not the bare name — a listing titled "Coldwell
+        # Banker Tower" otherwise suppressed Coldwell Banker's credit.
+        if line.lower() in reply.lower() or line in lines:
+            continue
+        lines.append(line)
+
+    footer = ""
+    if lines:
+        footer = "\n\n" + " · ".join(lines)
+        budget = _CHANNEL_MAX_CHARS.get(channel, 0) // 2
+        if budget:
+            while len(lines) > 1 and len(footer) > budget:
+                lines.pop()
+                footer = "\n\n" + " · ".join(lines) + _AND_OTHERS
+            if len(footer) > budget:
+                footer = _COLLECTIVE_CREDIT
+    return _fit_to_channel(reply, footer, channel)
+
+
+# Bilingual, because the product is. A lead writing in English should not be
+# handed Spanish legalese, and the credit has to survive either way.
+_AND_OTHERS = " · y otros corredores listantes / and other listing brokers"
+_COLLECTIVE_CREDIT = (
+    "\n\nCortesía de los corredores listantes / Courtesy of the listing brokers"
+)
+
+
+def _fit_to_channel(reply: str, footer: str, channel: str) -> str:
+    """The message, with its footer, inside what the channel will accept.
+
+    The cap used to live inside the credit branch, so a reply that earned no
+    footer was never measured — and a 2200-character SMS is rejected by Twilio
+    and then retried five times to the same rejection.
+    """
+    limit = _CHANNEL_MAX_CHARS.get(channel)
+    if limit is None:
+        return reply.rstrip() + footer if footer else reply
+    room = limit - len(footer)
+    body = reply if len(reply) <= room else reply[: max(0, room - 1)].rstrip() + "…"
+    return body.rstrip() + footer if footer else body
+
+
+
+def history_content(message: "Message") -> str:
+    """What the model should read back for one past turn.
+
+    Our own messages lose their attribution footer: it lives in `content`, so
+    without this the model reads three credit lines back for every past turn
+    and repeats them. A lead's message is never touched — someone who pastes a
+    listing block and asks their question underneath would have had the
+    question deleted, and the agent would answer the turn before.
+    """
+    if message.direction == MessageDirection.OUTBOUND:
+        return strip_broker_credits(message.content)
+    return message.content
+
+
+def strip_broker_credits(content: str) -> str:
+    """The message without its attribution footer.
+
+    From the end, and only when what follows is nothing but credit lines. The
+    first version split on the first occurrence — and the listing block handed
+    to the model already contains "Cortesía de", so the model echoes it, and a
+    bulleted reply puts one mid-body. Everything after it, including the actual
+    question, vanished from the history the model reads next turn.
+    """
+    marker = "\n\nCortesía de"
+    head, found, tail = content.rpartition(marker)
+    if not found:
+        return content
+    trailing = (found + tail).strip()
+    # A footer is one line of credits. Anything with a paragraph break in it is
+    # the body of the message, not the footer.
+    if "\n\n" in trailing[2:]:
+        return content
+    return head.rstrip() or content
+
+
+def _fallback_reply(agent_cfg: AgentSettings | None, target_lang: str) -> LLMResult:
+    """What to say when every language model is unreachable.
+
+    Deliberately not an apology for a technical fault the lead did not cause,
+    and deliberately not a promise of a time we cannot keep. It acknowledges
+    the message and hands over to a person, which is what a lead needs at
+    11pm when the alternative is silence.
+    """
+    who = (agent_cfg.agency_name if agent_cfg else None) or "the team"
+    # In the language the lead wrote in. `target_lang` was in scope and unused,
+    # so a Spanish WhatsApp lead at 11pm got an English apology.
+    if (target_lang or "").lower().startswith("es"):
+        text = (
+            f"Gracias por tu mensaje — {who} lo ha recibido y alguien te "
+            "responderá en breve."
+        )
+    else:
+        text = (
+            f"Thanks for your message — {who} has received it and someone will "
+            "get back to you shortly."
+        )
+    # An LLMResult, not a bare string: everything downstream reads `.text`,
+    # `.provider` and `.model` off this, and `provider="fallback"` is what the
+    # dashboard and the analytics need to see to tell a canned line apart from
+    # something the model wrote.
+    return LLMResult(
+        text=text,
+        provider="fallback",
+        model="none",
+        input_tokens=0,
+        output_tokens=0,
+    )
+
+
 async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dict[str, int | str | bool]:
     """Process one inbound message (any channel) end-to-end. Returns a small status dict.
 
@@ -541,27 +967,84 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # agent emails from noreply@<domain>, which is also receivable on that
     # domain — so a reply (or a bounce) addressed back to it would re-enter
     # here and the agent would answer itself forever. Drop it silently.
-    own = parseaddr(get_settings().RESEND_FROM)[1].strip().lower()
-    if parsed.channel == "email" and own and parsed.from_identifier.strip().lower() == own:
-        log.warning("Inbound from our own address %s — ignored (self-loop guard)", own)
-        return {"status": "ignored_self_loop", "from": parsed.from_identifier}
+    if parsed.channel == "email":
+        # The acting agency's own address, not the global one. With per-agency
+        # mailboxes a global guard tests against somebody else's address, so
+        # agency B's own bounces sail past it and the assistant answers itself
+        # in a loop — while a message genuinely from agency A would be dropped
+        # inside agency B.
+        from app.models.channel_route import CHANNEL_EMAIL
+        from app.services.channel_identity import resolve_outbound_identity
+
+        identity = await resolve_outbound_identity(CHANNEL_EMAIL)
+        own = parseaddr(identity.sender_override or identity.destination or "")[1]
+        own = own.strip().lower()
+        if own and parsed.from_identifier.strip().lower() == own:
+            log.warning("Inbound from our own address %s — ignored (self-loop guard)", own)
+            return {"status": "ignored_self_loop", "from": parsed.from_identifier}
 
     # ── 1. Lead upsert ──────────────────────────────────────────────────
-    lead_row = await db.execute(select(Lead).where(Lead.phone == parsed.from_identifier))
-    lead = lead_row.scalar_one_or_none()
-    is_new_lead = lead is None
-    if lead is None:
-        lead = Lead(phone=parsed.from_identifier, name=parsed.from_name)
-        db.add(lead)
-        await db.flush()
+    # By identifier, and also by a matching email address. Leads are keyed on
+    # `phone` for every channel, so the same person writing from WhatsApp and
+    # then from email became two records: two score histories, two rows in the
+    # funnel, and a realtor looking at half a conversation each time. Matching
+    # the address as well merges the second arrival into the first.
+    #
+    # Deliberately one-directional: an email that matches an existing lead's
+    # address is the same person. A phone number is never matched against an
+    # address, and two different phone numbers stay two leads — guessing
+    # further would merge strangers.
+    # Prefer the lead keyed on this exact identifier. Only when there is none,
+    # and exactly one other lead carries this address, treat it as the same
+    # person. Taking the oldest of several matches — which the first version of
+    # this did — silently picked one and left the other's conversations, score
+    # and funnel row orphaned, while the code believed it had merged them.
+    lead_stmt = select(Lead).where(Lead.phone == parsed.from_identifier)
+    if _address_or_none(parsed.from_identifier) is not None:
+        already = (await db.execute(lead_stmt)).scalars().first()
+        if already is None:
+            by_address = (
+                (
+                    await db.execute(
+                        select(Lead).where(Lead.email == parsed.from_identifier)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if len(by_address) == 1:
+                lead_stmt = select(Lead).where(Lead.id == by_address[0].id)
+            elif len(by_address) > 1:
+                # A shared mailbox — info@, or a family address. Merging any of
+                # them would put one person's conversation in front of another.
+                log.warning(
+                    "%d leads share the address %s; keeping them separate",
+                    len(by_address),
+                    parsed.from_identifier,
+                )
+    existing_lead = (await db.execute(lead_stmt)).scalars().first()
+    is_new_lead = existing_lead is None
+    lead = await first_or_create(
+        db,
+        lead_stmt,
+        lambda: Lead(
+            phone=parsed.from_identifier,
+            name=parsed.from_name,
+            email=_address_or_none(parsed.from_identifier),
+        ),
+    )
+    if is_new_lead and lead.id is not None:
         log.info("Created lead id=%d channel=%s identifier=%s", lead.id, parsed.channel, lead.phone)
-    elif parsed.from_name and not lead.name:
+    if parsed.from_name and not lead.name:
         lead.name = parsed.from_name
 
     # ── 2. Active conversation ─────────────────────────────────────────
     # Multichannel: one active conversation per (lead, channel). A lead that
-    # writes both email AND whatsapp gets TWO active conversations.
-    conv_row = await db.execute(
+    # writes both email AND whatsapp gets TWO active conversations. The partial
+    # unique index behind this is what lets the get-or-create resolve a race
+    # instead of leaving two ACTIVE rows that make every later message from
+    # that lead raise MultipleResultsFound.
+    conv_stmt = (
         select(Conversation)
         .where(
             Conversation.lead_id == lead.id,
@@ -571,17 +1054,17 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         .order_by(Conversation.id.desc())
         .limit(1)
     )
-    conv = conv_row.scalar_one_or_none()
-    if conv is None:
-        conv = Conversation(
+    conv = await first_or_create(
+        db,
+        conv_stmt,
+        lambda: Conversation(
             lead_id=lead.id,
             channel=parsed.channel,
             status=ConversationStatus.ACTIVE,
             external_thread_id=parsed.thread_id,
-        )
-        db.add(conv)
-        await db.flush()
-    elif parsed.thread_id and not conv.external_thread_id:
+        ),
+    )
+    if parsed.thread_id and not conv.external_thread_id:
         conv.external_thread_id = parsed.thread_id
 
     # ── 3. Idempotency check ───────────────────────────────────────────
@@ -605,13 +1088,21 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         delivery_status=MessageStatus.DELIVERED,
         subject=parsed.subject,
     )
-    db.add(inbound)
     lead.last_message_at = datetime.now(UTC)
     try:
-        await db.flush()
+        # `db.add` goes INSIDE. `begin_nested()` flushes whatever is already
+        # pending before it issues the SAVEPOINT, so adding first meant the
+        # duplicate INSERT ran in the outer transaction: the IntegrityError came
+        # out of `begin_nested()` itself, the root transaction went inactive,
+        # and the `await db.commit()` below raised PendingRollbackError. The
+        # savepoint protected nothing and turned a duplicate into a 500 that the
+        # provider retries forever.
+        async with db.begin_nested():
+            db.add(inbound)
+            await db.flush()
     except IntegrityError:
-        await db.rollback()
         log.info("Race-condition idempotent skip for external_id=%s", parsed.external_id)
+        await db.commit()
         return {"status": "duplicate", "lead_id": lead.id, "skipped": True}
 
     # ── 5. Human takeover check ────────────────────────────────────────
@@ -632,7 +1123,10 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     llm_messages = [
         {
             "role": "user" if m.direction == MessageDirection.INBOUND else "assistant",
-            "content": m.content,
+            # Without the attribution footer: it lives in `content`, so the
+            # model read three credit lines back for every past turn and
+            # dutifully repeated them.
+            "content": history_content(m),
         }
         for m in history
     ]
@@ -640,8 +1134,8 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # ── 7. Language detection + intent classification ─────────────────
     # Detect on the latest inbound only (avoid letting historical AI replies
     # bias the result). Pick the closest supported language from agent settings.
-    settings_row_pre = await db.execute(select(AgentSettings).where(AgentSettings.id == 1))
-    agent_cfg = settings_row_pre.scalar_one_or_none()
+    agent_cfg_stmt = select(AgentSettings).where(AgentSettings.org_id == _acting_org())
+    agent_cfg = (await db.execute(agent_cfg_stmt)).scalars().first()
     supported_languages = (agent_cfg.languages if agent_cfg else ["en", "es"]) or ["en", "es"]
     detected_lang = detect_language(parsed.content)
     target_lang = pick_supported_language(detected_lang, supported_languages)
@@ -664,17 +1158,33 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # ── 8. Reply generation ────────────────────────────────────────────
     if agent_cfg is None:
         # Bootstrap the singleton on first real interaction.
-        agent_cfg = AgentSettings(id=1)
-        db.add(agent_cfg)
-        await db.flush()
+        # No pinned id. Org 1 owns agent_settings.id = 1, so forcing it here made
+        # every inbound message for any other tenant die on a primary-key
+        # collision — the read filter above was fixed and this write was missed,
+        # which moved the crash from the SELECT to the flush instead of ending it.
+        #
+        # `org_id` is unique here, so on a fresh tenant N simultaneous first
+        # contacts all reach this point, one wins, and the rest used to die at
+        # the flush with their lead, conversation and message already in the
+        # transaction. That is the "3 of 4 leads vanished" case: the handler
+        # read the violation as a duplicate message and answered 200.
+        agent_cfg = await first_or_create(db, agent_cfg_stmt, AgentSettings)
 
     # Persona is authored in Spanish; the language steering line tells the LLM
     # which language to actually answer in (detected from the inbound message).
     system_prompt = agent_cfg.agent_persona.replace("{agency_name}", agent_cfg.agency_name)
     system_prompt += language_instruction(target_lang, persona_locale="es")
+    system_prompt += _office_hours_note(agent_cfg)
+    if is_new_lead:
+        system_prompt += _greeting_note(agent_cfg)
+    system_prompt += await _real_slots_note(agent_cfg, inbound.content, db)
 
     # Phase 10: if the lead is property-shopping and we know the zone, give the
     # LLM the REAL matching listings so it can offer them (and never invent any).
+    # Collected here and appended to the reply itself further down. Putting the
+    # credit only in the system prompt made a licence obligation depend on the
+    # model choosing to repeat it, which it will not always do.
+    offered_listings: list[OfferedListing] = []
     if lead.intent in (LeadIntent.BUY, LeadIntent.RENT) and lead.zone:
         try:
             from app.services.listings import match_properties_for_lead  # lazy import
@@ -689,14 +1199,16 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
                 beds = f"{p.bedrooms}bd" if p.bedrooms else ""
                 baths = f"{float(p.bathrooms):g}ba" if p.bathrooms is not None else ""
                 specs = " ".join(x for x in (beds, baths) if x)
-                # IDX attribution: the listing broker MUST be credited when a listing is
-                # shown to a consumer. VERIFY REcolorado's exact required disclaimer text.
-                office = (p.raw or {}).get("list_office_name")
-                courtesy = f" · Cortesía de {office}" if office else ""
+                broker = listing_broker((p.raw or {}).get("list_office_name"), p.source)
+                credit = f"Cortesía de {broker}" if broker else ""
+                if broker:
+                    offered_listings.append(
+                        OfferedListing(broker, p.title, p.address, p.price)
+                    )
                 lines.append(
                     f"- {p.title} — {price}{(' · ' + specs) if specs else ''}"
                     f"{(' · ' + p.address) if p.address else ''}{(' · ' + p.url) if p.url else ''}"
-                    f"{courtesy}"
+                    f"{(' · ' + credit) if credit else ''}"
                 )
             system_prompt += (
                 "\n\nLISTINGS DISPONIBLES QUE PUEDES OFRECER (usa SOLO estas, NO inventes "
@@ -708,14 +1220,11 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         reply = await generate_reply(messages=llm_messages, system=system_prompt, max_tokens=400)
     except LLMUnavailable as exc:
         log.error("All LLMs failed for lead %d: %s", lead.id, exc)
-        await rescore_lead(lead, db, commit=False)
-        await db.commit()
-        return {
-            "status": "llm_unavailable",
-            "lead_id": lead.id,
-            "inbound_id": inbound.id,
-            "is_new_lead": is_new_lead,
-        }
+        # Say something. The webhook answers 200 either way, so the provider
+        # never redelivers — silence here means a lead who wrote at 11pm gets
+        # nothing at all and no one finds out until they have gone elsewhere.
+        # A short human note costs nothing and keeps the conversation open.
+        reply = _fallback_reply(agent_cfg, target_lang)
 
     # ── 9. Persist outbound (status=PENDING) ──────────────────────────
     reply_subject = None
@@ -729,11 +1238,17 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         else:
             reply_subject = "Tu consulta"
 
+    # The broker credit goes on the message that actually reaches the lead.
+    # Only for the listings the reply mentions, and only once each — otherwise a
+    # long conversation accumulates a footer nobody reads and the credit stops
+    # meaning anything.
+    reply_text = _with_broker_credits(reply.text, offered_listings, parsed.channel)
+
     outbound = Message(
         conversation_id=conv.id,
         direction=MessageDirection.OUTBOUND,
         sender=MessageSender.AGENT,
-        content=reply.text,
+        content=reply_text,
         delivery_status=MessageStatus.PENDING,
         llm_provider=reply.provider,
         llm_model=reply.model,
@@ -757,16 +1272,39 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         external_id, _ = await _dispatch_send(
             parsed.channel,
             to=parsed.from_identifier,
-            text=reply.text,
+            text=reply_text,
             subject=reply_subject,
             in_reply_to=parsed.external_id if parsed.channel == "email" else None,
             references=email_references,
         )
-        outbound.external_id = external_id
-        outbound.delivery_status = MessageStatus.SENT
+        try:
+            # The assignments go INSIDE the savepoint: `begin_nested()` flushes
+            # pending work before opening it, so setting them first put the
+            # colliding UPDATE in the outer transaction and left the session
+            # unusable rather than protected.
+            #
+            # Stamping the provider's id can collide on uq_messages_external_id
+            # — a provider replaying an id, or two replies landing on the same
+            # one. The reply really was sent, and this transaction also holds
+            # the lead, the conversation and the inbound message: none of that
+            # may be thrown away because a bookkeeping column would not fit.
+            async with db.begin_nested():
+                outbound.external_id = external_id
+                outbound.delivery_status = MessageStatus.SENT
+                await db.flush()
+        except IntegrityError:
+            log.warning(
+                "Duplicate provider id %s on outbound msg %d; keeping the turn "
+                "and leaving the id unset",
+                external_id, outbound.id,
+            )
+            outbound.external_id = None
+            outbound.delivery_status = MessageStatus.SENT
     except Exception as exc:  # noqa: BLE001
         log.error("Channel %s send failed for outbound msg %d: %s", parsed.channel, outbound.id, exc)
-        outbound.delivery_status = MessageStatus.FAILED
+        # Not just FAILED. A provider blip used to end the reply's life here:
+        # one POST, no retry, and no sweep looking for what was left behind.
+        schedule_retry(outbound, str(exc))
 
     await rescore_lead(lead, db, commit=False)
     await db.commit()
@@ -787,3 +1325,19 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         "outbound_status": outbound.delivery_status.value,
         "llm_provider": reply.provider,
     }
+
+
+def _acting_org() -> int:
+    """The org whose settings row applies to this call."""
+    org_id = get_org_id()
+    if org_id is None:
+        # Was `or DEFAULT_ORG_ID`. It fails closed today because these paths run
+        # on the RLS session — an unset org reads nothing and cannot write — but
+        # the fallback is one `get_bypass_db` away from silently reading and
+        # overwriting client zero's row, and there are six of these. Say so
+        # instead of guessing.
+        raise RuntimeError(
+            "no acting organization is bound; refusing to fall back to the "
+            "default one"
+        )
+    return org_id

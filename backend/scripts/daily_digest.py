@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import select  # noqa: E402
 
-from app.db.base import dispose_engine, get_session_factory  # noqa: E402
+from app.db.base import dispose_engine  # noqa: E402
 from app.models import Lead, LeadStatus  # noqa: E402
 from app.services.scoring import rescore_all, score_tier  # noqa: E402
 
@@ -32,21 +32,22 @@ async def main() -> int:
     p.add_argument("--limit", type=int, default=5)
     args = p.parse_args()
 
-    Session = get_session_factory()
-    try:
-        async with Session() as session:
-            await rescore_all(session)
-            rows = (
-                await session.execute(
-                    select(Lead)
-                    .where(
-                        Lead.status.notin_([LeadStatus.WON, LeadStatus.LOST, LeadStatus.PAUSED]),
-                        Lead.score > 0,
-                    )
-                    .order_by(Lead.score.desc(), Lead.last_message_at.desc().nullslast())
-                    .limit(args.limit)
+    from app.services.tenant_context import get_org_id, run_for_every_org
+
+    async def _digest_for_org(session) -> None:
+        print(f"\n═══ organization {get_org_id()} ═══")
+        await rescore_all(session)
+        rows = (
+            await session.execute(
+                select(Lead)
+                .where(
+                    Lead.status.notin_([LeadStatus.WON, LeadStatus.LOST, LeadStatus.PAUSED]),
+                    Lead.score > 0,
                 )
-            ).scalars().all()
+                .order_by(Lead.score.desc(), Lead.last_message_at.desc().nullslast())
+                .limit(args.limit)
+            )
+        ).scalars().all()
 
         print(f"\n🔔 Leads calientes — top {len(rows)}\n" + "─" * 44)
         if not rows:
@@ -56,6 +57,11 @@ async def main() -> int:
             zone = r.zone or "?"
             print(f"{icon} {r.score:>3}  {r.name or r.phone:<24} {r.status.value:<11} {zone}")
         print()
+
+    try:
+        # Per organization. With no org bound, default-deny RLS made this print
+        # an empty digest and exit 0 — a cron job reporting all-clear forever.
+        await run_for_every_org(_digest_for_org)
         return 0
     finally:
         await dispose_engine()

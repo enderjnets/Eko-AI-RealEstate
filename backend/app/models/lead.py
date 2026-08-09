@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, Boolean, DateTime, Index, Integer, Numeric, String, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, pg_enum
@@ -37,13 +37,27 @@ class Lead(Base):
     __tablename__ = "leads"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     # `phone` historically held a phone number, but Phase 3 multichannel uses it
     # as a generic identifier: phone numbers for whatsapp/sms/voice, email
     # addresses for email. Widened to 254 chars (RFC 5321 max email length).
     # A future migration will rename it to `identifier`.
-    phone: Mapped[str] = mapped_column(String(254), unique=True, nullable=False, index=True)
+    # Unique per organization, not globally: two agencies may legitimately work
+    # the same prospect. The composite index lives in __table_args__ so
+    # autogenerate does not "helpfully" restore the global one.
+    phone: Mapped[str] = mapped_column(String(254), nullable=False)
     name: Mapped[str | None] = mapped_column(String(160), nullable=True)
 
+    # Nullable, and usually null: a WhatsApp or SMS lead gives a phone and
+    # nothing else. Kept because a real address is worth having when we do get
+    # one — from the email channel, from a discovery import, or from the lead
+    # telling us — and because a booking that has one can send the client their
+    # own confirmation instead of only the agency's.
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     status: Mapped[LeadStatus] = mapped_column(
         pg_enum(LeadStatus, name="lead_status"),
         default=LeadStatus.NEW,
@@ -107,6 +121,7 @@ class Lead(Base):
 
     __table_args__ = (
         Index("ix_leads_status_last_message_at", "status", "last_message_at"),
+        Index("ix_leads_phone", "org_id", "phone", unique=True),
     )
 
     def __repr__(self) -> str:

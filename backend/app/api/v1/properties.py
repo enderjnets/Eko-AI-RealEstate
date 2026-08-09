@@ -4,14 +4,20 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.auth import require_platform_admin
 from app.db.base import get_db
 from app.models import Lead, Property, PropertySource, PropertyStatus, SyncState
-from app.services.listings import RESO_SOURCE_KEY, match_properties_for_lead, sync_listings
+from app.services.listings import (
+    RESO_SOURCE_KEY,
+    listing_broker,
+    match_properties_for_lead,
+    sync_listings,
+)
 
 router = APIRouter()
 lead_matches_router = APIRouter()
@@ -42,6 +48,41 @@ class PropertyOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # IDX attribution. Colorado requires the listing broker to be credited
+    # wherever a listing reaches a consumer, and this schema omitted the only
+    # place the name is kept (`raw`) — so every card, every detail view and
+    # every match list showed a REcolorado listing with no credit at all. The
+    # obligation sits on the agency's licence, not on the software.
+    listing_office: str | None = None
+    listing_agent: str | None = None
+    listing_type: str | None = None
+    # The name to credit, already decided — the UI only has to render it.
+    listing_broker: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_raw(cls, value: object) -> object:
+        """Lift the broker's name out of `raw`, where the sync leaves it.
+
+        `raw` itself is deliberately not exposed — it is the provider's whole
+        record — but the three fields a consumer is entitled to see are.
+        """
+        raw = getattr(value, "raw", None)
+        if not isinstance(raw, dict):
+            return value
+        office = raw.get("list_office_name")
+        return {
+            **{
+                name: getattr(value, name)
+                for name in cls.model_fields
+                if hasattr(value, name)
+            },
+            "listing_office": office,
+            "listing_agent": raw.get("list_agent_name"),
+            "listing_type": raw.get("listing_type"),
+            "listing_broker": listing_broker(office, getattr(value, "source", None)),
+        }
+
 
 class PropertyListOut(BaseModel):
     total: int
@@ -56,7 +97,16 @@ class SyncResult(BaseModel):
 
 @router.get("", response_model=PropertyListOut)
 async def list_properties(
-    status_filter: PropertyStatus | None = Query(default=None, alias="status"),
+    status_filter: PropertyStatus | None = Query(
+        default=PropertyStatus.ACTIVE,
+        alias="status",
+        description=(
+            "Defaults to active. Unfiltered, the grid mixed sold and pending "
+            "listings in with the ones a realtor can actually show. Pass "
+            "?status=sold explicitly, or ?all=true for everything."
+        ),
+    ),
+    include_all: bool = Query(default=False, alias="all"),
     source: PropertySource | None = Query(default=None),
     city: str | None = Query(default=None),
     zone: str | None = Query(default=None),
@@ -68,7 +118,7 @@ async def list_properties(
     db: AsyncSession = Depends(get_db),
 ) -> PropertyListOut:
     where: list = []
-    if status_filter is not None:
+    if status_filter is not None and not include_all:
         where.append(Property.status == status_filter)
     if source is not None:
         where.append(Property.source == source)
@@ -96,12 +146,23 @@ async def list_properties(
     return PropertyListOut(total=total, items=[PropertyOut.model_validate(r) for r in rows])
 
 
-@router.post("/sync", response_model=SyncResult)
+@router.post(
+    "/sync",
+    response_model=SyncResult,
+    dependencies=[Depends(require_platform_admin)],
+)
 async def sync_properties(
     city: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> SyncResult:
-    """Ingest listings from the configured feed (SIMULATED curated set or RESO)."""
+    """Ingest listings from the configured feed (SIMULATED curated set or RESO).
+
+    Operator-only. `properties` and `sync_state` are deliberately shared — there
+    is one REcolorado feed — so this drives a resource every agency depends on:
+    the licence quota, and the cursor that decides what the next run fetches.
+    Behind `require_auth` alone, any member of any agency could exhaust the
+    quota or move the cursor for everyone.
+    """
     result = await sync_listings(db, city=city)
     return SyncResult(**result)
 
@@ -119,13 +180,27 @@ class SyncStatusOut(BaseModel):
 
 # Declared before /{property_id} so "sync-status" is not parsed as an id.
 @router.get("/sync-status", response_model=SyncStatusOut | None)
-async def get_sync_status(db: AsyncSession = Depends(get_db)) -> SyncStatusOut | None:
+async def get_sync_status(
+    request: Request, db: AsyncSession = Depends(get_db)
+) -> SyncStatusOut | None:
     """Replication health for the MLS Grid feed — the only window into the background
     worker, which otherwise fails silently in the logs. Null before the first run."""
     row = (
         await db.execute(select(SyncState).where(SyncState.source == RESO_SOURCE_KEY))
     ).scalar_one_or_none()
-    return SyncStatusOut.model_validate(row) if row else None
+    if row is None:
+        return None
+    out = SyncStatusOut.model_validate(row)
+    # `last_error` is the provider's own message about a feed every agency
+    # shares, so it can name the operator's account, quota or credentials.
+    # Agencies see whether replication is healthy; only the operator sees why
+    # it is not.
+    from app.api.v1.auth import _token_from_request
+    from app.services.auth import token_is_superuser
+
+    if out.last_error and not token_is_superuser(_token_from_request(request)):
+        out = out.model_copy(update={"last_error": "unavailable"})
+    return out
 
 
 @router.get("/{property_id}", response_model=PropertyOut)

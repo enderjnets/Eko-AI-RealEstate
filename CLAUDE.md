@@ -6,8 +6,20 @@
 ## What this is
 
 **Eko AI Realtors** is the **customer-facing product** sold to real-estate
-agencies (target: 2–10 person offices in Spain / EU / LATAM). It runs on the
-customer's own hardware (or their own VPS) and provides:
+agencies. Since 2026-08-06 it is a **multi-tenant mother system**: one
+installation we operate, with each client agency as an `Organization` inside it.
+The Phase 6 single-customer installer (`scripts/install.sh`) is legacy — kept,
+not deleted, because `org_id` is present everywhere and a dedicated deployment is
+simply an install with one org.
+
+Isolation between agencies is enforced by **Postgres row-level security**, not by
+remembering to filter. Read `backend/app/db/base.py` and
+`backend/tests/test_tenant_isolation.py` before touching any query: the app
+connects as a role *without* `BYPASSRLS` on purpose, and pointing
+`DATABASE_URL_APP` at the owner would make every isolation test pass while
+isolating nothing.
+
+It provides:
 
 1. A **WhatsApp 24/7 agent** that answers inbound leads in Spanish.
 2. **Lead capture + intent classification** (`rent | buy | valuation`) into a
@@ -138,6 +150,63 @@ when an AI session helped write it.
 - **Async sessions**: use `get_db()` dep from `backend/app/db/base.py`.
   `expire_on_commit=False` is intentional — needed for FastAPI response
   serialization after commit.
+- **Multi-tenancy**: every tenant-owned table carries `org_id` and is covered by
+  an RLS policy. New models that belong to an agency MUST add `org_id` and get a
+  policy in a migration, or they will be readable by every tenant. `properties`
+  and `sync_state` are deliberately shared (one REcolorado feed as Software
+  Vendor). Do not reach for `get_bypass_session_factory()` to make a query
+  "work" — it removes the tenant boundary for that query. It exists only for
+  login (which has to resolve *which* org the user belongs to), the background
+  workers (which sweep every org via `run_for_every_org`), and the platform
+  routes for demo signups.
+- **Identity is global, business data is per-tenant.** `allowed_users.email` and
+  `accounts.email` are globally unique — login must resolve one person before it
+  knows their org. `leads.phone`, `messages.external_id`,
+  `visits.external_booking_id` and `user_activity.email` are unique per org.
+  Scoping an identity key by org makes every login lookup raise
+  `MultipleResultsFound` and locks people out permanently.
+- **A bypass session is not stamped.** `before_flush` fills `org_id` from the
+  acting org; on a bypass session there is none, so every `db.add()` there must
+  pass `org_id` explicitly.
+- **Anything crossing the tenant boundary needs `require_platform_admin`, not
+  `require_admin`** — the latter authorises the admin of *some* organization,
+  and every client agency has one.
+
+### Onboarding a second agency
+
+Inbound messages are attributed by **destination**, via `channel_routes`
+(destination → org, managed at `/api/v1/platform/routes`). Before adding a
+second tenant, map its Twilio number, WhatsApp `phone_number_id` and mailbox —
+an unmapped destination is refused rather than filed under the wrong agency,
+and `webhook_org_or_refuse` is the single place that decides. The refusal is
+acknowledged with 200 on WhatsApp, email and voice — nothing is written, but
+those providers retry a failure until they disable the endpoint, which would
+take the channel down for every tenant. SMS keeps its 503: Twilio does not
+redeliver inbound and shows it as error 11200 where an operator looks. A
+destination left unmapped therefore loses real messages quietly — alert on
+`refusing inbound`.
+
+All four channels are wired: SMS, WhatsApp, email and voice. Voice's
+extractor is **not verified against a live VAPI account** (there is none), so it
+yields nothing on any shape it does not recognise — which makes the caller fall
+back or refuse rather than guess an organization.
+
+Attribution takes **every** destination a message carries, not one: an email
+names all its recipients, and a VAPI payload carries either the E.164 number or
+the opaque phone-number id depending on the message type. Exactly one agency
+addressed is the answer; two is refused. Picking by position is what filed a
+lead's thread under the agency that was merely CC'd.
+
+**Outbound identity is per organization too**, and it has to be: with one global
+Twilio number, agency B's lead was answered from agency A's number, replied to
+it, and the rest of the conversation was written into A. `channel_routes` holds
+the *names* of the environment variables with each agency's credentials — never
+the values, which stay in `.env`. NULL means the global configuration, so a
+single-customer install is unaffected.
+
+Platform access is the `su` claim, granted only to `PLATFORM_ADMIN_EMAILS`.
+Naming the default org is deliberately not enough: org 1 is a real client
+agency, so its admins would have inherited it.
 
 ### LLM
 - All LLM calls go through `app/services/llm.py:generate_reply()`. Do not
@@ -198,3 +267,28 @@ For per-phase details see [`docs/roadmap.md`](docs/roadmap.md).
   `~/.claude/projects/-Users-enderj/memory/project_eko_ai_realestate.md`
 - **Active plan**:
   `~/.claude/plans/puedes-verificar-a-ver-delegated-teacup.md` (Phase 1)
+
+### Hueco conocido: no hay rate limiting (aceptado, documentado)
+
+No existe límite de peticiones en ninguna capa. Los recursos que se pagan una
+sola vez para toda la instalación — el presupuesto de LLM (Kimi/MiniMax), el
+saldo de Twilio del operador cuando una agencia no trae el suyo, la licencia de
+REcolorado — están ahora tras `require_platform_admin` en los sitios donde se
+gastan en bloque (`/properties/sync`, todo `/discovery`). Lo que queda abierto
+es el gasto por conversación: una agencia con mucho tráfico entrante consume
+LLM que las demás necesitan para responder, y no hay cuota por organización
+contra la que cobrarlo. Antes de cobrar por uso hay que medirlo por `org_id`.
+
+### Precondición dura para escalar: un solo worker, una sola réplica
+
+`tenant_resolver._cache` (TTL 15 s) y `reset_cache()` viven **en el proceso**.
+Con el despliegue actual —`Dockerfile` arranca uvicorn sin `--workers`, una
+sola réplica en compose— es correcto. En cuanto haya N workers o N réplicas,
+crear una agencia solo invalida la caché del worker que atendió el POST: los
+demás siguen viendo una sola organización hasta 15 s, y en esa ventana un
+mensaje entrante sin ruta cae en la primera agencia. Eso es una escritura
+cruzada entre inquilinos, y es permanente.
+
+**Antes de añadir `--workers` o una segunda réplica**, la invalidación de esa
+caché tiene que dejar de ser local al proceso (Redis pub/sub, o releer el
+`updated_at` máximo de `organizations` en cada resolución).

@@ -1,12 +1,18 @@
-"""Dashboard auth — a single shared password + an HMAC-signed session token.
+"""Dashboard auth — session tokens that carry identity, role AND organization.
 
-One deploy = one inmobiliaria, so we don't need user accounts: the office sets a
-single `DASHBOARD_PASSWORD`. On login we issue a compact HMAC-SHA256 signed token
-(`payload.signature`, like a tiny JWT — no extra dependency) stored in an
-httpOnly cookie. `require_auth` (gated by `AUTH_ENABLED`) protects the data API.
+On login we issue a compact HMAC-SHA256 signed token (`payload.signature`, like
+a tiny JWT — no extra dependency) in an httpOnly cookie. `require_auth` (gated
+by `AUTH_ENABLED`) protects the data API.
 
-The signing secret is `AUTH_SECRET` if set, else derived from the password — so
-tokens stay valid across restarts as long as the password is unchanged.
+The `org` claim is the one that matters most: it is the only channel that tells
+the request which tenant it acts for, and `db/base.py` stamps it onto every
+transaction for the RLS policies to read. A token without a usable org is
+rejected rather than defaulted — defaulting it is how every user once ended up
+inside client zero's data.
+
+`DASHBOARD_PASSWORD` remains the operator's master key. The signing secret is
+`AUTH_SECRET` if set, else derived from the password; with neither set and auth
+enabled, minting refuses rather than signing with a key published in this repo.
 """
 from __future__ import annotations
 
@@ -71,10 +77,41 @@ def _b64d(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
 
+class InsecureAuthConfig(RuntimeError):
+    """Auth is on but nothing secret is configured to sign sessions with."""
+
+
 def _secret() -> bytes:
+    """The session signing key. AUTH_SECRET or nothing.
+
+    It used to fall back to `sha256("eko-auth::" + DASHBOARD_PASSWORD)`, and
+    that quietly undid the whole platform boundary. The password is the
+    *agency's* — the office shares it with whoever answers the phone — so its
+    holder could derive the key offline and mint a token claiming `su` and any
+    organization they liked. Removing `superuser=True` from the password login
+    achieved nothing while that derivation stood: the same person could sign
+    the claim themselves.
+
+    A key must not be derivable from a credential with a wider audience than
+    the key. AUTH_SECRET has exactly one audience, so it is the only source.
+    """
     s = get_settings()
-    material = s.AUTH_SECRET or f"eko-auth::{s.DASHBOARD_PASSWORD}"
-    return hashlib.sha256(material.encode("utf-8")).digest()
+    if s.AUTH_SECRET:
+        return hashlib.sha256(s.AUTH_SECRET.encode("utf-8")).digest()
+
+    if s.AUTH_ENABLED:
+        raise InsecureAuthConfig(
+            "AUTH_ENABLED is true but AUTH_SECRET is not set. Session tokens "
+            "carry the organization and the platform-operator claim, so the key "
+            "cannot be derived from DASHBOARD_PASSWORD (which the agency knows) "
+            "or from a constant in this repository. Set AUTH_SECRET to a random "
+            "value — scripts/install.sh generates one."
+        )
+    # Auth off. Tokens genuinely are not a boundary in this mode: require_auth
+    # is a no-op and the platform routes refuse outright (see
+    # require_platform_admin), so nothing is gated on this signature. The fixed
+    # key keeps local work frictionless and is deliberately recognisable.
+    return hashlib.sha256(b"eko-auth::insecure-dev-only").digest()
 
 
 def check_password(password: str) -> bool:
@@ -86,7 +123,13 @@ def check_password(password: str) -> bool:
 
 
 def make_token(
-    *, email: str | None = None, role: str = ROLE_ADMIN, ttl_hours: int | None = None
+    *,
+    email: str | None = None,
+    role: str = ROLE_ADMIN,
+    ttl_hours: int | None = None,
+    org_id: int | None = None,
+    superuser: bool = False,
+    impersonating: bool = False,
 ) -> str:
     """Mint a signed session token carrying identity (email) + role.
 
@@ -98,6 +141,23 @@ def make_token(
     payload: dict = {"sub": _SUBJECT, "exp": int(time.time()) + ttl * 3600, "role": role}
     if email:
         payload["email"] = email
+    # Tokens minted before multi-tenancy carry no org and resolve to DEFAULT_ORG_ID
+    # in current_org_id(); that keeps existing sessions working through the deploy
+    # instead of logging everyone out.
+    if org_id is not None:
+        payload["org"] = org_id
+    # Platform-operator marker. Deliberately its OWN claim rather than
+    # "is an admin of the default org": that collapsed the platform boundary
+    # into a tenant boundary, and since the default org is a real client
+    # agency, its own admins became platform operators.
+    if superuser:
+        payload["su"] = True
+    # Set only by /platform/impersonate. It grants nothing on its own — the
+    # session is a plain org-scoped admin — but it marks the holder as an
+    # operator looking in from outside, which is why the suspension gate lets it
+    # through: a suspended agency is precisely when someone needs to look.
+    if impersonating:
+        payload["imp"] = True
     payload_b64 = _b64e(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     sig = _b64e(hmac.new(_secret(), payload_b64.encode("ascii"), hashlib.sha256).digest())
     return f"{payload_b64}.{sig}"
@@ -124,6 +184,51 @@ def decode_token(token: str | None) -> dict | None:
 
 def verify_token(token: str | None) -> bool:
     return decode_token(token) is not None
+
+
+def token_org_id(token: str | None) -> int | None:
+    """The organization a valid token acts for, or None if the token is invalid.
+
+    Tokens minted before multi-tenancy carry no `org`; they resolve to the
+    default org so sessions open across the deploy keep working rather than
+    every user being silently logged out.
+    """
+    data = decode_token(token)
+    if data is None:
+        return None
+    from app.models.organization import DEFAULT_ORG_ID
+
+    org = data.get("org")
+    # `isinstance(True, int)` is True in Python, and a string or float claim
+    # would silently fall through to the default org — i.e. into client zero's
+    # data. Anything that is not a plain positive int is treated as no org at
+    # all, which under default-deny RLS shows nothing rather than the wrong thing.
+    if isinstance(org, bool) or not isinstance(org, int):
+        return DEFAULT_ORG_ID if org is None else None
+    return org if org > 0 else None
+
+
+
+def token_is_superuser(token: str | None) -> bool:
+    """Whether this session may act across tenants.
+
+    Minted for the emails in PLATFORM_ADMIN_EMAILS when they sign in, and for
+    the shared operator password only while that list is empty. A token without
+    it — every other sign-in, and every session issued before multi-tenancy —
+    cannot reach the platform routes no matter which org it names.
+    """
+    data = decode_token(token)
+    return bool(data and data.get('su') is True)
+
+
+def token_is_impersonating(token: str | None) -> bool:
+    """Whether this org-scoped session belongs to an operator looking in.
+
+    Grants nothing by itself; read only by the suspension gate, so that entering
+    a suspended agency to investigate does not 403 on the next request.
+    """
+    data = decode_token(token)
+    return bool(data and data.get("imp") is True)
 
 
 def token_role(token: str | None) -> str | None:
@@ -185,6 +290,44 @@ def verify_google_id_token(id_token_str: str) -> str:
     return email
 
 
+async def resolve_email_org(email: str, db: AsyncSession) -> int | None:
+    """Which organization a verified email belongs to, or None if it has no row.
+
+    Split from resolve_email_access so the caller gets both facts without a
+    second query shape to keep in sync. Env-based bootstrap admins
+    (GOOGLE_ADMIN_EMAILS) and domain allow-lists have no row and therefore no
+    org of their own, so they land in the default org — they are the operator's
+    own accounts, not a client agency's.
+
+    MUST be called on a bypass session: at login time there is no org bound yet,
+    so an RLS-enforcing session would find nobody and deny every sign-in.
+    """
+    from app.models import AllowedUser
+    from app.models.organization import DEFAULT_ORG_ID
+
+    email = (email or "").lower().strip()
+    if not email:
+        return None
+    # Same precedence as resolve_email_access, deliberately. That one checks the
+    # env bootstrap list BEFORE the database; if this one checked the database
+    # first, an operator email that a client agency happened to add to their Team
+    # would sign in as an admin OF THAT AGENCY instead of the default org.
+    if email in get_settings().google_admin_emails_list:
+        return DEFAULT_ORG_ID
+    if email in get_settings().platform_admin_emails_list:
+        return DEFAULT_ORG_ID
+    row = (
+        await db.execute(select(AllowedUser).where(AllowedUser.email == email))
+    ).scalar_one_or_none()
+    # No row means no organization. This used to answer DEFAULT_ORG_ID, which
+    # handed client zero's data to anyone who cleared `resolve_email_access` by
+    # env alone — set GOOGLE_ALLOWED_DOMAIN to a second agency's domain while
+    # onboarding them and their whole staff signs in as members of the first.
+    # The two functions are called on the same request and never cross-checked,
+    # so the org side has to fail closed on its own.
+    return row.org_id if row is not None else None
+
+
 async def resolve_email_access(email: str, db: AsyncSession) -> str | None:
     """Return the role ('admin' | 'member') a verified email may log in as, or
     None to deny (safe default).
@@ -193,11 +336,19 @@ async def resolve_email_access(email: str, db: AsyncSession) -> str | None:
     the office's allow-list is keyed on the email, not on who issued the token.
 
     Precedence:
-      1. env GOOGLE_ADMIN_EMAILS  → admin (always; immutable bootstrap).
-      2. allowed_users DB row     → its role.
-      3. env GOOGLE_ALLOWED_EMAILS→ member (back-compat static allow).
-      4. env GOOGLE_ALLOWED_DOMAIN→ member (any @domain).
-      5. otherwise                → None.
+      1. env PLATFORM_ADMIN_EMAILS→ admin (always; the operators).
+      2. env GOOGLE_ADMIN_EMAILS  → admin (always; immutable bootstrap).
+      3. allowed_users DB row     → its role.
+      4. env GOOGLE_ALLOWED_EMAILS→ member (back-compat static allow).
+      5. env GOOGLE_ALLOWED_DOMAIN→ member (any @domain).
+      6. otherwise                → None.
+
+    The env lists come first because `allowed_users` is writable by the admin of
+    *any* agency and its email column is globally unique. Without this, an
+    agency admin could add an operator's address to their own org and the next
+    time that operator signed in they would arrive as a `member` — which
+    `require_platform_admin` rejects, locking the operator out of the platform
+    with a single ordinary POST.
     """
     from app.models import AllowedUser
 
@@ -205,6 +356,8 @@ async def resolve_email_access(email: str, db: AsyncSession) -> str | None:
     email = (email or "").lower().strip()
     if not email:
         return None
+    if email in s.platform_admin_emails_list:
+        return ROLE_ADMIN
     if email in s.google_admin_emails_list:
         return ROLE_ADMIN
     row = (

@@ -145,6 +145,20 @@ export function SettingsForm() {
               className="mt-1 w-full px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-eko-violet/50"
             />
           </label>
+          <label className="block">
+            <span className="text-xs text-gray-400">{t("settings.bookingEmail")}</span>
+            <input
+              type="email"
+              value={data.booking_contact_email ?? ""}
+              onChange={(e) => set("booking_contact_email", e.target.value || null)}
+              maxLength={255}
+              placeholder="visits@youragency.com"
+              className="mt-1 w-full px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-eko-violet/50"
+            />
+            <span className="mt-1 block text-[11px] text-gray-500">
+              {t("settings.bookingEmailHelp")}
+            </span>
+          </label>
         </div>
       </section>
 

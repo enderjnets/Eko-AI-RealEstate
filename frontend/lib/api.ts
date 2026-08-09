@@ -24,6 +24,7 @@ export type MessageStatus = "pending" | "sent" | "delivered" | "read" | "failed"
 export interface Lead {
   id: number;
   phone: string;
+  email: string | null;
   name: string | null;
   status: LeadStatus;
   intent: LeadIntent | null;
@@ -296,6 +297,8 @@ export const visitsApi = {
 export interface AgencySettings {
   agency_name: string;
   agency_phone: string | null;
+  /** Where Cal.com sends the confirmation for a lead who only gave a phone. */
+  booking_contact_email: string | null;
   agent_persona: string;
   greeting_template: string;
   languages: string[];
@@ -308,6 +311,7 @@ export interface AgencySettings {
 export interface AgencySettingsPatch {
   agency_name?: string;
   agency_phone?: string | null;
+  booking_contact_email?: string | null;
   agent_persona?: string;
   greeting_template?: string;
   languages?: string[];
@@ -349,6 +353,10 @@ export interface Property {
   listed_at: string | null;
   created_at: string;
   updated_at: string;
+  /** IDX: the listing broker who must be credited beside this listing. */
+  listing_broker: string | null;
+  listing_agent: string | null;
+  listing_type: string | null;
 }
 
 export interface PropertyList {
@@ -483,6 +491,8 @@ export interface MeResult {
   google_signin_enabled?: boolean;
   apple_signin_enabled?: boolean;
   registration_enabled?: boolean;
+  /** Runs the platform, not an agency. Operator-only controls key off this. */
+  is_platform_operator?: boolean;
 }
 
 export interface RegisterPayload {
