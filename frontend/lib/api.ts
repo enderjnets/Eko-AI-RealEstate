@@ -296,6 +296,8 @@ export const visitsApi = {
 export interface AgencySettings {
   agency_name: string;
   agency_phone: string | null;
+  /** Where Cal.com sends the confirmation for a lead who only gave a phone. */
+  booking_contact_email: string | null;
   agent_persona: string;
   greeting_template: string;
   languages: string[];
@@ -308,6 +310,7 @@ export interface AgencySettings {
 export interface AgencySettingsPatch {
   agency_name?: string;
   agency_phone?: string | null;
+  booking_contact_email?: string | null;
   agent_persona?: string;
   greeting_template?: string;
   languages?: string[];

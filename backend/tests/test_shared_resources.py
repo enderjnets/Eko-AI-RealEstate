@@ -550,3 +550,97 @@ async def test_the_app_boots_against_a_database_with_no_schema_yet() -> None:
         get_settings.cache_clear()
         await dispose_engine()
         await _drop_database("eko_firstboot")
+
+
+@pytest.mark.asyncio
+async def test_a_whatsapp_lead_can_actually_be_booked(monkeypatch) -> None:
+    """The defect twenty-two rounds of tenant auditing never looked for.
+
+    Cal.com refuses a booking with no attendee email. Leads are keyed by phone
+    on every channel, and the attendee address was derived as "the phone, if it
+    contains an @" — true only for email-channel leads. So against a real
+    Cal.com account, every WhatsApp, SMS and voice booking failed: the dashboard
+    showed 503 and the caller heard "trouble with the calendar". Invisible
+    everywhere but production, because CALENDAR_SIMULATED returns before the
+    HTTP call and simulated is the default.
+    """
+    from app.config import get_settings
+    from app.models.agent_settings import AgentSettings
+    from app.services.calendar_cal import CalComError, _booking_contact_email
+
+    monkeypatch.setattr(get_settings(), "CALENDAR_SIMULATED", False)
+    monkeypatch.setattr(get_settings(), "CALCOM_API_KEY", "k")
+    monkeypatch.setattr(get_settings(), "CALCOM_EVENT_TYPE_ID", "11")
+    # A properly onboarded agency: its own Cal.com key, its own event type.
+    monkeypatch.setenv("CALCOM_KEY_ACME", "acmes-own-cal-key")
+    await _make_agency(credential_ref="CALCOM_KEY_ACME", _dest="42")
+    try:
+        with org_scope(AGENCY):
+            async with get_session_factory()() as db:
+                db.add(
+                    AgentSettings(
+                        agency_name="Acme",
+                        booking_contact_email="visits@acme.test",
+                    )
+                )
+                await db.commit()
+            assert await _booking_contact_email() == "visits@acme.test"
+
+            # And it actually reaches Cal.com as the attendee, which is the
+            # part that was broken: the check above passing means nothing if
+            # `create_booking` never consults it.
+            sent: dict[str, object] = {}
+
+            class _Resp:
+                status_code = 200
+
+                def json(self) -> dict[str, object]:
+                    return {"data": {"id": "cal-9", "uid": "u9"}}
+
+            class _Client:
+                def __init__(self, *a: object, **k: object) -> None:
+                    pass
+
+                async def __aenter__(self) -> "_Client":
+                    return self
+
+                async def __aexit__(self, *a: object) -> None:
+                    return None
+
+                async def post(self, url: str, **kwargs: object) -> _Resp:
+                    sent.update(kwargs.get("json") or {})
+                    return _Resp()
+
+            import app.services.calendar_cal as cal_mod
+            from app.services.calendar_cal import create_booking
+
+            with patch.object(cal_mod.httpx, "AsyncClient", _Client):
+                await create_booking(
+                    start_time=datetime.now(UTC) + timedelta(days=1),
+                    attendee_name="A WhatsApp Lead",
+                    attendee_phone="+13035550000",
+                )
+            attendee = (sent.get("attendee") or {}) if isinstance(sent, dict) else {}
+            assert attendee.get("email") == "visits@acme.test", (
+                f"Cal.com was sent {attendee!r}; a phone-only lead is unbookable"
+            )
+
+        # And with nothing set, the refusal names the fix instead of being a
+        # bare 503 nobody can act on.
+        with org_scope(DEFAULT_ORG_ID):
+            from app.services.calendar_cal import create_booking
+
+            with pytest.raises(CalComError) as caught:
+                await create_booking(
+                    start_time=datetime.now(UTC) + timedelta(days=1),
+                    attendee_name="A Lead",
+                    attendee_phone="+13035550000",
+                )
+            assert "booking contact" in str(caught.value).lower()
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM agent_settings WHERE org_id = :i"), {"i": AGENCY}
+            )
+            await db.commit()
+        await _cleanup()

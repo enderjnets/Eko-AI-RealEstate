@@ -62,6 +62,15 @@ curl -X POST "$API/api/v1/platform/routes" -b cookies.txt \
 | `whatsapp` | The WhatsApp Business `phone_number_id` (preferred over the display number — it survives reformatting and porting) |
 | `email` | The mailbox that receives inbound mail |
 | `voice` | The VAPI number that gets called |
+| `calendar` | Their Cal.com **event type id**, with `credential_ref` naming their own API key |
+
+The `calendar` row is not optional for an agency past the first. Without it,
+every booking would land on the operator's Cal.com — writing the lead's name,
+email and phone onto a calendar another agency's realtors can read, and
+blanking out that slot for everyone. Any organization other than the default
+one is refused a booking until it names a Cal.com key of its own, and pointing
+`credential_ref` at the operator's variable does not count: the check compares
+the resolved key against the operator's, not the name it was given.
 
 Destinations are normalised, so `+1 (303) 555-1234` and `13035551234` are the
 same route. A destination already claimed by another agency returns 409 — one
@@ -116,7 +125,19 @@ here.
 An agency that uses *your* provider account with its own number needs none of
 this: leave the refs null and only the destination is theirs.
 
-## 5. Check it landed
+## 5. Give them a booking contact address
+
+In their dashboard under Settings, set **Booking confirmations to** — the
+agency's own inbox. Most leads arrive on WhatsApp and never give an email, but
+Cal.com will not accept a booking without an attendee address, so without this
+their visits cannot be booked at all. The lead is still confirmed on whatever
+channel they wrote on.
+
+While there, check the office timezone. A new agency starts on the install's
+default (`DEFAULT_TIMEZONE`, `America/Denver` unless changed); on the wrong one
+every offered slot is out by hours.
+
+## 6. Check it landed
 
 ```bash
 curl "$API/api/v1/platform/organizations" -b cookies.txt   # the new org is listed
@@ -126,6 +147,11 @@ curl "$API/api/v1/platform/routes" -b cookies.txt          # destinations and cr
 Then send a real message to the routed number and confirm two things: the lead
 appears in that agency's dashboard and nobody else's, **and the reply arrives
 from their number**. The second half is the one that used to be wrong.
+
+Two things have to be true before you create organization number two at all:
+`AUTH_ENABLED=true` (with it off, the platform refuses to serve more than one
+agency and every non-operator request answers 503), and `PLATFORM_ADMIN_EMAILS`
+naming you (without it nothing can reach these endpoints).
 
 ## Suspending an agency
 

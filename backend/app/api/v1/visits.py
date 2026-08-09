@@ -204,7 +204,10 @@ async def book_slot(
     tz = body.timezone or await _office_tz(db)
 
     # Email-or-phone heuristic: lead.phone holds an email when channel is email.
-    attendee_email = lead.phone if "@" in lead.phone else None
+    # The lead's own address when we have one; `phone` holds it for
+    # email-channel leads. Neither, and `create_booking` uses the
+    # agency's booking contact rather than failing.
+    attendee_email = lead.email or (lead.phone if "@" in (lead.phone or "") else None)
     attendee_phone = lead.phone if "@" not in lead.phone else None
     attendee_name = lead.name or "Cliente"
 

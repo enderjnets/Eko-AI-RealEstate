@@ -91,6 +91,12 @@ class Settings(BaseSettings):
     # flip SIMULATED to false.
     CALENDAR_SIMULATED: bool = True
     CALENDAR_PROVIDER: str = "calcom"  # calcom | google (only calcom in Phase 5)
+    # The office timezone a new agency starts with. "UTC" was the old default
+    # and it silently mis-schedules everything: BookingDialog offered 10:00 and
+    # 14:00 UTC, which is 03:00 and 07:00 in Denver, and a caller who said "2pm"
+    # got 14:00 UTC. Wrong by six or seven hours until someone opened Settings.
+    DEFAULT_TIMEZONE: str = "America/Denver"
+
     CALCOM_BASE_URL: str = "https://api.cal.com"
     CALCOM_API_KEY: str = ""
     CALCOM_EVENT_TYPE_ID: str = ""

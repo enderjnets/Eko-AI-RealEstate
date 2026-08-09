@@ -152,6 +152,37 @@ async def list_available_slots(
     return sorted(out, key=lambda s: s.start)
 
 
+
+async def _booking_contact_email() -> str | None:
+    """The agency's own inbox, for the leads who never gave us an address.
+
+    Most of them: the main channel is WhatsApp, so a lead is a phone number.
+    Cal.com refuses a booking without an attendee address, and the derivation
+    in use — the phone, if it happens to contain an "@" — is only ever true of
+    email-channel leads. So every WhatsApp, SMS and voice booking failed
+    against a real Cal.com account, invisibly, because the simulated mode that
+    is the default everywhere but production returns before the HTTP call.
+
+    Read on the RLS session, so it is this agency's address and no other's.
+    """
+    from sqlalchemy import select
+
+    from app.db.base import get_session_factory
+    from app.models.agent_settings import AgentSettings
+
+    try:
+        async with get_session_factory()() as db:
+            found = (
+                (await db.execute(select(AgentSettings.booking_contact_email)))
+                .scalars()
+                .first()
+            )
+    except Exception as exc:  # noqa: BLE001 — the caller raises a clear error
+        log.warning("could not read the booking contact address: %s", exc)
+        return None
+    return (found or "").strip() or None
+
+
 async def create_booking(
     *,
     start_time: datetime,
@@ -199,7 +230,14 @@ async def create_booking(
             "this lead's name, email and phone in front of another agency."
         )
     if not attendee_email:
-        raise CalComError("attendee_email is required for real Cal.com bookings.")
+        attendee_email = await _booking_contact_email()
+    if not attendee_email:
+        raise CalComError(
+            "this booking has no attendee email, and Cal.com requires one. Set "
+            "the agency's booking contact address in Settings — the "
+            "confirmation goes there, and the lead is confirmed on the channel "
+            "they wrote on."
+        )
 
     body: dict[str, Any] = {
         "eventTypeId": int(identity.destination),

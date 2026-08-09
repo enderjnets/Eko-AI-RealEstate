@@ -42,7 +42,7 @@ from app.models import (
 from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
 from app.services.i18n import detect_language, language_instruction, pick_supported_language
-from app.services.llm import LLMUnavailable, generate_reply
+from app.services.llm import LLMResult, LLMUnavailable, generate_reply
 from app.services.scoring import rescore_lead
 from app.services.tenant_context import get_org_id
 from app.services.whatsapp import send_text_message as whatsapp_send
@@ -458,7 +458,11 @@ async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | b
     lead = lead_row.scalar_one_or_none()
     is_new_lead = lead is None
     if lead is None:
-        lead = Lead(phone=report.from_identifier, name=report.from_name)
+        lead = Lead(
+            phone=report.from_identifier,
+            name=report.from_name,
+            email=_address_or_none(report.from_identifier),
+        )
         db.add(lead)
         await db.flush()
         log.info("Created lead id=%d channel=voice identifier=%s", lead.id, lead.phone)
@@ -538,6 +542,44 @@ async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | b
     }
 
 
+
+
+def _address_or_none(identifier: str | None) -> str | None:
+    """The identifier, when it is an email address rather than a phone.
+
+    Leads are keyed by `phone` on every channel, so an email lead's address has
+    always been sitting in that column. Copying it into `email` is what lets a
+    booking name the actual person instead of the agency's inbox.
+    """
+    value = (identifier or "").strip()
+    return value if "@" in value else None
+
+
+def _fallback_reply(agent_cfg: AgentSettings | None) -> LLMResult:
+    """What to say when every language model is unreachable.
+
+    Deliberately not an apology for a technical fault the lead did not cause,
+    and deliberately not a promise of a time we cannot keep. It acknowledges
+    the message and hands over to a person, which is what a lead needs at
+    11pm when the alternative is silence.
+    """
+    who = (agent_cfg.agency_name if agent_cfg else None) or "the team"
+    # An LLMResult, not a bare string: everything downstream reads `.text`,
+    # `.provider` and `.model` off this, and `provider="fallback"` is what the
+    # dashboard and the analytics need to see to tell a canned line apart from
+    # something the model wrote.
+    return LLMResult(
+        text=(
+            f"Thanks for your message — {who} has received it and someone will "
+            "get back to you shortly."
+        ),
+        provider="fallback",
+        model="none",
+        input_tokens=0,
+        output_tokens=0,
+    )
+
+
 async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dict[str, int | str | bool]:
     """Process one inbound message (any channel) end-to-end. Returns a small status dict.
 
@@ -575,7 +617,11 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     lead = await first_or_create(
         db,
         lead_stmt,
-        lambda: Lead(phone=parsed.from_identifier, name=parsed.from_name),
+        lambda: Lead(
+            phone=parsed.from_identifier,
+            name=parsed.from_name,
+            email=_address_or_none(parsed.from_identifier),
+        ),
     )
     if is_new_lead and lead.id is not None:
         log.info("Created lead id=%d channel=%s identifier=%s", lead.id, parsed.channel, lead.phone)
@@ -751,14 +797,11 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         reply = await generate_reply(messages=llm_messages, system=system_prompt, max_tokens=400)
     except LLMUnavailable as exc:
         log.error("All LLMs failed for lead %d: %s", lead.id, exc)
-        await rescore_lead(lead, db, commit=False)
-        await db.commit()
-        return {
-            "status": "llm_unavailable",
-            "lead_id": lead.id,
-            "inbound_id": inbound.id,
-            "is_new_lead": is_new_lead,
-        }
+        # Say something. The webhook answers 200 either way, so the provider
+        # never redelivers — silence here means a lead who wrote at 11pm gets
+        # nothing at all and no one finds out until they have gone elsewhere.
+        # A short human note costs nothing and keeps the conversation open.
+        reply = _fallback_reply(agent_cfg)
 
     # ── 9. Persist outbound (status=PENDING) ──────────────────────────
     reply_subject = None

@@ -52,6 +52,12 @@ class Lead(Base):
     phone: Mapped[str] = mapped_column(String(254), nullable=False)
     name: Mapped[str | None] = mapped_column(String(160), nullable=True)
 
+    # Nullable, and usually null: a WhatsApp or SMS lead gives a phone and
+    # nothing else. Kept because a real address is worth having when we do get
+    # one — from the email channel, from a discovery import, or from the lead
+    # telling us — and because a booking that has one can send the client their
+    # own confirmation instead of only the agency's.
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     status: Mapped[LeadStatus] = mapped_column(
         pg_enum(LeadStatus, name="lead_status"),
         default=LeadStatus.NEW,

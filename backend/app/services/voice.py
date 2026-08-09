@@ -194,7 +194,11 @@ async def _resolve_or_create_lead(identifier: str, name: str | None, db: AsyncSe
     row = await db.execute(select(Lead).where(Lead.phone == identifier))
     lead = row.scalar_one_or_none()
     if lead is None:
-        lead = Lead(phone=identifier, name=name)
+        lead = Lead(
+            phone=identifier,
+            name=name,
+            email=identifier if "@" in (identifier or "") else None,
+        )
         db.add(lead)
         await db.flush()
         log.info("Created lead id=%d channel=voice identifier=%s", lead.id, identifier)
@@ -264,7 +268,10 @@ async def handle_tool_call(
             if provided and provided != phone:
                 note += f" · callback: {provided}"
 
-            attendee_email = lead.phone if "@" in lead.phone else None
+            # The lead's own address when we have one; `phone` holds it for
+            # email-channel leads. Neither, and `create_booking` uses the
+            # agency's booking contact rather than failing.
+            attendee_email = lead.email or (lead.phone if "@" in (lead.phone or "") else None)
             attendee_phone = lead.phone if "@" not in lead.phone else None
             booking = await create_booking(
                 start_time=when,

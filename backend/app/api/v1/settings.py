@@ -33,6 +33,7 @@ class SettingsOut(BaseModel):
 
     agency_name: str
     agency_phone: str | None
+    booking_contact_email: str | None
     agent_persona: str
     greeting_template: str
     languages: list[str]
@@ -51,6 +52,12 @@ class SettingsPatch(BaseModel):
 
     agency_name: str | None = Field(default=None, min_length=1, max_length=160)
     agency_phone: str | None = Field(default=None, max_length=32)
+    # Where Cal.com sends the confirmation for a lead who only gave a
+    # phone number, which is most of them.
+    # Not EmailStr: that pulls in an optional dependency the image does not
+    # carry, and a wrong address here fails visibly at the first booking rather
+    # than silently.
+    booking_contact_email: str | None = Field(default=None, max_length=255)
     agent_persona: str | None = Field(default=None, min_length=1)
     greeting_template: str | None = Field(default=None, min_length=1)
     languages: list[str] | None = Field(default=None, min_length=1)

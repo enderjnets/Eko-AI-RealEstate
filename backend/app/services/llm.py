@@ -28,7 +28,10 @@ from app.config import get_settings
 
 log = logging.getLogger(__name__)
 
-ProviderName = Literal["kimi", "minimax", "ollama"]
+# "fallback" is not a provider you can call — it is what the canned reply is
+# stamped with when every real one is unreachable, so the dashboard and the
+# analytics can tell a held line apart from something a model wrote.
+ProviderName = Literal["kimi", "minimax", "ollama", "fallback"]
 
 
 @dataclass(frozen=True)
