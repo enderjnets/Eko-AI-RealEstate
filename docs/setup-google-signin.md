@@ -116,6 +116,7 @@ office (each as admin or member) — no redeploy needed.
 | Button not visible | `GOOGLE_CLIENT_ID` empty, or no admin/allow env set | Set `GOOGLE_CLIENT_ID` + `GOOGLE_ADMIN_EMAILS` + `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, restart |
 | Popup opens then closes immediately | Origin not in "Authorized JavaScript origins" | Add the URL in Google Console, wait ~5 min |
 | Blank `accounts.google.com/gsi/transform` tab (esp. mobile) | Callback URL not in "Authorized redirect URIs" | Add `…/api/v1/auth/login/google/callback` for that origin, wait ~5 min |
+| `Error 400: redirect_uri_mismatch`, and the origin is an **IP address** | Google refuses raw IPs as origins and redirect URIs on Web clients — only `localhost` and public domains | **Not fixable in the console.** Open the dashboard on its domain instead. On the ROG that is `https://inmo-demo.ekoaiautomation.com`; the LAN address `http://10.0.0.240:3004` can never do Google |
 | Lands on `/login?error=google_failed` | CSRF/token rejected (often a stale redirect URI or `aud` mismatch) | Confirm the redirect URI + that `GOOGLE_CLIENT_ID` matches the built `NEXT_PUBLIC_GOOGLE_CLIENT_ID` |
 | 401 `email_not_in_allow_list` | Account not on the list | Add it in Settings → Team (or to `GOOGLE_ADMIN_EMAILS`) |
 | Logged in but no Settings tab | You're a `member`, not `admin` | Have an admin promote you in Settings → Team |

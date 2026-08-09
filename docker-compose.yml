@@ -170,7 +170,11 @@ services:
       args:
         # Client JS never hits this directly — it talks to a same-origin /api/...
         # which next.config.js rewrites to INTERNAL_API_URL below.
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+        # Unused by the app — `lib/api.ts` calls relative paths and
+        # `next.config.js` rewrites them internally — kept only so an older
+        # `.env` that still sets it cannot change the build.
+        NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_CANONICAL_URL: ${NEXT_PUBLIC_CANONICAL_URL:-}
         # Google Sign In client ID (public) — inlined into the bundle at build.
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
         # Sign in with Apple — Services ID + the return URL (popup origin must

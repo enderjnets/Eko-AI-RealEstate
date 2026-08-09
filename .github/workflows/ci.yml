@@ -72,7 +72,7 @@ jobs:
         run: pytest -v
 
   frontend:
-    name: Frontend (tsc + lint)
+    name: Frontend (tsc + test + lint)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -89,6 +89,10 @@ jobs:
       - name: Type-check
         working-directory: frontend
         run: npx tsc --noEmit
+
+      - name: Unit tests
+        working-directory: frontend
+        run: npm test
 
       - name: Lint
         working-directory: frontend
