@@ -746,6 +746,9 @@ async def _real_slots_note(
 # times before it is given up on. WhatsApp's limit is far higher; SMS sets the
 # floor, so use it for both.
 _SMS_MAX_CHARS = 1500
+# WhatsApp accepts 4096. Applying the SMS floor to it amputated ordinary
+# replies on the product's main channel for no reason.
+_CHANNEL_MAX_CHARS = {"sms": _SMS_MAX_CHARS, "whatsapp": 4000}
 
 
 
@@ -760,40 +763,65 @@ class OfferedListing:
 
 
 
-def _price_forms(price: object) -> set[str]:
-    """The ways a model is likely to write one price back."""
+def _price_patterns(price: object) -> list[re.Pattern[str]]:
+    """How this listing's price might be written, matched as a whole number.
+
+    Substring matching was wrong in both directions at once. "1k" — the form
+    for a $1,200 rental — is inside "451k", so an unrelated sale credited the
+    rental's broker; and "1,200" is inside "1,200 sq ft", so a floor area did
+    too. Word boundaries fix the first. For the second, a number small enough
+    to be a room count, a year or a square footage has to arrive with a
+    currency marker before it; a six-figure number does not, because nothing
+    else in a property conversation looks like that.
+    """
     try:
         whole = int(float(price))  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return set()
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError included deliberately: a Decimal("Infinity") is a legal
+        # numeric column value, and this runs after the reply is generated but
+        # before it is saved — an exception here loses the answer entirely.
+        return []
     if whole <= 0:
-        return set()
+        return []
+
     forms = {str(whole), f"{whole:,}", f"{whole:,}".replace(",", ".")}
     if whole >= 1000:
         forms.add(f"{whole // 1000}k")
-    return forms
+    needs_currency = whole < 10_000
+    prefix = r"[$€]\s?" if needs_currency else r"[$€]?\s?"
+    return [
+        # The boundaries exclude a longer number on either side — "1k" inside
+        # "451k", "650" inside "1650" — but not ordinary punctuation, which the
+        # first attempt did: "$650k," failed on its own comma.
+        re.compile(
+            rf"(?<!\d)(?<!\d[.,]){prefix}{re.escape(form)}(?!\d)(?![.,]\d)",
+            re.IGNORECASE,
+        )
+        for form in forms
+    ]
 
 
 def _reply_shows(reply: str, listing: OfferedListing) -> bool:
     """Whether this reply puts THIS listing's details in front of the consumer.
 
-    Attribution is owed when a listing's data is shown, so this is the right
-    question; every earlier version answered it either too narrowly (one exact
-    title) or far too broadly. Broadly is not harmless: matching the part of a
-    title before a comma meant a title of "Apartamento, 3 hab" credited all
-    three offered brokers on any reply containing the word "apartamento", and
-    matching a bare street number meant "9 Park Ave" matched "abrimos de 9 a 6".
-
-    Three precise signals: the full title, the full address, or this listing's
-    own price written in any of the usual ways. A reply that quotes a price we
-    handed the model is showing listing data; one that says "we open at nine"
-    is not.
+    Three signals: the full title, the full address, or this listing's own
+    price. A listing that offers none of them — a short generated title, no
+    address, no price ("price on request" is a real state) — counts as shown,
+    because a listing that can never satisfy the test can never be credited,
+    and silence is the failure that costs a licence.
     """
     haystack = reply.lower()
+    usable = False
     for value in (listing.title, listing.address):
-        if value and len(value.strip()) >= 8 and value.strip().lower() in haystack:
-            return True
-    return any(form.lower() in haystack for form in _price_forms(listing.price))
+        if value and len(value.strip()) >= 8:
+            usable = True
+            if value.strip().lower() in haystack:
+                return True
+    patterns = _price_patterns(listing.price)
+    usable = usable or bool(patterns)
+    if any(pattern.search(reply) for pattern in patterns):
+        return True
+    return not usable
 
 
 def _with_broker_credits(
@@ -822,11 +850,12 @@ def _with_broker_credits(
     footer = ""
     if lines:
         footer = "\n\n" + " · ".join(lines)
-        if channel in ("sms", "whatsapp"):
-            while len(lines) > 1 and len(footer) > _SMS_MAX_CHARS // 2:
+        budget = _CHANNEL_MAX_CHARS.get(channel, 0) // 2
+        if budget:
+            while len(lines) > 1 and len(footer) > budget:
                 lines.pop()
                 footer = "\n\n" + " · ".join(lines) + _AND_OTHERS
-            if len(footer) > _SMS_MAX_CHARS // 2:
+            if len(footer) > budget:
                 footer = _COLLECTIVE_CREDIT
     return _fit_to_channel(reply, footer, channel)
 
@@ -846,9 +875,10 @@ def _fit_to_channel(reply: str, footer: str, channel: str) -> str:
     footer was never measured — and a 2200-character SMS is rejected by Twilio
     and then retried five times to the same rejection.
     """
-    if channel not in ("sms", "whatsapp"):
+    limit = _CHANNEL_MAX_CHARS.get(channel)
+    if limit is None:
         return reply.rstrip() + footer if footer else reply
-    room = _SMS_MAX_CHARS - len(footer)
+    room = limit - len(footer)
     body = reply if len(reply) <= room else reply[: max(0, room - 1)].rstrip() + "…"
     return body.rstrip() + footer if footer else body
 
@@ -871,12 +901,22 @@ def history_content(message: "Message") -> str:
 def strip_broker_credits(content: str) -> str:
     """The message without its attribution footer.
 
-    The footer lives in `Message.content`, which is also what conversation
-    history is built from — so without this the model reads three credit lines
-    back for every past turn, and repeats them.
+    From the end, and only when what follows is nothing but credit lines. The
+    first version split on the first occurrence — and the listing block handed
+    to the model already contains "Cortesía de", so the model echoes it, and a
+    bulleted reply puts one mid-body. Everything after it, including the actual
+    question, vanished from the history the model reads next turn.
     """
     marker = "\n\nCortesía de"
-    return content.split(marker, 1)[0].rstrip() if marker in content else content
+    head, found, tail = content.rpartition(marker)
+    if not found:
+        return content
+    trailing = (found + tail).strip()
+    # A footer is one line of credits. Anything with a paragraph break in it is
+    # the body of the message, not the footer.
+    if "\n\n" in trailing[2:]:
+        return content
+    return head.rstrip() or content
 
 
 def _fallback_reply(agent_cfg: AgentSettings | None, target_lang: str) -> LLMResult:

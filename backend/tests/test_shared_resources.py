@@ -1139,3 +1139,47 @@ def test_a_lead_s_own_words_are_never_trimmed() -> None:
         content="Sí, sigue.\n\nCortesía de Kentwood Real Estate",
     )
     assert history_content(ours) == "Sí, sigue."
+
+
+def test_a_price_is_matched_as_a_number_not_as_a_substring() -> None:
+    """The credit failed in both directions at once.
+
+    "1k" — the form for a $1,200 rental — is inside "451k", so an unrelated
+    sale credited the rental's broker; and "1,200" is inside "1,200 sq ft", so
+    a floor area did too. Meanwhile a listing with a short title, no address
+    and no price could never match anything and so could never be credited at
+    all, which is the failure that costs a licence.
+    """
+    from app.services.conversation import OfferedListing, _reply_shows
+
+    sale = OfferedListing("K", "Casa en Wash Park", "1200 S Gaylord St", 650000)
+    rental = OfferedListing("K", "Loft 5A", None, 1200)
+
+    assert _reply_shows("for $650k, interested?", sale)
+    assert _reply_shows("piden 650,000.", sale)
+    assert not _reply_shows("tenemos otra en 451k", rental)
+    assert not _reply_shows("tiene 1,200 sq ft", rental)
+    assert not _reply_shows("una en 1650k", sale)
+    # A small price still counts when it arrives as money.
+    assert _reply_shows("son $1,200 al mes", rental)
+
+    # Nothing to match on: credited rather than silently skipped.
+    sparse = OfferedListing("K", "Loft", None, None)
+    assert _reply_shows("cualquier cosa", sparse)
+
+
+def test_the_footer_stripper_never_eats_the_body() -> None:
+    """The listing block handed to the model already contains "Cortesía de", so
+    the model echoes it, and a bulleted reply puts one mid-body. Splitting at
+    the first occurrence deleted everything after it — including the actual
+    question — from the history the model reads next turn."""
+    from app.services.conversation import strip_broker_credits
+
+    mid_body = (
+        "Tengo dos:\n\nCortesía de Kentwood — Casa en Wash Park\n\n"
+        "¿Cuál te interesa ver primero?"
+    )
+    assert strip_broker_credits(mid_body) == mid_body
+
+    with_footer = "Tengo una en Wash Park.\n\nCortesía de Kentwood Real Estate"
+    assert strip_broker_credits(with_footer) == "Tengo una en Wash Park."
