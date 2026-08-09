@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 
+import sqlalchemy as sa
 from alembic import op
 
 revision = "024_role_password_and_refs"
@@ -41,8 +42,14 @@ def upgrade() -> None:
         )
         return
 
-    exists = op.get_bind().exec_driver_sql(
-        "SELECT 1 FROM pg_roles WHERE rolname = %(role)s", {"role": APP_ROLE}
+    # `exec_driver_sql` hands the string straight to the driver, and asyncpg
+    # speaks $1, not pyformat — so `%(role)s` was a syntax error, every time,
+    # on every fresh install. It never showed up here because a database that
+    # already had the role took the early return above, and because the local
+    # database has been migrated incrementally since before this revision
+    # existed. Only a virgin database reaches this line.
+    exists = op.get_bind().execute(
+        sa.text("SELECT 1 FROM pg_roles WHERE rolname = :role"), {"role": APP_ROLE}
     ).first()
     if exists is None:
         # Happens only when APP_DB_ROLE was changed after 015 ran: 015 will not
