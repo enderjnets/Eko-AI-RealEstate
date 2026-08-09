@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime, time
 from email.utils import parseaddr
 
@@ -317,7 +318,7 @@ async def generate_reply_suggestions(
             # Without the attribution footer: it lives in `content`, so the
             # model read three credit lines back for every past turn and
             # dutifully repeated them.
-            "content": strip_broker_credits(m.content),
+            "content": history_content(m),
         }
         for m in history
     ]
@@ -747,90 +748,124 @@ async def _real_slots_note(
 _SMS_MAX_CHARS = 1500
 
 
-# What separates a reply that shows a listing from one that does not. Kept
-# generous on purpose: a miss is an uncredited listing, a false positive is a
-# redundant line.
-_MONEY = re.compile(r"[$€]\s?\d|\d{3}[.,]\d{3}|\b\d{3}\s?k\b", re.IGNORECASE)
+
+@dataclass(frozen=True)
+class OfferedListing:
+    """One listing put in front of the model this turn, and who to credit."""
+
+    broker: str
+    title: str | None
+    address: str | None
+    price: object
 
 
-def _reply_shows(reply: str, title: str | None, address: str | None) -> bool:
-    """Whether this reply puts a listing's details in front of the consumer.
+
+def _price_forms(price: object) -> set[str]:
+    """The ways a model is likely to write one price back."""
+    try:
+        whole = int(float(price))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return set()
+    if whole <= 0:
+        return set()
+    forms = {str(whole), f"{whole:,}", f"{whole:,}".replace(",", ".")}
+    if whole >= 1000:
+        forms.add(f"{whole // 1000}k")
+    return forms
+
+
+def _reply_shows(reply: str, listing: OfferedListing) -> bool:
+    """Whether this reply puts THIS listing's details in front of the consumer.
 
     Attribution is owed when a listing's data is shown, so this is the right
-    question — the earlier versions just answered it badly, by looking for one
-    exact string the model was free to paraphrase away. Several signals now,
-    any of which is enough: the title, the address, the street number, or a
-    price anywhere in the reply. "Abrimos de 9 a 6" matches none of them; "the
-    Wash Park house is $650k" matches on the price alone.
+    question; every earlier version answered it either too narrowly (one exact
+    title) or far too broadly. Broadly is not harmless: matching the part of a
+    title before a comma meant a title of "Apartamento, 3 hab" credited all
+    three offered brokers on any reply containing the word "apartamento", and
+    matching a bare street number meant "9 Park Ave" matched "abrimos de 9 a 6".
+
+    Three precise signals: the full title, the full address, or this listing's
+    own price written in any of the usual ways. A reply that quotes a price we
+    handed the model is showing listing data; one that says "we open at nine"
+    is not.
     """
     haystack = reply.lower()
-    for value in (title, address):
-        if not value or not value.strip():
-            continue
-        if value.strip().lower() in haystack:
+    for value in (listing.title, listing.address):
+        if value and len(value.strip()) >= 8 and value.strip().lower() in haystack:
             return True
-        # And the part before the first comma — "Coldwell Banker Tower, Unit 5"
-        # gets referred to as "the Coldwell Banker Tower unit", which carries
-        # the listing's identity without matching the whole string.
-        head = value.split(",", 1)[0].strip().lower()
-        if len(head) >= 8 and head in haystack:
-            return True
-    if address:
-        number = address.strip().split(" ", 1)[0]
-        if number.isdigit() and number in reply:
-            return True
-    return bool(_MONEY.search(reply))
+    return any(form.lower() in haystack for form in _price_forms(listing.price))
 
 
 def _with_broker_credits(
-    reply: str, offered: list[tuple[str, str, str | None]], channel: str
+    reply: str, offered: list[OfferedListing], channel: str
 ) -> str:
     """Append the listing brokers' credits to the message that reaches the lead.
 
     Colorado requires the broker to be named wherever a listing's details reach
-    a consumer. Crediting on every turn regardless — which is what dropping the
-    detection altogether produced — staples three brokers onto "we open at
-    nine", on every message for the rest of the conversation. Crediting only on
-    an exact title match misses the moment the model paraphrases. So: credit
-    when the reply shows listing data at all, and then credit every broker
-    whose listing was offered, because which of them the model actually used is
-    not knowable from the text.
+    a consumer. Which of the offered listings the model actually used is not
+    knowable from the text, so once the reply shows any of them, all of their
+    brokers are credited: over-crediting is a redundant line, under-crediting
+    is a licence problem.
     """
-    if not offered or not any(broker for broker, _t, _a in offered):
-        return reply
-    if not any(_reply_shows(reply, title, address) for _b, title, address in offered):
-        return reply
-
+    shown = [item for item in offered if item.broker and _reply_shows(reply, item)]
     lines: list[str] = []
-    for broker, _title, _address in offered:
-        if not broker:
+    for item in offered if shown else []:
+        if not item.broker:
             continue
-        line = f"Cortesía de {broker}"
+        line = f"Cortesía de {item.broker}"
         # This exact credit, not the bare name — a listing titled "Coldwell
         # Banker Tower" otherwise suppressed Coldwell Banker's credit.
         if line.lower() in reply.lower() or line in lines:
             continue
         lines.append(line)
-    if not lines:
-        return reply
 
+    footer = ""
+    if lines:
+        footer = "\n\n" + " · ".join(lines)
+        if channel in ("sms", "whatsapp"):
+            while len(lines) > 1 and len(footer) > _SMS_MAX_CHARS // 2:
+                lines.pop()
+                footer = "\n\n" + " · ".join(lines) + _AND_OTHERS
+            if len(footer) > _SMS_MAX_CHARS // 2:
+                footer = _COLLECTIVE_CREDIT
+    return _fit_to_channel(reply, footer, channel)
+
+
+# Bilingual, because the product is. A lead writing in English should not be
+# handed Spanish legalese, and the credit has to survive either way.
+_AND_OTHERS = " · y otros corredores listantes / and other listing brokers"
+_COLLECTIVE_CREDIT = (
+    "\n\nCortesía de los corredores listantes / Courtesy of the listing brokers"
+)
+
+
+def _fit_to_channel(reply: str, footer: str, channel: str) -> str:
+    """The message, with its footer, inside what the channel will accept.
+
+    The cap used to live inside the credit branch, so a reply that earned no
+    footer was never measured — and a 2200-character SMS is rejected by Twilio
+    and then retried five times to the same rejection.
+    """
     if channel not in ("sms", "whatsapp"):
-        return reply.rstrip() + "\n\n" + " · ".join(lines)
-
-    # Twilio hard-rejects past its limit, and a rejected message is retried five
-    # times before being given up on. Fit the credits and let the prose give
-    # way — but never return something still over the limit, which is what
-    # subtracting an oversized footer from the budget did.
-    footer = "\n\n" + " · ".join(lines)
-    while len(lines) > 1 and len(footer) > _SMS_MAX_CHARS // 2:
-        lines.pop()
-        footer = "\n\n" + " · ".join(lines) + " · y otros corredores listantes"
-    if len(footer) > _SMS_MAX_CHARS // 2:
-        # One name too long to fit is still a listing that must be credited.
-        footer = "\n\nCortesía de los corredores listantes"
+        return reply.rstrip() + footer if footer else reply
     room = _SMS_MAX_CHARS - len(footer)
     body = reply if len(reply) <= room else reply[: max(0, room - 1)].rstrip() + "…"
-    return body.rstrip() + footer
+    return body.rstrip() + footer if footer else body
+
+
+
+def history_content(message: "Message") -> str:
+    """What the model should read back for one past turn.
+
+    Our own messages lose their attribution footer: it lives in `content`, so
+    without this the model reads three credit lines back for every past turn
+    and repeats them. A lead's message is never touched — someone who pastes a
+    listing block and asks their question underneath would have had the
+    question deleted, and the agent would answer the turn before.
+    """
+    if message.direction == MessageDirection.OUTBOUND:
+        return strip_broker_credits(message.content)
+    return message.content
 
 
 def strip_broker_credits(content: str) -> str:
@@ -1051,7 +1086,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
             # Without the attribution footer: it lives in `content`, so the
             # model read three credit lines back for every past turn and
             # dutifully repeated them.
-            "content": strip_broker_credits(m.content),
+            "content": history_content(m),
         }
         for m in history
     ]
@@ -1109,7 +1144,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # Collected here and appended to the reply itself further down. Putting the
     # credit only in the system prompt made a licence obligation depend on the
     # model choosing to repeat it, which it will not always do.
-    offered_listings: list[tuple[str, str, str | None]] = []
+    offered_listings: list[OfferedListing] = []
     if lead.intent in (LeadIntent.BUY, LeadIntent.RENT) and lead.zone:
         try:
             from app.services.listings import match_properties_for_lead  # lazy import
@@ -1127,7 +1162,9 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
                 broker = listing_broker((p.raw or {}).get("list_office_name"), p.source)
                 credit = f"Cortesía de {broker}" if broker else ""
                 if broker:
-                    offered_listings.append((broker, p.title, p.address))
+                    offered_listings.append(
+                        OfferedListing(broker, p.title, p.address, p.price)
+                    )
                 lines.append(
                     f"- {p.title} — {price}{(' · ' + specs) if specs else ''}"
                     f"{(' · ' + p.address) if p.address else ''}{(' · ' + p.url) if p.url else ''}"

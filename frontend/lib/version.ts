@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.40.0";
+export const CURRENT_VERSION = "0.41.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,40 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.41.0",
+    date: "2026-08-09",
+    title: {
+      en: "Your replies get through, and every listing is credited",
+      es: "Tus respuestas llegan, y cada propiedad va acreditada",
+    },
+    changes: [
+      {
+        en: "A reply that hit a provider outage used to be lost silently. Failed messages are now retried automatically, backing off over about an hour and a half before giving up.",
+        es: "Una respuesta que topaba con una caída del proveedor se perdía en silencio. Ahora los mensajes fallidos se reintentan solos, espaciándose durante hora y media antes de darse por vencidos.",
+      },
+      {
+        en: "When every AI provider is unreachable, the lead now gets a short note in their own language instead of silence.",
+        es: "Cuando ningún proveedor de IA responde, el lead recibe una nota breve en su idioma en vez de silencio.",
+      },
+      {
+        en: "Listings shown to a lead now carry the listing broker's credit automatically, on the message itself — a Colorado requirement that rested on the AI choosing to repeat it.",
+        es: "Las propiedades que se enseñan a un lead llevan ahora el crédito del corredor listante automáticamente, en el propio mensaje — un requisito de Colorado que dependía de que la IA decidiera repetirlo.",
+      },
+      {
+        en: "One city-filtered property import used to hide every listing outside that city from the automatic sync, permanently — including ones that had just sold.",
+        es: "Una importación filtrada por ciudad ocultaba para siempre del sync automático todas las propiedades de fuera de esa ciudad — incluidas las que acababan de venderse.",
+      },
+      {
+        en: "The properties list now shows active listings by default instead of mixing in sold and pending ones.",
+        es: "La lista de propiedades muestra ahora las activas por defecto, en vez de mezclar vendidas y pendientes.",
+      },
+      {
+        en: "The same person writing from WhatsApp and then from email is now one lead instead of two.",
+        es: "La misma persona escribiendo por WhatsApp y luego por email es ahora un solo lead en vez de dos.",
+      },
+    ],
+  },
   {
     version: "0.40.0",
     date: "2026-08-08",

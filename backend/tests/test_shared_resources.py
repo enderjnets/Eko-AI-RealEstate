@@ -927,12 +927,16 @@ def test_the_broker_credit_is_added_when_it_is_missing() -> None:
     misses the moment the model paraphrases or translates. It no longer
     guesses: every broker whose listing was put in front of the model is
     credited."""
-    from app.services.conversation import _with_broker_credits
+    from app.services.conversation import OfferedListing, _with_broker_credits
 
-    offered = [("Kentwood Real Estate", "Casa en Wash Park", "1200 S Gaylord St")]
+    offered = [
+        OfferedListing(
+            "Kentwood Real Estate", "Casa en Wash Park", "1200 S Gaylord St", 650000
+        )
+    ]
 
     # The case that matters: the model paraphrased the title out of existence.
-    paraphrased = "I have a great place near Wash Park for $650k, interested?"
+    paraphrased = "I have a great place near the park for $650k, interested?"
     assert "Cortesía de Kentwood Real Estate" in _with_broker_credits(
         paraphrased, offered, "whatsapp"
     )
@@ -943,9 +947,13 @@ def test_the_broker_credit_is_added_when_it_is_missing() -> None:
 
     # A broker's own name inside a listing title is not a credit. Matching the
     # bare name treated it as one and dropped the real credit.
-    tricky = [("Coldwell Banker", "Coldwell Banker Tower, Unit 5", None)]
+    tricky = [
+        OfferedListing("Coldwell Banker", "Coldwell Banker Tower, Unit 5", None, 425000)
+    ]
     out = _with_broker_credits(
-        "The Coldwell Banker Tower unit is available.", tricky, "whatsapp"
+        "The Coldwell Banker Tower, Unit 5 is available at $425,000.",
+        tricky,
+        "whatsapp",
     )
     assert "Cortesía de Coldwell Banker" in out
 
@@ -966,10 +974,16 @@ def test_the_credit_survives_a_reply_too_long_for_sms() -> None:
     """Twilio hard-rejects over 1600 characters, and a rejected message is now
     retried five times before it is given up on. The prose gives way; the
     credit does not."""
-    from app.services.conversation import _SMS_MAX_CHARS, _with_broker_credits
+    from app.services.conversation import (
+        _SMS_MAX_CHARS,
+        OfferedListing,
+        _with_broker_credits,
+    )
 
-    offered = [("Kentwood Real Estate", "Casa en Wash Park", None)]
-    long_reply = "Casa en Wash Park. " + ("detalle " * 400)
+    offered = [
+        OfferedListing("Kentwood Real Estate", "Casa en Wash Park", None, 650000)
+    ]
+    long_reply = "Casa en Wash Park por $650,000. " + ("detalle " * 400)
     out = _with_broker_credits(long_reply, offered, "sms")
     assert "Cortesía de Kentwood Real Estate" in out
     assert len(out) <= _SMS_MAX_CHARS
@@ -978,7 +992,10 @@ def test_the_credit_survives_a_reply_too_long_for_sms() -> None:
     # still over the limit. Subtracting an oversized footer from the budget
     # gave a body of "…" and returned "…" plus the footer — mangled AND
     # rejected, which is the worst of both.
-    many = [(f"Very Long Brokerage Name Number {i}" * 12, "T", None) for i in range(8)]
+    many = [
+        OfferedListing(f"Very Long Brokerage Name Number {i}" * 12, "T", None, 650000)
+        for i in range(8)
+    ]
     out = _with_broker_credits(long_reply, many, "sms")
     assert len(out) <= _SMS_MAX_CHARS
 
@@ -1057,3 +1074,68 @@ def test_the_footer_is_not_read_back_to_the_model() -> None:
     # mentions a broker mid-sentence.
     plain = "Cortesía de la casa, el café es gratis."
     assert strip_broker_credits(plain) == plain
+
+
+def test_the_credit_does_not_fire_on_things_that_are_not_listings() -> None:
+    """Broad matching is not the safe direction it looks like.
+
+    Matching the part of a title before a comma meant "Apartamento, 3 hab"
+    credited all three offered brokers on any reply containing the word
+    "apartamento"; matching a bare street number meant "9 Park Ave" matched
+    "abrimos de 9 a 6"; and matching any money-shaped text credited a reply
+    quoting a phone number. Each of those puts a broker's name on an answer
+    that never showed their listing.
+    """
+    from app.services.conversation import OfferedListing, _with_broker_credits
+
+    offered = [
+        OfferedListing("Kentwood", "Apartamento, 3 habitaciones", "9 Park Ave", 425000)
+    ]
+    for innocent in (
+        "Sí, tenemos apartamento disponible para verlo.",
+        "Abrimos de 9 a 6 de lunes a viernes.",
+        "Llámanos al 303.555.0134.",
+        "La consulta es gratis, $0 de comisión por la visita.",
+    ):
+        assert _with_broker_credits(innocent, offered, "whatsapp") == innocent, (
+            f"credited a broker on: {innocent!r}"
+        )
+
+    # And it still fires on the real thing, by price alone.
+    real = "Ese está en 425,000 y podemos verlo mañana."
+    assert "Cortesía de Kentwood" in _with_broker_credits(real, offered, "whatsapp")
+
+
+def test_a_long_reply_is_cut_to_the_channel_even_without_a_credit() -> None:
+    """The cap lived inside the credit branch, so a reply that earned no footer
+    was never measured — and a 2200-character SMS is rejected by Twilio and
+    then retried five times to the same rejection."""
+    from app.services.conversation import _SMS_MAX_CHARS, _with_broker_credits
+
+    huge = "detalle " * 400
+    assert len(_with_broker_credits(huge, [], "sms")) <= _SMS_MAX_CHARS
+
+
+def test_a_lead_s_own_words_are_never_trimmed() -> None:
+    """The footer stripper ran on inbound messages too. A lead who pastes the
+    agent's listing block and asks their question underneath had the question
+    deleted from the model's context, so the agent answered the previous turn."""
+    from app.models.message import MessageDirection
+    from app.services.conversation import history_content
+
+    pasted = (
+        "Vi esto:\n\nCortesía de Kentwood Real Estate\n\n"
+        "¿Sigue disponible y cuánto piden?"
+    )
+    from_lead = SimpleNamespace(
+        direction=MessageDirection.INBOUND, content=pasted
+    )
+    assert history_content(from_lead) == pasted, (
+        "the lead's actual question was deleted from the model's context"
+    )
+
+    ours = SimpleNamespace(
+        direction=MessageDirection.OUTBOUND,
+        content="Sí, sigue.\n\nCortesía de Kentwood Real Estate",
+    )
+    assert history_content(ours) == "Sí, sigue."

@@ -2,6 +2,57 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.41.0] — 2026-08-09
+
+Rondas 22 a 29. Las rondas 23 y siguientes dejaron de mirar el aislamiento
+entre agencias —veintidós rondas ya lo habían recorrido— y miraron si el
+producto funciona. Encontraron cosas peores.
+
+**Ningún lead llegado por WhatsApp podía reservar una visita.** Cal.com exige
+un email del asistente. Los leads se identifican por `phone` en todos los
+canales, y la dirección se derivaba como "el teléfono, si lleva una arroba" —
+cierto solo para los leads de email. Contra una cuenta real de Cal.com, toda
+reserva por WhatsApp, SMS o voz fallaba: el panel mostraba 503 y quien llamaba
+oía "tengo problemas con el calendario". Invisible fuera de producción porque
+`CALENDAR_SIMULATED` corta antes de la llamada HTTP.
+
+**Una caída de los LLM no respondía nada.** El webhook contesta 200 igual, así
+que el proveedor no reintenta: un lead que escribía a las 11 de la noche
+recibía silencio, y nada en el panel lo decía.
+
+**Una respuesta que fallaba al enviarse se perdía.** Cada adaptador de canal es
+un único POST. Un 503 de Meta o un 429 de Twilio marcaban el mensaje como
+fallido y ahí terminaba: no había reintento ni barrido alguno. Ahora hay uno,
+por organización, que espacia los intentos y se rinde en voz alta.
+
+**Una propiedad llegaba al lead sin acreditar a nadie.** Colorado exige nombrar
+al corredor listante allí donde una propiedad llega a un consumidor, y el
+nombre solo vivía en `raw`, que ninguna respuesta de la API exponía. En el chat
+había una línea de cortesía, pero en el *prompt*: una obligación de licencia
+dependiendo de que un modelo decidiera repetirla. La lógica se reescribió
+cinco veces —una de ellas invertida, acreditando solo cuando ya estaba
+acreditado— hasta quedar en tres señales precisas: el título, la dirección o el
+precio de esa propiedad.
+
+**Un sync filtrado por ciudad ocultaba el resto del feed, para siempre.** El
+filtro se aplica de nuestro lado, así que la corrida veía todos los registros e
+importaba unos pocos — y luego adelantaba el cursor compartido más allá de
+todos. Un solo `POST /properties/sync?city=Denver` volvía invisible cada
+propiedad de Boulder modificada en esa ventana, incluidas las que acababan de
+entrar bajo contrato.
+
+Además: cancelar una visita devolvía 500 y la dejaba agendada; la voz reservaba
+una hora ya ocupada en vez de ofrecer otra; los huecos se ofrecían por lead, no
+por agencia; el arranque se niega si RLS no se aplica con más de una agencia;
+los logs ya no son una lista de leads; `docker-compose.yml` ya no trae la
+contraseña del rol de RLS; la misma persona por WhatsApp y por email es un solo
+lead; y los ajustes que el cliente rellena —horario, saludo, zona horaria—
+por fin cambian lo que el agente dice.
+
+Hueco conocido: **no hay rate limiting**. El gasto en bloque está tras
+`require_platform_admin`; el coste de LLM por conversación no tiene cuota por
+organización.
+
 ## [0.40.0] — 2026-08-08
 
 Rondas 14 a 21. Ocho rondas, todas DO-NOT-SHIP, y en casi todas el defecto lo
