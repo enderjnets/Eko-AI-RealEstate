@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.41.1";
+export const CURRENT_VERSION = "0.41.2";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.41.2",
+    date: "2026-08-09",
+    title: {
+      en: "The installer now installs what the release says",
+      es: "El instalador instala lo que dice la versión",
+    },
+    changes: [
+      {
+        en: "A fresh installation reported an old version number, because the version was written down in four places and three of them were never updated. It now comes from one place.",
+        es: "Una instalación nueva reportaba un número de versión antiguo, porque la versión estaba escrita en cuatro sitios y tres no se actualizaban nunca. Ahora sale de uno solo.",
+      },
+      {
+        en: "The technical API description was still being served when the developer documentation was switched off.",
+        es: "La descripción técnica de la API se seguía sirviendo con la documentación de desarrollo apagada.",
+      },
+    ],
+  },
   {
     version: "0.41.1",
     date: "2026-08-09",

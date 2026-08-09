@@ -2,6 +2,33 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.41.2] — 2026-08-09
+
+El tag `v0.41.1` apuntaba al árbol que todavía tenía el bug que ese mismo
+release decía cerrar: desplegar desde el tag habría instalado la versión
+equivocada. De ahí este número.
+
+**La versión vivía en cuatro sitios y tres estaban rancios.** `install.sh`
+escribía `APP_VERSION=0.12.0` en el `.env` que genera, así que una instalación
+limpia de v0.41.1 habría servido `{"version":"0.12.0"}` mientras el frontend
+decía otra cosa. `docker-compose.yml` traía una segunda copia (`0.39.2`) y
+`.env.example` una tercera. Subirlas habría arreglado hoy y roto el siguiente
+release igual: ahora la versión sale solo de `backend/app/config.py`.
+
+**El esquema de la API seguía servido con la documentación cerrada.**
+`docs_url` estaba condicionado a `DEBUG` y `openapi_url` no, así que
+`/openapi.json` devolvía 200 en el host de producción con `DEBUG=false` — el
+inventario completo de rutas y modelos que esa puerta existe para no dar.
+
+**Dieciocho ajustes no estaban documentados** en `.env.example`, incluida toda
+la pila de voz: quien encendiera las llamadas no tenía forma de saber cómo se
+llamaban las claves. Y al documentarlos, tres de los valores los escribí de
+memoria en vez de leerlos del código — un host de Ollama que no resuelve en
+Linux, un modelo que nadie descarga y la mitad del timeout que el código
+permite. Cada uno rompe una instalación nueva de forma que parece un proveedor
+caído. Ahora hay un test que compara cada valor del ejemplo con el default real
+y exige que ningún ajuste falte.
+
 ## [0.41.1] — 2026-08-09
 
 Abrir el panel en la dirección de red local del ROG pintaba un botón de Google
