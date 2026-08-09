@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.39.2";
+export const CURRENT_VERSION = "0.40.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,36 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.40.0",
+    date: "2026-08-08",
+    title: {
+      en: "Each agency books on its own calendar",
+      es: "Cada agencia reserva en su propio calendario",
+    },
+    changes: [
+      {
+        en: "Every agency now books on its own Cal.com. Before this, a booking wrote your client's name, email and phone onto the operator's calendar, where another agency's realtors could see it — and your bookings blocked out their availability.",
+        es: "Cada agencia reserva ahora en su propio Cal.com. Antes, una reserva escribía el nombre, email y teléfono de tu cliente en el calendario del operador, donde lo veían los realtors de otra agencia — y tus reservas tapaban su disponibilidad.",
+      },
+      {
+        en: "Two different leads could be offered the same half-hour and both bookings went through, sending one realtor to two houses at once. Availability is now de-conflicted across the whole agency.",
+        es: "A dos leads distintos se les podía ofrecer la misma media hora y ambas reservas prosperaban, mandando a un realtor a dos casas a la vez. La disponibilidad ahora se resuelve para toda la agencia.",
+      },
+      {
+        en: "An email could name another agency inside a group address and route your lead to them. Any grouped address now makes the whole header untrusted, and the delivery envelope wins over what the sender wrote.",
+        es: "Un email podía nombrar a otra agencia dentro de una dirección de grupo y desviarle tu lead. Ahora cualquier dirección agrupada invalida la cabecera entera, y el sobre de entrega manda sobre lo que escribió quien envía.",
+      },
+      {
+        en: "Cancelling a visit returned an error and left it scheduled when the calendar was not set up. It now says the calendar is unavailable and leaves the visit untouched, so retrying means something.",
+        es: "Cancelar una visita devolvía un error y la dejaba agendada si el calendario no estaba configurado. Ahora avisa de que el calendario no está disponible y deja la visita intacta, así reintentar sirve de algo.",
+      },
+      {
+        en: "Lead phone numbers, inbound message payloads and uploaded contact lists are no longer written to the logs in full.",
+        es: "Los teléfonos de los leads, los mensajes entrantes y las listas de contactos subidas ya no se escriben enteros en los logs.",
+      },
+    ],
+  },
   {
     version: "0.39.2",
     date: "2026-08-08",

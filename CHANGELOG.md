@@ -2,6 +2,66 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.40.0] — 2026-08-08
+
+Rondas 14 a 21. Ocho rondas, todas DO-NOT-SHIP, y en casi todas el defecto lo
+había introducido el arreglo de la ronda anterior.
+
+**Nadie le había dado calendario propio a las agencias.** SMS, WhatsApp, email
+y voz se reformaron para tener identidad por organización; el calendario no, y
+ni `channel_routes` ni `agent_settings` tenían dónde ponerlo. Así que la reserva
+de la agencia B escribía nombre, email y teléfono de su cliente como asistente
+en el Cal.com del operador —donde lo ven los realtors de otra agencia— y sus
+reservas tapaban la disponibilidad de la agencia A. Sin atacante y sin
+configuración rara: lo hacía la primera reserva real. Invisible en desarrollo
+porque `CALENDAR_SIMULATED` corta antes de la llamada HTTP.
+
+El guard que lo impide se escribió mal **tres veces**: la primera solo cubría
+instalaciones nuevas (todo piloto que se actualiza ya tiene `CALCOM_API_KEY` en
+su `.env`); la segunda preguntaba si había *alguna* credencial, y la global lo
+es; la tercera, si existía la fila, y una fila con solo el event type es forma
+legal de onboarding. La pregunta correcta —¿la credencial viene de ESTA
+agencia?— tardó tres intentos en enunciarse.
+
+**El parser de email, otra vez, y la misma lección.** Quitar los miembros de un
+grupo RFC 5322 con nombre impedía *añadir* una dirección y regalaba el poder de
+*eliminar* la legítima: `undisclosed:<destinatario real>;, leads@agenciab.test`
+borraba al destinatario honesto, la regla de "dos agencias nombradas, rehúsa"
+veía un solo dueño, y el lead entraba en la agencia B. Ahora un grupo en
+cualquier parte invalida la cabecera entera. Más al fondo: la clave de enrutado
+salía de `to`/`cc`, que **escribe quien envía**; cuando el proveedor incluye
+sobre, manda el sobre.
+
+**Lo que se paga una vez para toda la instalación, ahora es del operador.**
+`/properties/sync` (la licencia de REcolorado) y las cinco rutas de
+`/discovery` (Outscraper, Yelp, SerpApi y el presupuesto de LLM) estaban tras
+`require_auth`: cualquier miembro de cualquier agencia podía agotar el crédito
+del que dependen las respuestas de todas las demás. El frontend oculta esos
+controles en vez de dejar que el inquilino descubra un 403.
+
+**El arranque se niega** si RLS no se está aplicando y hay más de una agencia
+—antes lo registraba en el log y servía tráfico igual— y también si el número
+de agencias no se puede leer, que era la forma silenciosa de desactivar las dos
+comprobaciones a la vez.
+
+**Los logs eran una lista de leads.** Volcados de payload entrante, salida del
+LLM citando ficheros subidos y números de teléfono, en claro, en un stream que
+comparten todas las agencias y que el operador puede exportar. Claves en vez de
+valores, longitudes en vez de contenido, últimos cuatro dígitos en vez del
+número.
+
+Además: cancelar una visita devolvía 500 y la dejaba agendada cuando el
+calendario no estaba configurado (el realtor conduce igual hasta la casa);
+`docker-compose.yml` traía por defecto la contraseña del rol de RLS, publicada
+en el repositorio, y ahora exige ambas variables; la disponibilidad cargaba en
+memoria todas las visitas históricas de la agencia en cada consulta; y los
+huecos se desduplicaban por lead, así que dos leads distintos recibían la misma
+media hora y ambas reservas prosperaban.
+
+Hueco conocido y documentado: **no hay rate limiting**. El gasto en bloque está
+cerrado, pero el coste de LLM por conversación no tiene cuota por organización.
+Medirlo por `org_id` es requisito previo a facturarlo.
+
 ## [0.39.2] — 2026-08-08
 
 Rondas 12 y 13. Ambas devolvieron DO-NOT-SHIP, y las dos veces el defecto lo
