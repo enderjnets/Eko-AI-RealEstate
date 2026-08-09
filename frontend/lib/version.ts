@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.41.0";
+export const CURRENT_VERSION = "0.41.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.41.1",
+    date: "2026-08-09",
+    title: {
+      en: "Sign in tells you where it works",
+      es: "El acceso te dice dónde funciona",
+    },
+    changes: [
+      {
+        en: "Opening the dashboard on its local network address showed a Google button that could only ever fail — Google does not accept sign-ins from a bare IP address. It now tells you the web address to use instead. The same applies to Apple.",
+        es: "Abrir el panel en su dirección de red local mostraba un botón de Google que solo podía fallar — Google no acepta accesos desde una IP a secas. Ahora te dice qué dirección web usar. Lo mismo con Apple.",
+      },
+      {
+        en: "Your session is now protected in transit whenever the dashboard is served over a secure connection, and still works when it is reached on the local network.",
+        es: "Tu sesión viaja protegida siempre que el panel se sirva por conexión segura, y sigue funcionando cuando se entra por la red local.",
+      },
+    ],
+  },
   {
     version: "0.41.0",
     date: "2026-08-09",

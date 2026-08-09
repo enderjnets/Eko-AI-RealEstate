@@ -2,6 +2,44 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.41.1] — 2026-08-09
+
+Abrir el panel en la dirección de red local del ROG pintaba un botón de Google
+que solo podía terminar en la pantalla "Access blocked" de Google. No había
+nada roto: **Google rechaza direcciones IP** como origen en clientes de tipo
+Web, así que ese origen no puede ofrecer Google por mucho que se toque la
+consola — y la instalación ya tenía un dominio registrado que llega a ella. Lo
+que faltaba era que la página lo dijera. Ahora lo dice, y también para Apple,
+que tiene la misma restricción y se quedó fallando en silencio en el primer
+intento de este arreglo.
+
+**La marca `Secure` de la cookie de sesión ya no sale de `APP_ENV`.** Una
+variable de entorno no puede ver cómo llegó una petición, así que forzaba una
+sola respuesta para una instalación a la que se entra de dos maneras: por TLS
+en su dominio y por http plano en la LAN. Marcada como producción, el navegador
+se negaba a guardar la cookie en la LAN y allí no había sesión posible; marcada
+como desarrollo, la cookie viajaba sin marcar en el dominio, que sí tiene TLS.
+Esa era la razón de que producción siguiera en `development`. Decidiéndolo por
+petición desaparece el dilema: **`APP_ENV=production` ya está activo, `/docs`
+cerrado, y la LAN sigue funcionando.**
+
+Detalles del camino, porque los encontró la auditoría y no yo:
+
+- `Origin` se usaba como prueba de TLS viniera de quien viniera. La respuesta de
+  Google es un POST cross-site que trae `Origin: https://accounts.google.com`,
+  lo que no dice nada de cómo llegó el navegador: en una instalación de
+  desarrollo por http marcaba la cookie `Secure`, Safari la descartaba, y el
+  usuario volvía al login sin ningún error. Ahora solo cuenta el mismo sitio.
+- El argumento `request` era opcional con un valor por defecto estricto, así
+  que tres sitios de llamada se olvidaron de pasarlo y emitían una cookie que el
+  navegador descartaba — un login que responde 200 y falla en la siguiente
+  petición. Ahora es obligatorio.
+- `NEXT_PUBLIC_API_URL=http://localhost:8000` era configuración muerta que
+  nadie lee, y me costó tiempo real durante la verificación del despliegue
+  creyendo que el panel apuntaba a la máquina del usuario.
+- El instalador nunca escribía la URL canónica, así que el mensaje nuevo habría
+  salido sin dirección justo en las instalaciones creadas con él.
+
 ## [0.41.0] — 2026-08-09
 
 Rondas 22 a 29. Las rondas 23 y siguientes dejaron de mirar el aislamiento
