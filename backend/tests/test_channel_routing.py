@@ -604,15 +604,22 @@ def test_a_batched_envelope_naming_two_agencies_is_refused() -> None:
 def test_addresses_are_stripped_of_display_names_before_matching() -> None:
     """Senders and providers both add them, and a lookup that kept the name
     never matched a stored route — turning a routable message into a refusal."""
-    from app.api.v1.webhooks.email import _address_only, _mailboxes
+    from app.api.v1.webhooks.email import _addresses_in, _mailboxes
 
-    assert _address_only("Agency B <leads@agency-b.test>") == "leads@agency-b.test"
-    assert _address_only("  leads@agency-b.test ") == "leads@agency-b.test"
+    assert _addresses_in("Agency B <leads@agency-b.test>") == ["leads@agency-b.test"]
+    assert _addresses_in("  leads@agency-b.test ") == ["leads@agency-b.test"]
     # A display name containing angle brackets, quoted as RFC 5322 requires.
-    assert _address_only('"A <b>" <real@x.test>') == "real@x.test"
-    # And a header too malformed to parse yields nothing usable, so it matches
-    # no route and the message is refused rather than attributed to a guess.
-    assert _address_only("A <b> C <real@x.test>") == "A <b> C <real@x.test>"
+    assert _addresses_in('"A <b>" <real@x.test>') == ["real@x.test"]
+
+    # Shapes the RFC parser gives up on entirely and that arrive every day. It
+    # returning nothing for these lost real leads on the routing path — and, in
+    # the fetch-scope check, a message with no readable recipients had nothing
+    # to compare against and was waved through.
+    assert _addresses_in("b@y.com,") == ["b@y.com"]
+    assert _addresses_in("a@x.com; b@y.com") == ["a@x.com", "b@y.com"]
+    # Genuinely nothing addressable stays empty, so it matches no route.
+    assert _addresses_in("undisclosed-recipients:;") == []
+    assert _addresses_in("<>") == []
 
     # The case that matters: one header naming two agencies must produce BOTH,
     # so the resolver sees the ambiguity. Taking the last angle-bracket pair

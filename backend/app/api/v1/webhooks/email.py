@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from email.utils import getaddresses
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -185,12 +186,22 @@ def _addresses_in(value: str) -> list[str]:
     `getaddresses` is the standard library's RFC 5322 parser, so a comma inside
     a quoted display name does not split the header.
     """
-    return [
+    found = [
         addr.strip() for _name, addr in getaddresses([value]) if addr and addr.strip()
     ]
+    # `getaddresses` gives up on several shapes that are delivered every day and
+    # returns nothing at all for them: a trailing comma, Outlook's semicolon
+    # separators, and the literal `undisclosed-recipients:;` that heads every
+    # BCC-only message. Silently reading those as "no recipients" loses real
+    # leads on the routing path and, worse, used to satisfy a security check by
+    # having nothing to compare. The scan is a floor under the parser, never a
+    # replacement: order is preserved and the parser's results come first.
+    for match in _BARE_ADDRESS.findall(value):
+        if match not in found:
+            found.append(match)
+    return found
 
 
-def _address_only(value: str) -> str:
-    """One address, display name stripped. For genuinely single-valued fields."""
-    parsed = _addresses_in(value)
-    return parsed[0] if parsed else value.strip()
+# Deliberately loose. It is only ever used to find candidates for an exact
+# lookup against `channel_routes`, so a false positive matches nothing.
+_BARE_ADDRESS = re.compile(r"[^\s<>,;:\"'()\[\]]+@[^\s<>,;:\"'()\[\]]+")

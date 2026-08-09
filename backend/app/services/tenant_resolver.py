@@ -251,10 +251,19 @@ async def _verifies_with_its_own_secret(channel: str, org_id: int) -> bool:
     Read on the bypass session: `channel_routes` is invisible to the app role,
     and this runs before any org is bound.
     """
-    from sqlalchemy import select
+    from sqlalchemy import or_, select
 
     from app.db.base import get_bypass_session_factory
-    from app.models.channel_route import ChannelRoute
+    from app.models.channel_route import CHANNEL_SMS, ChannelRoute
+
+    # Twilio signs inbound with the same auth token used to send, so an SMS
+    # route naming only `credential_ref` still verifies with its own secret —
+    # `resolve_outbound_identity` reuses it. Keying this on `inbound_secret_ref`
+    # alone therefore answered False for the natural onboarding shape and left
+    # the fallback open for exactly the agency it was written to protect.
+    has_own_secret = ChannelRoute.inbound_secret_ref.is_not(None)
+    if channel == CHANNEL_SMS:
+        has_own_secret = or_(has_own_secret, ChannelRoute.credential_ref.is_not(None))
 
     async with get_bypass_session_factory()() as db:
         return (
@@ -263,7 +272,7 @@ async def _verifies_with_its_own_secret(channel: str, org_id: int) -> bool:
                 .where(
                     ChannelRoute.channel == channel,
                     ChannelRoute.org_id == org_id,
-                    ChannelRoute.inbound_secret_ref.is_not(None),
+                    has_own_secret,
                 )
                 .limit(1)
             )

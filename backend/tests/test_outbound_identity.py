@@ -404,14 +404,24 @@ async def test_an_inbound_only_agency_keeps_its_own_signing_secret(
 
 @pytest.mark.asyncio
 async def test_an_outbound_only_agency_is_not_refused(monkeypatch) -> None:
-    """The mirror case, which the wrong key got wrong in the other direction.
+    """The mirror case: inbound genuinely still signed by the operator.
 
-    An agency with its own Twilio subaccount for sending, but whose inbound is
-    still signed by the operator's token, must keep working — refusing there
-    drops real leads for a configuration that is perfectly authentic.
+    Refusing here drops real leads for a configuration that is perfectly
+    authentic. The example is WhatsApp on purpose — Meta's app secret and
+    access token are different things, so owning the token says nothing about
+    who signs. For Twilio they are one value, and an agency naming it *does*
+    verify with its own secret, so the fallback correctly refuses there; that
+    is the case above.
     """
-    monkeypatch.setenv("TWILIO_TOKEN_AGENCY_B", "b-token")
-    await _seed_agency_b(credential_ref="TWILIO_TOKEN_AGENCY_B")
+    monkeypatch.setenv("WA_TOKEN_AGENCY_B", "b-access-token")
+    await _seed_agency_b(credential_ref="WA_TOKEN_AGENCY_B")
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text("UPDATE channel_routes SET channel = :c WHERE org_id = :i"),
+            {"c": CHANNEL_WHATSAPP, "i": AGENCY_B},
+        )
+        await db.commit()
+    tenant_resolver.reset_cache()
     try:
         async with get_bypass_session_factory()() as db:
             await db.execute(
@@ -421,7 +431,7 @@ async def test_an_outbound_only_agency_is_not_refused(monkeypatch) -> None:
             await db.commit()
         tenant_resolver.reset_cache()
         assert await tenant_resolver.webhook_org_or_refuse(
-            CHANNEL_SMS, "+19998887777"
+            CHANNEL_WHATSAPP, "999000111"
         ) == AGENCY_B
     finally:
         async with get_bypass_session_factory()() as db:
@@ -532,4 +542,41 @@ async def test_an_sms_route_verifies_with_the_token_it_already_names(
         assert identity.inbound_secret == "their-own-token"
         assert identity.inbound_secret != "the-operators-token"
     finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_sms_agency_on_its_own_token_is_not_handed_unmapped_traffic(
+    monkeypatch,
+) -> None:
+    """The round-13 guard, for the natural SMS onboarding shape.
+
+    Twilio's auth token is both the sending credential and the inbound signing
+    secret, so a route naming only `credential_ref` verifies with its own key.
+    The guard asked whether `inbound_secret_ref` was set, answered no, and left
+    the fallback open for exactly the agency it exists to protect: a message
+    signed with the *operator's* global token would have been filed into theirs.
+    """
+    monkeypatch.setenv("TWILIO_TOKEN_OWN", "their-own-token")
+    await _seed_agency_b(credential_ref="TWILIO_TOKEN_OWN")
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text("UPDATE organizations SET status = 'suspended' WHERE id = :i"),
+            {"i": DEFAULT_ORG_ID},
+        )
+        await db.commit()
+    tenant_resolver.reset_cache()
+    try:
+        assert await tenant_resolver.webhook_org_or_refuse(CHANNEL_SMS, B_NUMBER) == (
+            AGENCY_B
+        )
+        with pytest.raises(tenant_resolver.WebhookOrgUnresolved):
+            await tenant_resolver.webhook_org_or_refuse(CHANNEL_SMS, "+19998887777")
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE organizations SET status = 'active' WHERE id = :i"),
+                {"i": DEFAULT_ORG_ID},
+            )
+            await db.commit()
         await _cleanup()

@@ -97,6 +97,11 @@ def _auth_on(monkeypatch) -> object:
     monkeypatch.setattr(
         get_settings(), "PLATFORM_ADMIN_EMAILS", "op@eko.com"
     )
+    # These modules create routes, and routing a channel that accepts unsigned
+    # inbound is refused. Real onboarding turns simulation off first.
+    for flag in ("SMS_SIMULATED", "WHATSAPP_SIMULATED", "EMAIL_SIMULATED",
+                 "VOICE_SIMULATED"):
+        monkeypatch.setattr(get_settings(), flag, False)
     yield
     tenant_resolver.reset_cache()
 
@@ -923,4 +928,46 @@ async def test_a_route_cannot_borrow_another_agencys_credential(monkeypatch) -> 
             )
             await db.commit()
         await _drop_org(third_org)
+        await _drop_org(SECOND_ORG_ID)
+
+
+@pytest.mark.asyncio
+async def test_a_route_cannot_be_created_while_the_channel_is_simulated(
+    monkeypatch,
+) -> None:
+    """A simulated channel accepts unsigned inbound; a route makes it reachable.
+
+    Startup refuses that combination, but only at startup — and organizations
+    and routes are created through this API on a running process. Onboarding a
+    second agency therefore left every webhook skipping signature verification
+    until the next restart, so anyone who knew that agency's public number could
+    write leads and book visits inside their tenant.
+    """
+    from app.config import get_settings
+    from app.models.channel_route import CHANNEL_SMS
+
+    monkeypatch.setattr(get_settings(), "SMS_SIMULATED", True)
+    token = make_token(
+        email="op@eko.com", role="admin", org_id=DEFAULT_ORG_ID, superuser=True
+    )
+    await _make_org(SECOND_ORG_ID, SECOND_SLUG)
+    try:
+        async with await _client(**{COOKIE_NAME: token}) as c:
+            r = await c.post(
+                "/api/v1/platform/routes",
+                json={
+                    "org_id": SECOND_ORG_ID,
+                    "channel": CHANNEL_SMS,
+                    "destination": "+13035558400",
+                },
+            )
+        assert r.status_code == 409, r.text
+        assert r.json()["detail"]["error"] == "channel_is_in_simulated_mode"
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM channel_routes WHERE org_id = :i"),
+                {"i": SECOND_ORG_ID},
+            )
+            await db.commit()
         await _drop_org(SECOND_ORG_ID)

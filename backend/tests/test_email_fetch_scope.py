@@ -135,3 +135,82 @@ async def test_an_agency_can_still_fetch_its_own_message() -> None:
         assert got is not None and got["text"] == "A's own body"
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_body_with_no_readable_recipients_is_refused() -> None:
+    """The check had nothing to compare against and waved it through.
+
+    Reachable without any malformed input: the `To:` header of a BCC-only
+    delivery is the literal `undisclosed-recipients:;`, which parses to no
+    addresses at all. Naming another agency's message id and letting the
+    recipient list come back empty walked straight past the guard.
+    """
+    await _seed()
+    hidden = {
+        "id": "eml-bcc",
+        "to": "undisclosed-recipients:;",
+        "text": "B's private body",
+    }
+    try:
+        with org_scope(ORG_A), patch(
+            "app.services.email.httpx", _httpx_returning(hidden)
+        ):
+            assert await fetch_inbound_email("eml-bcc") is None
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_check_does_not_fire_before_a_second_agency_exists() -> None:
+    """Nobody to impersonate, so nothing to refuse.
+
+    A single-customer install must keep accepting every shape of header — the
+    guard is about one agency borrowing another's message id, and until a second
+    agency has an email route there is no other agency.
+    """
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text("DELETE FROM channel_routes WHERE channel = :c"),
+            {"c": CHANNEL_EMAIL},
+        )
+        await db.commit()
+    tenant_resolver.reset_cache()
+    unreadable = {"id": "eml-solo", "to": "undisclosed-recipients:;", "text": "hi"}
+    with org_scope(1), patch(
+        "app.services.email.httpx", _httpx_returning(unreadable)
+    ):
+        got = await fetch_inbound_email("eml-solo")
+    assert got is not None and got["text"] == "hi"
+
+
+@pytest.mark.asyncio
+async def test_an_agency_without_its_own_route_cannot_fetch_a_hidden_message() -> None:
+    """The case where the empty-recipients guard is the only thing standing.
+
+    Agency A has no email route of its own — it is the single active tenant, so
+    the fallback binds it — while agency B, suspended for non-payment, still has
+    one and still has mail on the shared Resend account. With a body whose
+    recipients do not parse, the "no route claims these addresses" branch asks
+    whether *A* owns a route, finds none, and answers yes. Only refusing an
+    unreadable recipient list closes it.
+    """
+    await _seed()
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text("DELETE FROM channel_routes WHERE org_id = :i"), {"i": ORG_A}
+        )
+        await db.execute(
+            text("UPDATE organizations SET status = 'suspended' WHERE id = :i"),
+            {"i": ORG_B},
+        )
+        await db.commit()
+    tenant_resolver.reset_cache()
+    hidden = {"id": "eml-hidden", "to": "undisclosed-recipients:;", "text": "B's mail"}
+    try:
+        with org_scope(ORG_A), patch(
+            "app.services.email.httpx", _httpx_returning(hidden)
+        ):
+            assert await fetch_inbound_email("eml-hidden") is None
+    finally:
+        await _cleanup()

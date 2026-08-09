@@ -25,7 +25,14 @@ from app.api.v1.auth import (
     _token_from_request,
     require_platform_admin,
 )
+from app.config import get_settings
 from app.db.base import get_bypass_db
+from app.models.channel_route import (
+    CHANNEL_EMAIL,
+    CHANNEL_SMS,
+    CHANNEL_VOICE,
+    CHANNEL_WHATSAPP,
+)
 from app.models.organization import (
     DEMO_ORG_ID,
     PLAN_PILOT,
@@ -281,6 +288,42 @@ def _named_refs(body: RouteIdentityIn) -> list[str]:
 
 
 
+
+async def _refuse_if_channel_is_simulated(channel: str) -> None:
+    """A simulated channel accepts unsigned inbound; a route makes it reachable.
+
+    Startup refuses the combination, but only at startup — and organizations and
+    routes are created through this API on a running process. Without the same
+    check here, onboarding a second agency left every webhook skipping signature
+    verification until the next restart, so anyone who knew that agency's public
+    number could write leads and book visits inside their tenant.
+    """
+    settings = get_settings()
+    simulated = {
+        CHANNEL_SMS: settings.SMS_SIMULATED,
+        CHANNEL_WHATSAPP: settings.WHATSAPP_SIMULATED,
+        CHANNEL_EMAIL: settings.EMAIL_SIMULATED,
+        CHANNEL_VOICE: settings.VOICE_SIMULATED,
+    }
+    if not simulated.get(channel):
+        return
+    real = tenant_resolver.routable_candidates(await tenant_resolver.active_orgs())
+    if len(real) < 2:
+        return
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "error": "channel_is_in_simulated_mode",
+            "channel": channel,
+            "hint": (
+                f"{channel.upper()}_SIMULATED accepts unsigned inbound. Turn it "
+                "off and configure the provider secret before routing a "
+                "destination to it."
+            ),
+        },
+    )
+
+
 async def _refuse_shared_refs(
     db: AsyncSession, body: RouteIdentityIn, *, org_id: int, route_id: int | None
 ) -> None:
@@ -369,6 +412,7 @@ async def create_route(
         # it publishes real leads' phone numbers and transcripts.
         raise HTTPException(status_code=400, detail="cannot_route_to_demo_org")
     _validate_refs(body)
+    await _refuse_if_channel_is_simulated(body.channel)
     await _refuse_shared_refs(db, body, org_id=body.org_id, route_id=None)
 
     route = ChannelRoute(

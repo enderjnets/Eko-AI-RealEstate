@@ -59,6 +59,11 @@ def _auth_on(monkeypatch) -> object:
     monkeypatch.setattr(
         get_settings(), "PLATFORM_ADMIN_EMAILS", f"admin{DEFAULT_ORG_ID}@x.test"
     )
+    # These modules create routes, and routing a channel that accepts unsigned
+    # inbound is refused. Real onboarding turns simulation off first.
+    for flag in ("SMS_SIMULATED", "WHATSAPP_SIMULATED", "EMAIL_SIMULATED",
+                 "VOICE_SIMULATED"):
+        monkeypatch.setattr(get_settings(), flag, False)
     yield
     tenant_resolver.reset_cache()
 

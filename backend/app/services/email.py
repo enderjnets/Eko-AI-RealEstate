@@ -157,19 +157,49 @@ async def _addressed_to_acting_org(detail: dict[str, Any] | None) -> bool:
     if org_id is None:
         return True
 
+    # Only meaningful when some *other* agency has an email route: they are the
+    # only party who could be impersonated through a borrowed message id. On a
+    # single-customer install, or before a second agency is onboarded, every
+    # message is theirs by definition and this must not start refusing mail.
+    if not await _another_org_owns_email_routes(org_id):
+        return True
+
     addresses = _mailboxes({"data": detail})
     if not addresses:
-        return True
+        # Refuse. This used to answer True, and it is reachable: the header of
+        # a BCC-only delivery is the literal `undisclosed-recipients:;`, which
+        # parses to nothing — so naming another agency's message id and letting
+        # the recipient list come back empty walked straight past the check.
+        return False
     try:
         owner = await resolve_org_by_destination(CHANNEL_EMAIL, addresses)
     except Exception:  # noqa: BLE001 — ambiguity here is a refusal, not a crash
         return False
     if owner is None:
-        # No route claims any of these addresses, so nobody can be impersonated
-        # through them: the shared mailbox belongs to whoever the single-tenant
-        # fallback already chose.
+        # No route claims any of these addresses. Safe only if this agency has
+        # no route of its own either — otherwise it is asking for a message
+        # addressed somewhere it does not own.
         return not await _org_owns_any_email_route(org_id)
     return owner == org_id
+
+
+async def _another_org_owns_email_routes(org_id: int) -> bool:
+    from sqlalchemy import select
+
+    from app.db.base import get_bypass_session_factory
+    from app.models.channel_route import ChannelRoute
+
+    async with get_bypass_session_factory()() as db:
+        return (
+            await db.execute(
+                select(ChannelRoute.id)
+                .where(
+                    ChannelRoute.channel == CHANNEL_EMAIL,
+                    ChannelRoute.org_id != org_id,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none() is not None
 
 
 async def _org_owns_any_email_route(org_id: int) -> bool:
