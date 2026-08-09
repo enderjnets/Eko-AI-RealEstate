@@ -747,3 +747,168 @@ async def test_the_agent_offers_real_times_or_none_at_all(monkeypatch) -> None:
         "app.api.v1.visits._busy_starts", _no_busy
     ):
         assert await conv._real_slots_note(cfg, "can I book a viewing?", None) == ""
+
+
+def test_every_feed_listing_carries_a_broker_to_credit() -> None:
+    """Colorado requires the listing broker to be named wherever an IDX listing
+    reaches a consumer, and the obligation sits on the agency's licence. The
+    only place the name was kept was `raw`, which no API response exposed — so
+    every property card, every detail view and every match list showed a
+    REcolorado listing with no credit. In chat it was a line appended to the
+    system prompt, which is to say a model was free to drop it."""
+    from app.models.property import PropertySource
+    from app.services.listings import listing_broker
+
+    assert listing_broker("Kentwood Real Estate", PropertySource.RESO) == (
+        "Kentwood Real Estate"
+    )
+    # A feed listing whose broker field is empty still gets credited. One
+    # missing field in one record must not silently drop the attribution.
+    assert listing_broker(None, PropertySource.RESO) == "REcolorado"
+    assert listing_broker("", "reso") == "REcolorado"
+    # A property the agency typed in itself is theirs; crediting a broker that
+    # does not exist would be its own kind of wrong.
+    assert listing_broker(None, PropertySource.MANUAL) is None
+    # But if they named one, credit it whatever the source.
+    assert listing_broker("Co-Broker LLC", PropertySource.MANUAL) == "Co-Broker LLC"
+
+
+@pytest.mark.asyncio
+async def test_a_scoped_import_does_not_hide_the_rest_of_the_feed() -> None:
+    """`city` is applied on our side, so a scoped run sees every record and
+    imports a few. Advancing the shared cursor past the rest told the
+    unfiltered background sweep they were already handled — permanently. One
+    `POST /properties/sync?city=Denver` made every Boulder listing modified in
+    that window invisible, including the ones that had just gone under
+    contract, which the agent kept offering at a stale price."""
+    from sqlalchemy import select
+
+    from app.models import SyncState
+    from app.services import listings as mod
+
+    far_future = datetime(2030, 1, 1, tzinfo=UTC)
+
+    async def _one_empty_page(*a: object, **k: object):
+        # A page the city filter emptied: nothing to import, but a high
+        # watermark that must not be adopted.
+        yield SimpleNamespace(listings=[], max_modified=far_future)
+
+    async def _set_cursor(value: object) -> None:
+        async with get_session_factory()() as db:
+            row = (
+                await db.execute(
+                    select(SyncState).where(SyncState.source == mod.RESO_SOURCE_KEY)
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                db.add(SyncState(source=mod.RESO_SOURCE_KEY, cursor_modified_at=value))
+            else:
+                row.cursor_modified_at = value
+            await db.commit()
+
+    async def _cursor() -> object:
+        async with get_session_factory()() as db:
+            row = (
+                await db.execute(
+                    select(SyncState).where(SyncState.source == mod.RESO_SOURCE_KEY)
+                )
+            ).scalar_one_or_none()
+            return row.cursor_modified_at if row else None
+
+    from app.config import get_settings
+
+    settings = get_settings()
+    was_simulated = settings.LISTINGS_SIMULATED
+    settings.LISTINGS_SIMULATED = False
+    settings.RESO_BASE_URL = settings.RESO_BASE_URL or "https://feed.test"
+    settings.RESO_ACCESS_TOKEN = settings.RESO_ACCESS_TOKEN or "t"
+    baseline = datetime(2020, 1, 1, tzinfo=UTC)
+    try:
+        with org_scope(DEFAULT_ORG_ID):
+            # A known baseline, and restored in `finally`. Left to whatever the
+            # last run wrote, a failed assertion here leaves the cursor at the
+            # value the next run expects to prove it did NOT reach — which is
+            # how this test passed under its own mutation.
+            await _set_cursor(baseline)
+            with patch.object(mod, "_fetch_reso_pages", _one_empty_page):
+                async with get_session_factory()() as db:
+                    await mod.sync_listings(db, city="Denver")
+            assert await _cursor() == baseline, (
+                "a city-scoped import moved the sweep's cursor past listings it "
+                "never looked at"
+            )
+
+            # And an unfiltered run still advances it, or the sweep never ends.
+            with patch.object(mod, "_fetch_reso_pages", _one_empty_page):
+                async with get_session_factory()() as db:
+                    await mod.sync_listings(db)
+            assert await _cursor() == far_future
+    finally:
+        with org_scope(DEFAULT_ORG_ID):
+            await _set_cursor(None)
+        settings.LISTINGS_SIMULATED = was_simulated
+
+
+@pytest.mark.asyncio
+async def test_the_same_person_on_two_channels_is_one_lead() -> None:
+    """Leads are keyed on `phone` for every channel, so someone who wrote from
+    WhatsApp and later emailed became two records: two score histories, two
+    rows in the funnel, and a realtor reading half a conversation each time."""
+    from sqlalchemy import func, select
+
+    from app.models import Lead
+    from app.services._common import ParsedMessage
+    from app.services.conversation import handle_inbound_message
+    from app.services.llm import LLMResult
+
+    async def _reply(**kwargs: object) -> LLMResult:
+        return LLMResult(
+            text="Of course.", provider="kimi", model="k2",
+            input_tokens=1, output_tokens=1,
+        )
+
+    async def _sent(*a: object, **k: object) -> tuple[str, None]:
+        return "id-1", None
+
+    await _make_agency()
+    try:
+        with org_scope(AGENCY):
+            async with get_session_factory()() as db:
+                # They wrote from WhatsApp first, and gave us their address.
+                lead = Lead(phone="+13035554444", email="buyer@example.test")
+                db.add(lead)
+                await db.commit()
+                first_id = lead.id
+
+            arriving_by_email = ParsedMessage(
+                channel="email",
+                external_id="msg-merge-1",
+                from_identifier="buyer@example.test",
+                from_name="A Buyer",
+                content="Following up on the Aurora place.",
+            )
+            async with get_session_factory()() as db:
+                with patch(
+                    "app.services.conversation.generate_reply", _reply
+                ), patch("app.services.conversation._dispatch_send", _sent):
+                    await handle_inbound_message(arriving_by_email, db)
+
+            async with get_session_factory()() as db:
+                total = (
+                    await db.execute(select(func.count()).select_from(Lead))
+                ).scalar()
+                same = (
+                    await db.execute(
+                        select(Lead).where(Lead.email == "buyer@example.test")
+                    )
+                ).scalars().all()
+            assert total == 1, f"{total} leads for one person"
+            assert same[0].id == first_id
+    finally:
+        async with get_bypass_session_factory()() as db:
+            for table in ("messages", "conversations", "leads"):
+                await db.execute(
+                    text(f"DELETE FROM {table} WHERE org_id = :i"), {"i": AGENCY}
+                )
+            await db.commit()
+        await _cleanup()

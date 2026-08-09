@@ -588,6 +588,9 @@ async def _sync_reso(
     else:
         cursor = None if full else row.cursor_modified_at
 
+    # A filtered run is a manual import of one slice, not a sweep of the feed,
+    # so it must not move the marker the sweep depends on.
+    advances_cursor = not city
     total_created = total_updated = 0
     max_seen = cursor
     try:
@@ -601,7 +604,18 @@ async def _sync_reso(
         ):
             # The cursor advances on EVERY page, even one the city filter emptied —
             # otherwise those records come back on the next run, forever.
-            if page.max_modified and (max_seen is None or page.max_modified > max_seen):
+            #
+            # But ONLY when nothing was filtered out. `city` is applied on our
+            # side, so a city-scoped run sees every record and imports a few;
+            # advancing the shared cursor past the rest told the unfiltered
+            # background worker they were already handled. One
+            # `POST /properties/sync?city=Denver` therefore made every Boulder
+            # listing modified in that window invisible forever — including the
+            # ones that had just gone under contract, which the agent kept
+            # offering at a stale price.
+            if advances_cursor and page.max_modified and (
+                max_seen is None or page.max_modified > max_seen
+            ):
                 max_seen = page.max_modified
             created = updated = 0
             if page.listings:
@@ -612,8 +626,8 @@ async def _sync_reso(
                 .values(
                     cursor_modified_at=max_seen,
                     last_run_at=datetime.now(UTC),
-                    last_created=created,
-                    last_updated=updated,
+                    last_created=total_created + created,
+                    last_updated=total_updated + updated,
                     last_error=None,
                 )
             )
@@ -681,3 +695,31 @@ async def match_properties_for_lead(lead: Lead, db: AsyncSession, *, limit: int 
 
     out.sort(key=lambda p: (p.price if p.price is not None else Decimal("0")))
     return out[:limit]
+
+def listing_broker(office: str | None, source: object = None) -> str | None:
+    """The broker to credit beside a listing, or None if there is none to credit.
+
+    Colorado requires the listing broker to be named wherever an IDX listing
+    reaches a consumer. The obligation sits on the agency's real-estate
+    licence, so callers render this themselves rather than asking a language
+    model to repeat it.
+
+    Returns the name only; each surface phrases it in its own language
+    ("Cortesía de …" in chat, a localized label in the dashboard). Errs towards
+    crediting: any name present is credited whatever the source, and a feed
+    listing with no name falls back to the feed itself, so one missing field
+    cannot silently drop the credit.
+    """
+    from app.models.property import PropertySource
+
+    name = (office or "").strip()
+    if name:
+        return name
+    origin = getattr(source, "value", source)
+    if origin in (
+        PropertySource.RESO.value,
+        PropertySource.IDX.value,
+        PropertySource.MLS.value,
+    ):
+        return "REcolorado"
+    return None

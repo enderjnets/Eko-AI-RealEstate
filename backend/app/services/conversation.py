@@ -25,7 +25,7 @@ import re
 from datetime import UTC, datetime, time
 from email.utils import parseaddr
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,6 +45,7 @@ from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
 from app.services.delivery import schedule_retry
 from app.services.i18n import detect_language, language_instruction, pick_supported_language
+from app.services.listings import listing_broker
 from app.services.llm import LLMResult, LLMUnavailable, generate_reply
 from app.services.scoring import rescore_lead
 from app.services.tenant_context import get_org_id
@@ -736,6 +737,18 @@ async def _real_slots_note(
     )
 
 
+
+def _reply_mentions_its_listing(reply: str, credit: str) -> bool:
+    """Whether the reply already carries this listing's broker credit.
+
+    Cheap and deliberately generous: if the model happened to include the
+    credit, do not repeat it; otherwise add it. Erring towards adding it is the
+    right way to be wrong, since the obligation is to credit, not to be tidy.
+    """
+    office = credit.removeprefix("Cortesía de ").strip()
+    return bool(office) and office.lower() in reply.lower()
+
+
 def _fallback_reply(agent_cfg: AgentSettings | None, target_lang: str) -> LLMResult:
     """What to say when every language model is unreachable.
 
@@ -801,7 +814,26 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
             return {"status": "ignored_self_loop", "from": parsed.from_identifier}
 
     # ── 1. Lead upsert ──────────────────────────────────────────────────
-    lead_stmt = select(Lead).where(Lead.phone == parsed.from_identifier)
+    # By identifier, and also by a matching email address. Leads are keyed on
+    # `phone` for every channel, so the same person writing from WhatsApp and
+    # then from email became two records: two score histories, two rows in the
+    # funnel, and a realtor looking at half a conversation each time. Matching
+    # the address as well merges the second arrival into the first.
+    #
+    # Deliberately one-directional: an email that matches an existing lead's
+    # address is the same person. A phone number is never matched against an
+    # address, and two different phone numbers stay two leads — guessing
+    # further would merge strangers.
+    identifier_is_address = _address_or_none(parsed.from_identifier) is not None
+    if identifier_is_address:
+        lead_stmt = select(Lead).where(
+            or_(
+                Lead.phone == parsed.from_identifier,
+                Lead.email == parsed.from_identifier,
+            )
+        ).order_by(Lead.id)
+    else:
+        lead_stmt = select(Lead).where(Lead.phone == parsed.from_identifier)
     existing_lead = (await db.execute(lead_stmt)).scalars().first()
     is_new_lead = existing_lead is None
     lead = await first_or_create(
@@ -958,6 +990,10 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
 
     # Phase 10: if the lead is property-shopping and we know the zone, give the
     # LLM the REAL matching listings so it can offer them (and never invent any).
+    # Collected here and appended to the reply itself further down. Putting the
+    # credit only in the system prompt made a licence obligation depend on the
+    # model choosing to repeat it, which it will not always do.
+    offered_credits: list[str] = []
     if lead.intent in (LeadIntent.BUY, LeadIntent.RENT) and lead.zone:
         try:
             from app.services.listings import match_properties_for_lead  # lazy import
@@ -972,14 +1008,14 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
                 beds = f"{p.bedrooms}bd" if p.bedrooms else ""
                 baths = f"{float(p.bathrooms):g}ba" if p.bathrooms is not None else ""
                 specs = " ".join(x for x in (beds, baths) if x)
-                # IDX attribution: the listing broker MUST be credited when a listing is
-                # shown to a consumer. VERIFY REcolorado's exact required disclaimer text.
-                office = (p.raw or {}).get("list_office_name")
-                courtesy = f" · Cortesía de {office}" if office else ""
+                broker = listing_broker((p.raw or {}).get("list_office_name"), p.source)
+                credit = f"Cortesía de {broker}" if broker else ""
+                if credit:
+                    offered_credits.append(credit)
                 lines.append(
                     f"- {p.title} — {price}{(' · ' + specs) if specs else ''}"
                     f"{(' · ' + p.address) if p.address else ''}{(' · ' + p.url) if p.url else ''}"
-                    f"{courtesy}"
+                    f"{(' · ' + credit) if credit else ''}"
                 )
             system_prompt += (
                 "\n\nLISTINGS DISPONIBLES QUE PUEDES OFRECER (usa SOLO estas, NO inventes "
@@ -1009,11 +1045,24 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         else:
             reply_subject = "Tu consulta"
 
+    # The broker credit goes on the message that actually reaches the lead.
+    # Only for the listings the reply mentions, and only once each — otherwise a
+    # long conversation accumulates a footer nobody reads and the credit stops
+    # meaning anything.
+    reply_text = reply.text
+    mentioned = [
+        credit
+        for credit in dict.fromkeys(offered_credits)
+        if _reply_mentions_its_listing(reply_text, credit)
+    ]
+    if mentioned:
+        reply_text = reply_text.rstrip() + "\n\n" + " · ".join(mentioned)
+
     outbound = Message(
         conversation_id=conv.id,
         direction=MessageDirection.OUTBOUND,
         sender=MessageSender.AGENT,
-        content=reply.text,
+        content=reply_text,
         delivery_status=MessageStatus.PENDING,
         llm_provider=reply.provider,
         llm_model=reply.model,
@@ -1037,7 +1086,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         external_id, _ = await _dispatch_send(
             parsed.channel,
             to=parsed.from_identifier,
-            text=reply.text,
+            text=reply_text,
             subject=reply_subject,
             in_reply_to=parsed.external_id if parsed.channel == "email" else None,
             references=email_references,

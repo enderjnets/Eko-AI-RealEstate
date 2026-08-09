@@ -353,6 +353,10 @@ export interface Property {
   listed_at: string | null;
   created_at: string;
   updated_at: string;
+  /** IDX: the listing broker who must be credited beside this listing. */
+  listing_broker: string | null;
+  listing_agent: string | null;
+  listing_type: string | null;
 }
 
 export interface PropertyList {

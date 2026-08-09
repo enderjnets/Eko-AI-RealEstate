@@ -44,6 +44,15 @@ export function PropertyCard({ p, compact = false }: { p: Property; compact?: bo
             </span>
           )}
         </div>
+        {p.listing_broker && (
+          // IDX: Colorado requires the listing broker to be credited wherever
+          // the listing reaches a consumer. Rendered from a field the API
+          // decides, not inferred here, so a card can never show a listing
+          // without its credit.
+          <div className="mt-1 text-[10px] text-gray-500 italic">
+            {t("properties.courtesyOf")} {p.listing_broker}
+          </div>
+        )}
         <div className="mt-2 flex items-center gap-3 text-[11px] text-gray-400">
           {p.bedrooms != null && (
             <span className="flex items-center gap-1"><BedDouble className="w-3 h-3" />{p.bedrooms}</span>
