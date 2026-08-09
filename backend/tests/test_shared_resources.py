@@ -55,10 +55,27 @@ async def _make_agency(**route: object) -> None:
 
 
 async def _cleanup() -> None:
+    """Remove everything this module creates, in dependency order.
+
+    `follow_ups` and `agent_settings` were missing from the original list, so a
+    single reminder row made `DELETE FROM leads` fail on its foreign key — and
+    because it is all one transaction, the whole cleanup rolled back. The next
+    run then found a lead it merged with, and a test that passed alone failed
+    in the suite.
+    """
     async with get_bypass_session_factory()() as db:
-        await db.execute(text("DELETE FROM channel_routes WHERE org_id = :i"), {"i": AGENCY})
-        await db.execute(text("DELETE FROM visits WHERE org_id = :i"), {"i": AGENCY})
-        await db.execute(text("DELETE FROM leads WHERE org_id = :i"), {"i": AGENCY})
+        for table in (
+            "follow_ups",
+            "messages",
+            "conversations",
+            "visits",
+            "leads",
+            "agent_settings",
+            "channel_routes",
+        ):
+            await db.execute(
+                text(f"DELETE FROM {table} WHERE org_id = :i"), {"i": AGENCY}
+            )
         await db.execute(text("DELETE FROM organizations WHERE id = :i"), {"i": AGENCY})
         await db.commit()
     tenant_resolver.reset_cache()
@@ -638,11 +655,6 @@ async def test_a_whatsapp_lead_can_actually_be_booked(monkeypatch) -> None:
                 )
             assert "booking contact" in str(caught.value).lower()
     finally:
-        async with get_bypass_session_factory()() as db:
-            await db.execute(
-                text("DELETE FROM agent_settings WHERE org_id = :i"), {"i": AGENCY}
-            )
-            await db.commit()
         await _cleanup()
 
 
@@ -905,12 +917,6 @@ async def test_the_same_person_on_two_channels_is_one_lead() -> None:
             assert total == 1, f"{total} leads for one person"
             assert same[0].id == first_id
     finally:
-        async with get_bypass_session_factory()() as db:
-            for table in ("messages", "conversations", "leads"):
-                await db.execute(
-                    text(f"DELETE FROM {table} WHERE org_id = :i"), {"i": AGENCY}
-                )
-            await db.commit()
         await _cleanup()
 
 
@@ -1007,10 +1013,4 @@ async def test_a_shared_mailbox_does_not_merge_two_people() -> None:
             # strangers who happen to share a mailbox.
             assert total == 3
     finally:
-        async with get_bypass_session_factory()() as db:
-            for table in ("messages", "conversations", "leads"):
-                await db.execute(
-                    text(f"DELETE FROM {table} WHERE org_id = :i"), {"i": AGENCY}
-                )
-            await db.commit()
         await _cleanup()
