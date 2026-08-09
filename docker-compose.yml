@@ -52,14 +52,14 @@ services:
       # What the request path actually connects as — a role without BYPASSRLS, so
       # the tenant policies bind. Pointing this at the owner would leave every
       # isolation test green while isolating nothing.
-      DATABASE_URL_APP: ${DATABASE_URL_APP:-postgresql+asyncpg://eko_app:eko_app_local_pass@db:5432/eko_realestate}
+      DATABASE_URL_APP: ${DATABASE_URL_APP:?set it in .env — the RLS role, NOSUPERUSER NOBYPASSRLS, with a password that is not in this repo}
       # Migration 015 creates the eko_app role and reads these HERE, because
       # `alembic upgrade` runs inside this container. They were missing, so the
       # role was always created with the literal in the repository while
       # DATABASE_URL_APP carried whatever the installer generated — either the
       # tenant-boundary role has a published password, or every request fails
       # authentication while /health stays green. Both halves must agree.
-      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-eko_app_local_pass}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set it in .env; migration 024 sets the RLS role to this, so a default here is a password published in the repo}
       APP_DB_ROLE: ${APP_DB_ROLE:-eko_app}
       # The role RLS is deliberately bypassed with, for login lookups, the
       # platform router and the org-list reads that run before any tenant is

@@ -8,8 +8,11 @@ but a client's phone number appearing on somebody else's screen.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import text
 
 from app.db.base import get_bypass_session_factory, get_session_factory
@@ -207,8 +210,81 @@ async def test_a_tenant_cannot_spend_the_operators_discovery_credit() -> None:
         for path, body in (
             ("/api/v1/discovery/search", {"query": "realtors denver"}),
             ("/api/v1/discovery/enrich-pending", {}),
+            # `/import` was left open when the other four were gated. It writes
+            # unscored leads that the enrichment worker then sweeps and runs
+            # through the LLM, so it spends the shared budget one step removed.
+            ("/api/v1/discovery/import", {"business_ids": [1]}),
+            ("/api/v1/discovery/enrich/1", {}),
         ):
             resp = await client.post(path, json=body)
             assert resp.status_code in (401, 403), (
                 f"{path} answered {resp.status_code} to an unauthenticated caller"
             )
+
+
+@pytest.mark.asyncio
+async def test_an_event_type_without_a_key_is_not_a_calendar_of_ones_own(
+    monkeypatch,
+) -> None:
+    """The second wrong question in two rounds.
+
+    Asking "does this org have a calendar row" looked right, but a row carrying
+    only an event type id is a legal onboarding shape — `platform.py` exempts
+    calendar from the must-name-both-refs rule — and the resolver fills its
+    credential from the operator's key. So the route existed, the guard passed,
+    and the booking still landed on the operator's calendar.
+    """
+    from app.config import get_settings
+    from app.services.channel_identity import (
+        MissingChannelCredential,
+        resolve_calendar_identity,
+    )
+
+    monkeypatch.setattr(get_settings(), "CALCOM_API_KEY", "the-operators-cal-key")
+    monkeypatch.setattr(get_settings(), "CALCOM_EVENT_TYPE_ID", 11)
+    await _make_agency(_dest="42")  # a route, but no credential_ref
+    try:
+        with org_scope(AGENCY), pytest.raises(MissingChannelCredential):
+            await resolve_calendar_identity()
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_cancelling_survives_a_calendar_that_is_not_configured() -> None:
+    """`list_slots` and `book_slot` degraded on CalComError; cancel did not, so
+    a missing calendar route turned a cancellation into a 500 and left the
+    visit SCHEDULED — the realtor still drives to the house."""
+    import app.api.v1.visits as visits_mod
+    from app.models.visit import VisitStatus
+    from app.services.calendar_cal import CalComError
+
+    async def _boom(*a: object, **k: object) -> bool:
+        raise CalComError("no calendar for this organization")
+
+    visit = SimpleNamespace(
+        id=1,
+        status=VisitStatus.SCHEDULED,
+        calendar_provider="calcom",
+        external_booking_id="cal-1",
+        notes=None,
+    )
+
+    class _Result:
+        def scalar_one_or_none(self) -> object:
+            return visit
+
+    class _Db:
+        async def execute(self, *a: object, **k: object) -> _Result:
+            return _Result()
+
+        async def commit(self) -> None:  # pragma: no cover — must not be reached
+            raise AssertionError("committed a cancellation the calendar refused")
+
+    with patch.object(visits_mod, "cancel_booking", _boom):
+        with pytest.raises(HTTPException) as caught:
+            await visits_mod.cancel_visit(visit_id=1, body=None, db=_Db())
+    assert caught.value.status_code == 503
+    assert visit.status is VisitStatus.SCHEDULED, (
+        "the visit was left cancelled locally while the booking still stands"
+    )

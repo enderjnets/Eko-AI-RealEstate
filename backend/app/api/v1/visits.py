@@ -276,7 +276,17 @@ async def cancel_visit(
     reason = (body.reason if body else None) or "Cancelled from dashboard"
     # Manual events aren't on Cal.com — skip the provider call for them.
     if visit.calendar_provider != "manual":
-        ok = await cancel_booking(visit.external_booking_id, reason=reason)
+        try:
+            ok = await cancel_booking(visit.external_booking_id, reason=reason)
+        except CalComError as exc:
+            # `list_slots` and `book_slot` already degraded on this; cancel did
+            # not, so a misconfigured calendar turned a cancellation into a 500
+            # and left the visit SCHEDULED — the realtor still shows up.
+            # 503, and the visit stays as it was, so a retry is meaningful.
+            log.warning("cancel refused, calendar unavailable: %s", exc)
+            raise HTTPException(
+                status_code=503, detail="Calendar unavailable; visit not cancelled"
+            ) from exc
         if not ok:
             raise HTTPException(status_code=503, detail="Cal.com cancellation failed")
     visit.status = VisitStatus.CANCELLED

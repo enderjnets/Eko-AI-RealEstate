@@ -452,8 +452,14 @@ def _viewer_is_operator(request: Request) -> bool:
     token = _token_from_request(request)
     if not token_is_superuser(token):
         return False
-    email = (decode_token(token) or {}).get("email")
-    return _is_platform_operator(email)
+    payload = decode_token(token) or {}
+    # The same three the real gate applies, in the same order. Checking only
+    # `su` and the email list showed the button to an operator signed in as a
+    # member, or holding a token minted before organizations existed — a 403
+    # on a control that had just been made visible to fix a 403.
+    if payload.get("role", ROLE_ADMIN) != ROLE_ADMIN or payload.get("org") is None:
+        return False
+    return _is_platform_operator(payload.get("email"))
 
 
 @router.get("/me", response_model=MeOut)

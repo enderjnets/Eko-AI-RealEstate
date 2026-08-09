@@ -404,13 +404,19 @@ async def _startup() -> None:
     # test: every install has the demo org, so it always read as "more than one".
     from app.models.organization import DEFAULT_ORG_ID
 
+    org_count_known = True
     try:
         from app.services.tenant_resolver import active_orgs, routable_candidates
 
         real_orgs = routable_candidates(await active_orgs())
-    except Exception as exc:  # noqa: BLE001 — a check must not block startup
-        logger.debug("org count check skipped: %s", exc)
+    except Exception as exc:  # noqa: BLE001 — handled below, not swallowed
+        # Emphatically not `debug`. This probe runs on the bypass session; if
+        # that role does not in fact bypass RLS, default-deny returns no rows
+        # and an empty list silently disabled BOTH refusals below — a green
+        # boot with RLS off and every agency sharing one dataset.
+        logger.error("could not count active organizations: %s", exc)
         real_orgs = []
+        org_count_known = False
 
     # Assert the two database roles are what the isolation design assumes. Both
     # failure modes are silent: an app role that bypasses RLS isolates nothing,
@@ -499,14 +505,18 @@ async def _startup() -> None:
                 "platform-operator token; use at least 32. openssl rand -hex 32"
             )
 
-    if rls_is_off and len(real_orgs) > 1:
+    if rls_is_off and (len(real_orgs) > 1 or not org_count_known):
         # Outside the role check's own try/except on purpose, so the refusal is
         # not swallowed by the handler that logs role-probe failures.
+        how_many = (
+            f"{len(real_orgs)} agencies are active"
+            if org_count_known
+            else "the number of active agencies could not be read"
+        )
         raise RuntimeError(
-            f"Row-level security is not being enforced and {len(real_orgs)} "
-            "agencies are active, so every one of them can read and write the "
-            "others' data. Point DATABASE_URL_APP at a NOSUPERUSER NOBYPASSRLS "
-            "role before serving more than one tenant."
+            f"Row-level security is not being enforced and {how_many}, so every "
+            "agency can read and write the others' data. Point DATABASE_URL_APP "
+            "at a NOSUPERUSER NOBYPASSRLS role before serving traffic."
         )
 
     if not settings.AUTH_ENABLED and len(real_orgs) > 1:

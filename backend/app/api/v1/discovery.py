@@ -117,7 +117,7 @@ async def upload(file: UploadFile = File(...), db: AsyncSession = Depends(get_db
     return ResultsOut(results=[BusinessOut(**b.to_public()) for b in leads])
 
 
-@router.post("/import", response_model=ImportResult)
+@router.post("/import", response_model=ImportResult, dependencies=[Depends(require_platform_admin)])
 async def do_import(body: ImportIn, db: AsyncSession = Depends(get_db)) -> ImportResult:
     if not body.leads:
         raise HTTPException(status_code=400, detail="No leads to import")

@@ -304,8 +304,8 @@ def _global_identity(channel: str, *, org_id: int | None) -> ChannelIdentity:
 
 
 
-async def _has_route(channel: str, org_id: int) -> bool:
-    """Whether this organization has a row of its own on this channel."""
+async def _has_own_credential(channel: str, org_id: int) -> bool:
+    """Whether this organization's row on this channel names its own credential."""
     from sqlalchemy import func, select
 
     from app.db.base import get_bypass_session_factory
@@ -320,6 +320,7 @@ async def _has_route(channel: str, org_id: int) -> bool:
                     .where(
                         ChannelRoute.channel == channel,
                         ChannelRoute.org_id == org_id,
+                        ChannelRoute.credential_ref.is_not(None),
                     )
                 )
             ).scalar()
@@ -346,12 +347,18 @@ async def resolve_calendar_identity() -> ChannelIdentity:
     org_id = get_org_id()
     if org_id is None or org_id == DEFAULT_ORG_ID:
         return identity
-    # `is_own_account` is the wrong question here: it only asks whether a
-    # credential was found, and the global fallback supplies one. Ask whether
-    # this organization has a calendar row of its own.
-    if await _has_route(CHANNEL_CALENDAR, org_id):
-        return identity
+    # Cheap, cached check first: a single-customer install has nobody to
+    # collide with, and this runs on every availability request, booking and
+    # cancellation.
     if len(routable_candidates(await active_orgs())) < 2:
+        return identity
+    # Then the real question. Not `is_own_account` — that only asks whether a
+    # credential was found, and the global fallback supplies one. Not "has a
+    # calendar row" either: a row carrying only an event type id is a legal
+    # onboarding shape, and `resolve_outbound_identity` fills its credential
+    # from the operator's key, so the booking still lands on the operator's
+    # calendar. What matters is that the credential came from THIS agency.
+    if await _has_own_credential(CHANNEL_CALENDAR, org_id):
         return identity
     raise MissingChannelCredential(
         f"organization {org_id} has no calendar of its own, and there is more "
