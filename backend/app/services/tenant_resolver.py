@@ -302,8 +302,23 @@ async def _verifies_with_its_own_secret(channel: str, org_id: int) -> bool:
         ).scalar_one_or_none() is not None
 
 
-async def webhook_org_or_refuse(channel: str, destination: Destination) -> int:
+async def webhook_org_or_refuse(
+    channel: str, destination: Destination, *, fallback_when_unmapped: bool = True
+) -> int:
     """The agency an inbound message belongs to, or raise.
+
+    `fallback_when_unmapped=False` refuses an unmapped destination instead of
+    letting it reach the single-tenant fallback below. Pass it whenever the
+    caller supplied a destination that is *supposed* to name a route, because
+    the fallback cannot tell "no destination given" from "a destination that
+    matches nothing" — both arrive here as no route found.
+
+    That difference is not academic. Offboard an agency the ordinary way —
+    suspend it, delete its routes — and its landing page keeps posting the key
+    it was built with. With the fallback in play that key now matches nothing,
+    the offboarded tenant is no longer a candidate, and every lead from that
+    still-live website is filed into whichever agency is left, silently and
+    with a 202.
 
     The single decision point for every channel, deliberately independent of
     AUTH_ENABLED. Routing it through `resolve_org_for_request` meant that with
@@ -339,6 +354,13 @@ async def webhook_org_or_refuse(channel: str, destination: Destination) -> int:
                 f"{routed}, which is {status or 'no longer present'}"
             )
         return routed
+
+    if not fallback_when_unmapped:
+        raise WebhookOrgUnresolved(
+            f"{channel} destination {destination!r} matches no channel_route, "
+            "and this caller named one explicitly — refusing rather than "
+            "guessing the only remaining agency"
+        )
 
     candidates = routable_candidates(orgs)
     if len(candidates) == 1:

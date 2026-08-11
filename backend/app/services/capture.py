@@ -49,7 +49,11 @@ MAX_NAME = 160
 MAX_MESSAGE = 5_000
 MAX_CONSENT_TEXT = 1_000
 MAX_ATTRIBUTION_VALUE = 200
-MAX_ATTRIBUTION_KEYS = 12
+# Exactly the size of ATTRIBUTION_KEYS, asserted below rather than eyeballed.
+# It was 12 against a 10-key whitelist, so the guard it looked like it provided
+# could never fire — the same "cap applied to nothing" shape as the message
+# length bug this module already paid for once.
+MAX_ATTRIBUTION_KEYS = 10
 MAX_LATER_TOUCHES = 10
 
 # A double-click, a flaky connection, a browser resubmitting on back — all send
@@ -74,6 +78,10 @@ ATTRIBUTION_KEYS = frozenset(
         "referrer",
     }
 )
+
+# A whitelist and its cap cannot drift: a cap larger than the list is a guard
+# that can never fire, and one smaller silently drops legitimate attribution.
+assert MAX_ATTRIBUTION_KEYS == len(ATTRIBUTION_KEYS)
 
 # Used only when the visitor types a national number with no country code.
 # Denver is +1, but the value is here as a named constant rather than inline so
@@ -202,6 +210,29 @@ def _summary(message: str | None, name: str | None) -> str:
     return f"{who} submitted the contact form and left no message."
 
 
+def validate_submission(sub: FormSubmission) -> None:
+    """Reject a submission that cannot become a lead. No database, no tenant.
+
+    Separate from `capture_lead` so the caller can run it BEFORE resolving the
+    organization. Ordering it after resolution made the endpoint an enumeration
+    oracle: a probe with no contact details answered 422 for a live form key
+    and 404 for one that named nothing, and because it wrote no lead the scan
+    left no trace in any inbox.
+    """
+    if normalize_phone(sub.phone) is None and normalize_email(sub.email) is None:
+        raise CaptureRejected(
+            "contact_required", "Give either an email address or a phone number."
+        )
+    if sub.consent and not clean_text(sub.consent_text, MAX_CONSENT_TEXT):
+        # A ticked box with no record of the wording is the indefensible
+        # timestamp the consent columns exist to avoid. Refuse it at the door
+        # rather than store something that looks like proof and is not.
+        raise CaptureRejected(
+            "consent_text_required",
+            "A consent record needs the exact wording that was shown.",
+        )
+
+
 async def capture_lead(sub: FormSubmission, db: AsyncSession) -> dict[str, object]:
     """Create or merge the lead, record the submission, return a small status.
 
@@ -219,22 +250,14 @@ async def capture_lead(sub: FormSubmission, db: AsyncSession) -> dict[str, objec
     # the identifier an SMS or WhatsApp arrival will use, so choosing the
     # address when both are present would split the same person in two the
     # moment they reply.
+    # Re-run even though the route already did: this function is called
+    # directly by tests and by anything added later, and a validation that only
+    # runs in one caller is a validation that will eventually not run.
+    validate_submission(sub)
     identifier = phone or email
-    if identifier is None:
-        raise CaptureRejected(
-            "contact_required", "Give either an email address or a phone number."
-        )
+    assert identifier is not None  # validate_submission guarantees it
 
-    if sub.consent and not clean_text(sub.consent_text, MAX_CONSENT_TEXT):
-        # A ticked box with no record of the wording is the indefensible
-        # timestamp the consent columns exist to avoid. Refuse it at the door
-        # rather than store something that looks like proof and is not.
-        raise CaptureRejected(
-            "consent_text_required",
-            "A consent record needs the exact wording that was shown.",
-        )
-
-    lead, is_new = await _lead_for(identifier, email, db)
+    lead, is_new, by_address = await _lead_for(identifier, email, db)
 
     if name and not lead.name:
         lead.name = name
@@ -243,7 +266,7 @@ async def capture_lead(sub: FormSubmission, db: AsyncSession) -> dict[str, objec
 
     now = datetime.now(UTC)
     _record_attribution(lead, attribution, now)
-    _record_consent(lead, sub, now)
+    _record_consent(lead, sub, now, reached_by_address=by_address)
 
     conv = await first_or_create(
         db,
@@ -309,8 +332,13 @@ async def capture_lead(sub: FormSubmission, db: AsyncSession) -> dict[str, objec
 
 async def _lead_for(
     identifier: str, email: str | None, db: AsyncSession
-) -> tuple[Lead, bool]:
+) -> tuple[Lead, bool, bool]:
     """The lead this submission belongs to, created if this is a first contact.
+
+    Returns (lead, is_new, reached_by_address). The third flag says the lead was
+    found through the email-merge branch rather than by its own identifier —
+    which means the submitter proved nothing about the identifier this lead is
+    actually messaged on, and the caller must not write consent for it.
 
     The merge rule is deliberately the same one `handle_inbound_message` uses,
     and for the same reason: prefer the lead keyed on this exact identifier, and
@@ -321,6 +349,7 @@ async def _lead_for(
     """
     by_identifier = select(Lead).where(Lead.phone == identifier)
     stmt = by_identifier
+    reached_by_address = False
 
     if email is not None and (await db.execute(by_identifier)).scalars().first() is None:
         matches = (
@@ -328,6 +357,7 @@ async def _lead_for(
         )
         if len(matches) == 1:
             stmt = select(Lead).where(Lead.id == matches[0].id)
+            reached_by_address = True
         elif len(matches) > 1:
             log.warning(
                 "%d leads share the address %s; keeping this capture separate",
@@ -342,7 +372,7 @@ async def _lead_for(
         stmt,
         lambda: Lead(phone=identifier, email=email),
     )
-    return lead, is_new
+    return lead, is_new, reached_by_address and not is_new
 
 
 def _record_attribution(lead: Lead, attribution: dict[str, str], now: datetime) -> None:
@@ -370,15 +400,41 @@ def _record_attribution(lead: Lead, attribution: dict[str, str], now: datetime) 
     lead.meta = meta
 
 
-def _record_consent(lead: Lead, sub: FormSubmission, now: datetime) -> None:
+def _record_consent(
+    lead: Lead, sub: FormSubmission, now: datetime, *, reached_by_address: bool
+) -> None:
     """Write the consent record once. Never clear it.
 
     Consent is a historical fact: the person did tick the box on that day
     looking at that wording. A later submission with the box unticked does not
     unsay it — and treating it as a revocation would be worse than useless,
-    because the revocation channel people actually use is STOP, which is
-    handled where messages arrive, not here.
+    because the revocation people actually use is STOP, and a form submission
+    is not where that arrives.
+
+    Revocation is NOT handled here. It arrives as an inbound message on a
+    messaging channel, is recognised by keyword in `app/services/optout.py`,
+    and is honoured by `may_send_automated` above — which checks it before
+    anything else.
+
+    `reached_by_address` blocks the one case where the submitter has proved
+    nothing about the identifier that will actually be messaged. The email
+    merge is there so the same person writing from two places becomes one
+    lead; it also means anyone who knows an address reaches the CRM record
+    behind it. Without this guard an anonymous POST carrying only a known
+    address could stamp consent onto a WhatsApp lead who never opted in — and
+    since consent is never overwritten, it could equally pre-plant junk wording
+    so the person's real consent could never be recorded. Any web form lets a
+    stranger assert consent for contact details they typed; none of them should
+    let a stranger assert it for details they did not.
     """
+    if reached_by_address:
+        if sub.consent:
+            log.warning(
+                "Ignoring a consent claim for lead %d: this submission reached "
+                "it by matching an email address, not by its own identifier",
+                lead.id,
+            )
+        return
     if not sub.consent or lead.consent_at is not None:
         return
     lead.consent_at = now
@@ -404,7 +460,15 @@ async def may_send_automated(lead: Lead, channel: str, db: AsyncSession) -> bool
     SMS — which creates an SMS conversation — and from that moment the nurture
     worker would have a perfectly sendable channel and no permission to use it.
     Nothing else in the system would have objected.
+
+    An opt-out outranks both branches and is checked FIRST. It has to be: the
+    consumer-initiated branch below is satisfied by *any* inbound message on the
+    channel, and the word people send to make it stop is itself an inbound
+    message. Checked second, "STOP" would have flipped a correctly blocked lead
+    to sendable — the gate inverted by precisely the input it exists to obey.
     """
+    if lead.opted_out_at is not None:
+        return False
     if channel not in _CONSENT_GATED_CHANNELS:
         return True
     if lead.consent_at is not None:

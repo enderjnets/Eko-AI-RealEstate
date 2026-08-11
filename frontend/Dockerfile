@@ -23,6 +23,11 @@ ENV NEXT_PUBLIC_APPLE_REDIRECT_URI=$NEXT_PUBLIC_APPLE_REDIRECT_URI
 # is refused the moment a second agency exists.
 ARG NEXT_PUBLIC_CAPTURE_FORM_KEY
 ENV NEXT_PUBLIC_CAPTURE_FORM_KEY=$NEXT_PUBLIC_CAPTURE_FORM_KEY
+# Turnstile's public half. Must be baked in alongside TURNSTILE_SECRET on the
+# backend: with the secret set and this empty the server demands a token the
+# page cannot produce, and every real submission returns captcha_failed.
+ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
+ENV NEXT_PUBLIC_TURNSTILE_SITE_KEY=$NEXT_PUBLIC_TURNSTILE_SITE_KEY
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

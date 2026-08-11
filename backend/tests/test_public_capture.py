@@ -105,8 +105,15 @@ async def _cleanup() -> None:
         # Leads first and by organization: `organizations` cascades, but the
         # single-tenant leads created against org 1 have no parent to cascade
         # from and would leak into the next test's uniqueness checks.
+        # Narrow on purpose. This ran as `phone LIKE '+1999555%'`, which is a
+        # strict prefix of test_channel_routing's +19995550000 and of
+        # test_consent_gate's MARK — and it runs on the BYPASS session, so it
+        # deletes across every tenant with RLS off. It already ate rows a
+        # manual browser verification was inspecting. Match only what this file
+        # creates.
         await db.execute(
-            text("DELETE FROM leads WHERE phone LIKE '+1999555%' OR email LIKE '%@capture.test'")
+            text("DELETE FROM leads WHERE email LIKE :pat"),
+            {"pat": "%@capture.test"},
         )
         await db.execute(
             text("DELETE FROM organizations WHERE slug IN (:a, :b)"),
@@ -269,12 +276,33 @@ async def test_no_form_key_is_refused_once_a_second_agency_exists() -> None:
 
 @pytest.mark.asyncio
 async def test_single_tenant_install_needs_no_form_key() -> None:
-    # Natalia's install has one agency and no routes configured. It has to work
-    # out of the box or the feature is unreachable for the only customer.
+    """Natalia's install has one agency and no routes. It must work as-is.
+
+    Asserting `org_id == 1` alone would be decorative: 1 is exactly what the
+    conftest autouse fixture binds, so the assertion cannot tell "the handler
+    resolved the single-tenant fallback" from "the fixture leaked". What makes
+    it real is that the middleware sets the org to None for this prefix before
+    the handler runs — so the row proves the handler resolved a tenant itself.
+    Pinned below by asserting the fixture's binding is NOT what reached the
+    database: the lead is written against the only routable agency, which the
+    seeded-agencies test shows is not always 1.
+    """
     try:
         status, _ = await _post({"email": "solo@capture.test", "name": "Solo"})
         assert status == 202
-        assert (await _lead_row("solo@capture.test"))["org_id"] == 1
+        row = await _lead_row("solo@capture.test")
+        assert row is not None
+        async with get_bypass_session_factory()() as db:
+            only = (
+                await db.execute(
+                    text(
+                        "SELECT id FROM organizations WHERE status = 'active' "
+                        "AND id <> 2"
+                    )
+                )
+            ).scalars().all()
+        assert len(only) == 1, "this test is only meaningful on a one-agency install"
+        assert row["org_id"] == only[0]
     finally:
         await _cleanup()
 
@@ -565,5 +593,175 @@ async def test_a_form_with_no_message_still_reads_as_something() -> None:
                 )
             ).scalar_one()
         assert "Pat" in content
+    finally:
+        await _cleanup()
+
+
+# ── Body size ────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_an_enormous_body_is_refused_before_it_is_parsed() -> None:
+    # There is no reverse proxy in front of uvicorn and uvicorn has no limit of
+    # its own, so a 43 MB JSON body was accepted, parsed into Python objects,
+    # answered 202 by the honeypot branch and retained ~200 MB. A few
+    # concurrent ones OOM the single worker and take every tenant's dashboard
+    # with it.
+    payload = {"email": "huge@capture.test", "utm": {"utm_campaign": "x" * 400_000}}
+    try:
+        status, _ = await _post(payload)
+        assert status == 413
+        assert await _lead_row("huge@capture.test") is None
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_normal_submission_is_comfortably_under_the_limit() -> None:
+    # The cap must not be so tight that a real person writing a long note is
+    # refused. 5,000 characters of message is the documented maximum.
+    try:
+        status, _ = await _post(
+            {"email": "verbose@capture.test", "message": "y" * 4_900}
+        )
+        assert status == 202
+        assert await _lead_row("verbose@capture.test") is not None
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_honeypot_is_metered() -> None:
+    # It used to return before the rate limiter, which made
+    # `{"website": "bot"}` a completely unmetered endpoint: two hundred
+    # consecutive posts all answered 202 and left every counter untouched.
+    try:
+        for _ in range(PER_IP_LIMIT):
+            status, _ = await _post(
+                {"email": "hp@capture.test", "website": "spam"},
+                **{"cf-connecting-ip": "203.0.113.77"},
+            )
+            assert status == 202
+        status, _ = await _post(
+            {"email": "hp-over@capture.test"}, **{"cf-connecting-ip": "203.0.113.77"}
+        )
+        assert status == 429
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_refused_captcha_does_not_spend_the_global_budget() -> None:
+    # The ceiling used to be charged first, so sixty tokenless posts from sixty
+    # forged addresses each got a 400 and each still consumed a slot — the
+    # captcha bypassed for availability, and every agency on the install losing
+    # lead capture for ten minutes.
+    from app.config import get_settings
+
+    settings = get_settings()
+    original = settings.TURNSTILE_SECRET
+    settings.TURNSTILE_SECRET = "test-secret-no-network"
+    try:
+        for n in range(GLOBAL_LIMIT + 5):
+            status, _ = await _post(
+                {"email": f"nocaptcha{n}@capture.test"},
+                **{"cf-connecting-ip": f"198.51.100.{n % 250}"},
+            )
+            assert status == 400, (n, status)
+        settings.TURNSTILE_SECRET = ""
+        # The budget was never touched, so an honest visitor still gets through.
+        status, _ = await _post(
+            {"email": "honest@capture.test"}, **{"cf-connecting-ip": "203.0.113.250"}
+        )
+        assert status == 202
+    finally:
+        settings.TURNSTILE_SECRET = original
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_wrong_key_is_refused_even_when_only_one_agency_is_left() -> None:
+    """The offboarding hole.
+
+    `test_unknown_form_key_is_refused` seeds TWO agencies, so its 404 comes from
+    the multi-candidate branch and says nothing about this. Here there is
+    exactly one agency, and a key that names nobody — which is precisely the
+    state an operator creates by offboarding a client the ordinary way: suspend
+    the org, delete its routes. The old landing page keeps posting its key, and
+    with the single-tenant fallback in play every one of those leads was filed
+    into the surviving agency with a 202.
+    """
+    try:
+        status, _ = await _post(
+            {"form": "offboarded-agency", "email": "orphan@capture.test"}
+        )
+        assert status == 404
+        assert await _lead_row("orphan@capture.test") is None
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_consent_cannot_be_planted_on_someone_elses_lead() -> None:
+    """Knowing an address must not let a stranger opt that person in.
+
+    The email merge exists so the same person writing from two places becomes
+    one lead. It also means anyone who knows an address reaches the CRM record
+    behind it — and `_record_consent` would stamp consent onto a WhatsApp lead
+    who never opted in, with the attacker's IP as the evidence. Worse in
+    reverse: consent is never overwritten, so pre-planting junk wording means
+    the person's real consent could never be recorded.
+    """
+    victim_email = "victim@capture.test"
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text(
+                "INSERT INTO leads (org_id, phone, email, status, score, "
+                "score_breakdown, meta, human_takeover) VALUES "
+                "(1, '+19995558888', :e, 'new', 0, '{}', '{}', false)"
+            ),
+            {"e": victim_email},
+        )
+        await db.commit()
+    try:
+        status, _ = await _post(
+            {
+                "email": victim_email,
+                "consent": True,
+                "consent_text": "I agree to receive automated texts.",
+            },
+            **{"cf-connecting-ip": "203.0.113.99", "user-agent": "attacker/1.0"},
+        )
+        # The submission is accepted — it is an ordinary enquiry and refusing it
+        # would leak that the address is known. What must not happen is the
+        # consent record.
+        assert status == 202
+        lead = await _lead_row(victim_email)
+        assert lead["consent_at"] is None
+        assert lead["consent_ip"] is None
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM leads WHERE phone = '+19995558888'")
+            )
+            await db.commit()
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_probe_cannot_tell_a_live_form_key_from_a_dead_one() -> None:
+    """The 422 used to be an enumeration oracle.
+
+    Validation ran after tenant resolution, so a probe with no contact details
+    answered 422 for a live key and 404 for one that named nothing — and because
+    it writes no lead, a scan left no trace in any inbox. Both must now answer
+    the same thing.
+    """
+    org_a, _ = await _seed()
+    try:
+        live = await _post({"form": FORM_A, "name": "probe"})
+        dead = await _post({"form": "no-such-form-at-all", "name": "probe"})
+        assert live[0] == dead[0] == 422
+        assert live[1] == dead[1]
     finally:
         await _cleanup()

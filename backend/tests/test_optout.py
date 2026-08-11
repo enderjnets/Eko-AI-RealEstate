@@ -1,0 +1,311 @@
+"""STOP has to work, because the consent record says it does.
+
+The capture form's disclosure — stored verbatim as the legal record of what the
+person agreed to — reads "reply STOP to opt out" in English and "responde STOP
+para darte de baja" in Spanish. Until this file existed, nothing implemented
+it, and the failure was not a missing feature but an inverted one: the consent
+gate treats any inbound message on a channel as consumer-initiated contact, and
+STOP is an inbound message. Sending it moved a correctly blocked lead to
+sendable.
+"""
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import text
+
+from app.db.base import get_bypass_session_factory, get_session_factory
+from app.models.conversation import Conversation, ConversationStatus
+from app.models.lead import Lead
+from app.models.message import Message, MessageDirection, MessageSender, MessageStatus
+from app.services.capture import may_send_automated
+from app.services.optout import opt_in_keyword, opt_out_keyword
+
+MARK = "+19995552"
+
+
+async def _cleanup() -> None:
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text("DELETE FROM leads WHERE phone LIKE :m"), {"m": f"{MARK}%"}
+        )
+        await db.commit()
+
+
+# ── Recognising the word ─────────────────────────────────────────────────
+
+
+def test_the_ctia_keywords_are_recognised() -> None:
+    for word in ("STOP", "stop", "Stop", "STOPALL", "unsubscribe", "CANCEL", "quit"):
+        assert opt_out_keyword(word, "sms") == word.strip().lower(), word
+
+
+def test_spanish_speakers_can_opt_out_in_spanish() -> None:
+    # A bilingual Denver audience types "baja" and "cancelar". An opt-out
+    # mechanism that only works in English is not an opt-out mechanism for the
+    # half of the audience the product markets to in Spanish.
+    for word in ("BAJA", "cancelar", "parar", "detener"):
+        assert opt_out_keyword(word, "sms") is not None, word
+
+
+def test_punctuation_does_not_defeat_it() -> None:
+    # Carriers ignore surrounding punctuation and so must we; "STOP." typed
+    # with a full stop is the overwhelmingly common form.
+    for word in ("STOP.", " stop ", "(stop)", "STOP!", "¿parar?"):
+        assert opt_out_keyword(word, "sms") is not None, word
+
+
+def test_a_sentence_containing_stop_is_not_an_opt_out() -> None:
+    # "Can I stop by the open house on Sunday?" is a live buyer asking for a
+    # viewing. Substring matching would silence them permanently.
+    for sentence in (
+        "Can I stop by the open house on Sunday?",
+        "stop by anytime",
+        "I want to cancel my Tuesday viewing, can we do Thursday?",
+        "please don't stop sending me listings",
+    ):
+        assert opt_out_keyword(sentence, "sms") is None, sentence
+
+
+def test_email_is_not_an_opt_out_channel() -> None:
+    # Email unsubscribe is a link and a List-Unsubscribe header. Treating a
+    # one-word email as revocation would silence someone who wrote "cancel"
+    # about an appointment.
+    assert opt_out_keyword("STOP", "email") is None
+    assert opt_out_keyword("STOP", "web") is None
+    assert opt_out_keyword("STOP", "sms") == "stop"
+
+
+def test_start_words_are_recognised_separately() -> None:
+    assert opt_in_keyword("START", "sms") == "start"
+    assert opt_in_keyword("ALTA", "sms") == "alta"
+    assert opt_in_keyword("STOP", "sms") is None
+    assert opt_out_keyword("START", "sms") is None
+
+
+# ── Honouring it ─────────────────────────────────────────────────────────
+
+
+async def _lead(db, *, suffix: str, consent: bool, opted_out: bool) -> Lead:
+    lead = Lead(
+        phone=f"{MARK}{suffix}",
+        name="Optout Test",
+        consent_at=datetime.now(UTC) - timedelta(days=1) if consent else None,
+        consent_text="I agree to receive texts." if consent else None,
+        opted_out_at=datetime.now(UTC) if opted_out else None,
+        opted_out_channel="sms" if opted_out else None,
+        opted_out_keyword="stop" if opted_out else None,
+    )
+    db.add(lead)
+    await db.flush()
+    conv = Conversation(
+        lead_id=lead.id, channel="sms", status=ConversationStatus.ACTIVE,
+        last_at=datetime.now(UTC),
+    )
+    db.add(conv)
+    await db.flush()
+    db.add(
+        Message(
+            conversation_id=conv.id,
+            direction=MessageDirection.INBOUND,
+            sender=MessageSender.LEAD,
+            content="hello",
+            delivery_status=MessageStatus.DELIVERED,
+        )
+    )
+    await db.commit()
+    return lead
+
+
+@pytest.mark.asyncio
+async def test_an_opt_out_beats_written_consent() -> None:
+    # Consent is permission to start; STOP is an instruction to stop, and it is
+    # the more recent statement of what this person wants.
+    try:
+        async with get_session_factory()() as db:
+            lead = await _lead(db, suffix="01", consent=True, opted_out=True)
+            assert await may_send_automated(lead, "sms", db) is False
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_opt_out_beats_consumer_initiated_contact() -> None:
+    # THE regression. This lead has an inbound SMS, which satisfies the
+    # consumer-initiated branch — the branch that made STOP itself unlock
+    # sending, because STOP arrives as an inbound message on that channel.
+    try:
+        async with get_session_factory()() as db:
+            lead = await _lead(db, suffix="02", consent=False, opted_out=True)
+            assert await may_send_automated(lead, "sms", db) is False
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_opt_out_stops_every_gated_channel_not_just_the_one_used() -> None:
+    # They said stop on SMS. Continuing on WhatsApp because the word arrived
+    # over a different transport is the letter of the rule against its point.
+    try:
+        async with get_session_factory()() as db:
+            lead = await _lead(db, suffix="03", consent=True, opted_out=True)
+            assert await may_send_automated(lead, "whatsapp", db) is False
+            assert await may_send_automated(lead, "sms", db) is False
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_lead_who_never_opted_out_is_unaffected() -> None:
+    try:
+        async with get_session_factory()() as db:
+            lead = await _lead(db, suffix="04", consent=True, opted_out=False)
+            assert await may_send_automated(lead, "sms", db) is True
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_nurture_worker_holds_an_opted_out_lead() -> None:
+    from app.models.follow_up import FollowUp, FollowUpKind, FollowUpStatus
+    from app.services.followups import process_due_followups
+
+    try:
+        async with get_session_factory()() as db:
+            lead = await _lead(db, suffix="05", consent=True, opted_out=True)
+            db.add(
+                FollowUp(
+                    lead_id=lead.id,
+                    visit_id=None,
+                    kind=FollowUpKind.REMINDER_24H,
+                    status=FollowUpStatus.PENDING,
+                    scheduled_for=datetime.now(UTC) - timedelta(minutes=5),
+                )
+            )
+            await db.commit()
+
+            result = await process_due_followups(db)
+
+            assert result["sent"] == 0
+            outbound = (
+                await db.execute(
+                    text(
+                        "SELECT count(*) FROM messages m "
+                        "JOIN conversations c ON c.id = m.conversation_id "
+                        "WHERE c.lead_id = :lead AND m.direction = 'outbound'"
+                    ),
+                    {"lead": lead.id},
+                )
+            ).scalar_one()
+            assert outbound == 0
+    finally:
+        await _cleanup()
+
+
+# ── The orchestrator must not answer a revocation ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_stop_is_answered_with_one_confirmation_and_no_llm_reply() -> None:
+    """The whole point, end to end.
+
+    Before this, an inbound STOP went down the ordinary path: history assembled,
+    model called, a friendly reply generated and dispatched. An automated text
+    to somebody who had just revoked permission — and generated by a model, so
+    nobody could predict what it would say.
+    """
+    from unittest.mock import patch
+
+    from app.services.conversation import ParsedMessage, handle_inbound_message
+
+    called: list[str] = []
+
+    async def _must_not_run(**kwargs: object) -> object:  # pragma: no cover
+        called.append("llm")
+        raise AssertionError("the model was asked to answer an opt-out")
+
+    try:
+        async with get_session_factory()() as db:
+            lead = await _lead(db, suffix="06", consent=True, opted_out=False)
+
+            with patch("app.services.conversation.generate_reply", _must_not_run):
+                result = await handle_inbound_message(
+                    ParsedMessage(
+                        channel="sms",
+                        external_id="optout-e2e-1",
+                        from_identifier=lead.phone,
+                        from_name=None,
+                        content="STOP",
+                    ),
+                    db,
+                )
+
+            assert called == []
+            assert result["status"] == "opted_out"
+
+        async with get_bypass_session_factory()() as db:
+            row = (
+                await db.execute(
+                    text(
+                        "SELECT opted_out_at, opted_out_channel, opted_out_keyword "
+                        "FROM leads WHERE phone = :p"
+                    ),
+                    {"p": f"{MARK}06"},
+                )
+            ).mappings().one()
+            assert row["opted_out_at"] is not None
+            assert row["opted_out_channel"] == "sms"
+            assert row["opted_out_keyword"] == "stop"
+
+            outbound = (
+                await db.execute(
+                    text(
+                        "SELECT m.content FROM messages m "
+                        "JOIN conversations c ON c.id = m.conversation_id "
+                        "JOIN leads l ON l.id = c.lead_id "
+                        "WHERE l.phone = :p AND m.direction = 'outbound'"
+                    ),
+                    {"p": f"{MARK}06"},
+                )
+            ).scalars().all()
+            # Exactly one, and it is the confirmation CTIA requires — not a
+            # model-authored message, and not two.
+            assert len(outbound) == 1
+            assert "unsubscribed" in outbound[0].lower()
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_start_brings_them_back() -> None:
+    from unittest.mock import patch
+
+    from app.services.conversation import ParsedMessage, handle_inbound_message
+
+    async def _must_not_run(**kwargs: object) -> object:  # pragma: no cover
+        raise AssertionError("the model was asked to answer an opt-in")
+
+    try:
+        async with get_session_factory()() as db:
+            lead = await _lead(db, suffix="07", consent=True, opted_out=True)
+            assert await may_send_automated(lead, "sms", db) is False
+
+            with patch("app.services.conversation.generate_reply", _must_not_run):
+                result = await handle_inbound_message(
+                    ParsedMessage(
+                        channel="sms",
+                        external_id="optout-e2e-2",
+                        from_identifier=lead.phone,
+                        from_name=None,
+                        content="START",
+                    ),
+                    db,
+                )
+            assert result["status"] == "opted_in"
+
+            await db.refresh(lead)
+            assert lead.opted_out_at is None
+            assert await may_send_automated(lead, "sms", db) is True
+    finally:
+        await _cleanup()

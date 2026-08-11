@@ -187,6 +187,7 @@ services:
         # Public capture form. Empty on a single-agency install; required once
         # a second agency exists, or /contact posts no form key and is refused.
         NEXT_PUBLIC_CAPTURE_FORM_KEY: ${NEXT_PUBLIC_CAPTURE_FORM_KEY:-}
+        NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
     container_name: eko-realestate-frontend
     restart: unless-stopped
     depends_on:

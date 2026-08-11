@@ -206,6 +206,74 @@ app.include_router(email_webhook.router, prefix="/api/v1/webhooks", tags=["webho
 app.include_router(sms_webhook.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(voice_webhook.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 
+# Nothing in this application reads a request body larger than a form
+# submission, and one route accepts bodies from anonymous callers. There is no
+# reverse proxy in front of uvicorn — the Cloudflare tunnel points straight at
+# it — and uvicorn imposes no limit of its own, so a 43 MB JSON body was
+# accepted, parsed into Python objects and answered 200, retaining ~200 MB for
+# one request. A handful of concurrent ones OOMs the single worker and takes
+# every tenant's dashboard down with it.
+#
+# Enforced at the ASGI layer so the body is refused BEFORE pydantic
+# materialises it, and enforced on the stream as well as the header because
+# Content-Length is a claim, not a measurement.
+MAX_BODY_BYTES = 256 * 1024
+
+
+class BodySizeLimit:
+    def __init__(self, app: object, max_bytes: int = MAX_BODY_BYTES) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: dict, receive: object, send: object) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        from starlette.responses import JSONResponse
+
+        declared = 0
+        for key, value in scope.get("headers", []):
+            if key == b"content-length":
+                try:
+                    declared = int(value)
+                except ValueError:
+                    declared = 0
+                break
+        if declared > self.max_bytes:
+            await JSONResponse({"detail": "body_too_large"}, status_code=413)(
+                scope, receive, send
+            )
+            return
+
+        seen = 0
+        too_big = False
+
+        async def guarded() -> dict:
+            nonlocal seen, too_big
+            message = await receive()
+            if message.get("type") == "http.request":
+                seen += len(message.get("body", b""))
+                if seen > self.max_bytes:
+                    too_big = True
+                    # Hand the app an empty final chunk rather than the rest of
+                    # the payload; the 413 below is what the client sees.
+                    return {"type": "http.request", "body": b"", "more_body": False}
+            return message
+
+        async def guarded_send(message: dict) -> None:
+            if too_big and message.get("type") == "http.response.start":
+                await JSONResponse({"detail": "body_too_large"}, status_code=413)(
+                    scope, receive, send
+                )
+                return
+            await send(message)
+
+        await self.app(scope, guarded, guarded_send)
+
+
+app.add_middleware(BodySizeLimit)
+
 # The public capture form. Mounted with the webhooks rather than below with the
 # dashboard API because it shares their contract, not the dashboard's: no
 # session, and the organization resolved inside the handler from something in
@@ -581,6 +649,19 @@ async def _startup() -> None:
 
     rls_is_off, real_orgs, org_count_known = await _startup_isolation_state()
 
+
+    # The public capture form is the one route an anonymous stranger can write
+    # through, so whether its strongest defence is on belongs in the startup
+    # log next to the rest of the security posture — not left for someone to
+    # infer from an empty variable.
+    if not (settings.TURNSTILE_SECRET or "").strip():
+        logger.warning(
+            "⚠️  TURNSTILE_SECRET is empty — POST /api/v1/public/leads accepts "
+            "submissions with no captcha. The honeypot, the per-IP limit and "
+            "the global ceiling still apply, but a determined script outspends "
+            "all three. Set it (and NEXT_PUBLIC_TURNSTILE_SITE_KEY, which must "
+            "be baked into the frontend build) before advertising the form."
+        )
 
     if settings.GOOGLE_ALLOWED_DOMAIN or settings.google_allowed_emails_list:
         logger.warning(

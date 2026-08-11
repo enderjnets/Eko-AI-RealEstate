@@ -27,6 +27,7 @@ import { submitPublicLead, type CaptureOutcome } from "@/lib/api";
 import { collectAttribution } from "@/lib/capture";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
+import { TURNSTILE_SITE_KEY, Turnstile } from "@/components/ui/Turnstile";
 
 const FORM_KEY = process.env.NEXT_PUBLIC_CAPTURE_FORM_KEY || undefined;
 
@@ -43,6 +44,7 @@ function ContactForm() {
   });
   const [consent, setConsent] = useState(false);
   const [utm, setUtm] = useState<Record<string, string>>({});
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +76,13 @@ function ContactForm() {
       setError(t("contact.errorContact"));
       return;
     }
+    if (TURNSTILE_SITE_KEY && !captchaToken) {
+      // The server would answer 400 and the visitor would read "we couldn't
+      // verify that you're human" without ever having been shown a challenge
+      // to fail.
+      setError(t("contact.errorCaptchaPending"));
+      return;
+    }
     setLoading(true);
     setError(null);
 
@@ -86,6 +95,7 @@ function ContactForm() {
       consent,
       consent_text: consent ? consentWording : undefined,
       utm,
+      turnstile_token: captchaToken || undefined,
       website: f.website || undefined,
     });
 
@@ -94,6 +104,9 @@ function ContactForm() {
       setDone(true);
       return;
     }
+    // A Turnstile token is single-use. Whatever went wrong, the one in hand is
+    // spent, so drop it and let the widget issue another.
+    setCaptchaToken(null);
     setError(
       outcome.reason === "contact"
         ? t("contact.errorContact")
@@ -203,6 +216,11 @@ function ContactForm() {
         <p className="text-xs text-gray-500 dark:text-gray-500">
           {t("contact.consentHint")}
         </p>
+
+        <Turnstile
+          onToken={setCaptchaToken}
+          onError={() => setError(t("contact.errorCaptcha"))}
+        />
 
         {error && (
           <p role="alert" className="text-sm text-red-600 dark:text-red-400">

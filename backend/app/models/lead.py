@@ -111,6 +111,16 @@ class Lead(Base):
     consent_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     consent_user_agent: Mapped[str | None] = mapped_column(String(400), nullable=True)
 
+    # When they told us to stop, on which channel, and with which word. Set by
+    # the inbound path, never by the form. Outranks `consent_at` everywhere:
+    # consent is permission to start, this is an instruction to stop, and an
+    # instruction to stop is the more recent statement of what they want.
+    opted_out_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    opted_out_channel: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    opted_out_keyword: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
     # Inbox triage: when a realtor marked this lead handled. A lead is "pending"
     # if its last message is inbound and this is null or older than that message.
     # A dedicated column (not meta JSON) so marking handled never races with other

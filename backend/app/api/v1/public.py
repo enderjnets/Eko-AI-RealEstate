@@ -28,6 +28,7 @@ from app.services.capture import (
     CaptureRejected,
     FormSubmission,
     capture_lead,
+    validate_submission,
 )
 from app.services.tenant_context import set_org_id
 from app.services.tenant_resolver import WebhookOrgUnresolved, webhook_org_or_refuse
@@ -65,28 +66,44 @@ def _prune(window: deque[float], now: float, span: float) -> None:
         window.popleft()
 
 
-def _rate_limited(ip: str, now: float | None = None) -> bool:
-    """Record this attempt and say whether it should be refused."""
+def _ip_limited(ip: str, now: float | None = None) -> bool:
+    """Charge this address for an attempt and say whether it is over budget.
+
+    Charged for EVERY attempt that reaches it, including honeypot hits and
+    submissions the captcha will reject. The budget is per address and bounded,
+    so spending it on refused work costs the caller and nobody else.
+    """
     stamp = time.monotonic() if now is None else now
-
-    _prune(_global_hits, stamp, GLOBAL_WINDOW)
-    if len(_global_hits) >= GLOBAL_LIMIT:
-        return True
-
     window = _hits.get(ip)
     if window is None:
         if len(_hits) >= MAX_TRACKED_IPS:
             # Drop the coldest tracked address rather than refuse service.
-            # Sorting 5k deques is cheap next to a DB write and only happens
-            # under genuine flood conditions.
             coldest = min(_hits, key=lambda k: _hits[k][-1] if _hits[k] else 0.0)
             _hits.pop(coldest, None)
         window = _hits[ip] = deque()
     _prune(window, stamp, PER_IP_WINDOW)
     if len(window) >= PER_IP_LIMIT:
         return True
-
     window.append(stamp)
+    return False
+
+
+def _global_limited(now: float | None = None) -> bool:
+    """Charge the platform-wide budget, and say whether it is exhausted.
+
+    Deliberately charged LAST — after the honeypot, after the per-IP budget and
+    after the captcha. It used to be charged first, which made it a kill switch
+    anyone could hold down: sixty tokenless posts from sixty forged addresses
+    were each refused with 400 and each still consumed a slot, so the captcha
+    that is supposed to be the defence a script cannot outspend was bypassed
+    for availability, and every agency on the install lost lead capture for ten
+    minutes. Now a request only spends this budget once it has proven it is
+    worth writing.
+    """
+    stamp = time.monotonic() if now is None else now
+    _prune(_global_hits, stamp, GLOBAL_WINDOW)
+    if len(_global_hits) >= GLOBAL_LIMIT:
+        return True
     _global_hits.append(stamp)
     return False
 
@@ -164,30 +181,26 @@ async def capture(
 ) -> dict[str, bool]:
     ip = client_ip(request)
 
+    # ── Order matters, and each step is placed for a reason ──────────────
+    # 1. Per-IP budget first, charged even for the honeypot. It used to sit
+    #    AFTER the honeypot branch, so `{"website": "bot"}` was an unmetered
+    #    endpoint: two hundred consecutive posts all answered 202 and left
+    #    every counter untouched.
+    if _ip_limited(ip):
+        log.warning("Rate limit refused a capture from %s", ip)
+        raise HTTPException(status_code=429, detail="too_many_requests")
+
     if body.website:
         # Answer exactly like a good submission. Telling a bot it was detected
         # is free tuning feedback for whoever wrote it.
         log.info("Honeypot tripped from %s", ip)
         return {"ok": True}
 
-    if _rate_limited(ip):
-        log.warning("Rate limit refused a capture from %s", ip)
-        raise HTTPException(status_code=429, detail="too_many_requests")
-
-    if not await _turnstile_ok(body.turnstile_token, ip):
-        raise HTTPException(status_code=400, detail="captcha_failed")
-
-    try:
-        org_id = await webhook_org_or_refuse(CHANNEL_WEB, body.form)
-    except WebhookOrgUnresolved as exc:
-        # 404, not 503. The form key is public — it ships in the landing page —
-        # but the set of valid keys is not, and a distinguishable error turns
-        # this endpoint into an oracle for enumerating an operator's tenants.
-        log.error("refusing web capture — %s", exc)
-        raise HTTPException(status_code=404, detail="unknown_form") from exc
-
-    set_org_id(org_id)
-
+    # 2. Shape of the submission, BEFORE the tenant is resolved. A probe with
+    #    no email and no phone used to return 422 for a live form key and 404
+    #    for a dead one, which made this a quiet enumeration oracle: unlike a
+    #    202 probe it writes no lead, so a scan left no trace anywhere the
+    #    operator looks. Same answer now regardless of the key.
     submission = FormSubmission(
         name=body.name,
         email=body.email,
@@ -199,6 +212,44 @@ async def capture(
         ip=ip,
         user_agent=request.headers.get("user-agent"),
     )
+    try:
+        validate_submission(submission)
+    except CaptureRejected as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+
+    # 3. Captcha before the global budget is touched.
+    if not await _turnstile_ok(body.turnstile_token, ip):
+        raise HTTPException(status_code=400, detail="captcha_failed")
+
+    try:
+        org_id = await webhook_org_or_refuse(
+            CHANNEL_WEB,
+            body.form,
+            # A key that was supplied must match a route. Without this, an
+            # agency offboarded the ordinary way — suspend, delete routes —
+            # leaves a live landing page whose submissions get filed into
+            # whichever agency remains.
+            fallback_when_unmapped=not body.form,
+        )
+    except WebhookOrgUnresolved as exc:
+        # 404, not 503. The form key is public — it ships in the landing page —
+        # but the set of valid keys is not, and a distinguishable error turns
+        # this endpoint into an oracle for enumerating an operator's tenants.
+        log.error("refusing web capture — %s", exc)
+        raise HTTPException(status_code=404, detail="unknown_form") from exc
+
+    # 4. Only now, with a real tenant and a passed captcha, spend the
+    #    platform-wide budget.
+    if _global_limited():
+        log.error(
+            "Global capture ceiling reached — lead capture is refused for "
+            "every agency until the window clears. If this is not a flood, "
+            "raise GLOBAL_LIMIT; if it is, configure TURNSTILE_SECRET."
+        )
+        raise HTTPException(status_code=429, detail="too_many_requests")
+
+    set_org_id(org_id)
+
     try:
         await capture_lead(submission, db)
     except CaptureRejected as exc:

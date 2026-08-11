@@ -48,6 +48,12 @@ from app.services.delivery import schedule_retry
 from app.services.i18n import detect_language, language_instruction, pick_supported_language
 from app.services.listings import listing_broker
 from app.services.llm import LLMResult, LLMUnavailable, generate_reply
+from app.services.optout import (
+    CONFIRMATION,
+    RESUMED,
+    opt_in_keyword,
+    opt_out_keyword,
+)
 from app.services.scoring import rescore_lead
 from app.services.tenant_context import get_org_id
 from app.services.whatsapp import send_text_message as whatsapp_send
@@ -973,6 +979,36 @@ def _fallback_reply(agent_cfg: AgentSettings | None, target_lang: str) -> LLMRes
     )
 
 
+async def _optout_language(
+    lead: Lead, conv: Conversation, parsed: ParsedMessage, db: AsyncSession
+) -> str:
+    """Which language to confirm an opt-out in.
+
+    Detecting on the message itself is useless here: "STOP" is the same word in
+    both languages, and it is the word most people send. So look back at what
+    this person has actually written to us, newest first, and fall back to the
+    keyword itself — "baja" and "cancelar" are Spanish whoever types them.
+    """
+    rows = await db.execute(
+        select(Message.content)
+        .where(
+            Message.conversation_id == conv.id,
+            Message.direction == MessageDirection.INBOUND,
+        )
+        .order_by(Message.created_at.desc())
+        .limit(6)
+    )
+    for content in rows.scalars():
+        if opt_out_keyword(content, parsed.channel) or opt_in_keyword(
+            content, parsed.channel
+        ):
+            continue  # a keyword tells us nothing about their language
+        detected = detect_language(content)
+        if detected:
+            return pick_supported_language(detected, ("en", "es"))
+    return pick_supported_language(detect_language(parsed.content or ""), ("en", "es"))
+
+
 async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dict[str, int | str | bool]:
     """Process one inbound message (any channel) end-to-end. Returns a small status dict.
 
@@ -1124,6 +1160,71 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         log.info("Race-condition idempotent skip for external_id=%s", parsed.external_id)
         await db.commit()
         return {"status": "duplicate", "lead_id": lead.id, "skipped": True}
+
+    # ── 4b. Revocation ─────────────────────────────────────────────────
+    # Before the takeover check, before the history, before the model. A lead
+    # who wrote STOP gets exactly one confirmation and nothing else, ever —
+    # generating a helpful reply to somebody who just asked to be left alone is
+    # the automated message the revocation forbids, and it would go out with
+    # the model's own wording rather than a confirmation.
+    #
+    # The dispatch is direct rather than through the retry queue: a
+    # confirmation that arrives late, or twice, is worse than one that does not
+    # arrive at all.
+    stop_word = opt_out_keyword(parsed.content, parsed.channel)
+    start_word = opt_in_keyword(parsed.content, parsed.channel)
+    if stop_word or (start_word and lead.opted_out_at is not None):
+        # Same language machinery the reply path uses, but keyed on the
+        # conversation's history rather than on the one-word message — "STOP"
+        # detects as English no matter who sends it, and confirming a Spanish
+        # speaker's opt-out in English is the last thing they hear from us.
+        target_lang = await _optout_language(lead, conv, parsed, db)
+        if stop_word:
+            lead.opted_out_at = datetime.now(UTC)
+            lead.opted_out_channel = parsed.channel
+            lead.opted_out_keyword = stop_word[:40]
+            text = CONFIRMATION.get(target_lang) or CONFIRMATION["en"]
+        else:
+            lead.opted_out_at = None
+            lead.opted_out_channel = None
+            lead.opted_out_keyword = None
+            text = RESUMED.get(target_lang) or RESUMED["en"]
+
+        ack = Message(
+            conversation_id=conv.id,
+            direction=MessageDirection.OUTBOUND,
+            sender=MessageSender.AGENT,
+            content=text,
+            delivery_status=MessageStatus.PENDING,
+        )
+        db.add(ack)
+        await db.flush()
+        try:
+            external_id, _ = await _dispatch_send(
+                parsed.channel, to=parsed.from_identifier, text=text
+            )
+            ack.external_id = external_id
+            ack.delivery_status = MessageStatus.SENT
+        except Exception as exc:  # noqa: BLE001
+            # Not retried on purpose. The opt-out itself is already recorded
+            # and honoured; a failed confirmation must never leave the door
+            # open for the sweep to send anything else.
+            log.error("Opt-out confirmation failed for lead %d: %s", lead.id, exc)
+            ack.delivery_status = MessageStatus.FAILED
+        await db.commit()
+        log.info(
+            "Lead %d %s on %s via %r",
+            lead.id,
+            "opted out" if stop_word else "opted back in",
+            parsed.channel,
+            stop_word or start_word,
+        )
+        return {
+            "status": "opted_out" if stop_word else "opted_in",
+            "lead_id": lead.id,
+            "inbound_id": inbound.id,
+            "keyword": stop_word or start_word,
+        }
 
     # ── 5. Human takeover check ────────────────────────────────────────
     if lead.human_takeover:
