@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.42.3";
+export const CURRENT_VERSION = "0.42.4";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -15,7 +15,7 @@ export interface VersionEntry {
 
 export const CHANGELOG: VersionEntry[] = [
   {
-    version: "0.42.3",
+    version: "0.42.4",
     date: "2026-08-11",
     title: {
       en: "A way in for people who found you online",
@@ -41,6 +41,14 @@ export const CHANGELOG: VersionEntry[] = [
       {
         en: "Fixed: the Inbox labelled form submissions as SMS, and left them at the bottom of the priority list.",
         es: "Corregido: la bandeja etiquetaba los envíos del formulario como SMS y los dejaba al fondo de la lista de prioridad.",
+      },
+      {
+        en: "\"Baja\" and \"alta\" are no longer treated as opt-out and opt-in — in this business they are the answer to \"ground floor or upper floor?\", and treating them as unsubscribe requests silenced live buyers.",
+        es: "\"Baja\" y \"alta\" ya no se interpretan como baja y alta del servicio: en este negocio son la respuesta a \"¿planta baja o alta?\", y tomarlas por bajas silenciaba a compradores activos.",
+      },
+      {
+        en: "Fixed: a single blank contact name could stop the whole follow-up worker, which then re-sent the same message on every tick without recording any of them.",
+        es: "Corregido: un nombre de contacto en blanco podía parar todo el worker de seguimientos, que reenviaba el mismo mensaje en cada ciclo sin registrar ninguno.",
       },
       {
         en: "Answering \"yes\" or \"sí\" no longer switches automated messages back on for someone who had opted out — only replying START does.",

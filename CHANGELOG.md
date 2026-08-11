@@ -2,6 +2,34 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.42.4] — 2026-08-11
+
+Ronda 6 de auditoría adversarial, la más productiva: siete defectos, dos
+críticos y ambos introducidos por los arreglos de la ronda 5.
+
+### Corregido
+- **Reabrí un agujero y borré el test que lo cazaba**: el consentimiento se
+  podía plantar en cualquier lead llegado por email, porque su identificador
+  **es** la dirección. Restaurado y con su test.
+- **Un desconocido podía destruir un consentimiento genuino**: permitir
+  refrescarlo sonaba bien ("uno genuino cura uno falso") pero funciona igual al
+  revés, y el registro genuino es la única prueba del broker. Se escribe una vez.
+- **El guard de "visita ya pasada" estaba en la rama muerta**, así que el
+  recordatorio salía igual días después de la visita.
+- **Un nombre de contacto en blanco atascaba el worker**: `" ".split()[0]`
+  lanzaba IndexError fuera del `try` por fila, el lote nunca commiteaba y el
+  proveedor recibía el mismo SMS en cada ciclo sin registrar ninguno.
+- **`baja` y `alta` fuera de las palabras clave**: "¿planta baja o alta?" es de
+  lo más común que pregunta una agente bilingüe. Y con ellas cambió el texto de
+  confirmación, que decía "Responde ALTA" — ahora hay un test que lee las
+  palabras que el mensaje nombra y exige que funcionen.
+- Un STOP repetido borraba la fecha de la **primera** baja.
+- La cola de reintentos descartaba también el mensaje **escrito a mano** por la
+  agente, que es justo el que sí puede enviarse.
+- Dos leads que comparten dirección podían fusionarse sin test que lo impidiera.
+
+504 tests. 47 mutaciones, 47 muertas.
+
 ## [0.42.3] — 2026-08-11
 
 Rondas 5 y 6 de auditoría adversarial. Tres defectos más, dos introducidos por
