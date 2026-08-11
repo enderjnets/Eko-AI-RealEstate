@@ -408,9 +408,13 @@ async def test_a_hold_gives_up_eventually() -> None:
                 db, suffix="14", channels=("sms",), inbound_on=(WEB,)
             )
             fu_id = await _due_followup(lead, db)
+            # Fourteen holds already behind it. Counted in HOLDS rather than in
+            # row age on purpose: a post-visit-7d follow-up is created the
+            # moment the visit is booked, so an age-based cutoff dropped it on
+            # its very first hold — the opposite of holding it.
             await db.execute(
-                sqltext("UPDATE follow_ups SET created_at = :old WHERE id = :i"),
-                {"old": datetime.now(UTC) - timedelta(days=20), "i": fu_id},
+                sqltext("UPDATE follow_ups SET attempts = 14 WHERE id = :i"),
+                {"i": fu_id},
             )
             await db.commit()
 
@@ -421,5 +425,43 @@ async def test_a_hold_gives_up_eventually() -> None:
             ).scalar_one()
             await db.refresh(fu)
             assert fu.status == FollowUpStatus.SKIPPED
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_old_followup_is_not_dropped_on_its_first_hold() -> None:
+    """Grace is counted in holds, not in row age.
+
+    A post-visit-7d follow-up is created the moment the visit is booked, so by
+    the time it comes due its row is already more than a week old — and a
+    fortnight-old row was dropped the very first time it was held, which is the
+    opposite of holding it.
+    """
+    from sqlalchemy import select
+    from sqlalchemy import text as sqltext
+
+    from app.models.follow_up import FollowUpStatus
+
+    try:
+        async with get_session_factory()() as db:
+            lead, _ = await _lead_with(
+                db, suffix="15", channels=("sms",), inbound_on=(WEB,)
+            )
+            fu_id = await _due_followup(lead, db)
+            await db.execute(
+                sqltext("UPDATE follow_ups SET created_at = :old WHERE id = :i"),
+                {"old": datetime.now(UTC) - timedelta(days=40), "i": fu_id},
+            )
+            await db.commit()
+
+            await process_due_followups(db)
+
+            fu = (
+                await db.execute(select(FollowUp).where(FollowUp.id == fu_id))
+            ).scalar_one()
+            await db.refresh(fu)
+            assert fu.status == FollowUpStatus.PENDING, "held, despite the old row"
+            assert fu.attempts == 1
     finally:
         await _cleanup()

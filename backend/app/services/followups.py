@@ -45,7 +45,11 @@ log = logging.getLogger(__name__)
 # after a fortnight so a permanently unreachable lead does not accumulate work
 # forever.
 _HOLD_RETRY_AFTER = timedelta(days=1)
-_HOLD_GIVE_UP_AFTER = timedelta(days=14)
+# Counted in holds rather than in wall-clock age. `created_at` is when the
+# follow-up was SCHEDULED, which for a post-visit-7d row is a week before it is
+# due — so an age-based cutoff dropped it on the first hold instead of holding
+# it. One hold a day, so fourteen holds is a fortnight of grace.
+_HOLD_GIVE_UP_AFTER_HOLDS = 14
 
 # Offsets relative to the visit's scheduled_at.
 _POST_VISIT_OFFSETS = {
@@ -208,7 +212,15 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             continue
         if fu.visit_id is not None:
             visit = (await db.execute(select(Visit).where(Visit.id == fu.visit_id))).scalar_one_or_none()
-            if visit is None or visit.status in (VisitStatus.CANCELLED, VisitStatus.NO_SHOW):
+            # COMPLETED belongs here for the PRE-visit reminder only: telling
+            # somebody "your viewing is tomorrow" about a viewing they have
+            # already attended is the kind of message that makes the whole
+            # system look broken to the client. The post-visit follow-ups are
+            # the opposite — COMPLETED is exactly when they should go.
+            dead = {VisitStatus.CANCELLED, VisitStatus.NO_SHOW}
+            if fu.kind == FollowUpKind.REMINDER_24H:
+                dead.add(VisitStatus.COMPLETED)
+            if visit is None or visit.status in dead:
                 fu.status = FollowUpStatus.CANCELLED
                 skipped += 1
                 continue
@@ -250,12 +262,17 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             # the box on the website tomorrow, or replies on WhatsApp next
             # week, would never receive the sequence that was waiting for
             # exactly that. Push it a day and look again.
-            age = now - (fu.created_at or now)
-            if age > _HOLD_GIVE_UP_AFTER:
+            # Counted in HOLDS, not from `created_at`. A post-visit-7d
+            # follow-up is created the moment the visit is booked, so by the
+            # time it is due its row can already be older than the grace
+            # period — measuring from creation dropped it on its very first
+            # hold, which is the opposite of holding it.
+            fu.attempts += 1
+            if fu.attempts > _HOLD_GIVE_UP_AFTER_HOLDS:
                 log.info(
-                    "Follow-up %d dropped for lead %d after %d days held with "
-                    "no permitted channel",
-                    fu.id, lead.id, age.days,
+                    "Follow-up %d dropped for lead %d after %d daily holds "
+                    "with no permitted channel",
+                    fu.id, lead.id, fu.attempts,
                 )
                 fu.status = FollowUpStatus.SKIPPED
             else:

@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models import (
@@ -170,3 +170,57 @@ async def test_cancelled_visit_not_enqueued(database_url: str) -> None:
     finally:
         await engine.dispose()
         await _delete_lead(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_no_reminder_for_a_visit_already_completed(database_url: str) -> None:
+    """"Your viewing is tomorrow" about a viewing they already attended.
+
+    The dead-status guard listed CANCELLED and NO_SHOW but not COMPLETED, so a
+    24h reminder still fired for a visit the realtor had already marked done.
+    Post-visit follow-ups are the opposite case — COMPLETED is exactly when
+    those should go — so the extra status applies to the pre-visit reminder
+    only.
+    """
+    future = datetime.now(UTC) + timedelta(days=2)
+    lead_id, visit_id = await _make_lead_visit(database_url, scheduled_at=future)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            await s.execute(
+                text("UPDATE visits SET status = 'completed' WHERE id = :v"),
+                {"v": visit_id},
+            )
+            await s.execute(
+                text(
+                    "DELETE FROM follow_ups WHERE visit_id = :v"
+                ),
+                {"v": visit_id},
+            )
+            await s.execute(
+                text(
+                    "INSERT INTO follow_ups (org_id, lead_id, visit_id, kind, "
+                    "status, scheduled_for, attempts) VALUES "
+                    "(1, :l, :v, 'reminder_24h', 'pending', :due, 0)"
+                ),
+                {"l": lead_id, "v": visit_id,
+                 "due": datetime.now(UTC) - timedelta(minutes=5)},
+            )
+            await s.commit()
+
+            result = await process_due_followups(s)
+            assert result["sent"] == 0
+
+            status = (
+                await s.execute(
+                    text(
+                        "SELECT status FROM follow_ups WHERE visit_id = :v "
+                        "AND kind = 'reminder_24h'"
+                    ),
+                    {"v": visit_id},
+                )
+            ).scalar_one()
+            assert status == "cancelled"
+    finally:
+        await _delete_lead(database_url, lead_id)
+        await engine.dispose()
