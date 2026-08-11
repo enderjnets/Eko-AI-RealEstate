@@ -259,6 +259,19 @@ async def capture_lead(sub: FormSubmission, db: AsyncSession) -> dict[str, objec
 
     lead, is_new, by_address = await _lead_for(identifier, email, db)
 
+    # Consent may only be established by a submission that CREATED the lead, or
+    # by one touching a lead this form itself created and that has never been
+    # reached on another channel. `by_address` alone was not enough: when the
+    # victim's own identifier IS their email — every lead that arrived by email
+    # — a stranger who knows the address matches on the exact-identifier branch
+    # instead, `by_address` is False, and the consent record lands on them with
+    # the attacker's IP as its evidence.
+    consent_allowed = is_new or (
+        not by_address
+        and lead.consent_at is None
+        and not await _reached_on_another_channel(lead.id, db)
+    )
+
     if name and not lead.name:
         lead.name = name
     if email and not lead.email:
@@ -266,7 +279,7 @@ async def capture_lead(sub: FormSubmission, db: AsyncSession) -> dict[str, objec
 
     now = datetime.now(UTC)
     _record_attribution(lead, attribution, now)
-    _record_consent(lead, sub, now, reached_by_address=by_address)
+    _record_consent(lead, sub, now, allowed=consent_allowed)
 
     conv = await first_or_create(
         db,
@@ -400,8 +413,24 @@ def _record_attribution(lead: Lead, attribution: dict[str, str], now: datetime) 
     lead.meta = meta
 
 
+async def _reached_on_another_channel(lead_id: int, db: AsyncSession) -> bool:
+    """Whether this lead has ever had a conversation on a channel other than web.
+
+    The test for "is this an established CRM record, or a row this form made?".
+    A lead who has messaged on WhatsApp, SMS, email or voice is somebody the
+    agency already knows, and a stranger who happens to know their address must
+    not be able to write a consent record onto them.
+    """
+    row = await db.execute(
+        select(Conversation.id)
+        .where(Conversation.lead_id == lead_id, Conversation.channel != CHANNEL_WEB)
+        .limit(1)
+    )
+    return row.scalar_one_or_none() is not None
+
+
 def _record_consent(
-    lead: Lead, sub: FormSubmission, now: datetime, *, reached_by_address: bool
+    lead: Lead, sub: FormSubmission, now: datetime, *, allowed: bool
 ) -> None:
     """Write the consent record once. Never clear it.
 
@@ -416,7 +445,7 @@ def _record_consent(
     and is honoured by `may_send_automated` above — which checks it before
     anything else.
 
-    `reached_by_address` blocks the one case where the submitter has proved
+    `allowed` blocks the cases where the submitter has proved
     nothing about the identifier that will actually be messaged. The email
     merge is there so the same person writing from two places becomes one
     lead; it also means anyone who knows an address reaches the CRM record
@@ -427,11 +456,12 @@ def _record_consent(
     stranger assert consent for contact details they typed; none of them should
     let a stranger assert it for details they did not.
     """
-    if reached_by_address:
+    if not allowed:
         if sub.consent:
             log.warning(
-                "Ignoring a consent claim for lead %d: this submission reached "
-                "it by matching an email address, not by its own identifier",
+                "Ignoring a consent claim for lead %d: an existing record this "
+                "submission did not create, and one the agency has reached on "
+                "another channel",
                 lead.id,
             )
         return

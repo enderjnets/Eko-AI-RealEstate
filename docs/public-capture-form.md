@@ -158,6 +158,21 @@ record documents, so it is implemented, by keyword and not by the model:
   is bounded, because this gate covers **automated** messages only and a
   realtor can still write to them personally.
 - **Coming back**: `START`, `ALTA`, `RESUME`, `UNSTOP` clear it.
+- **It lasts.** Every later message from that lead is stored and shown in the
+  Inbox but gets **no** automated reply — the revocation is not spent by the
+  turn that carried it. And the retry sweep drops anything that was already
+  queued when it arrived, because the gate belongs at the dispatch boundary and
+  not only at the producer.
+- **`cancelar` is deliberately NOT a stop word.** `CANCEL` is in the CTIA set
+  and stays; its Spanish cognates are required by nobody and are what a
+  bilingual client types about a *viewing*. Silencing a live buyer is the worse
+  error and the one they cannot undo without knowing about START.
+- Phone keyboards substitute curly quotes, ellipsis characters and em dashes.
+  `stop…` and `“STOP”` are matched — a revocation that fails because the
+  keyboard was helpful is a revocation that did not happen.
+- The dashboard **shows it**: an amber banner on the lead, and the AI badge
+  reads "Opted out" instead of "AI agent active", which would otherwise be a
+  control stating something false about what the system will do.
 
 Why keyword and not the LLM: a revocation has to be recognised when the model
 is down or slow, has to behave identically every time, and has to agree with

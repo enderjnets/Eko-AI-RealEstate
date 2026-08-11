@@ -39,6 +39,14 @@ from app.services.tenant_context import get_org_id
 
 log = logging.getLogger(__name__)
 
+# A follow-up with no permitted channel is HELD, not cancelled: the lead may
+# consent on the website tomorrow or reply on WhatsApp next week, and the
+# sequence was waiting for exactly that. Re-checked daily, and given up on
+# after a fortnight so a permanently unreachable lead does not accumulate work
+# forever.
+_HOLD_RETRY_AFTER = timedelta(days=1)
+_HOLD_GIVE_UP_AFTER = timedelta(days=14)
+
 # Offsets relative to the visit's scheduled_at.
 _POST_VISIT_OFFSETS = {
     FollowUpKind.POST_VISIT_24H: timedelta(hours=24),
@@ -237,14 +245,27 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                 break
 
         if conv is None:
-            log.info(
-                "Follow-up %d held for lead %d: %d reachable channel(s), none "
-                "with consent on record or a message they sent us first",
-                fu.id,
-                lead.id,
-                len(candidates),
-            )
-            fu.status = FollowUpStatus.SKIPPED
+            # HELD, not SKIPPED. SKIPPED is terminal and never re-evaluated, so
+            # "held for consent" silently meant "cancelled": a lead who ticks
+            # the box on the website tomorrow, or replies on WhatsApp next
+            # week, would never receive the sequence that was waiting for
+            # exactly that. Push it a day and look again.
+            age = now - (fu.created_at or now)
+            if age > _HOLD_GIVE_UP_AFTER:
+                log.info(
+                    "Follow-up %d dropped for lead %d after %d days held with "
+                    "no permitted channel",
+                    fu.id, lead.id, age.days,
+                )
+                fu.status = FollowUpStatus.SKIPPED
+            else:
+                log.info(
+                    "Follow-up %d held for lead %d: %d reachable channel(s), "
+                    "none with consent on record or a message they sent us "
+                    "first — retrying tomorrow",
+                    fu.id, lead.id, len(candidates),
+                )
+                fu.scheduled_for = now + _HOLD_RETRY_AFTER
             skipped += 1
             continue
 

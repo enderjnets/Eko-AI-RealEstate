@@ -32,15 +32,20 @@ STOP_WORDS = frozenset(
         "quit",
         "optout",
         "opt-out",
-        "revoke",
+        "opt out",
         "parar",
         "para",
         "baja",
-        "cancelar",
+        "darme de baja",
         "detener",
-        "eliminar",
     }
 )
+# Deliberately NOT here: "cancelar" and "eliminar". `CANCEL` is in the CTIA set
+# and has to stay, but its Spanish cognates are not required by anyone and are
+# what a bilingual client types about an APPOINTMENT — "cancelar" as a whole
+# message is far more likely to mean "cancel Tuesday's viewing" than "never
+# contact me again". Silencing a live buyer permanently is the worse error, and
+# it is the one they cannot undo without knowing about START.
 
 # CTIA requires a way back in, and it must be as simple as the way out.
 START_WORDS = frozenset(
@@ -67,11 +72,23 @@ START_WORDS = frozenset(
 OPT_OUT_CHANNELS = frozenset({"sms", "whatsapp", "voice"})
 
 
+# ASCII punctuation plus the characters phone keyboards substitute for it.
+_PUNCTUATION = ".,!¡?¿;:'\"()[]{}- \t\n\r\u2026\u2018\u2019\u201c\u201d\u2013\u2014\u00a0🛑✋⛔"
+
+
 def _normalise(text: str | None) -> str:
     """Lowercase, strip punctuation and whitespace, collapse to one token."""
     cleaned = (text or "").strip().lower()
-    # Carriers ignore surrounding punctuation: "STOP." and "(stop)" both count.
-    return cleaned.strip(".,!¡?¿;:'\"()[]{}- \t\n\r")
+    # Carriers ignore surrounding punctuation, and phones supply their own.
+    # iOS and Android autocorrect straight quotes to curly ones and "..." to an
+    # ellipsis character, so "STOP." typed on a phone can arrive as "stop…" or
+    # "“stop”" — none of which matched a list of ASCII words. A stop word that
+    # fails because the keyboard was helpful is a revocation that did not
+    # happen.
+    cleaned = cleaned.strip(_PUNCTUATION)
+    # A leading emoji (🛑 STOP) is common enough to be worth handling; strip
+    # anything that is not a letter, space or hyphen from the ends.
+    return cleaned.strip(_PUNCTUATION).strip()
 
 
 def opt_out_keyword(text: str | None, channel: str) -> str | None:

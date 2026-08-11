@@ -90,6 +90,14 @@ class LeadOut(BaseModel):
     property_type: str | None
     urgency: str | None
     human_takeover: bool
+    # Surfaced so a realtor can SEE that this person asked us to stop. The
+    # suppression is enforced server-side either way, but without it on screen
+    # the dashboard looks identical for a lead who opted out and one who did
+    # not — and the realtor is the one who would otherwise wonder why the
+    # nurture sequence went quiet, or worse, text them by hand assuming the
+    # system simply had nothing to say.
+    opted_out_at: datetime | None = None
+    consent_at: datetime | None = None
     score: int
     score_breakdown: dict
     needs_response: bool = False

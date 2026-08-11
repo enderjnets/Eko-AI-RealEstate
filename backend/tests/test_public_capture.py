@@ -833,3 +833,78 @@ async def test_a_chunked_oversized_body_gets_one_clean_response() -> None:
         )
     assert response.status_code == 413
     assert response.json()["detail"] == "body_too_large"
+
+
+@pytest.mark.asyncio
+async def test_consent_cannot_be_planted_when_the_identifier_is_the_email() -> None:
+    """The narrower guard was not enough.
+
+    Blocking only the email-MERGE branch missed every lead whose own identifier
+    IS an address — which is every lead that arrived by email. A stranger who
+    knows the address matches on the exact-identifier branch instead, so the
+    merge flag is False and the consent record lands on them anyway, with the
+    attacker's IP as its evidence.
+    """
+    victim = "emailkeyed@capture.test"
+    async with get_bypass_session_factory()() as db:
+        lead_id = (
+            await db.execute(
+                text(
+                    "INSERT INTO leads (org_id, phone, email, status, score, "
+                    "score_breakdown, meta, human_takeover) VALUES "
+                    "(1, :p, :e, 'new', 0, '{}', '{}', false) RETURNING id"
+                ),
+                {"p": victim, "e": victim},
+            )
+        ).scalar_one()
+        # An established record: they have written to us by email before.
+        await db.execute(
+            text(
+                "INSERT INTO conversations (org_id, lead_id, channel, status) "
+                "VALUES (1, :l, 'email', 'active')"
+            ),
+            {"l": lead_id},
+        )
+        await db.commit()
+    try:
+        status, _ = await _post(
+            {
+                "email": victim,
+                "consent": True,
+                "consent_text": "PLANTED — I agree to receive automated texts.",
+            },
+            **{"cf-connecting-ip": "192.0.2.9"},
+        )
+        assert status == 202
+        lead = await _lead_row(victim)
+        assert lead["consent_at"] is None
+        assert lead["consent_text"] is None
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_returning_web_lead_can_still_consent_later() -> None:
+    """The guard must not cost the legitimate path.
+
+    Somebody who filled the form without ticking the box, then came back and
+    ticked it, is the ordinary case. Their lead exists, was created by this
+    form, and has never been reached on another channel.
+    """
+    try:
+        assert (await _post({"email": "later@capture.test", "name": "Later"}))[0] == 202
+        assert (await _lead_row("later@capture.test"))["consent_at"] is None
+
+        status, _ = await _post(
+            {
+                "email": "later@capture.test",
+                "consent": True,
+                "consent_text": "I agree to receive texts about listings.",
+            }
+        )
+        assert status == 202
+        lead = await _lead_row("later@capture.test")
+        assert lead["consent_at"] is not None
+        assert "I agree" in lead["consent_text"]
+    finally:
+        await _cleanup()

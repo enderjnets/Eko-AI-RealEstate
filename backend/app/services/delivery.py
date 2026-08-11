@@ -159,6 +159,26 @@ async def _retry_one(db: AsyncSession, message_id: int, now: datetime) -> str:
         await db.rollback()
         return "skipped"
 
+    # A revocation must reach messages that were already queued when it
+    # arrived. Without this the sweep happily delivered them minutes or hours
+    # after the person said STOP: the gate lived in the follow-up worker, which
+    # checks BEFORE creating the row, so anything already in the queue sailed
+    # past it. The consent gate belongs at the dispatch boundary too, not only
+    # at the producer.
+    lead = await _lead_of(message, db)
+    if lead is not None and lead.opted_out_at is not None:
+        message.delivery_status = MessageStatus.FAILED
+        message.next_attempt_at = None
+        message.last_error = "lead opted out before this message could be sent"
+        log.info(
+            "Dropping queued message %s: lead %d opted out at %s",
+            message.id,
+            lead.id,
+            lead.opted_out_at.isoformat(),
+        )
+        await db.commit()
+        return "dropped"
+
     recipient, channel, in_reply_to = await _recipient_of(message, db)
     if not recipient or not channel:
         # No address right now. Counted as a failure and backed off like any
@@ -200,6 +220,20 @@ async def _retry_one(db: AsyncSession, message_id: int, now: datetime) -> str:
         message.external_id = external_id
     await db.commit()
     return "sent"
+
+
+async def _lead_of(message: Message, db: AsyncSession):
+    """The lead a queued message is addressed to, or None if it cannot be found."""
+    from app.models.conversation import Conversation
+    from app.models.lead import Lead
+
+    return (
+        await db.execute(
+            select(Lead)
+            .join(Conversation, Conversation.lead_id == Lead.id)
+            .where(Conversation.id == message.conversation_id)
+        )
+    ).scalar_one_or_none()
 
 
 async def _recipient_of(

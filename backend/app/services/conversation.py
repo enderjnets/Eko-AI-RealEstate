@@ -1254,6 +1254,31 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
             "keyword": stop_word or start_word,
         }
 
+    # ── 4c. Still opted out ────────────────────────────────────────────
+    # The block above catches the message that CONTAINS the stop word. This
+    # catches every message after it. Without it the revocation lasted exactly
+    # one turn: the lead texted STOP, got the confirmation, then wrote anything
+    # at all the next day — "what about Wash Park?" — and the model answered
+    # with a full automated reply. The comment above this code claimed "one
+    # confirmation and nothing else, ever"; it was true only of that one turn.
+    #
+    # Their message is still stored and still lands in the Inbox as pending, so
+    # nothing is lost — a person answers instead of the machine, which is
+    # exactly what "no automated messages" means. Only START lifts it.
+    if lead.opted_out_at is not None:
+        await rescore_lead(lead, db, commit=False)
+        await db.commit()
+        log.info(
+            "Lead %d opted out on %s — storing the message for a human, no AI reply",
+            lead.id,
+            lead.opted_out_at.isoformat(),
+        )
+        return {
+            "status": "opted_out_no_reply",
+            "lead_id": lead.id,
+            "inbound_id": inbound.id,
+        }
+
     # ── 5. Human takeover check ────────────────────────────────────────
     if lead.human_takeover:
         await rescore_lead(lead, db, commit=False)

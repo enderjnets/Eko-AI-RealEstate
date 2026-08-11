@@ -176,8 +176,26 @@ export function LeadDetail({ leadId }: { leadId: number }) {
               <span>{t("leads.lastMessage")} {relativeTime(lead.last_message_at, lang)}</span>
             </div>
           </div>
-          <TakeoverToggle leadId={lead.id} initial={lead.human_takeover} />
+          <TakeoverToggle
+            leadId={lead.id}
+            initial={lead.human_takeover}
+            optedOut={Boolean(lead.opted_out_at)}
+          />
         </div>
+
+        {lead.opted_out_at && (
+          /* Loud on purpose. The suppression is enforced server-side, but
+             without it on screen the dashboard looks identical for a lead who
+             asked us to stop and one who did not — and the realtor is the
+             person who would otherwise text them by hand assuming the system
+             just had nothing to say. */
+          <div
+            role="status"
+            className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"
+          >
+            {t("lead.optedOut")}
+          </div>
+        )}
 
         {(lead.zone || budget || lead.property_type || lead.urgency) && (
           <div className="mt-4 pt-4 border-t border-white/5 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">

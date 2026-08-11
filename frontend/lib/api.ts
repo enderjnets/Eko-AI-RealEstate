@@ -34,6 +34,9 @@ export interface Lead {
   property_type: string | null;
   urgency: string | null;
   human_takeover: boolean;
+  /** Set when this lead replied STOP. Automated messages are suppressed. */
+  opted_out_at?: string | null;
+  consent_at?: string | null;
   score: number;
   score_breakdown: {
     components?: Record<string, number>;

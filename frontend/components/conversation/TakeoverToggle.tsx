@@ -9,9 +9,15 @@ import { useI18n } from "@/lib/i18n";
 export function TakeoverToggle({
   leadId,
   initial,
+  optedOut = false,
 }: {
   leadId: number;
   initial: boolean;
+  /** When the lead replied STOP the AI will not answer them whatever this
+      toggle says, so the badge must not claim otherwise. Same failure as an
+      Inbox badge that labelled web submissions "SMS pending": a control that
+      states something false about what the system will do. */
+  optedOut?: boolean;
 }) {
   const router = useRouter();
   const { t } = useI18n();
@@ -44,8 +50,14 @@ export function TakeoverToggle({
           value
             ? "bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25"
             : "bg-eko-violet/15 text-eko-violet border-eko-violet/30 hover:bg-eko-violet/25"
-        } disabled:opacity-60 disabled:cursor-wait`}
-        title={value ? t("takeover.titleOn") : t("takeover.titleOff")}
+        } ${optedOut ? "opacity-70" : ""} disabled:opacity-60 disabled:cursor-wait`}
+        title={
+          optedOut
+            ? t("lead.optedOut")
+            : value
+              ? t("takeover.titleOn")
+              : t("takeover.titleOff")
+        }
       >
         {pending ? (
           <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -54,7 +66,11 @@ export function TakeoverToggle({
         ) : (
           <Bot className="w-3.5 h-3.5" />
         )}
-        {value ? t("takeover.human") : t("takeover.ai")}
+        {optedOut
+          ? t("takeover.optedOut")
+          : value
+            ? t("takeover.human")
+            : t("takeover.ai")}
       </button>
       {error && <span className="text-[10px] text-red-400">{error}</span>}
     </div>

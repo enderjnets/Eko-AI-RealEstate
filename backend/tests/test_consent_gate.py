@@ -351,3 +351,75 @@ async def test_no_permitted_channel_still_holds() -> None:
             assert await _outbound_channels(lead.id, db) == []
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_held_followup_is_retried_not_cancelled() -> None:
+    """"Held for consent" must not silently mean "cancelled".
+
+    SKIPPED is terminal and never re-evaluated, so a lead who ticks the box on
+    the website tomorrow, or replies on WhatsApp next week, would never receive
+    the sequence that was waiting for exactly that.
+    """
+    from sqlalchemy import select
+
+    from app.models.follow_up import FollowUpStatus
+
+    try:
+        async with get_session_factory()() as db:
+            lead, _ = await _lead_with(
+                db, suffix="13", channels=("sms",), inbound_on=(WEB,)
+            )
+            fu_id = await _due_followup(lead, db)
+
+            result = await process_due_followups(db)
+            assert result["sent"] == 0
+
+            fu = (
+                await db.execute(select(FollowUp).where(FollowUp.id == fu_id))
+            ).scalar_one()
+            assert fu.status == FollowUpStatus.PENDING, "held, not cancelled"
+            assert fu.scheduled_for > datetime.now(UTC), "and pushed into the future"
+
+            # Now they consent. The next sweep must actually send it.
+            lead.consent_at = datetime.now(UTC)
+            lead.consent_text = "I agree to receive texts."
+            fu.scheduled_for = datetime.now(UTC) - timedelta(minutes=1)
+            await db.commit()
+
+            again = await process_due_followups(db)
+            assert again["sent"] == 1
+            assert await _outbound_channels(lead.id, db) == ["sms"]
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_hold_gives_up_eventually() -> None:
+    # A permanently unreachable lead must not accumulate a daily retry forever.
+    from sqlalchemy import select
+    from sqlalchemy import text as sqltext
+
+    from app.models.follow_up import FollowUpStatus
+
+    try:
+        async with get_session_factory()() as db:
+            lead, _ = await _lead_with(
+                db, suffix="14", channels=("sms",), inbound_on=(WEB,)
+            )
+            fu_id = await _due_followup(lead, db)
+            await db.execute(
+                sqltext("UPDATE follow_ups SET created_at = :old WHERE id = :i"),
+                {"old": datetime.now(UTC) - timedelta(days=20), "i": fu_id},
+            )
+            await db.commit()
+
+            await process_due_followups(db)
+
+            fu = (
+                await db.execute(select(FollowUp).where(FollowUp.id == fu_id))
+            ).scalar_one()
+            await db.refresh(fu)
+            assert fu.status == FollowUpStatus.SKIPPED
+    finally:
+        await _cleanup()

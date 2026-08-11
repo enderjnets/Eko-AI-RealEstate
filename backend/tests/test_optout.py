@@ -45,7 +45,7 @@ def test_spanish_speakers_can_opt_out_in_spanish() -> None:
     # A bilingual Denver audience types "baja" and "cancelar". An opt-out
     # mechanism that only works in English is not an opt-out mechanism for the
     # half of the audience the product markets to in Spanish.
-    for word in ("BAJA", "cancelar", "parar", "detener"):
+    for word in ("BAJA", "parar", "detener", "darme de baja"):
         assert opt_out_keyword(word, "sms") is not None, word
 
 
@@ -54,6 +54,30 @@ def test_punctuation_does_not_defeat_it() -> None:
     # with a full stop is the overwhelmingly common form.
     for word in ("STOP.", " stop ", "(stop)", "STOP!", "¿parar?"):
         assert opt_out_keyword(word, "sms") is not None, word
+
+
+def test_the_phone_keyboard_does_not_defeat_it() -> None:
+    # iOS and Android substitute curly quotes, an ellipsis character and em
+    # dashes for what the person typed. A revocation that fails because the
+    # keyboard was helpful is a revocation that did not happen.
+    for word in ("stop\u2026", "\u201cSTOP\u201d", "STOP\u2014", "\U0001f6d1 STOP", "stop\u00a0"):
+        assert opt_out_keyword(word, "sms") is not None, repr(word)
+
+
+def test_spanish_words_that_mean_an_appointment_are_not_opt_outs() -> None:
+    # `CANCEL` is in the CTIA set and has to stay. Its Spanish cognates are
+    # required by nobody and are what a bilingual client types about a VIEWING
+    # — "cancelar" as a whole message far more often means "cancel Tuesday"
+    # than "never contact me again". Silencing a live buyer is the worse error,
+    # and it is the one they cannot undo without knowing about START.
+    assert opt_out_keyword("cancel", "sms") == "cancel"
+    assert opt_out_keyword("cancelar", "sms") is None
+    assert opt_out_keyword("eliminar", "sms") is None
+
+
+def test_the_spaced_and_spanish_long_forms_work() -> None:
+    assert opt_out_keyword("opt out", "sms") is not None
+    assert opt_out_keyword("darme de baja", "sms") is not None
 
 
 def test_a_sentence_containing_stop_is_not_an_opt_out() -> None:
@@ -329,5 +353,109 @@ async def test_start_brings_them_back() -> None:
             await db.refresh(lead)
             assert lead.opted_out_at is None
             assert await may_send_automated(lead, "sms", db) is True
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_ordinary_message_after_opting_out_gets_no_ai_reply() -> None:
+    """The revocation used to last exactly one turn.
+
+    The interception catches the message that CONTAINS the stop word. Nothing
+    caught the next one: the lead texted STOP, got the confirmation, then wrote
+    anything at all the following day and the model answered with a full
+    automated reply. Their message must still be STORED — a person answers it
+    — but nothing may be generated or sent.
+    """
+    from unittest.mock import patch
+
+    from app.services.conversation import ParsedMessage, handle_inbound_message
+
+    async def _must_not_run(**kwargs: object) -> object:  # pragma: no cover
+        raise AssertionError("the model answered a lead who had opted out")
+
+    try:
+        async with get_session_factory()() as db:
+            lead = await _lead(db, suffix="20", consent=True, opted_out=True)
+
+            with patch("app.services.conversation.generate_reply", _must_not_run):
+                result = await handle_inbound_message(
+                    ParsedMessage(
+                        channel="sms",
+                        external_id="optout-after-1",
+                        from_identifier=lead.phone,
+                        from_name=None,
+                        content="Actually, what's available in Wash Park under 900k?",
+                    ),
+                    db,
+                )
+            assert result["status"] == "opted_out_no_reply"
+
+        async with get_bypass_session_factory()() as db:
+            counts = (
+                await db.execute(
+                    text(
+                        "SELECT m.direction, count(*) FROM messages m "
+                        "JOIN conversations c ON c.id = m.conversation_id "
+                        "WHERE c.lead_id = :l GROUP BY m.direction"
+                    ),
+                    {"l": lead.id},
+                )
+            ).all()
+            by_direction = {d: n for d, n in counts}
+            # Their question is on file for a human; nothing went back.
+            assert by_direction.get("inbound", 0) >= 1
+            assert by_direction.get("outbound", 0) == 0
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_retry_sweep_drops_messages_queued_before_the_opt_out() -> None:
+    """A revocation has to reach what was already in the queue.
+
+    The gate lived in the follow-up worker, which checks BEFORE creating the
+    row — so anything already queued sailed past it and the sweep delivered it
+    minutes or hours after the person said STOP.
+    """
+    from app.services.delivery import retry_pending_sends
+
+    try:
+        async with get_session_factory()() as db:
+            lead = await _lead(db, suffix="21", consent=True, opted_out=True)
+            conv_id = (
+                await db.execute(
+                    text(
+                        "SELECT id FROM conversations WHERE lead_id = :l LIMIT 1"
+                    ),
+                    {"l": lead.id},
+                )
+            ).scalar_one()
+            db.add(
+                Message(
+                    conversation_id=conv_id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
+                    content="A listing you might like!",
+                    delivery_status=MessageStatus.PENDING,
+                    send_attempts=1,
+                    next_attempt_at=datetime.now(UTC) - timedelta(minutes=1),
+                )
+            )
+            await db.commit()
+
+            await retry_pending_sends(db)
+
+            status = (
+                await db.execute(
+                    text(
+                        "SELECT delivery_status FROM messages m "
+                        "JOIN conversations c ON c.id = m.conversation_id "
+                        "WHERE c.lead_id = :l AND m.direction = 'outbound'"
+                    ),
+                    {"l": lead.id},
+                )
+            ).scalar_one()
+            assert status == "failed", "queued message must be dropped, not sent"
     finally:
         await _cleanup()
