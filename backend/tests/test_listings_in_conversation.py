@@ -62,7 +62,29 @@ async def test_agent_gets_real_listings_in_system_prompt(database_url: str) -> N
 
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            await c.post("/api/v1/properties/sync")  # ensure listings exist
+            # Seed the listing this test needs, the way its sibling below
+            # does. It used to call `/api/v1/properties/sync` and trust that
+            # demo listings would appear — they did, on this developer's
+            # long-lived database, where nine Miami properties have been
+            # sitting since an older version. On any FRESH database, including
+            # every CI run, sync produces nothing and this assertion failed.
+            engine = create_async_engine(database_url, future=True)
+            Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+            async with Session() as s:
+                s.add(
+                    Property(
+                        source=PropertySource.MANUAL,
+                        external_id=f"LST-{sfx}",
+                        status=PropertyStatus.ACTIVE,
+                        title="Condo en Brickell",
+                        property_type="condo",
+                        zone="Brickell",
+                        price=Decimal("790000"),
+                        bedrooms=2,
+                        raw={"listing_type": "sale"},
+                    )
+                )
+                await s.commit()
             with patch("app.services.conversation.classify_intent", AsyncMock(return_value=fake_intent)):
                 with patch("app.services.conversation.generate_reply", side_effect=_capture):
                     r = await c.post("/api/v1/webhooks/sms", data=form)

@@ -150,6 +150,15 @@ async def test_tool_call_book_visit_keys_on_caller_id(database_url: str) -> None
                     "function": {
                         "name": "book_visit",
                         "arguments": {
+                            # A Friday at 15:00 OFFICE-LOCAL — `_parse_dt`
+                            # discards the Z and reads the wall clock in the
+                            # agency's timezone, and 15:00 is one of the
+                            # simulated slot hours. This failed on every fresh
+                            # database (CI included) while passing locally,
+                            # because slot generation ignored the timezone and
+                            # always produced UTC hours: an office in Denver
+                            # asking for 3 PM was told nothing was free all
+                            # day, since 3 PM Denver is 22:00 UTC.
                             "datetime": "2027-01-15T15:00:00Z",
                             "property_address": "123 Main St, Aurora CO",
                             "phone": dictated,

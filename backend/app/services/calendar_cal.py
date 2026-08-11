@@ -18,8 +18,9 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -61,17 +62,41 @@ def _simulated_slots(
     start: datetime,
     end: datetime,
     *,
+    timezone_name: str = "UTC",
     busy_starts: set[datetime] | None = None,
 ) -> list[Slot]:
-    """Return weekday slots between [start, end), skipping any in `busy_starts`."""
+    """Weekday slots between [start, end), skipping any in `busy_starts`.
+
+    The hours and the weekday test are LOCAL to the office, not to UTC. This
+    argument used to be accepted by `list_available_slots` and then dropped on
+    the way in here, so simulated availability was always generated in UTC
+    while `_parse_dt` interprets the caller's time as office wall-clock. Any
+    office not on UTC therefore had an availability calendar that did not line
+    up with its own business hours: an agency in Denver asking for 3 PM was
+    told nothing was free that day, because 3 PM Denver is 22:00 UTC and the
+    generator only ever offered 10, 11, 14, 15 and 16 UTC.
+
+    It also silently moved the weekend. A Saturday morning in Denver is still
+    Friday evening in UTC, so slots were offered on days the office is shut.
+    """
     busy = busy_starts or set()
     out: list[Slot] = []
-    day = start.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_day = end.replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        office = ZoneInfo(timezone_name)
+    except Exception:  # noqa: BLE001 — a bad tz must not empty the calendar
+        log.warning("Unknown timezone %r; generating slots in UTC", timezone_name)
+        office = UTC
+
+    day = start.astimezone(office).replace(hour=0, minute=0, second=0, microsecond=0)
+    end_day = end.astimezone(office).replace(hour=0, minute=0, second=0, microsecond=0)
     while day <= end_day:
-        if day.weekday() < 5:  # Mon-Fri only
+        if day.weekday() < 5:  # Mon-Fri, in the office's own week
             for hour in SIMULATED_HOURS_OF_DAY:
-                slot_start = day.replace(hour=hour)
+                # Rebuilt rather than `.replace(hour=…)` so a DST transition
+                # lands on the right instant instead of an hour either side.
+                slot_start = datetime(
+                    day.year, day.month, day.day, hour, tzinfo=office
+                )
                 if slot_start < start or slot_start >= end:
                     continue
                 if slot_start in busy:
@@ -97,7 +122,9 @@ async def list_available_slots(
     s = get_settings()
 
     if s.CALENDAR_SIMULATED:
-        return _simulated_slots(start, end, busy_starts=busy_starts)
+        return _simulated_slots(
+            start, end, timezone_name=timezone_name, busy_starts=busy_starts
+        )
 
     try:
         identity = await resolve_calendar_identity()
