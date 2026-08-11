@@ -31,6 +31,14 @@ CHANNEL_VOICE = "voice"
 # putting their leads' names, emails and phone numbers in front of another
 # agency's realtors.
 CHANNEL_CALENDAR = "calendar"
+# Also not a delivery destination — nothing is ever sent to a web form. It rides
+# here because a public form post carries no session and no phone number, so the
+# only thing that can attribute it to an agency is the same mechanism every other
+# inbound uses: a `destination`, which for this channel is the form's public key
+# (the opaque slug embedded in the landing page). Without it the capture endpoint
+# would have to invent a second tenant-resolution path, and the one thing this
+# table exists to prevent is two answers to "whose lead is this".
+CHANNEL_WEB = "web"
 
 CHANNELS = (
     CHANNEL_WHATSAPP,
@@ -38,9 +46,8 @@ CHANNELS = (
     CHANNEL_EMAIL,
     CHANNEL_VOICE,
     CHANNEL_CALENDAR,
+    CHANNEL_WEB,
 )
-# The ones a provider actually delivers to.
-INBOUND_CHANNELS = (CHANNEL_WHATSAPP, CHANNEL_SMS, CHANNEL_EMAIL, CHANNEL_VOICE)
 
 
 def normalize_destination(value: str | None) -> str:

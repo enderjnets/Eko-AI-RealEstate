@@ -25,6 +25,13 @@ logger = logging.getLogger(__name__)
 # Unauthenticated paths that legitimately write: the inbound channels.
 WEBHOOK_PREFIX = "/api/v1/webhooks"
 
+# The other unauthenticated writer: a lead filling in a form on a landing page.
+# Same contract as WEBHOOK_PREFIX — no org here, the handler binds one from the
+# request body before it writes anything. Kept as a separate constant rather
+# than folded into the webhook prefix because the two differ in what proves the
+# tenant: a provider signature there, a public form key here.
+PUBLIC_PREFIX = "/api/v1/public"
+
 # Operator routes. They act across tenants by design, so they never resolve to
 # one — and they must stay reachable when the deployment is in a state the rest
 # of the app refuses to serve, since they are what fixes it.
@@ -131,6 +138,19 @@ async def resolve_org_for_request(path: str, token: str | None) -> int | None:
         # configured — the routing feature was unreachable in exactly the
         # configuration it was built for. Under default-deny RLS, returning None
         # here is safe: a handler that forgot to bind an org writes nothing.
+        return None
+
+    if path.startswith(PUBLIC_PREFIX):
+        # A form post from a landing page. Same reasoning as webhooks above: the
+        # form key that names the agency is in the body, which this layer cannot
+        # read, so the handler resolves it before writing.
+        #
+        # Note what this does NOT do: fall through to the AUTH_ENABLED=false
+        # branch below, which pins the request to organization 1. A public
+        # endpoint that quietly defaults to the first tenant is how a second
+        # agency's leads end up in the first agency's dashboard — the same
+        # failure channel_routes exists to prevent, arriving through the front
+        # door instead of a webhook.
         return None
 
     if token:

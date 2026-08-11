@@ -33,6 +33,7 @@ from app.models.channel_route import (
     CHANNEL_SMS,
     CHANNEL_VOICE,
     CHANNEL_WHATSAPP,
+    CHANNELS,
 )
 from app.models.organization import (
     DEMO_ORG_ID,
@@ -192,6 +193,7 @@ class RouteOut(BaseModel):
 # stops an operator from pasting a live token into a database column by mistake
 # — the field names invite exactly that.
 _ENV_REF = r"^[A-Z][A-Z0-9_]{2,119}$"
+_CHANNEL_PATTERN = "^(" + "|".join(CHANNELS) + ")$"
 
 def _forbidden_refs() -> frozenset[str]:
     """Environment variable names a route may not point at.
@@ -448,7 +450,11 @@ class RouteIdentityIn(BaseModel):
 
 class RouteCreateIn(RouteIdentityIn):
     org_id: int
-    channel: str = Field(pattern=r"^(whatsapp|sms|email|voice|calendar)$")
+    # Derived from CHANNELS, never re-typed. The literal list used to live here
+    # as its own regex, so adding a channel to the model left it uncreatable
+    # through the only API that creates routes — the feature shipped and the
+    # operator got a 422 naming a channel the code plainly supports.
+    channel: str = Field(pattern=_CHANNEL_PATTERN)
     destination: str = Field(min_length=3, max_length=254)
     label: str | None = Field(default=None, max_length=120)
 

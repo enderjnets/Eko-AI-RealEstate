@@ -19,6 +19,7 @@ from app.api.v1 import (
     inbox,
     leads,
     properties,
+    public,
     team,
     visits,
 )
@@ -204,6 +205,13 @@ app.include_router(whatsapp_webhook.router, prefix="/api/v1/webhooks", tags=["we
 app.include_router(email_webhook.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(sms_webhook.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(voice_webhook.router, prefix="/api/v1/webhooks", tags=["webhooks"])
+
+# The public capture form. Mounted with the webhooks rather than below with the
+# dashboard API because it shares their contract, not the dashboard's: no
+# session, and the organization resolved inside the handler from something in
+# the request. It must never acquire `_auth` — the whole point is that a
+# stranger on a landing page can reach it.
+app.include_router(public.router, prefix="/api/v1/public", tags=["public"])
 
 # Protected data API — require_auth is a no-op unless AUTH_ENABLED.
 _auth = [Depends(require_auth)]

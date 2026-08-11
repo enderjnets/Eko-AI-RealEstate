@@ -29,6 +29,7 @@ from app.models import (
     Visit,
     VisitStatus,
 )
+from app.services.capture import may_send_automated
 from app.services.conversation import _dispatch_send, _latest_active_conversation
 from app.services.i18n import detect_language, pick_supported_language
 from app.services.tenant_context import get_org_id
@@ -209,8 +210,28 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                     skipped += 1
                     continue
 
-        conv = await _latest_active_conversation(lead.id, db)
+        # Scoped to a channel that can actually deliver to this lead — the same
+        # fix as the dashboard composer, and it was the same bug: a lead who
+        # came in through the public web form has a `web` conversation as their
+        # newest, and dispatching a nurture message to it marked every
+        # follow-up FAILED instead of sending anything.
+        conv = await _latest_active_conversation(lead.id, db, identifier=lead.phone)
         if conv is None:
+            fu.status = FollowUpStatus.SKIPPED
+            skipped += 1
+            continue
+
+        # TCPA. An automated text to somebody who neither consented in writing
+        # nor texted us first is $500–$1,500 per message, and the exposure
+        # lands on the broker's licence rather than on the software.
+        if not await may_send_automated(lead, conv.channel, db):
+            log.info(
+                "Follow-up %d held: no consent on record and lead %d never "
+                "wrote to us on %s",
+                fu.id,
+                lead.id,
+                conv.channel,
+            )
             fu.status = FollowUpStatus.SKIPPED
             skipped += 1
             continue

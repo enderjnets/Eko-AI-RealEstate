@@ -6,7 +6,18 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, pg_enum
@@ -86,6 +97,19 @@ class Lead(Base):
     score_breakdown: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     meta: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+    # TCPA: what this lead agreed to, and where they were when they agreed.
+    # Only ever set by the public capture form, and never cleared — consent is
+    # a historical fact. `consent_text` is the disclosure exactly as rendered,
+    # because the obligation is to show what the person was reading, not to
+    # assert that something was shown. Columns rather than `meta` keys so an
+    # audit is one query and so enrichment writers cannot clobber them.
+    consent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    consent_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    consent_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    consent_user_agent: Mapped[str | None] = mapped_column(String(400), nullable=True)
 
     # Inbox triage: when a realtor marked this lead handled. A lead is "pending"
     # if its last message is inbound and this is null or older than that message.

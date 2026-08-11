@@ -122,17 +122,33 @@ def _channel_can_reach(channel: str, identifier: str) -> bool:
     return False
 
 
-async def _latest_active_conversation(lead_id: int, db: AsyncSession) -> Conversation | None:
-    """Return the most recently-active conversation for the lead, any channel."""
-    row = await db.execute(
-        select(Conversation)
-        .where(
-            Conversation.lead_id == lead_id,
-            Conversation.status == ConversationStatus.ACTIVE,
-        )
-        .order_by(Conversation.last_at.desc())
-        .limit(1)
+async def _latest_active_conversation(
+    lead_id: int, db: AsyncSession, *, identifier: str | None = None
+) -> Conversation | None:
+    """The most recently-active conversation for the lead.
+
+    With `identifier`, only conversations that can actually deliver to that
+    lead are considered. Both callers that auto-pick a channel — the dashboard
+    composer and the follow-up worker — hand the result straight to
+    `_dispatch_send`, and the newest active conversation is not necessarily one
+    anything can be sent through. A lead who arrived through the public web
+    form has a `web` conversation, which exists to show what they wrote and can
+    receive nothing: without this filter their first submission made the reply
+    button fail and marked every scheduled follow-up FAILED.
+
+    The argument is optional and off by default so callers that only want to
+    read the thread keep their existing behaviour.
+    """
+    stmt = select(Conversation).where(
+        Conversation.lead_id == lead_id,
+        Conversation.status == ConversationStatus.ACTIVE,
     )
+    if identifier is not None:
+        reachable = [c for c in SENDABLE_CHANNELS if _channel_can_reach(c, identifier)]
+        if not reachable:
+            return None
+        stmt = stmt.where(Conversation.channel.in_(reachable))
+    row = await db.execute(stmt.order_by(Conversation.last_at.desc()).limit(1))
     return row.scalar_one_or_none()
 
 
@@ -195,7 +211,11 @@ async def send_human_message(
             db.add(conv)
             await db.flush()
     else:
-        conv = await _latest_active_conversation(lead_id, db)
+        # Scoped to what can reach this lead. Without that, a lead whose newest
+        # thread is the `web` one from the public form made this return a
+        # conversation nothing can be sent through, and the realtor's reply
+        # died in `_dispatch_send` with an error about an unknown channel.
+        conv = await _latest_active_conversation(lead_id, db, identifier=lead.phone)
         if conv is None:
             return {"status": "error", "error": "no_active_conversation"}
 

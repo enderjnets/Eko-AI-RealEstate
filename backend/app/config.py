@@ -191,6 +191,15 @@ class Settings(BaseSettings):
     AUTH_SECRET: str = ""
     AUTH_TTL_HOURS: int = 168  # 7 days
 
+    # ─── Public capture form (Cloudflare Turnstile) ──────────────────────
+    # Empty = no captcha, which is the correct default for a fresh install:
+    # the endpoint still has the honeypot, the per-IP limit and the global
+    # ceiling, and demanding a Cloudflare account before a contact form works
+    # would block the install on someone else's dashboard.
+    # Set it and verification becomes mandatory AND fail-closed — a captcha
+    # that passes everyone when Cloudflare has a bad minute is not a captcha.
+    TURNSTILE_SECRET: str = ""
+
     # ─── Google Sign In (Google Identity Services) ───────────────────────
     # Coexists with DASHBOARD_PASSWORD. When GOOGLE_CLIENT_ID is set, /login
     # shows a "Sign in with Google" button. The backend validates the ID token
