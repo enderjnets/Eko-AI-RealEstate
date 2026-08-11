@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { UTM_KEYS, collectAttribution } from "../capture";
@@ -51,21 +54,23 @@ describe("collectAttribution", () => {
   });
 
   it("covers every key the backend whitelists", () => {
-    // If the backend gains an attribution key and this list does not, the page
-    // silently stops forwarding it and the data is simply absent — no error,
-    // no warning, just a column of nulls nobody notices for a quarter.
-    const backendKeys = [
-      "utm_source",
-      "utm_medium",
-      "utm_campaign",
-      "utm_content",
-      "utm_term",
-      "gclid",
-      "fbclid",
-      "landing_variant",
-      "tier",
-      "referrer", // set from document.referrer, not from the query string
-    ];
-    expect([...UTM_KEYS, "referrer"].sort()).toEqual(backendKeys.sort());
+    // Read out of the backend source, not re-typed here. A hardcoded copy of
+    // the list would be two copies of the same belief: add a key to the
+    // backend and BOTH stay stale together, the page silently stops forwarding
+    // it, and the symptom is a column of nulls nobody notices for a quarter.
+    const source = readFileSync(
+      join(__dirname, "../../../backend/app/services/capture.py"),
+      "utf8",
+    );
+    const block = source.match(
+      /ATTRIBUTION_KEYS = frozenset\(\s*\{([\s\S]*?)\}\s*\)/,
+    );
+    expect(block, "ATTRIBUTION_KEYS not found in capture.py").toBeTruthy();
+    const backendKeys = [...block![1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
+    expect(backendKeys.length).toBeGreaterThan(5); // the regex really matched
+
+    // `referrer` is on both sides but comes from document.referrer rather than
+    // the query string, so the page collects it outside UTM_KEYS.
+    expect([...UTM_KEYS, "referrer"].sort()).toEqual([...backendKeys].sort());
   });
 });
