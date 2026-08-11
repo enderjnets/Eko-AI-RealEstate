@@ -2,6 +2,41 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.42.2] — 2026-08-11
+
+Rondas 4 y 5 de auditoría adversarial, esta vez apuntando a **los arreglos** de
+la ronda anterior en vez de al código original. Encontraron cuatro defectos
+vivos; dos permitían que un mensaje automático llegara a quien había dicho STOP.
+
+### Corregido
+- **La revocación duraba exactamente un turno.** La intercepción cazaba el
+  mensaje que *contenía* la palabra, y nada cazaba el siguiente: el lead decía
+  STOP, recibía la confirmación, escribía cualquier cosa al día siguiente y el
+  modelo le contestaba. Ahora su mensaje se guarda y llega a la bandeja, pero
+  responde una persona.
+- **La cola de reintentos entregaba lo que ya estaba encolado** cuando llegó la
+  baja. La puerta ahora también está en el punto de despacho.
+- **El plantado de consentimiento solo estaba medio cerrado**: fallaba para todo
+  lead cuyo identificador *es* un email. El consentimiento solo puede
+  registrarlo un envío que **creó** el lead, o uno sobre un lead creado por este
+  mismo formulario y nunca alcanzado por otro canal.
+- **"Retenido por consentimiento" significaba "cancelado"** en silencio:
+  `SKIPPED` es terminal. Ahora se reintenta a diario y se abandona a los 14 días.
+- Mi propio tope de cuerpo **rompía la importación de ficheros** (25 MB
+  documentados), dejaba el 413 **fuera de CORS** y respondía dos veces en
+  cuerpos troceados.
+- El techo global se cobraba **después** de resolver el tenant, así que rotar la
+  cabecera de IP permitía consultas ilimitadas a la base.
+- `cancelar` y `eliminar` dejan de ser palabras de baja: `CANCEL` es del estándar
+  CTIA y se queda, pero sus cognados en español no los exige nadie y son lo que
+  un cliente bilingüe escribe sobre **una visita**.
+- Los teclados de móvil sustituyen comillas y puntos suspensivos: `stop…` y
+  `“STOP”` ahora se reconocen.
+- El panel **muestra** al lead dado de baja, y la insignia dice "Dado de baja"
+  en vez de "AI agent active", que afirmaba algo falso.
+
+489 tests (eran 477). 35 mutaciones, 35 muertas.
+
 ## [0.42.1] — 2026-08-11
 
 Dos auditorías independientes sobre v0.42.0. Entre las dos, seis defectos — y el
