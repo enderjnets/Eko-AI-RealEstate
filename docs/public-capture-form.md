@@ -118,10 +118,10 @@ worker has a sendable channel and no permission to use it.
 | Body cap | 256 KB, enforced in ASGI middleware that buffers-and-replays: `Content-Length` is a claim rather than a measurement, and a chunked request carries none. **Per path** — `/api/v1/discovery/upload` keeps its documented `FILE_IMPORT_MAX_MB`; a single global cap tight enough for this form silently refused a realtor's 750 KB contact export. Registered inside CORS so the 413 is readable by a browser on another origin. |
 | Per-IP limit | 5 per 10 minutes, charged **before** the honeypot. The honeypot used to return first, which made `{"website": "bot"}` a completely unmetered endpoint. |
 | Honeypot | A `website` field, positioned off-screen. Filled in → 202 and nothing written, indistinguishable from success so a bot gets no tuning feedback. |
-| **Global ceiling** | **60 per 10 minutes**, charged **last** — after the captcha. Charged first, it was a kill switch anyone could hold down: sixty tokenless posts from sixty forged addresses each got a 400 and each still spent a slot. |
+| **Global ceiling** | **60 per 10 minutes**, charged after the captcha and **before the tenant lookup**. Charged first, it was a kill switch anyone could hold down — sixty tokenless posts from sixty forged addresses each got a 400 and each still spent a slot. Charged last, resolving a form key is a database round trip that a caller rotating the IP header could drive without limit, because the per-IP budget resets with every forged address. |
 | Turnstile | Off while `TURNSTILE_SECRET` is empty. Configured, it is mandatory **and fail-closed** — if Cloudflare cannot be reached the submission is refused, because a captcha that passes everyone during an outage is not a captcha. |
 
-The order — body cap, per-IP, honeypot, shape, captcha, tenant, global budget —
+The order — body cap, per-IP, honeypot, shape, captcha, global budget, tenant —
 is itself a defence, and each step moved there because of a specific way the
 previous order was exploitable.
 

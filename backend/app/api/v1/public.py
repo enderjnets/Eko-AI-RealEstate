@@ -217,9 +217,25 @@ async def capture(
     except CaptureRejected as exc:
         raise HTTPException(status_code=422, detail=exc.code) from exc
 
-    # 3. Captcha before the global budget is touched.
+    # 3. Captcha before the global budget is touched. A request the captcha
+    #    will refuse must not be able to spend a slot: that turned the ceiling
+    #    into a kill switch anyone could hold down without solving anything.
     if not await _turnstile_ok(body.turnstile_token, ip):
         raise HTTPException(status_code=400, detail="captcha_failed")
+
+    # 4. The platform-wide budget, charged BEFORE the tenant lookup rather than
+    #    after it. Resolving a form key is a database round trip, and with the
+    #    charge at the end a caller rotating the IP header could drive an
+    #    unbounded number of them: the per-IP budget resets with every forged
+    #    address, so nothing counted the work. Charging here means the ceiling
+    #    bounds real work, not just successful writes.
+    if _global_limited():
+        log.error(
+            "Global capture ceiling reached — lead capture is refused for "
+            "every agency until the window clears. If this is not a flood, "
+            "raise GLOBAL_LIMIT; if it is, configure TURNSTILE_SECRET."
+        )
+        raise HTTPException(status_code=429, detail="too_many_requests")
 
     try:
         org_id = await webhook_org_or_refuse(
@@ -237,16 +253,6 @@ async def capture(
         # this endpoint into an oracle for enumerating an operator's tenants.
         log.error("refusing web capture — %s", exc)
         raise HTTPException(status_code=404, detail="unknown_form") from exc
-
-    # 4. Only now, with a real tenant and a passed captcha, spend the
-    #    platform-wide budget.
-    if _global_limited():
-        log.error(
-            "Global capture ceiling reached — lead capture is refused for "
-            "every agency until the window clears. If this is not a flood, "
-            "raise GLOBAL_LIMIT; if it is, configure TURNSTILE_SECRET."
-        )
-        raise HTTPException(status_code=429, detail="too_many_requests")
 
     set_org_id(org_id)
 
