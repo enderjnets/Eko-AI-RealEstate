@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.42.0";
+export const CURRENT_VERSION = "0.42.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -15,7 +15,7 @@ export interface VersionEntry {
 
 export const CHANGELOG: VersionEntry[] = [
   {
-    version: "0.42.0",
+    version: "0.42.1",
     date: "2026-08-11",
     title: {
       en: "A way in for people who found you online",
@@ -41,6 +41,10 @@ export const CHANGELOG: VersionEntry[] = [
       {
         en: "Fixed: the Inbox labelled form submissions as SMS, and left them at the bottom of the priority list.",
         es: "Corregido: la bandeja etiquetaba los envíos del formulario como SMS y los dejaba al fondo de la lista de prioridad.",
+      },
+      {
+        en: "Replying STOP now works, in English and Spanish. The person gets one confirmation, no automated messages after that, and START brings them back. Before this it did nothing at all, even though the form promised it.",
+        es: "Responder STOP ya funciona, en inglés y en español. La persona recibe una confirmación, ningún mensaje automático después, y ALTA la reactiva. Antes no hacía nada, aunque el formulario lo prometía.",
       },
     ],
   },

@@ -128,6 +128,34 @@ def _channel_can_reach(channel: str, identifier: str) -> bool:
     return False
 
 
+async def reachable_active_conversations(
+    lead_id: int, identifier: str, db: AsyncSession
+) -> list[Conversation]:
+    """Every active conversation that can deliver to this lead, newest first.
+
+    The follow-up worker needs the whole list, not just the newest. It used to
+    take the newest reachable one and, if the consent gate refused that channel,
+    mark the follow-up SKIPPED — a terminal status. So a lead who genuinely
+    initiated contact on WhatsApp lost their nurture sequence permanently the
+    moment a realtor answered them once by SMS: the SMS thread became the
+    newest, the gate correctly refused it (consent is per channel), and the
+    WhatsApp thread that would have passed was never consulted.
+    """
+    reachable = [c for c in SENDABLE_CHANNELS if _channel_can_reach(c, identifier)]
+    if not reachable:
+        return []
+    rows = await db.execute(
+        select(Conversation)
+        .where(
+            Conversation.lead_id == lead_id,
+            Conversation.status == ConversationStatus.ACTIVE,
+            Conversation.channel.in_(reachable),
+        )
+        .order_by(Conversation.last_at.desc())
+    )
+    return list(rows.scalars())
+
+
 async def _latest_active_conversation(
     lead_id: int, db: AsyncSession, *, identifier: str | None = None
 ) -> Conversation | None:

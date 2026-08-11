@@ -30,7 +30,10 @@ from app.models import (
     VisitStatus,
 )
 from app.services.capture import may_send_automated
-from app.services.conversation import _dispatch_send, _latest_active_conversation
+from app.services.conversation import (
+    _dispatch_send,
+    reachable_active_conversations,
+)
 from app.services.i18n import detect_language, pick_supported_language
 from app.services.tenant_context import get_org_id
 
@@ -210,27 +213,36 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                     skipped += 1
                     continue
 
-        # Scoped to a channel that can actually deliver to this lead — the same
-        # fix as the dashboard composer, and it was the same bug: a lead who
-        # came in through the public web form has a `web` conversation as their
+        # Only channels that can actually deliver to this lead — a lead who came
+        # in through the public web form has a `web` conversation as their
         # newest, and dispatching a nurture message to it marked every
         # follow-up FAILED instead of sending anything.
-        conv = await _latest_active_conversation(lead.id, db, identifier=lead.phone)
-        if conv is None:
-            fu.status = FollowUpStatus.SKIPPED
-            skipped += 1
-            continue
+        #
+        # And the FIRST such channel the consent gate allows, not merely the
+        # newest one. Taking only the newest meant a lead who genuinely started
+        # a WhatsApp conversation lost their sequence for good as soon as a
+        # realtor answered them once by SMS: the SMS thread became newest, the
+        # gate correctly refused it because consent is per channel, and SKIPPED
+        # is terminal — the WhatsApp thread that would have passed was never
+        # looked at.
+        candidates = await reachable_active_conversations(lead.id, lead.phone, db)
+        conv = None
+        for candidate in candidates:
+            # TCPA. An automated text to somebody who neither consented in
+            # writing nor wrote to us first on that channel is $500–$1,500 per
+            # message, and the exposure lands on the broker's licence rather
+            # than on the software.
+            if await may_send_automated(lead, candidate.channel, db):
+                conv = candidate
+                break
 
-        # TCPA. An automated text to somebody who neither consented in writing
-        # nor texted us first is $500–$1,500 per message, and the exposure
-        # lands on the broker's licence rather than on the software.
-        if not await may_send_automated(lead, conv.channel, db):
+        if conv is None:
             log.info(
-                "Follow-up %d held: no consent on record and lead %d never "
-                "wrote to us on %s",
+                "Follow-up %d held for lead %d: %d reachable channel(s), none "
+                "with consent on record or a message they sent us first",
                 fu.id,
                 lead.id,
-                conv.channel,
+                len(candidates),
             )
             fu.status = FollowUpStatus.SKIPPED
             skipped += 1

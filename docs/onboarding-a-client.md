@@ -63,6 +63,26 @@ curl -X POST "$API/api/v1/platform/routes" -b cookies.txt \
 | `email` | The mailbox that receives inbound mail |
 | `voice` | The VAPI number that gets called |
 | `calendar` | Their Cal.com **event type id**, with `credential_ref` naming their own API key |
+| `web` | The agency's **public form key** — an opaque slug you choose, e.g. `natalia-denver`. Nothing is delivered to it; it is what tells `POST /api/v1/public/leads` whose lead this is |
+
+The `web` row is also not optional past the first agency, and it has a second
+half that is easy to miss because it lives in a different repo directory: the
+same slug must be baked into that agency's frontend build as
+`NEXT_PUBLIC_CAPTURE_FORM_KEY` (a build arg — setting it at runtime does
+nothing, `NEXT_PUBLIC_*` is inlined at compile time).
+
+Get either half wrong and `/contact` answers **404** to every visitor. The 404
+is deliberately identical to the one an unknown key gets, so that the endpoint
+cannot be used to enumerate an operator's tenants — which also means it gives
+you no diagnostic. If a new agency's form is refusing everything, check these
+two things first:
+
+```bash
+# Is the route there?
+curl -s "$API/api/v1/platform/routes" -b cookies.txt | jq '.[] | select(.channel=="web")'
+# Is the same slug in the built bundle?
+docker exec eko-realestate-frontend printenv NEXT_PUBLIC_CAPTURE_FORM_KEY
+```
 
 The `calendar` row is not optional for an agency past the first. Without it,
 every booking would land on the operator's Cal.com — writing the lead's name,

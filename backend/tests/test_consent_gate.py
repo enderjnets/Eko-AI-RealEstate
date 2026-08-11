@@ -302,3 +302,52 @@ async def test_the_worker_sends_once_consent_is_on_record() -> None:
             assert await _outbound_channels(lead.id, db) == ["sms"]
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_worker_reroutes_instead_of_dropping_the_sequence() -> None:
+    """A lead who started a WhatsApp conversation must keep their sequence.
+
+    The regression this pins: the worker took the NEWEST reachable channel and,
+    if the gate refused it, marked the follow-up SKIPPED — which is terminal.
+    So one manual SMS from a realtor (creating an SMS thread the lead never
+    wrote on, correctly refused because consent is per channel) permanently
+    silenced the nurture flow for a lead who had every right to receive it on
+    WhatsApp.
+    """
+    try:
+        async with get_session_factory()() as db:
+            lead, _ = await _lead_with(
+                db,
+                suffix="11",
+                # WhatsApp first (they wrote), SMS newest (the realtor replied).
+                channels=("whatsapp", "sms"),
+                inbound_on=("whatsapp",),
+            )
+            await _due_followup(lead, db)
+
+            result = await process_due_followups(db)
+
+            assert result["sent"] == 1
+            assert await _outbound_channels(lead.id, db) == ["whatsapp"]
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_no_permitted_channel_still_holds() -> None:
+    # Rerouting must not become "send on anything at all": a lead with two
+    # threads and consent on neither still gets nothing.
+    try:
+        async with get_session_factory()() as db:
+            lead, _ = await _lead_with(
+                db, suffix="12", channels=("whatsapp", "sms"), inbound_on=(WEB,)
+            )
+            await _due_followup(lead, db)
+
+            result = await process_due_followups(db)
+
+            assert result["sent"] == 0
+            assert await _outbound_channels(lead.id, db) == []
+    finally:
+        await _cleanup()

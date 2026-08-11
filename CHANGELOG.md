@@ -2,6 +2,36 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.42.1] — 2026-08-11
+
+Dos auditorías independientes sobre v0.42.0. Entre las dos, seis defectos — y el
+peor no estaba en el código nuevo, sino en la frase que el código nuevo guarda
+como registro legal.
+
+### Corregido
+- **STOP no hacía nada, y además invertía la puerta.** El texto del formulario
+  promete en los dos idiomas "responde STOP para darte de baja". Como
+  `may_send_automated` cuenta cualquier mensaje entrante como contacto iniciado
+  por el consumidor, y STOP **es** un mensaje entrante, enviarlo pasaba un lead
+  correctamente bloqueado a **enviable**. Ahora: columnas
+  `opted_out_at/_channel/_keyword`, reconocimiento por palabra clave (no por
+  LLM), la puerta lo consulta **primero** y en todos los canales, una sola
+  confirmación sin llamar al modelo, y `ALTA`/`START` para volver.
+- **Dar de baja a una agencia metía sus leads en otra.** Una clave de
+  formulario que no casaba con ninguna ruta caía al fallback de un solo tenant.
+- **Se podía plantar consentimiento en un lead ajeno** conociendo su email.
+- **El honeypot respondía antes del límite** y no había tope de cuerpo: 43 MB
+  aceptados y parseados. Ahora 256 KB, medidos en ASGI.
+- **El techo global se gastaba antes del captcha**, así que 60 peticiones sin
+  token dejaban a toda la plataforma sin captación 10 minutos.
+- **Turnstile no se podía activar**: no existía el widget, así que poner la
+  clave rompía el formulario. Widget añadido y clave pública cableada al build.
+- El 422 distinguía claves vivas de muertas (oráculo de enumeración).
+- Un seguimiento se descartaba en vez de reencaminarse al canal que el lead sí
+  había iniciado.
+
+474 tests (eran 454). 28 mutaciones, 28 muertas.
+
 ## [0.42.0] — 2026-08-11
 
 **La puerta de entrada para tráfico frío.** Hasta ahora un desconocido que veía

@@ -76,7 +76,8 @@ POST /api/v1/public/leads
 | 400 | Turnstile rejected or unreachable. |
 | 404 | Unknown form key, a key pointing at the demo org, or no key on a multi-agency install. Deliberately not distinguishable — otherwise this endpoint enumerates an operator's tenants. |
 | 422 | `contact_required` (neither email nor phone), `consent_text_required` (box ticked with no wording), or a body pydantic rejected. |
-| 429 | Rate limited. |
+| 413 | Body over 256 KB, refused at the ASGI layer before pydantic materialises it. |
+| 429 | Rate limited (per-IP, or the platform-wide ceiling). |
 
 ### Fields
 
@@ -114,10 +115,15 @@ worker has a sendable channel and no permission to use it.
 
 | Defence | Detail |
 |---|---|
+| Body cap | 256 KB, enforced in ASGI middleware on both `Content-Length` and the stream, because the header is a claim rather than a measurement. There is no reverse proxy — the tunnel points straight at uvicorn — and a 43 MB body was previously parsed and answered 202. |
+| Per-IP limit | 5 per 10 minutes, charged **before** the honeypot. The honeypot used to return first, which made `{"website": "bot"}` a completely unmetered endpoint. |
 | Honeypot | A `website` field, positioned off-screen. Filled in → 202 and nothing written, indistinguishable from success so a bot gets no tuning feedback. |
-| Per-IP limit | 5 per 10 minutes. IP read from `CF-Connecting-IP`, then `X-Forwarded-For`, then the socket. |
-| **Global ceiling** | **60 per 10 minutes.** The one that matters: the client IP comes from a header, so a per-IP budget alone is decorative behind a proxy. |
+| **Global ceiling** | **60 per 10 minutes**, charged **last** — after the captcha. Charged first, it was a kill switch anyone could hold down: sixty tokenless posts from sixty forged addresses each got a 400 and each still spent a slot. |
 | Turnstile | Off while `TURNSTILE_SECRET` is empty. Configured, it is mandatory **and fail-closed** — if Cloudflare cannot be reached the submission is refused, because a captcha that passes everyone during an outage is not a captcha. |
+
+The order — body cap, per-IP, honeypot, shape, captcha, tenant, global budget —
+is itself a defence, and each step moved there because of a specific way the
+previous order was exploitable.
 
 The rate counters live in the process. That is correct only because the app is
 pinned to one uvicorn worker — the same constraint `main.py` documents for the
@@ -126,6 +132,37 @@ background loops. Under `--workers N` they become N independent budgets.
 The ceiling cuts both ways: a flood of 60 submissions per 10 minutes locks out
 real visitors for the rest of the window. The ceiling is the backstop;
 Turnstile is the actual answer, which is a reason not to leave it off for long.
+
+## Opting out (STOP)
+
+The disclosure the visitor reads — and which is stored verbatim as the consent
+record — promises "reply STOP to opt out". That is a term of the agreement the
+record documents, so it is implemented, by keyword and not by the model:
+
+- **Recognised**: the CTIA set (`STOP`, `STOPALL`, `UNSUBSCRIBE`, `CANCEL`,
+  `END`, `QUIT`, `OPTOUT`, `REVOKE`) plus the Spanish a bilingual Denver
+  audience actually types (`BAJA`, `PARAR`, `CANCELAR`, `DETENER`). Whole
+  message only, punctuation ignored — "can I stop by the open house?" is a live
+  buyer, not a revocation.
+- **Channels**: sms, whatsapp, voice. An email unsubscribe is a link and a
+  `List-Unsubscribe` header, not a one-word reply.
+- **Effect**: `leads.opted_out_at/_channel/_keyword` are set, exactly one
+  confirmation is sent, **the model is never called**, and
+  `may_send_automated` returns False for every gated channel from then on —
+  outranking written consent, because an instruction to stop is the more recent
+  statement of what the person wants.
+- **Coming back**: `START`, `ALTA`, `RESUME`, `UNSTOP` clear it.
+
+Why keyword and not the LLM: a revocation has to be recognised when the model
+is down or slow, has to behave identically every time, and has to agree with
+the carriers — who intercept STOP at the aggregator regardless of what the
+application decides.
+
+**The order in `may_send_automated` is load-bearing.** The opt-out check runs
+first. Placed after the consumer-initiated branch it would be satisfied by
+STOP itself, since STOP arrives as an inbound message on the channel — the gate
+inverted by exactly the input it exists to obey. That was a real defect, found
+by audit, and `tests/test_optout.py` pins it.
 
 ## Known limits
 
