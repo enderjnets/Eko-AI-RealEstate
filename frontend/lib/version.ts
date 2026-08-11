@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.42.2";
+export const CURRENT_VERSION = "0.42.3";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -15,7 +15,7 @@ export interface VersionEntry {
 
 export const CHANGELOG: VersionEntry[] = [
   {
-    version: "0.42.2",
+    version: "0.42.3",
     date: "2026-08-11",
     title: {
       en: "A way in for people who found you online",
@@ -41,6 +41,14 @@ export const CHANGELOG: VersionEntry[] = [
       {
         en: "Fixed: the Inbox labelled form submissions as SMS, and left them at the bottom of the priority list.",
         es: "Corregido: la bandeja etiquetaba los envíos del formulario como SMS y los dejaba al fondo de la lista de prioridad.",
+      },
+      {
+        en: "Answering \"yes\" or \"sí\" no longer switches automated messages back on for someone who had opted out — only replying START does.",
+        es: "Responder \"sí\" ya no vuelve a activar los mensajes automáticos de quien se dio de baja: solo lo hace responder ALTA.",
+      },
+      {
+        en: "Fixed: a \"your viewing is tomorrow\" reminder could arrive days after the viewing.",
+        es: "Corregido: un recordatorio de \"tu visita es mañana\" podía llegar días después de la visita.",
       },
       {
         en: "If someone replies STOP, that now sticks: no automated message reaches them again — not the next day, and not one that was already queued when they said it. Their messages still arrive in your Inbox so you can answer personally, and the lead is clearly marked.",

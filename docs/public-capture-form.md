@@ -157,7 +157,12 @@ record documents, so it is implemented, by keyword and not by the model:
   who asked us to stop and kept hearing from us; the cost of reading it broadly
   is bounded, because this gate covers **automated** messages only and a
   realtor can still write to them personally.
-- **Coming back**: `START`, `ALTA`, `RESUME`, `UNSTOP` clear it.
+- **Coming back**: `START`, `ALTA`, `RESUME`, `UNSTOP`, `OPT IN` clear it.
+  **Not** `yes` / `si` / `sí` — they were, and they are the most common single
+  word a person sends, so a lead who had opted out and answered "Sí" to
+  anything at all resubscribed themselves. CTIA requires START and UNSTOP; it
+  does not require agreement words, and reading agreement as re-consent is
+  backwards.
 - **It lasts.** Every later message from that lead is stored and shown in the
   Inbox but gets **no** automated reply — the revocation is not spent by the
   turn that carried it. And the retry sweep drops anything that was already

@@ -2,6 +2,29 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.42.3] — 2026-08-11
+
+Rondas 5 y 6 de auditoría adversarial. Tres defectos más, dos introducidos por
+los arreglos de la ronda anterior.
+
+### Corregido
+- **"Sí" levantaba la baja.** `yes`, `si` y `sí` estaban en las palabras de
+  alta, y son la palabra suelta más común que envía una persona: quien se había
+  dado de baja y respondía "Sí" a cualquier cosa se resuscribía solo. CTIA
+  exige START y UNSTOP; no exige palabras de asentimiento, y leer asentimiento
+  como reconsentimiento es exactamente al revés.
+- **Un recordatorio "tu visita es mañana" llegaba días DESPUÉS de la visita**:
+  la retención diaria convertía un mensaje suprimido en uno equivocado.
+- **La guarda de consentimiento preguntaba mal**: "¿se ha alcanzado a este lead
+  por otro canal?" — un lead **importado** responde que no, porque las filas de
+  una exportación de contactos no tienen ninguna conversación. Ahora pregunta si
+  **este formulario creó** el lead.
+- El recordatorio previo ya no se dispara para una visita marcada COMPLETED.
+- El plazo de gracia de una retención se cuenta en retenciones, no desde
+  `created_at`: un seguimiento de 7 días **nace** una semana antes de vencer.
+
+494 tests. 40 mutaciones, 40 muertas.
+
 ## [0.42.2] — 2026-08-11
 
 Rondas 4 y 5 de auditoría adversarial, esta vez apuntando a **los arreglos** de
