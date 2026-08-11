@@ -765,3 +765,71 @@ async def test_a_probe_cannot_tell_a_live_form_key_from_a_dead_one() -> None:
         assert live[1] == dead[1]
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_body_cap_does_not_break_file_import() -> None:
+    """The cap is per path, and the upload route documents 25 MB.
+
+    A single global cap tight enough for the public form silently refused a
+    realtor's contact export — a legal 750 KB multipart upload — with no
+    diagnostic, breaking a documented feature to protect an unrelated one.
+    """
+    from app.config import get_settings
+    from app.main import BodySizeLimit
+
+    limit = BodySizeLimit._limit_for("/api/v1/discovery/upload")
+    assert limit == get_settings().FILE_IMPORT_MAX_MB * 1024 * 1024
+    assert limit > 700_000
+    # And the public form keeps its tight one.
+    assert BodySizeLimit._limit_for("/api/v1/public/leads") == 256 * 1024
+
+
+@pytest.mark.asyncio
+async def test_the_413_carries_cors_headers() -> None:
+    """Registered inside CORS, so a browser gets a status it can report.
+
+    Outside it, the response had no Access-Control-Allow-Origin and the fetch
+    surfaced as a bare network error — the visitor sees "something went wrong"
+    and the operator sees nothing at all.
+
+    Matters only for a form served from a DIFFERENT origin than the API. Today
+    /contact is same-origin (Next.js proxies /api), but the content plan puts
+    the landing page on its own domain later, and that day this is the
+    difference between a readable 413 and an unexplained failure.
+    """
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/api/v1/public/leads",
+            json={"email": "cors@capture.test", "utm": {"utm_campaign": "z" * 400_000}},
+            headers={"origin": "http://localhost:3004"},  # an allowed origin
+        )
+    assert response.status_code == 413
+    assert "access-control-allow-origin" in {k.lower() for k in response.headers}
+
+
+@pytest.mark.asyncio
+async def test_a_chunked_oversized_body_gets_one_clean_response() -> None:
+    """No Content-Length at all, and the app must never start responding.
+
+    The first version let the request through and tried to swap the response
+    afterwards, which means handing an ASGI app a second response — it blew up
+    inside the HTTP client on every chunked upload it tried to stop.
+    """
+
+    async def chunks():
+        for _ in range(6):
+            yield b"x" * 60_000
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/api/v1/public/leads",
+            content=chunks(),
+            headers={"content-type": "application/json"},
+        )
+    assert response.status_code == 413
+    assert response.json()["detail"] == "body_too_large"

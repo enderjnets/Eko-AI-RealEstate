@@ -115,7 +115,7 @@ worker has a sendable channel and no permission to use it.
 
 | Defence | Detail |
 |---|---|
-| Body cap | 256 KB, enforced in ASGI middleware on both `Content-Length` and the stream, because the header is a claim rather than a measurement. There is no reverse proxy — the tunnel points straight at uvicorn — and a 43 MB body was previously parsed and answered 202. |
+| Body cap | 256 KB, enforced in ASGI middleware that buffers-and-replays: `Content-Length` is a claim rather than a measurement, and a chunked request carries none. **Per path** — `/api/v1/discovery/upload` keeps its documented `FILE_IMPORT_MAX_MB`; a single global cap tight enough for this form silently refused a realtor's 750 KB contact export. Registered inside CORS so the 413 is readable by a browser on another origin. |
 | Per-IP limit | 5 per 10 minutes, charged **before** the honeypot. The honeypot used to return first, which made `{"website": "bot"}` a completely unmetered endpoint. |
 | Honeypot | A `website` field, positioned off-screen. Filled in → 202 and nothing written, indistinguishable from success so a bot gets no tuning feedback. |
 | **Global ceiling** | **60 per 10 minutes**, charged **last** — after the captcha. Charged first, it was a kill switch anyone could hold down: sixty tokenless posts from sixty forged addresses each got a 400 and each still spent a slot. |
@@ -169,6 +169,14 @@ first. Placed after the consumer-initiated branch it would be satisfied by
 STOP itself, since STOP arrives as an inbound message on the channel — the gate
 inverted by exactly the input it exists to obey. That was a real defect, found
 by audit, and `tests/test_optout.py` pins it.
+
+## If the form moves to its own domain
+
+Today `/contact` is served by the same Next.js app that proxies `/api`, so the
+POST is same-origin and CORS never comes into it. The content plan puts the
+landing page on its own domain later. On that day the new origin must be added
+to `CORS_ORIGINS` in the backend `.env`, or every submission fails in the
+browser with no server-side trace at all.
 
 ## Known limits
 

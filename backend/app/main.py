@@ -181,6 +181,105 @@ async def _record_user_activity(request, call_next):
 # user_activity was rejected and swallowed.
 app.add_middleware(TenantMiddleware)
 
+# Nothing here reads a request body larger than a form submission, except the
+# one route that imports a client's contact file. One route accepts bodies from
+# anonymous callers, there is no reverse proxy — the Cloudflare tunnel points
+# straight at uvicorn — and uvicorn imposes no limit of its own, so a 43 MB
+# JSON body was accepted, parsed into Python objects and answered 200,
+# retaining ~200 MB. A handful of concurrent ones OOMs the single worker and
+# takes every tenant's dashboard down with it.
+#
+# Registered here, between TenantMiddleware and CORS, so the 413 is wrapped by
+# CORS. Outside it, a browser saw a bare network error instead of a status it
+# could report.
+#
+# The limit is per path, not global. A single global cap set tight enough for
+# the public form silently broke `/api/v1/discovery/upload`, which documents
+# FILE_IMPORT_MAX_MB (25 MB by default) and enforces it itself — a realtor's
+# 750 KB contact export was refused with no diagnostic.
+_BODY_LIMITS: tuple[tuple[str, int], ...] = (
+    ("/api/v1/discovery/upload", settings.FILE_IMPORT_MAX_MB * 1024 * 1024),
+)
+DEFAULT_MAX_BODY_BYTES = 256 * 1024
+
+
+class BodySizeLimit:
+    """Refuse an oversized body before anything materialises it.
+
+    Buffers up to the limit and replays it, rather than letting the request
+    through and trying to intercept the response: an ASGI app that has already
+    started responding cannot be handed a second response, and the first
+    version of this raised inside httpx on any chunked upload it tried to stop.
+    """
+
+    def __init__(self, app: object) -> None:
+        self.app = app
+
+    @staticmethod
+    def _limit_for(path: str) -> int:
+        for prefix, limit in _BODY_LIMITS:
+            if path.startswith(prefix):
+                return limit
+        return DEFAULT_MAX_BODY_BYTES
+
+    async def __call__(self, scope: dict, receive: object, send: object) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        from starlette.responses import JSONResponse
+
+        limit = self._limit_for(scope.get("path", ""))
+
+        declared = None
+        for key, value in scope.get("headers", []):
+            if key == b"content-length":
+                try:
+                    declared = int(value)
+                except ValueError:
+                    declared = None
+                break
+        if declared is not None and declared > limit:
+            await JSONResponse({"detail": "body_too_large"}, status_code=413)(
+                scope, receive, send
+            )
+            return
+
+        # Content-Length is a claim, not a measurement, and a chunked request
+        # carries none at all. Count what actually arrives.
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            message = await receive()
+            if message.get("type") != "http.request":
+                # A disconnect. Hand it straight to the app.
+                chunks.append(b"")
+                break
+            total += len(message.get("body", b""))
+            if total > limit:
+                await JSONResponse({"detail": "body_too_large"}, status_code=413)(
+                    scope, receive, send
+                )
+                return
+            chunks.append(message.get("body", b""))
+            if not message.get("more_body", False):
+                break
+
+        body = b"".join(chunks)
+        replayed = False
+
+        async def replay() -> dict:
+            nonlocal replayed
+            if replayed:
+                return {"type": "http.disconnect"}
+            replayed = True
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        await self.app(scope, replay, send)
+
+
+app.add_middleware(BodySizeLimit)
+
 # CORS goes on LAST so it ends up OUTSIDE TenantMiddleware. The tenant layer
 # answers some requests itself — 403 for a suspended organization, 503 when an
 # inbound message cannot be attributed — and those short-circuit responses
@@ -217,63 +316,6 @@ app.include_router(voice_webhook.router, prefix="/api/v1/webhooks", tags=["webho
 # Enforced at the ASGI layer so the body is refused BEFORE pydantic
 # materialises it, and enforced on the stream as well as the header because
 # Content-Length is a claim, not a measurement.
-MAX_BODY_BYTES = 256 * 1024
-
-
-class BodySizeLimit:
-    def __init__(self, app: object, max_bytes: int = MAX_BODY_BYTES) -> None:
-        self.app = app
-        self.max_bytes = max_bytes
-
-    async def __call__(self, scope: dict, receive: object, send: object) -> None:
-        if scope.get("type") != "http":
-            await self.app(scope, receive, send)
-            return
-
-        from starlette.responses import JSONResponse
-
-        declared = 0
-        for key, value in scope.get("headers", []):
-            if key == b"content-length":
-                try:
-                    declared = int(value)
-                except ValueError:
-                    declared = 0
-                break
-        if declared > self.max_bytes:
-            await JSONResponse({"detail": "body_too_large"}, status_code=413)(
-                scope, receive, send
-            )
-            return
-
-        seen = 0
-        too_big = False
-
-        async def guarded() -> dict:
-            nonlocal seen, too_big
-            message = await receive()
-            if message.get("type") == "http.request":
-                seen += len(message.get("body", b""))
-                if seen > self.max_bytes:
-                    too_big = True
-                    # Hand the app an empty final chunk rather than the rest of
-                    # the payload; the 413 below is what the client sees.
-                    return {"type": "http.request", "body": b"", "more_body": False}
-            return message
-
-        async def guarded_send(message: dict) -> None:
-            if too_big and message.get("type") == "http.response.start":
-                await JSONResponse({"detail": "body_too_large"}, status_code=413)(
-                    scope, receive, send
-                )
-                return
-            await send(message)
-
-        await self.app(scope, guarded, guarded_send)
-
-
-app.add_middleware(BodySizeLimit)
-
 # The public capture form. Mounted with the webhooks rather than below with the
 # dashboard API because it shares their contract, not the dashboard's: no
 # session, and the organization resolved inside the handler from something in
