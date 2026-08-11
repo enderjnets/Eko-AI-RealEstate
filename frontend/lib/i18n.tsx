@@ -826,7 +826,7 @@ const ES: Record<string, string> = {
   "auth.googleWrongOrigin": "El acceso con Google y con Apple necesita la dirección web propia del panel. Ábrelo ahí, o usa la contraseña de oficina de arriba.",
   "auth.googleWrongOriginWithUrl": "El acceso con Google y con Apple necesita la dirección web propia del panel: {url}. Ábrelo ahí, o usa la contraseña de oficina de arriba.",
   "takeover.optedOut": "Dado de baja",
-  "lead.optedOut": "Esta persona respondió STOP. Los mensajes automáticos están desactivados para ella; puedes seguir escribiéndole personalmente. Vuelve respondiendo ALTA.",
+  "lead.optedOut": "Esta persona respondió STOP. Los mensajes automáticos están desactivados para ella; puedes seguir escribiéndole personalmente. Vuelve respondiendo START.",
   "contact.title": "Habla con un agente en Denver",
   "contact.subtitle": "Cuéntanos qué buscas y te contestamos personalmente, normalmente el mismo día.",
   "contact.name": "Tu nombre",

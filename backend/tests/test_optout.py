@@ -45,8 +45,23 @@ def test_spanish_speakers_can_opt_out_in_spanish() -> None:
     # A bilingual Denver audience types "baja" and "cancelar". An opt-out
     # mechanism that only works in English is not an opt-out mechanism for the
     # half of the audience the product markets to in Spanish.
-    for word in ("BAJA", "parar", "detener", "darme de baja"):
+    for word in ("parar", "detener", "darme de baja", "PARAR"):
         assert opt_out_keyword(word, "sms") is not None, word
+
+
+def test_floor_words_are_not_opt_outs_in_a_property_business() -> None:
+    """"¿Planta baja o alta?" is among the most common questions this product's
+    users ask, so a one-word answer of "baja" is overwhelmingly a FLOOR. As a
+    stop word it silenced a live buyer permanently, and "alta" as a start word
+    resubscribed someone who had opted out. Same argument that removed
+    `cancelar`, applied to words with a stronger domain claim.
+    """
+    assert opt_out_keyword("baja", "sms") is None
+    assert opt_out_keyword("Baja", "sms") is None
+    assert opt_in_keyword("alta", "sms") is None
+    assert opt_in_keyword("ALTA", "sms") is None
+    # The unambiguous long forms still work.
+    assert opt_out_keyword("darme de baja", "sms") is not None
 
 
 def test_punctuation_does_not_defeat_it() -> None:
@@ -114,13 +129,13 @@ def test_agreement_is_not_re_consent() -> None:
     for word in ("yes", "YES", "si", "sí", "Sí", "ok", "vale"):
         assert opt_in_keyword(word, "sms") is None, word
     # The real ones still work.
-    for word in ("START", "unstop", "ALTA", "resume", "opt in"):
+    for word in ("START", "unstop", "resume", "opt in", "empezar"):
         assert opt_in_keyword(word, "sms") is not None, word
 
 
 def test_start_words_are_recognised_separately() -> None:
     assert opt_in_keyword("START", "sms") == "start"
-    assert opt_in_keyword("ALTA", "sms") == "alta"
+    assert opt_in_keyword("reanudar", "sms") == "reanudar"
     assert opt_in_keyword("STOP", "sms") is None
     assert opt_out_keyword("START", "sms") is None
 
@@ -573,5 +588,91 @@ async def test_start_from_a_lead_who_never_opted_out_is_just_a_message() -> None
             ).scalars().all()
             assert all("suscribi" not in c.lower() for c in outbound), outbound
             assert all("subscribed again" not in c.lower() for c in outbound), outbound
+    finally:
+        await _cleanup()
+
+
+def test_the_confirmation_only_names_words_that_actually_work() -> None:
+    """The message tells people how to come back. It has to be true.
+
+    The Spanish confirmation said "Responde ALTA" after ALTA was removed as a
+    start word for being half of "planta baja o alta" — so it instructed people
+    to send a word the system would treat as an ordinary message. This is the
+    same class of defect as the consent disclosure promising a STOP that was
+    never implemented: text the product shows is a promise, and promises are
+    requirements.
+    """
+    import re
+
+    from app.services.optout import CONFIRMATION, RESUMED, START_WORDS, STOP_WORDS
+
+    for lang, message in CONFIRMATION.items():
+        named = re.findall(r"\b([A-Z]{3,})\b", message)
+        assert named, f"{lang} confirmation names no keyword"
+        for word in named:
+            assert word.lower() in START_WORDS, (lang, word)
+
+    for lang, message in RESUMED.items():
+        for word in re.findall(r"\b([A-Z]{3,})\b", message):
+            assert word.lower() in STOP_WORDS, (lang, word)
+
+
+@pytest.mark.asyncio
+async def test_a_second_stop_does_not_reset_the_date() -> None:
+    """The date the agency was first on notice must stand.
+
+    A repeated STOP used to overwrite `opted_out_at`. In a dispute that date is
+    the difference between one violation and thirty — every message sent after
+    it becomes a message sent after a revocation the agency had on record. The
+    confirmation is still sent each time, which is what the carriers do and
+    what the person is entitled to.
+    """
+    from unittest.mock import patch
+
+    from app.services.conversation import ParsedMessage, handle_inbound_message
+
+    async def _must_not_run(**kwargs: object) -> object:  # pragma: no cover
+        raise AssertionError("the model answered a STOP")
+
+    try:
+        async with get_session_factory()() as db:
+            lead = await _lead(db, suffix="24", consent=True, opted_out=False)
+
+            with patch("app.services.conversation.generate_reply", _must_not_run):
+                await handle_inbound_message(
+                    ParsedMessage(
+                        channel="sms", external_id="stop-twice-1",
+                        from_identifier=lead.phone, from_name=None, content="STOP",
+                    ),
+                    db,
+                )
+                await db.refresh(lead)
+                first = lead.opted_out_at
+                assert first is not None
+
+                await handle_inbound_message(
+                    ParsedMessage(
+                        channel="sms", external_id="stop-twice-2",
+                        from_identifier=lead.phone, from_name=None, content="STOP",
+                    ),
+                    db,
+                )
+                await db.refresh(lead)
+
+            assert lead.opted_out_at == first, "the first notice date must stand"
+
+        async with get_bypass_session_factory()() as db:
+            outbound = (
+                await db.execute(
+                    text(
+                        "SELECT count(*) FROM messages m "
+                        "JOIN conversations c ON c.id = m.conversation_id "
+                        "WHERE c.lead_id = :l AND m.direction = 'outbound'"
+                    ),
+                    {"l": lead.id},
+                )
+            ).scalar_one()
+            # One confirmation per STOP: that is what the carriers do.
+            assert outbound == 2
     finally:
         await _cleanup()

@@ -80,9 +80,17 @@ _TEMPLATES: dict[FollowUpKind, dict[str, str]] = {
 
 
 def _first_name(lead: Lead) -> str:
-    if not lead.name:
-        return ""
-    return " " + lead.name.strip().split()[0]
+    """The lead's first name with a leading space, or "".
+
+    `if not lead.name` is not enough: a WhatsApp profile name of " " is truthy,
+    and `" ".strip().split()[0]` raises IndexError. That exception escaped the
+    per-row handler, so the whole batch never reached its single commit — five
+    identical SMS were handed to the provider across five ticks with zero
+    message rows written and the follow-up frozen at `pending attempts=0`. One
+    blank profile name wedged the worker for every tenant.
+    """
+    parts = (lead.name or "").split()
+    return " " + parts[0] if parts else ""
 
 
 async def _agency_name(db: AsyncSession) -> str:
@@ -253,6 +261,24 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
         # gate correctly refused it because consent is per channel, and SKIPPED
         # is terminal — the WhatsApp thread that would have passed was never
         # looked at.
+        # A pre-visit reminder must never go out after its own visit, whatever
+        # else is true. This guard was written inside the "no permitted
+        # channel" branch below — the one place nothing could be sent anyway —
+        # so it did nothing at all: with a sendable channel the sweep fell
+        # straight through and dispatched "your viewing is tomorrow" days
+        # after the viewing. The COMPLETED check upstream only helps when
+        # somebody remembered to mark the visit done, which is not the
+        # ordinary state of a calendar.
+        if fu.kind == FollowUpKind.REMINDER_24H and visit_is_past:
+            log.info(
+                "Follow-up %d cancelled for lead %d: its visit is already in "
+                "the past",
+                fu.id, lead.id,
+            )
+            fu.status = FollowUpStatus.CANCELLED
+            skipped += 1
+            continue
+
         candidates = await reachable_active_conversations(lead.id, lead.phone, db)
         conv = None
         for candidate in candidates:
@@ -275,21 +301,6 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             # time it is due its row can already be older than the grace
             # period — measuring from creation dropped it on its very first
             # hold, which is the opposite of holding it.
-            # A pre-visit reminder must never be held past its own visit.
-            # Pushing it a day at a time meant "your viewing is tomorrow"
-            # eventually went out days AFTER the viewing — the hold turned a
-            # suppressed message into a wrong one. The post-visit follow-ups
-            # are unaffected: arriving late is imperfect, not false.
-            if fu.kind == FollowUpKind.REMINDER_24H and visit_is_past:
-                log.info(
-                    "Follow-up %d cancelled for lead %d: held until after the "
-                    "visit it was reminding them about",
-                    fu.id, lead.id,
-                )
-                fu.status = FollowUpStatus.CANCELLED
-                skipped += 1
-                continue
-
             fu.attempts += 1
             if fu.attempts > _HOLD_GIVE_UP_AFTER_HOLDS:
                 log.info(
@@ -309,9 +320,21 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             skipped += 1
             continue
 
-        lang = await _lead_language(lead, db)
-        template = _TEMPLATES[fu.kind].get(lang) or _TEMPLATES[fu.kind]["en"]
-        text = template.format(name=_first_name(lead), agency=agency)
+        # Composing the message must not be able to take the batch down. It
+        # did: a blank WhatsApp profile name raised IndexError out here,
+        # outside the dispatch try below, so the loop aborted before its single
+        # commit — five identical SMS handed to the provider across five ticks,
+        # zero rows written, the follow-up frozen. One malformed row must cost
+        # one follow-up, not every tenant's nurture flow.
+        try:
+            lang = await _lead_language(lead, db)
+            template = _TEMPLATES[fu.kind].get(lang) or _TEMPLATES[fu.kind]["en"]
+            text = template.format(name=_first_name(lead), agency=agency)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Follow-up %d could not be composed: %s", fu.id, exc)
+            fu.status = FollowUpStatus.FAILED
+            failed += 1
+            continue
 
         outbound = Message(
             conversation_id=conv.id,

@@ -35,11 +35,15 @@ STOP_WORDS = frozenset(
         "opt out",
         "parar",
         "para",
-        "baja",
         "darme de baja",
         "detener",
     }
 )
+# Also NOT here: "baja". "¿Planta baja o alta?" is among the most common
+# questions a bilingual estate agent asks, so a one-word answer of "baja" is
+# overwhelmingly a floor, not a revocation — and silencing a live buyer is the
+# error they cannot undo without knowing about START. "darme de baja" carries
+# the same meaning with none of the ambiguity.
 # Deliberately NOT here: "cancelar" and "eliminar". `CANCEL` is in the CTIA set
 # and has to stay, but its Spanish cognates are not required by anyone and are
 # what a bilingual client types about an APPOINTMENT — "cancelar" as a whole
@@ -57,11 +61,13 @@ START_WORDS = frozenset(
         "optin",
         "opt-in",
         "opt in",
-        "alta",
         "empezar",
         "reanudar",
     }
 )
+# And "alta" is gone for the mirror-image reason: it is the other half of
+# "planta baja o alta". A lead answering an ordinary question about a floor
+# must not be resubscribed by it.
 # Deliberately NOT here: "yes", "si", "sí". They were, and they are the most
 # common single word a person sends. A lead who had opted out and then answered
 # "Sí" to anything at all — a question from the agent, an unrelated thread —
@@ -118,7 +124,7 @@ def opt_in_keyword(text: str | None, channel: str) -> str | None:
 # something is a marketing message to somebody who just said stop.
 CONFIRMATION = {
     "en": "You're unsubscribed and won't get any more automated messages from us. Reply START to resume.",
-    "es": "Te has dado de baja y no recibirás más mensajes automáticos. Responde ALTA para volver a activarlos.",
+    "es": "Te has dado de baja y no recibirás más mensajes automáticos. Responde START para volver a activarlos.",
 }
 
 RESUMED = {

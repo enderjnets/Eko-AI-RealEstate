@@ -287,7 +287,7 @@ async def capture_lead(sub: FormSubmission, db: AsyncSession) -> dict[str, objec
 
     now = datetime.now(UTC)
     _record_attribution(lead, attribution, now)
-    _record_consent(lead, sub, now, allowed=consent_allowed)
+    _record_consent(lead, sub, now, allowed=consent_allowed, is_new_lead=is_new)
 
     conv = await first_or_create(
         db,
@@ -422,7 +422,12 @@ def _record_attribution(lead: Lead, attribution: dict[str, str], now: datetime) 
 
 
 def _record_consent(
-    lead: Lead, sub: FormSubmission, now: datetime, *, allowed: bool
+    lead: Lead,
+    sub: FormSubmission,
+    now: datetime,
+    *,
+    allowed: bool,
+    is_new_lead: bool,
 ) -> None:
     """Write the consent record. Refresh it, never clear it.
 
@@ -432,12 +437,12 @@ def _record_consent(
     because the revocation people actually use is STOP, and a form submission
     is not where that arrives.
 
-    A later submission WITH the box ticked does replace it, and that is
-    deliberate. Refusing to overwrite made the record poisonable: anybody who
-    knew an address could pre-plant junk wording, and the person's real consent
-    could then never be written. Keeping the most recent affirmative record
-    means a genuine submission heals a forged one, and every version of the
-    record describes a real event either way.
+    Written ONCE, and never replaced. Allowing a refresh looked like the cure
+    for a poisoned record; it is also the poison, because one anonymous POST
+    with a known phone number then overwrites a real dated record, its wording
+    and its IP — the only evidence the broker has if the lead disputes. The
+    asymmetry is the point: a junk record is noise, a destroyed genuine record
+    is a lost defence.
 
     Revocation is NOT handled here. It arrives as an inbound message on a
     messaging channel, is recognised by keyword in `app/services/optout.py`,
@@ -468,10 +473,28 @@ def _record_consent(
         # A later submission with the box unticked does NOT revoke. Consent is
         # a historical fact and the revocation channel is STOP.
         return
+    if lead.consent_at is not None:
+        # Written once. Refreshing it read well — "a genuine submission heals a
+        # forged one" — and the converse is identical and worse: one anonymous
+        # POST with a known phone number replaced a real dated record, its
+        # wording and its IP, which is the only evidence the broker has if the
+        # lead ever disputes. Losing the ability to overwrite junk costs
+        # nothing next to losing a genuine record.
+        return
     lead.consent_at = now
     lead.consent_text = clean_text(sub.consent_text, MAX_CONSENT_TEXT)
     lead.consent_ip = clean_text(sub.ip, 45)
     lead.consent_user_agent = clean_text(sub.user_agent, 400)
+    if not is_new_lead:
+        # Recorded, and flagged. A web form cannot tell the real person from a
+        # stranger who knows their number — that is inherent to web consent and
+        # no server-side rule fixes it, which is why Turnstile and STOP are the
+        # actual defences. But a consent claim arriving on a contact the agency
+        # already had is worth being able to find later, so it is marked rather
+        # than silently indistinguishable from one the form itself created.
+        meta = dict(lead.meta or {})
+        meta["consent_claimed_on_existing_lead"] = now.isoformat()
+        lead.meta = meta
 
 
 async def may_send_automated(lead: Lead, channel: str, db: AsyncSession) -> bool:

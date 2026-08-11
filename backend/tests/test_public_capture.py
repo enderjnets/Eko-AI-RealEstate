@@ -14,6 +14,8 @@ the handler resolved and bound a tenant on its own.
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
@@ -836,16 +838,61 @@ async def test_a_chunked_oversized_body_gets_one_clean_response() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_planted_consent_can_be_healed_by_a_genuine_one() -> None:
-    """Refusing to overwrite made the record poisonable.
+async def test_a_consent_record_is_written_once_and_never_replaced() -> None:
+    """A stranger must not be able to destroy a genuine consent record.
 
-    A lead whose identifier IS an email cannot be texted at all, so a forged
-    consent on it enables nothing gated — but if consent could only ever be
-    written once, anybody who knew the address could pre-plant junk wording and
-    the person's real consent could then never be recorded. The most recent
-    affirmative record wins; an unticked box still never revokes.
+    A version of this allowed a refresh, reasoning that "a genuine submission
+    heals a forged one". The converse is identical and worse: one anonymous
+    POST with a known phone number replaced a real dated record, its wording
+    and its IP — the only evidence the broker has if the lead disputes. A junk
+    record is noise; a destroyed genuine record is a lost defence.
     """
-    victim = "emailkeyed@capture.test"
+    victim = "written-once@capture.test"
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text(
+                "INSERT INTO leads (org_id, phone, email, status, score, "
+                "score_breakdown, meta, human_takeover, consent_at, "
+                "consent_text, consent_ip) VALUES "
+                "(1, :p, :e, 'new', 0, '{}', '{}', false, :t, :txt, :ip)"
+            ),
+            {
+                "p": "+19995554321",
+                "e": victim,
+                "t": datetime(2026, 1, 5, 12, 0, tzinfo=UTC),
+                "txt": "GENUINE: I agree to receive texts.",
+                "ip": "203.0.113.7",
+            },
+        )
+        await db.commit()
+    try:
+        status, _ = await _post(
+            {
+                "phone": "(999) 555-4321",
+                "consent": True,
+                "consent_text": "OVERWRITTEN BY A STRANGER",
+            },
+            **{"cf-connecting-ip": "192.0.2.99"},
+        )
+        assert status == 202
+        lead = await _lead_row(victim)
+        assert lead["consent_text"] == "GENUINE: I agree to receive texts."
+        assert lead["consent_ip"] == "203.0.113.7"
+        assert lead["consent_at"].year == 2026 and lead["consent_at"].month == 1
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(text("DELETE FROM leads WHERE phone = '+19995554321'"))
+            await db.commit()
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_consent_on_an_existing_contact_is_flagged() -> None:
+    """A web form cannot tell the real person from a stranger who knows their
+    number. That is inherent to web consent and no server-side rule fixes it —
+    Turnstile and STOP are the real defences. What it can do is make the claim
+    findable afterwards instead of indistinguishable from a first contact.
+    """
     async with get_bypass_session_factory()() as db:
         await db.execute(
             text(
@@ -853,37 +900,24 @@ async def test_a_planted_consent_can_be_healed_by_a_genuine_one() -> None:
                 "score_breakdown, meta, human_takeover) VALUES "
                 "(1, :p, :e, 'new', 0, '{}', '{}', false)"
             ),
-            {"p": victim, "e": victim},
+            {"p": "+19995554322", "e": "flagged@capture.test"},
         )
         await db.commit()
     try:
-        assert (
-            await _post(
-                {"email": victim, "consent": True, "consent_text": "PLANTED wording."},
-                **{"cf-connecting-ip": "192.0.2.9"},
-            )
-        )[0] == 202
-        assert "PLANTED" in (await _lead_row(victim))["consent_text"]
-
-        # The real person submits. Their record replaces it.
-        assert (
-            await _post(
-                {
-                    "email": victim,
-                    "consent": True,
-                    "consent_text": "I agree to receive texts about listings.",
-                },
-                **{"cf-connecting-ip": "203.0.113.10"},
-            )
-        )[0] == 202
-        lead = await _lead_row(victim)
-        assert "I agree" in lead["consent_text"]
-        assert lead["consent_ip"] == "203.0.113.10"
-
-        # And an unticked box does NOT revoke.
-        assert (await _post({"email": victim, "consent": False}))[0] == 202
-        assert (await _lead_row(victim))["consent_at"] is not None
+        await _post(
+            {
+                "phone": "(999) 555-4322",
+                "consent": True,
+                "consent_text": "I agree to receive texts.",
+            }
+        )
+        lead = await _lead_row("flagged@capture.test")
+        assert lead["consent_at"] is not None
+        assert lead["meta"].get("consent_claimed_on_existing_lead")
     finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(text("DELETE FROM leads WHERE phone = '+19995554322'"))
+            await db.commit()
         await _cleanup()
 
 
@@ -1029,3 +1063,59 @@ async def test_an_oversized_upload_is_refused_before_the_route_reads_it() -> Non
         )
     assert response.status_code == 413
     assert response.json()["detail"] == "body_too_large"
+
+
+@pytest.mark.asyncio
+async def test_two_leads_sharing_an_address_are_not_merged() -> None:
+    """`info@` and family mailboxes are two people, not one.
+
+    `_lead_for` adopts a lead found by email only when there is EXACTLY one.
+    Relaxing that to "at least one" left the whole suite green, and the cost is
+    the worst kind: one person's conversation shown to another, because they
+    happen to share a mailbox.
+    """
+    shared = "info@capture.test"
+    async with get_bypass_session_factory()() as db:
+        for phone in ("+19995551001", "+19995551002"):
+            await db.execute(
+                text(
+                    "INSERT INTO leads (org_id, phone, email, status, score, "
+                    "score_breakdown, meta, human_takeover) VALUES "
+                    "(1, :p, :e, 'new', 0, '{}', '{}', false)"
+                ),
+                {"p": phone, "e": shared},
+            )
+        await db.commit()
+    try:
+        status, _ = await _post({"email": shared, "message": "Third person here"})
+        assert status == 202
+        async with get_bypass_session_factory()() as db:
+            # A third, separate lead — keyed on the address itself — not an
+            # adoption of whichever of the two came first.
+            rows = (
+                await db.execute(
+                    text("SELECT phone FROM leads WHERE email = :e ORDER BY phone"),
+                    {"e": shared},
+                )
+            ).scalars().all()
+            assert len(rows) == 3, rows
+            assert shared in rows, "the new submission got its own lead"
+            # And neither existing lead was written to.
+            counts = (
+                await db.execute(
+                    text(
+                        "SELECT count(*) FROM messages m "
+                        "JOIN conversations c ON c.id = m.conversation_id "
+                        "JOIN leads l ON l.id = c.lead_id "
+                        "WHERE l.phone IN ('+19995551001', '+19995551002')"
+                    )
+                )
+            ).scalar_one()
+            assert counts == 0
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM leads WHERE phone LIKE '+199955510%'")
+            )
+            await db.commit()
+        await _cleanup()

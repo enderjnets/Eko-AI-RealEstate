@@ -1208,9 +1208,15 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         # speaker's opt-out in English is the last thing they hear from us.
         target_lang = await _optout_language(lead, conv, parsed, db)
         if stop_word:
-            lead.opted_out_at = datetime.now(UTC)
-            lead.opted_out_channel = parsed.channel
-            lead.opted_out_keyword = stop_word[:40]
+            # First STOP wins the date. A second one used to reset it, and the
+            # date the agency was first on notice is the difference between one
+            # TCPA violation and thirty. The confirmation is still sent for
+            # every STOP — that is what the carriers do and what the person is
+            # entitled to — but the record of when they first said it stands.
+            if lead.opted_out_at is None:
+                lead.opted_out_at = datetime.now(UTC)
+                lead.opted_out_channel = parsed.channel
+                lead.opted_out_keyword = stop_word[:40]
             text = CONFIRMATION.get(target_lang) or CONFIRMATION["en"]
         else:
             lead.opted_out_at = None

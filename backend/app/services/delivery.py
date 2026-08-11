@@ -26,7 +26,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import lazyload
 
-from app.models.message import Message, MessageDirection, MessageStatus
+from app.models.message import Message, MessageDirection, MessageSender, MessageStatus
 
 log = logging.getLogger(__name__)
 
@@ -173,7 +173,16 @@ async def _retry_one(db: AsyncSession, message_id: int, now: datetime) -> str:
     # checks BEFORE creating the row, so anything already in the queue sailed
     # past it. The consent gate belongs at the dispatch boundary too, not only
     # at the producer.
-    lead = await _lead_of(message, db)
+    # AGENT only. The gate's documented bound — in `may_send_automated` and in
+    # docs/public-capture-form.md — is that it covers automated messages and a
+    # realtor can still write personally. Dropping on `sender` alone retired a
+    # human-authored message orphaned PENDING by a restart, which is precisely
+    # the case this sweep exists to rescue, and it did it permanently.
+    lead = (
+        await _lead_of(message, db)
+        if message.sender == MessageSender.AGENT
+        else None
+    )
     if lead is not None and lead.opted_out_at is not None:
         message.delivery_status = MessageStatus.FAILED
         message.next_attempt_at = None
