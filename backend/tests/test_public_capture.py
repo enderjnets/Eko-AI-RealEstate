@@ -521,6 +521,33 @@ async def test_an_oversized_body_never_reaches_the_database() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_captured_lead_is_scored() -> None:
+    # The Inbox is sorted by priority. A lead left at the default zero sinks
+    # below every old thread, so the newest lead from the channel this work
+    # exists to build would be the last one anybody looks at. Found by opening
+    # the Inbox, not by any assertion that existed before.
+    try:
+        await _post(
+            {
+                "email": "scored@capture.test",
+                "phone": "(303) 555-6262",
+                "message": "Looking in Wash Park, budget around 900k, moving in spring",
+            }
+        )
+        assert (await _lead_row("scored@capture.test"))["id"]
+        async with get_bypass_session_factory()() as db:
+            score = (
+                await db.execute(
+                    text("SELECT score FROM leads WHERE email = :e"),
+                    {"e": "scored@capture.test"},
+                )
+            ).scalar_one()
+        assert score > 0
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
 async def test_a_form_with_no_message_still_reads_as_something() -> None:
     # An empty bubble in the Inbox reads as a bug, not as a contact request.
     try:

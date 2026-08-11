@@ -8,8 +8,11 @@ import { useI18n } from "@/lib/i18n";
 
 // Public routes that must NEVER be gated (else an unauthenticated visitor is
 // bounced straight back to /login). /register is public so prospective clients
-// can self-register a read-only demo account.
-const PUBLIC_PATHS = new Set(["/login", "/register"]);
+// can self-register a read-only demo account. /contact is the landing-page
+// capture form — the whole point is that a stranger who followed a link from a
+// video reaches it, and bouncing them to a login screen would make the form
+// worse than not having one.
+const PUBLIC_PATHS = new Set(["/login", "/register", "/contact"]);
 
 /**
  * Gates the dashboard when AUTH_ENABLED. Calls /auth/me once per navigation; if

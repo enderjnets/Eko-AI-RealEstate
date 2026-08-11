@@ -684,3 +684,51 @@ export const discoveryApi = {
     return res.json();
   },
 };
+
+// ── Public capture form ──────────────────────────────────────────────────
+// Bypasses api() deliberately: that helper throws a string-formatted Error and
+// the contact form needs the STATUS to tell a visitor the truth. "Too many
+// submissions" and "we could not verify you are human" are different problems
+// with different fixes, and collapsing both into "something went wrong" is how
+// a form quietly stops converting.
+export type CaptureOutcome =
+  | { ok: true }
+  | { ok: false; reason: "contact" | "rate" | "captcha" | "generic" };
+
+export interface CapturePayload {
+  form?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  message?: string;
+  consent: boolean;
+  consent_text?: string;
+  utm?: Record<string, string>;
+  turnstile_token?: string;
+  website?: string;
+}
+
+export async function submitPublicLead(payload: CapturePayload): Promise<CaptureOutcome> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1/public/leads`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, reason: "generic" };
+  }
+  if (res.ok) return { ok: true };
+  if (res.status === 429) return { ok: false, reason: "rate" };
+  if (res.status === 400) return { ok: false, reason: "captcha" };
+  if (res.status === 422) {
+    // 422 is either our own `contact_required` / `consent_text_required` or a
+    // pydantic body rejection. Only the first is worth a specific message —
+    // the others mean the page sent something the form should not have built.
+    const detail = await errorDetail(res);
+    return { ok: false, reason: detail.includes("contact_required") ? "contact" : "generic" };
+  }
+  return { ok: false, reason: "generic" };
+}

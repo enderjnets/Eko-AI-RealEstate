@@ -37,6 +37,7 @@ from app.models.channel_route import CHANNEL_WEB
 from app.models.conversation import Conversation, ConversationStatus
 from app.models.lead import Lead
 from app.models.message import Message, MessageDirection, MessageSender, MessageStatus
+from app.services.scoring import rescore_lead
 
 log = logging.getLogger(__name__)
 
@@ -284,6 +285,12 @@ async def capture_lead(sub: FormSubmission, db: AsyncSession) -> dict[str, objec
     lead.last_message_at = now
     # Explicitly NOT setting inbox_handled_at: a form submission is unhandled by
     # definition, and that is what puts it in front of the realtor.
+
+    # Score it. The Inbox is sorted by priority, so a lead left at the default
+    # zero sinks below every old WhatsApp thread — the newest lead from the
+    # channel we just built would be the last one anybody looks at. Committed
+    # by the caller, like everything else here.
+    await rescore_lead(lead, db, commit=False)
 
     log.info(
         "Web capture: lead=%d new=%s consent=%s source=%s",

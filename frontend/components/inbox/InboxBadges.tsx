@@ -3,12 +3,14 @@
 import {
   CalendarCheck,
   CheckCircle2,
+  Globe,
   Mail,
   MessageCircle,
   MessageSquare,
   Phone,
 } from "lucide-react";
 import type { InboxItem } from "@/lib/api";
+import { pendingLabelKey } from "@/lib/inboxBadge";
 import { exactTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 
@@ -17,20 +19,14 @@ const CHANNEL_ICON: Record<string, typeof Mail> = {
   email: Mail,
   sms: MessageSquare,
   voice: Phone,
+  web: Globe,
 };
 
 /** Pending-reply badge: which channel is waiting for our answer. */
 export function PendingBadge({ channel }: { channel: string | null }) {
   const { t } = useI18n();
   const Icon = (channel && CHANNEL_ICON[channel]) || MessageSquare;
-  const labelKey =
-    channel === "email"
-      ? "inbox.badge.emailPending"
-      : channel === "voice"
-      ? "inbox.badge.voicePending"
-      : channel === "whatsapp"
-      ? "inbox.badge.whatsappPending"
-      : "inbox.badge.smsPending";
+  const labelKey = pendingLabelKey(channel);
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30">
       <Icon className="w-3 h-3" aria-hidden />
