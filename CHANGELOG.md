@@ -15,8 +15,11 @@ como registro legal.
   por el consumidor, y STOP **es** un mensaje entrante, enviarlo pasaba un lead
   correctamente bloqueado a **enviable**. Ahora: columnas
   `opted_out_at/_channel/_keyword`, reconocimiento por palabra clave (no por
-  LLM), la puerta lo consulta **primero** y en todos los canales, una sola
-  confirmación sin llamar al modelo, y `ALTA`/`START` para volver.
+  LLM), la puerta lo consulta **primero** y suprime **todos** los canales
+  automáticos incluido el email (más amplio de lo que exige la ley, a
+  propósito: "para" significa para, y el agente puede seguir escribiendo a
+  mano), una sola confirmación sin llamar al modelo, y `ALTA`/`START` para
+  volver.
 - **Dar de baja a una agencia metía sus leads en otra.** Una clave de
   formulario que no casaba con ninguna ruta caía al fallback de un solo tenant.
 - **Se podía plantar consentimiento en un lead ajeno** conociendo su email.

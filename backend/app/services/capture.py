@@ -461,11 +461,21 @@ async def may_send_automated(lead: Lead, channel: str, db: AsyncSession) -> bool
     worker would have a perfectly sendable channel and no permission to use it.
     Nothing else in the system would have objected.
 
-    An opt-out outranks both branches and is checked FIRST. It has to be: the
-    consumer-initiated branch below is satisfied by *any* inbound message on the
-    channel, and the word people send to make it stop is itself an inbound
-    message. Checked second, "STOP" would have flipped a correctly blocked lead
-    to sendable — the gate inverted by precisely the input it exists to obey.
+    An opt-out outranks everything and is checked FIRST — before the channel
+    test, so it suppresses automated EMAIL too, not just the TCPA channels.
+    Two deliberate decisions in that one line:
+
+    - First, because the consumer-initiated branch below is satisfied by *any*
+      inbound message on the channel, and the word people send to make it stop
+      is itself an inbound message. Checked second, "STOP" would have flipped a
+      correctly blocked lead to sendable — the gate inverted by precisely the
+      input it exists to obey.
+    - Broader than the law requires, because "stop" means stop. CAN-SPAM would
+      permit continuing to email someone who only texted STOP, and the letter
+      of TCPA is per channel. But the cost of reading it narrowly is a person
+      who asked us to stop and kept hearing from us, and the cost of reading it
+      broadly is bounded: this gate covers AUTOMATED messages only, so a
+      realtor can still write to them personally.
     """
     if lead.opted_out_at is not None:
         return False

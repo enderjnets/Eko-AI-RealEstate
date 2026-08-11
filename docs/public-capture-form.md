@@ -148,9 +148,15 @@ record documents, so it is implemented, by keyword and not by the model:
   `List-Unsubscribe` header, not a one-word reply.
 - **Effect**: `leads.opted_out_at/_channel/_keyword` are set, exactly one
   confirmation is sent, **the model is never called**, and
-  `may_send_automated` returns False for every gated channel from then on —
-  outranking written consent, because an instruction to stop is the more recent
-  statement of what the person wants.
+  `may_send_automated` returns False from then on — outranking written consent,
+  because an instruction to stop is the more recent statement of what the
+  person wants.
+- **Scope: every channel, including email.** Broader than the law requires —
+  CAN-SPAM would permit still emailing someone who only texted STOP, and the
+  letter of TCPA is per channel. The cost of reading it narrowly is a person
+  who asked us to stop and kept hearing from us; the cost of reading it broadly
+  is bounded, because this gate covers **automated** messages only and a
+  realtor can still write to them personally.
 - **Coming back**: `START`, `ALTA`, `RESUME`, `UNSTOP` clear it.
 
 Why keyword and not the LLM: a revocation has to be recognised when the model

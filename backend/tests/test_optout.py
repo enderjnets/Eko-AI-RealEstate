@@ -157,6 +157,28 @@ async def test_an_opt_out_stops_every_gated_channel_not_just_the_one_used() -> N
 
 
 @pytest.mark.asyncio
+async def test_an_opt_out_suppresses_automated_email_too() -> None:
+    """Broader than the law requires, and deliberately so.
+
+    CAN-SPAM would permit continuing to email someone who only texted STOP, and
+    the letter of TCPA is per channel. But "stop" means stop, and the cost of
+    reading it broadly is bounded — this gate covers AUTOMATED messages only,
+    so a realtor can still write to them personally. Pinned here because the
+    behaviour otherwise looks like an accident of check ordering.
+    """
+    try:
+        async with get_session_factory()() as db:
+            lead = await _lead(db, suffix="08", consent=True, opted_out=True)
+            assert await may_send_automated(lead, "email", db) is False
+            # And email is NOT gated for anyone who has not opted out — the
+            # suppression comes from the opt-out, not from gating email.
+            other = await _lead(db, suffix="09b", consent=False, opted_out=False)
+            assert await may_send_automated(other, "email", db) is True
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
 async def test_a_lead_who_never_opted_out_is_unaffected() -> None:
     try:
         async with get_session_factory()() as db:
