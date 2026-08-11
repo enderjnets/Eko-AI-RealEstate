@@ -48,3 +48,10 @@ postgres-data/
 
 # graphify knowledge graph artifacts
 graphify-out/
+
+# Mutation-testing backups. A harness that copies a file next to itself
+# will otherwise get its copy committed by `git add -A` — which happened, and
+# shipped a stale duplicate of optout.py still containing the removed keywords.
+*.mutbak
+*.mymutbak
+*.solobak

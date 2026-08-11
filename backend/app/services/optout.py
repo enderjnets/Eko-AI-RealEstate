@@ -89,10 +89,12 @@ def _normalise(text: str | None) -> str:
     # "“stop”" — none of which matched a list of ASCII words. A stop word that
     # fails because the keyboard was helpful is a revocation that did not
     # happen.
-    cleaned = cleaned.strip(_PUNCTUATION)
-    # A leading emoji (🛑 STOP) is common enough to be worth handling; strip
-    # anything that is not a letter, space or hyphen from the ends.
-    return cleaned.strip(_PUNCTUATION).strip()
+    # One strip, not two — the second was dead code, and its comment claimed
+    # the function removes "anything that is not a letter", which it does not:
+    # it removes the characters in _PUNCTUATION and no others. `🚫stop` is
+    # therefore NOT a revocation, and saying so plainly is better than a
+    # comment that promises otherwise.
+    return cleaned.strip(_PUNCTUATION)
 
 
 def opt_out_keyword(text: str | None, channel: str) -> str | None:

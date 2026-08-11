@@ -197,9 +197,22 @@ app.add_middleware(TenantMiddleware)
 # the public form silently broke `/api/v1/discovery/upload`, which documents
 # FILE_IMPORT_MAX_MB (25 MB by default) and enforces it itself — a realtor's
 # 750 KB contact export was refused with no diagnostic.
-_BODY_LIMITS: tuple[tuple[str, int], ...] = (
-    ("/api/v1/discovery/upload", settings.FILE_IMPORT_MAX_MB * 1024 * 1024),
-)
+# Paths whose bodies this middleware must NOT buffer, with the ceiling above
+# which it refuses outright. `/api/v1/discovery/upload` is a platform-operator
+# file import that documents FILE_IMPORT_MAX_MB and enforces it itself.
+#
+# Exact match, not a prefix: `startswith` also exempted `/api/v1/discovery/
+# uploadZZZ`, which is not a route, so an anonymous caller could make the
+# worker buffer megabytes and then answer 404.
+#
+# And streamed rather than buffered. The exemption is evaluated before any
+# authentication — middleware has no session — so buffering it meant an
+# anonymous request could make the single worker hold 25 MB before
+# `require_platform_admin` got to say 403. The route reads the body itself and
+# checks the size, so passing it through costs one copy instead of three.
+_STREAM_PATHS: dict[str, int] = {
+    "/api/v1/discovery/upload": settings.FILE_IMPORT_MAX_MB * 1024 * 1024,
+}
 DEFAULT_MAX_BODY_BYTES = 256 * 1024
 
 
@@ -217,10 +230,11 @@ class BodySizeLimit:
 
     @staticmethod
     def _limit_for(path: str) -> int:
-        for prefix, limit in _BODY_LIMITS:
-            if path.startswith(prefix):
-                return limit
-        return DEFAULT_MAX_BODY_BYTES
+        return _STREAM_PATHS.get(path, DEFAULT_MAX_BODY_BYTES)
+
+    @staticmethod
+    def _streams(path: str) -> bool:
+        return path in _STREAM_PATHS
 
     async def __call__(self, scope: dict, receive: object, send: object) -> None:
         if scope.get("type") != "http":
@@ -245,15 +259,26 @@ class BodySizeLimit:
             )
             return
 
+        if self._streams(scope.get("path", "")):
+            # Header-checked above, then handed through untouched. The route
+            # owns this body; buffering it here would only add a copy an
+            # unauthenticated caller could pay for.
+            await self.app(scope, receive, send)
+            return
+
         # Content-Length is a claim, not a measurement, and a chunked request
         # carries none at all. Count what actually arrives.
         chunks: list[bytes] = []
+        pending: dict | None = None
         total = 0
         while True:
             message = await receive()
             if message.get("type") != "http.request":
-                # A disconnect. Hand it straight to the app.
-                chunks.append(b"")
+                # A disconnect. Hand it to the app AS a disconnect — replaying
+                # it as a complete short body made every hung-up request run to
+                # completion, and turned a `ClientDisconnect` into a truncated
+                # payload the handler then tried to parse.
+                pending = message
                 break
             total += len(message.get("body", b""))
             if total > limit:
@@ -270,6 +295,8 @@ class BodySizeLimit:
 
         async def replay() -> dict:
             nonlocal replayed
+            if pending is not None:
+                return pending
             if replayed:
                 return {"type": "http.disconnect"}
             replayed = True

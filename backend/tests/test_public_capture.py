@@ -836,16 +836,68 @@ async def test_a_chunked_oversized_body_gets_one_clean_response() -> None:
 
 
 @pytest.mark.asyncio
-async def test_consent_cannot_be_planted_when_the_identifier_is_the_email() -> None:
-    """The narrower guard was not enough.
+async def test_a_planted_consent_can_be_healed_by_a_genuine_one() -> None:
+    """Refusing to overwrite made the record poisonable.
 
-    Blocking only the email-MERGE branch missed every lead whose own identifier
-    IS an address — which is every lead that arrived by email. A stranger who
-    knows the address matches on the exact-identifier branch instead, so the
-    merge flag is False and the consent record lands on them anyway, with the
-    attacker's IP as its evidence.
+    A lead whose identifier IS an email cannot be texted at all, so a forged
+    consent on it enables nothing gated — but if consent could only ever be
+    written once, anybody who knew the address could pre-plant junk wording and
+    the person's real consent could then never be recorded. The most recent
+    affirmative record wins; an unticked box still never revokes.
     """
     victim = "emailkeyed@capture.test"
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text(
+                "INSERT INTO leads (org_id, phone, email, status, score, "
+                "score_breakdown, meta, human_takeover) VALUES "
+                "(1, :p, :e, 'new', 0, '{}', '{}', false)"
+            ),
+            {"p": victim, "e": victim},
+        )
+        await db.commit()
+    try:
+        assert (
+            await _post(
+                {"email": victim, "consent": True, "consent_text": "PLANTED wording."},
+                **{"cf-connecting-ip": "192.0.2.9"},
+            )
+        )[0] == 202
+        assert "PLANTED" in (await _lead_row(victim))["consent_text"]
+
+        # The real person submits. Their record replaces it.
+        assert (
+            await _post(
+                {
+                    "email": victim,
+                    "consent": True,
+                    "consent_text": "I agree to receive texts about listings.",
+                },
+                **{"cf-connecting-ip": "203.0.113.10"},
+            )
+        )[0] == 202
+        lead = await _lead_row(victim)
+        assert "I agree" in lead["consent_text"]
+        assert lead["consent_ip"] == "203.0.113.10"
+
+        # And an unticked box does NOT revoke.
+        assert (await _post({"email": victim, "consent": False}))[0] == 202
+        assert (await _lead_row(victim))["consent_at"] is not None
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_honest_whatsapp_lead_can_consent_on_the_website() -> None:
+    """The guard must not cost the most common path there is.
+
+    A version of this required the lead to have been created by this form,
+    which silently discarded consent from somebody who first wrote on WhatsApp
+    and then ticked the box on the website — the API answered 202 and the
+    dashboard displayed "no consent" for a person who had demonstrably given
+    it.
+    """
+    phone = "+19995556010"
     async with get_bypass_session_factory()() as db:
         lead_id = (
             await db.execute(
@@ -854,14 +906,13 @@ async def test_consent_cannot_be_planted_when_the_identifier_is_the_email() -> N
                     "score_breakdown, meta, human_takeover) VALUES "
                     "(1, :p, :e, 'new', 0, '{}', '{}', false) RETURNING id"
                 ),
-                {"p": victim, "e": victim},
+                {"p": phone, "e": "wa@capture.test"},
             )
         ).scalar_one()
-        # An established record: they have written to us by email before.
         await db.execute(
             text(
                 "INSERT INTO conversations (org_id, lead_id, channel, status) "
-                "VALUES (1, :l, 'email', 'active')"
+                "VALUES (1, :l, 'whatsapp', 'active')"
             ),
             {"l": lead_id},
         )
@@ -869,17 +920,20 @@ async def test_consent_cannot_be_planted_when_the_identifier_is_the_email() -> N
     try:
         status, _ = await _post(
             {
-                "email": victim,
+                "phone": "(999) 555-6010",
+                "email": "wa@capture.test",
                 "consent": True,
-                "consent_text": "PLANTED — I agree to receive automated texts.",
-            },
-            **{"cf-connecting-ip": "192.0.2.9"},
+                "consent_text": "I agree to receive texts about listings.",
+            }
         )
         assert status == 202
-        lead = await _lead_row(victim)
-        assert lead["consent_at"] is None
-        assert lead["consent_text"] is None
+        lead = await _lead_row("wa@capture.test")
+        assert lead["consent_at"] is not None, "the honest case must record consent"
+        assert "I agree" in lead["consent_text"]
     finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(text("DELETE FROM leads WHERE phone = :p"), {"p": phone})
+            await db.commit()
         await _cleanup()
 
 
@@ -947,3 +1001,31 @@ async def test_consent_cannot_be_planted_on_an_imported_lead() -> None:
             await db.execute(text("DELETE FROM leads WHERE phone = '+19995557777'"))
             await db.commit()
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_upload_is_refused_before_the_route_reads_it() -> None:
+    """On the streamed path the Content-Length check is the ONLY guard.
+
+    `/api/v1/discovery/upload` is passed through unbuffered — the route owns
+    the body and enforces FILE_IMPORT_MAX_MB itself — so the header check is
+    what stops a caller declaring 60 MB and making the worker read it. On the
+    public path the stream counter catches oversize anyway, which is why
+    removing this check left every other test green.
+    """
+    from app.config import get_settings
+
+    over = get_settings().FILE_IMPORT_MAX_MB * 1024 * 1024 + 1
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/api/v1/discovery/upload",
+            content=b"x" * 32,  # tiny body, enormous claim
+            headers={
+                "content-type": "application/octet-stream",
+                "content-length": str(over),
+            },
+        )
+    assert response.status_code == 413
+    assert response.json()["detail"] == "body_too_large"

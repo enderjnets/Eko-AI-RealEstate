@@ -107,7 +107,7 @@ async def test_a_reply_lost_to_a_provider_blip_is_sent_again() -> None:
             async with get_session_factory()() as db:
                 with patch("app.services.conversation._dispatch_send", _ok):
                     result = await retry_pending_sends(db)
-            assert result == {"sent": 1, "failed": 0}
+            assert result == {"sent": 1, "failed": 0, "dropped": 0}
             assert sent_to == ["+13035558888"]
 
             async with get_session_factory()() as db:
@@ -155,7 +155,7 @@ async def test_a_reply_that_already_reached_the_provider_is_not_sent_twice() -> 
 
             async with get_session_factory()() as db:
                 with patch("app.services.conversation._dispatch_send", _boom):
-                    assert await retry_pending_sends(db) == {"sent": 0, "failed": 0}
+                    assert await retry_pending_sends(db) == {"sent": 0, "failed": 0, "dropped": 0}
     finally:
         await _cleanup()
 
@@ -255,7 +255,7 @@ async def test_a_message_abandoned_mid_send_is_picked_up() -> None:
 
             async with get_session_factory()() as db:
                 with patch("app.services.conversation._dispatch_send", _ok):
-                    assert await retry_pending_sends(db) == {"sent": 1, "failed": 0}
+                    assert await retry_pending_sends(db) == {"sent": 1, "failed": 0, "dropped": 0}
     finally:
         await _cleanup()
 
@@ -291,7 +291,7 @@ async def test_a_message_still_in_flight_is_left_alone() -> None:
 
             async with get_session_factory()() as db:
                 with patch("app.services.conversation._dispatch_send", _boom):
-                    assert await retry_pending_sends(db) == {"sent": 0, "failed": 0}
+                    assert await retry_pending_sends(db) == {"sent": 0, "failed": 0, "dropped": 0}
     finally:
         await _cleanup()
 
@@ -335,7 +335,7 @@ async def test_a_message_with_nowhere_to_go_backs_off_and_then_stops() -> None:
             # comes back empty when the lead is momentarily invisible, and
             # retiring on the spot deleted a pending reply for a transient read.
             async with get_session_factory()() as db:
-                assert await retry_pending_sends(db) == {"sent": 0, "failed": 1}
+                assert await retry_pending_sends(db) == {"sent": 0, "failed": 1, "dropped": 0}
 
             async with get_session_factory()() as db:
                 after = (
@@ -347,7 +347,7 @@ async def test_a_message_with_nowhere_to_go_backs_off_and_then_stops() -> None:
 
             # It backs off rather than spinning: nothing is due yet.
             async with get_session_factory()() as db:
-                assert await retry_pending_sends(db) == {"sent": 0, "failed": 0}
+                assert await retry_pending_sends(db) == {"sent": 0, "failed": 0, "dropped": 0}
 
             # And after CAP attempts it stops for good.
             async with get_session_factory()() as db:
@@ -358,9 +358,9 @@ async def test_a_message_with_nowhere_to_go_backs_off_and_then_stops() -> None:
                 due.next_attempt_at = datetime.now(UTC) - timedelta(minutes=1)
                 await db.commit()
             async with get_session_factory()() as db:
-                assert await retry_pending_sends(db) == {"sent": 0, "failed": 1}
+                assert await retry_pending_sends(db) == {"sent": 0, "failed": 1, "dropped": 0}
             async with get_session_factory()() as db:
-                assert await retry_pending_sends(db) == {"sent": 0, "failed": 0}
+                assert await retry_pending_sends(db) == {"sent": 0, "failed": 0, "dropped": 0}
                 final = (
                     await db.execute(select(Message).where(Message.id == orphan_id))
                 ).scalar_one()

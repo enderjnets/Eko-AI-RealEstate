@@ -476,3 +476,102 @@ async def test_the_retry_sweep_drops_messages_queued_before_the_opt_out() -> Non
             assert status == "failed", "queued message must be dropped, not sent"
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_reports_what_it_dropped() -> None:
+    # "0 sent, 0 failed" while silently discarding a revoked message is the one
+    # reading of a quiet sweep that is not true.
+    from app.services.delivery import retry_pending_sends
+
+    try:
+        async with get_session_factory()() as db:
+            lead = await _lead(db, suffix="22", consent=True, opted_out=True)
+            conv_id = (
+                await db.execute(
+                    text("SELECT id FROM conversations WHERE lead_id = :l LIMIT 1"),
+                    {"l": lead.id},
+                )
+            ).scalar_one()
+            db.add(
+                Message(
+                    conversation_id=conv_id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
+                    content="A listing you might like!",
+                    delivery_status=MessageStatus.PENDING,
+                    send_attempts=1,
+                    next_attempt_at=datetime.now(UTC) - timedelta(minutes=1),
+                )
+            )
+            await db.commit()
+
+            assert (await retry_pending_sends(db))["dropped"] == 1
+    finally:
+        await _cleanup()
+
+
+def test_an_emoji_prefix_is_not_stripped_and_we_say_so() -> None:
+    # The comment used to claim this strips "anything that is not a letter".
+    # It strips the characters in _PUNCTUATION and no others, so an unlisted
+    # emoji leaves the message unmatched. Pinned so the behaviour and the
+    # documentation cannot drift apart again.
+    assert opt_out_keyword("🛑 STOP", "sms") is not None  # listed
+    assert opt_out_keyword("🚫stop", "sms") is None  # not listed
+
+
+@pytest.mark.asyncio
+async def test_start_from_a_lead_who_never_opted_out_is_just_a_message() -> None:
+    """"ALTA" from an ordinary lead must not be answered with a confirmation.
+
+    The 4b condition is `stop_word or (start_word and already_opted_out)`. Drop
+    the second half and every "start", "alta" or "resume" from a normal lead
+    gets "You're subscribed again" instead of an answer to what they asked —
+    and the model never sees the message. Nothing tested that half.
+    """
+    from unittest.mock import patch
+
+    from app.services.conversation import ParsedMessage, handle_inbound_message
+    from app.services.llm import LLMResult
+
+    async def _reply(**kwargs: object) -> LLMResult:
+        return LLMResult(
+            text="Happy to help — which neighbourhood?",
+            provider="test",
+            model="test",
+            input_tokens=1,
+            output_tokens=1,
+        )
+
+    try:
+        async with get_session_factory()() as db:
+            lead = await _lead(db, suffix="23", consent=True, opted_out=False)
+
+            with patch("app.services.conversation.generate_reply", _reply):
+                result = await handle_inbound_message(
+                    ParsedMessage(
+                        channel="sms",
+                        external_id="startword-1",
+                        from_identifier=lead.phone,
+                        from_name=None,
+                        content="ALTA",
+                    ),
+                    db,
+                )
+            assert result["status"] != "opted_in"
+
+        async with get_bypass_session_factory()() as db:
+            outbound = (
+                await db.execute(
+                    text(
+                        "SELECT m.content FROM messages m "
+                        "JOIN conversations c ON c.id = m.conversation_id "
+                        "WHERE c.lead_id = :l AND m.direction = 'outbound'"
+                    ),
+                    {"l": lead.id},
+                )
+            ).scalars().all()
+            assert all("suscribi" not in c.lower() for c in outbound), outbound
+            assert all("subscribed again" not in c.lower() for c in outbound), outbound
+    finally:
+        await _cleanup()

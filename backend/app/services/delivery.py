@@ -100,17 +100,25 @@ async def retry_pending_sends(db: AsyncSession, *, limit: int = 20) -> dict[str,
         .all()
     )
 
-    sent = failed = 0
+    sent = failed = dropped = 0
     for message_id in candidates:
         outcome = await _retry_one(db, message_id, now)
         if outcome == "sent":
             sent += 1
         elif outcome == "failed":
             failed += 1
+        elif outcome == "dropped":
+            # Counted, and reported. A revoked message that vanishes from the
+            # summary looks to the operator like a quiet sweep, which is the
+            # one reading of "0 sent, 0 failed" that is not true.
+            dropped += 1
 
-    if sent or failed:
-        log.info("delivery retry: %d sent, %d still failing", sent, failed)
-    return {"sent": sent, "failed": failed}
+    if sent or failed or dropped:
+        log.info(
+            "delivery retry: %d sent, %d still failing, %d dropped (opted out)",
+            sent, failed, dropped,
+        )
+    return {"sent": sent, "failed": failed, "dropped": dropped}
 
 
 def _still_owed(now: datetime):  # noqa: ANN201 — a SQLAlchemy clause

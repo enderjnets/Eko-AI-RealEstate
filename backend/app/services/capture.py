@@ -259,18 +259,26 @@ async def capture_lead(sub: FormSubmission, db: AsyncSession) -> dict[str, objec
 
     lead, is_new, by_address = await _lead_for(identifier, email, db)
 
-    # Consent may only be established by a submission that CREATED the lead, or
-    # by one touching a lead this form itself created and that has never been
-    # reached on another channel. `by_address` alone was not enough: when the
-    # victim's own identifier IS their email — every lead that arrived by email
-    # — a stranger who knows the address matches on the exact-identifier branch
-    # instead, `by_address` is False, and the consent record lands on them with
-    # the attacker's IP as its evidence.
-    consent_allowed = is_new or (
-        not by_address
-        and lead.consent_at is None
-        and await _came_from_this_form(lead.id, db)
-    )
+    # Consent applies to the identifier the SUBMITTER TYPED, and only to that.
+    #
+    # This is the whole rule, and two more elaborate versions were wrong. You
+    # cannot claim somebody agreed to be texted at a number they never gave
+    # you — so when the email-merge branch attaches this submission to a lead
+    # whose messaging identifier is a phone that never appeared in the form,
+    # the consent record would be about a number the submitter did not supply.
+    # That is the indefensible case, and `by_address` is exactly it.
+    #
+    # Everything else is allowed, deliberately. A stranger typing somebody
+    # else's phone number into a web form is inherent to web consent — no
+    # server can tell that apart from the real person — and the answer to it is
+    # the record itself (wording, IP, user agent, timestamp) plus STOP, not a
+    # guard that also blocks the ordinary case. The version before this one
+    # required the lead to have been created by this form, which silently
+    # discarded consent from the most common path there is: somebody who first
+    # wrote on WhatsApp, then ticked the box on the website. The API answered
+    # 202 and the dashboard then displayed "no consent" for a person who had
+    # demonstrably given it.
+    consent_allowed = is_new or not by_address
 
     if name and not lead.name:
         lead.name = name
@@ -413,38 +421,23 @@ def _record_attribution(lead: Lead, attribution: dict[str, str], now: datetime) 
     lead.meta = meta
 
 
-async def _came_from_this_form(lead_id: int, db: AsyncSession) -> bool:
-    """Whether this lead has a `web` conversation — i.e. this form created it.
-
-    Stated positively on purpose. The first version asked the opposite
-    question, "has this lead been reached on another channel", and an IMPORTED
-    lead answers no: an agency's own contact export produces rows with no
-    conversations at all, so a stranger who knew any address in that file could
-    write a consent record onto a real client the agency had never messaged.
-
-    "Did this form make this lead" is the property that actually matters, and
-    it is the one that keeps the honest case working: somebody who submitted
-    without ticking the box and comes back to tick it has a `web` conversation
-    from the first visit.
-    """
-    row = await db.execute(
-        select(Conversation.id)
-        .where(Conversation.lead_id == lead_id, Conversation.channel == CHANNEL_WEB)
-        .limit(1)
-    )
-    return row.scalar_one_or_none() is not None
-
-
 def _record_consent(
     lead: Lead, sub: FormSubmission, now: datetime, *, allowed: bool
 ) -> None:
-    """Write the consent record once. Never clear it.
+    """Write the consent record. Refresh it, never clear it.
 
     Consent is a historical fact: the person did tick the box on that day
     looking at that wording. A later submission with the box unticked does not
     unsay it — and treating it as a revocation would be worse than useless,
     because the revocation people actually use is STOP, and a form submission
     is not where that arrives.
+
+    A later submission WITH the box ticked does replace it, and that is
+    deliberate. Refusing to overwrite made the record poisonable: anybody who
+    knew an address could pre-plant junk wording, and the person's real consent
+    could then never be written. Keeping the most recent affirmative record
+    means a genuine submission heals a forged one, and every version of the
+    record describes a real event either way.
 
     Revocation is NOT handled here. It arrives as an inbound message on a
     messaging channel, is recognised by keyword in `app/services/optout.py`,
@@ -465,13 +458,15 @@ def _record_consent(
     if not allowed:
         if sub.consent:
             log.warning(
-                "Ignoring a consent claim for lead %d: an existing record this "
-                "submission did not create, and one the agency has reached on "
-                "another channel",
+                "Ignoring a consent claim for lead %d: this submission reached "
+                "it by matching an email address, so it says nothing about the "
+                "identifier this lead is actually messaged on",
                 lead.id,
             )
         return
-    if not sub.consent or lead.consent_at is not None:
+    if not sub.consent:
+        # A later submission with the box unticked does NOT revoke. Consent is
+        # a historical fact and the revocation channel is STOP.
         return
     lead.consent_at = now
     lead.consent_text = clean_text(sub.consent_text, MAX_CONSENT_TEXT)
