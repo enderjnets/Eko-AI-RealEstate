@@ -2,6 +2,54 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.42.0] — 2026-08-11
+
+**La puerta de entrada para tráfico frío.** Hasta ahora un desconocido que veía
+un vídeo no tenía forma de entrar al sistema: todos los canales exigen que ya
+tenga el teléfono o el email de la agencia. `POST /api/v1/public/leads` y la
+página `/contact` son esa puerta, y además guardan **de qué vídeo vino cada
+lead**, que es lo que permite preguntar cuáles de N vídeos produjeron una cita
+en vez de mirar visitas.
+
+### Añadido
+- `POST /api/v1/public/leads` — sin autenticación, con honeypot, límite de
+  5/IP/10 min y **techo global de 60/10 min**, y Turnstile opcional y
+  fail-closed (`TURNSTILE_SECRET`).
+- Página pública `/contact` con captura de UTM, casilla de consentimiento y
+  honeypot. La casilla **envía el mismo texto que muestra**.
+- Canal `web` en `channel_routes`: la clave del formulario decide la agencia,
+  con la misma tabla que decide de quién es un SMS entrante. Fallback de un
+  solo tenant, así que una instalación con una agencia no configura nada.
+- Migración `027_lead_consent`: `consent_at`, `consent_text`, `consent_ip`,
+  `consent_user_agent`. Cuatro columnas y no una marca de tiempo, porque TCPA
+  exige poder demostrar **a qué** consintió la persona.
+- `may_send_automated()` — el worker de seguimiento no envía SMS ni WhatsApp
+  automáticos a quien no consintió por escrito ni nos escribió él primero por
+  ese canal. El email no pasa por la puerta (CAN-SPAM, no TCPA).
+- `docs/public-capture-form.md`.
+
+### Corregido
+- El compositor del dashboard **y** el worker de seguimiento elegían la
+  conversación activa más reciente de cualquier canal y se la daban al
+  despachador. Para un lead de formulario ésa es la de canal `web`, por la que
+  no se puede enviar nada: el botón de responder fallaba y cada seguimiento
+  quedaba marcado FAILED. Ahora eligen un canal que pueda alcanzar al lead.
+- El Inbox etiquetaba **"SMS pending"** a cualquier canal desconocido, así que
+  un lead de formulario aparecía como si hubiera enviado un SMS.
+- Los leads capturados se quedaban con score 0 y se hundían al fondo de una
+  bandeja ordenada por prioridad.
+- El patrón de canal de la API de plataforma era una regex escrita a mano que
+  duplicaba `CHANNELS`, de modo que un canal nuevo nacía imposible de crear.
+
+### Límites conocidos
+- Esta ruta **no** ejecuta el clasificador LLM: una llamada de pago detrás de
+  un POST abierto es una factura que puede disparar cualquiera. Los leads web
+  llegan sin `intent`/`zone` y el matching de propiedades no dispara para ellos
+  hasta que alguien los rellene.
+- Sin auto-respuesta: `web` no está en `SENDABLE_CHANNELS`.
+
+454 tests (eran 416). 17 mutaciones lanzadas, 17 muertas.
+
 ## [0.41.2] — 2026-08-09
 
 El tag `v0.41.1` apuntaba al árbol que todavía tenía el bug que ese mismo

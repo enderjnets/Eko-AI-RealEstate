@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.41.2";
+export const CURRENT_VERSION = "0.42.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,36 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.42.0",
+    date: "2026-08-11",
+    title: {
+      en: "A way in for people who found you online",
+      es: "Una puerta de entrada para quien te encuentra online",
+    },
+    changes: [
+      {
+        en: "There is now a contact form anyone can fill in, at /contact. Put the link in your social media bio: someone who watches a video can reach you without already having your number, and they arrive in your Inbox like any other lead.",
+        es: "Ya hay un formulario de contacto que puede rellenar cualquiera, en /contact. Pon el enlace en la bio de tus redes: quien vea un vídeo puede escribirte sin tener ya tu número, y llega a tu bandeja como cualquier otro lead.",
+      },
+      {
+        en: "Each lead now records which video or link brought them, so you can tell which content actually produces appointments instead of only counting views.",
+        es: "Cada lead guarda ahora qué vídeo o enlace lo trajo, así puedes saber qué contenido produce citas de verdad en vez de contar solo visitas.",
+      },
+      {
+        en: "When someone ticks the box agreeing to receive texts, we store the exact wording they saw along with the date. Automatic texts are held back for anyone who did not agree and never wrote to you first.",
+        es: "Cuando alguien marca la casilla aceptando recibir mensajes, guardamos el texto exacto que vio junto con la fecha. Los mensajes automáticos se retienen para quien no aceptó y nunca te escribió primero.",
+      },
+      {
+        en: "Fixed: replying to a lead who came through the form failed, and their scheduled follow-ups were marked as failed too.",
+        es: "Corregido: responder a un lead llegado por el formulario fallaba, y sus seguimientos programados también se marcaban como fallidos.",
+      },
+      {
+        en: "Fixed: the Inbox labelled form submissions as SMS, and left them at the bottom of the priority list.",
+        es: "Corregido: la bandeja etiquetaba los envíos del formulario como SMS y los dejaba al fondo de la lista de prioridad.",
+      },
+    ],
+  },
   {
     version: "0.41.2",
     date: "2026-08-09",

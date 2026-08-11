@@ -17,6 +17,12 @@ ARG NEXT_PUBLIC_APPLE_CLIENT_ID
 ENV NEXT_PUBLIC_APPLE_CLIENT_ID=$NEXT_PUBLIC_APPLE_CLIENT_ID
 ARG NEXT_PUBLIC_APPLE_REDIRECT_URI
 ENV NEXT_PUBLIC_APPLE_REDIRECT_URI=$NEXT_PUBLIC_APPLE_REDIRECT_URI
+# Public capture form. The form key names the agency in channel_routes; empty
+# is correct on a single-agency install. Inlined at build time like the rest —
+# an install that sets it only at runtime gets a form that posts no key, which
+# is refused the moment a second agency exists.
+ARG NEXT_PUBLIC_CAPTURE_FORM_KEY
+ENV NEXT_PUBLIC_CAPTURE_FORM_KEY=$NEXT_PUBLIC_CAPTURE_FORM_KEY
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
