@@ -379,7 +379,11 @@ async def test_a_held_followup_is_retried_not_cancelled() -> None:
                 await db.execute(select(FollowUp).where(FollowUp.id == fu_id))
             ).scalar_one()
             assert fu.status == FollowUpStatus.PENDING, "held, not cancelled"
-            assert fu.scheduled_for > datetime.now(UTC), "and pushed into the future"
+            # Pushed forward by about a day — not merely "into the future".
+            # `> now` is satisfied by a year, and a nurture sequence that
+            # re-checks annually is cancelled with extra steps.
+            delay = fu.scheduled_for - datetime.now(UTC)
+            assert timedelta(hours=12) < delay < timedelta(days=2), delay
 
             # Now they consent. The next sweep must actually send it.
             lead.consent_at = datetime.now(UTC)
