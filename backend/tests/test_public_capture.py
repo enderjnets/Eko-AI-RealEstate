@@ -908,3 +908,42 @@ async def test_a_returning_web_lead_can_still_consent_later() -> None:
         assert "I agree" in lead["consent_text"]
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_consent_cannot_be_planted_on_an_imported_lead() -> None:
+    """An imported lead has no conversations at all, and that fooled the guard.
+
+    The first version asked "has this lead been reached on another channel?" —
+    an agency's own contact export answers no, because those rows have no
+    conversations. So a stranger who knew any address in that file could write
+    a consent record onto a real client the agency had never messaged. The
+    question that actually matters is whether THIS FORM created the lead.
+    """
+    imported = "imported@capture.test"
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text(
+                "INSERT INTO leads (org_id, phone, email, status, score, "
+                "score_breakdown, meta, human_takeover) VALUES "
+                "(1, :p, :e, 'new', 0, '{}', '{}', false)"
+            ),
+            {"p": "+19995557777", "e": imported},
+        )
+        await db.commit()
+    try:
+        status, _ = await _post(
+            {
+                "email": imported,
+                "consent": True,
+                "consent_text": "PLANTED — I agree to automated texts.",
+            },
+            **{"cf-connecting-ip": "192.0.2.44"},
+        )
+        assert status == 202
+        assert (await _lead_row(imported))["consent_at"] is None
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(text("DELETE FROM leads WHERE phone = '+19995557777'"))
+            await db.commit()
+        await _cleanup()

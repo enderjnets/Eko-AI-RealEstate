@@ -269,7 +269,7 @@ async def capture_lead(sub: FormSubmission, db: AsyncSession) -> dict[str, objec
     consent_allowed = is_new or (
         not by_address
         and lead.consent_at is None
-        and not await _reached_on_another_channel(lead.id, db)
+        and await _came_from_this_form(lead.id, db)
     )
 
     if name and not lead.name:
@@ -413,17 +413,23 @@ def _record_attribution(lead: Lead, attribution: dict[str, str], now: datetime) 
     lead.meta = meta
 
 
-async def _reached_on_another_channel(lead_id: int, db: AsyncSession) -> bool:
-    """Whether this lead has ever had a conversation on a channel other than web.
+async def _came_from_this_form(lead_id: int, db: AsyncSession) -> bool:
+    """Whether this lead has a `web` conversation — i.e. this form created it.
 
-    The test for "is this an established CRM record, or a row this form made?".
-    A lead who has messaged on WhatsApp, SMS, email or voice is somebody the
-    agency already knows, and a stranger who happens to know their address must
-    not be able to write a consent record onto them.
+    Stated positively on purpose. The first version asked the opposite
+    question, "has this lead been reached on another channel", and an IMPORTED
+    lead answers no: an agency's own contact export produces rows with no
+    conversations at all, so a stranger who knew any address in that file could
+    write a consent record onto a real client the agency had never messaged.
+
+    "Did this form make this lead" is the property that actually matters, and
+    it is the one that keeps the honest case working: somebody who submitted
+    without ticking the box and comes back to tick it has a `web` conversation
+    from the first visit.
     """
     row = await db.execute(
         select(Conversation.id)
-        .where(Conversation.lead_id == lead_id, Conversation.channel != CHANNEL_WEB)
+        .where(Conversation.lead_id == lead_id, Conversation.channel == CHANNEL_WEB)
         .limit(1)
     )
     return row.scalar_one_or_none() is not None

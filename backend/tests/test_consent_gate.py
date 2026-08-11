@@ -469,3 +469,61 @@ async def test_an_old_followup_is_not_dropped_on_its_first_hold() -> None:
             assert fu.attempts == 1
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_reminder_is_never_held_past_its_own_visit() -> None:
+    """The hold turned a suppressed message into a wrong one.
+
+    Pushing a held follow-up forward a day at a time meant "your viewing is
+    tomorrow" eventually went out days AFTER the viewing. Post-visit follow-ups
+    are unaffected — arriving late is imperfect, not false — but the pre-visit
+    reminder has to be cancelled once its moment has gone.
+    """
+    from sqlalchemy import text as sqltext
+
+    from app.models.follow_up import FollowUpKind, FollowUpStatus
+    from app.models.visit import Visit, VisitStatus
+
+    try:
+        async with get_session_factory()() as db:
+            lead, _ = await _lead_with(
+                db, suffix="16", channels=("sms",), inbound_on=(WEB,)
+            )
+            visit = Visit(
+                lead_id=lead.id,
+                external_booking_id=f"held-past-{lead.id}",
+                scheduled_at=datetime.now(UTC) - timedelta(days=5),
+                status=VisitStatus.SCHEDULED,
+            )
+            db.add(visit)
+            await db.flush()
+            fu = FollowUp(
+                lead_id=lead.id,
+                visit_id=visit.id,
+                kind=FollowUpKind.REMINDER_24H,
+                status=FollowUpStatus.PENDING,
+                scheduled_for=datetime.now(UTC) - timedelta(minutes=1),
+            )
+            db.add(fu)
+            await db.commit()
+
+            await process_due_followups(db)
+
+            row = (
+                await db.execute(
+                    sqltext("SELECT status FROM follow_ups WHERE id = :i"),
+                    {"i": fu.id},
+                )
+            ).scalar_one()
+            assert row == "cancelled", "must not be held into the past"
+            assert await _outbound_channels(lead.id, db) == []
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM visits WHERE lead_id IN "
+                     "(SELECT id FROM leads WHERE phone LIKE :m)"),
+                {"m": f"{MARK}%"},
+            )
+            await db.commit()
+        await _cleanup()

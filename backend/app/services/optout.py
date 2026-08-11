@@ -52,18 +52,22 @@ START_WORDS = frozenset(
     {
         "start",
         "unstop",
-        "yes",
         "resume",
         "subscribe",
         "optin",
         "opt-in",
+        "opt in",
         "alta",
         "empezar",
         "reanudar",
-        "si",
-        "sí",
     }
 )
+# Deliberately NOT here: "yes", "si", "sí". They were, and they are the most
+# common single word a person sends. A lead who had opted out and then answered
+# "Sí" to anything at all — a question from the agent, an unrelated thread —
+# silently resubscribed themselves to automated messages they had asked to stop.
+# CTIA requires START and UNSTOP; it does not require agreement words, and
+# reading agreement as re-consent is exactly backwards.
 
 # Only these carry a legal opt-out meaning. Email unsubscribes are a link and a
 # List-Unsubscribe header, not a one-word reply, and treating a one-word email

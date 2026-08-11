@@ -210,6 +210,10 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             fu.status = FollowUpStatus.SKIPPED
             skipped += 1
             continue
+        # Defined for every follow-up, not only the ones with a visit: a
+        # standalone nurture row has no visit and must not blow up the sweep
+        # with a NameError when the hold branch reads it.
+        visit_is_past = False
         if fu.visit_id is not None:
             visit = (await db.execute(select(Visit).where(Visit.id == fu.visit_id))).scalar_one_or_none()
             # COMPLETED belongs here for the PRE-visit reminder only: telling
@@ -220,6 +224,10 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             dead = {VisitStatus.CANCELLED, VisitStatus.NO_SHOW}
             if fu.kind == FollowUpKind.REMINDER_24H:
                 dead.add(VisitStatus.COMPLETED)
+            visit_at = visit.scheduled_at if visit is not None else None
+            if visit_at is not None and visit_at.tzinfo is None:
+                visit_at = visit_at.replace(tzinfo=UTC)
+            visit_is_past = visit_at is not None and visit_at < now
             if visit is None or visit.status in dead:
                 fu.status = FollowUpStatus.CANCELLED
                 skipped += 1
@@ -267,6 +275,21 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             # time it is due its row can already be older than the grace
             # period — measuring from creation dropped it on its very first
             # hold, which is the opposite of holding it.
+            # A pre-visit reminder must never be held past its own visit.
+            # Pushing it a day at a time meant "your viewing is tomorrow"
+            # eventually went out days AFTER the viewing — the hold turned a
+            # suppressed message into a wrong one. The post-visit follow-ups
+            # are unaffected: arriving late is imperfect, not false.
+            if fu.kind == FollowUpKind.REMINDER_24H and visit_is_past:
+                log.info(
+                    "Follow-up %d cancelled for lead %d: held until after the "
+                    "visit it was reminding them about",
+                    fu.id, lead.id,
+                )
+                fu.status = FollowUpStatus.CANCELLED
+                skipped += 1
+                continue
+
             fu.attempts += 1
             if fu.attempts > _HOLD_GIVE_UP_AFTER_HOLDS:
                 log.info(

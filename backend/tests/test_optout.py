@@ -101,6 +101,23 @@ def test_email_is_not_an_opt_out_channel() -> None:
     assert opt_out_keyword("STOP", "sms") == "stop"
 
 
+def test_agreement_is_not_re_consent() -> None:
+    """"Sí" must not resubscribe anybody.
+
+    `yes`, `si` and `sí` were opt-in words, and they are the most common single
+    word a person sends. A lead who had opted out and then answered "Sí" to
+    anything at all — a question from the agent, an unrelated thread — silently
+    resubscribed themselves to the automated messages they had asked to stop.
+    CTIA requires START and UNSTOP; it does not require agreement words, and
+    reading agreement as re-consent is exactly backwards.
+    """
+    for word in ("yes", "YES", "si", "sí", "Sí", "ok", "vale"):
+        assert opt_in_keyword(word, "sms") is None, word
+    # The real ones still work.
+    for word in ("START", "unstop", "ALTA", "resume", "opt in"):
+        assert opt_in_keyword(word, "sms") is not None, word
+
+
 def test_start_words_are_recognised_separately() -> None:
     assert opt_in_keyword("START", "sms") == "start"
     assert opt_in_keyword("ALTA", "sms") == "alta"
