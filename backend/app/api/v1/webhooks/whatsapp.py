@@ -78,6 +78,14 @@ async def whatsapp_inbound(
     gracefully.
     """
     s = get_settings()
+    if not s.WHATSAPP_ENABLED:
+        # A disabled channel must not quietly keep creating leads. Nobody
+        # should be pointing Meta here at all, so 404 is the honest answer:
+        # this endpoint is not serving. 200 would tell Meta the delivery
+        # succeeded while the message went nowhere a person will read.
+        log.warning("Inbound WhatsApp refused: WHATSAPP_ENABLED is false")
+        raise HTTPException(status_code=404, detail="whatsapp_not_enabled")
+
     raw = await request.body()
     sig = request.headers.get("X-Hub-Signature-256") or request.headers.get("x-hub-signature-256")
 

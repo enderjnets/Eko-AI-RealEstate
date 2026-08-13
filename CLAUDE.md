@@ -60,10 +60,20 @@ the product, used in README / landing / marketing copy, is **"Eko AI Realtors"**
    would violate Anthropic ToS at scale. Use **Kimi + MiniMax** here, period.
 6. **NEVER bake API keys, customer phone numbers, or WhatsApp tokens into
    committed files.** Always read from `.env` (gitignored).
-7. **NEVER ship `WHATSAPP_SIMULATED=true` to a customer install.** It is a
-   dev / test mode that logs instead of sending. The backend logs a warning at
-   startup if it sees `WHATSAPP_SIMULATED=true` together with
-   `APP_ENV=production` — investigate before any green-light.
+7. **WhatsApp is DISABLED by default** (`WHATSAPP_ENABLED=false`). This is a US
+   install: the channels are SMS, voice and email. Enable it only if a customer
+   asks for it AND has a configured Meta Business app.
+
+   **NEVER enable it with empty secrets.** `WHATSAPP_SIMULATED` does not only
+   control sending — it also switches on INBOUND HMAC verification. With
+   `WHATSAPP_APP_SECRET` empty, every inbound webhook returns 403 until Meta
+   disables the subscription, and the startup line that mentioned WhatsApp at
+   all disappears, so the install ends up quieter and more broken. The backend
+   now refuses to start in that combination.
+
+   (This rule used to read "NEVER ship `WHATSAPP_SIMULATED=true` to a customer
+   install". Followed literally on an install with no Meta app — which is every
+   install today — it produced exactly the outage above.)
 
 ## Port map (ROG `100.88.47.99` / `10.0.0.240`)
 

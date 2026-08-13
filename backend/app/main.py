@@ -30,7 +30,7 @@ from app.api.v1.webhooks import email as email_webhook
 from app.api.v1.webhooks import sms as sms_webhook
 from app.api.v1.webhooks import voice as voice_webhook
 from app.api.v1.webhooks import whatsapp as whatsapp_webhook
-from app.config import get_settings
+from app.config import Settings, get_settings
 
 settings = get_settings()
 
@@ -704,6 +704,43 @@ def _must_refuse_to_serve(
     return len(real_orgs) > 1 or not org_count_known
 
 
+def whatsapp_is_half_configured(s: Settings) -> str | None:
+    """The reason WhatsApp must not start, or None.
+
+    `WHATSAPP_SIMULATED` gates two unrelated things: whether outbound goes to
+    Meta, and whether inbound webhooks are HMAC-verified. Turning simulation
+    off therefore does not mean "go live" — with an empty app secret it means
+    every inbound POST is rejected 403, Meta retries for days and then disables
+    the subscription, and the only startup line that mentioned WhatsApp at all
+    has just disappeared because simulation is off. The install ends up quieter
+    and more broken than before.
+
+    So the half-configured state is refused at boot rather than discovered from
+    a customer saying their messages stopped arriving.
+    """
+    if not s.WHATSAPP_ENABLED or s.WHATSAPP_SIMULATED:
+        return None
+    missing = [
+        name
+        for name, value in (
+            ("WHATSAPP_APP_SECRET", s.WHATSAPP_APP_SECRET),
+            ("WHATSAPP_ACCESS_TOKEN", s.WHATSAPP_ACCESS_TOKEN),
+            ("WHATSAPP_PHONE_NUMBER_ID", s.WHATSAPP_PHONE_NUMBER_ID),
+        )
+        if not (value or "").strip()
+    ]
+    if not missing:
+        return None
+    return (
+        "WhatsApp is enabled with live sending but " + ", ".join(missing) + " "
+        + ("is" if len(missing) == 1 else "are")
+        + " empty. Without the app secret every inbound webhook returns 403 "
+        "until Meta disables the subscription; without the token and phone "
+        "number id nothing can be sent. Set them, or set WHATSAPP_SIMULATED=true, "
+        "or set WHATSAPP_ENABLED=false."
+    )
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     logger.info(
@@ -767,6 +804,10 @@ async def _startup() -> None:
                 "is the only thing between a stranger and a forged "
                 "platform-operator token; use at least 32. openssl rand -hex 32"
             )
+
+    half_configured = whatsapp_is_half_configured(settings)
+    if half_configured:
+        raise RuntimeError(half_configured)
 
     if _must_refuse_to_serve(rls_is_off, real_orgs, org_count_known):
         # Outside the role check's own try/except on purpose, so the refusal is
@@ -883,11 +924,14 @@ async def _startup() -> None:
             len(real_orgs),
         )
 
-    if settings.is_production and settings.WHATSAPP_SIMULATED:
+    if settings.WHATSAPP_ENABLED and settings.is_production and settings.WHATSAPP_SIMULATED:
+        # Only when the channel is actually in use. This warning used to fire on
+        # every restart of every install, including the ones that will never
+        # send a WhatsApp message, and a warning that is always there and never
+        # actionable is a warning the operator learns to scroll past.
         logger.warning(
-            "⚠️  WHATSAPP_SIMULATED=true AND APP_ENV=production — outbound messages will only "
-            "be LOGGED, not sent to Meta. Set WHATSAPP_SIMULATED=false before serving real "
-            "customer traffic."
+            "⚠️  WHATSAPP_SIMULATED=true AND APP_ENV=production — outbound WhatsApp "
+            "will only be LOGGED, not sent to Meta."
         )
     if settings.is_production and not settings.AUTH_ENABLED:
         logger.warning(

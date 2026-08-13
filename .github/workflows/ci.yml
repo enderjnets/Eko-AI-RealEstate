@@ -42,6 +42,10 @@ jobs:
       MINIMAX_API_KEY: "ci-dummy"
       WHATSAPP_APP_SECRET: "ci-dummy"
       WHATSAPP_VERIFY_TOKEN: "ci-dummy"
+      # The suite exercises the WhatsApp channel, so it has to be on here.
+      # Production default is false — `test_whatsapp_channel.py` covers the
+      # disabled behaviour explicitly rather than relying on this being unset.
+      WHATSAPP_ENABLED: "true"
       WHATSAPP_SIMULATED: "true"
       APP_ENV: "test"
 

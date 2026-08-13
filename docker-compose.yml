@@ -83,6 +83,7 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma3:4b}
       OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-120}
       # WhatsApp Business Cloud API
+      WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}
       WHATSAPP_SIMULATED: ${WHATSAPP_SIMULATED:-true}
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN}
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET}
@@ -156,12 +157,47 @@ services:
       RESO_ACCESS_TOKEN: ${RESO_ACCESS_TOKEN:-}
       # MLS Grid / REcolorado replication (Phase 7b). Worker OFF until the feed exists.
       RESO_ORIGINATING_SYSTEM: ${RESO_ORIGINATING_SYSTEM:-recolorado}
-      RESO_PAGE_SIZE: ${RESO_PAGE_SIZE:-200}
+      # 1000, matching Settings. It was 200 here from the original feature
+      # commit; a later fix titled "align RESO replication with the real MLS
+      # Grid contract" raised the Settings default to the documented $top cap
+      # and did not touch compose — so the alignment never reached a running
+      # install, which kept paging at 200 and making five times the requests
+      # against a quota-limited feed. Same class of bug as the eighteen above.
+      RESO_PAGE_SIZE: ${RESO_PAGE_SIZE:-1000}
       RESO_MAX_PAGES: ${RESO_MAX_PAGES:-50}
       LISTINGS_SYNC_ENABLED: ${LISTINGS_SYNC_ENABLED:-false}
       LISTINGS_SYNC_INTERVAL_SECONDS: ${LISTINGS_SYNC_INTERVAL_SECONDS:-900}
       APP_ENV: ${APP_ENV:-development}
       DEBUG: ${DEBUG:-true}
+      # ─── Settings that .env.example documented and the container could not
+      # read. This list is enumerated by hand, which is exactly how eighteen of
+      # them went missing: `TURNSTILE_SECRET` (so the captcha accepted every
+      # submission without verifying), the entire Cal.com configuration (so a
+      # production install's calendar was silently simulated and could not be
+      # switched), CORS_ORIGINS, DEFAULT_TIMEZONE and even LOG_LEVEL, which the
+      # ROG had set in its .env and which was being ignored.
+      #
+      # `test_compose_env.py` now fails if a documented setting is not here, so
+      # the list cannot silently fall behind Settings again. Defaults below are
+      # generated from `Settings`, never typed from memory.
+      APP_NAME: ${APP_NAME:-Eko AI Realtors}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3004}
+      DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-America/Denver}
+      CALENDAR_SIMULATED: ${CALENDAR_SIMULATED:-true}
+      CALENDAR_PROVIDER: ${CALENDAR_PROVIDER:-calcom}
+      CALCOM_API_KEY: ${CALCOM_API_KEY:-}
+      CALCOM_BASE_URL: ${CALCOM_BASE_URL:-https://api.cal.com}
+      CALCOM_EVENT_TYPE_ID: ${CALCOM_EVENT_TYPE_ID:-}
+      DELIVERY_RETRY_ENABLED: ${DELIVERY_RETRY_ENABLED:-true}
+      DELIVERY_RETRY_INTERVAL_SECONDS: ${DELIVERY_RETRY_INTERVAL_SECONDS:-120}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30.0}
+      LLM_MAX_TOKENS_DEFAULT: ${LLM_MAX_TOKENS_DEFAULT:-600}
+      RESO_MIN_REQUEST_INTERVAL_SECONDS: ${RESO_MIN_REQUEST_INTERVAL_SECONDS:-0.5}
+      VAPI_BASE_URL: ${VAPI_BASE_URL:-https://api.vapi.ai}
+      TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
+      WHATSAPP_GRAPH_API_VERSION: ${WHATSAPP_GRAPH_API_VERSION:-v20.0}
+      WHATSAPP_BUSINESS_ACCOUNT_ID: ${WHATSAPP_BUSINESS_ACCOUNT_ID:-}
     ports:
       # 8011 — coexist with eko-backend :8000 (sales prod), eko-pipeline :8002, eko-backend-main :8010 (sales main dev)
       - "8011:8000"

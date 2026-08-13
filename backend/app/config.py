@@ -61,10 +61,21 @@ class Settings(BaseSettings):
     OLLAMA_TIMEOUT_SECONDS: float = 120.0  # local cold-load + generation can be slow
 
     # ─── WhatsApp Business Cloud API (Phase 1) ──────────────────────────
-    # SIMULATED=true (default) means whatsapp.send_text_message() LOGS the
-    # outbound payload instead of POSTing to Meta. Required for dev/test
-    # without a registered Meta Business app. Backend logs a WARN at startup
-    # if SIMULATED=true AND APP_ENV=production.
+    # OFF by default, and for most installs that is the final answer: a US
+    # brokerage reaches clients by text, call and email, and WhatsApp is simply
+    # not one of its channels. Enabling it is a decision with a Meta Business
+    # app behind it, not a leftover to be tidied up.
+    #
+    # This exists because `WHATSAPP_SIMULATED` alone was a trap. It gates two
+    # unrelated things — outbound sending AND inbound HMAC verification — so
+    # turning simulation off without a configured app secret does not "go
+    # live", it makes every inbound webhook return 403 until Meta disables the
+    # subscription. The startup guard below refuses that combination outright.
+    WHATSAPP_ENABLED: bool = False
+
+    # Only consulted when WHATSAPP_ENABLED. SIMULATED=true means
+    # whatsapp.send_text_message() LOGS the outbound payload instead of POSTing
+    # to Meta, which is what dev and the test suite want.
     WHATSAPP_SIMULATED: bool = True
     WHATSAPP_VERIFY_TOKEN: str = "change-me"
     WHATSAPP_APP_SECRET: str = ""  # HMAC-SHA256 secret for inbound signature
