@@ -28,6 +28,9 @@ def _settings(**overrides: object) -> object:
         "WHATSAPP_APP_SECRET": "",
         "WHATSAPP_ACCESS_TOKEN": "",
         "WHATSAPP_PHONE_NUMBER_ID": "",
+        "VOICE_SIMULATED": False,
+        "EMAIL_SIMULATED": False,
+        "SMS_SIMULATED": False,
     }
     base.update(overrides)
     return type("S", (), base)
@@ -276,3 +279,66 @@ async def test_an_sms_route_does_not_satisfy_the_whatsapp_check() -> None:
                 _text("DELETE FROM channel_routes WHERE destination = '+19995557001'")
             )
             await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_disabled_channel_refuses_the_verify_handshake_too() -> None:
+    """Gating the POST and leaving the GET open is half a switch.
+
+    Completing this handshake is what lets Meta REGISTER a subscription. Open
+    on a disabled install, setup succeeds and then every delivery 404s — the
+    subscription looks healthy at the moment somebody checks it and dies on
+    first real use, which is the hardest kind of failure to attribute.
+    """
+    # `get_settings()`, not `main.settings` — the handler calls the former, and
+    # another test in the suite reloads the module, after which they are
+    # different objects. Target what the code under test actually reads.
+    settings = get_settings()
+    before = settings.WHATSAPP_ENABLED
+    settings.WHATSAPP_ENABLED = False
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/v1/webhooks/whatsapp",
+                params={
+                    "hub.mode": "subscribe",
+                    "hub.verify_token": "whatever",
+                    "hub.challenge": "12345",
+                },
+            )
+        assert response.status_code == 404
+        assert "12345" not in response.text, "must not echo the challenge"
+    finally:
+        settings.WHATSAPP_ENABLED = before
+
+
+def test_a_disabled_channel_is_not_counted_as_unguarded() -> None:
+    """Disabled beats simulated, and refusing a SAFE install is its own outage.
+
+    The startup refuses to serve when a ROUTED channel runs in simulated mode,
+    because a simulated channel skips signature verification and anyone who
+    knows an agency's number could write into their tenant. That reasoning does
+    not apply to a channel that is switched off: the webhook answers 404 before
+    it reaches verification. Reading the simulation flag alone would crash-loop
+    an install with a legacy whatsapp route that had correctly turned the
+    channel off — the same mistake as refusing a working configuration, aimed
+    at a different victim.
+
+    Tested through the helper rather than through `_startup`, because there the
+    check lives inside a try/except that logs and continues, so a mutation of
+    the mapping produced an empty result instead of a failure.
+    """
+    from app.main import unguarded_channels
+
+    off = unguarded_channels(_settings(WHATSAPP_ENABLED=False, WHATSAPP_SIMULATED=True))
+    assert off["whatsapp"] is False
+
+    on = unguarded_channels(_settings(WHATSAPP_ENABLED=True, WHATSAPP_SIMULATED=True))
+    assert on["whatsapp"] is True
+
+    live = unguarded_channels(
+        _settings(WHATSAPP_ENABLED=True, WHATSAPP_SIMULATED=False)
+    )
+    assert live["whatsapp"] is False

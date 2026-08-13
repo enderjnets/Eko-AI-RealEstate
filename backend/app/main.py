@@ -704,6 +704,28 @@ def _must_refuse_to_serve(
     return len(real_orgs) > 1 or not org_count_known
 
 
+def unguarded_channels(s: Settings) -> dict[str, bool]:
+    """Channel → whether an inbound POST would skip signature verification.
+
+    Pulled out of the startup so it can be tested. Inside `_startup` it sits in
+    a try/except that logs and continues — correct, because a config check must
+    not block a boot, but it also means a mutation of this mapping could not be
+    caught from there: the exception path silently produced an empty result.
+
+    `whatsapp` is AND-ed with WHATSAPP_ENABLED because a disabled channel is not
+    an injection vector whatever its simulation flag says — the webhook answers
+    404 before it reaches verification. Reading the flag alone would crash-loop
+    an install that has a legacy whatsapp route and has correctly switched the
+    channel off, which is the same mistake as refusing a working one.
+    """
+    return {
+        "sms": s.SMS_SIMULATED,
+        "whatsapp": s.WHATSAPP_ENABLED and s.WHATSAPP_SIMULATED,
+        "email": s.EMAIL_SIMULATED,
+        "voice": s.VOICE_SIMULATED,
+    }
+
+
 async def _whatsapp_credentials_are_routed() -> bool:
     """True if some org supplies its own WhatsApp credentials via channel_routes.
 
@@ -896,12 +918,7 @@ async def _startup() -> None:
             from app.db.base import get_bypass_session_factory
             from app.models.channel_route import ChannelRoute
 
-            simulated = {
-                "sms": settings.SMS_SIMULATED,
-                "whatsapp": settings.WHATSAPP_SIMULATED,
-                "email": settings.EMAIL_SIMULATED,
-                "voice": settings.VOICE_SIMULATED,
-            }
+            simulated = unguarded_channels(settings)
             async with get_bypass_session_factory()() as session:
                 routed_channels = {
                     c for (c,) in await session.execute(_select(ChannelRoute.channel))

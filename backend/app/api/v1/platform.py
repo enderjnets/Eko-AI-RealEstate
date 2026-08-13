@@ -311,7 +311,11 @@ async def _refuse_if_onboarding_opens_a_simulated_channel(db: AsyncSession) -> N
     settings = get_settings()
     simulated = {
         CHANNEL_SMS: settings.SMS_SIMULATED,
-        CHANNEL_WHATSAPP: settings.WHATSAPP_SIMULATED,
+        # Disabled beats simulated: the webhook 404s before verification, so
+        # the channel cannot be used to write into anyone's tenant. Blocking
+        # onboarding over it would refuse a safe configuration. Mirrors the
+        # same reading in `main.py`'s startup refusal.
+        CHANNEL_WHATSAPP: settings.WHATSAPP_ENABLED and settings.WHATSAPP_SIMULATED,
         CHANNEL_EMAIL: settings.EMAIL_SIMULATED,
         CHANNEL_VOICE: settings.VOICE_SIMULATED,
     }

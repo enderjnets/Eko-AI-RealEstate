@@ -36,7 +36,17 @@ async def whatsapp_verify(
 
     The receiver must echo back `hub.challenge` if `hub.verify_token` matches
     what Meta has on file (which we store as WHATSAPP_VERIFY_TOKEN).
+
+    Gated on the channel being enabled, like the POST beside it. Completing
+    this handshake is what lets a subscription be REGISTERED, so leaving it
+    open on a disabled install means Meta can be pointed here successfully and
+    then have every delivery 404'd — the subscription looks healthy at setup
+    and dies on first use. Enabling the channel comes before registering it.
     """
+    if not get_settings().WHATSAPP_ENABLED:
+        log.warning("WhatsApp verify handshake refused: WHATSAPP_ENABLED is false")
+        raise HTTPException(status_code=404, detail="whatsapp_not_enabled")
+
     if hub_mode == "subscribe" and await _verify_token_is_known(hub_verify_token):
         log.info("WhatsApp webhook verified")
         return hub_challenge
