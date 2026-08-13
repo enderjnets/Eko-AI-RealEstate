@@ -211,3 +211,68 @@ async def test_no_warning_about_a_channel_this_install_does_not_use(
             settings.WHATSAPP_SIMULATED,
             settings.APP_ENV,
         ) = before
+
+
+def test_per_org_credentials_are_not_refused() -> None:
+    """Refusing a WORKING configuration is its own outage.
+
+    Credentials can live per-organization in `channel_routes.credential_ref`
+    rather than in the global `.env` — that is the multi-tenant shape the whole
+    channel_identity module exists for. A guard that reads only the globals
+    would crash-loop an install that is correctly configured, which is a worse
+    failure than the one it was written to prevent.
+    """
+    assert (
+        whatsapp_is_half_configured(
+            _settings(WHATSAPP_ENABLED=True, WHATSAPP_SIMULATED=False),
+            credentials_are_routed=True,
+        )
+        is None
+    )
+    # And with nothing routed, the same input is still refused.
+    assert (
+        whatsapp_is_half_configured(
+            _settings(WHATSAPP_ENABLED=True, WHATSAPP_SIMULATED=False),
+            credentials_are_routed=False,
+        )
+        is not None
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_route_probe_answers_false_when_nothing_is_routed() -> None:
+    from app.main import _whatsapp_credentials_are_routed
+
+    assert await _whatsapp_credentials_are_routed() is False
+
+
+@pytest.mark.asyncio
+async def test_an_sms_route_does_not_satisfy_the_whatsapp_check() -> None:
+    """The escape hatch has to be channel-scoped, and nothing checked that.
+
+    Dropping `channel = 'whatsapp'` from the probe left every test green, and
+    the consequence is the exact outage the guard exists to prevent: an install
+    that routes SMS per-org but has no WhatsApp credentials would be waved
+    through into live mode, where every inbound WhatsApp returns 403.
+    """
+    from sqlalchemy import text as _text
+
+    from app.db.base import get_bypass_session_factory
+    from app.main import _whatsapp_credentials_are_routed
+
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            _text(
+                "INSERT INTO channel_routes (org_id, channel, destination, "
+                "credential_ref) VALUES (1, 'sms', '+19995557001', 'SOME_REF')"
+            )
+        )
+        await db.commit()
+    try:
+        assert await _whatsapp_credentials_are_routed() is False
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                _text("DELETE FROM channel_routes WHERE destination = '+19995557001'")
+            )
+            await db.commit()

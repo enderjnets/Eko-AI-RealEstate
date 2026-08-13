@@ -704,7 +704,37 @@ def _must_refuse_to_serve(
     return len(real_orgs) > 1 or not org_count_known
 
 
-def whatsapp_is_half_configured(s: Settings) -> str | None:
+async def _whatsapp_credentials_are_routed() -> bool:
+    """True if some org supplies its own WhatsApp credentials via channel_routes.
+
+    Without this the guard below reads only the GLOBAL `.env` values and would
+    refuse to boot a multi-tenant install that is correctly configured
+    per-organization — the shape `channel_routes.credential_ref` exists for.
+    Refusing a working configuration is its own outage, so the check has to
+    know about the mechanism it is guarding.
+    """
+    try:
+        from sqlalchemy import text as _text
+
+        from app.db.base import get_bypass_session_factory
+
+        async with get_bypass_session_factory()() as session:
+            found = await session.execute(
+                _text(
+                    "SELECT 1 FROM channel_routes "
+                    "WHERE channel = 'whatsapp' AND credential_ref IS NOT NULL "
+                    "LIMIT 1"
+                )
+            )
+            return found.first() is not None
+    except Exception:  # noqa: BLE001
+        # No table yet (first boot, before migrations), or the probe failed.
+        # Fall back to the strict reading: an install that cannot be shown to
+        # have routed credentials is treated as relying on the globals.
+        return False
+
+
+def whatsapp_is_half_configured(s: Settings, *, credentials_are_routed: bool = False) -> str | None:
     """The reason WhatsApp must not start, or None.
 
     `WHATSAPP_SIMULATED` gates two unrelated things: whether outbound goes to
@@ -719,6 +749,10 @@ def whatsapp_is_half_configured(s: Settings) -> str | None:
     a customer saying their messages stopped arriving.
     """
     if not s.WHATSAPP_ENABLED or s.WHATSAPP_SIMULATED:
+        return None
+    if credentials_are_routed:
+        # Per-org configuration in `channel_routes`. The globals are allowed to
+        # be empty in that shape, and `_validate_refs` covers those rows.
         return None
     missing = [
         name
@@ -805,7 +839,14 @@ async def _startup() -> None:
                 "platform-operator token; use at least 32. openssl rand -hex 32"
             )
 
-    half_configured = whatsapp_is_half_configured(settings)
+    half_configured = whatsapp_is_half_configured(
+        settings,
+        credentials_are_routed=(
+            await _whatsapp_credentials_are_routed()
+            if settings.WHATSAPP_ENABLED and not settings.WHATSAPP_SIMULATED
+            else False
+        ),
+    )
     if half_configured:
         raise RuntimeError(half_configured)
 
