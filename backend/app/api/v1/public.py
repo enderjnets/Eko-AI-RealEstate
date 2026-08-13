@@ -123,16 +123,29 @@ def client_ip(request: Request) -> str:
     hence the global ceiling above, which does not depend on any of this being
     honest.
     """
+    return _client_ip_parts(request)[0]
+
+
+def _client_ip_parts(request: Request) -> tuple[str, bool]:
+    """(address, came_from_a_proxy_header).
+
+    The flag matters for Turnstile. When neither header is present the socket
+    peer is NOT the visitor: the POST is proxied by the Next.js server through
+    its `/api/*` rewrite, so `request.client.host` is the frontend container's
+    address on the Docker bridge. Sending that to Cloudflare as `remoteip` is a
+    classic source of spurious verification failures — the field is optional,
+    and omitting it is better than asserting something false.
+    """
     cf = (request.headers.get("cf-connecting-ip") or "").strip()
     if cf:
-        return cf[:45]
+        return cf[:45], True
     forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
     if forwarded:
-        return forwarded[:45]
-    return (request.client.host if request.client else "unknown")[:45]
+        return forwarded[:45], True
+    return (request.client.host if request.client else "unknown")[:45], False
 
 
-async def _turnstile_ok(token: str | None, ip: str) -> bool:
+async def _turnstile_ok(token: str | None, ip: str | None) -> bool:
     """Verify a Turnstile token, or pass when no secret is configured.
 
     Configured-but-unreachable fails CLOSED. A captcha that waves everyone
@@ -144,12 +157,12 @@ async def _turnstile_ok(token: str | None, ip: str) -> bool:
         return True
     if not token:
         return False
+    payload = {"secret": secret, "response": token}
+    if ip:
+        payload["remoteip"] = ip
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                TURNSTILE_VERIFY_URL,
-                data={"secret": secret, "response": token, "remoteip": ip},
-            )
+            response = await client.post(TURNSTILE_VERIFY_URL, data=payload)
             return bool(response.json().get("success"))
     except Exception as exc:  # noqa: BLE001
         log.error("Turnstile verification failed to complete: %s", exc)
@@ -179,7 +192,7 @@ class PublicLeadIn(BaseModel):
 async def capture(
     body: PublicLeadIn, request: Request, db: AsyncSession = Depends(get_db)
 ) -> dict[str, bool]:
-    ip = client_ip(request)
+    ip, ip_is_from_a_proxy_header = _client_ip_parts(request)
 
     # ── Order matters, and each step is placed for a reason ──────────────
     # 1. Per-IP budget first, charged even for the honeypot. It used to sit
@@ -220,7 +233,9 @@ async def capture(
     # 3. Captcha before the global budget is touched. A request the captcha
     #    will refuse must not be able to spend a slot: that turned the ceiling
     #    into a kill switch anyone could hold down without solving anything.
-    if not await _turnstile_ok(body.turnstile_token, ip):
+    if not await _turnstile_ok(
+        body.turnstile_token, ip if ip_is_from_a_proxy_header else None
+    ):
         raise HTTPException(status_code=400, detail="captcha_failed")
 
     # 4. The platform-wide budget, charged BEFORE the tenant lookup rather than

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.42.4";
+export const CURRENT_VERSION = "0.43.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.43.0",
+    date: "2026-08-12",
+    title: {
+      en: "Settings that were being ignored",
+      es: "Ajustes que se estaban ignorando",
+    },
+    changes: [
+      {
+        en: "Eighteen settings in your configuration file were never reaching the application — including your calendar connection, your office timezone and the contact form's spam protection. Changing them appeared to do nothing, because it did nothing. They work now.",
+        es: "Dieciocho ajustes de tu fichero de configuración no llegaban a la aplicación — entre ellos la conexión del calendario, la zona horaria de la oficina y la protección antispam del formulario. Cambiarlos parecía no hacer nada, porque no hacía nada. Ya funcionan.",
+      },
+      {
+        en: "The contact form's captcha can now actually be switched on, and the system tells you whether it is really verifying — before, an unconfigured captcha accepted everything while looking perfectly normal.",
+        es: "El captcha del formulario ya se puede activar de verdad, y el sistema te dice si está verificando realmente — antes, sin configurar, aceptaba todo con aspecto de estar funcionando.",
+      },
+      {
+        en: "WhatsApp is now explicitly switched off rather than \"simulated\". This is a US brokerage: text, call and email. The old setting was a trap — turning it off would have silently blocked every incoming message.",
+        es: "WhatsApp queda explícitamente desactivado en vez de \"simulado\". Esto es una inmobiliaria de EE. UU.: SMS, llamada y email. El ajuste anterior era una trampa: desactivarlo habría bloqueado en silencio todos los mensajes entrantes.",
+      },
+    ],
+  },
   {
     version: "0.42.4",
     date: "2026-08-11",

@@ -102,6 +102,25 @@ if [ "${SKIP_ENV:-0}" -ne 1 ]; then
   # them — the login page says so and names this address instead.
   CANONICAL_URL="${CANONICAL_URL:-$(ask 'Public URL of the dashboard (https://…) — blank if local only' '')}"
 
+  # Cloudflare Turnstile for the public capture form. Both halves or neither:
+  # the site key is baked into the frontend BUILD, the secret is read by the
+  # backend at container start, and setting only the secret means the server
+  # demands a token the page cannot produce — every visitor is refused and
+  # every lead is lost. Blank on both is a fine answer; the form still has its
+  # honeypot, per-IP limit and global ceiling.
+  TURNSTILE_SITE_KEY="${TURNSTILE_SITE_KEY:-$(ask 'Cloudflare Turnstile SITE key for the contact form (blank = no captcha)' '')}"
+  if [ -n "$TURNSTILE_SITE_KEY" ]; then
+    TURNSTILE_SECRET="${TURNSTILE_SECRET:-$(ask_secret 'Cloudflare Turnstile SECRET key')}"
+    if [ -z "$TURNSTILE_SECRET" ]; then
+      echo "  → No secret given, so the captcha would be decorative: the widget"
+      echo "    would render and the server would accept every submission"
+      echo "    unverified. Turning it off entirely instead."
+      TURNSTILE_SITE_KEY=""
+    fi
+  else
+    TURNSTILE_SECRET=""
+  fi
+
   PG_PASS="$(gen_secret)"
   APP_DB_PASS="$(gen_secret)"
   WA_VERIFY="$(gen_secret)"
@@ -153,6 +172,18 @@ NEXT_PUBLIC_API_URL=/api
 # they are told where to go instead of hitting the provider's error page.
 # Inlined at build time: changing it needs a rebuild, not a restart.
 NEXT_PUBLIC_CANONICAL_URL=${CANONICAL_URL}
+
+# Public capture form captcha. The SITE key is inlined into the frontend at
+# BUILD time — changing it later needs `docker compose build frontend`, not a
+# restart. The SECRET is read by the backend when the container is created.
+TURNSTILE_SECRET=${TURNSTILE_SECRET}
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=${TURNSTILE_SITE_KEY}
+
+# WhatsApp is off. A US brokerage reaches clients by text, call and email.
+# Do not set this true with empty WhatsApp secrets: the same flag that stops
+# simulating also turns on inbound HMAC verification, so every inbound webhook
+# would return 403. The backend refuses to start in that state.
+WHATSAPP_ENABLED=false
 
 LLM_PRIMARY=kimi
 LLM_FALLBACK=minimax

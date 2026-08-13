@@ -2,6 +2,46 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.43.0] — 2026-08-12
+
+Al planear cómo activar Turnstile resultó que no estaba apagado: estaba **mal
+cableado y fallando abierto**. Y no era un caso aislado.
+
+### Corregido
+- **18 ajustes documentados que el contenedor no podía leer nunca.**
+  `docker-compose.yml` enumera ~60 variables a mano y faltaban dieciocho:
+  `TURNSTILE_SECRET` (el captcha aceptaba todo sin verificar, indistinguible por
+  fuera de uno que funciona), **todo el bloque de Cal.com** (el calendario de
+  producción era simulado y no se podía cambiar), `CORS_ORIGINS`,
+  `DEFAULT_TIMEZONE` — el ajuste del bug de horario que arreglamos hace dos
+  versiones, inconfigurable — y `LOG_LEVEL`, que el ROG tenía puesto y se
+  ignoraba. `RESO_PAGE_SIZE` además divergió cuando un fix llamado *"align RESO
+  replication with the real MLS Grid contract"* subió el default en el código y
+  no tocó compose: la alineación nunca llegó a una instalación real.
+- **`test_compose_env.py`**: falla si un ajuste documentado no se pasa, si un
+  default de compose contradice al código, o si un secreto recibe un valor por
+  defecto en vez de impedir el arranque. Escribiendo el bloque me equivoqué en
+  dos defaults **de memoria** y el test los cazó antes del commit.
+- **Turnstile activable de verdad**: `/api/v1/health` dice ahora
+  `captcha: on|off`, el `remoteip` deja de mandar la IP Docker del frontend
+  cuando no hay cabecera de proxy, hay tests de la llamada real —incluido el
+  **fallo cerrado** por red, que estaba escrito y nadie probaba—, el instalador
+  pregunta por las dos claves, y `docs/` explica el procedimiento y **el orden**
+  (la clave pública primero: al revés se pierden todos los leads).
+- **WhatsApp explícitamente deshabilitado** (`WHATSAPP_ENABLED=false`). El
+  ajuste anterior era una trampa: `WHATSAPP_SIMULATED` controla el envío **y**
+  la verificación HMAC de entrada, así que obedecer la regla vieja habría
+  devuelto 403 a todo lo entrante hasta que Meta desactivara la suscripción. El
+  arranque se niega ahora en esa combinación, un canal deshabilitado responde
+  404 en vez de crear leads, y el aviso permanente se limita a instalaciones que
+  usen el canal.
+
+### Cambio visible
+`APP_NAME`: el `.env` del ROG pide "Eko AI Inmobiliario" y llevaba tiempo
+ignorado. Ahora toma efecto (solo en `/api/v1/health` y la raíz).
+
+526 tests (eran 507). 13 mutaciones, 13 muertas.
+
 ## [0.42.4] — 2026-08-11
 
 Ronda 6 de auditoría adversarial, la más productiva: siete defectos, dos

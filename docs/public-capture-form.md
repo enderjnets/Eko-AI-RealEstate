@@ -119,7 +119,7 @@ worker has a sendable channel and no permission to use it.
 | Per-IP limit | 5 per 10 minutes, charged **before** the honeypot. The honeypot used to return first, which made `{"website": "bot"}` a completely unmetered endpoint. |
 | Honeypot | A `website` field, positioned off-screen. Filled in → 202 and nothing written, indistinguishable from success so a bot gets no tuning feedback. |
 | **Global ceiling** | **60 per 10 minutes**, charged after the captcha and **before the tenant lookup**. Charged first, it was a kill switch anyone could hold down — sixty tokenless posts from sixty forged addresses each got a 400 and each still spent a slot. Charged last, resolving a form key is a database round trip that a caller rotating the IP header could drive without limit, because the per-IP budget resets with every forged address. |
-| Turnstile | Off while `TURNSTILE_SECRET` is empty. Configured, it is mandatory **and fail-closed** — if Cloudflare cannot be reached the submission is refused, because a captcha that passes everyone during an outage is not a captcha. |
+| Turnstile | Off while `TURNSTILE_SECRET` is empty — check `/api/v1/health` → `captcha`, because an unset secret accepts everything and looks identical to a working captcha from outside. Configured, it is mandatory **and fail-closed** — if Cloudflare cannot be reached the submission is refused, because a captcha that passes everyone during an outage is not a captcha. |
 
 The order — body cap, per-IP, honeypot, shape, captcha, global budget, tenant —
 is itself a defence, and each step moved there because of a specific way the
@@ -189,6 +189,47 @@ first. Placed after the consumer-initiated branch it would be satisfied by
 STOP itself, since STOP arrives as an inbound message on the channel — the gate
 inverted by exactly the input it exists to obey. That was a real defect, found
 by audit, and `tests/test_optout.py` pins it.
+
+## Turning the captcha on
+
+Turnstile is the only defence here a determined script cannot outspend, and it
+is **off** until both halves are set. Both halves, in this order — the ordering
+is not symmetric and getting it backwards costs every lead until it is fixed.
+
+1. **Cloudflare** → Turnstile → add a widget, scoped to the hostname the form
+   is served from (`inmo-demo.ekoaiautomation.com`). A widget bound to a
+   different hostname fails when the visitor solves it. You get a **site key**
+   (public) and a **secret key**.
+2. Put both in the root `.env`:
+   ```
+   NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x4AAA…
+   TURNSTILE_SECRET=0x4AAA…
+   ```
+3. **Rebuild the frontend.** `NEXT_PUBLIC_*` is inlined at compile time, so
+   `docker compose up -d` alone will not pick up the site key:
+   ```
+   docker compose build frontend
+   docker compose up -d
+   ```
+   The backend needs the **recreate** that `up -d` does, not `restart` — a
+   container's environment is fixed when it is created.
+
+**Why the order matters.** Site key first is fail-OPEN: the widget renders,
+submissions are accepted unverified, leads still arrive. Secret first is
+fail-CLOSED: the server demands a token the page cannot produce, every visitor
+is told *"we couldn't verify that you're human"*, reloading never helps, and
+**100% of leads are lost** with nothing logged server-side. If both go together
+in one build + recreate, neither window opens.
+
+**Verify it is actually on** — the failure is silent acceptance, so the form
+looking fine proves nothing:
+
+```
+curl -s https://<host>/api/v1/health | jq .captcha    # "on"
+```
+
+Then submit a real lead in a browser. A `curl` returning 202 proves nothing:
+with the secret unset, `curl` gets 202 too.
 
 ## If the form moves to its own domain
 

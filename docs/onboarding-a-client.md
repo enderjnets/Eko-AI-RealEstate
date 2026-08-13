@@ -80,9 +80,16 @@ two things first:
 ```bash
 # Is the route there?
 curl -s "$API/api/v1/platform/routes" -b cookies.txt | jq '.[] | select(.channel=="web")'
-# Is the same slug in the built bundle?
-docker exec eko-realestate-frontend printenv NEXT_PUBLIC_CAPTURE_FORM_KEY
+# Is the same slug in the built bundle? NOT `printenv` — the runner stage
+# carries no NEXT_PUBLIC_* at all, so that command returns nothing whether or
+# not the value was baked in. Grep the compiled bundle instead:
+docker exec eko-realestate-frontend sh -c "grep -rl 'natalia-denver' .next 2>/dev/null | head -1"
 ```
+
+Captcha, while you are here: `curl -s https://<host>/api/v1/health | jq .captcha`
+must say `on` before the form is advertised anywhere. `off` means submissions
+are accepted without verification, which looks exactly like a working captcha
+from the outside. See `docs/public-capture-form.md` for how to switch it on.
 
 The `calendar` row is not optional for an agency past the first. Without it,
 every booking would land on the operator's Cal.com — writing the lead's name,
