@@ -338,45 +338,36 @@ def _state_code(value: object) -> str | None:
 
 
 def _zip_code(value: object) -> str | None:
-    """The postal code out of whatever the feed put in the field.
+    """A postal code, or nothing. No reading between the lines.
 
-    Two ways to get this wrong, and the second is the one that hurts:
+    Three rounds of audit found three different wrong answers here, each from a
+    rule invented to rescue a messy field: truncating at the column width gave
+    "80202 Denv"; taking the first five-digit run turned "Suite 12345 Denver CO
+    80202" into 12345; taking the last turned "Denver CO 80202 Unit 12345" into
+    12345 and a nine-digit parcel number into a ZIP+4. Every one of them stored
+    something plausible, in range, and wrong — and wrong survives every check
+    downstream while missing does not.
 
-    - Truncating at the column width is not reading a postal code at all —
-      "80202 Denver CO" cut at ten gives "80202 Denv".
-    - Taking the *first* run of five digits is worse, because it can succeed
-      with the wrong answer: "Suite 12345 Denver CO 80202" would store 12345
-      and say nothing. A unit number before the code is ordinary in a feed's
-      free-text address field.
-
-    So: prefer a ZIP+4, then a five-digit code at the end of the field, and
-    only then a lone five-digit code. Anything else is dropped with a warning,
-    because a wrong postal code survives every check downstream and a missing
-    one does not.
+    So this recognises a postal code and nothing else. A field holding a code
+    is used; a field holding an address, a box number or a parcel id is
+    dropped, with a line in the log. That costs the postal code on one listing.
+    Guessing costs a listing matched to the wrong neighbourhood, and nobody
+    finds out.
     """
     if not isinstance(value, str):
         return None
     text = value.strip()
     if not text:
         return None
-    # ZIP+4, hyphenated or the nine-digit form the USPS also writes.
-    plus_four = re.search(r"\b(\d{5})-?(\d{4})\b", text)
+    if re.fullmatch(r"\d{5}", text):
+        return text
+    plus_four = re.fullmatch(r"(\d{5})-(\d{4})", text)
     if plus_four:
-        return f"{plus_four.group(1)}-{plus_four.group(2)}"
-    five = re.findall(r"\b\d{5}\b", text)
-    if len(five) == 1:
-        return five[0]
-    if len(five) > 1:
-        # More than one candidate: the last is the postal code in every
-        # address convention I can defend. Logged, because guessing is exactly
-        # what the rest of this function refuses to do.
-        log.warning(
-            "listing postal field %r holds %d five-digit runs, taking the last",
-            text[:40],
-            len(five),
-        )
-        return five[-1]
-    log.warning("listing postal code %r does not look like one, dropping it", text[:40])
+        return text
+    log.warning(
+        "listing postal field %r is not a postal code on its own, dropping it",
+        text[:40],
+    )
     return None
 
 

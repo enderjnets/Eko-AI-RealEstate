@@ -221,13 +221,16 @@ class TestEveryFeedFieldFitsItsColumn:
 
         assert _map_reso_record(self._record(StateOrProvince="Not A State")).state is None
 
-    def test_a_postal_code_is_matched_by_shape_not_by_length(self) -> None:
+    def test_a_postal_field_is_used_only_when_it_is_a_postal_code(self) -> None:
         from app.services.listings import _map_reso_record
 
-        # "80202 Denver CO" cut at ten gives "80202 Denv".
-        assert _map_reso_record(self._record(PostalCode="80202-1234 Suite 400")).zip_code == "80202-1234"
-        assert _map_reso_record(self._record(PostalCode="80202 Denver CO")).zip_code == "80202"
-        assert _map_reso_record(self._record(PostalCode="no idea")).zip_code is None
+        # This test used to assert the opposite — that a code could be picked
+        # out of surrounding text. Three rounds of audit found three different
+        # wrong answers from that, so the rule is now recognise-or-drop.
+        assert _map_reso_record(self._record(PostalCode="80209")).zip_code == "80209"
+        assert _map_reso_record(self._record(PostalCode="80202-1234")).zip_code == "80202-1234"
+        for messy in ("80202-1234 Suite 400", "80202 Denver CO", "no idea"):
+            assert _map_reso_record(self._record(PostalCode=messy)).zip_code is None
 
     def test_long_prose_fields_are_trimmed_to_their_columns(self) -> None:
         from app.models import Property
@@ -261,22 +264,40 @@ class TestThePostalCodeIsNeverGuessedWrong:
     code, silently: "Suite 12345 Denver CO 80202" became 12345. A wrong postal
     code survives every check downstream; a missing one does not."""
 
-    def test_a_unit_number_before_the_code_does_not_win(self) -> None:
+    def test_a_field_holding_more_than_a_code_is_dropped(self) -> None:
         from app.services.listings import _zip_code
 
-        assert _zip_code("Suite 12345 Denver CO 80202") == "80202"
+        # This asserted "80202" — that the code could be found among the words.
+        # Every rule invented to do that found a wrong answer somewhere: the
+        # unit number before the code, the unit number after it, a nine-digit
+        # parcel id read as a ZIP+4. Missing beats wrong.
+        assert _zip_code("Suite 12345 Denver CO 80202") is None
 
-    def test_zip_plus_four_is_kept_in_both_spellings(self) -> None:
+    def test_a_clean_code_is_used(self) -> None:
         from app.services.listings import _zip_code
 
-        assert _zip_code("80202-1234 Suite 400") == "80202-1234"
-        assert _zip_code("802021234") == "80202-1234"
-
-    def test_a_plain_code_survives_surrounding_words(self) -> None:
-        from app.services.listings import _zip_code
-
-        assert _zip_code("80202 Denver CO") == "80202"
         assert _zip_code("80202") == "80202"
+        assert _zip_code("80202-1234") == "80202-1234"
+        assert _zip_code("02134") == "02134"  # leading zero
+
+    def test_anything_that_is_not_just_a_code_is_dropped(self) -> None:
+        from app.services.listings import _zip_code
+
+        # Every one of these produced a confident wrong answer at some point:
+        # the unit number, the parcel id, the second half of a ZIP+4.
+        for messy in (
+            "80202-1234 Suite 400",
+            "80202 Denver CO",
+            "Suite 12345 Denver CO 80202",
+            "Denver CO 80202 Unit 12345",
+            "123456789 Denver CO 80202",
+            "PO Box 12345",
+            "802021234",
+            "80202-12345",
+            "T2P 1J9",
+            "303-555-0192",
+        ):
+            assert _zip_code(messy) is None, f"{messy!r} was guessed at"
 
     def test_nothing_that_looks_like_one_is_dropped(self) -> None:
         from app.services.listings import _zip_code

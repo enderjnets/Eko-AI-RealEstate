@@ -14,35 +14,46 @@ import pytest
 
 from app.models import Conversation, Lead, Message
 
+# How each table keeps its bounded text inside its columns. The mechanism is a
+# constant, not prose: keying the gate off a phrase meant that rewording a
+# reason — which this file does every round — silently dropped a table out of
+# the per-column check. `Visit` left it that way once already.
+MODEL_TRIM = "model-trim"      # @validates on the model clips every bounded column
+CALLER_FITS = "caller-fits"    # fitted before the write; a Core insert, so no validator can fire
+LOUD = "loud-failure"          # operator configuration: refusing is the right answer
+OURS = "our-own-values"        # written from literals or values we generate
+
 HANDLED = {
     # Trimmed on the model — every writer goes through ORM attributes.
-    "leads": "@validates on the model; identity key gets the digest",
-    "messages": "@validates on the model; idempotency key gets the digest",
-    "conversations": "@validates on the model",
+    "leads": (MODEL_TRIM, "@validates on the model; identity key gets the digest"),
+    "messages": (MODEL_TRIM, "@validates on the model; idempotency key gets the digest"),
+    "conversations": (MODEL_TRIM, "@validates on the model"),
     # Written by a Core INSERT, so validators cannot fire: the feed values
     # are fitted in `_map_reso_record` before they get here, with codes
     # translated rather than truncated.
-    "properties": "fitted in listings._map_reso_record before the Core insert",
+    "properties": (CALLER_FITS, "fitted in listings._map_reso_record before the Core insert"),
     # Operator configuration through an authenticated form. Failing loudly
     # is right: silently storing something other than what an admin typed
     # is worse than refusing it.
-    "channel_routes": "admin config; loud failure is correct",
-    "organizations": "admin config; loud failure is correct",
-    "accounts": "self-registration, normalised and bounded at the schema",
-    "allowed_users": "admin config; loud failure is correct",
-    "agent_settings": "admin config; loud failure is correct",
-    "sync_state": "written from our own literals",
+    "channel_routes": (LOUD, "admin config; loud failure is correct"),
+    "organizations": (LOUD, "admin config; loud failure is correct"),
+    "accounts": (LOUD, "self-registration, normalised and bounded at the schema"),
+    "allowed_users": (LOUD, "admin config; loud failure is correct"),
+    "agent_settings": (LOUD, "admin config; loud failure is correct"),
+    "sync_state": (OURS, "written from our own literals"),
     # Written from our own values, or after the customer's words are safe.
     # Was recorded as "our own values, written after the commit". Both halves
     # were false: `property_address` and `timezone` come from a caller's JSON
     # or a voice agent's tool-call arguments, and the row is written BEFORE the
     # commit and AFTER the Cal.com booking already exists.
-    "visits": "@validates on the model; the Cal.com id is left whole to round-trip",
-    "call_logs": "advisor input through a bounded schema",
+    "visits": (MODEL_TRIM, "@validates on the model; the Cal.com id is left whole to round-trip"),
+    # `logged_by` is not advisor input: it is the signed-in email the route
+    # reads from the session (`leads.py`, `current_email(request)`).
+    "call_logs": (OURS, "logged_by is the session's email, not user input"),
     # `last_ip` derives from X-Forwarded-For, which the client sets. The
     # middleware swallows the failure, so the blast radius is telemetry for one
     # user rather than their request — but "our own strings" was not true.
-    "user_activity": "client-influenced; clipped at the call site, failure swallowed",
+    "user_activity": (OURS, "client-influenced; clipped at the call site, failure swallowed"),
 }
 
 def _models_with_bounded_text() -> list[type]:
@@ -88,7 +99,8 @@ EXEMPT = {
 
 def _claims_model_trimming(model: type) -> bool:
     """Does this table's recorded decision say the model does the trimming?"""
-    return "@validates on the model" in HANDLED.get(model.__table__.name, "")
+    entry = HANDLED.get(model.__table__.name)
+    return bool(entry) and entry[0] == MODEL_TRIM
 
 
 class TestEveryBoundedColumnIsCovered:
@@ -115,24 +127,31 @@ class TestEveryBoundedColumnIsCovered:
         from sqlalchemy import Enum as SAEnum
         from sqlalchemy import String
 
-        registered = set(model.__mapper__.validators.keys())
+        # Behavioural, not declarative. Asserting the validator is registered
+        # proves a name is in a dict; it does not prove a long value comes back
+        # short. `Visit.status` is registered and returns unmodified — rightly,
+        # it is an enum — so registration and trimming are genuinely different
+        # facts, and only one of them is the one that matters.
         bounded = {
-            column.key
+            column.key: column.type.length
             for column in model.__table__.columns
             if isinstance(column.type, String)
             and not isinstance(column.type, SAEnum)
             and getattr(column.type, "length", None)
         }
-        exempt = {
-            column
-            for (table, column) in EXEMPT
-            if table == model.__table__.name
-        }
-        missing = sorted(bounded - registered - exempt)
+        exempt = {column for (table, column) in EXEMPT if table == model.__table__.name}
+        missing = []
+        for column, width in sorted(bounded.items()):
+            if column in exempt:
+                continue
+            probe = model()
+            setattr(probe, column, "x" * (width + 50))
+            if len(getattr(probe, column)) > width:
+                missing.append(column)
         assert not missing, (
-            f"{model.__name__} says it trims on the model but these are not "
-            f"registered: {missing}. An over-long value there does not lose the "
-            "field — it loses whatever the same transaction was holding."
+            f"{model.__name__} says it trims on the model, but an over-long "
+            f"value survives on: {missing}. That does not lose the field — it "
+            "loses whatever the same transaction was holding."
         )
 
 
@@ -566,3 +585,29 @@ class TestABookingCannotOutliveItsRecord:
 
         with _pytest.raises(ValidationError):
             BookingIn(start_time="2026-09-01T10:00:00Z", property_address="A" * 400)
+
+
+class TestTheGateCannotBeEmptied:
+    """The per-column gate reads a mechanism constant rather than a sentence,
+    because rewording a reason used to drop a table out of it silently — and
+    the table it dropped was the one the commit had been written for."""
+
+    def test_the_tables_that_claim_trimming_are_the_ones_that_get_checked(self) -> None:
+        claimed = {name for name, (mechanism, _) in HANDLED.items() if mechanism == MODEL_TRIM}
+        checked = {m.__table__.name for m in _models_with_bounded_text() if _claims_model_trimming(m)}
+        assert checked == claimed, (
+            f"the gate checks {sorted(checked)} but {sorted(claimed)} claim to trim"
+        )
+
+    def test_the_gate_is_not_empty(self) -> None:
+        # An empty parametrize passes every time. It is the same failure as the
+        # migration test that was green on zero files.
+        checked = [m for m in _models_with_bounded_text() if _claims_model_trimming(m)]
+        assert len(checked) >= 4, f"only {len(checked)} tables are being checked"
+
+    def test_every_exemption_is_recorded_with_a_reason(self) -> None:
+        # An exemption subtracts a column from the check, so an empty or
+        # missing reason would hide a genuinely unguarded column.
+        for (table, column), reason in EXEMPT.items():
+            assert reason and len(reason) > 10, f"{table}.{column} is exempt for no stated reason"
+            assert table in HANDLED, f"{table} is exempt from a gate it is not in"

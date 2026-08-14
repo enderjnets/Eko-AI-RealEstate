@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.46.14";
+export const CURRENT_VERSION = "0.46.15";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -16,6 +16,28 @@ export interface VersionEntry {
 export const CHANGELOG: VersionEntry[] = [
   {
     version: "0.46.14",
+    date: "2026-08-14",
+    title: {
+      en: "Nothing a machine writes can lose what you said",
+      es: "Nada que escriba una máquina puede perder lo que dijiste",
+    },
+    changes: [
+      {
+        en: "A long or oddly-shaped value coming from a message, a phone call or the property feed used to be able to take down the write that was saving it — and on the inbound paths that write was the one storing what the customer actually said, so the message itself was lost and every retry lost it again. Those values are now fitted before they land, and what cannot be read is dropped rather than guessed at.",
+        es: "Un valor largo o con forma rara —llegado de un mensaje, de una llamada o del feed de propiedades— podía tumbar la escritura que lo estaba guardando. En las rutas de entrada esa escritura era justo la que guardaba lo que dijo el cliente, así que se perdía el mensaje, y cada reintento lo volvía a perder. Ahora esos valores se ajustan antes de llegar, y lo que no se puede leer se descarta en vez de adivinarse.",
+      },
+      {
+        en: "Two different people can no longer end up as the same contact. Where an identifier was too long to store, it used to be cut — and two addresses that matched for the first part became one lead, with one person's messages in another person's conversation.",
+        es: "Dos personas distintas ya no pueden acabar siendo el mismo contacto. Cuando un identificador era demasiado largo se recortaba, y dos direcciones que coincidían al principio se convertían en un solo contacto, con los mensajes de una persona en la conversación de otra.",
+      },
+      {
+        en: "Booking a showing can no longer leave an appointment on your calendar that the app cannot see. The invitation is created at the calendar first, so a failure while recording it left something real that nothing here could list or cancel.",
+        es: "Agendar una visita ya no puede dejarte una cita en el calendario que la aplicación no ve. La invitación se crea antes en el calendario, así que un fallo al registrarla dejaba algo real que aquí no se podía ni listar ni cancelar.",
+      },
+    ],
+  },
+  {
+    version: "0.45.0",
     date: "2026-08-14",
     title: {
       en: "What you learn on a call now does something",

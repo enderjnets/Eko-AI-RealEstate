@@ -2,6 +2,44 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.46.4] – [0.46.14] — 2026-08-14
+
+Una sola línea de trabajo, diecinueve rondas de auditoría adversarial sobre
+ella. Sin funciones nuevas: es lo que hacía falta para que 0.45.0 fuese cierto.
+Cada versión intermedia está en `git log --oneline v0.46.3..v0.46.14` con su
+razonamiento completo; esto es lo que cambió para quien usa el producto.
+
+### Corregido
+
+- **Un mensaje entrante ya no se pierde por un dato con mala forma.** Un valor
+  demasiado largo o inesperado —de un mensaje, de una llamada de voz o del feed
+  de propiedades— tumbaba la escritura que lo guardaba, y en las rutas de
+  entrada esa escritura era **la misma transacción que guardaba lo que dijo el
+  cliente**. Como el proveedor reenvía lo mismo, cada reintento fallaba igual y
+  el mensaje se perdía del todo. Ahora se ajusta antes de llegar, y lo que no se
+  puede leer se descarta con aviso en vez de adivinarse.
+- **Dos personas distintas ya no pueden acabar siendo el mismo contacto.** Un
+  identificador demasiado largo se recortaba, así que dos direcciones iguales al
+  principio se resolvían al mismo lead. Ahora conserva una cabeza legible más un
+  resumen criptográfico: cabe, es estable, y dos personas siguen siendo dos.
+- **Una visita agendada ya no puede quedar fuera del CRM.** La reserva se crea
+  primero en Cal.com, así que un fallo al registrarla dejaba una cita real en el
+  calendario del agente que la aplicación no podía ni listar ni cancelar.
+- **Un rango de presupuesto al revés es imposible** (`CHECK` en Postgres,
+  migración 030): no emparejaba con ninguna casa y la página lo contaba como
+  "no hay nada disponible" en vez de "esta ficha está rota".
+- **`"450k"` valía 450 y `"450,000"` valía 450.** La lectura de cifras estaba
+  escrita para formato europeo en una correduría de Colorado, y al arreglarla se
+  perdieron los sufijos. Ambos casos salían positivos, en rango y no invertidos:
+  invisibles para todos los controles.
+- **Un anuncio con un dato mal formado ya no atasca el feed MLS entero.** La
+  página se escribe en una sola sentencia con su cursor, así que un registro
+  malo hacía que cada ejecución posterior volviera a pedir la misma página y
+  fallara igual, para siempre.
+- Un código postal solo se guarda si el campo **es** un código postal. Adivinarlo
+  a partir de texto libre guardaba números de portal o de parcela como si fueran
+  el código, en silencio.
+
 ## [0.46.3] — 2026-08-14
 
 ### Corregido
