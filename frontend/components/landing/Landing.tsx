@@ -349,9 +349,12 @@ function LandingFooter() {
         )}
         {legal.length > 0 && <p>{legal.join(" · ")}</p>}
         <p className="pt-2">
+          {/* inline-flex + min-height so the tap target reaches 44px on a
+              phone. As a bare inline link it measured 15px, which is a miss
+              more often than a hit. */}
           <Link
             href="/login"
-            className="text-ln-body underline underline-offset-4 hover:text-ln-bronze"
+            className="inline-flex min-h-[44px] items-center text-ln-body underline underline-offset-4 hover:text-ln-bronze"
           >
             {t("landing.footer.staffLogin")}
           </Link>
