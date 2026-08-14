@@ -56,6 +56,10 @@ def test_the_check_sees_every_migration() -> None:
     """
     on_disk = [p for p in VERSIONS.glob("*.py") if not p.name.startswith("__")]
     checked = _revisions()
+    # `0 == 0` is not coverage. Without this, a moved directory or a glob that
+    # stops matching turns the whole check green — the failure mode the last
+    # version of this test had, in a different disguise.
+    assert on_disk, f"no migrations found under {VERSIONS} — has the path moved?"
     assert len(checked) == len(on_disk), (
         f"{len(on_disk) - len(checked)} migrations have a revision id this check "
         f"cannot see: {sorted({p.name for p in on_disk} - {n for n, _ in checked})}"

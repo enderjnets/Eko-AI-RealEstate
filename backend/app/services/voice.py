@@ -196,6 +196,11 @@ async def _resolve_or_create_lead(identifier: str, name: str | None, db: AsyncSe
     """Mirror of the orchestrator's lead upsert (by identifier == Lead.phone)."""
     from app.models import Lead
 
+    # Normalised before the lookup, because the write below normalises too and
+    # the two have to agree: above 254 characters the search could never match
+    # the row it had just created, so the insert hit the unique index — and
+    # this helper has no savepoint, so that took the call's transaction with it.
+    identifier = clip_identifier(identifier)
     row = await db.execute(select(Lead).where(Lead.phone == identifier))
     lead = row.scalar_one_or_none()
     if lead is None:

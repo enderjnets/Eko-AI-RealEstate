@@ -183,3 +183,74 @@ class TestTheFeedCannotPoisonItself:
             "ListPrice": 640000,
         }
         assert _map_reso_record(record) is not None
+
+
+class TestEveryFeedFieldFitsItsColumn:
+    """The guard covered one column of the eight the mapper writes.
+
+    `_upsert_page` writes a page with a single Core INSERT, so no model
+    validator can fire, and `_sync_reso` commits the rows and the cursor
+    together — a value that does not fit fails the page, the cursor never
+    advances, and every later run refetches exactly the same page. `state`
+    holds two characters and `zip_code` ten, so a feed answering "Colorado"
+    or putting a suite number in the postal field is enough to stop the
+    entire MLS sync until somebody investigates by hand.
+    """
+
+    @staticmethod
+    def _record(**over: object) -> dict:
+        record = {
+            "ListingKey": "REC1234567",
+            "UnparsedAddress": "1200 S Downing St",
+            "City": "Denver",
+            "ListPrice": 640000,
+        }
+        record.update(over)
+        return record
+
+    def test_a_state_name_becomes_a_state_code(self) -> None:
+        from app.services.listings import _map_reso_record
+
+        # Truncating would give "Co", which is not a shorter state — it is a
+        # state that does not exist, and it would pass every later check.
+        assert _map_reso_record(self._record(StateOrProvince="Colorado")).state == "CO"
+        assert _map_reso_record(self._record(StateOrProvince="co")).state == "CO"
+
+    def test_something_that_is_not_a_state_is_dropped(self) -> None:
+        from app.services.listings import _map_reso_record
+
+        assert _map_reso_record(self._record(StateOrProvince="Not A State")).state is None
+
+    def test_a_postal_code_is_matched_by_shape_not_by_length(self) -> None:
+        from app.services.listings import _map_reso_record
+
+        # "80202 Denver CO" cut at ten gives "80202 Denv".
+        assert _map_reso_record(self._record(PostalCode="80202-1234 Suite 400")).zip_code == "80202-1234"
+        assert _map_reso_record(self._record(PostalCode="80202 Denver CO")).zip_code == "80202"
+        assert _map_reso_record(self._record(PostalCode="no idea")).zip_code is None
+
+    def test_long_prose_fields_are_trimmed_to_their_columns(self) -> None:
+        from app.models import Property
+        from app.services.listings import _map_reso_record
+
+        dto = _map_reso_record(
+            self._record(
+                UnparsedAddress="A " * 300,
+                SubdivisionName="Z" * 400,
+                PropertySubType="P" * 200,
+                City="C" * 300,
+            )
+        )
+        widths = {c.name: c.type.length for c in Property.__table__.columns
+                  if getattr(c.type, "length", None)}
+        assert len(dto.title) <= widths["title"]
+        assert len(dto.address) <= widths["address"]
+        assert len(dto.zone) <= widths["zone"]
+        assert len(dto.property_type) <= widths["property_type"]
+        assert len(dto.city) <= widths["city"]
+
+    def test_an_ordinary_listing_is_untouched(self) -> None:
+        from app.services.listings import _map_reso_record
+
+        dto = _map_reso_record(self._record(StateOrProvince="CO", PostalCode="80209"))
+        assert (dto.state, dto.zip_code, dto.city) == ("CO", "80209", "Denver")

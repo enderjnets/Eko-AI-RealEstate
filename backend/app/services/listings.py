@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -22,7 +23,7 @@ from decimal import Decimal
 from typing import Any
 
 import httpx
-from sqlalchemy import select, update
+from sqlalchemy import String, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -293,6 +294,97 @@ async def _reso_get(
         return resp.json()
 
 
+_PROPERTY_WIDTHS = {
+    column.name: column.type.length
+    for column in Property.__table__.columns
+    if isinstance(column.type, String) and column.type.length
+}
+
+
+# Written as codes, not prose. Truncating one produces a value that is wrong
+# rather than short — "Colorado" becoming "Co" is not a two-letter state, it is
+# a state that does not exist — and wrong survives every check downstream while
+# short does not.
+_US_STATES = {
+    "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR",
+    "california": "CA", "colorado": "CO", "connecticut": "CT", "delaware": "DE",
+    "florida": "FL", "georgia": "GA", "hawaii": "HI", "idaho": "ID",
+    "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
+    "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD",
+    "massachusetts": "MA", "michigan": "MI", "minnesota": "MN",
+    "mississippi": "MS", "missouri": "MO", "montana": "MT", "nebraska": "NE",
+    "nevada": "NV", "new hampshire": "NH", "new jersey": "NJ",
+    "new mexico": "NM", "new york": "NY", "north carolina": "NC",
+    "north dakota": "ND", "ohio": "OH", "oklahoma": "OK", "oregon": "OR",
+    "pennsylvania": "PA", "rhode island": "RI", "south carolina": "SC",
+    "south dakota": "SD", "tennessee": "TN", "texas": "TX", "utah": "UT",
+    "vermont": "VT", "virginia": "VA", "washington": "WA",
+    "west virginia": "WV", "wisconsin": "WI", "wyoming": "WY",
+    "district of columbia": "DC",
+}
+
+
+def _state_code(value: object) -> str | None:
+    """A two-letter code, or nothing. Never two letters of a longer word."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if len(text) == 2 and text.isalpha():
+        return text.upper()
+    mapped = _US_STATES.get(text.lower())
+    if mapped is None and text:
+        log.warning("listing state %r is neither a code nor a name I know, dropping it", text[:40])
+    return mapped
+
+
+def _zip_code(value: object) -> str | None:
+    """The postal code out of whatever the feed put in the field.
+
+    "80202-1234 Suite 400" truncated at ten happens to give the right answer;
+    "80202 Denver CO" gives "80202 Denv", which is not a postal code at all.
+    Match the shape instead of trusting the length.
+    """
+    if not isinstance(value, str):
+        return None
+    match = re.search(r"\b\d{5}(?:-\d{4})?\b", value)
+    if match:
+        return match.group(0)
+    if value.strip():
+        log.warning("listing postal code %r does not look like one, dropping it", value[:40])
+    return None
+
+
+def _fits(value: object, column: str) -> object:
+    """Trim a feed value to its column, reading the width from the schema.
+
+    Nothing here can rely on the model's `@validates` net: `_upsert_page` writes
+    a page with one Core `INSERT … ON CONFLICT`, which never touches an ORM
+    attribute. And a value that does not fit does not fail its own listing — the
+    page is written in a single statement and its cursor is committed with it,
+    so the page fails, the cursor never advances, and every later run refetches
+    exactly the same page. One record stalls the whole feed until a human
+    notices.
+
+    This is for prose — a title, an address, a neighbourhood — where a trimmed
+    value is still a true one. Coded fields go through `_state_code` and
+    `_zip_code` instead, because two letters of "Colorado" is not a shorter
+    state, it is a wrong one.
+    """
+    if not isinstance(value, str):
+        return value
+    limit = _PROPERTY_WIDTHS.get(column)
+    if limit is None or len(value) <= limit:
+        return value
+    log.warning(
+        "listing field %s was %d characters against a column of %d, trimming: %s…",
+        column,
+        len(value),
+        limit,
+        value[:40],
+    )
+    return value[:limit]
+
+
 def _map_reso_record(r: dict) -> ListingDTO | None:
     """Map one RESO Property record to a ListingDTO (None if it has no key)."""
     key = str(r.get("ListingKey") or r.get("ListingId") or "")
@@ -327,17 +419,19 @@ def _map_reso_record(r: dict) -> ListingDTO | None:
         baths = r.get("BathroomsTotalInteger")
     return ListingDTO(
         external_id=key,
-        title=r.get("UnparsedAddress") or f"Listing {key}",
+        title=_fits(r.get("UnparsedAddress") or f"Listing {key}", "title"),
         price=_d(r["ListPrice"]) if r.get("ListPrice") is not None else None,
         listing_type=listing_type,
         status=_map_status(r.get("StandardStatus"), r.get("MlgCanView")),
-        property_type=r.get("PropertySubType") or r.get("PropertyType"),
+        property_type=_fits(r.get("PropertySubType") or r.get("PropertyType"), "property_type"),
         description=r.get("PublicRemarks"),
-        address=r.get("UnparsedAddress"),
-        city=r.get("City"),
-        state=r.get("StateOrProvince"),
-        zip_code=r.get("PostalCode"),
-        zone=r.get("SubdivisionName") or r.get("MLSAreaMajor"),
+        address=_fits(r.get("UnparsedAddress"), "address"),
+        city=_fits(r.get("City"), "city"),
+        # `state` holds two characters. A feed answering "Colorado" instead of
+        # "CO" does not lose the state — it takes the page down with it.
+        state=_state_code(r.get("StateOrProvince")),
+        zip_code=_zip_code(r.get("PostalCode")),
+        zone=_fits(r.get("SubdivisionName") or r.get("MLSAreaMajor"), "zone"),
         bedrooms=r.get("BedroomsTotal"),
         bathrooms=_d(baths) if baths is not None else None,
         sqft=r.get("LivingArea"),

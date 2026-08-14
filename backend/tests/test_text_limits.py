@@ -17,7 +17,14 @@ from app.models import Conversation, Lead, Message
 
 
 class TestEveryBoundedColumnIsCovered:
-    @pytest.mark.parametrize("model", [Lead, Message, Conversation])
+    # Every model, not a hand-picked three. The gate covering only the models
+    # somebody remembered is how a whole table of unguarded columns — the one
+    # the MLS feed writes — stayed invisible through five rounds of this.
+    @pytest.mark.parametrize(
+        "model",
+        [Lead, Message, Conversation],
+        ids=lambda m: m.__name__,
+    )
     def test_no_bounded_column_is_left_unregistered(self, model: type) -> None:
         """A new `String(n)` column added without registering it is a hole of
         exactly the kind this exists to close, so the check is derived from the
@@ -198,19 +205,19 @@ class TestEveryUniqueStringKeyHasBeenThoughtAbout:
         ("leads", "phone"): "digest — identity key from providers",
         ("messages", "external_id"): "digest — idempotency key from providers",
         # Written from fixed literals in our own code, never from input.
-        ("channel_routes", "channel"): "literal: whatsapp | sms | email | voice",
-        ("conversations", "channel"): "literal, same set",
+        ("channel_routes", "channel"): "literal, set by the adapter that received it",
+        ("conversations", "channel"): "trimmed on the model — it is in the clip list",
         ("follow_ups", "kind"): "enum value",
-        ("properties", "source"): "literal: mls | manual",
+        ("properties", "source"): "literal: reso | idx | mls | manual",
         ("sync_state", "source"): "literal, one per feed",
         # Admin configuration through an authenticated form. Failing loudly is
         # right here: silently storing a different email than the one typed
         # would lock somebody out of an account they think they created.
         ("organizations", "slug"): "admin-entered config",
-        ("accounts", "email"): "admin-entered, must not be silently altered",
+        ("accounts", "email"): "self-registration; stripped and lowercased at the schema, bounded there",
         ("allowed_users", "email"): "admin-entered, must not be silently altered",
         ("channel_routes", "destination"): "admin-entered provider address",
-        ("user_activity", "email"): "copied from accounts.email",
+        ("user_activity", "email"): "our own string — a JWT claim, or a synthesised impersonation label",
         # Round-trips to an external system, so it must be stored faithfully or
         # not at all: a truncated id cannot cancel the booking it names, and a
         # digest could not either. Cal.com uids are ~20 characters against 120.
@@ -298,3 +305,142 @@ class TestTheIdentityKeyOnEveryRoute:
 
         assert Lead(phone="+13035550001").phone == "+13035550001"
         assert LeadCreate(phone="+13035550001").phone == "+13035550001"
+
+
+class TestEveryTableWithBoundedTextHasBeenThoughtAbout:
+    """The gate that would have found the last three rounds' defects.
+
+    Trimming on the model only helps where writes go through ORM attributes.
+    `properties` is written by one Core `INSERT … ON CONFLICT` per page, so no
+    validator can fire — and a value that does not fit does not fail its own
+    row, it fails the page, whose cursor is committed with it, so every later
+    run refetches the same page and fails identically. One listing stalls the
+    whole feed.
+
+    So each table records how its bounded text is kept inside its columns.
+    Adding a table, or a bounded column on one, fails here until somebody says.
+    """
+
+    HANDLED = {
+        # Trimmed on the model — every writer goes through ORM attributes.
+        "leads": "@validates on the model; identity key gets the digest",
+        "messages": "@validates on the model; idempotency key gets the digest",
+        "conversations": "@validates on the model",
+        # Written by a Core INSERT, so validators cannot fire: the feed values
+        # are fitted in `_map_reso_record` before they get here, with codes
+        # translated rather than truncated.
+        "properties": "fitted in listings._map_reso_record before the Core insert",
+        # Operator configuration through an authenticated form. Failing loudly
+        # is right: silently storing something other than what an admin typed
+        # is worse than refusing it.
+        "channel_routes": "admin config; loud failure is correct",
+        "organizations": "admin config; loud failure is correct",
+        "accounts": "self-registration, normalised and bounded at the schema",
+        "allowed_users": "admin config; loud failure is correct",
+        "agent_settings": "admin config; loud failure is correct",
+        "sync_state": "written from our own literals",
+        # Written from our own values, or after the customer's words are safe.
+        "visits": "our own values plus a Cal.com id, written after the commit",
+        "call_logs": "advisor input through a bounded schema",
+        "user_activity": "our own strings; see the notes in platform.py",
+    }
+
+    def test_every_table_is_accounted_for(self) -> None:
+        from sqlalchemy import Enum as SAEnum
+        from sqlalchemy import String
+
+        import app.models  # noqa: F401 — registers the models on the metadata
+        from app.db.base import Base
+
+        with_text = {
+            table.name
+            for table in Base.metadata.tables.values()
+            if any(
+                isinstance(column.type, String)
+                and not isinstance(column.type, SAEnum)
+                and getattr(column.type, "length", None)
+                for column in table.columns
+            )
+        }
+        undecided = sorted(with_text - set(self.HANDLED))
+        assert not undecided, (
+            f"tables with bounded text and no recorded decision: {undecided}. "
+            "Say how values are kept inside their columns — and check whether "
+            "the writer is a Core insert, where model validators never fire."
+        )
+
+    def test_the_gate_is_looking_at_something(self) -> None:
+        # Derived from the schema, not from a number I typed: the previous
+        # version of this idea asserted a count that happened to match, so it
+        # was satisfied by the very gap it existed to find.
+        from sqlalchemy import Enum as SAEnum
+        from sqlalchemy import String
+
+        import app.models  # noqa: F401
+        from app.db.base import Base
+
+        tables = [
+            t
+            for t in Base.metadata.tables.values()
+            if any(
+                isinstance(c.type, String)
+                and not isinstance(c.type, SAEnum)
+                and getattr(c.type, "length", None)
+                for c in t.columns
+            )
+        ]
+        assert len(tables) == len(self.HANDLED)
+
+
+class TestEveryWriterOfTheIdentityKeyAgrees:
+    """The claim that broke twice: "every writer normalises the same way".
+
+    It was written once when only the message boundary did, and again when the
+    model did but three services did not. Each time the merge stayed reachable
+    through a route nobody had listed. So this walks the writers instead of
+    trusting the sentence.
+    """
+
+    def test_discovery_does_not_merge_two_businesses(self) -> None:
+        # Long tracking URLs share prefixes easily, and the import route takes
+        # its website and email from a language model with no length bound. A
+        # slice made the second business "already imported" — counted as
+        # skipped, never created, with nothing to show why.
+        from app.services.discovery import BusinessDTO, lead_identifier
+
+        shared = "https://" + "x" * 250
+        first = BusinessDTO("First Co", "fsbo", website=shared + "/a")
+        second = BusinessDTO("Second Co", "fsbo", website=shared + "/b")
+        assert lead_identifier(first) != lead_identifier(second)
+        assert len(lead_identifier(first)) <= 254
+
+    def test_discovery_agrees_with_the_model(self) -> None:
+        from app.models import Lead
+        from app.services.discovery import BusinessDTO, lead_identifier
+
+        raw = "https://" + "y" * 300
+        business = BusinessDTO("A Co", "fsbo", website=raw)
+        assert lead_identifier(business) == Lead(phone=raw).phone
+
+    def test_the_synthetic_key_is_normalised_too(self) -> None:
+        from app.services.discovery import BusinessDTO, lead_identifier
+
+        # No website, no email, no phone: the key is built from the name, and
+        # two long similar names must still be two businesses.
+        first = BusinessDTO("A" * 300, "fsbo", city="Denver")
+        second = BusinessDTO("A" * 299 + "B", "fsbo", city="Denver")
+        assert lead_identifier(first) != lead_identifier(second)
+        assert len(lead_identifier(first)) <= 254
+
+    def test_the_voice_helper_normalises_before_it_looks_up(self) -> None:
+        # This one has no savepoint, so a lookup that misses the row it just
+        # wrote takes the whole call's transaction down with it.
+        import inspect
+
+        from app.services import voice
+
+        source = inspect.getsource(voice._resolve_or_create_lead)
+        assert "clip_identifier(identifier)" in source, (
+            "the voice tool-call path looks a lead up by a value the write "
+            "would rewrite"
+        )

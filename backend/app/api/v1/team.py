@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,7 +41,7 @@ def _norm_email(value: str) -> str:
 class TeamMemberOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    email: str
+    email: str = Field(max_length=254)
     role: str
     added_by: str | None
     created_at: datetime
@@ -50,7 +50,7 @@ class TeamMemberOut(BaseModel):
 
 class TeamAddIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    email: str
+    email: str = Field(max_length=254)
     role: Literal["admin", "member"] = ROLE_MEMBER
 
 
@@ -166,7 +166,7 @@ class AccountOut(BaseModel):
 
     id: int
     name: str
-    email: str
+    email: str = Field(max_length=254)
     phone: str | None
     company: str | None
     address: str | None
@@ -248,7 +248,7 @@ async def remove_account(account_id: int, db: AsyncSession = Depends(get_bypass_
 
 
 class ActivityOut(BaseModel):
-    email: str
+    email: str = Field(max_length=254)
     source: str | None
     first_seen: datetime
     last_seen: datetime
