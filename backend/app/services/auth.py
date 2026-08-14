@@ -243,6 +243,20 @@ def token_role(token: str | None) -> str | None:
     return payload.get("role", ROLE_ADMIN)
 
 
+def token_email(token: str | None) -> str | None:
+    """The signed-in address, or None.
+
+    None for the shared office password, which carries no identity — so
+    anything attributing an action to a person has to cope with not knowing
+    who, rather than inventing a name for the record.
+    """
+    payload = decode_token(token)
+    if payload is None:
+        return None
+    email = payload.get("email")
+    return email if isinstance(email, str) and email else None
+
+
 # ─── Google Sign In (Google Identity Services) ──────────────────────────
 # verify_google_id_token only validates the token (signature + aud +
 # email_verified) and returns the verified email. The allow-list / role

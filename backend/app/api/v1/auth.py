@@ -33,6 +33,7 @@ from app.services.auth import (
     make_token,
     resolve_email_access,
     resolve_email_org,
+    token_email,
     token_is_superuser,
     token_org_id,
     token_role,
@@ -79,6 +80,19 @@ def current_role(request: Request) -> str:
     if not get_settings().AUTH_ENABLED:
         return ROLE_ADMIN
     return token_role(_token_from_request(request)) or ROLE_MEMBER
+
+
+def current_email(request: Request) -> str | None:
+    """Who is signed in, when we can tell.
+
+    None with auth off, and None for the shared office password — that one
+    grants access without identity. Callers must record "unknown" rather than
+    guess, because an attribution that is sometimes wrong is worse than one
+    that is sometimes absent.
+    """
+    if not get_settings().AUTH_ENABLED:
+        return None
+    return token_email(_token_from_request(request))
 
 
 async def require_auth(request: Request) -> None:

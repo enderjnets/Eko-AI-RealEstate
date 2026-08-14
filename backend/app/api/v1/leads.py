@@ -6,14 +6,26 @@ from decimal import Decimal
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.auth import current_email
 from app.db.base import get_db
-from app.models import Conversation, Lead, LeadIntent, LeadStatus, Message, MessageDirection
+from app.models import (
+    CallLog,
+    CallOutcome,
+    Conversation,
+    Lead,
+    LeadIntent,
+    LeadStatus,
+    Message,
+    MessageDirection,
+)
+from app.models.lead import PreferredChannel
 from app.services._common import ParsedMessage
+from app.services.calls import CallUpdates, register_call
 from app.services.conversation import (
     generate_reply_suggestions,
     handle_inbound_message,
@@ -362,3 +374,127 @@ async def patch_lead(
     await db.commit()
     await db.refresh(row)
     return LeadOut.model_validate(row)
+
+
+# ── Call console ───────────────────────────────────────────────────────────
+#
+# The console's claim is that marking a call is not filing it: one submit
+# records what was learned and fires the single action the outcome implies.
+# Everything about the shape of these models serves the one-minute rule — if
+# logging a call takes longer than that it does not get done, and the data that
+# does arrive is worse than none.
+
+
+class CallIn(BaseModel):
+    """Body for POST /leads/{id}/calls.
+
+    Every field except `outcome` is optional. The console pre-fills what is
+    already known and the advisor confirms or corrects it, so an omitted field
+    means "did not come up" and must leave the lead's value alone — never blank
+    it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: CallOutcome
+    note: str | None = None
+
+    intent: LeadIntent | None = None
+    urgency: str | None = None
+    zone: str | None = None
+    property_type: str | None = None
+    budget_min: float | None = None
+    budget_max: float | None = None
+    preferred_channel: PreferredChannel | None = None
+    name: str | None = None
+    email: str | None = None
+
+    # Days from now. Capped at two years: a typo in a free-number field should
+    # not silently park a lead past the point anyone would look for it.
+    follow_up_in_days: int | None = Field(default=None, ge=0, le=730)
+
+    # The advisor confirming the person asked, on the call, to be sent
+    # something. This is the only thing that records consent here, and it is
+    # deliberately not the same as `preferred_channel`: "text me rather than
+    # email me" is a preference about how, not permission to begin.
+    asked_for_texts: bool = False
+
+
+class CallOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    lead_id: int
+    outcome: CallOutcome
+    note: str | None = None
+    logged_by: str | None = None
+    created_at: datetime
+
+
+class CallResultOut(BaseModel):
+    call: CallOut
+    score: int
+    follow_up_scheduled_for: datetime | None = None
+    cancelled_follow_ups: int
+
+
+@router.post("/{lead_id}/calls", response_model=CallResultOut, status_code=201)
+async def log_call(
+    lead_id: int,
+    body: CallIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> CallResultOut:
+    """Record a call and carry out the one action its outcome implies."""
+    lead = (
+        await db.execute(select(Lead).where(Lead.id == lead_id))
+    ).scalar_one_or_none()
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    result = await register_call(
+        lead,
+        body.outcome,
+        db,
+        logged_by=current_email(request),
+        note=body.note,
+        updates=CallUpdates(
+            intent=body.intent,
+            urgency=body.urgency,
+            zone=body.zone,
+            property_type=body.property_type,
+            budget_min=Decimal(str(body.budget_min))
+            if body.budget_min is not None
+            else None,
+            budget_max=Decimal(str(body.budget_max))
+            if body.budget_max is not None
+            else None,
+            preferred_channel=body.preferred_channel,
+            name=body.name,
+            email=body.email,
+        ),
+        follow_up_in_days=body.follow_up_in_days,
+        asked_for_texts=body.asked_for_texts,
+    )
+    return CallResultOut(
+        call=CallOut.model_validate(result.call),
+        score=result.score,
+        follow_up_scheduled_for=(
+            result.follow_up.scheduled_for if result.follow_up else None
+        ),
+        cancelled_follow_ups=result.cancelled_follow_ups,
+    )
+
+
+@router.get("/{lead_id}/calls", response_model=list[CallOut])
+async def list_calls(
+    lead_id: int, db: AsyncSession = Depends(get_db)
+) -> list[CallOut]:
+    rows = (
+        await db.execute(
+            select(CallLog)
+            .where(CallLog.lead_id == lead_id)
+            .order_by(CallLog.created_at.desc())
+        )
+    ).unique().scalars().all()
+    return [CallOut.model_validate(r) for r in rows]
