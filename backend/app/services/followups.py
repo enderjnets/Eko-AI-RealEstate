@@ -11,12 +11,13 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
     AgentSettings,
+    CallLog,
     Conversation,
     FollowUp,
     FollowUpKind,
@@ -29,6 +30,7 @@ from app.models import (
     Visit,
     VisitStatus,
 )
+from app.models.lead import PreferredChannel
 from app.services.capture import may_send_automated
 from app.services.conversation import (
     _dispatch_send,
@@ -75,6 +77,13 @@ _TEMPLATES: dict[FollowUpKind, dict[str, str]] = {
     FollowUpKind.POST_VISIT_7D: {
         "en": "Hi{name}, we have new listings similar to what you saw. Want me to send you a few?",
         "es": "Hola{name}, tenemos nuevas propiedades parecidas a la que viste. ¿Te paso algunas?",
+    },
+    # Scheduled from the console after a call. Deliberately open-ended: the
+    # advisor already knows the specifics, and a template that guesses them
+    # ("about the Wash Park house") is wrong more often than it is right.
+    FollowUpKind.CALL_FOLLOW_UP: {
+        "en": "Hi{name}, {agency} here — following up on our call. Has anything changed on your side, or shall I send you a few options?",
+        "es": "Hola{name}, te escribe {agency} — te doy seguimiento a nuestra llamada. ¿Ha cambiado algo por tu lado, o te mando algunas opciones?",
     },
 }
 
@@ -170,6 +179,65 @@ async def enqueue_for_visit(visit: Visit, db: AsyncSession, *, now: datetime | N
     return created
 
 
+def _prefer(
+    candidates: list[Conversation], preferred: PreferredChannel | None
+) -> list[Conversation]:
+    """Move the channel the lead asked for to the front of the queue.
+
+    Reorders; never filters. Honouring a preference is worth doing, but a
+    preference is not permission and it is not reachability: dropping the other
+    channels would mean a lead who said "text me" and has consent only on
+    WhatsApp is never contacted again, which serves nobody. The consent gate
+    downstream still decides what may actually be sent — this only decides what
+    is offered to it first.
+
+    PreferredChannel.CALL never reaches here: those rows are excluded from the
+    batch entirely, because there is nothing automated to send.
+    """
+    if preferred is None:
+        return candidates
+    wanted = preferred.value
+    return sorted(candidates, key=lambda c: 0 if c.channel == wanted else 1)
+
+
+async def enqueue_after_call(
+    call: CallLog,
+    db: AsyncSession,
+    *,
+    in_days: int,
+    now: datetime | None = None,
+) -> FollowUp | None:
+    """Schedule the single nudge a logged call asked for.
+
+    The other four kinds hang off a visit, which left the commonest case after
+    a call — interested, not ready, nothing booked — with no way to be followed
+    up at all.
+
+    One row per call, not a drip. The advisor chose this date on the phone; a
+    ladder they did not choose would be us deciding how often to contact
+    somebody we just spoke to. When the nudge goes out and nothing comes back,
+    the lead resurfaces in the console's own list, and that loop has a human in
+    it on purpose.
+
+    Does NOT commit: the caller runs inside `register_call`'s transaction, so
+    that a call is never recorded without its follow-up or the other way round.
+    """
+    if in_days < 0:
+        raise ValueError("a follow-up cannot be scheduled in the past")
+
+    now = now or datetime.now(UTC)
+    follow_up = FollowUp(
+        org_id=call.org_id,
+        lead_id=call.lead_id,
+        call_log_id=call.id,
+        kind=FollowUpKind.CALL_FOLLOW_UP,
+        status=FollowUpStatus.PENDING,
+        scheduled_for=now + timedelta(days=in_days),
+    )
+    db.add(follow_up)
+    return follow_up
+
+
 # ── Process due ────────────────────────────────────────────────────────────
 
 
@@ -197,7 +265,21 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
     rows = (
         await db.execute(
             select(FollowUp)
-            .where(FollowUp.status == FollowUpStatus.PENDING, FollowUp.scheduled_for <= now)
+            .join(Lead, Lead.id == FollowUp.lead_id)
+            .where(
+                FollowUp.status == FollowUpStatus.PENDING,
+                FollowUp.scheduled_for <= now,
+                # A lead who asked to be phoned has no automated sender behind
+                # that choice, so their row is a task for the console rather
+                # than work for this sweep. Excluded in SQL, not in the loop:
+                # left in the batch it would stay PENDING and due for ever,
+                # and being the oldest it would sit at the head of every
+                # limit-N window and starve the follow-ups that can be sent.
+                or_(
+                    Lead.preferred_channel.is_(None),
+                    Lead.preferred_channel != PreferredChannel.CALL,
+                ),
+            )
             .order_by(FollowUp.scheduled_for)
             .limit(limit)
         )
@@ -280,6 +362,7 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             continue
 
         candidates = await reachable_active_conversations(lead.id, lead.phone, db)
+        candidates = _prefer(candidates, lead.preferred_channel)
         conv = None
         for candidate in candidates:
             # TCPA. An automated text to somebody who neither consented in

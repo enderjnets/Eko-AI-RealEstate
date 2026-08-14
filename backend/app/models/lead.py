@@ -44,6 +44,20 @@ class LeadIntent(str, enum.Enum):
     OTHER = "other"
 
 
+class PreferredChannel(str, enum.Enum):
+    """The channel this person asked to be reached on.
+
+    `CALL` deliberately has no automated sender behind it. There is no voice
+    provider wired up, and an automated call to a mobile is the thing TCPA
+    exists to punish — so a follow-up whose channel is CALL becomes a task for
+    a human in the console's list, never an outbound message.
+    """
+
+    SMS = "sms"
+    EMAIL = "email"
+    CALL = "call"
+
+
 class Lead(Base):
     __tablename__ = "leads"
 
@@ -98,9 +112,21 @@ class Lead(Base):
 
     meta: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
+    # How this person asked to be contacted, when they said so on a call. It
+    # narrows the channels the follow-up worker may pick and never widens them:
+    # a preference is not permission. Someone who says "text me" but has no
+    # `consent_at` is still held, exactly as before — see
+    # `followups.process_due_followups`.
+    preferred_channel: Mapped[PreferredChannel | None] = mapped_column(
+        pg_enum(PreferredChannel, name="preferred_channel"), nullable=True
+    )
+
     # TCPA: what this lead agreed to, and where they were when they agreed.
-    # Only ever set by the public capture form, and never cleared — consent is
-    # a historical fact. `consent_text` is the disclosure exactly as rendered,
+    # Set by the public capture form and by the call console when the person
+    # asks on the phone to be sent something; never cleared, and never
+    # overwritten once present — consent is a historical fact and the first
+    # record of it is the one that was actually shown or spoken.
+    # `consent_text` is the disclosure exactly as rendered,
     # because the obligation is to show what the person was reading, not to
     # assert that something was shown. Columns rather than `meta` keys so an
     # audit is one query and so enrichment writers cannot clobber them.

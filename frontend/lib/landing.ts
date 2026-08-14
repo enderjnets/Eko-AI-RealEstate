@@ -80,6 +80,11 @@ export const LANDING = {
  * nothing on a phone, which is the one device that matters here.
  */
 export function dialable(value: string): string {
-  const digits = value.replace(/[^\d+]/g, "");
+  // Stop at the first letter. "(303) 555-0192 ext. 12" would otherwise become
+  // 30355501922 — a different, probably real, number that the phone dials
+  // without complaint. Anything after a word is an instruction to a human,
+  // not part of the number.
+  const beforeWords = value.split(/[a-zA-Z]/)[0];
+  const digits = beforeWords.replace(/[^\d+]/g, "");
   return digits.startsWith("+") ? "+" + digits.slice(1).replace(/\+/g, "") : digits;
 }

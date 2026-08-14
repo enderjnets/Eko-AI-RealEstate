@@ -546,6 +546,9 @@ const EN: Record<string, string> = {
   "landing.form.selling": "Selling",
   "landing.form.buying": "Buying",
   "landing.form.valuing": "Valuing",
+  "landing.form.msgSelling": "I'm looking to sell.",
+  "landing.form.msgBuying": "I'm looking to buy.",
+  "landing.form.msgValuing": "I'd like to know what my property is worth.",
   "landing.form.submit": "Book the consult",
   "landing.form.sending": "Sending…",
   "landing.form.reassure": "Usually answered within the hour · Se habla español",
@@ -555,7 +558,7 @@ const EN: Record<string, string> = {
   "landing.footer.role": "Real estate advisors",
   "landing.footer.licensed": "Licensed in Colorado",
   "landing.footer.equalHousing": "Equal Housing Opportunity",
-  "landing.footer.staffLogin": "Client login",
+  "landing.footer.staffLogin": "Advisor sign-in",
 };
 
 const ES: Record<string, string> = {
@@ -1062,6 +1065,9 @@ const ES: Record<string, string> = {
   "landing.form.selling": "Vender",
   "landing.form.buying": "Comprar",
   "landing.form.valuing": "Tasar",
+  "landing.form.msgSelling": "Quiero vender.",
+  "landing.form.msgBuying": "Quiero comprar.",
+  "landing.form.msgValuing": "Quiero saber cuánto vale mi propiedad.",
   "landing.form.submit": "Agendar la asesoría",
   "landing.form.sending": "Enviando…",
   "landing.form.reassure": "Normalmente contestamos en menos de una hora · Se habla español",
@@ -1071,7 +1077,7 @@ const ES: Record<string, string> = {
   "landing.footer.role": "Asesores inmobiliarios",
   "landing.footer.licensed": "Con licencia en Colorado",
   "landing.footer.equalHousing": "Igualdad de oportunidad en vivienda",
-  "landing.footer.staffLogin": "Acceso de clientes",
+  "landing.footer.staffLogin": "Acceso de asesores",
 };
 
 const DICTS: Record<Lang, Record<string, string>> = { en: EN, es: ES };

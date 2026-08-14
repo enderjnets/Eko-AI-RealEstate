@@ -59,10 +59,26 @@ function ConsultFormInner() {
   // The wording rendered beside the checkbox is the wording stored as evidence.
   const consentWording = t("contact.consent");
 
-  const goals: { id: Goal; label: string }[] = [
-    { id: "selling", label: t("landing.form.selling") },
-    { id: "buying", label: t("landing.form.buying") },
-    { id: "valuing", label: t("landing.form.valuing") },
+  // Each chip carries the sentence it becomes. The chip label is a fragment
+  // meant to be read under "I'm…", so sending it as the message produced
+  // "I'm… Selling" in the inbox — which tells the advisor nothing and reads
+  // like a bug to the person who has to answer it.
+  const goals: { id: Goal; label: string; message: string }[] = [
+    {
+      id: "selling",
+      label: t("landing.form.selling"),
+      message: t("landing.form.msgSelling"),
+    },
+    {
+      id: "buying",
+      label: t("landing.form.buying"),
+      message: t("landing.form.msgBuying"),
+    },
+    {
+      id: "valuing",
+      label: t("landing.form.valuing"),
+      message: t("landing.form.msgValuing"),
+    },
   ];
 
   async function handleSubmit(e: React.FormEvent) {
@@ -80,9 +96,9 @@ function ConsultFormInner() {
     setError(null);
 
     // The chip is the only thing the visitor tells us about intent, so it is
-    // sent as a sentence the classifier can read rather than a bare token.
-    const goalLabel = goals.find((g) => g.id === goal)?.label;
-    const message = goalLabel ? `${t("landing.form.goal")} ${goalLabel}` : undefined;
+    // sent as a sentence — it becomes the first message in the thread the
+    // advisor opens, and the classifier reads it too.
+    const message = goals.find((g) => g.id === goal)?.message;
 
     const outcome: CaptureOutcome = await submitPublicLead({
       form: FORM_KEY,
@@ -152,7 +168,7 @@ function ConsultFormInner() {
         />
 
         <fieldset>
-          <legend className="text-[11px] uppercase tracking-[0.14em] text-ln-muted">
+          <legend className="text-[11px] uppercase tracking-[0.14em] text-ln-body">
             {t("landing.form.goal")}
           </legend>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -202,14 +218,20 @@ function ConsultFormInner() {
           />
           <span className="leading-relaxed">{consentWording}</span>
         </label>
-        <p className="text-xs text-ln-faint">{t("contact.consentHint")}</p>
+        <p className="text-xs text-ln-body">{t("contact.consentHint")}</p>
 
         <Turnstile
           onToken={setCaptchaToken}
           onError={() => setError(t("contact.errorCaptcha"))}
         />
 
-        {error && <p className="text-sm text-red-700">{error}</p>}
+        {/* role=alert so a screen reader hears the refusal; without it the
+            form appears to have done nothing at all. */}
+        {error && (
+          <p role="alert" className="text-sm text-red-700">
+            {error}
+          </p>
+        )}
 
         <button
           type="submit"
@@ -218,7 +240,7 @@ function ConsultFormInner() {
         >
           {loading ? t("landing.form.sending") : t("landing.form.submit")}
         </button>
-        <p className="text-center text-[11px] tracking-[0.04em] text-ln-faint">
+        <p className="text-center text-[11px] tracking-[0.04em] text-ln-body">
           {t("landing.form.reassure")}
         </p>
       </div>
@@ -245,7 +267,7 @@ function LandingField({
     <div>
       <label
         htmlFor={id}
-        className="block text-[11px] uppercase tracking-[0.14em] text-ln-muted"
+        className="block text-[11px] uppercase tracking-[0.14em] text-ln-body"
       >
         {label}
       </label>

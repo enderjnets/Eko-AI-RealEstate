@@ -5,6 +5,7 @@ Order matters for cascades: parents before children.
 from app.models.account import Account
 from app.models.agent_settings import AgentSettings
 from app.models.allowed_user import AllowedUser
+from app.models.call_log import CallLog, CallOutcome
 from app.models.channel_route import CHANNELS, ChannelRoute, normalize_destination
 from app.models.conversation import Conversation, ConversationStatus
 from app.models.follow_up import FollowUp, FollowUpKind, FollowUpStatus
@@ -35,6 +36,8 @@ __all__: list[str] = [
     "Account",
     "AgentSettings",
     "AllowedUser",
+    "CallLog",
+    "CallOutcome",
     "Conversation",
     "ConversationStatus",
     "FollowUp",

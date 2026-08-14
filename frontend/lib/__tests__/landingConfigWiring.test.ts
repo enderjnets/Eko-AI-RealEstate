@@ -22,9 +22,22 @@ const envExample = read(".env.example");
 const dockerfile = read("frontend/Dockerfile");
 const compose = read("docker-compose.yml");
 
+const consultForm = read("frontend/components/landing/ConsultForm.tsx");
+const turnstile = read("frontend/components/ui/Turnstile.tsx");
+
+// The landing's own variables, plus the two the consult form depends on. Those
+// two were already wired, but nothing held them there: the form silently loses
+// its bot protection if the site key stops being passed, and loses its tenant
+// routing if the capture key does.
 const used = [
-  ...new Set(source.match(/process\.env\.NEXT_PUBLIC_LANDING_[A-Z_]+/g) ?? []),
-].map((m) => m.replace("process.env.", ""));
+  ...new Set(
+    [
+      ...(source.match(/process\.env\.NEXT_PUBLIC_[A-Z_]+/g) ?? []),
+      ...(consultForm.match(/process\.env\.NEXT_PUBLIC_[A-Z_]+/g) ?? []),
+      ...(turnstile.match(/process\.env\.NEXT_PUBLIC_[A-Z_]+/g) ?? []),
+    ].map((m) => m.replace("process.env.", "")),
+  ),
+];
 
 describe("landing config wiring", () => {
   it("reads at least one landing variable — otherwise this test proves nothing", () => {
@@ -49,10 +62,18 @@ describe("landing config wiring", () => {
     expect(compose).toMatch(new RegExp(`^\\s+${name}: \\$\\{${name}:-\\}$`, "m"));
   });
 
-  it("documents nothing the code does not actually read", () => {
+  it("documents no landing variable the code does not actually read", () => {
     const documented = [
       ...new Set(envExample.match(/^NEXT_PUBLIC_LANDING_[A-Z_]+(?==)/gm) ?? []),
     ];
     expect(documented.filter((n) => !used.includes(n))).toEqual([]);
+  });
+
+  it("covers the two shared keys the consult form depends on", () => {
+    // Guard on the guard: if the globs above ever stop reaching ConsultForm or
+    // Turnstile, every assertion still passes over a shrunken list and the
+    // test goes quietly useless.
+    expect(used).toContain("NEXT_PUBLIC_CAPTURE_FORM_KEY");
+    expect(used).toContain("NEXT_PUBLIC_TURNSTILE_SITE_KEY");
   });
 });

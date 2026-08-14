@@ -5,6 +5,19 @@
 html, body { background: #0B0B0F; color: #F3F4F6; }
 body { -webkit-tap-highlight-color: transparent; }
 
+/* The public landing is a light page living inside a dark app shell. Its own
+   background only paints its container, so without this the overscroll gutter,
+   the area past the content and the scrollbar stay noir — the marketing page
+   flashes and bounces black. Scoped with :has() like the tab-bar rule below,
+   so nothing in the dashboard moves. */
+html:has(.eko-landing), body:has(.eko-landing) { background: #F4F1EA; color: #17150F; }
+body:has(.eko-landing) *::-webkit-scrollbar-thumb {
+  background: rgba(23, 21, 15, 0.18);
+  border-color: #F4F1EA;
+}
+body:has(.eko-landing) * { scrollbar-color: rgba(23, 21, 15, 0.2) transparent; }
+body:has(.eko-landing) :focus-visible { outline-color: #7A5C34; }
+
 /* Accessible keyboard focus + a dark scrollbar that matches the noir console. */
 :focus-visible { outline: 2px solid rgba(124, 58, 237, 0.6); outline-offset: 2px; border-radius: 6px; }
 * { scrollbar-color: rgba(255, 255, 255, 0.12) transparent; scrollbar-width: thin; }

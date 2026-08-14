@@ -26,6 +26,10 @@ class FollowUpKind(str, enum.Enum):
     POST_VISIT_24H = "post_visit_24h"    # "how was it?"
     POST_VISIT_72H = "post_visit_72h"    # nudge if no reply
     POST_VISIT_7D = "post_visit_7d"      # "new similar listings"
+    # Scheduled from the call console for a lead who is interested but not
+    # ready. One per logged call: the console's own list is what brings them
+    # back round after that, rather than a drip nobody chose.
+    CALL_FOLLOW_UP = "call_follow_up"
 
 
 class FollowUpStatus(str, enum.Enum):
@@ -51,6 +55,11 @@ class FollowUp(Base):
     visit_id: Mapped[int | None] = mapped_column(
         ForeignKey("visits.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    # Set instead of visit_id when the follow-up was scheduled from a logged
+    # call rather than from a booking. Exactly one of the two is populated.
+    call_log_id: Mapped[int | None] = mapped_column(
+        ForeignKey("call_logs.id", ondelete="CASCADE"), nullable=True, index=True
+    )
 
     kind: Mapped[FollowUpKind] = mapped_column(pg_enum(FollowUpKind, name="follow_up_kind"), nullable=False)
     status: Mapped[FollowUpStatus] = mapped_column(
@@ -75,6 +84,11 @@ class FollowUp(Base):
 
     __table_args__ = (
         UniqueConstraint("visit_id", "kind", name="uq_followups_visit_kind"),
+        # The visit constraint cannot protect a call-anchored follow-up:
+        # Postgres treats two NULLs as distinct, so a row with visit_id NULL
+        # never collides. Logging the same call twice would otherwise queue the
+        # nudge twice, and the lead would get it twice.
+        UniqueConstraint("call_log_id", "kind", name="uq_followups_call_kind"),
     )
 
     def __repr__(self) -> str:

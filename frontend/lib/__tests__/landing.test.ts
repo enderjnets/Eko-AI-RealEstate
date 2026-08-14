@@ -18,6 +18,13 @@ describe("dialable", () => {
   it("survives an empty value rather than producing 'tel:'", () => {
     expect(dialable("")).toBe("");
   });
+
+  it("stops at an extension instead of dialling a different number", () => {
+    // Merging the extension makes 30355501922 — eleven digits, plausibly
+    // someone else's line, and the phone dials it without complaint.
+    expect(dialable("(303) 555-0192 ext. 12")).toBe("3035550192");
+    expect(dialable("303-555-0192 x12")).toBe("3035550192");
+  });
 });
 
 describe("parseTestimonials", () => {

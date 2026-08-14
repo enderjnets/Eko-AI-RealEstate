@@ -73,6 +73,13 @@ class Visit(Base):
     timezone: Mapped[str] = mapped_column(String(50), default="UTC", nullable=False)
 
     property_address: Mapped[str | None] = mapped_column(String(280), nullable=True)
+    # Which listing this showing is for, when we know. `property_address` stays
+    # as the human-readable line and as the only thing available for a viewing
+    # arranged off-MLS; without the id, though, the post-visit follow-up cannot
+    # say which house it is asking about.
+    property_id: Mapped[int | None] = mapped_column(
+        ForeignKey("properties.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     meeting_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

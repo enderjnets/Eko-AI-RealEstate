@@ -129,7 +129,9 @@ export function Nav() {
     <>
       <nav className="border-b border-white/5 bg-eko-noir/80 backdrop-blur-md sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
+          {/* /leads, not /. Since v0.44.0 the root is the public marketing
+              page, so the dashboard logo pointed staff out of the dashboard. */}
+          <Link href="/leads" className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-eko-violet to-eko-magenta flex items-center justify-center">
               <Zap className="w-4 h-4 text-white" />
             </div>
