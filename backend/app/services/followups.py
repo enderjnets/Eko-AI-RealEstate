@@ -179,6 +179,15 @@ async def enqueue_for_visit(visit: Visit, db: AsyncSession, *, now: datetime | N
     return created
 
 
+# The stated preferences this worker can actually act on. CALL and EMAIL are
+# absent on purpose — neither has a compliant automated sender today (no voice
+# provider; no unsubscribe header on outbound email), so a follow-up for either
+# is surfaced as a task for a human instead of being sent. Adding a value here
+# turns on automated sending for it, which is a compliance decision, not a
+# configuration one.
+AUTOMATED_PREFERENCES = frozenset({PreferredChannel.SMS})
+
+
 def _prefer(
     candidates: list[Conversation], preferred: PreferredChannel | None
 ) -> list[Conversation]:
@@ -191,8 +200,8 @@ def _prefer(
     downstream still decides what may actually be sent — this only decides what
     is offered to it first.
 
-    PreferredChannel.CALL never reaches here: those rows are excluded from the
-    batch entirely, because there is nothing automated to send.
+    Only preferences in AUTOMATED_PREFERENCES reach here; the rest never enter
+    the batch.
     """
     if preferred is None:
         return candidates
@@ -269,15 +278,15 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             .where(
                 FollowUp.status == FollowUpStatus.PENDING,
                 FollowUp.scheduled_for <= now,
-                # A lead who asked to be phoned has no automated sender behind
-                # that choice, so their row is a task for the console rather
-                # than work for this sweep. Excluded in SQL, not in the loop:
-                # left in the batch it would stay PENDING and due for ever,
+                # A lead whose stated channel has no automated sender is a task
+                # for the console, not work for this sweep — see
+                # AUTOMATED_PREFERENCES. Excluded in SQL, not in the loop: left
+                # in the batch such a row would stay PENDING and due for ever,
                 # and being the oldest it would sit at the head of every
                 # limit-N window and starve the follow-ups that can be sent.
                 or_(
                     Lead.preferred_channel.is_(None),
-                    Lead.preferred_channel != PreferredChannel.CALL,
+                    Lead.preferred_channel.in_(AUTOMATED_PREFERENCES),
                 ),
             )
             .order_by(FollowUp.scheduled_for)

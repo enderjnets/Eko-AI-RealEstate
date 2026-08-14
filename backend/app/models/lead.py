@@ -47,10 +47,19 @@ class LeadIntent(str, enum.Enum):
 class PreferredChannel(str, enum.Enum):
     """The channel this person asked to be reached on.
 
-    `CALL` deliberately has no automated sender behind it. There is no voice
-    provider wired up, and an automated call to a mobile is the thing TCPA
-    exists to punish — so a follow-up whose channel is CALL becomes a task for
-    a human in the console's list, never an outbound message.
+    Only SMS has an automated sender behind it. The other two are honoured by a
+    human working the console's list, and that is a deliberate limit rather
+    than an omission:
+
+    * `CALL` — there is no voice provider wired up (Phase 13 is deferred), and
+      an automated call to a mobile is the thing TCPA exists to punish.
+    * `EMAIL` — `services/email.py` sends no unsubscribe header and no physical
+      address, and `optout.py` does not recognise email at all. Automated
+      commercial email without a working opt-out is a CAN-SPAM violation, so
+      the sender stays human until those three exist.
+
+    A follow-up for either becomes a task, never an outbound message. See
+    `followups.AUTOMATED_PREFERENCES`.
     """
 
     SMS = "sms"

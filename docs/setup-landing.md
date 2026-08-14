@@ -88,6 +88,23 @@ Two details worth knowing:
   you can tell them apart from `/contact` submissions. A `landing_variant` in
   the URL wins over that default, which is how you A/B a video's landing.
 
+## Known limitation: the landing is single-tenant
+
+The content variables are per-**install**, not per-organization, so one
+installation serves one agency's landing. That is correct for the pilot and
+wrong for the mother system.
+
+Two consequences to know before onboarding a second agency:
+
+- Agency B's visitors would see agency A's landing at the root.
+- The consult form sends one capture key. On a multi-tenant install that key
+  resolves to a single organization, so leads from the page all file under it.
+
+Neither is a bug in this release; both are the reason a per-organization
+landing (content from `agent_settings`, served by hostname) is the next step
+for this page. Until then, run one install per agency, or keep the landing on
+the pilot install only.
+
 ## Before it goes live
 
 - [ ] Confirm the exact office address with the managing broker — Colorado
