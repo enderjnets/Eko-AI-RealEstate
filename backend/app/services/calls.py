@@ -18,7 +18,7 @@ Two rules shape everything here:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -86,20 +86,26 @@ _STAND_DOWN = {
 
 
 def _apply(lead: Lead, updates: CallUpdates) -> None:
-    for field in (
-        "intent",
-        "urgency",
-        "zone",
-        "property_type",
-        "budget_min",
-        "budget_max",
-        "preferred_channel",
-        "name",
-        "email",
-    ):
-        value = getattr(updates, field)
-        if value is not None:
-            setattr(lead, field, value)
+    # Derived from the dataclass rather than a hand-kept list. A second list to
+    # remember is how a field gets added to CallUpdates, plumbed through the
+    # API, shown in the UI, and then silently never written — which this
+    # repository has paid for four times under a different name.
+    for field in fields(updates):
+        value = getattr(updates, field.name)
+        if value is None:
+            continue
+        if isinstance(value, str):
+            # A blank string is the same statement as an absent field: nothing
+            # was said about it. Without this, an untouched input that posts ""
+            # erases the lead's zone or budget — the exact opposite of the rule
+            # this service exists to keep, and invisible until somebody notices
+            # the matcher has stopped finding anything for them. The console
+            # already trims, but a rule that lives only in the client is a rule
+            # the next client does not have.
+            value = value.strip()
+            if not value:
+                continue
+        setattr(lead, field.name, value)
 
 
 def _record_verbal_consent(lead: Lead, *, who: str | None, when: datetime) -> bool:
@@ -211,7 +217,11 @@ async def register_call(
                 call, db, in_days=follow_up_in_days, now=now
             )
 
-    lead.last_message_at = lead.last_message_at or now
+    # `last_message_at` is deliberately NOT touched here. It means what it
+    # says — the last *message* — and it feeds both the recency component of
+    # the score and the inbox's sort order. Stamping it from a call would
+    # inflate the score of someone who just said no and quietly reshuffle the
+    # inbox, from an action nobody would expect to do either.
 
     # Rescore inside the transaction so the console's next screen — the
     # property proposals — sees the lead the call actually described.

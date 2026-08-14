@@ -416,3 +416,55 @@ async def test_a_lead_with_no_name_or_email_does_not_break_the_call(
         await engine.dispose()
         if lead_id:
             await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_blank_string_is_silence_not_an_erasure(database_url: str) -> None:
+    """An untouched input that posts "" must read as "did not come up".
+
+    Found by probing the API rather than the service: the console trims before
+    sending, so the rule looked kept while it lived only in the client. A blank
+    zone wiped the lead's zone, and the first sign would have been the matcher
+    quietly finding nothing for them.
+    """
+    lead_id = await _make_lead(
+        database_url, zone="Cherry Creek", urgency="high", property_type="condo"
+    )
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            await register_call(
+                lead,
+                CallOutcome.FOLLOW_UP,
+                s,
+                updates=CallUpdates(zone="", urgency="   ", property_type="\t"),
+            )
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            assert lead.zone == "Cherry Creek"
+            assert lead.urgency == "high"
+            assert lead.property_type == "condo"
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_value_with_stray_whitespace_is_stored_trimmed(
+    database_url: str,
+) -> None:
+    lead_id = await _make_lead(database_url)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            await register_call(
+                lead, CallOutcome.FOLLOW_UP, s, updates=CallUpdates(zone="  Berkeley  ")
+            )
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            assert lead.zone == "Berkeley"
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
