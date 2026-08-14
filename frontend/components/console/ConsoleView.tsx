@@ -111,7 +111,9 @@ export function ConsoleView() {
             lang={lang}
             trailing={
               <span className="text-xs text-amber-700 dark:text-amber-400">
-                {t("console.holds").replace("{n}", String(held.holds))}
+                {held.status === "failed"
+                  ? t("console.sendFailed")
+                  : t("console.holds").replace("{n}", String(held.holds))}
               </span>
             }
           />

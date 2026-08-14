@@ -85,6 +85,20 @@ async def test_a_reply_lost_to_a_provider_blip_is_sent_again() -> None:
                 conversation = Conversation(lead_id=lead.id, channel="whatsapp")
                 db.add(conversation)
                 await db.flush()
+                # The inbound that started the thread. An agent reply can only
+                # exist because one arrived — `handle_inbound_message` is the
+                # sole producer of MessageSender.AGENT — and the dispatch gate
+                # reads it as the permission to answer on this channel.
+                db.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        direction=MessageDirection.INBOUND,
+                        sender=MessageSender.LEAD,
+                        content="do you have anything in that zone?",
+                        delivery_status=MessageStatus.DELIVERED,
+                    )
+                )
+                await db.flush()
                 stuck = Message(
                     conversation_id=conversation.id,
                     direction=MessageDirection.OUTBOUND,
@@ -136,6 +150,20 @@ async def test_a_reply_that_already_reached_the_provider_is_not_sent_twice() -> 
                 await db.flush()
                 conversation = Conversation(lead_id=lead.id, channel="whatsapp")
                 db.add(conversation)
+                await db.flush()
+                # The inbound that started the thread. An agent reply can only
+                # exist because one arrived — `handle_inbound_message` is the
+                # sole producer of MessageSender.AGENT — and the dispatch gate
+                # reads it as the permission to answer on this channel.
+                db.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        direction=MessageDirection.INBOUND,
+                        sender=MessageSender.LEAD,
+                        content="do you have anything in that zone?",
+                        delivery_status=MessageStatus.DELIVERED,
+                    )
+                )
                 await db.flush()
                 delivered = Message(
                     conversation_id=conversation.id,
@@ -237,6 +265,20 @@ async def test_a_message_abandoned_mid_send_is_picked_up() -> None:
                 conversation = Conversation(lead_id=lead.id, channel="whatsapp")
                 db.add(conversation)
                 await db.flush()
+                # The inbound that started the thread. An agent reply can only
+                # exist because one arrived — `handle_inbound_message` is the
+                # sole producer of MessageSender.AGENT — and the dispatch gate
+                # reads it as the permission to answer on this channel.
+                db.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        direction=MessageDirection.INBOUND,
+                        sender=MessageSender.LEAD,
+                        content="do you have anything in that zone?",
+                        delivery_status=MessageStatus.DELIVERED,
+                    )
+                )
+                await db.flush()
                 abandoned = Message(
                     conversation_id=conversation.id,
                     direction=MessageDirection.OUTBOUND,
@@ -274,6 +316,20 @@ async def test_a_message_still_in_flight_is_left_alone() -> None:
                 await db.flush()
                 conversation = Conversation(lead_id=lead.id, channel="whatsapp")
                 db.add(conversation)
+                await db.flush()
+                # The inbound that started the thread. An agent reply can only
+                # exist because one arrived — `handle_inbound_message` is the
+                # sole producer of MessageSender.AGENT — and the dispatch gate
+                # reads it as the permission to answer on this channel.
+                db.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        direction=MessageDirection.INBOUND,
+                        sender=MessageSender.LEAD,
+                        content="do you have anything in that zone?",
+                        delivery_status=MessageStatus.DELIVERED,
+                    )
+                )
                 await db.flush()
                 db.add(
                     Message(
@@ -317,6 +373,20 @@ async def test_a_message_with_nowhere_to_go_backs_off_and_then_stops() -> None:
                 await db.flush()
                 conversation = Conversation(lead_id=lead.id, channel="email")
                 db.add(conversation)
+                await db.flush()
+                # The inbound that started the thread. An agent reply can only
+                # exist because one arrived — `handle_inbound_message` is the
+                # sole producer of MessageSender.AGENT — and the dispatch gate
+                # reads it as the permission to answer on this channel.
+                db.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        direction=MessageDirection.INBOUND,
+                        sender=MessageSender.LEAD,
+                        content="do you have anything in that zone?",
+                        delivery_status=MessageStatus.DELIVERED,
+                    )
+                )
                 await db.flush()
                 orphan = Message(
                     conversation_id=conversation.id,
@@ -387,6 +457,20 @@ async def test_two_workers_cannot_send_the_same_message() -> None:
                 conversation = Conversation(lead_id=lead.id, channel="whatsapp")
                 db.add(conversation)
                 await db.flush()
+                # The inbound that started the thread. An agent reply can only
+                # exist because one arrived — `handle_inbound_message` is the
+                # sole producer of MessageSender.AGENT — and the dispatch gate
+                # reads it as the permission to answer on this channel.
+                db.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        direction=MessageDirection.INBOUND,
+                        sender=MessageSender.LEAD,
+                        content="do you have anything in that zone?",
+                        delivery_status=MessageStatus.DELIVERED,
+                    )
+                )
+                await db.flush()
                 one = Message(
                     conversation_id=conversation.id,
                     direction=MessageDirection.OUTBOUND,
@@ -420,5 +504,68 @@ async def test_two_workers_cannot_send_the_same_message() -> None:
             f"delivered {len(deliveries)} times; the lead sees the same reply twice"
         )
         assert (first["sent"], second["sent"]) in ((1, 0), (0, 1))
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_queued_message_is_dropped_when_nothing_permits_sending_it() -> None:
+    """The other half of the dispatch gate.
+
+    The block above it honours a revocation; this covers the case where
+    permission never existed. An automated message can sit in the queue while
+    the lead turns out to have neither consent on record nor a message they
+    sent us first — the producer's gate having been the only one, and having
+    run before the row existed.
+
+    It became reachable a second way with the call console: telling an advisor
+    "phone me, don't text me" cancels the follow-ups but cannot cancel a text
+    that is already queued.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead = Lead(phone="+13035554141")
+                db.add(lead)
+                await db.flush()
+                # No inbound anywhere, and no consent on record: nothing
+                # permits an automated SMS to this person.
+                conversation = Conversation(lead_id=lead.id, channel="sms")
+                db.add(conversation)
+                await db.flush()
+                queued = Message(
+                    conversation_id=conversation.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
+                    content="a few options I thought you'd like",
+                    delivery_status=MessageStatus.PENDING,
+                )
+                queued.next_attempt_at = datetime.now(UTC) - timedelta(minutes=5)
+                db.add(queued)
+                await db.commit()
+                queued_id = queued.id
+
+            sent_to: list[str] = []
+
+            async def _record(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                sent_to.append(to)
+                return "should-not-happen", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.conversation._dispatch_send", _record):
+                    result = await retry_pending_sends(db)
+
+            assert sent_to == [], "sent a message nothing permitted"
+            assert result["sent"] == 0
+            assert result["dropped"] == 1
+
+            async with get_session_factory()() as db:
+                row = (
+                    await db.execute(select(Message).where(Message.id == queued_id))
+                ).scalar_one()
+                assert row.delivery_status == MessageStatus.FAILED
+                assert row.next_attempt_at is None, "must not keep retrying it"
+                assert "no permission" in (row.last_error or "")
     finally:
         await _cleanup()

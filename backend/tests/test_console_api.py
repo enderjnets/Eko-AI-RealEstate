@@ -289,3 +289,93 @@ async def test_a_hot_lead_leaves_the_untouched_list_once_it_is_called(
         )
     finally:
         await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_follow_up_shows_on_the_list(database_url: str) -> None:
+    """A provider outage marks every due message FAILED. Filtering the section
+    to PENDING left the list reassuringly empty on the one morning it should
+    have been full — the exact blindness this section exists to remove."""
+    lead_id = await _lead(database_url, status=LeadStatus.QUALIFIED)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            s.add(
+                FollowUp(
+                    lead_id=lead_id,
+                    kind=FollowUpKind.CALL_FOLLOW_UP,
+                    status=FollowUpStatus.FAILED,
+                    scheduled_for=datetime.now(UTC) - timedelta(hours=1),
+                )
+            )
+            await s.commit()
+
+        async with await _client() as c:
+            body = (await c.get("/api/v1/console/today")).json()
+        mine = [h for h in body["held"] if h["lead"]["id"] == lead_id]
+        assert len(mine) == 1, "a failed follow-up was invisible"
+        assert mine[0]["status"] == "failed"
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_not_a_number_budget_is_refused_rather_than_stored(
+    database_url: str,
+) -> None:
+    """NaN passed validation, stored as Decimal('NaN'), and then every
+    subsequent GET /leads returned 500 for that agency because the response
+    model demands a finite number. The write path must not accept what the
+    read path cannot render."""
+    lead_id = await _lead(database_url)
+    try:
+        async with await _client() as c:
+            r = await c.post(
+                f"/api/v1/leads/{lead_id}/calls",
+                content='{"outcome":"follow_up","budget_max":NaN}',
+                headers={"content-type": "application/json"},
+            )
+            assert r.status_code == 422, r.text
+            # And the list still renders.
+            assert (await c.get("/api/v1/leads?limit=5")).status_code == 200
+    finally:
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_an_over_long_value_is_refused_rather_than_lost_as_a_500(
+    database_url: str,
+) -> None:
+    """`urgency` is only 40 characters wide. Reaching Postgres with more raised
+    StringDataRightTruncation and threw away the whole call — after the advisor
+    had already had the conversation."""
+    lead_id = await _lead(database_url)
+    try:
+        async with await _client() as c:
+            r = await c.post(
+                f"/api/v1/leads/{lead_id}/calls",
+                json={"outcome": "follow_up", "urgency": "x" * 500},
+            )
+            assert r.status_code == 422, r.text
+            r = await c.post(
+                f"/api/v1/leads/{lead_id}/calls",
+                json={"outcome": "follow_up", "zone": "z" * 5000},
+            )
+            assert r.status_code == 422, r.text
+    finally:
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_email_is_refused(database_url: str) -> None:
+    lead_id = await _lead(database_url)
+    try:
+        async with await _client() as c:
+            r = await c.post(
+                f"/api/v1/leads/{lead_id}/calls",
+                json={"outcome": "follow_up", "email": "not-an-email"},
+            )
+            assert r.status_code == 422, r.text
+    finally:
+        await _cleanup(database_url, lead_id)

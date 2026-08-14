@@ -6,11 +6,11 @@ Three things need somewhere to be seen, and until now two of them had nowhere:
   has no automated sender behind it (see `followups.AUTOMATED_PREFERENCES`), so
   it is a job for a person. Without this list those rows would sit pending for
   ever and the preference would be a promise nobody keeps.
-* **Held follow-ups.** The worker holds a message when no channel has consent
-  or a prior inbound, retries daily, and gives up after a few rounds. Today
-  that only ever appears in a log line, so the office cannot tell the
-  difference between "we are nurturing them" and "we have been unable to say
-  anything to them for a week".
+* **Follow-ups that are not getting through.** The worker holds a message when
+  no channel has consent or a prior inbound, retries daily, and gives up after
+  a few rounds; and a provider outage marks the due ones FAILED. Both only ever
+  appeared in a log line, so the office could not tell "we are nurturing them"
+  from "we have not been able to say anything to them for a week".
 * **Hot leads nobody has touched.** The scorer already ranks them; nothing
   surfaces the ones that are ranked highly and then left alone.
 
@@ -24,7 +24,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import Select, func, or_, select, true
+from sqlalchemy import Select, and_, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_db
@@ -64,11 +64,13 @@ class ConsoleTask(BaseModel):
 
 
 class HeldFollowUp(BaseModel):
-    """Due, but nothing may be sent: no channel has consent or a prior inbound."""
+    """Not getting through: either the consent gate is refusing every channel,
+    or the sends themselves failed."""
 
     follow_up_id: int
     scheduled_for: datetime
     holds: int
+    status: FollowUpStatus
     lead: ConsoleLead
 
 
@@ -128,15 +130,25 @@ async def today(
                 select(FollowUp, Lead)
                 .join(Lead, Lead.id == FollowUp.lead_id)
                 .where(
-                    FollowUp.status == FollowUpStatus.PENDING,
-                    FollowUp.attempts > 0,
+                    # FAILED belongs here as much as PENDING. A provider outage
+                    # marks every due message FAILED, and with only PENDING in
+                    # this filter the list stayed reassuringly empty on the one
+                    # morning it should have been full — the exact blindness
+                    # this section exists to remove.
+                    or_(
+                        and_(
+                            FollowUp.status == FollowUpStatus.PENDING,
+                            FollowUp.attempts > 0,
+                        ),
+                        FollowUp.status == FollowUpStatus.FAILED,
+                    ),
                     or_(
                         Lead.preferred_channel.is_(None),
                         Lead.preferred_channel.in_(AUTOMATED_PREFERENCES),
                     ),
                 )
             )
-            .order_by(FollowUp.attempts.desc(), FollowUp.scheduled_for)
+            .order_by(FollowUp.status.desc(), FollowUp.attempts.desc(), FollowUp.scheduled_for)
             .limit(limit)
         )
     ).all()
@@ -146,6 +158,7 @@ async def today(
             follow_up_id=fu.id,
             scheduled_for=fu.scheduled_for,
             holds=fu.attempts,
+            status=fu.status,
             lead=ConsoleLead.model_validate(lead),
         )
         for fu, lead in held_rows

@@ -197,6 +197,35 @@ async def _retry_one(db: AsyncSession, message_id: int, now: datetime) -> str:
         return "dropped"
 
     recipient, channel, in_reply_to = await _recipient_of(message, db)
+
+    # The half of the gate that was missing. The block above honours a
+    # revocation; this one honours the absence of permission in the first
+    # place, which is not the same thing and was never checked here. An
+    # automated message could sit in the queue, the lead could turn out to have
+    # neither consent on record nor a message they sent us first, and this
+    # sweep would deliver it anyway — the producer's gate having been the only
+    # one, and having run before the row existed.
+    #
+    # It became reachable a different way with the call console: telling an
+    # advisor "phone me, don't text me" cancels the follow-ups but cannot
+    # cancel a text already queued.
+    # Imported here rather than at module scope: capture.py reaches back into
+    # this module, and a top-level import closes the cycle.
+    from app.services.capture import may_send_automated
+
+    if lead is not None and channel and not await may_send_automated(lead, channel, db):
+        message.delivery_status = MessageStatus.FAILED
+        message.next_attempt_at = None
+        message.last_error = f"no permission on record to send automatically on {channel}"
+        log.info(
+            "Dropping queued message %s: lead %d has no consent or prior inbound on %s",
+            message.id,
+            lead.id,
+            channel,
+        )
+        await db.commit()
+        return "dropped"
+
     if not recipient or not channel:
         # No address right now. Counted as a failure and backed off like any
         # other, NOT retired on the spot: `_recipient_of` also returns nothing

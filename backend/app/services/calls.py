@@ -22,7 +22,7 @@ from dataclasses import dataclass, fields
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -34,7 +34,7 @@ from app.models import (
     Lead,
 )
 from app.models.lead import LeadIntent, LeadStatus, PreferredChannel
-from app.services.followups import enqueue_after_call
+from app.services.followups import AUTOMATED_PREFERENCES, enqueue_after_call
 from app.services.scoring import rescore_lead
 
 log = logging.getLogger(__name__)
@@ -115,6 +115,18 @@ def _record_verbal_consent(lead: Lead, *, who: str | None, when: datetime) -> bo
     first record of it is the one that was actually shown or spoken, so an
     existing `consent_at` is never overwritten with a fresher, vaguer one.
     """
+    if lead.opted_out_at is not None:
+        # Someone who has told us to stop cannot give consent through a box an
+        # advisor ticks on their behalf. Writing it anyway would manufacture a
+        # record that goes live the moment they text START — and because
+        # consent is never overwritten, the fabricated one would then block the
+        # real one for good.
+        log.warning(
+            "Refusing to record verbal consent for lead %d: opted out at %s",
+            lead.id,
+            lead.opted_out_at.isoformat(),
+        )
+        return False
     if lead.consent_at is not None:
         return False
     lead.consent_at = when
@@ -180,7 +192,11 @@ async def register_call(
 
     _apply(lead, updates)
 
-    if asked_for_texts:
+    # Order matters: an outcome of do_not_contact sets opted_out_at below, and
+    # a single submit can carry both. Consent is recorded first only so that
+    # the opt-out check inside sees the state as it was *before* this call —
+    # and refuses anyway if they had already opted out.
+    if asked_for_texts and outcome not in _STAND_DOWN:
         _record_verbal_consent(lead, who=logged_by, when=now)
 
     follow_up: FollowUp | None = None
@@ -204,7 +220,7 @@ async def register_call(
     else:
         # A logged call *is* the touch a pending call-task was asking for.
         # Leaving it queued would show the advisor a job they just did.
-        cancelled = await _resolve_call_tasks(lead.id, db, exclude_call_id=call.id)
+        cancelled = await _resolve_call_tasks(lead.id, db)
 
         if outcome == CallOutcome.BOOKED_VISIT:
             lead.status = LeadStatus.VISITING
@@ -233,20 +249,42 @@ async def register_call(
     )
 
 
-async def _resolve_call_tasks(
-    lead_id: int, db: AsyncSession, *, exclude_call_id: int
-) -> int:
-    """Close out call-tasks this call has just satisfied."""
-    rows = (
-        await db.execute(
-            select(FollowUp).where(
-                FollowUp.lead_id == lead_id,
-                FollowUp.status == FollowUpStatus.PENDING,
-                FollowUp.kind == FollowUpKind.CALL_FOLLOW_UP,
-                FollowUp.call_log_id != exclude_call_id,
-            )
+async def _resolve_call_tasks(lead_id: int, db: AsyncSession) -> int:
+    """Close out the jobs this call has just done.
+
+    Everything pending that a person was going to have to carry out by hand:
+    the call-follow-ups, and any other due follow-up for a lead whose stated
+    channel has no automated sender. Those last ones are the console's tasks —
+    the sweep skips them entirely, so nothing else would ever close them and a
+    stale one showed on the list for ever.
+
+    No `call_log_id` filter. It is tempting to exclude the call being logged,
+    but this runs before its follow-up is enqueued, so it never matched
+    anything — and `call_log_id != n` cannot match NULL anyway, which is
+    exactly how orphaned rows became uncancellable.
+    """
+    lead = await db.get(Lead, lead_id)
+    manual = (
+        lead is not None
+        and lead.preferred_channel is not None
+        and lead.preferred_channel not in AUTOMATED_PREFERENCES
+    )
+
+    conditions = [
+        FollowUp.lead_id == lead_id,
+        FollowUp.status == FollowUpStatus.PENDING,
+    ]
+    kind_filter = (
+        FollowUp.kind == FollowUpKind.CALL_FOLLOW_UP
+        if not manual
+        else or_(
+            FollowUp.kind == FollowUpKind.CALL_FOLLOW_UP,
+            FollowUp.scheduled_for <= datetime.now(UTC),
         )
-    ).scalars().all()
+    )
+    conditions.append(kind_filter)
+
+    rows = (await db.execute(select(FollowUp).where(*conditions))).scalars().all()
     for row in rows:
         row.status = FollowUpStatus.CANCELLED
     return len(rows)

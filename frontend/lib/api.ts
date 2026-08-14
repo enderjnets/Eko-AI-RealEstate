@@ -341,6 +341,7 @@ export interface CallResult {
   score: number;
   follow_up_scheduled_for: string | null;
   cancelled_follow_ups: number;
+  preferred_channel: PreferredChannel | null;
 }
 
 export const callsApi = {
@@ -375,6 +376,8 @@ export interface HeldFollowUp {
   follow_up_id: number;
   scheduled_for: string;
   holds: number;
+  /** "pending" = held for want of permission; "failed" = the sends failed. */
+  status: "pending" | "failed";
   lead: ConsoleLead;
 }
 

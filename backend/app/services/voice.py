@@ -322,6 +322,22 @@ async def handle_tool_call(
                     "See you then."
                 )
 
+            if lead.opted_out_at is not None:
+                # Cal.com emails a confirmation and then reminders. Booking
+                # somebody who told us to stop is contacting them again through
+                # a third party, which is no less a contact for having left
+                # from someone else's server. This path is autonomous — the
+                # agent books on its own — so the guard has to live here.
+                log.info(
+                    "Refusing to book lead %d from the voice agent: opted out at %s",
+                    lead.id,
+                    lead.opted_out_at.isoformat(),
+                )
+                return (
+                    "I'm not able to book that. Let me have someone from the "
+                    "office reach out to you directly."
+                )
+
             booking = await create_booking(
                 start_time=when,
                 attendee_name=lead.name or "Caller",

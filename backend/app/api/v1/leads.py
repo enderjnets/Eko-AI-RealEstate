@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from math import isfinite
+from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -394,20 +395,33 @@ class CallIn(BaseModel):
     it.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    # allow_inf_nan=False is the load-bearing part. Pydantic accepts NaN for a
+    # float by default, and Decimal('NaN') stores happily — but LeadOut demands
+    # a finite number, so one such row made every subsequent GET /leads return
+    # 500 for that agency, for ever. The write path must not accept what the
+    # read path cannot render.
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     outcome: CallOutcome
-    note: str | None = None
+    note: str | None = Field(default=None, max_length=4000)
 
     intent: LeadIntent | None = None
-    urgency: str | None = None
-    zone: str | None = None
-    property_type: str | None = None
-    budget_min: float | None = None
-    budget_max: float | None = None
+    # Lengths mirror the columns. Without them an over-long value reached
+    # Postgres, raised StringDataRightTruncation and lost the whole call as a
+    # 500 — after the advisor had already had the conversation.
+    urgency: str | None = Field(default=None, max_length=40)
+    zone: str | None = Field(default=None, max_length=160)
+    property_type: str | None = Field(default=None, max_length=60)
+    # NUMERIC(12,2): twelve digits total, so ten before the point.
+    budget_min: float | None = Field(default=None, ge=0, le=9_999_999_999)
+    budget_max: float | None = Field(default=None, ge=0, le=9_999_999_999)
     preferred_channel: PreferredChannel | None = None
-    name: str | None = None
-    email: str | None = None
+    name: str | None = Field(default=None, max_length=160)
+    # Not EmailStr: it needs `email-validator`, which is not in requirements —
+    # it resolves in a dev venv and raises on import inside the image. Same
+    # call settings.py already made. A shape check is enough here; the address
+    # is typed by an advisor reading it back over the phone, not by a stranger.
+    email: str | None = Field(default=None, max_length=255, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
     # Days from now. Capped at two years: a typo in a free-number field should
     # not silently park a lead past the point anyone would look for it.
@@ -418,6 +432,24 @@ class CallIn(BaseModel):
     # deliberately not the same as `preferred_channel`: "text me rather than
     # email me" is a preference about how, not permission to begin.
     asked_for_texts: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_non_finite(cls, data: Any) -> Any:
+        """Turn NaN and Infinity into text before validation sees them.
+
+        `allow_inf_nan=False` already refuses them, but the 422 it produces
+        echoes the offending value, and serialising NaN back out raises — so
+        the clean refusal came out as a 500 with no body. Python's json.loads
+        accepts these literals, which is how one reaches us at all. Swapped for
+        a string, the type error reports something that can actually be sent.
+        """
+        if isinstance(data, dict):
+            for key in ("budget_min", "budget_max"):
+                value = data.get(key)
+                if isinstance(value, float) and not isfinite(value):
+                    data[key] = repr(value)
+        return data
 
 
 class CallOut(BaseModel):
@@ -436,6 +468,10 @@ class CallResultOut(BaseModel):
     score: int
     follow_up_scheduled_for: datetime | None = None
     cancelled_follow_ups: int
+    # Echoed back because saving a call can change how this lead is contacted
+    # from now on, and a caller that cannot see the switch it just flipped has
+    # no way to tell the advisor about it.
+    preferred_channel: PreferredChannel | None = None
 
 
 @router.post("/{lead_id}/calls", response_model=CallResultOut, status_code=201)
@@ -483,6 +519,7 @@ async def log_call(
             result.follow_up.scheduled_for if result.follow_up else None
         ),
         cancelled_follow_ups=result.cancelled_follow_ups,
+        preferred_channel=lead.preferred_channel,
     )
 
 

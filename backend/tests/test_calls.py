@@ -468,3 +468,121 @@ async def test_a_value_with_stray_whitespace_is_stored_trimmed(
     finally:
         await engine.dispose()
         await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_consent_is_refused_for_someone_who_already_opted_out(
+    database_url: str,
+) -> None:
+    """An advisor ticking a box cannot give consent on behalf of someone who
+    told us to stop.
+
+    Two consequences if it could: the fabricated record goes live the moment
+    they text START, and because consent is never overwritten it permanently
+    blocks the real written consent from ever being recorded.
+    """
+    lead_id = await _make_lead(database_url)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            lead.opted_out_at = datetime.now(UTC) - timedelta(days=2)
+            await s.commit()
+
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            await register_call(
+                lead, CallOutcome.FOLLOW_UP, s, asked_for_texts=True, logged_by="a@b.c"
+            )
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            assert lead.consent_at is None, "manufactured consent for an opted-out lead"
+            assert lead.consent_text is None
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_do_not_contact_and_asked_for_texts_in_one_submit_records_no_consent(
+    database_url: str,
+) -> None:
+    """The console should not offer both at once, but the rule belongs where it
+    cannot be reached around."""
+    lead_id = await _make_lead(database_url)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            await register_call(
+                lead, CallOutcome.DO_NOT_CONTACT, s, asked_for_texts=True
+            )
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            assert lead.opted_out_at is not None
+            assert lead.consent_at is None
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_call_closes_a_stale_task_the_sweep_can_never_reach(
+    database_url: str,
+) -> None:
+    """A lead who asked to be phoned is excluded from the follow-up sweep, so
+    nothing in that worker will ever close their overdue rows. Before this the
+    task showed on the console for ever, however many calls were logged."""
+    lead_id = await _make_lead(database_url, preferred_channel=PreferredChannel.CALL)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            s.add(
+                FollowUp(
+                    lead_id=lead_id,
+                    kind=FollowUpKind.REMINDER_24H,
+                    status=FollowUpStatus.PENDING,
+                    scheduled_for=datetime.now(UTC) - timedelta(days=30),
+                )
+            )
+            await s.commit()
+        assert len(await _pending(database_url, lead_id)) == 1
+
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            result = await register_call(lead, CallOutcome.NO_ANSWER, s)
+        assert result.cancelled_follow_ups == 1
+        assert await _pending(database_url, lead_id) == []
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_future_follow_up_is_left_alone_by_an_unrelated_call(
+    database_url: str,
+) -> None:
+    """Only what is due counts as a job this call has done. Cancelling a
+    reminder for a viewing next week because somebody rang today would delete
+    the arrangement rather than fulfil it."""
+    lead_id = await _make_lead(database_url, preferred_channel=PreferredChannel.CALL)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            s.add(
+                FollowUp(
+                    lead_id=lead_id,
+                    kind=FollowUpKind.REMINDER_24H,
+                    status=FollowUpStatus.PENDING,
+                    scheduled_for=datetime.now(UTC) + timedelta(days=6),
+                )
+            )
+            await s.commit()
+
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            await register_call(lead, CallOutcome.NO_ANSWER, s)
+        assert len(await _pending(database_url, lead_id)) == 1
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)

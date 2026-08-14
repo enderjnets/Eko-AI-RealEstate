@@ -66,7 +66,10 @@ class CallLog(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    lead: Mapped["Lead"] = relationship("Lead", lazy="joined")
+    # Optional in the annotation because it really is: under RLS a row read
+    # from outside its organization resolves the join to nothing, and the
+    # non-optional type promised a Lead that the database will not hand over.
+    lead: Mapped["Lead | None"] = relationship("Lead", lazy="joined")
 
     def __repr__(self) -> str:
         return f"<CallLog id={self.id} lead={self.lead_id} outcome={self.outcome.value}>"

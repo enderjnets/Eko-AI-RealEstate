@@ -212,6 +212,15 @@ async def book_slot(
     db: AsyncSession = Depends(get_db),
 ) -> VisitOut:
     lead = await _get_lead_or_404(lead_id, db)
+    if lead.opted_out_at is not None:
+        # Cal.com emails the attendee a confirmation and then reminders, so
+        # booking somebody who told us to stop is us contacting them again
+        # through a third party — which is neither less of a contact nor less
+        # of a liability for having been sent by someone else's server.
+        raise HTTPException(
+            status_code=409,
+            detail="lead_opted_out: this person asked not to be contacted",
+        )
     tz = body.timezone or await _office_tz(db)
 
     # Email-or-phone heuristic: lead.phone holds an email when channel is email.

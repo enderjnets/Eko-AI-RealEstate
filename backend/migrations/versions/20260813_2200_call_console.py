@@ -8,10 +8,14 @@ Adds:
     consent.
   * `visits.property_id` — which listing a showing is for, so the post-visit
     message can name the house.
-  * `follow_ups.call_log_id` plus a uniqueness constraint on it. The existing
-    UNIQUE(visit_id, kind) cannot protect a call-anchored row: Postgres treats
-    two NULLs as distinct, so logging the same call twice would queue the same
-    nudge twice.
+  * `follow_ups.call_log_id` plus UNIQUE(call_log_id, kind), which keeps
+    `enqueue_after_call` idempotent for a *given* call row — the existing
+    UNIQUE(visit_id, kind) cannot, because Postgres treats two NULLs as
+    distinct and a call-anchored row has no visit.
+    It does NOT stop a double-submit: each POST mints a new call_log_id, so two
+    rapid identical submits are two calls and two nudges. That is handled in
+    `calls.register_call`, which cancels the lead's outstanding call-tasks
+    before queueing the new one.
   * `call_follow_up` on the follow_up_kind enum.
 
 Additive throughout; nothing existing changes shape, and every new column is
@@ -155,6 +159,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Delete the call-anchored follow-ups BEFORE dropping the column that
+    # anchors them. Dropping it first leaves rows whose `call_log_id` is gone;
+    # re-applying this migration then re-adds the column as NULL, and a
+    # `call_log_id != n` filter can never match NULL — so those rows become
+    # permanently uncancellable while still being dispatchable. A down-and-up
+    # cycle produced thirteen of them.
+    op.execute("DELETE FROM follow_ups WHERE kind = 'call_follow_up'")
+
     op.drop_constraint("uq_followups_call_kind", "follow_ups", type_="unique")
     op.drop_index("ix_follow_ups_call_log_id", table_name="follow_ups")
     op.drop_column("follow_ups", "call_log_id")
