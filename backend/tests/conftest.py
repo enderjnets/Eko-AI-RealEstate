@@ -20,7 +20,23 @@ deliberately switches orgs mid-test to prove rows do not cross.
 """
 from __future__ import annotations
 
-import pytest
+import os
+
+# WhatsApp is off by default in the application, deliberately: a channel with no
+# credentials must not answer. The webhook tests drive that channel, so they
+# need it on — and this has to happen before anything imports the app, because
+# `Settings()` reads the environment once and every later call gets that same
+# answer. A fixture is too late; by the time one runs, the value is decided.
+#
+# It lives here rather than in the developer's shell because that is what it was
+# doing until now: the suite passed for whoever had the variable exported and
+# failed for everyone else. CI has never run, and it would have gone red on its
+# first attempt over exactly the five tests this line fixes.
+#
+# `setdefault`, so an operator deliberately testing the disabled path still can.
+os.environ.setdefault("WHATSAPP_ENABLED", "true")
+
+import pytest  # noqa: E402 — must follow the environment default above
 
 from app.db.base import dispose_engine
 from app.models.organization import DEFAULT_ORG_ID
