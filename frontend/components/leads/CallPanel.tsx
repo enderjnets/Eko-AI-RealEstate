@@ -67,6 +67,7 @@ export function CallPanel({
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const standDown = outcome !== null && STAND_DOWN.includes(outcome);
@@ -88,6 +89,7 @@ export function CallPanel({
     setSaving(true);
     setError(null);
     setSaved(null);
+    setWarning(null);
 
     // Only what the advisor actually touched is sent. An omitted field means
     // "did not come up" on the server and leaves the lead's value alone; a
@@ -108,6 +110,14 @@ export function CallPanel({
 
     try {
       const result = await callsApi.log(lead.id, body);
+      // Say so before anything else. An advisor who ticked "they asked for
+      // texts" and saw a plain "Saved" walked away believing they could write
+      // to this person, while every queued message was quietly held back.
+      if (result.consent_refused_opted_out) {
+        setWarning(t("call.consentRefused"));
+      } else {
+        setWarning(null);
+      }
       if (result.follow_up_scheduled_for) {
         setSaved(
           t("call.savedFollowUp").replace(
@@ -264,6 +274,14 @@ export function CallPanel({
       {error && (
         <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400">
           {error}
+        </p>
+      )}
+      {warning && (
+        <p
+          role="alert"
+          className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          {warning}
         </p>
       )}
       {saved && (

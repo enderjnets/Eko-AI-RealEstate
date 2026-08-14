@@ -220,6 +220,7 @@ export interface Visit {
   duration_minutes: number;
   timezone: string;
   property_address: string | null;
+  property_id: number | null;
   meeting_url: string | null;
   notes: string | null;
   created_at: string;
@@ -237,6 +238,7 @@ export interface CalendarItem {
   lead_id: number | null;
   lead_name: string | null;
   property_address: string | null;
+  property_id: number | null;
   notes: string | null;
 }
 
@@ -251,6 +253,8 @@ export interface ManualEventIn {
   duration_minutes?: number;
   notes?: string;
   property_address?: string;
+  /** Which listing the showing is for, so the post-visit message can name it. */
+  property_id?: number;
   lead_id?: number | null;
   timezone?: string;
 }
@@ -259,6 +263,8 @@ export interface BookingIn {
   start_time: string;
   duration_minutes?: number;
   property_address?: string;
+  /** Which listing the showing is for, so the post-visit message can name it. */
+  property_id?: number;
   notes?: string;
   timezone?: string;
 }
@@ -341,6 +347,10 @@ export interface CallResult {
   score: number;
   follow_up_scheduled_for: string | null;
   cancelled_follow_ups: number;
+  /** True only when the "asked for texts" tick actually became a record. */
+  consent_recorded: boolean;
+  /** They had already opted out, so no consent was written. */
+  consent_refused_opted_out: boolean;
   preferred_channel: PreferredChannel | null;
 }
 

@@ -59,7 +59,11 @@ class BookingIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     start_time: datetime
     duration_minutes: int = Field(default=30, ge=15, le=240)
+    # Which listing this showing is for. The address stays as the human-
+    # readable line and as the only thing a viewing arranged off-MLS has;
+    # without the id the post-visit follow-up cannot name the house.
     property_address: str | None = None
+    property_id: int | None = None
     notes: str | None = None
     # Defaults to the office timezone (AgentSettings) when omitted, so visits are
     # stored + displayed in the office's local tz rather than UTC.
@@ -79,6 +83,7 @@ class VisitOut(BaseModel):
     duration_minutes: int
     timezone: str
     property_address: str | None
+    property_id: int | None
     meeting_url: str | None
     notes: str | None
     created_at: datetime
@@ -100,6 +105,7 @@ class ManualEventIn(BaseModel):
     duration_minutes: int = Field(default=30, ge=5, le=600)
     notes: str | None = None
     property_address: str | None = None
+    property_id: int | None = None
     lead_id: int | None = None
     timezone: str | None = None
 
@@ -117,6 +123,7 @@ class CalendarItemOut(BaseModel):
     lead_id: int | None
     lead_name: str | None
     property_address: str | None
+    property_id: int | None
     notes: str | None
 
 
@@ -254,6 +261,7 @@ async def book_slot(
         duration_minutes=booking.duration_minutes,
         timezone=tz,
         property_address=body.property_address,
+        property_id=body.property_id,
         meeting_url=booking.meeting_url,
         notes=body.notes,
     )
@@ -369,6 +377,7 @@ def _visit_item(v: Visit) -> CalendarItemOut:
         lead_id=v.lead_id,
         lead_name=lead_name,
         property_address=v.property_address,
+        property_id=v.property_id,
         notes=v.notes,
     )
 
@@ -418,6 +427,7 @@ async def create_manual_event(
         duration_minutes=body.duration_minutes,
         timezone=tz,
         property_address=body.property_address,
+        property_id=body.property_id,
         notes=body.notes,
     )
     db.add(visit)
@@ -476,6 +486,7 @@ async def visits_agenda(
                 lead_id=f.lead_id,
                 lead_name=lead_name,
                 property_address=None,
+                property_id=None,
                 notes=None,
             )
         )

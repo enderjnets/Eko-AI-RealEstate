@@ -1,6 +1,7 @@
 """Leads API — list + detail + PATCH (Phase 2 dashboard needs)."""
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from decimal import Decimal
 from math import isfinite
@@ -8,7 +9,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -421,7 +422,7 @@ class CallIn(BaseModel):
     # it resolves in a dev venv and raises on import inside the image. Same
     # call settings.py already made. A shape check is enough here; the address
     # is typed by an advisor reading it back over the phone, not by a stranger.
-    email: str | None = Field(default=None, max_length=255, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    email: str | None = Field(default=None, max_length=255)
 
     # Days from now. Capped at two years: a typo in a free-number field should
     # not silently park a lead past the point anyone would look for it.
@@ -432,6 +433,37 @@ class CallIn(BaseModel):
     # deliberately not the same as `preferred_channel`: "text me rather than
     # email me" is a preference about how, not permission to begin.
     asked_for_texts: bool = False
+
+    @field_validator("email")
+    @classmethod
+    def _email_shape(cls, value: str | None) -> str | None:
+        """Trimmed first, then shape-checked.
+
+        As a `pattern` this ran before the service's own strip, so a leading
+        space pasted in from a contact card returned 422 and lost the whole
+        call — exactly the failure the length limits were added to stop.
+        """
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            return None
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
+            raise ValueError("must look like an email address")
+        return value
+
+    @model_validator(mode="after")
+    def _budget_order(self) -> "CallIn":
+        if (
+            self.budget_min is not None
+            and self.budget_max is not None
+            and self.budget_min > self.budget_max
+        ):
+            # Accepting it would hand `match_properties_for_lead` an empty
+            # range and the advisor would be told, truthfully, that nothing
+            # matches — with no hint that they typed the two the wrong way up.
+            raise ValueError("budget_min cannot be greater than budget_max")
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -444,12 +476,16 @@ class CallIn(BaseModel):
         accepts these literals, which is how one reaches us at all. Swapped for
         a string, the type error reports something that can actually be sent.
         """
-        if isinstance(data, dict):
-            for key in ("budget_min", "budget_max"):
-                value = data.get(key)
-                if isinstance(value, float) and not isfinite(value):
-                    data[key] = repr(value)
-        return data
+        if not isinstance(data, dict):
+            return data
+        offenders = {
+            key: repr(value)
+            for key in ("budget_min", "budget_max")
+            if isinstance(value := data.get(key), float) and not isfinite(value)
+        }
+        # Copied rather than written through: the dict belongs to the caller,
+        # and a validator that edits its input is a surprise waiting to matter.
+        return {**data, **offenders} if offenders else data
 
 
 class CallOut(BaseModel):
@@ -468,6 +504,11 @@ class CallResultOut(BaseModel):
     score: int
     follow_up_scheduled_for: datetime | None = None
     cancelled_follow_ups: int
+    # True only when the tick actually became a consent record. It does not
+    # when the person had already opted out, and an unqualified success left
+    # the advisor believing they could text.
+    consent_recorded: bool = False
+    consent_refused_opted_out: bool = False
     # Echoed back because saving a call can change how this lead is contacted
     # from now on, and a caller that cannot see the switch it just flipped has
     # no way to tell the advisor about it.
@@ -519,6 +560,8 @@ async def log_call(
             result.follow_up.scheduled_for if result.follow_up else None
         ),
         cancelled_follow_ups=result.cancelled_follow_ups,
+        consent_recorded=result.consent_recorded,
+        consent_refused_opted_out=result.consent_refused_opted_out,
         preferred_channel=lead.preferred_channel,
     )
 

@@ -30,16 +30,19 @@ export function BookingDialog({
   leadId,
   onClose,
   onBooked,
+  property,
 }: {
   open: boolean;
   leadId: number;
   onClose: () => void;
   onBooked: () => void;
+  /** Opened from a matched listing: which house, and its address prefilled. */
+  property?: { id: number; address: string } | null;
 }) {
   const { t, locale } = useI18n();
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [selected, setSelected] = useState<Slot | null>(null);
-  const [address, setAddress] = useState("");
+  const [address, setAddress] = useState(property?.address ?? "");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [booking, setBooking] = useState(false);
@@ -54,6 +57,12 @@ export function BookingDialog({
       .then((s) => setTz(s.timezone || DEFAULT_TZ))
       .catch(() => {});
   }, [open]);
+
+  // The dialog stays mounted between openings, so the address from the last
+  // listing would otherwise still be sitting in the field for the next one.
+  useEffect(() => {
+    if (open) setAddress(property?.address ?? "");
+  }, [open, property?.address]);
 
   useEffect(() => {
     if (!open) return;
@@ -85,6 +94,9 @@ export function BookingDialog({
         start_time: selected.start,
         duration_minutes: 30,
         property_address: address.trim() || undefined,
+        // Without the id the post-visit follow-up can only say "the property",
+        // and nothing links the showing back to the listing it was for.
+        property_id: property?.id,
         notes: notes.trim() || undefined,
         timezone: tz,
       });

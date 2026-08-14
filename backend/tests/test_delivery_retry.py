@@ -509,7 +509,7 @@ async def test_two_workers_cannot_send_the_same_message() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_queued_message_is_dropped_when_nothing_permits_sending_it() -> None:
+async def test_a_queued_message_is_held_back_when_nothing_permits_sending_it() -> None:
     """The other half of the dispatch gate.
 
     The block above it honours a revocation; this covers the case where
@@ -558,14 +558,18 @@ async def test_a_queued_message_is_dropped_when_nothing_permits_sending_it() -> 
 
             assert sent_to == [], "sent a message nothing permitted"
             assert result["sent"] == 0
-            assert result["dropped"] == 1
 
             async with get_session_factory()() as db:
                 row = (
                     await db.execute(select(Message).where(Message.id == queued_id))
                 ).scalar_one()
-                assert row.delivery_status == MessageStatus.FAILED
-                assert row.next_attempt_at is None, "must not keep retrying it"
                 assert "no permission" in (row.last_error or "")
+                # Backed off, not retired. Unlike an opt-out this answer can
+                # turn into a yes — they consent, or they write to us on this
+                # channel — and killing the row would discard a message the
+                # very next reply would have permitted. It still reaches the
+                # attempt cap on its own if nothing changes.
+                assert row.next_attempt_at is not None, "retired a recoverable message"
+                assert row.send_attempts == 1
     finally:
         await _cleanup()

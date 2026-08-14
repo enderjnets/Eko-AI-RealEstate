@@ -39,6 +39,11 @@ CLOSED_STATUSES = (LeadStatus.WON, LeadStatus.LOST, LeadStatus.PAUSED)
 
 HOT_SCORE = 70
 
+# How far back a failed follow-up stays on the list. FAILED is terminal, so
+# without a window the section becomes an ever-growing archive rather than a
+# list of what needs doing today.
+FAILED_WINDOW_DAYS = 14
+
 
 class ConsoleLead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -130,17 +135,27 @@ async def today(
                 select(FollowUp, Lead)
                 .join(Lead, Lead.id == FollowUp.lead_id)
                 .where(
-                    # FAILED belongs here as much as PENDING. A provider outage
-                    # marks every due message FAILED, and with only PENDING in
-                    # this filter the list stayed reassuringly empty on the one
-                    # morning it should have been full — the exact blindness
-                    # this section exists to remove.
+                    # FAILED belongs here as much as PENDING — a provider
+                    # outage marks every due message FAILED, and with only
+                    # PENDING the list stayed reassuringly empty on the one
+                    # morning it should have been full.
+                    #
+                    # But FAILED is terminal: nothing in the codebase ever
+                    # moves a follow-up back out of it. Unbounded, every
+                    # failure that has ever happened would sit here for ever,
+                    # and once fifty had accumulated the rows that are stuck
+                    # *today* would fall off the end of the page. Recent
+                    # failures are news; a failure from March is history, and
+                    # history belongs on the analytics page.
                     or_(
                         and_(
                             FollowUp.status == FollowUpStatus.PENDING,
                             FollowUp.attempts > 0,
                         ),
-                        FollowUp.status == FollowUpStatus.FAILED,
+                        and_(
+                            FollowUp.status == FollowUpStatus.FAILED,
+                            FollowUp.scheduled_for >= now - timedelta(days=FAILED_WINDOW_DAYS),
+                        ),
                     ),
                     or_(
                         Lead.preferred_channel.is_(None),
@@ -148,7 +163,9 @@ async def today(
                     ),
                 )
             )
-            .order_by(FollowUp.status.desc(), FollowUp.attempts.desc(), FollowUp.scheduled_for)
+            # Most recent first. Sorting by status put FAILED at the head of
+            # every page, so the oldest dead rows crowded out the live ones.
+            .order_by(FollowUp.scheduled_for.desc(), FollowUp.attempts.desc())
             .limit(limit)
         )
     ).all()

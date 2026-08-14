@@ -32,6 +32,7 @@ from app.models import (
     FollowUpKind,
     FollowUpStatus,
     Lead,
+    Visit,
 )
 from app.models.lead import LeadIntent, LeadStatus, PreferredChannel
 from app.services.followups import AUTOMATED_PREFERENCES, enqueue_after_call
@@ -74,6 +75,12 @@ class CallResult:
     follow_up: FollowUp | None
     score: int
     cancelled_follow_ups: int
+    # Whether the advisor's "they asked for texts" tick actually became a
+    # consent record. It does not when they had already opted out, and saying
+    # nothing meant the advisor walked away believing texting was permitted
+    # while every queued message was quietly held back.
+    consent_recorded: bool = False
+    consent_refused_opted_out: bool = False
 
 
 # Outcomes that mean "stop the machinery". Everything pending is cancelled, and
@@ -196,8 +203,12 @@ async def register_call(
     # a single submit can carry both. Consent is recorded first only so that
     # the opt-out check inside sees the state as it was *before* this call —
     # and refuses anyway if they had already opted out.
+    consent_recorded = False
+    consent_refused = False
     if asked_for_texts and outcome not in _STAND_DOWN:
-        _record_verbal_consent(lead, who=logged_by, when=now)
+        already_opted_out = lead.opted_out_at is not None
+        consent_recorded = _record_verbal_consent(lead, who=logged_by, when=now)
+        consent_refused = already_opted_out
 
     follow_up: FollowUp | None = None
     cancelled = 0
@@ -245,7 +256,12 @@ async def register_call(
 
     await db.commit()
     return CallResult(
-        call=call, follow_up=follow_up, score=score, cancelled_follow_ups=cancelled
+        call=call,
+        follow_up=follow_up,
+        score=score,
+        cancelled_follow_ups=cancelled,
+        consent_recorded=consent_recorded,
+        consent_refused_opted_out=consent_refused,
     )
 
 
@@ -270,21 +286,41 @@ async def _resolve_call_tasks(lead_id: int, db: AsyncSession) -> int:
         and lead.preferred_channel not in AUTOMATED_PREFERENCES
     )
 
-    conditions = [
-        FollowUp.lead_id == lead_id,
-        FollowUp.status == FollowUpStatus.PENDING,
-    ]
-    kind_filter = (
-        FollowUp.kind == FollowUpKind.CALL_FOLLOW_UP
-        if not manual
-        else or_(
-            FollowUp.kind == FollowUpKind.CALL_FOLLOW_UP,
-            FollowUp.scheduled_for <= datetime.now(UTC),
+    now = datetime.now(UTC)
+    rows = (
+        await db.execute(
+            select(FollowUp).where(
+                FollowUp.lead_id == lead_id,
+                FollowUp.status == FollowUpStatus.PENDING,
+                FollowUp.kind == FollowUpKind.CALL_FOLLOW_UP
+                if not manual
+                else or_(
+                    FollowUp.kind == FollowUpKind.CALL_FOLLOW_UP,
+                    FollowUp.scheduled_for <= now,
+                ),
+            )
         )
-    )
-    conditions.append(kind_filter)
+    ).scalars().all()
 
-    rows = (await db.execute(select(FollowUp).where(*conditions))).scalars().all()
+    cancelled = 0
     for row in rows:
+        if row.visit_id is not None and not await _visit_is_past(row.visit_id, db, now):
+            # A reminder is due 24 hours BEFORE its viewing, so any visit less
+            # than a day away already has an overdue reminder row. Cancelling
+            # it because somebody rang this morning deletes tomorrow's
+            # arrangement rather than fulfilling it — the row's own due date
+            # says nothing about whether the appointment has happened.
+            continue
         row.status = FollowUpStatus.CANCELLED
-    return len(rows)
+        cancelled += 1
+    return cancelled
+
+
+async def _visit_is_past(visit_id: int, db: AsyncSession, now: datetime) -> bool:
+    visit = await db.get(Visit, visit_id)
+    if visit is None:
+        return True
+    scheduled = visit.scheduled_at
+    if scheduled.tzinfo is None:
+        scheduled = scheduled.replace(tzinfo=UTC)
+    return scheduled < now

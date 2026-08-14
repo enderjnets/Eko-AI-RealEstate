@@ -30,6 +30,8 @@ from app.models import (
     MessageDirection,
     MessageSender,
     MessageStatus,
+    Visit,
+    VisitStatus,
 )
 from app.models.lead import LeadIntent, LeadStatus, PreferredChannel
 from app.services.calls import CallUpdates, register_call
@@ -583,6 +585,94 @@ async def test_a_future_follow_up_is_left_alone_by_an_unrelated_call(
             lead = await s.get(Lead, lead_id)
             await register_call(lead, CallOutcome.NO_ANSWER, s)
         assert len(await _pending(database_url, lead_id)) == 1
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_call_does_not_cancel_the_reminder_for_a_visit_still_to_come(
+    database_url: str,
+) -> None:
+    """A reminder is due 24 hours BEFORE its viewing, so any visit less than a
+    day away already has an overdue reminder row. Cancelling it because
+    somebody rang this morning deletes tomorrow's arrangement rather than
+    fulfilling it — the row's own due date says nothing about whether the
+    appointment has happened.
+    """
+    lead_id = await _make_lead(database_url, preferred_channel=PreferredChannel.CALL)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            visit = Visit(
+                lead_id=lead_id,
+                title="Showing",
+                external_booking_id=f"bk-{uuid.uuid4().hex[:10]}",
+                scheduled_at=datetime.now(UTC) + timedelta(hours=6),
+                status=VisitStatus.SCHEDULED,
+            )
+            s.add(visit)
+            await s.flush()
+            s.add(
+                FollowUp(
+                    lead_id=lead_id,
+                    visit_id=visit.id,
+                    kind=FollowUpKind.REMINDER_24H,
+                    status=FollowUpStatus.PENDING,
+                    # Already due: the visit is inside the 24-hour window.
+                    scheduled_for=datetime.now(UTC) - timedelta(hours=18),
+                )
+            )
+            await s.commit()
+
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            result = await register_call(lead, CallOutcome.NO_ANSWER, s)
+
+        assert result.cancelled_follow_ups == 0, "cancelled a live viewing reminder"
+        rows = await _pending(database_url, lead_id)
+        assert len(rows) == 1
+        assert rows[0].kind == FollowUpKind.REMINDER_24H
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_call_does_close_a_task_for_a_visit_that_has_passed(
+    database_url: str,
+) -> None:
+    """The other side of the same rule: once the viewing is behind us, its
+    overdue rows really are jobs the call has just done."""
+    lead_id = await _make_lead(database_url, preferred_channel=PreferredChannel.CALL)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            visit = Visit(
+                lead_id=lead_id,
+                title="Showing",
+                external_booking_id=f"bk-{uuid.uuid4().hex[:10]}",
+                scheduled_at=datetime.now(UTC) - timedelta(days=3),
+                status=VisitStatus.COMPLETED,
+            )
+            s.add(visit)
+            await s.flush()
+            s.add(
+                FollowUp(
+                    lead_id=lead_id,
+                    visit_id=visit.id,
+                    kind=FollowUpKind.POST_VISIT_24H,
+                    status=FollowUpStatus.PENDING,
+                    scheduled_for=datetime.now(UTC) - timedelta(days=2),
+                )
+            )
+            await s.commit()
+
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            result = await register_call(lead, CallOutcome.FOLLOW_UP, s)
+        assert result.cancelled_follow_ups == 1
+        assert await _pending(database_url, lead_id) == []
     finally:
         await engine.dispose()
         await _cleanup(database_url, lead_id)

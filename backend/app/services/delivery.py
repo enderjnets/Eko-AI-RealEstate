@@ -115,7 +115,7 @@ async def retry_pending_sends(db: AsyncSession, *, limit: int = 20) -> dict[str,
 
     if sent or failed or dropped:
         log.info(
-            "delivery retry: %d sent, %d still failing, %d dropped (opted out)",
+            "delivery retry: %d sent, %d still failing, %d dropped (revoked)",
             sent, failed, dropped,
         )
     return {"sent": sent, "failed": failed, "dropped": dropped}
@@ -214,17 +214,26 @@ async def _retry_one(db: AsyncSession, message_id: int, now: datetime) -> str:
     from app.services.capture import may_send_automated
 
     if lead is not None and channel and not await may_send_automated(lead, channel, db):
-        message.delivery_status = MessageStatus.FAILED
-        message.next_attempt_at = None
-        message.last_error = f"no permission on record to send automatically on {channel}"
+        # Backed off, NOT retired. Unlike an opt-out this is a point-in-time
+        # answer that can turn into a yes: consent gets recorded, or the person
+        # writes to us on this channel, and then the message is sendable. The
+        # gate is also per channel, so a lead whose only inbound was WhatsApp
+        # fails it for a queued SMS — killing the row outright there would
+        # discard a message the very next reply would have permitted. Backing
+        # off costs a few retries and reaches the attempt cap on its own if
+        # nothing changes.
+        schedule_retry(message, f"no permission on record to send on {channel} yet")
         log.info(
-            "Dropping queued message %s: lead %d has no consent or prior inbound on %s",
+            "Holding queued message %s: lead %d has no consent or prior inbound "
+            "on %s (attempt %d of %d)",
             message.id,
             lead.id,
             channel,
+            message.send_attempts,
+            MAX_ATTEMPTS,
         )
         await db.commit()
-        return "dropped"
+        return "failed"
 
     if not recipient or not channel:
         # No address right now. Counted as a failure and backed off like any

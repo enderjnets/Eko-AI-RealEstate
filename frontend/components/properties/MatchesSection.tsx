@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Home, Loader2, Send } from "lucide-react";
+import { CalendarPlus, Check, Home, Loader2, Send } from "lucide-react";
 import { type Property, leadsApi } from "@/lib/api";
 import { PropertyCard, formatPrice } from "@/components/properties/PropertyCard";
 import { useI18n } from "@/lib/i18n";
+import { BookingDialog } from "@/components/calendar/BookingDialog";
 
 export function MatchesSection({ leadId }: { leadId: number }) {
   const router = useRouter();
@@ -29,6 +30,7 @@ export function MatchesSection({ leadId }: { leadId: number }) {
   const [matches, setMatches] = useState<Property[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [sendingId, setSendingId] = useState<number | null>(null);
+  const [bookingFor, setBookingFor] = useState<{ id: number; address: string } | null>(null);
   const [sentIds, setSentIds] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
@@ -105,10 +107,33 @@ export function MatchesSection({ leadId }: { leadId: number }) {
                   <><Send className="w-3 h-3" /> {t("matches.send")}</>
                 )}
               </button>
+              {/* The step the call console exists to reach: they said yes to
+                  this one, so book it here rather than retyping the address
+                  into a separate dialog — that is also what records WHICH
+                  house the showing is for. */}
+              <button
+                type="button"
+                onClick={() =>
+                  setBookingFor({
+                    id: p.id,
+                    address: [p.address, p.city].filter(Boolean).join(", "),
+                  })
+                }
+                className="mt-1.5 w-full inline-flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-medium border border-gray-700 text-gray-300 hover:border-gray-500"
+              >
+                <CalendarPlus className="w-3 h-3" /> {t("matches.book")}
+              </button>
             </div>
           ))}
         </div>
       )}
+      <BookingDialog
+        open={bookingFor !== null}
+        leadId={leadId}
+        property={bookingFor}
+        onClose={() => setBookingFor(null)}
+        onBooked={() => setBookingFor(null)}
+      />
     </section>
   );
 }

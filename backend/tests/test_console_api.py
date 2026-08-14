@@ -11,15 +11,19 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.main import app
 from app.models import (
     Conversation,
+    Property,
+    PropertyStatus,
+    Visit,
     ConversationStatus,
     FollowUp,
     FollowUpKind,
@@ -378,4 +382,150 @@ async def test_a_malformed_email_is_refused(database_url: str) -> None:
             )
             assert r.status_code == 422, r.text
     finally:
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_booking_records_which_property_it_is_for(database_url: str) -> None:
+    """`visits.property_id` was added by migration 029 and nothing wrote it —
+    a column in the schema that no code path fills is the dead-field pattern,
+    and it is the reason the post-visit follow-up cannot name the house."""
+    lead_id = await _lead(database_url)
+    engine, Session = _session(database_url)
+    prop_id = None
+    try:
+        async with Session() as s:
+            prop = Property(
+                source="manual",
+                external_id=f"console-test-{uuid.uuid4().hex[:8]}",
+                title="Test bungalow",
+                address="1200 S Downing St",
+                city="Denver",
+                state="CO",
+                price=Decimal("650000"),
+                status=PropertyStatus.ACTIVE,
+            )
+            s.add(prop)
+            await s.commit()
+            prop_id = prop.id
+
+        async with await _client() as c:
+            r = await c.post(
+                "/api/v1/visits",
+                json={
+                    "lead_id": lead_id,
+                    "title": "Showing",
+                    "scheduled_at": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
+                    "property_address": "1200 S Downing St",
+                    "property_id": prop_id,
+                },
+            )
+        assert r.status_code == 201, r.text
+        assert r.json()["property_id"] == prop_id
+
+        async with Session() as s:
+            visit = (
+                await s.execute(select(Visit).where(Visit.lead_id == lead_id))
+            ).scalars().first()
+            assert visit is not None
+            assert visit.property_id == prop_id
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
+        if prop_id:
+            async with Session() as s:
+                await s.execute(
+                    text("DELETE FROM properties WHERE id = :i"), {"i": prop_id}
+                )
+                await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_the_api_says_when_it_refused_to_record_consent(
+    database_url: str,
+) -> None:
+    """A refusal reported as plain success is worse than the refusal.
+
+    The advisor ticks "they asked for texts", gets a 201, and walks away
+    believing texting is permitted — while every queued message is quietly
+    held back and nothing anywhere says why.
+    """
+    lead_id = await _lead(database_url)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            lead.opted_out_at = datetime.now(UTC) - timedelta(days=1)
+            await s.commit()
+
+        async with await _client() as c:
+            r = await c.post(
+                f"/api/v1/leads/{lead_id}/calls",
+                json={"outcome": "follow_up", "asked_for_texts": True},
+            )
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["consent_recorded"] is False
+        assert body["consent_refused_opted_out"] is True
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_consent_recorded_is_true_when_it_actually_was(
+    database_url: str,
+) -> None:
+    lead_id = await _lead(database_url)
+    try:
+        async with await _client() as c:
+            body = (
+                await c.post(
+                    f"/api/v1/leads/{lead_id}/calls",
+                    json={"outcome": "wants_listings", "asked_for_texts": True},
+                )
+            ).json()
+        assert body["consent_recorded"] is True
+        assert body["consent_refused_opted_out"] is False
+    finally:
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_backwards_budget_is_refused(database_url: str) -> None:
+    """Accepting it hands the matcher an empty range, and the advisor is told
+    truthfully that nothing matches with no hint that they typed the two the
+    wrong way up."""
+    lead_id = await _lead(database_url)
+    try:
+        async with await _client() as c:
+            r = await c.post(
+                f"/api/v1/leads/{lead_id}/calls",
+                json={"outcome": "follow_up", "budget_min": 900000, "budget_max": 1000},
+            )
+        assert r.status_code == 422, r.text
+    finally:
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_an_email_pasted_with_a_leading_space_still_saves(
+    database_url: str,
+) -> None:
+    """It arrives that way from a contact card. Rejecting it lost the whole
+    call after the advisor had already had the conversation."""
+    lead_id = await _lead(database_url)
+    engine, Session = _session(database_url)
+    try:
+        async with await _client() as c:
+            r = await c.post(
+                f"/api/v1/leads/{lead_id}/calls",
+                json={"outcome": "follow_up", "email": "  marisol@example.com "},
+            )
+        assert r.status_code == 201, r.text
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            assert lead.email == "marisol@example.com"
+    finally:
+        await engine.dispose()
         await _cleanup(database_url, lead_id)
