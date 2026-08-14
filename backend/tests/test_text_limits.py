@@ -80,6 +80,23 @@ class TestIdentifiersAreNotProse:
     downstream agrees by construction.
     """
 
+    def test_two_senders_sharing_a_prefix_stay_two_people(self) -> None:
+        """The failure that plain truncation creates, and the reason this is a
+        digest rather than a slice.
+
+        Two addresses identical for their first 254 characters clipped to the
+        same string, so they resolved to one lead — one person's messages in
+        another person's thread, with the agent replying to both. That is worse
+        than losing a message, and it can be arranged on purpose.
+        """
+        from app.services._common import clip_identifier
+
+        alice = "c" * 254 + "-alice@example.invalid"
+        bob = "c" * 254 + "-bob@example.invalid"
+        assert clip_identifier(alice) != clip_identifier(bob)
+        assert len(clip_identifier(alice)) == 254
+        assert clip_identifier(alice) == clip_identifier(alice)
+
     def test_an_over_long_identifier_is_clipped_on_arrival(self) -> None:
         from app.services._common import ParsedMessage
 

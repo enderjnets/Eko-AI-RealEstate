@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.46.5";
+export const CURRENT_VERSION = "0.46.6";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -15,7 +15,7 @@ export interface VersionEntry {
 
 export const CHANGELOG: VersionEntry[] = [
   {
-    version: "0.46.5",
+    version: "0.46.6",
     date: "2026-08-14",
     title: {
       en: "What you learn on a call now does something",

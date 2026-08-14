@@ -30,6 +30,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services._common import clip_identifier
+
 log = logging.getLogger(__name__)
 
 __all__ = [
@@ -105,10 +107,10 @@ def parse_end_of_call_report(payload: dict[str, Any]) -> VoiceCallReport | None:
         return None
 
     number = _customer_number(msg)
-    # Clipped for the same reason as the chat path: `leads.phone` is 254 and
-    # UNIQUE, so a longer value written trimmed but looked up whole never
-    # matches itself again. A caller id is identity, not prose.
-    from_identifier = (number or f"voice:{call_id}")[:254]
+    # Same treatment as the chat path, and for the same two reasons: written
+    # whole it can exceed `leads.phone` (254, UNIQUE) and take the transcript
+    # down with it; truncated, two callers sharing a prefix become one lead.
+    from_identifier = clip_identifier(number or f"voice:{call_id}")
 
     artifact = msg.get("artifact") if isinstance(msg.get("artifact"), dict) else {}
     raw_turns = artifact.get("messages")

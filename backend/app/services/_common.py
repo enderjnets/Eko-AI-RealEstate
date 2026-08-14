@@ -1,10 +1,25 @@
 """Shared types across channel services (WhatsApp, Email, SMS, Voice)."""
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from typing import Literal
 
 ChannelName = Literal["whatsapp", "email", "sms", "voice"]
+
+
+def clip_identifier(identifier: str) -> str:
+    """Make an identifier fit `leads.phone` (254, UNIQUE) without losing who it is.
+
+    Kept whole it can fail the write and roll back the transaction holding the
+    customer's words; truncated, two senders sharing a prefix collapse into one
+    lead and one person's messages land in another's thread. A readable head
+    plus a digest of the whole value is neither.
+    """
+    if len(identifier) <= 254:
+        return identifier
+    digest = hashlib.sha256(identifier.encode("utf-8")).hexdigest()[:40]
+    return f"{identifier[:213]}~{digest}"
 
 
 @dataclass(frozen=True)
@@ -31,20 +46,25 @@ class ParsedMessage:
     extra: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Clip the identifier here, where the message enters the system.
+        """Make the identifier fit the column without losing who it is.
 
         `leads.phone` is 254 characters and UNIQUE per organisation, and it is
-        the key everything looks a person up by. Trimming it at the model — as
-        the text limits do for free-text columns — makes the write and the
-        lookup disagree: the first message stores a 254-character row, the
-        second searches for the original 280-character value, finds nothing,
-        tries to insert, and hits the unique index. That turns "the first
-        message is lost" into "every message after the first is lost", which is
-        worse for being harder to notice.
+        the key everything looks a person up by. Two failures live here and
+        they pull in opposite directions:
 
-        An identifier is identity, not prose, so it gets normalised once, at the
-        boundary, and everything downstream agrees by construction.
+        - Store it whole and Postgres refuses the write, which rolls back the
+          transaction holding the customer's message. The provider replays an
+          identical payload, so every retry fails the same way.
+        - Truncate it and two senders sharing a 254-character prefix become one
+          lead. That is worse than losing a message: one person's words land in
+          another person's thread, and it can be arranged deliberately.
+
+        So an over-long identifier keeps a readable head and a digest of the
+        whole thing. It fits, it is deterministic, and two different senders
+        stay two different people. Nothing can reply to an address that long
+        anyway — it is already invalid under RFC 5321, whose own limit is 254.
         """
-        if len(self.from_identifier) > 254:
-            object.__setattr__(self, "from_identifier", self.from_identifier[:254])
+        object.__setattr__(
+            self, "from_identifier", clip_identifier(self.from_identifier)
+        )
 
