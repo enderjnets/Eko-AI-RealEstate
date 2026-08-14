@@ -649,3 +649,30 @@ async def test_lowering_the_maximum_below_a_stored_minimum_is_refused(
     finally:
         await engine.dispose()
         await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_call_writes_nothing_at_all(database_url: str) -> None:
+    """`register_call` flushes the CallLog before it validates the budget, so
+    the refusal happens with a row already in the transaction. If that were not
+    rolled back the call history would fill with calls that never saved, and
+    the advisor would see their failed attempt logged as if it had worked."""
+    lead_id = await _lead(database_url)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            lead.budget_min = Decimal("900000")
+            await s.commit()
+
+        async with await _client() as c:
+            r = await c.post(
+                f"/api/v1/leads/{lead_id}/calls",
+                json={"outcome": "follow_up", "budget_max": 1000, "note": "should vanish"},
+            )
+            assert r.status_code == 400, r.text
+            history = (await c.get(f"/api/v1/leads/{lead_id}/calls")).json()
+        assert history == [], "a rejected call was recorded anyway"
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
