@@ -29,7 +29,16 @@ function isPast(iso: string): boolean {
   return new Date(iso).getTime() < Date.now();
 }
 
-export function VisitsSection({ leadId }: { leadId: number }) {
+export function VisitsSection({
+  leadId,
+  reloadSignal = 0,
+}: {
+  leadId: number;
+  /** Bumped when a booking is made elsewhere on the page. Without it the list
+      below stays empty after booking from the matched listings, which invites
+      a second attempt — and that creates a second real Cal.com booking. */
+  reloadSignal?: number;
+}) {
   const { t, locale } = useI18n();
   const isViewer = useViewer();
   const [visits, setVisits] = useState<Visit[] | null>(null);
@@ -50,7 +59,7 @@ export function VisitsSection({ leadId }: { leadId: number }) {
 
   useEffect(() => {
     refresh();
-  }, [refresh]);
+  }, [refresh, reloadSignal]);
 
   async function handleCancel(visitId: number) {
     if (!confirm(t("visits.confirmCancel"))) return;

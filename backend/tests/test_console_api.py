@@ -529,3 +529,123 @@ async def test_an_email_pasted_with_a_leading_space_still_saves(
     finally:
         await engine.dispose()
         await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_failure_from_long_ago_is_not_on_todays_list(
+    database_url: str,
+) -> None:
+    """FAILED is terminal — nothing ever moves a follow-up back out of it — so
+    without a window the section becomes an ever-growing archive and the rows
+    that are stuck today fall off the end of the page."""
+    lead_id = await _lead(database_url, status=LeadStatus.QUALIFIED)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            fu = FollowUp(
+                lead_id=lead_id,
+                kind=FollowUpKind.CALL_FOLLOW_UP,
+                status=FollowUpStatus.FAILED,
+                scheduled_for=datetime.now(UTC) - timedelta(days=90),
+            )
+            s.add(fu)
+            await s.commit()
+            # `updated_at` has onupdate=now(), so age it directly.
+            await s.execute(
+                text("UPDATE follow_ups SET updated_at = :t WHERE id = :i"),
+                {"t": datetime.now(UTC) - timedelta(days=90), "i": fu.id},
+            )
+            await s.commit()
+
+        async with await _client() as c:
+            body = (await c.get("/api/v1/console/today")).json()
+        assert [h for h in body["held"] if h["lead"]["id"] == lead_id] == []
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_row_that_failed_today_shows_even_if_it_was_due_weeks_ago(
+    database_url: str,
+) -> None:
+    """After a backlog the sweep picks up rows whose due date is weeks old and
+    fails them today. Windowing on the due date hid them from the moment they
+    broke, in the one place they could ever have appeared."""
+    lead_id = await _lead(database_url, status=LeadStatus.QUALIFIED)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            s.add(
+                FollowUp(
+                    lead_id=lead_id,
+                    kind=FollowUpKind.CALL_FOLLOW_UP,
+                    status=FollowUpStatus.FAILED,
+                    scheduled_for=datetime.now(UTC) - timedelta(days=45),
+                )
+            )
+            await s.commit()
+
+        async with await _client() as c:
+            body = (await c.get("/api/v1/console/today")).json()
+        mine = [h for h in body["held"] if h["lead"]["id"] == lead_id]
+        assert len(mine) == 1, "a failure from this morning was invisible"
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_booking_against_a_listing_that_no_longer_exists_is_refused(
+    database_url: str,
+) -> None:
+    """A match can be purged by the MLS sync between the card rendering and the
+    click. Writing the id blind hit the foreign key as a 500 — and on the
+    Cal.com route the booking is made first, so the lead would have received a
+    real calendar invite for a showing the CRM never recorded."""
+    lead_id = await _lead(database_url)
+    try:
+        async with await _client() as c:
+            r = await c.post(
+                "/api/v1/visits",
+                json={
+                    "lead_id": lead_id,
+                    "title": "Showing",
+                    "scheduled_at": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
+                    "property_id": 999_999_999,
+                },
+            )
+        assert r.status_code == 400, r.text
+        assert "unknown_property" in r.text
+    finally:
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_lowering_the_maximum_below_a_stored_minimum_is_refused(
+    database_url: str,
+) -> None:
+    """The console only offers a maximum, so the inversion arrives one field at
+    a time and any body-level check passes trivially — while the lead is left
+    with a range that can never match anything."""
+    lead_id = await _lead(database_url)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            lead.budget_min = Decimal("900000")
+            await s.commit()
+
+        async with await _client() as c:
+            r = await c.post(
+                f"/api/v1/leads/{lead_id}/calls",
+                json={"outcome": "follow_up", "budget_max": 1000},
+            )
+        assert r.status_code == 400, r.text
+
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            assert lead.budget_max is None, "an inverted range was stored anyway"
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)

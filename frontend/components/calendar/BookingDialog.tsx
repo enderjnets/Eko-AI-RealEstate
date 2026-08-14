@@ -61,7 +61,11 @@ export function BookingDialog({
   // The dialog stays mounted between openings, so the address from the last
   // listing would otherwise still be sitting in the field for the next one.
   useEffect(() => {
-    if (open) setAddress(property?.address ?? "");
+    if (!open) return;
+    setAddress(property?.address ?? "");
+    // Notes too. They are about one specific viewing, so carrying them over
+    // sends the note written for listing A out with listing B's booking.
+    setNotes("");
   }, [open, property?.address]);
 
   useEffect(() => {

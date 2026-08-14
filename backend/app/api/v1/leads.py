@@ -27,7 +27,7 @@ from app.models import (
 )
 from app.models.lead import PreferredChannel
 from app.services._common import ParsedMessage
-from app.services.calls import CallUpdates, register_call
+from app.services.calls import CallUpdates, InvertedBudget, register_call
 from app.services.conversation import (
     generate_reply_suggestions,
     handle_inbound_message,
@@ -529,30 +529,33 @@ async def log_call(
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    result = await register_call(
-        lead,
-        body.outcome,
-        db,
-        logged_by=current_email(request),
-        note=body.note,
-        updates=CallUpdates(
-            intent=body.intent,
-            urgency=body.urgency,
-            zone=body.zone,
-            property_type=body.property_type,
-            budget_min=Decimal(str(body.budget_min))
-            if body.budget_min is not None
-            else None,
-            budget_max=Decimal(str(body.budget_max))
-            if body.budget_max is not None
-            else None,
-            preferred_channel=body.preferred_channel,
-            name=body.name,
-            email=body.email,
-        ),
-        follow_up_in_days=body.follow_up_in_days,
-        asked_for_texts=body.asked_for_texts,
-    )
+    try:
+        result = await register_call(
+            lead,
+            body.outcome,
+            db,
+            logged_by=current_email(request),
+            note=body.note,
+            updates=CallUpdates(
+                intent=body.intent,
+                urgency=body.urgency,
+                zone=body.zone,
+                property_type=body.property_type,
+                budget_min=Decimal(str(body.budget_min))
+                if body.budget_min is not None
+                else None,
+                budget_max=Decimal(str(body.budget_max))
+                if body.budget_max is not None
+                else None,
+                preferred_channel=body.preferred_channel,
+                name=body.name,
+                email=body.email,
+            ),
+            follow_up_in_days=body.follow_up_in_days,
+            asked_for_texts=body.asked_for_texts,
+        )
+    except InvertedBudget as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return CallResultOut(
         call=CallOut.model_validate(result.call),
         score=result.score,

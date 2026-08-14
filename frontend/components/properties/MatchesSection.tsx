@@ -8,7 +8,14 @@ import { PropertyCard, formatPrice } from "@/components/properties/PropertyCard"
 import { useI18n } from "@/lib/i18n";
 import { BookingDialog } from "@/components/calendar/BookingDialog";
 
-export function MatchesSection({ leadId }: { leadId: number }) {
+export function MatchesSection({
+  leadId,
+  onBooked,
+}: {
+  leadId: number;
+  /** Told when a showing is booked from here, so the visits list refreshes. */
+  onBooked?: () => void;
+}) {
   const router = useRouter();
   const { t, lang } = useI18n();
 
@@ -132,7 +139,10 @@ export function MatchesSection({ leadId }: { leadId: number }) {
         leadId={leadId}
         property={bookingFor}
         onClose={() => setBookingFor(null)}
-        onBooked={() => setBookingFor(null)}
+        onBooked={() => {
+          setBookingFor(null);
+          onBooked?.();
+        }}
       />
     </section>
   );

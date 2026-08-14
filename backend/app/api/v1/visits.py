@@ -24,6 +24,7 @@ from app.models import (
     FollowUp,
     FollowUpStatus,
     Lead,
+    Property,
     Visit,
     VisitStatus,
 )
@@ -186,6 +187,27 @@ async def _busy_starts(
     return {r for r in rows if r is not None}
 
 
+async def _valid_property_or_400(property_id: int | None, db: AsyncSession) -> int | None:
+    """Refuse a listing id that does not exist, before anything irreversible.
+
+    A match can be purged by the MLS sync between the moment the card renders
+    and the moment somebody clicks "book a showing". Writing the id blind hit
+    the foreign key and surfaced as a 500 — and in `book_slot` the Cal.com
+    booking is created first, so the lead received a real calendar invite for a
+    showing the CRM never recorded and nothing reconciles.
+    """
+    if property_id is None:
+        return None
+    exists = (
+        await db.execute(select(Property.id).where(Property.id == property_id))
+    ).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(
+            status_code=400, detail="unknown_property: that listing no longer exists"
+        )
+    return property_id
+
+
 # ── Endpoints ──────────────────────────────────────────────────────────
 
 
@@ -228,6 +250,7 @@ async def book_slot(
             status_code=409,
             detail="lead_opted_out: this person asked not to be contacted",
         )
+    property_id = await _valid_property_or_400(body.property_id, db)
     tz = body.timezone or await _office_tz(db)
 
     # Email-or-phone heuristic: lead.phone holds an email when channel is email.
@@ -261,7 +284,7 @@ async def book_slot(
         duration_minutes=booking.duration_minutes,
         timezone=tz,
         property_address=body.property_address,
-        property_id=body.property_id,
+        property_id=property_id,
         meeting_url=booking.meeting_url,
         notes=body.notes,
     )
@@ -427,7 +450,7 @@ async def create_manual_event(
         duration_minutes=body.duration_minutes,
         timezone=tz,
         property_address=body.property_address,
-        property_id=body.property_id,
+        property_id=await _valid_property_or_400(body.property_id, db),
         notes=body.notes,
     )
     db.add(visit)

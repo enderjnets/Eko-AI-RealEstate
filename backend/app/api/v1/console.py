@@ -154,7 +154,13 @@ async def today(
                         ),
                         and_(
                             FollowUp.status == FollowUpStatus.FAILED,
-                            FollowUp.scheduled_for >= now - timedelta(days=FAILED_WINDOW_DAYS),
+                            # Measured on when it FAILED, not when it was due.
+                            # After a backlog or a worker outage the sweep
+                            # picks up rows whose due date is weeks old and
+                            # fails them today — and on `scheduled_for` those
+                            # were invisible here from the moment they broke,
+                            # in the one place they could ever have appeared.
+                            FollowUp.updated_at >= now - timedelta(days=FAILED_WINDOW_DAYS),
                         ),
                     ),
                     or_(
@@ -163,9 +169,11 @@ async def today(
                     ),
                 )
             )
-            # Most recent first. Sorting by status put FAILED at the head of
-            # every page, so the oldest dead rows crowded out the live ones.
-            .order_by(FollowUp.scheduled_for.desc(), FollowUp.attempts.desc())
+            # Most recently touched first. Sorting by status put FAILED at the
+            # head of every page, so the oldest dead rows crowded out the live
+            # ones; sorting on the due date has the same flaw as filtering on
+            # it, since a row that failed this morning can be weeks overdue.
+            .order_by(FollowUp.updated_at.desc(), FollowUp.attempts.desc())
             .limit(limit)
         )
     ).all()

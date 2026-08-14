@@ -47,6 +47,7 @@ export function LeadDetail({ leadId }: { leadId: number }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [marking, setMarking] = useState(false);
+  const [visitsReload, setVisitsReload] = useState(0);
 
   // Reload just the timeline — called after the composer sends, so the new
   // outbound shows immediately (router.refresh() doesn't re-run this client effect).
@@ -308,10 +309,10 @@ export function LeadDetail({ leadId }: { leadId: number }) {
         </div>
       )}
 
-      <MatchesSection leadId={lead.id} />
+      <MatchesSection leadId={lead.id} onBooked={() => setVisitsReload((n) => n + 1)} />
 
       <div id="visits">
-        <VisitsSection leadId={lead.id} />
+        <VisitsSection leadId={lead.id} reloadSignal={visitsReload} />
       </div>
     </>
   );

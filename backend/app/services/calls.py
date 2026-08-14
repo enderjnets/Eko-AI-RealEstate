@@ -69,6 +69,10 @@ class CallUpdates:
     email: str | None = None
 
 
+class InvertedBudget(ValueError):
+    """The budget the call would leave behind reads high-to-low."""
+
+
 @dataclass(frozen=True)
 class CallResult:
     call: CallLog
@@ -113,6 +117,23 @@ def _apply(lead: Lead, updates: CallUpdates) -> None:
             if not value:
                 continue
         setattr(lead, field.name, value)
+
+
+def _guard_budget_order(lead: Lead, updates: CallUpdates) -> None:
+    """Check the range the call would LEAVE, not the one it carries.
+
+    The console only offers a maximum, so an advisor lowering it below a
+    minimum captured earlier sends one field and passes any body-level check
+    trivially — while the lead ends up with an inverted range, which is exactly
+    the empty result set `match_properties_for_lead` would then return, with
+    nothing to tell anybody why.
+    """
+    low = updates.budget_min if updates.budget_min is not None else lead.budget_min
+    high = updates.budget_max if updates.budget_max is not None else lead.budget_max
+    if low is not None and high is not None and low > high:
+        raise InvertedBudget(
+            f"budget {low} to {high} reads high to low; nothing would ever match"
+        )
 
 
 def _record_verbal_consent(lead: Lead, *, who: str | None, when: datetime) -> bool:
@@ -197,6 +218,7 @@ async def register_call(
     # to exist. Flush rather than commit: one call is one transaction.
     await db.flush()
 
+    _guard_budget_order(lead, updates)
     _apply(lead, updates)
 
     # Order matters: an outcome of do_not_contact sets opted_out_at below, and
