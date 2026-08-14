@@ -135,3 +135,39 @@ class TestIdentifiersAreNotProse:
             from_name="Someone", content="hello",
         )
         assert parsed.from_identifier == "+13035550100"
+
+
+class TestTheIdempotencyKey:
+    """`messages.external_id` is UNIQUE per organisation and it is the key that
+    answers "have we already handled this?". Both ways of getting it wrong are
+    silent, and one of them looks like success."""
+
+    def test_two_different_provider_ids_stay_two_messages(self) -> None:
+        # Truncated, a message whose id shares a prefix with another is filed
+        # as already-seen: the customer wrote, we answered nothing, and there
+        # is no error anywhere to notice.
+        from app.models import Message
+
+        first = Message(external_id="q" * 254 + "-one")
+        second = Message(external_id="q" * 254 + "-two")
+        assert first.external_id != second.external_id
+        assert len(first.external_id) == 254
+
+    def test_the_lookup_and_the_stored_value_agree(self) -> None:
+        # The "seen this already?" query runs before the row exists, so it uses
+        # the parsed value while the row keeps the model's. If those disagree,
+        # every redelivery looks new and the customer gets answered twice.
+        from app.models import Message
+        from app.services._common import ParsedMessage
+
+        raw = "w" * 300
+        parsed = ParsedMessage(
+            channel="whatsapp", external_id=raw, from_identifier="+13035550001",
+            from_name="Someone", content="hello",
+        )
+        assert parsed.external_id == Message(external_id=raw).external_id
+
+    def test_an_ordinary_provider_id_is_untouched(self) -> None:
+        from app.models import Message
+
+        assert Message(external_id="wamid.HBgLMTM=").external_id == "wamid.HBgLMTM="

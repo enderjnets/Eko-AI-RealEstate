@@ -67,4 +67,9 @@ class ParsedMessage:
         object.__setattr__(
             self, "from_identifier", clip_identifier(self.from_identifier)
         )
+        # The provider's message id is the idempotency key, and the lookup that
+        # decides "have we seen this already?" happens before the row is
+        # written — so it has to be normalised here too, or the search and the
+        # stored value disagree and every replay looks new.
+        object.__setattr__(self, "external_id", clip_identifier(self.external_id))
 

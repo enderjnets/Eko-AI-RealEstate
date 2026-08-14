@@ -14,7 +14,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db.base import Base, pg_enum
 from app.db.text_limits import clip_string_columns
@@ -119,14 +119,29 @@ class Message(Base):
     # customer actually said. See `app/db/text_limits.py`. A test walks this
     # table and fails if a bounded column is missing from the list, because
     # forgetting one is exactly how this kept happening.
+    # `external_id` is deliberately absent from this list: it is the
+    # idempotency key, UNIQUE per organisation, so a plain slice makes two
+    # distinct provider ids collide and the second message is filed as a
+    # duplicate that never happened. It gets the digest treatment below.
     _clip = clip_string_columns(
         "direction",
         "sender",
-        "external_id",
         "delivery_status",
         "last_error",
         "subject",
         "llm_provider",
         "llm_model",
     )
+
+    @validates("external_id")
+    def _clip_external_id(self, _key: str, value: object) -> object:
+        """Keep two different provider ids two different messages.
+
+        This is the idempotency key. Truncating it means a message whose id
+        shares a prefix with another is silently filed as already-seen — the
+        customer wrote, we answered nothing, and there is no error anywhere.
+        """
+        from app.services._common import clip_identifier  # local: avoids a cycle
+
+        return clip_identifier(value) if isinstance(value, str) else value
 
