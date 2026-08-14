@@ -51,8 +51,11 @@ class LeadPatch(BaseModel):
     status: LeadStatus | None = None
     intent: LeadIntent | None = None
     zone: str | None = None
-    budget_min: Decimal | None = None
-    budget_max: Decimal | None = None
+    # Same bounds as the call console. A budget is money: negative is
+    # meaningless, and anything past ten digits overflows NUMERIC(12,2) and
+    # surfaces as a 500 from the driver rather than a refusal.
+    budget_min: Decimal | None = Field(default=None, ge=0, le=9_999_999_999)
+    budget_max: Decimal | None = Field(default=None, ge=0, le=9_999_999_999)
     property_type: str | None = None
     urgency: str | None = None
     human_takeover: bool | None = None
@@ -369,6 +372,21 @@ async def patch_lead(
     updates = body.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
+
+    # A range can be inverted one field at a time, so the check has to compare
+    # what the patch would LEAVE BEHIND, not what it carries. The lead then
+    # matches nothing for ever and the matches page reports zero results without
+    # explaining why — the same silent dead end the call console guards against.
+    low = updates.get("budget_min", row.budget_min)
+    high = updates.get("budget_max", row.budget_max)
+    if low is not None and high is not None and low > high:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "inverted_budget: that would leave the minimum above the maximum, "
+                "and the lead would stop matching anything"
+            ),
+        )
 
     for field, value in updates.items():
         setattr(row, field, value)

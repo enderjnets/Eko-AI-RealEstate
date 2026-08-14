@@ -21,11 +21,13 @@ analytics page.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Select, and_, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.base import get_db
 from app.models import CallLog, FollowUp, FollowUpStatus, Lead, LeadStatus
@@ -127,56 +129,69 @@ async def today(
         for fu, lead in task_rows
     ]
 
-    # 2. Held: due, sendable in principle, but the consent gate refused every
-    # channel. `attempts` is the hold counter the worker increments.
-    held_rows = (
-        await db.execute(
-            _open_leads(
-                select(FollowUp, Lead)
-                .join(Lead, Lead.id == FollowUp.lead_id)
-                .where(
-                    # FAILED belongs here as much as PENDING — a provider
-                    # outage marks every due message FAILED, and with only
-                    # PENDING the list stayed reassuringly empty on the one
-                    # morning it should have been full.
-                    #
-                    # But FAILED is terminal: nothing in the codebase ever
-                    # moves a follow-up back out of it. Unbounded, every
-                    # failure that has ever happened would sit here for ever,
-                    # and once fifty had accumulated the rows that are stuck
-                    # *today* would fall off the end of the page. Recent
-                    # failures are news; a failure from March is history, and
-                    # history belongs on the analytics page.
-                    or_(
-                        and_(
-                            FollowUp.status == FollowUpStatus.PENDING,
-                            FollowUp.attempts > 0,
+    # 2. Held: due, sendable in principle, but not getting through — either the
+    # consent gate refused every channel (`attempts` is the hold counter the
+    # worker increments) or the sends themselves failed.
+    #
+    # Each kind gets its own budget. Sharing one `limit` across both means a
+    # burst of one buries the other entirely, and a burst is exactly when this
+    # page matters: a provider outage fails hundreds of rows in one sweep, and
+    # every one of them is newer than the consent hold that has been sitting
+    # there since yesterday. Ordering cannot fix that — whichever column leads,
+    # the losing category is the one that disappears. Two queries can.
+    async def _held(status_clause: ColumnElement[bool], budget: int) -> list[Any]:
+        return (
+            await db.execute(
+                _open_leads(
+                    select(FollowUp, Lead)
+                    .join(Lead, Lead.id == FollowUp.lead_id)
+                    .where(
+                        status_clause,
+                        or_(
+                            Lead.preferred_channel.is_(None),
+                            Lead.preferred_channel.in_(AUTOMATED_PREFERENCES),
                         ),
-                        and_(
-                            FollowUp.status == FollowUpStatus.FAILED,
-                            # Measured on when it FAILED, not when it was due.
-                            # After a backlog or a worker outage the sweep
-                            # picks up rows whose due date is weeks old and
-                            # fails them today — and on `scheduled_for` those
-                            # were invisible here from the moment they broke,
-                            # in the one place they could ever have appeared.
-                            FollowUp.updated_at >= now - timedelta(days=FAILED_WINDOW_DAYS),
-                        ),
-                    ),
-                    or_(
-                        Lead.preferred_channel.is_(None),
-                        Lead.preferred_channel.in_(AUTOMATED_PREFERENCES),
-                    ),
+                    )
                 )
+                # Most recently touched first. Sorting by status put FAILED at the
+                # head of every page, so the oldest dead rows crowded out the live
+                # ones; sorting on the due date has the same flaw as filtering on
+                # it, since a row that failed this morning can be weeks overdue.
+                .order_by(FollowUp.updated_at.desc(), FollowUp.attempts.desc())
+                .limit(budget)
             )
-            # Most recently touched first. Sorting by status put FAILED at the
-            # head of every page, so the oldest dead rows crowded out the live
-            # ones; sorting on the due date has the same flaw as filtering on
-            # it, since a row that failed this morning can be weeks overdue.
-            .order_by(FollowUp.updated_at.desc(), FollowUp.attempts.desc())
-            .limit(limit)
-        )
-    ).all()
+        ).all()
+
+    # PENDING holds are the ones a person can act on right now (ask for consent,
+    # or pick up the phone), so they must never be crowded out by delivery
+    # failures — which is precisely what a shared limit did.
+    hold_rows = await _held(
+        and_(FollowUp.status == FollowUpStatus.PENDING, FollowUp.attempts > 0),
+        limit,
+    )
+    # FAILED belongs here as much as PENDING — a provider outage marks every due
+    # message FAILED, and with only PENDING the list stayed reassuringly empty
+    # on the one morning it should have been full.
+    #
+    # But FAILED is terminal: nothing in the codebase ever moves a follow-up back
+    # out of it. Unbounded, every failure that ever happened would sit here for
+    # ever. Recent failures are news; a failure from March is history, and
+    # history belongs on the analytics page. The window is measured on when it
+    # FAILED, not when it was due: after a backlog the sweep picks up rows weeks
+    # overdue and fails them today, and on `scheduled_for` those were invisible
+    # from the moment they broke, in the one place they could have appeared.
+    failed_rows = await _held(
+        and_(
+            FollowUp.status == FollowUpStatus.FAILED,
+            FollowUp.updated_at >= now - timedelta(days=FAILED_WINDOW_DAYS),
+        ),
+        limit,
+    )
+    held_rows = sorted(
+        hold_rows + failed_rows,
+        key=lambda row: (row[0].updated_at, row[0].attempts),
+        reverse=True,
+    )[: limit * 2]
 
     held = [
         HeldFollowUp(

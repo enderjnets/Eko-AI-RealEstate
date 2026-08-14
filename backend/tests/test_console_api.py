@@ -676,3 +676,134 @@ async def test_a_rejected_call_writes_nothing_at_all(database_url: str) -> None:
     finally:
         await engine.dispose()
         await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_burst_of_failures_does_not_bury_the_consent_holds(
+    database_url: str,
+) -> None:
+    """The two kinds share one page. A provider outage fails every due message
+    in a single sweep, and each of those rows is newer than a consent hold that
+    has been waiting since yesterday — so on one shared budget the holds fall
+    off the end on the exact morning the page matters most. Ordering cannot fix
+    it: whichever column leads, the losing kind is the one that vanishes."""
+    held_lead = await _lead(database_url, status=LeadStatus.QUALIFIED)
+    noisy_leads: list[int] = []
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            # Yesterday's hold: consent refused, nothing sent, a person can act.
+            s.add(
+                FollowUp(
+                    lead_id=held_lead,
+                    kind=FollowUpKind.CALL_FOLLOW_UP,
+                    status=FollowUpStatus.PENDING,
+                    attempts=1,
+                    scheduled_for=datetime.now(UTC) - timedelta(days=1),
+                )
+            )
+            await s.commit()
+            await s.execute(
+                text(
+                    "UPDATE follow_ups SET updated_at = :t WHERE lead_id = :i",
+                ),
+                {"t": datetime.now(UTC) - timedelta(days=1), "i": held_lead},
+            )
+            await s.commit()
+
+        # This morning's outage, larger than one page.
+        for _ in range(60):
+            noisy_leads.append(await _lead(database_url, status=LeadStatus.QUALIFIED))
+        async with Session() as s:
+            for lid in noisy_leads:
+                s.add(
+                    FollowUp(
+                        lead_id=lid,
+                        kind=FollowUpKind.CALL_FOLLOW_UP,
+                        status=FollowUpStatus.FAILED,
+                        scheduled_for=datetime.now(UTC) - timedelta(hours=2),
+                    )
+                )
+            await s.commit()
+
+        async with await _client() as c:
+            body = (await c.get("/api/v1/console/today?limit=50")).json()
+
+        held_ids = [h["lead"]["id"] for h in body["held"]]
+        assert held_lead in held_ids, "the consent hold was buried by the outage"
+        assert any(lid in held_ids for lid in noisy_leads), "the failures vanished too"
+    finally:
+        await engine.dispose()
+        for lid in [held_lead, *noisy_leads]:
+            await _cleanup(database_url, lid)
+
+
+@pytest.mark.asyncio
+async def test_the_edit_form_cannot_invert_a_budget_either(database_url: str) -> None:
+    """The call console grew four defences around budgets and this route, which
+    writes the same two columns, had none — so the harm they describe stayed
+    reachable one door over. An inverted range makes the matches page return
+    zero results with no explanation."""
+    lead_id = await _lead(database_url)
+    engine, Session = _session(database_url)
+    try:
+        async with await _client() as c:
+            inverted = await c.patch(
+                f"/api/v1/leads/{lead_id}",
+                json={"budget_min": 900000, "budget_max": 100000},
+            )
+            assert inverted.status_code == 400, inverted.text
+
+            negative = await c.patch(f"/api/v1/leads/{lead_id}", json={"budget_max": -50000})
+            assert negative.status_code == 422, negative.text
+
+            # NUMERIC(12,2) — this used to reach the driver and 500.
+            huge = await c.patch(f"/api/v1/leads/{lead_id}", json={"budget_max": 1e14})
+            assert huge.status_code == 422, huge.text
+
+        async with Session() as s:
+            lead = await s.get(Lead, lead_id)
+            assert lead.budget_min is None and lead.budget_max is None
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_ghost_listing_is_refused_before_calcom_is_called(
+    database_url: str,
+) -> None:
+    """This is the half that matters. On the slot route the calendar booking is
+    created BEFORE the row is written, so an unchecked id meant the lead got a
+    real invite by email for a showing the CRM never recorded — and nothing
+    reconciles the two. The manual route only risked a 500."""
+    lead_id = await _lead(database_url)
+    engine, Session = _session(database_url)
+    try:
+        # A fixed future time, not one from the slots endpoint: what is being
+        # tested is the order of the guard against the Cal.com call, and going
+        # through the slots list makes the test depend on the office hours that
+        # other tests in this suite happily rewrite.
+        when = (datetime.now(UTC) + timedelta(days=3)).replace(
+            minute=0, second=0, microsecond=0
+        )
+        async with await _client() as c:
+            r = await c.post(
+                f"/api/v1/leads/{lead_id}/calendar/book",
+                json={
+                    "start_time": when.isoformat(),
+                    "duration_minutes": 30,
+                    "property_id": 999_999_999,
+                },
+            )
+        assert r.status_code == 400, r.text
+        assert "unknown_property" in r.text
+
+        async with Session() as s:
+            rows = (
+                await s.execute(select(Visit).where(Visit.lead_id == lead_id))
+            ).scalars().all()
+        assert rows == [], "a visit was written for a listing that does not exist"
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)

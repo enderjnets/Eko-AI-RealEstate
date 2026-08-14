@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CalendarCheck, CalendarPlus, Loader2, MapPin, X } from "lucide-react";
 import { type Visit, visitsApi } from "@/lib/api";
 import { VisitStatusBadge } from "@/components/ui/VisitStatusBadge";
@@ -47,14 +47,28 @@ export function VisitsSection({
   const [bookingOpen, setBookingOpen] = useState(false);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
 
+  // Two refreshes can now be in flight at once — cancel a visit, then book one
+  // from the matched listings — and without a guard the slower first response
+  // lands last and reverts the list to how it looked before the booking. That
+  // is the exact appearance of failure that makes someone book a second time,
+  // and a second booking is a second real invite in the lead's inbox.
+  const latestRequest = useRef(0);
+
   const refresh = useCallback(() => {
+    const request = ++latestRequest.current;
     setLoading(true);
     setError(null);
     visitsApi
       .list(leadId)
-      .then((data) => setVisits(data))
-      .catch((e) => setError(String(e.message || e)))
-      .finally(() => setLoading(false));
+      .then((data) => {
+        if (request === latestRequest.current) setVisits(data);
+      })
+      .catch((e) => {
+        if (request === latestRequest.current) setError(String(e.message || e));
+      })
+      .finally(() => {
+        if (request === latestRequest.current) setLoading(false);
+      });
   }, [leadId]);
 
   useEffect(() => {
