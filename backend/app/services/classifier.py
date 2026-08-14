@@ -30,15 +30,55 @@ class IntentEntities(BaseModel):
     @field_validator("budget_min", "budget_max", mode="before")
     @classmethod
     def _coerce_numeric(cls, v: Any) -> Any:
+        """Whatever the model returns, produce a usable number or nothing.
+
+        Never raise. This runs on the inbound path: a `ValidationError` here
+        aborts the transaction that stores the customer's message, and since the
+        same message replays identically the provider's retries fail the same
+        way — the message is gone. Degrading to "no budget extracted" costs one
+        field; raising costs the conversation.
+        """
         if v is None or v == "" or (isinstance(v, str) and v.lower() in ("null", "none", "n/a")):
             return None
         if isinstance(v, str):
-            v = v.replace(".", "").replace(",", ".").replace("€", "").strip()
+            # Drop currency marks, spaces and stray words, keep the number.
+            s = re.sub(r"[^\d.,\-]", "", v)
+            if not s:
+                return None
+            # Both separators present: the rightmost is the decimal point.
+            # "1.200.000,50" is European, "1,200,000.50" is American.
+            if "." in s and "," in s:
+                s = (
+                    s.replace(".", "").replace(",", ".")
+                    if s.rfind(",") > s.rfind(".")
+                    else s.replace(",", "")
+                )
+            # One separator, grouped in threes: it is a thousands separator, in
+            # either convention. "450,000" meant 450000 and used to come out as
+            # 450 — off by a thousand, positive, in range, and so past every
+            # check downstream. This install writes prices the American way.
+            elif re.fullmatch(r"-?\d{1,3}(,\d{3})+", s):
+                s = s.replace(",", "")
+            elif re.fullmatch(r"-?\d{1,3}(\.\d{3})+", s):
+                s = s.replace(".", "")
+            elif "," in s:
+                s = s.replace(",", ".")  # European decimal comma
             try:
-                return float(v)
+                v = float(s)
             except ValueError:
                 return None
-        return v
+        try:
+            number = float(v)
+        except (TypeError, ValueError):
+            return None
+        # The database refuses negatives outright and overflows NUMERIC(12,2)
+        # past ten digits. Either would abort the inbound transaction, so a
+        # value that cannot be stored is discarded here instead — the same way
+        # `confidence` is clamped rather than rejected.
+        if number < 0 or number > 9_999_999_999:
+            log.warning("classifier returned an unusable budget (%s), ignoring it", v)
+            return None
+        return number
 
 
 class IntentResult(BaseModel):

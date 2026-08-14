@@ -937,3 +937,46 @@ async def test_the_page_returns_the_number_of_rows_it_was_asked_for(
         await engine.dispose()
         for lid in leads:
             await _cleanup(database_url, lid)
+
+
+@pytest.mark.asyncio
+async def test_a_follow_up_is_never_listed_twice(database_url: str) -> None:
+    """The two kinds are two separate statements, so they are two snapshots. A
+    row the worker flips PENDING→FAILED between them satisfies both predicates
+    and comes back twice, as two cards with contradictory badges — during the
+    outage this page exists for. Simulated here by matching both predicates at
+    once, which is what that race produces."""
+    lead_id = await _lead(database_url, status=LeadStatus.QUALIFIED)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            s.add(
+                FollowUp(
+                    lead_id=lead_id,
+                    kind=FollowUpKind.CALL_FOLLOW_UP,
+                    status=FollowUpStatus.PENDING,
+                    attempts=1,
+                    scheduled_for=datetime.now(UTC) - timedelta(hours=1),
+                )
+            )
+            await s.commit()
+
+        async with await _client() as c:
+            first = (await c.get("/api/v1/console/today")).json()
+        assert len([h for h in first["held"] if h["lead"]["id"] == lead_id]) == 1
+
+        # Now the same row is FAILED — the state the second query would see.
+        async with Session() as s:
+            await s.execute(
+                text("UPDATE follow_ups SET status = 'failed' WHERE lead_id = :i"),
+                {"i": lead_id},
+            )
+            await s.commit()
+
+        async with await _client() as c:
+            body = (await c.get("/api/v1/console/today")).json()
+        ids = [h["follow_up_id"] for h in body["held"]]
+        assert len(ids) == len(set(ids)), "the same follow-up was listed twice"
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)

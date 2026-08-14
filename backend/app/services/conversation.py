@@ -24,6 +24,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
+from decimal import Decimal
 from email.utils import parseaddr
 
 from sqlalchemy import select
@@ -1037,6 +1038,44 @@ async def _optout_language(
     return pick_supported_language(detect_language(parsed.content or ""), ("en", "es"))
 
 
+def merge_budget(
+    stored: tuple[Decimal | float | None, Decimal | float | None],
+    extracted: tuple[float | None, float | None],
+) -> tuple[Decimal | float | None, Decimal | float | None]:
+    """Reconcile what the classifier read with what the lead already holds.
+
+    Both ways of getting this wrong are silent, which is why it is worth having
+    on its own:
+
+    - A range the wrong way round matches no listing at all, and `/matches`
+      reports that as "nothing available" rather than "this record is broken".
+      The database refuses the pair outright, and that refusal would abort the
+      transaction storing the customer's message.
+    - A stale value that refuses to be corrected is just as bad in the other
+      direction: the lead says "between 100 and 300", an earlier guess left a
+      minimum of 500, and we keep showing them what they have just ruled out
+      however many times they repeat themselves.
+
+    So: a complete range in one message is the customer stating their budget,
+    and it wins. A single value only fills a gap, and only if it does not turn
+    the pair around.
+    """
+    low, high = stored
+    e_min, e_max = extracted
+
+    if e_min is not None and e_max is not None:
+        if e_min <= e_max:
+            return (e_min, e_max)
+        log.warning("classifier returned a backwards range (%s-%s), ignoring it", e_min, e_max)
+        return (low, high)
+
+    if e_min is not None and low is None and (high is None or e_min <= high):
+        low = e_min
+    if e_max is not None and high is None and (low is None or e_max >= low):
+        high = e_max
+    return (low, high)
+
+
 async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dict[str, int | str | bool]:
     """Process one inbound message (any channel) end-to-end. Returns a small status dict.
 
@@ -1334,20 +1373,34 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         # outright, which would abort this whole inbound message — so keep the
         # extraction and drop the half that makes it impossible, rather than
         # losing a customer's message to a bad guess.
-        low = e.budget_min if lead.budget_min is None else lead.budget_min
-        high = e.budget_max if lead.budget_max is None else lead.budget_max
-        if low is not None and high is not None and low > high:
-            log.warning(
-                "lead %s: ignoring an inverted budget from the classifier (%s–%s)",
-                lead.id,
-                low,
-                high,
-            )
-        else:
-            if e.budget_min is not None and lead.budget_min is None:
-                lead.budget_min = e.budget_min
-            if e.budget_max is not None and lead.budget_max is None:
-                lead.budget_max = e.budget_max
+        # Anything the `leads` constraints would reject is dropped here, before
+        # it can reach them. The classifier's own validator already does this,
+        # but that is a validator: it protects the values that happen to go
+        # through it. This is the line where the cost is paid — a rejected write
+        # aborts the transaction that stores the customer's message, and since
+        # the provider replays the same message every retry fails identically.
+        def _storable(value: float | None) -> float | None:
+            if value is None:
+                return None
+            if value < 0 or value > 9_999_999_999:
+                log.warning(
+                    "lead %s: dropping a budget the database would refuse (%s)",
+                    lead.id,
+                    value,
+                )
+                return None
+            return value
+
+        e = e.model_copy(
+            update={
+                "budget_min": _storable(e.budget_min),
+                "budget_max": _storable(e.budget_max),
+            }
+        )
+
+        lead.budget_min, lead.budget_max = merge_budget(
+            (lead.budget_min, lead.budget_max), (e.budget_min, e.budget_max)
+        )
         if e.property_type and not lead.property_type:
             lead.property_type = e.property_type
         if e.urgency and not lead.urgency:

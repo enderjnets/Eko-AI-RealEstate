@@ -2,6 +2,34 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.46.1] — 2026-08-14
+
+Corrección de una regresión que introduje en 0.46.0, y de las graves.
+
+### Corregido
+
+- **Un mensaje entrante ya no se pierde por un presupuesto imposible.** Las
+  restricciones de 0.46.0 cerraron un problema silencioso, pero el clasificador
+  lee texto libre con un modelo de lenguaje y no tenía límites: una extracción
+  negativa llegaba a la restricción, la restricción abortaba la transacción, y
+  esa transacción era la que guardaba **el mensaje del cliente**. Como el mismo
+  mensaje se reintenta igual, los reintentos del proveedor fallaban idénticos y
+  el mensaje se perdía del todo. Ahora un valor que la base no admitiría se
+  descarta antes —en el validador y otra vez en el punto de escritura— y se
+  pierde un campo en vez de una conversación.
+- **`"450,000"` valía 450.** La conversión de números estaba escrita para
+  formato europeo (`1.200.000,50`) y esta es una instalación en Colorado. El
+  resultado era positivo, en rango y no invertido, así que pasaba todos los
+  controles: el cliente quedaba emparejado con casas mil veces más baratas de
+  lo que pidió. Ahora se detectan las dos convenciones.
+- **Un mínimo viejo ya no bloquea para siempre el rango que el cliente acaba de
+  decir.** El arreglo de la ronda anterior descartaba las dos mitades si el
+  resultado quedaba al revés; con un mínimo obsoleto de 500 000, un cliente que
+  dijera "entre 100 y 300" no se guardaba nunca, repitiéndolo las veces que
+  fuera. Un rango completo en un mensaje es el cliente diciendo su presupuesto,
+  y manda.
+- La consola ya no puede listar el mismo seguimiento dos veces.
+
 ## [0.46.0] — 2026-08-14
 
 Seis rondas de auditoría adversarial sobre la consola de llamada. No hay

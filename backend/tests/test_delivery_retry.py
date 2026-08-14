@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy import select, text
 
 from app.db.base import get_bypass_session_factory, get_session_factory
+from app.models import LeadIntent
 from app.models.conversation import Conversation
 from app.models.lead import Lead
 from app.models.message import Message, MessageDirection, MessageSender, MessageStatus
@@ -571,5 +572,80 @@ async def test_a_queued_message_is_held_back_when_nothing_permits_sending_it() -
                 # attempt cap on its own if nothing changes.
                 assert row.next_attempt_at is not None, "retired a recoverable message"
                 assert row.send_attempts == 1
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_impossible_budget_does_not_cost_us_the_message() -> None:
+    """A regression I caused, and the worst kind.
+
+    Adding CHECK constraints to `leads` closed a silent data problem — a range
+    the wrong way round matches no house at all — but the classifier reads free
+    text with a language model and was bounded nowhere. A negative extraction
+    reached the constraint, the constraint aborted the transaction, and the
+    transaction was the one storing the customer's message. Deterministic, so
+    the provider's retries failed identically: the message was gone, and the
+    lead with it. One missing field is a far cheaper failure than that.
+    """
+    from app.services._common import ParsedMessage
+    from app.services.classifier import IntentEntities, IntentResult
+    from app.services.conversation import handle_inbound_message
+    from app.services.llm import LLMResult
+
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async def _reply(**kwargs: object) -> LLMResult:
+                return LLMResult(
+                    text="Happy to help.", provider="kimi", model="k2",
+                    input_tokens=1, output_tokens=1,
+                )
+
+            async def _classify(*a: object, **k: object) -> IntentResult:
+                # What a model actually does with "I don't want to go under
+                # 100k" — it reads the sign and hands back a negative.
+                return IntentResult(
+                    intent=LeadIntent.BUY,
+                    confidence=0.9,
+                    entities=IntentEntities.model_construct(
+                        budget_min=-50_000.0, budget_max=None, zone="Brickell"
+                    ),
+                )
+
+            async def _sent(*a: object, **k: object) -> tuple[str, None]:
+                return ("sent", None)
+
+            parsed = ParsedMessage(
+                channel="whatsapp",
+                external_id="wamid.budget-regression",
+                from_identifier="+13035557777",
+                from_name="A Lead",
+                content="Looking in Brickell, nothing under 100k",
+            )
+            async with get_session_factory()() as db:
+                with patch(
+                    "app.services.conversation.generate_reply", _reply
+                ), patch(
+                    "app.services.conversation.classify_intent", _classify
+                ), patch("app.services.conversation._dispatch_send", _sent):
+                    await handle_inbound_message(parsed, db)
+
+            async with get_session_factory()() as db:
+                stored = (
+                    await db.execute(
+                        select(Message).where(
+                            Message.external_id == "wamid.budget-regression"
+                        )
+                    )
+                ).scalar_one_or_none()
+                assert stored is not None, "the customer's message was destroyed"
+
+                lead = (
+                    await db.execute(select(Lead).where(Lead.org_id == ORG))
+                ).scalars().first()
+                assert lead is not None, "the lead was lost with the message"
+                assert lead.budget_min is None, "an unstorable budget was written anyway"
+                assert lead.zone == "Brickell", "the usable half of the extraction was dropped"
     finally:
         await _cleanup()
