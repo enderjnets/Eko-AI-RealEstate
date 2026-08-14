@@ -224,6 +224,21 @@ services:
         # a second agency exists, or /contact posts no form key and is refused.
         NEXT_PUBLIC_CAPTURE_FORM_KEY: ${NEXT_PUBLIC_CAPTURE_FORM_KEY:-}
         NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
+        # Public landing content — documented in .env.example. These have to be
+        # listed here as well as in the Dockerfile: a NEXT_PUBLIC_* that compose
+        # never passes is inlined as empty at build, so the page renders blanks
+        # while the .env file looks perfectly filled in.
+        NEXT_PUBLIC_LANDING_ADVISORS: ${NEXT_PUBLIC_LANDING_ADVISORS:-}
+        NEXT_PUBLIC_LANDING_BROKERAGE: ${NEXT_PUBLIC_LANDING_BROKERAGE:-}
+        NEXT_PUBLIC_LANDING_ADDRESS: ${NEXT_PUBLIC_LANDING_ADDRESS:-}
+        NEXT_PUBLIC_LANDING_PHONE: ${NEXT_PUBLIC_LANDING_PHONE:-}
+        NEXT_PUBLIC_LANDING_SMS: ${NEXT_PUBLIC_LANDING_SMS:-}
+        NEXT_PUBLIC_LANDING_EMAIL: ${NEXT_PUBLIC_LANDING_EMAIL:-}
+        NEXT_PUBLIC_LANDING_YEARS: ${NEXT_PUBLIC_LANDING_YEARS:-}
+        NEXT_PUBLIC_LANDING_MARKETS: ${NEXT_PUBLIC_LANDING_MARKETS:-}
+        NEXT_PUBLIC_LANDING_PORTRAIT: ${NEXT_PUBLIC_LANDING_PORTRAIT:-}
+        NEXT_PUBLIC_LANDING_BOOKING_URL: ${NEXT_PUBLIC_LANDING_BOOKING_URL:-}
+        NEXT_PUBLIC_LANDING_TESTIMONIALS: ${NEXT_PUBLIC_LANDING_TESTIMONIALS:-}
     container_name: eko-realestate-frontend
     restart: unless-stopped
     depends_on:

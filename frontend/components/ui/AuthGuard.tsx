@@ -12,7 +12,9 @@ import { useI18n } from "@/lib/i18n";
 // capture form — the whole point is that a stranger who followed a link from a
 // video reaches it, and bouncing them to a login screen would make the form
 // worse than not having one.
-const PUBLIC_PATHS = new Set(["/login", "/register", "/contact"]);
+// "/" is the public marketing landing — the whole point is that a stranger can
+// read it. Staff reach the dashboard at /login, which still lands on /leads.
+const PUBLIC_PATHS = new Set(["/", "/login", "/register", "/contact"]);
 
 /**
  * Gates the dashboard when AUTH_ENABLED. Calls /auth/me once per navigation; if

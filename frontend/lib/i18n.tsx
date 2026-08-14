@@ -499,6 +499,63 @@ const EN: Record<string, string> = {
   "time.hAgo": "{n} h ago",
   "time.dAgo": "{n} d ago",
   "time.wAgo": "{n} w ago",
+
+  // Public landing (/). Copy from the approved design; every name, number and
+  // address it renders comes from lib/landing.ts, never from these strings.
+  "landing.nav.book": "Book a consult",
+  "landing.hero.kicker": "Aspen · Roaring Fork Valley · Denver Metro",
+  "landing.hero.title": "Two markets, one team who knows both.",
+  "landing.hero.body":
+    "We advise buyers and sellers across Colorado — mountain-town luxury and the Denver metro — with the same attention on a $600K condo as on a $12M chalet. In English or Spanish.",
+  "landing.hero.cta": "Book a 15-min consult",
+  "landing.hero.callUs": "Or just call us",
+  "landing.stats.years": "Years combined in Colorado real estate",
+  "landing.stats.markets": "Markets, Roaring Fork to Denver metro",
+  "landing.how.eyebrow": "How we work",
+  "landing.how.title": "Fewer clients, handled properly.",
+  "landing.how.oneFile.title": "Two markets, one file",
+  "landing.how.oneFile.body":
+    "Selling in Aspen and buying in Denver? The same two advisors handle both ends — no handoff, no relearning your budget.",
+  "landing.how.price.title": "A price that holds up",
+  "landing.how.price.body":
+    "A written comp set before we list — sold, pending, and withdrawn — so the number survives negotiation instead of drifting down.",
+  "landing.how.network.title": "A global brokerage network",
+  "landing.how.network.body":
+    "Your listing goes in front of buyers well outside Colorado — where mountain property usually sells from.",
+  "landing.how.answered.title": "Answered, not queued",
+  "landing.how.answered.body":
+    "Messages get a real reply the same day, weekends included. Showing requests come back with confirmed times.",
+  "landing.reach.eyebrow": "Reach us",
+  "landing.reach.title": "Call, text, or email — the same two people answer.",
+  "landing.reach.body":
+    "No call center, no assistant screening you. Pick whichever channel suits you and you're speaking with an advisor.",
+  "landing.reach.call": "Call",
+  "landing.reach.callHint": "Best when there's a decision to make today",
+  "landing.reach.text": "Text",
+  "landing.reach.textHint": "Showing times and offer updates",
+  "landing.reach.email": "Email",
+  "landing.reach.emailHint": "Contracts, disclosures, comparables",
+  "landing.voices.eyebrow": "In their words",
+  "landing.consult.title": "Fifteen minutes, no pitch.",
+  "landing.consult.body":
+    "Tell us what you're trying to do and where. You'll leave the call knowing what your property is worth, or what your budget really buys in that neighborhood.",
+  "landing.form.name": "First name",
+  "landing.form.phone": "Phone",
+  "landing.form.email": "Email",
+  "landing.form.goal": "I'm…",
+  "landing.form.selling": "Selling",
+  "landing.form.buying": "Buying",
+  "landing.form.valuing": "Valuing",
+  "landing.form.submit": "Book the consult",
+  "landing.form.sending": "Sending…",
+  "landing.form.reassure": "Usually answered within the hour · Se habla español",
+  "landing.form.thanksTitle": "Got it — talk soon.",
+  "landing.form.thanksBody":
+    "We'll reach out to set the fifteen minutes. If it's urgent, call and you'll get a person.",
+  "landing.footer.role": "Real estate advisors",
+  "landing.footer.licensed": "Licensed in Colorado",
+  "landing.footer.equalHousing": "Equal Housing Opportunity",
+  "landing.footer.staffLogin": "Client login",
 };
 
 const ES: Record<string, string> = {
@@ -958,6 +1015,63 @@ const ES: Record<string, string> = {
   "time.hAgo": "hace {n} h",
   "time.dAgo": "hace {n} d",
   "time.wAgo": "hace {n} sem",
+
+  // Landing pública (/). Español neutro: el mercado hispano de Denver es
+  // mayoritariamente mexicano y centroamericano, no rioplatense.
+  "landing.nav.book": "Agendar asesoría",
+  "landing.hero.kicker": "Aspen · Valle Roaring Fork · Denver Metro",
+  "landing.hero.title": "Dos mercados, un equipo que conoce los dos.",
+  "landing.hero.body":
+    "Asesoramos a compradores y vendedores en todo Colorado — lujo de montaña y área metropolitana de Denver — con la misma atención en un condominio de $600K que en un chalet de $12M. En inglés o español.",
+  "landing.hero.cta": "Agenda 15 minutos",
+  "landing.hero.callUs": "O llámanos ahora",
+  "landing.stats.years": "Años combinados en bienes raíces en Colorado",
+  "landing.stats.markets": "Mercados, del valle Roaring Fork a Denver",
+  "landing.how.eyebrow": "Cómo trabajamos",
+  "landing.how.title": "Menos clientes, atendidos como se debe.",
+  "landing.how.oneFile.title": "Dos mercados, un expediente",
+  "landing.how.oneFile.body":
+    "¿Vendes en Aspen y compras en Denver? Los mismos dos asesores llevan las dos puntas: sin traspasos y sin volver a explicar tu presupuesto.",
+  "landing.how.price.title": "Un precio que se sostiene",
+  "landing.how.price.body":
+    "Comparables por escrito antes de publicar — vendidas, en trámite y retiradas — para que el número aguante la negociación en vez de irse cayendo.",
+  "landing.how.network.title": "Una red global",
+  "landing.how.network.body":
+    "Tu propiedad llega a compradores muy fuera de Colorado, que es de donde suele venir quien compra en la montaña.",
+  "landing.how.answered.title": "Te contestamos, no te encolamos",
+  "landing.how.answered.body":
+    "Los mensajes reciben respuesta real el mismo día, fines de semana incluidos. Las solicitudes de visita vuelven con horarios confirmados.",
+  "landing.reach.eyebrow": "Contáctanos",
+  "landing.reach.title": "Llamada, mensaje o correo: contestan las mismas dos personas.",
+  "landing.reach.body":
+    "Sin centro de llamadas y sin asistente que te filtre. Elige el canal que prefieras y hablas con un asesor.",
+  "landing.reach.call": "Llamar",
+  "landing.reach.callHint": "Mejor cuando hay que decidir hoy",
+  "landing.reach.text": "Mensaje",
+  "landing.reach.textHint": "Horarios de visita y avances de la oferta",
+  "landing.reach.email": "Correo",
+  "landing.reach.emailHint": "Contratos, divulgaciones, comparables",
+  "landing.voices.eyebrow": "En sus palabras",
+  "landing.consult.title": "Quince minutos, sin discurso de venta.",
+  "landing.consult.body":
+    "Cuéntanos qué quieres hacer y dónde. Sales de la llamada sabiendo cuánto vale tu propiedad, o qué compra de verdad tu presupuesto en ese barrio.",
+  "landing.form.name": "Nombre",
+  "landing.form.phone": "Teléfono",
+  "landing.form.email": "Correo",
+  "landing.form.goal": "Quiero…",
+  "landing.form.selling": "Vender",
+  "landing.form.buying": "Comprar",
+  "landing.form.valuing": "Tasar",
+  "landing.form.submit": "Agendar la asesoría",
+  "landing.form.sending": "Enviando…",
+  "landing.form.reassure": "Normalmente contestamos en menos de una hora · Se habla español",
+  "landing.form.thanksTitle": "Recibido — hablamos pronto.",
+  "landing.form.thanksBody":
+    "Te contactamos para fijar los quince minutos. Si es urgente, llama y te atiende una persona.",
+  "landing.footer.role": "Asesores inmobiliarios",
+  "landing.footer.licensed": "Con licencia en Colorado",
+  "landing.footer.equalHousing": "Igualdad de oportunidad en vivienda",
+  "landing.footer.staffLogin": "Acceso de clientes",
 };
 
 const DICTS: Record<Lang, Record<string, string>> = { en: EN, es: ES };

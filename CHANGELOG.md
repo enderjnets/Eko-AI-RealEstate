@@ -2,6 +2,41 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.44.0] — 2026-08-13
+
+Primera cara pública del producto: la landing de la agencia, en la raíz del
+dominio. Portada del diseño aprobado en Claude Design, con las correcciones que
+un anuncio de una inmobiliaria con licencia necesita para poder publicarse.
+
+### Añadido
+
+- **Landing pública en `/`** — tipografía editorial (Instrument Serif/Sans,
+  autoalojadas en el build; sin peticiones a terceros), paleta cálida propia
+  con prefijo `ln-` que no puede tocar ni un píxel del panel, y versiones
+  completas en inglés y español con el selector de idioma de siempre.
+- **Formulario de asesoría de 15 minutos** que entra por el **mismo camino de
+  captura que `/contact`**: mismo endpoint, mismo honeypot, mismo Turnstile y
+  la misma casilla de consentimiento TCPA, cuyo texto se guarda exactamente
+  como se mostró. El diseño original no traía casilla; sin ella no se puede
+  escribir a nadie por SMS.
+- **Todo dato factual sale de la configuración** (`NEXT_PUBLIC_LANDING_*`):
+  nombres, brokerage, dirección, teléfonos, años de oficio y testimonios. Lo
+  que no está configurado **no se muestra** — su sección desaparece entera. Un
+  teléfono o un testimonio inventados en el anuncio de una inmobiliaria no son
+  un marcador de posición, son publicidad engañosa.
+- **Test que impide repetir el fallo de la v0.43.0**: comprueba que cada
+  variable de la landing está documentada en `.env.example`, declarada como
+  `ARG` **y** como `ENV` en el Dockerfile, y pasada por `docker-compose`.
+  Faltando cualquiera de las cuatro, Next la incrusta vacía en el build y la
+  página sale en blanco mientras el `.env` parece correcto.
+
+### Cambiado
+
+- **La raíz `/` ya no redirige al panel.** Es la landing. El personal entra por
+  `/login`, que sigue llevando a `/leads`; hay un enlace discreto en el pie.
+- El `landing_variant` de atribución marca los leads que llegan por esta página,
+  para poder comparar de dónde vienen los que sí agendan.
+
 ## [0.43.0] — 2026-08-12
 
 Al planear cómo activar Turnstile resultó que no estaba apagado: estaba **mal

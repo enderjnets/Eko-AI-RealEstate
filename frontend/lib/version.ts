@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.43.0";
+export const CURRENT_VERSION = "0.44.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,32 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.44.0",
+    date: "2026-08-13",
+    title: {
+      en: "Your public page",
+      es: "Tu página pública",
+    },
+    changes: [
+      {
+        en: "Your agency now has a public page at the root of your address, in English and Spanish. Someone who arrives from an ad or a video can read what you do and book a fifteen-minute consult without signing in to anything.",
+        es: "Tu agencia ya tiene una página pública en la raíz de tu dirección, en inglés y español. Quien llega desde un anuncio o un vídeo puede leer a qué te dedicas y agendar una asesoría de quince minutos sin registrarse en nada.",
+      },
+      {
+        en: "The consult form arrives in your inbox exactly like the contact form does, with the same spam protection and the same written record of the visitor's permission to text them.",
+        es: "El formulario de la asesoría te llega a la bandeja igual que el de contacto, con la misma protección antispam y el mismo registro escrito del permiso del visitante para escribirle por SMS.",
+      },
+      {
+        en: "The page only shows what you have actually given it. Phone numbers, years in business, the office address and client testimonials each appear once you fill them in, and their section is simply absent until then — nothing is invented to fill a gap on a page advertising a licensed brokerage.",
+        es: "La página solo muestra lo que le has dado de verdad. Teléfonos, años de oficio, la dirección de la oficina y los testimonios de clientes aparecen cuando los rellenas, y hasta entonces su sección sencillamente no está: no se inventa nada para tapar un hueco en el anuncio de una inmobiliaria con licencia.",
+      },
+      {
+        en: "Because the address now opens the public page, you sign in at /login. There is a discreet link at the bottom of the page too.",
+        es: "Como la dirección ahora abre la página pública, entras por /login. También hay un enlace discreto al pie de la página.",
+      },
+    ],
+  },
   {
     version: "0.43.0",
     date: "2026-08-12",

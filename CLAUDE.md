@@ -239,7 +239,8 @@ agency, so its admins would have inherited it.
 
 | What | URL |
 |---|---|
-| **Dashboard — sign in here** | **https://inmo-demo.ekoaiautomation.com** |
+| **Public landing** (the root is the marketing page since v0.44.0) | **https://inmo-demo.ekoaiautomation.com** |
+| **Dashboard — sign in here** | **https://inmo-demo.ekoaiautomation.com/login** |
 | **Public capture form** (no login — this is the point) | **https://inmo-demo.ekoaiautomation.com/contact** |
 | Backend OpenAPI | http://10.0.0.240:8011/docs (or http://100.88.47.99:8011/docs via Tailscale) |
 | Backend health | http://10.0.0.240:8011/api/v1/health |

@@ -1,0 +1,336 @@
+"use client";
+
+/**
+ * The public landing. Root is deliberately the marketing page and not the
+ * dashboard: this is the address a stranger arrives at from an ad or a video.
+ * Staff sign in at /login, which still lands on /leads.
+ *
+ * Everything factual on this page — the advisors' names, the brokerage, the
+ * office address, phone numbers, years in business, client quotes — is read
+ * from lib/landing.ts and rendered only when it has actually been configured.
+ * A real-estate advertisement that invents any of those is not a placeholder,
+ * it is a false statement to a consumer.
+ */
+
+import Link from "next/link";
+import { LANDING, dialable } from "@/lib/landing";
+import { useI18n } from "@/lib/i18n";
+import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
+import { ConsultForm } from "@/components/landing/ConsultForm";
+
+export function Landing() {
+  const { t } = useI18n();
+
+  return (
+    <div className="min-h-screen bg-ln-canvas font-ln-sans text-ln-ink antialiased">
+      <LandingNav />
+      <main>
+        <Hero />
+        <HowWeWork />
+        <ReachUs />
+        <Voices />
+        <Consult />
+      </main>
+      <LandingFooter />
+    </div>
+  );
+
+  function LandingNav() {
+    return (
+      <header className="border-b border-ln-line bg-ln-paper">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
+          <div className="min-w-0">
+            {LANDING.advisors && (
+              <p className="truncate font-ln-serif text-lg leading-tight text-ln-ink">
+                {LANDING.advisors}
+              </p>
+            )}
+            {LANDING.brokerage && (
+              <p className="truncate text-[10px] uppercase tracking-[0.18em] text-ln-muted">
+                {LANDING.brokerage}
+              </p>
+            )}
+          </div>
+          <nav className="flex items-center gap-5">
+            <a
+              href="#how"
+              className="hidden text-[13px] text-ln-ink-soft hover:text-ln-bronze sm:inline"
+            >
+              {t("landing.how.eyebrow")}
+            </a>
+            <a
+              href="#reach"
+              className="hidden text-[13px] text-ln-ink-soft hover:text-ln-bronze sm:inline"
+            >
+              {t("landing.reach.eyebrow")}
+            </a>
+            <BookLink className="bg-ln-ink px-4 py-2.5 text-[11px] uppercase tracking-[0.08em] text-ln-paper hover:opacity-90">
+              {t("landing.nav.book")}
+            </BookLink>
+            <LanguageSwitcher />
+          </nav>
+        </div>
+      </header>
+    );
+  }
+
+  /**
+   * "Book a consult" goes to the real booking page when one is configured and
+   * otherwise scrolls to the form, which is the working path today. It never
+   * points at a URL that does not exist.
+   */
+  function BookLink({
+    children,
+    className,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+  }) {
+    if (LANDING.bookingUrl) {
+      return (
+        <a href={LANDING.bookingUrl} target="_blank" rel="noreferrer" className={className}>
+          {children}
+        </a>
+      );
+    }
+    return (
+      <a href="#consult" className={className}>
+        {children}
+      </a>
+    );
+  }
+
+  function Hero() {
+    return (
+      <section className="border-b border-ln-line bg-ln-paper">
+        {/* Without a portrait the two-column grid leaves half the hero blank,
+            so the layout collapses to one column rather than framing a hole. */}
+        <div
+          className={`mx-auto grid max-w-6xl gap-10 px-5 py-14 sm:px-8 sm:py-20 lg:gap-16 ${
+            LANDING.portrait ? "lg:grid-cols-[1.1fr_0.9fr] lg:items-center" : ""
+          }`}
+        >
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.22em] text-ln-muted">
+              {t("landing.hero.kicker")}
+            </p>
+            {/* Capped so the headline keeps an editorial measure instead of
+                stretching across the full width when there is no portrait. */}
+            <h1 className="mt-5 max-w-[15ch] font-ln-serif text-[38px] leading-[1.08] tracking-[-0.01em] text-ln-ink sm:text-[52px] lg:text-[62px]">
+              {t("landing.hero.title")}
+            </h1>
+            <p className="mt-6 max-w-xl text-[15px] leading-[1.75] text-ln-body">
+              {t("landing.hero.body")}
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <BookLink className="bg-ln-bronze px-7 py-4 text-center text-[12px] uppercase tracking-[0.10em] text-ln-paper hover:opacity-90">
+                {t("landing.hero.cta")}
+              </BookLink>
+              {LANDING.phone && (
+                <a
+                  href={`tel:${dialable(LANDING.phone)}`}
+                  className="px-1 py-2 text-center text-[13px] text-ln-ink-soft underline decoration-ln-line-strong underline-offset-4 hover:text-ln-bronze"
+                >
+                  {t("landing.hero.callUs")} · {LANDING.phone}
+                </a>
+              )}
+            </div>
+          </div>
+
+          {LANDING.portrait && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={LANDING.portrait}
+              alt={LANDING.advisors || ""}
+              className="h-full max-h-[520px] w-full object-cover"
+            />
+          )}
+        </div>
+
+        {LANDING.hasStats && (
+          <div className="mx-auto grid max-w-6xl grid-cols-1 gap-px border-t border-ln-line bg-ln-line sm:grid-cols-2">
+            <Stat value={LANDING.years} label={t("landing.stats.years")} />
+            <Stat value={LANDING.markets} label={t("landing.stats.markets")} />
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  function Stat({ value, label }: { value: string; label: string }) {
+    return (
+      <div className="bg-ln-paper px-5 py-7 sm:px-8">
+        <p className="font-ln-serif text-4xl text-ln-ink">{value}</p>
+        <p className="mt-2 text-[11px] leading-[1.5] tracking-[0.04em] text-ln-muted">{label}</p>
+      </div>
+    );
+  }
+
+  function HowWeWork() {
+    const cards = [
+      { title: t("landing.how.oneFile.title"), body: t("landing.how.oneFile.body") },
+      { title: t("landing.how.price.title"), body: t("landing.how.price.body") },
+      { title: t("landing.how.network.title"), body: t("landing.how.network.body") },
+      { title: t("landing.how.answered.title"), body: t("landing.how.answered.body") },
+    ];
+    return (
+      <section id="how" className="scroll-mt-20 border-b border-ln-line">
+        <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
+          <p className="text-[10px] uppercase tracking-[0.22em] text-ln-muted">
+            {t("landing.how.eyebrow")}
+          </p>
+          <h2 className="mt-5 max-w-2xl font-ln-serif text-[30px] leading-[1.15] text-ln-ink sm:text-[40px]">
+            {t("landing.how.title")}
+          </h2>
+          <div className="mt-10 grid gap-px bg-ln-line sm:grid-cols-2">
+            {cards.map((c) => (
+              <article key={c.title} className="bg-ln-paper p-6 sm:p-8">
+                <h3 className="font-ln-serif text-[21px] text-ln-ink">{c.title}</h3>
+                <p className="mt-3 text-sm leading-[1.7] text-ln-body">{c.body}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function ReachUs() {
+    // With no phone, no SMS number and no mailbox configured there is nothing
+    // truthful to put here, so the section does not exist.
+    if (!LANDING.hasAnyChannel) return null;
+    return (
+      <section id="reach" className="scroll-mt-20 border-b border-ln-line bg-ln-paper">
+        <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
+          <p className="text-[10px] uppercase tracking-[0.22em] text-ln-muted">
+            {t("landing.reach.eyebrow")}
+          </p>
+          <h2 className="mt-5 max-w-2xl font-ln-serif text-[30px] leading-[1.15] text-ln-ink sm:text-[40px]">
+            {t("landing.reach.title")}
+          </h2>
+          <p className="mt-5 max-w-xl text-[15px] leading-[1.75] text-ln-body">
+            {t("landing.reach.body")}
+          </p>
+          <div className="mt-10 grid gap-px bg-ln-line sm:grid-cols-3">
+            {LANDING.phone && (
+              <Channel
+                href={`tel:${dialable(LANDING.phone)}`}
+                label={t("landing.reach.call")}
+                value={LANDING.phone}
+                hint={t("landing.reach.callHint")}
+              />
+            )}
+            {LANDING.sms && (
+              <Channel
+                href={`sms:${dialable(LANDING.sms)}`}
+                label={t("landing.reach.text")}
+                value={LANDING.sms}
+                hint={t("landing.reach.textHint")}
+              />
+            )}
+            {LANDING.email && (
+              <Channel
+                href={`mailto:${LANDING.email}`}
+                label={t("landing.reach.email")}
+                value={LANDING.email}
+                hint={t("landing.reach.emailHint")}
+              />
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function Channel({
+    href,
+    label,
+    value,
+    hint,
+  }: {
+    href: string;
+    label: string;
+    value: string;
+    hint: string;
+  }) {
+    return (
+      <a href={href} className="group bg-ln-paper p-6 transition-colors hover:bg-ln-canvas sm:p-8">
+        <p className="text-[10px] uppercase tracking-[0.18em] text-ln-muted">{label}</p>
+        <p className="mt-3 break-words font-ln-serif text-[21px] text-ln-ink group-hover:text-ln-bronze">
+          {value}
+        </p>
+        <p className="mt-2 text-xs leading-[1.6] text-ln-faint">{hint}</p>
+      </a>
+    );
+  }
+
+  function Voices() {
+    // Client quotes ship only when real ones have been supplied and cleared.
+    if (LANDING.testimonials.length === 0) return null;
+    return (
+      <section className="border-b border-ln-line">
+        <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
+          <p className="text-[10px] uppercase tracking-[0.22em] text-ln-muted">
+            {t("landing.voices.eyebrow")}
+          </p>
+          <div className="mt-10 grid gap-px bg-ln-line md:grid-cols-3">
+            {LANDING.testimonials.map((v) => (
+              <figure key={v.attribution + v.quote.slice(0, 24)} className="bg-ln-paper p-6 sm:p-8">
+                <blockquote className="font-ln-serif text-[19px] leading-[1.5] text-ln-ink">
+                  “{v.quote}”
+                </blockquote>
+                <figcaption className="mt-5 text-[11px] uppercase tracking-[0.12em] text-ln-muted">
+                  {v.attribution}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function Consult() {
+    return (
+      <section id="consult" className="scroll-mt-20 bg-ln-paper">
+        <div className="mx-auto grid max-w-6xl gap-10 px-5 py-14 sm:px-8 sm:py-20 lg:grid-cols-2 lg:items-start lg:gap-16">
+          <div>
+            <h2 className="font-ln-serif text-[30px] leading-[1.15] text-ln-ink sm:text-[40px]">
+              {t("landing.consult.title")}
+            </h2>
+            <p className="mt-5 max-w-lg text-[15px] leading-[1.75] text-ln-body">
+              {t("landing.consult.body")}
+            </p>
+          </div>
+          <ConsultForm />
+        </div>
+      </section>
+    );
+  }
+
+  function LandingFooter() {
+    return (
+      <footer className="border-t border-ln-line bg-ln-canvas">
+        <div className="mx-auto max-w-6xl space-y-2 px-5 py-10 text-[12px] leading-[1.7] text-ln-muted sm:px-8">
+          {(LANDING.advisors || LANDING.brokerage) && (
+            <p className="text-ln-ink-soft">
+              {[LANDING.advisors, t("landing.footer.role"), LANDING.brokerage]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          )}
+          <p>
+            {[LANDING.address, t("landing.footer.licensed"), t("landing.footer.equalHousing")]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+          <p className="pt-2">
+            <Link href="/login" className="text-ln-faint underline underline-offset-4 hover:text-ln-bronze">
+              {t("landing.footer.staffLogin")}
+            </Link>
+          </p>
+        </div>
+      </footer>
+    );
+  }
+}
