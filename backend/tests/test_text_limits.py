@@ -224,17 +224,15 @@ class TestEveryUniqueStringKeyHasBeenThoughtAbout:
     def test_the_inventory_is_complete(self) -> None:
         from sqlalchemy import String
 
-        import app.models as models
+        import app.models  # noqa: F401 — registers every model on the metadata
+        from app.db.base import Base
 
-        found, seen = set(), set()
-        for name in dir(models):
-            model = getattr(models, name, None)
-            if not (hasattr(model, "__table__") and hasattr(model, "__mapper__")):
-                continue
-            table = model.__table__
-            if table.name in seen:
-                continue
-            seen.add(table.name)
+        # Walked from the metadata rather than from `dir(app.models)`: a model
+        # that someone forgets to export would be invisible to the second, and
+        # a safety net with a hole that only opens later is the shape of every
+        # defect this file exists to stop.
+        found = set()
+        for table in Base.metadata.tables.values():
             unique: set[str] = set()
             for constraint in table.constraints:
                 if type(constraint).__name__ == "UniqueConstraint":
