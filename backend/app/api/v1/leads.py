@@ -78,8 +78,11 @@ class LeadCreate(BaseModel):
     name: str | None = None
     intent: LeadIntent | None = None
     zone: str | None = None
-    budget_min: Decimal | None = None
-    budget_max: Decimal | None = None
+    # Same bounds as everywhere else these two columns are written. The add-lead
+    # form takes free text for both, so this is the route a person is most
+    # likely to invert by hand.
+    budget_min: Decimal | None = Field(default=None, ge=0, le=9_999_999_999)
+    budget_max: Decimal | None = Field(default=None, ge=0, le=9_999_999_999)
     property_type: str | None = None
     urgency: str | None = None
     # Only the text channels that work today. Voice (Phase 13) and WhatsApp
@@ -87,6 +90,26 @@ class LeadCreate(BaseModel):
     # conversation we can't deliver.
     channel: Literal["sms", "email"] = "sms"
     first_message: str | None = None
+
+    @model_validator(mode="after")
+    def _budget_range_makes_sense(self) -> "LeadCreate":
+        """Both values arrive in one body here, so this can be a plain check.
+
+        The database refuses an inverted range too, and that is what actually
+        guarantees it. This exists so the realtor gets a sentence explaining
+        what is wrong with the form they just filled in, rather than a 500 from
+        a constraint they cannot see.
+        """
+        if (
+            self.budget_min is not None
+            and self.budget_max is not None
+            and self.budget_min > self.budget_max
+        ):
+            raise ValueError(
+                "budget_min is above budget_max — the lead would stop matching "
+                "anything at all"
+            )
+        return self
 
 
 class LeadOut(BaseModel):

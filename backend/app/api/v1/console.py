@@ -187,11 +187,32 @@ async def today(
         ),
         limit,
     )
-    held_rows = sorted(
+    # Two statements, two snapshots: a hold the worker flips PENDING→FAILED
+    # between them satisfies both predicates and comes back twice, with
+    # contradictory badges on the two cards. The trigger is a sweep running
+    # while the page loads — during the outage this page exists for.
+    seen: set[int] = set()
+    ranked = sorted(
         hold_rows + failed_rows,
         key=lambda row: (row[0].updated_at, row[0].attempts),
         reverse=True,
-    )[: limit * 2]
+    )
+    deduped = [row for row in ranked if not (row[0].id in seen or seen.add(row[0].id))]
+
+    # `limit` means what it says. Taking the top `limit` of the merged list
+    # would hand the whole page back to whichever kind is noisier — the thing
+    # the two budgets exist to prevent — so take from each in turn instead:
+    # neither can starve the other, and a caller asking for 50 gets 50.
+    held_rows: list[Any] = []
+    by_kind = {
+        FollowUpStatus.PENDING: [r for r in deduped if r[0].status == FollowUpStatus.PENDING],
+        FollowUpStatus.FAILED: [r for r in deduped if r[0].status == FollowUpStatus.FAILED],
+    }
+    while len(held_rows) < limit and any(by_kind.values()):
+        for queue in by_kind.values():
+            if queue and len(held_rows) < limit:
+                held_rows.append(queue.pop(0))
+    held_rows.sort(key=lambda row: (row[0].updated_at, row[0].attempts), reverse=True)
 
     held = [
         HeldFollowUp(

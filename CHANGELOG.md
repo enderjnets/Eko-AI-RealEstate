@@ -2,6 +2,37 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.46.0] — 2026-08-14
+
+Seis rondas de auditoría adversarial sobre la consola de llamada. No hay
+funciones nuevas: es lo que hacía falta para que lo de 0.45.0 sea cierto.
+
+### Corregido
+
+- **Un rango de presupuesto al revés ya no es posible.** Tres rondas seguidas
+  encontraron el mismo defecto en una ruta distinta cada vez —la consola, el
+  editar, el alta— y una cuarta lo escribía desde lo que el modelo de lenguaje
+  extrae de la conversación, sin comprobar nada y para siempre. Eso ya no es un
+  descuido de una ruta: es una regla guardada en el sitio equivocado. Ahora está
+  en la base de datos (`ck_leads_budget_not_inverted`, `ck_leads_budget_non_negative`,
+  migración 030), donde vale para todo el que escriba, incluido el que aún no se
+  ha escrito. Importa porque un rango invertido no empareja con ninguna casa y
+  `/matches` lo cuenta como «no hay nada», no como «esta ficha está rota».
+- **La página del mal día ya no se queda en blanco el mal día.** La lista de
+  retenidos mezcla consentimientos pendientes y envíos fallidos en una sola
+  página. Una caída del proveedor marca cientos de fallos de golpe, todos más
+  nuevos que la retención que espera desde ayer, así que se quedaba con todos
+  los huecos. Cada tipo tiene ahora su cupo, y `limit` vuelve a significar lo
+  que dice.
+- **Una visita no se reserva antes de comprobar que la casa existe.** En la ruta
+  de Cal.com la reserva se creaba antes de guardar la fila, así que un anuncio
+  retirado por el MLS entre que se pinta la tarjeta y se pulsa el botón dejaba
+  al cliente con una invitación real de una visita que el CRM nunca registró.
+- **Reservar desde una propiedad propuesta ya refresca la lista de visitas**, y
+  dos refrescos simultáneos no se pisan. La lista quedándose vacía es lo que
+  hace que alguien reserve otra vez, y una segunda reserva es una segunda
+  invitación real en el correo del cliente.
+
 ## [0.45.0] — 2026-08-14
 
 La consola de llamada. Natalia y Robbie ya tienen llamadas; lo que aprendían en

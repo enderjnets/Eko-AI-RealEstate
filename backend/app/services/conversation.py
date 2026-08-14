@@ -1326,10 +1326,28 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         e = intent_result.entities
         if e.zone and not lead.zone:
             lead.zone = e.zone
-        if e.budget_min is not None and lead.budget_min is None:
-            lead.budget_min = e.budget_min
-        if e.budget_max is not None and lead.budget_max is None:
-            lead.budget_max = e.budget_max
+        # The budgets come out of a language model reading free text, and they
+        # are written once and never revisited (`is None` below), so a pair the
+        # wrong way round sticks to the lead for ever: it matches no listing at
+        # all and `/matches` reports that as "nothing available". "under 900k,
+        # at least 100" is enough to produce it. The database refuses the pair
+        # outright, which would abort this whole inbound message — so keep the
+        # extraction and drop the half that makes it impossible, rather than
+        # losing a customer's message to a bad guess.
+        low = e.budget_min if lead.budget_min is None else lead.budget_min
+        high = e.budget_max if lead.budget_max is None else lead.budget_max
+        if low is not None and high is not None and low > high:
+            log.warning(
+                "lead %s: ignoring an inverted budget from the classifier (%s–%s)",
+                lead.id,
+                low,
+                high,
+            )
+        else:
+            if e.budget_min is not None and lead.budget_min is None:
+                lead.budget_min = e.budget_min
+            if e.budget_max is not None and lead.budget_max is None:
+                lead.budget_max = e.budget_max
         if e.property_type and not lead.property_type:
             lead.property_type = e.property_type
         if e.urgency and not lead.urgency:

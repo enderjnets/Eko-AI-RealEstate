@@ -6,6 +6,7 @@ import { type Visit, visitsApi } from "@/lib/api";
 import { VisitStatusBadge } from "@/components/ui/VisitStatusBadge";
 import { BookingDialog } from "@/components/calendar/BookingDialog";
 import { useI18n } from "@/lib/i18n";
+import { latestWins } from "@/lib/latestWins";
 import { useViewer } from "@/lib/useViewer";
 
 const BROWSER_TZ =
@@ -52,24 +53,24 @@ export function VisitsSection({
   // lands last and reverts the list to how it looked before the booking. That
   // is the exact appearance of failure that makes someone book a second time,
   // and a second booking is a second real invite in the lead's inbox.
-  const latestRequest = useRef(0);
+  const gate = useRef(latestWins()).current;
 
   const refresh = useCallback(() => {
-    const request = ++latestRequest.current;
+    const isNewest = gate.start();
     setLoading(true);
     setError(null);
     visitsApi
       .list(leadId)
       .then((data) => {
-        if (request === latestRequest.current) setVisits(data);
+        if (isNewest()) setVisits(data);
       })
       .catch((e) => {
-        if (request === latestRequest.current) setError(String(e.message || e));
+        if (isNewest()) setError(String(e.message || e));
       })
       .finally(() => {
-        if (request === latestRequest.current) setLoading(false);
+        if (isNewest()) setLoading(false);
       });
-  }, [leadId]);
+  }, [leadId, gate]);
 
   useEffect(() => {
     refresh();

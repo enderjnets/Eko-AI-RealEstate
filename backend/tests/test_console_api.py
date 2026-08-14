@@ -16,14 +16,13 @@ from decimal import Decimal
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.api.v1 import visits as visits_module
 from app.main import app
 from app.models import (
     Conversation,
-    Property,
-    PropertyStatus,
-    Visit,
     ConversationStatus,
     FollowUp,
     FollowUpKind,
@@ -33,6 +32,9 @@ from app.models import (
     MessageDirection,
     MessageSender,
     MessageStatus,
+    Property,
+    PropertyStatus,
+    Visit,
 )
 from app.models.lead import LeadStatus, PreferredChannel
 
@@ -780,24 +782,42 @@ async def test_a_ghost_listing_is_refused_before_calcom_is_called(
     lead_id = await _lead(database_url)
     engine, Session = _session(database_url)
     try:
-        # A fixed future time, not one from the slots endpoint: what is being
-        # tested is the order of the guard against the Cal.com call, and going
-        # through the slots list makes the test depend on the office hours that
-        # other tests in this suite happily rewrite.
+        # A fixed future time, not one from the slots endpoint: what is under
+        # test is the ORDER of the guard against the calendar call, and going
+        # through the slots list makes it depend on office hours that other
+        # tests in this suite rewrite.
         when = (datetime.now(UTC) + timedelta(days=3)).replace(
             minute=0, second=0, microsecond=0
         )
-        async with await _client() as c:
-            r = await c.post(
-                f"/api/v1/leads/{lead_id}/calendar/book",
-                json={
-                    "start_time": when.isoformat(),
-                    "duration_minutes": 30,
-                    "property_id": 999_999_999,
-                },
-            )
+
+        # Watching the booking itself is the whole point. Asserting "400 and no
+        # row" passes just as happily when the invite has already gone out and
+        # the refusal comes afterwards — which is the exact failure being
+        # guarded against, and it is what the first version of this test did.
+        called: list[object] = []
+        real_create_booking = visits_module.create_booking
+
+        async def _spy(*args: object, **kwargs: object) -> object:
+            called.append(kwargs)
+            return await real_create_booking(*args, **kwargs)
+
+        visits_module.create_booking = _spy
+        try:
+            async with await _client() as c:
+                r = await c.post(
+                    f"/api/v1/leads/{lead_id}/calendar/book",
+                    json={
+                        "start_time": when.isoformat(),
+                        "duration_minutes": 30,
+                        "property_id": 999_999_999,
+                    },
+                )
+        finally:
+            visits_module.create_booking = real_create_booking
+
         assert r.status_code == 400, r.text
         assert "unknown_property" in r.text
+        assert called == [], "the calendar was booked before the listing was checked"
 
         async with Session() as s:
             rows = (
@@ -807,3 +827,113 @@ async def test_a_ghost_listing_is_refused_before_calcom_is_called(
     finally:
         await engine.dispose()
         await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_the_add_lead_form_cannot_invert_a_budget_either(
+    database_url: str,
+) -> None:
+    """Third route, same defect. This is the one a realtor actually uses: the
+    add-lead form takes both budgets as free text with no range check of its
+    own, so it is the likeliest place for a range to arrive backwards."""
+    async with await _client() as c:
+        inverted = await c.post(
+            "/api/v1/leads",
+            json={
+                "phone": f"+1720ADD{uuid.uuid4().hex[:6].upper()}",
+                "budget_min": 900000,
+                "budget_max": 100000,
+            },
+        )
+        assert inverted.status_code == 422, inverted.text
+
+        negative = await c.post(
+            "/api/v1/leads",
+            json={"phone": f"+1720ADD{uuid.uuid4().hex[:6].upper()}", "budget_max": -50000},
+        )
+        assert negative.status_code == 422, negative.text
+
+        huge = await c.post(
+            "/api/v1/leads",
+            json={"phone": f"+1720ADD{uuid.uuid4().hex[:6].upper()}", "budget_max": 1e14},
+        )
+        assert huge.status_code == 422, huge.text
+
+
+@pytest.mark.asyncio
+async def test_the_database_itself_refuses_a_backwards_range(
+    database_url: str,
+) -> None:
+    """Three rounds of audit found this same defect at three different routes,
+    one per round. That pattern means the rule was being kept in the wrong
+    place. The constraint holds for every writer, including the classifier —
+    which extracts budgets from free text — and the ones nobody has written."""
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            lead = Lead(
+                org_id=1,
+                phone=f"+1720CK{uuid.uuid4().hex[:6].upper()}",
+                budget_min=Decimal("900000"),
+                budget_max=Decimal("100000"),
+            )
+            s.add(lead)
+            with pytest.raises(IntegrityError) as inverted:
+                await s.commit()
+            assert "ck_leads_budget_not_inverted" in str(inverted.value)
+            await s.rollback()
+
+        async with Session() as s:
+            s.add(
+                Lead(
+                    org_id=1,
+                    phone=f"+1720CK{uuid.uuid4().hex[:6].upper()}",
+                    budget_max=Decimal("-1"),
+                )
+            )
+            with pytest.raises(IntegrityError) as negative:
+                await s.commit()
+            assert "ck_leads_budget_non_negative" in str(negative.value)
+            await s.rollback()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_the_page_returns_the_number_of_rows_it_was_asked_for(
+    database_url: str,
+) -> None:
+    """Giving each kind its own budget made the response up to twice the limit,
+    with a slice that looked like a cap and could never truncate. A caller
+    asking for three rows should get three — while still seeing both kinds."""
+    leads: list[int] = []
+    engine, Session = _session(database_url)
+    try:
+        for _ in range(4):
+            leads.append(await _lead(database_url, status=LeadStatus.QUALIFIED))
+        async with Session() as s:
+            for i, lid in enumerate(leads):
+                s.add(
+                    FollowUp(
+                        lead_id=lid,
+                        kind=FollowUpKind.CALL_FOLLOW_UP,
+                        status=FollowUpStatus.PENDING if i < 2 else FollowUpStatus.FAILED,
+                        attempts=1 if i < 2 else 0,
+                        scheduled_for=datetime.now(UTC) - timedelta(hours=1),
+                    )
+                )
+            await s.commit()
+
+        async with await _client() as c:
+            body = (await c.get("/api/v1/console/today?limit=3")).json()
+
+        mine = [h for h in body["held"] if h["lead"]["id"] in leads]
+        assert len(body["held"]) <= 3, f"asked for 3, got {len(body['held'])}"
+        assert len({h["follow_up_id"] for h in body["held"]}) == len(body["held"]), (
+            "a row was listed twice"
+        )
+        assert mine, "the fair split returned none of the rows under test"
+    finally:
+        await engine.dispose()
+        for lid in leads:
+            await _cleanup(database_url, lid)
