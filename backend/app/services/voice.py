@@ -105,7 +105,10 @@ def parse_end_of_call_report(payload: dict[str, Any]) -> VoiceCallReport | None:
         return None
 
     number = _customer_number(msg)
-    from_identifier = number or f"voice:{call_id}"
+    # Clipped for the same reason as the chat path: `leads.phone` is 254 and
+    # UNIQUE, so a longer value written trimmed but looked up whole never
+    # matches itself again. A caller id is identity, not prose.
+    from_identifier = (number or f"voice:{call_id}")[:254]
 
     artifact = msg.get("artifact") if isinstance(msg.get("artifact"), dict) else {}
     raw_turns = artifact.get("messages")

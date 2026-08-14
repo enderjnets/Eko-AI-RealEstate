@@ -9,6 +9,7 @@ from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, pg_enum
+from app.db.text_limits import clip_string_columns
 
 if TYPE_CHECKING:
     from app.models.lead import Lead
@@ -81,3 +82,10 @@ class Conversation(Base):
 
     def __repr__(self) -> str:
         return f"<Conversation id={self.id} lead_id={self.lead_id} channel={self.channel}>"
+
+    # `external_thread_id` is the live one: on email it holds the provider's
+    # thread key, which on a long forwarded chain of `References` headers runs
+    # past 255. This row is written in the same transaction as the customer's
+    # message, so refusing it loses the message rather than the field.
+    _clip = clip_string_columns("channel", "external_thread_id", "status")
+
