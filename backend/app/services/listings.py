@@ -340,17 +340,43 @@ def _state_code(value: object) -> str | None:
 def _zip_code(value: object) -> str | None:
     """The postal code out of whatever the feed put in the field.
 
-    "80202-1234 Suite 400" truncated at ten happens to give the right answer;
-    "80202 Denver CO" gives "80202 Denv", which is not a postal code at all.
-    Match the shape instead of trusting the length.
+    Two ways to get this wrong, and the second is the one that hurts:
+
+    - Truncating at the column width is not reading a postal code at all —
+      "80202 Denver CO" cut at ten gives "80202 Denv".
+    - Taking the *first* run of five digits is worse, because it can succeed
+      with the wrong answer: "Suite 12345 Denver CO 80202" would store 12345
+      and say nothing. A unit number before the code is ordinary in a feed's
+      free-text address field.
+
+    So: prefer a ZIP+4, then a five-digit code at the end of the field, and
+    only then a lone five-digit code. Anything else is dropped with a warning,
+    because a wrong postal code survives every check downstream and a missing
+    one does not.
     """
     if not isinstance(value, str):
         return None
-    match = re.search(r"\b\d{5}(?:-\d{4})?\b", value)
-    if match:
-        return match.group(0)
-    if value.strip():
-        log.warning("listing postal code %r does not look like one, dropping it", value[:40])
+    text = value.strip()
+    if not text:
+        return None
+    # ZIP+4, hyphenated or the nine-digit form the USPS also writes.
+    plus_four = re.search(r"\b(\d{5})-?(\d{4})\b", text)
+    if plus_four:
+        return f"{plus_four.group(1)}-{plus_four.group(2)}"
+    five = re.findall(r"\b\d{5}\b", text)
+    if len(five) == 1:
+        return five[0]
+    if len(five) > 1:
+        # More than one candidate: the last is the postal code in every
+        # address convention I can defend. Logged, because guessing is exactly
+        # what the rest of this function refuses to do.
+        log.warning(
+            "listing postal field %r holds %d five-digit runs, taking the last",
+            text[:40],
+            len(five),
+        )
+        return five[-1]
+    log.warning("listing postal code %r does not look like one, dropping it", text[:40])
     return None
 
 

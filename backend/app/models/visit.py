@@ -15,6 +15,7 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstr
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, pg_enum
+from app.db.text_limits import clip_string_columns
 
 if TYPE_CHECKING:
     from app.models.lead import Lead
@@ -97,3 +98,20 @@ class Visit(Base):
 
     def __repr__(self) -> str:
         return f"<Visit id={self.id} lead={self.lead_id} when={self.scheduled_at} status={self.status.value}>"
+
+    # Every bounded string here, trimmed on write. `property_address` is the
+    # sharp one: it comes from a caller's JSON or straight from a voice agent's
+    # tool-call arguments, and this row is written AFTER the Cal.com booking has
+    # already been created. A value that does not fit does not lose the address
+    # — it 500s the request and leaves a live appointment on the realtor's
+    # calendar that the application can neither list nor cancel. On the voice
+    # path there is no savepoint either, so it takes the call with it.
+    _clip = clip_string_columns(
+        "title",
+        "calendar_provider",
+        "status",
+        "timezone",
+        "property_address",
+        "meeting_url",
+    )
+

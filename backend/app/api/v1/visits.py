@@ -63,12 +63,15 @@ class BookingIn(BaseModel):
     # Which listing this showing is for. The address stays as the human-
     # readable line and as the only thing a viewing arranged off-MLS has;
     # without the id the post-visit follow-up cannot name the house.
-    property_address: str | None = None
+    # Bounded so a caller gets a 422 rather than a silent trim. The model
+    # trims too, which is what stops a booking already made at Cal.com from
+    # 500ing on the insert that was meant to record it.
+    property_address: str | None = Field(default=None, max_length=280)
     property_id: int | None = None
     notes: str | None = None
     # Defaults to the office timezone (AgentSettings) when omitted, so visits are
     # stored + displayed in the office's local tz rather than UTC.
-    timezone: str | None = None
+    timezone: str | None = Field(default=None, max_length=50)
 
 
 class VisitOut(BaseModel):
@@ -105,10 +108,13 @@ class ManualEventIn(BaseModel):
     scheduled_at: datetime
     duration_minutes: int = Field(default=30, ge=5, le=600)
     notes: str | None = None
-    property_address: str | None = None
+    # Bounded so a caller gets a 422 rather than a silent trim. The model
+    # trims too, which is what stops a booking already made at Cal.com from
+    # 500ing on the insert that was meant to record it.
+    property_address: str | None = Field(default=None, max_length=280)
     property_id: int | None = None
     lead_id: int | None = None
-    timezone: str | None = None
+    timezone: str | None = Field(default=None, max_length=50)
 
 
 class CalendarItemOut(BaseModel):

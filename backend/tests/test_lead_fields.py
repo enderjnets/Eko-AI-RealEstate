@@ -254,3 +254,33 @@ class TestEveryFeedFieldFitsItsColumn:
 
         dto = _map_reso_record(self._record(StateOrProvince="CO", PostalCode="80209"))
         assert (dto.state, dto.zip_code, dto.city) == ("CO", "80209", "Denver")
+
+
+class TestThePostalCodeIsNeverGuessedWrong:
+    """Taking the first five-digit run stored the unit number as the postal
+    code, silently: "Suite 12345 Denver CO 80202" became 12345. A wrong postal
+    code survives every check downstream; a missing one does not."""
+
+    def test_a_unit_number_before_the_code_does_not_win(self) -> None:
+        from app.services.listings import _zip_code
+
+        assert _zip_code("Suite 12345 Denver CO 80202") == "80202"
+
+    def test_zip_plus_four_is_kept_in_both_spellings(self) -> None:
+        from app.services.listings import _zip_code
+
+        assert _zip_code("80202-1234 Suite 400") == "80202-1234"
+        assert _zip_code("802021234") == "80202-1234"
+
+    def test_a_plain_code_survives_surrounding_words(self) -> None:
+        from app.services.listings import _zip_code
+
+        assert _zip_code("80202 Denver CO") == "80202"
+        assert _zip_code("80202") == "80202"
+
+    def test_nothing_that_looks_like_one_is_dropped(self) -> None:
+        from app.services.listings import _zip_code
+
+        assert _zip_code("no idea") is None
+        assert _zip_code("") is None
+        assert _zip_code(None) is None

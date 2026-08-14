@@ -12,29 +12,127 @@ anyone has to remember to update.
 """
 import pytest
 
-from app.db.text_limits import bounded_string_columns
 from app.models import Conversation, Lead, Message
+
+HANDLED = {
+    # Trimmed on the model — every writer goes through ORM attributes.
+    "leads": "@validates on the model; identity key gets the digest",
+    "messages": "@validates on the model; idempotency key gets the digest",
+    "conversations": "@validates on the model",
+    # Written by a Core INSERT, so validators cannot fire: the feed values
+    # are fitted in `_map_reso_record` before they get here, with codes
+    # translated rather than truncated.
+    "properties": "fitted in listings._map_reso_record before the Core insert",
+    # Operator configuration through an authenticated form. Failing loudly
+    # is right: silently storing something other than what an admin typed
+    # is worse than refusing it.
+    "channel_routes": "admin config; loud failure is correct",
+    "organizations": "admin config; loud failure is correct",
+    "accounts": "self-registration, normalised and bounded at the schema",
+    "allowed_users": "admin config; loud failure is correct",
+    "agent_settings": "admin config; loud failure is correct",
+    "sync_state": "written from our own literals",
+    # Written from our own values, or after the customer's words are safe.
+    # Was recorded as "our own values, written after the commit". Both halves
+    # were false: `property_address` and `timezone` come from a caller's JSON
+    # or a voice agent's tool-call arguments, and the row is written BEFORE the
+    # commit and AFTER the Cal.com booking already exists.
+    "visits": "@validates on the model; the Cal.com id is left whole to round-trip",
+    "call_logs": "advisor input through a bounded schema",
+    # `last_ip` derives from X-Forwarded-For, which the client sets. The
+    # middleware swallows the failure, so the blast radius is telemetry for one
+    # user rather than their request — but "our own strings" was not true.
+    "user_activity": "client-influenced; clipped at the call site, failure swallowed",
+}
+
+def _models_with_bounded_text() -> list[type]:
+    """Every mapped model carrying a bounded, non-enum string column."""
+    from sqlalchemy import Enum as SAEnum
+    from sqlalchemy import String
+
+    import app.models as models
+
+    found, seen = [], set()
+    for name in dir(models):
+        model = getattr(models, name, None)
+        if not (hasattr(model, "__table__") and hasattr(model, "__mapper__")):
+            continue
+        if model.__table__.name in seen:
+            continue
+        seen.add(model.__table__.name)
+        if any(
+            isinstance(column.type, String)
+            and not isinstance(column.type, SAEnum)
+            and getattr(column.type, "length", None)
+            for column in model.__table__.columns
+        ):
+            found.append(model)
+    return sorted(found, key=lambda m: m.__table__.name)
+
+
+
+# Columns a trimming table deliberately leaves alone, and why. An exemption
+# has to be written down: silently skipping one is how `leads.phone` spent two
+# rounds being sliced while a commit message said it was digested.
+EXEMPT = {
+    # Goes back to Cal.com to cancel the booking it names. A trimmed or
+    # digested value would name nothing, so it is stored faithfully or not at
+    # all — and it is written after the customer's words are already safe.
+    ("visits", "external_booking_id"): "must round-trip to Cal.com",
+    # The identity and idempotency keys: normalised with a digest instead of a
+    # slice, so that two values agreeing on a prefix stay two values.
+    ("leads", "phone"): "digest, not a slice — see clip_identifier",
+    ("messages", "external_id"): "digest, not a slice — see clip_identifier",
+}
+
+
+def _claims_model_trimming(model: type) -> bool:
+    """Does this table's recorded decision say the model does the trimming?"""
+    return "@validates on the model" in HANDLED.get(model.__table__.name, "")
 
 
 class TestEveryBoundedColumnIsCovered:
-    # Every model, not a hand-picked three. The gate covering only the models
-    # somebody remembered is how a whole table of unguarded columns — the one
-    # the MLS feed writes — stayed invisible through five rounds of this.
+    # Derived from the metadata, not typed out. The previous version carried a
+    # comment saying "every model, not a hand-picked three" directly above a
+    # list of three — and that gap let an unguarded table through, one whose
+    # writes land after an external booking has already been made.
+    #
+    # Only the tables that CLAIM model-level trimming are held to it. The rest
+    # record a different decision (admin configuration, where failing loudly is
+    # the right answer, or a Core insert, where a validator could not fire
+    # anyway) and are checked by `TestEveryTableWithBoundedTextHasBeenThoughtAbout`.
     @pytest.mark.parametrize(
         "model",
-        [Lead, Message, Conversation],
+        [m for m in _models_with_bounded_text() if _claims_model_trimming(m)],
         ids=lambda m: m.__name__,
     )
     def test_no_bounded_column_is_left_unregistered(self, model: type) -> None:
-        """A new `String(n)` column added without registering it is a hole of
-        exactly the kind this exists to close, so the check is derived from the
-        table, not from a list."""
+        """A bounded column on a table that says it trims must actually trim.
+
+        Registering the table and forgetting a column is the same hole as
+        forgetting the table, one size down.
+        """
+        from sqlalchemy import Enum as SAEnum
+        from sqlalchemy import String
+
         registered = set(model.__mapper__.validators.keys())
-        missing = sorted(set(bounded_string_columns(model)) - registered)
+        bounded = {
+            column.key
+            for column in model.__table__.columns
+            if isinstance(column.type, String)
+            and not isinstance(column.type, SAEnum)
+            and getattr(column.type, "length", None)
+        }
+        exempt = {
+            column
+            for (table, column) in EXEMPT
+            if table == model.__table__.name
+        }
+        missing = sorted(bounded - registered - exempt)
         assert not missing, (
-            f"{model.__name__} has bounded columns nothing trims: {missing}. "
-            "An over-long value there does not lose the field, it loses the "
-            "message the same transaction was storing."
+            f"{model.__name__} says it trims on the model but these are not "
+            f"registered: {missing}. An over-long value there does not lose the "
+            "field — it loses whatever the same transaction was holding."
         )
 
 
@@ -321,29 +419,8 @@ class TestEveryTableWithBoundedTextHasBeenThoughtAbout:
     Adding a table, or a bounded column on one, fails here until somebody says.
     """
 
-    HANDLED = {
-        # Trimmed on the model — every writer goes through ORM attributes.
-        "leads": "@validates on the model; identity key gets the digest",
-        "messages": "@validates on the model; idempotency key gets the digest",
-        "conversations": "@validates on the model",
-        # Written by a Core INSERT, so validators cannot fire: the feed values
-        # are fitted in `_map_reso_record` before they get here, with codes
-        # translated rather than truncated.
-        "properties": "fitted in listings._map_reso_record before the Core insert",
-        # Operator configuration through an authenticated form. Failing loudly
-        # is right: silently storing something other than what an admin typed
-        # is worse than refusing it.
-        "channel_routes": "admin config; loud failure is correct",
-        "organizations": "admin config; loud failure is correct",
-        "accounts": "self-registration, normalised and bounded at the schema",
-        "allowed_users": "admin config; loud failure is correct",
-        "agent_settings": "admin config; loud failure is correct",
-        "sync_state": "written from our own literals",
-        # Written from our own values, or after the customer's words are safe.
-        "visits": "our own values plus a Cal.com id, written after the commit",
-        "call_logs": "advisor input through a bounded schema",
-        "user_activity": "our own strings; see the notes in platform.py",
-    }
+    HANDLED = HANDLED
+
 
     def test_every_table_is_accounted_for(self) -> None:
         from sqlalchemy import Enum as SAEnum
@@ -444,3 +521,48 @@ class TestEveryWriterOfTheIdentityKeyAgrees:
             "the voice tool-call path looks a lead up by a value the write "
             "would rewrite"
         )
+
+
+class TestABookingCannotOutliveItsRecord:
+    """The round-four failure again, one field along.
+
+    `create_booking` puts a real appointment on the realtor's calendar and in
+    the lead's inbox, and only then is the row written. A value that does not
+    fit its column turns that write into a 500 — leaving an appointment the
+    application can neither list nor cancel, and on the voice path taking the
+    call's whole transaction with it, because that helper has no savepoint.
+
+    `property_address` arrives from a caller's JSON or straight from a voice
+    agent's tool-call arguments, and `Visit` had no trimming at all.
+    """
+
+    def test_an_over_long_address_is_trimmed_not_refused(self) -> None:
+        from app.models import Visit
+
+        visit = Visit(property_address="1200 S Downing St, " * 40)
+        assert len(visit.property_address) == 280
+
+    def test_a_long_timezone_and_title_are_trimmed_too(self) -> None:
+        from app.models import Visit
+
+        visit = Visit(timezone="T" * 200, title="X" * 400)
+        assert len(visit.timezone) == 50
+        assert len(visit.title) == 200
+
+    def test_the_calcom_id_is_never_rewritten(self) -> None:
+        # It goes back to Cal.com to cancel the booking it names, so a trimmed
+        # or digested value would name nothing. Stored faithfully or not at all.
+        from app.models import Visit
+
+        assert "external_booking_id" not in Visit.__mapper__.validators
+
+    def test_the_booking_schemas_refuse_rather_than_silently_trim(self) -> None:
+        # The model's trim is the safety net; a caller deserves a 422 saying
+        # what was wrong with what they sent.
+        import pytest as _pytest
+        from pydantic import ValidationError
+
+        from app.api.v1.visits import BookingIn
+
+        with _pytest.raises(ValidationError):
+            BookingIn(start_time="2026-09-01T10:00:00Z", property_address="A" * 400)

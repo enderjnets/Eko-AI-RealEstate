@@ -147,7 +147,7 @@ async def record_request(
     row.last_seen = now
     row.request_count = (row.request_count or 0) + 1
     if ip:
-        row.last_ip = ip
+        row.last_ip = ip[:64] if isinstance(ip, str) else ip
     if user_agent:
         row.last_user_agent = user_agent[:400]
         row.device = parse_device(user_agent)
@@ -175,7 +175,7 @@ async def record_login(
     row.login_count = (row.login_count or 0) + 1
     row.last_seen = now
     if ip:
-        row.last_ip = ip
+        row.last_ip = ip[:64] if isinstance(ip, str) else ip
     if user_agent:
         row.last_user_agent = user_agent[:400]
         row.device = parse_device(user_agent)
