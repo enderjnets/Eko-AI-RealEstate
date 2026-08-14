@@ -649,3 +649,60 @@ async def test_an_impossible_budget_does_not_cost_us_the_message() -> None:
                 assert lead.zone == "Brickell", "the usable half of the extraction was dropped"
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_impossible_voice_payload_does_not_cost_us_the_call() -> None:
+    """The same failure as the chat path, on the route the fix did not visit.
+
+    `structuredData` is a voice agent's reading of a phone call — as much a
+    guess as the chat classifier's — and it is applied inside the transaction
+    that stores the caller's transcript. A value the table refuses does not
+    lose a field, it loses the record of the call, and VAPI redelivers the same
+    payload so every retry fails identically.
+
+    Six of the seven payloads below used to destroy that transaction; the
+    seventh raised `OverflowError` before reaching the database, which nothing
+    caught either.
+    """
+    from app.services.conversation import ingest_voice_call
+    from app.services.voice import VoiceCallReport
+
+    hostile = [
+        {"budget_min": -50_000},
+        {"budget_min": 900_000, "budget_max": 100_000},
+        {"budget_max": 1e13},
+        {"budget_max": float("inf")},
+        {"budget_max": float("nan")},
+        {"zone": "z" * 400},
+        {"urgency": "as soon as possible, ideally within the next thirty days"},
+    ]
+
+    await _agency()
+    try:
+        with org_scope(ORG):
+            for i, structured in enumerate(hostile):
+                report = VoiceCallReport(
+                    call_id=f"call-hostile-{i}",
+                    from_identifier=f"+1303555{i:04d}",
+                    from_name="A Caller",
+                    summary="They asked about Brickell.",
+                    turns=[("user", "I'm looking for a condo"), ("agent", "Of course.")],
+                    structured=structured,
+                )
+                async with get_session_factory()() as db:
+                    await ingest_voice_call(report, db)
+
+            async with get_session_factory()() as db:
+                stored = (
+                    await db.execute(
+                        select(Message).where(
+                            Message.content.like("%looking for a condo%")
+                        )
+                    )
+                ).scalars().all()
+                assert len(stored) == len(hostile), (
+                    f"{len(hostile) - len(stored)} call transcripts were destroyed"
+                )
+    finally:
+        await _cleanup()

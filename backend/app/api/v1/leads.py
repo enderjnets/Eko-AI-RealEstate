@@ -77,14 +77,18 @@ class LeadCreate(BaseModel):
     phone: str
     name: str | None = None
     intent: LeadIntent | None = None
-    zone: str | None = None
+    # Column widths from the model. `CallIn` in this same file bounds all four
+    # correctly; this one did not, and Postgres refuses an over-long string
+    # rather than truncating it.
+    name: str | None = Field(default=None, max_length=160)
+    zone: str | None = Field(default=None, max_length=160)
     # Same bounds as everywhere else these two columns are written. The add-lead
     # form takes free text for both, so this is the route a person is most
     # likely to invert by hand.
     budget_min: Decimal | None = Field(default=None, ge=0, le=9_999_999_999)
     budget_max: Decimal | None = Field(default=None, ge=0, le=9_999_999_999)
-    property_type: str | None = None
-    urgency: str | None = None
+    property_type: str | None = Field(default=None, max_length=60)
+    urgency: str | None = Field(default=None, max_length=40)
     # Only the text channels that work today. Voice (Phase 13) and WhatsApp
     # (deferred) are intentionally excluded so a request can't create a
     # conversation we can't deliver.

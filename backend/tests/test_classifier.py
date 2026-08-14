@@ -12,7 +12,7 @@ import pytest
 from app.models import LeadIntent
 from app.services import classifier as classifier_module
 from app.services.classifier import IntentEntities, IntentResult, classify_intent
-from app.services.conversation import merge_budget
+from app.services.lead_fields import merge_budget
 from app.services.llm import LLMResult, LLMUnavailable
 
 

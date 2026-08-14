@@ -15,6 +15,7 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.models import LeadIntent
+from app.services.lead_fields import storable_budget
 from app.services.llm import LLMUnavailable, generate_reply
 
 log = logging.getLogger(__name__)
@@ -30,55 +31,13 @@ class IntentEntities(BaseModel):
     @field_validator("budget_min", "budget_max", mode="before")
     @classmethod
     def _coerce_numeric(cls, v: Any) -> Any:
-        """Whatever the model returns, produce a usable number or nothing.
+        """One reader for both writers — see `lead_fields.storable_budget`.
 
-        Never raise. This runs on the inbound path: a `ValidationError` here
-        aborts the transaction that stores the customer's message, and since the
-        same message replays identically the provider's retries fail the same
-        way — the message is gone. Degrading to "no budget extracted" costs one
-        field; raising costs the conversation.
+        Doing this here as well as at the point of the write is not redundant:
+        this keeps nonsense out of the model, and that one is where the cost of
+        a bad value is actually paid.
         """
-        if v is None or v == "" or (isinstance(v, str) and v.lower() in ("null", "none", "n/a")):
-            return None
-        if isinstance(v, str):
-            # Drop currency marks, spaces and stray words, keep the number.
-            s = re.sub(r"[^\d.,\-]", "", v)
-            if not s:
-                return None
-            # Both separators present: the rightmost is the decimal point.
-            # "1.200.000,50" is European, "1,200,000.50" is American.
-            if "." in s and "," in s:
-                s = (
-                    s.replace(".", "").replace(",", ".")
-                    if s.rfind(",") > s.rfind(".")
-                    else s.replace(",", "")
-                )
-            # One separator, grouped in threes: it is a thousands separator, in
-            # either convention. "450,000" meant 450000 and used to come out as
-            # 450 — off by a thousand, positive, in range, and so past every
-            # check downstream. This install writes prices the American way.
-            elif re.fullmatch(r"-?\d{1,3}(,\d{3})+", s):
-                s = s.replace(",", "")
-            elif re.fullmatch(r"-?\d{1,3}(\.\d{3})+", s):
-                s = s.replace(".", "")
-            elif "," in s:
-                s = s.replace(",", ".")  # European decimal comma
-            try:
-                v = float(s)
-            except ValueError:
-                return None
-        try:
-            number = float(v)
-        except (TypeError, ValueError):
-            return None
-        # The database refuses negatives outright and overflows NUMERIC(12,2)
-        # past ten digits. Either would abort the inbound transaction, so a
-        # value that cannot be stored is discarded here instead — the same way
-        # `confidence` is clamped rather than rejected.
-        if number < 0 or number > 9_999_999_999:
-            log.warning("classifier returned an unusable budget (%s), ignoring it", v)
-            return None
-        return number
+        return storable_budget(v)
 
 
 class IntentResult(BaseModel):
@@ -133,7 +92,16 @@ def _extract_json(text: str) -> dict[str, Any] | None:
     if not match:
         return None
     try:
-        parsed = json.loads(match.group(0))
+        # `json.loads` accepts bare `NaN` and `Infinity` by default — they are
+        # not valid JSON, but Python emits and reads them, and a model that has
+        # seen enough Python will produce them. NaN is the dangerous one: it
+        # passes every range check (`nan < 0` is False, and so is `nan > max`),
+        # Postgres stores it in a NUMERIC, and then any comparison against it
+        # raises inside the transaction holding the customer's message.
+        parsed = json.loads(
+            match.group(0),
+            parse_constant=lambda _: None,
+        )
         return parsed if isinstance(parsed, dict) else None
     except json.JSONDecodeError:
         return None

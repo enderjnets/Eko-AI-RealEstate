@@ -24,7 +24,6 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
-from decimal import Decimal
 from email.utils import parseaddr
 
 from sqlalchemy import select
@@ -47,6 +46,11 @@ from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
 from app.services.delivery import schedule_retry
 from app.services.i18n import detect_language, language_instruction, pick_supported_language
+from app.services.lead_fields import (
+    merge_budget,
+    storable_budget,
+    storable_text,
+)
 from app.services.listings import listing_broker
 from app.services.llm import LLMResult, LLMUnavailable, generate_reply
 from app.services.optout import (
@@ -485,25 +489,31 @@ def _apply_voice_structured(lead: Lead, structured: dict) -> None:
     raw_intent = str(s.get("intent") or "").strip().lower()
     if raw_intent in _VOICE_INTENT_MAP:
         lead.intent = _VOICE_INTENT_MAP[raw_intent]
-    name = s.get("name")
-    if isinstance(name, str) and name.strip() and not lead.name:
-        lead.name = name.strip()
-    zone = s.get("zone")
-    if isinstance(zone, str) and zone.strip() and not lead.zone:
-        lead.zone = zone.strip()
-    for key in ("budget_min", "budget_max"):
-        val = s.get(key)
-        if val is not None and getattr(lead, key) is None:
-            try:
-                setattr(lead, key, int(float(val)))
-            except (TypeError, ValueError):
-                pass
-    ptype = s.get("property_type")
-    if isinstance(ptype, str) and ptype.strip() and not lead.property_type:
-        lead.property_type = ptype.strip()
-    timeline = s.get("timeline") or s.get("urgency")
-    if isinstance(timeline, str) and timeline.strip() and not lead.urgency:
-        lead.urgency = timeline.strip()
+    # Everything below goes through the same helpers as the chat path. This is
+    # a voice agent's reading of a phone call — as much a guess as the chat
+    # classifier's — and it is applied inside the transaction that stores the
+    # caller's transcript. A value the table refuses does not lose a field, it
+    # loses the record of the call, and VAPI redelivers the same payload so
+    # every retry fails identically.
+    if (name := storable_text(s.get("name"), "name")) and not lead.name:
+        lead.name = name
+    if (zone := storable_text(s.get("zone"), "zone")) and not lead.zone:
+        lead.zone = zone
+
+    # `int(float(val))` used to be the whole defence: it let negatives,
+    # overflows and NaN through, and raised OverflowError on infinity — which
+    # nothing caught.
+    low, high = merge_budget(
+        (lead.budget_min, lead.budget_max),
+        (storable_budget(s.get("budget_min")), storable_budget(s.get("budget_max"))),
+    )
+    lead.budget_min, lead.budget_max = low, high
+
+    if (ptype := storable_text(s.get("property_type"), "property_type")) and not lead.property_type:
+        lead.property_type = ptype
+    timeline = storable_text(s.get("timeline") or s.get("urgency"), "urgency")
+    if timeline and not lead.urgency:
+        lead.urgency = timeline
 
 
 async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | bool]:
@@ -523,14 +533,16 @@ async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | b
     if lead is None:
         lead = Lead(
             phone=report.from_identifier,
-            name=report.from_name,
+            # Trimmed: the column is 160 characters and this comes from the
+            # provider, inside the transaction that stores the transcript.
+            name=storable_text(report.from_name, "name"),
             email=_address_or_none(report.from_identifier),
         )
         db.add(lead)
         await db.flush()
         log.info("Created lead id=%d channel=voice identifier=%s", lead.id, lead.phone)
     elif report.from_name and not lead.name:
-        lead.name = report.from_name
+        lead.name = storable_text(report.from_name, "name")
 
     # ── 2. Idempotency: a re-delivered report for the same call must not dup ──
     first_external_id = f"{report.call_id}#0"
@@ -1038,44 +1050,6 @@ async def _optout_language(
     return pick_supported_language(detect_language(parsed.content or ""), ("en", "es"))
 
 
-def merge_budget(
-    stored: tuple[Decimal | float | None, Decimal | float | None],
-    extracted: tuple[float | None, float | None],
-) -> tuple[Decimal | float | None, Decimal | float | None]:
-    """Reconcile what the classifier read with what the lead already holds.
-
-    Both ways of getting this wrong are silent, which is why it is worth having
-    on its own:
-
-    - A range the wrong way round matches no listing at all, and `/matches`
-      reports that as "nothing available" rather than "this record is broken".
-      The database refuses the pair outright, and that refusal would abort the
-      transaction storing the customer's message.
-    - A stale value that refuses to be corrected is just as bad in the other
-      direction: the lead says "between 100 and 300", an earlier guess left a
-      minimum of 500, and we keep showing them what they have just ruled out
-      however many times they repeat themselves.
-
-    So: a complete range in one message is the customer stating their budget,
-    and it wins. A single value only fills a gap, and only if it does not turn
-    the pair around.
-    """
-    low, high = stored
-    e_min, e_max = extracted
-
-    if e_min is not None and e_max is not None:
-        if e_min <= e_max:
-            return (e_min, e_max)
-        log.warning("classifier returned a backwards range (%s-%s), ignoring it", e_min, e_max)
-        return (low, high)
-
-    if e_min is not None and low is None and (high is None or e_min <= high):
-        low = e_min
-    if e_max is not None and high is None and (low is None or e_max >= low):
-        high = e_max
-    return (low, high)
-
-
 async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dict[str, int | str | bool]:
     """Process one inbound message (any channel) end-to-end. Returns a small status dict.
 
@@ -1159,7 +1133,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     if is_new_lead and lead.id is not None:
         log.info("Created lead id=%d channel=%s identifier=%s", lead.id, parsed.channel, lead.phone)
     if parsed.from_name and not lead.name:
-        lead.name = parsed.from_name
+        lead.name = storable_text(parsed.from_name, "name")
 
     # ── 2. Active conversation ─────────────────────────────────────────
     # Multichannel: one active conversation per (lead, channel). A lead that
@@ -1373,38 +1347,28 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         # outright, which would abort this whole inbound message — so keep the
         # extraction and drop the half that makes it impossible, rather than
         # losing a customer's message to a bad guess.
-        # Anything the `leads` constraints would reject is dropped here, before
-        # it can reach them. The classifier's own validator already does this,
-        # but that is a validator: it protects the values that happen to go
-        # through it. This is the line where the cost is paid — a rejected write
-        # aborts the transaction that stores the customer's message, and since
-        # the provider replays the same message every retry fails identically.
-        def _storable(value: float | None) -> float | None:
-            if value is None:
-                return None
-            if value < 0 or value > 9_999_999_999:
-                log.warning(
-                    "lead %s: dropping a budget the database would refuse (%s)",
-                    lead.id,
-                    value,
-                )
-                return None
-            return value
-
+        # Whatever the model understood, made safe for the table. Both are
+        # dropped rather than refused: a rejected write aborts the transaction
+        # holding the customer's message, and the provider replays it, so every
+        # retry fails the same way and the message is gone for good.
         e = e.model_copy(
             update={
-                "budget_min": _storable(e.budget_min),
-                "budget_max": _storable(e.budget_max),
+                "budget_min": storable_budget(e.budget_min),
+                "budget_max": storable_budget(e.budget_max),
             }
         )
 
         lead.budget_min, lead.budget_max = merge_budget(
             (lead.budget_min, lead.budget_max), (e.budget_min, e.budget_max)
         )
+        # Trimmed to the column width, for the same reason as the budgets:
+        # `urgency` is 40 characters and "as soon as possible, ideally within
+        # the next thirty days" is 52. Postgres does not truncate, it refuses —
+        # and the refusal takes the customer's message with it.
         if e.property_type and not lead.property_type:
-            lead.property_type = e.property_type
+            lead.property_type = storable_text(e.property_type, "property_type")
         if e.urgency and not lead.urgency:
-            lead.urgency = e.urgency
+            lead.urgency = storable_text(e.urgency, "urgency")
 
     # ── 8. Reply generation ────────────────────────────────────────────
     if agent_cfg is None:

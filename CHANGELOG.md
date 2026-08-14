@@ -2,6 +2,36 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.46.2] — 2026-08-14
+
+Lo mismo que 0.46.1, en la ruta que no había visitado.
+
+### Corregido
+
+- **Una llamada de voz con datos imposibles ya no borra su propia
+  transcripción.** El agente de voz devuelve `structuredData` —su lectura de lo
+  que dijo la persona por teléfono— y se aplicaba con `int(float(val))` como
+  única defensa, dentro de la transacción que guarda la transcripción. De siete
+  cargas hostiles, seis destruían la transacción y la séptima reventaba con
+  `OverflowError` sin que nadie lo capturase. Es exactamente el fallo de 0.46.1
+  en la ruta a la que el arreglo no llegó.
+- **`"450k"` valía 450.** Al arreglar el separador de miles quité las letras, y
+  con ellas los sufijos: `450k`→450, `1.2M`→1.2, y `"entre 300k y 500k"`→300500,
+  un número **inventado** juntando dos. Positivos, en rango y no invertidos, o
+  sea invisibles para todo lo demás. Ahora se leen los sufijos y un texto con
+  dos números se descarta en vez de adivinar.
+- **`NaN` ya no puede llegar a la base.** Pasa cualquier comparación (`nan < 0`
+  es falso, y `nan > máximo` también), Postgres lo guarda tan tranquilo, y luego
+  cualquier comparación contra él **lanza** — dentro de la transacción del
+  mensaje. Entraba porque `json.loads` acepta `NaN` a secas.
+- **Textos recortados a lo que cabe.** `urgency` son 40 caracteres y un agente
+  de voz contesta "as soon as possible, ideally within the next thirty days",
+  que son 52. Postgres no recorta: rechaza.
+
+Todo esto vive ahora en `app/services/lead_fields.py`, un único sitio para las
+dos rutas, porque el error que este código lleva repitiendo es poner el guarda
+en el camino que uno está mirando.
+
 ## [0.46.1] — 2026-08-14
 
 Corrección de una regresión que introduje en 0.46.0, y de las graves.
