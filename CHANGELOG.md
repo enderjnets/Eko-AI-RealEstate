@@ -2,6 +2,27 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.46.3] — 2026-08-14
+
+### Corregido
+
+- **Ningún texto puede volver a costar un mensaje.** Nueve rondas encontraron
+  este mismo fallo campo a campo: primero `urgency`, luego `zone`, luego el
+  nombre en un constructor **dos líneas debajo** de otro que acababa de
+  arreglar, luego el asunto de un correo. Cada arreglo era correcto y cada uno
+  cubría el campo que yo estaba mirando. Ahora el recorte vive en el modelo
+  (`@validates`), así que vale para toda escritura del ORM — incluidas las que
+  nadie ha escrito todavía— y un test **recorre la tabla** y falla si aparece
+  una columna nueva sin cubrir. Postgres no recorta: rechaza, y en estas rutas
+  el rechazo tira la transacción que guardaba lo que dijo el cliente.
+- **Una redelivery de VAPI ya no deshace la corrección del agente.** Al pasar la
+  ruta de voz por `merge_budget` cambié sin querer su semántica: pasó de
+  «rellena huecos» a «un rango completo manda». Como esa función corre en cada
+  entrega, incluidas las repetidas, el agente corregía 100k-900k a 300k-400k,
+  VAPI reenviaba la misma llamada y su corrección desaparecía sin rastro.
+- `"450kk"` y `"450 mil millones"` se descartan en vez de salir mil o un millón
+  por debajo.
+
 ## [0.46.2] — 2026-08-14
 
 Lo mismo que 0.46.1, en la ruta que no había visitado.

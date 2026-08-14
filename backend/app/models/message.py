@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, pg_enum
+from app.db.text_limits import clip_string_columns
 
 if TYPE_CHECKING:
     from app.models.conversation import Conversation
@@ -110,3 +111,22 @@ class Message(Base):
             f"<Message id={self.id} conv={self.conversation_id} "
             f"dir={self.direction.value} sender={self.sender.value}>"
         )
+
+    # Every bounded string on `messages`, trimmed on write. `subject` is the live one: an email Subject header has no length limit and this column is 500.
+    #
+    # Postgres refuses an over-long value rather than truncating it, and on the
+    # inbound paths that refusal rolls back the transaction holding what the
+    # customer actually said. See `app/db/text_limits.py`. A test walks this
+    # table and fails if a bounded column is missing from the list, because
+    # forgetting one is exactly how this kept happening.
+    _clip = clip_string_columns(
+        "direction",
+        "sender",
+        "external_id",
+        "delivery_status",
+        "last_error",
+        "subject",
+        "llm_provider",
+        "llm_model",
+    )
+

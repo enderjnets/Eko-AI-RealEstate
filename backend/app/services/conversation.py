@@ -503,11 +503,21 @@ def _apply_voice_structured(lead: Lead, structured: dict) -> None:
     # `int(float(val))` used to be the whole defence: it let negatives,
     # overflows and NaN through, and raised OverflowError on infinity — which
     # nothing caught.
-    low, high = merge_budget(
+    # Only offer what the lead is missing. This function is called on every
+    # delivery of a report, including redeliveries of one already ingested, so
+    # letting an extracted range win would silently undo a correction the
+    # realtor typed by hand — they fix 100k-900k to 300k-400k, VAPI resends the
+    # same call, and their edit is gone with no sign it ever happened.
+    #
+    # A complete range still lands in one go on a lead with no budget at all,
+    # because both sides are offered then.
+    lead.budget_min, lead.budget_max = merge_budget(
         (lead.budget_min, lead.budget_max),
-        (storable_budget(s.get("budget_min")), storable_budget(s.get("budget_max"))),
+        (
+            storable_budget(s.get("budget_min")) if lead.budget_min is None else None,
+            storable_budget(s.get("budget_max")) if lead.budget_max is None else None,
+        ),
     )
-    lead.budget_min, lead.budget_max = low, high
 
     if (ptype := storable_text(s.get("property_type"), "property_type")) and not lead.property_type:
         lead.property_type = ptype

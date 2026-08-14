@@ -120,6 +120,13 @@ def parse_budget(value: Any) -> float | None:
     text = text.replace("$", "").replace("€", "").replace("£", "")
     text = re.sub(r"(?<=\d)\s+(?=\d{3}\b)", "", text)
 
+    # "450kk" and "450 mil millones" are not readings this code can defend:
+    # the first is a typo and the second stacks two multipliers. Both used to
+    # come out a thousand or a million low, which is the worst kind of wrong —
+    # plausible, in range, and invisible to everything downstream.
+    if re.search(r"(?:k|m|mm|mil|mill\w*)\s*(?:k|m|mm|mil|mill\w*)", text, re.IGNORECASE):
+        return None
+
     matches = _NUMBER.findall(text)
     if len(matches) != 1:
         # Zero: no number at all. More than one: a range or a sentence, and
@@ -220,5 +227,7 @@ def _finite(value: Decimal | float | None) -> Decimal | float | None:
         if isinstance(value, Decimal):
             return None if not value.is_finite() else value
         return None if not math.isfinite(float(value)) else value
-    except (TypeError, ValueError, InvalidOperation):
+    except (TypeError, ValueError, InvalidOperation, OverflowError):
+        # OverflowError included deliberately: float(10**400) raises, and the
+        # whole contract of this function is that it does not.
         return None

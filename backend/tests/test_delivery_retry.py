@@ -9,6 +9,7 @@ with a status column nobody watches as the only trace.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
@@ -704,5 +705,63 @@ async def test_an_impossible_voice_payload_does_not_cost_us_the_call() -> None:
                 assert len(stored) == len(hostile), (
                     f"{len(hostile) - len(stored)} call transcripts were destroyed"
                 )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_redelivered_call_does_not_undo_a_hand_correction() -> None:
+    """A regression I introduced, of a different kind to the message loss.
+
+    The voice applier used to write a budget only into an empty field. Routing
+    it through `merge_budget` let a complete extracted range win — and this
+    function runs on every delivery of a report, redeliveries included. So the
+    realtor listens to the call, corrects 100k-900k to 300k-400k, VAPI resends
+    the identical payload, and their correction is gone with nothing to show it
+    ever happened.
+    """
+    from app.services.conversation import ingest_voice_call
+    from app.services.voice import VoiceCallReport
+
+    report = VoiceCallReport(
+        call_id="call-redelivery",
+        from_identifier="+13035558888",
+        from_name="A Caller",
+        summary="Asked about condos.",
+        turns=[("user", "Somewhere between one and nine hundred"), ("agent", "Noted.")],
+        structured={"budget_min": 100_000, "budget_max": 900_000},
+    )
+
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                await ingest_voice_call(report, db)
+
+            # The realtor was on the call and knows better.
+            async with get_session_factory()() as db:
+                lead = (
+                    await db.execute(
+                        select(Lead).where(Lead.phone == "+13035558888")
+                    )
+                ).scalar_one()
+                lead.budget_min = Decimal("300000")
+                lead.budget_max = Decimal("400000")
+                await db.commit()
+
+            # VAPI resends the same report.
+            async with get_session_factory()() as db:
+                await ingest_voice_call(report, db)
+
+            async with get_session_factory()() as db:
+                lead = (
+                    await db.execute(
+                        select(Lead).where(Lead.phone == "+13035558888")
+                    )
+                ).scalar_one()
+                assert lead.budget_min == Decimal("300000.00"), (
+                    "a redelivered call overwrote the realtor's correction"
+                )
+                assert lead.budget_max == Decimal("400000.00")
     finally:
         await _cleanup()
