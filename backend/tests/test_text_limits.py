@@ -171,3 +171,88 @@ class TestTheIdempotencyKey:
         from app.models import Message
 
         assert Message(external_id="wamid.HBgLMTM=").external_id == "wamid.HBgLMTM="
+
+
+class TestEveryUniqueStringKeyHasBeenThoughtAbout:
+    """The inventory, so the next one cannot arrive unnoticed.
+
+    A bounded string column with a UNIQUE constraint has three failure modes,
+    and which one applies depends entirely on where the value comes from:
+
+    - Stored whole, an over-long value fails the write. If that write shares a
+      transaction with something the customer sent, the message is lost.
+    - Truncated, two distinct values collide. On an identity key that merges
+      two people; on an idempotency key it silently drops a message.
+    - Rewritten at all, a value that has to travel back to an external system
+      stops matching there.
+
+    Twelve rounds of audit found these one at a time. This test lists every one
+    in the schema with the reason it is safe, so adding a new unique string
+    column fails here until somebody writes that reason down.
+    """
+
+    # column -> why it cannot bite
+    DECIDED = {
+        # Normalised with a digest: identity and idempotency keys, fed by
+        # providers, looked up by equality. See `clip_identifier`.
+        ("leads", "phone"): "digest — identity key from providers",
+        ("messages", "external_id"): "digest — idempotency key from providers",
+        # Written from fixed literals in our own code, never from input.
+        ("channel_routes", "channel"): "literal: whatsapp | sms | email | voice",
+        ("conversations", "channel"): "literal, same set",
+        ("follow_ups", "kind"): "enum value",
+        ("properties", "source"): "literal: mls | manual",
+        ("sync_state", "source"): "literal, one per feed",
+        # Admin configuration through an authenticated form. Failing loudly is
+        # right here: silently storing a different email than the one typed
+        # would lock somebody out of an account they think they created.
+        ("organizations", "slug"): "admin-entered config",
+        ("accounts", "email"): "admin-entered, must not be silently altered",
+        ("allowed_users", "email"): "admin-entered, must not be silently altered",
+        ("channel_routes", "destination"): "admin-entered provider address",
+        ("user_activity", "email"): "copied from accounts.email",
+        # Round-trips to an external system, so it must be stored faithfully or
+        # not at all: a truncated id cannot cancel the booking it names, and a
+        # digest could not either. Cal.com uids are ~20 characters against 120.
+        ("visits", "external_booking_id"): "must round-trip to Cal.com; never rewrite",
+        # From the MLS feed and used to match on re-sync. An over-long id fails
+        # that listing's upsert, which the next sync retries — a recoverable
+        # failure with no customer message in the transaction.
+        ("properties", "external_id"): "feed id; failure is a retried sync",
+    }
+
+    def test_the_inventory_is_complete(self) -> None:
+        from sqlalchemy import String
+
+        import app.models as models
+
+        found, seen = set(), set()
+        for name in dir(models):
+            model = getattr(models, name, None)
+            if not (hasattr(model, "__table__") and hasattr(model, "__mapper__")):
+                continue
+            table = model.__table__
+            if table.name in seen:
+                continue
+            seen.add(table.name)
+            unique: set[str] = set()
+            for constraint in table.constraints:
+                if type(constraint).__name__ == "UniqueConstraint":
+                    unique |= {c.name for c in constraint.columns}
+            for index in table.indexes:
+                if index.unique:
+                    unique |= {c.name for c in index.columns}
+            for column in table.columns:
+                if (
+                    column.name in unique
+                    and isinstance(column.type, String)
+                    and column.type.length
+                ):
+                    found.add((table.name, column.name))
+
+        undecided = sorted(found - set(self.DECIDED))
+        assert not undecided, (
+            f"new unique string columns with no decision recorded: {undecided}. "
+            "Say where the value comes from and which of the three failure "
+            "modes applies — see this class's docstring."
+        )
