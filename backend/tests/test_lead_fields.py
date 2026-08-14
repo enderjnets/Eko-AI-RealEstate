@@ -152,3 +152,34 @@ class TestReconcilingWithWhatWeAlreadyKnew:
         )
         assert merge_budget((Decimal("NaN"), None), (100_000.0, None)) == (100_000.0, None)
         assert merge_budget((None, None), (nan, nan)) == (None, None)
+
+
+class TestTheFeedCannotPoisonItself:
+    """A recorded reason in the inventory was wrong, and this is what it should
+    have said. RESO allows 255 characters for a ListingKey against a column
+    that holds 120. The page is written in one statement and its cursor is
+    committed with it, so an over-long key does not fail one listing — it fails
+    the page, the cursor never moves, and every later run refetches exactly the
+    same page. One record stops the whole MLS feed until somebody notices."""
+
+    def test_an_over_long_listing_key_is_skipped_not_fatal(self) -> None:
+        from app.services.listings import _map_reso_record
+
+        record = {
+            "ListingKey": "K" * 200,
+            "UnparsedAddress": "1200 S Downing St",
+            "City": "Denver",
+            "ListPrice": 640000,
+        }
+        assert _map_reso_record(record) is None
+
+    def test_an_ordinary_listing_still_comes_through(self) -> None:
+        from app.services.listings import _map_reso_record
+
+        record = {
+            "ListingKey": "REC1234567",
+            "UnparsedAddress": "1200 S Downing St",
+            "City": "Denver",
+            "ListPrice": 640000,
+        }
+        assert _map_reso_record(record) is not None

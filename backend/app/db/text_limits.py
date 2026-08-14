@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from sqlalchemy import String
+from sqlalchemy import Enum, String
 from sqlalchemy.orm import validates
 
 log = logging.getLogger(__name__)
@@ -49,7 +49,19 @@ def clip_string_columns(*columns: str) -> Any:
         if not isinstance(value, str):
             return value
         column = self.__table__.columns.get(key)
-        limit = getattr(column.type, "length", None) if column is not None else None
+        if column is None:
+            return value
+        # Never an enum. `sa.Enum` subclasses `String` and carries a length
+        # derived from the longest member, so it lands here looking like any
+        # other bounded text — but truncating one turns a valid value into an
+        # invalid one, which is the opposite of the trade this makes everywhere
+        # else. Today every value is short enough that nothing happens; adding
+        # one member spelled longer than the current longest would make this
+        # quietly corrupt it, and the write would fail anyway with a value
+        # nobody wrote.
+        if isinstance(column.type, Enum):
+            return value
+        limit = getattr(column.type, "length", None)
         if limit is None or len(value) <= limit:
             return value
         log.warning(

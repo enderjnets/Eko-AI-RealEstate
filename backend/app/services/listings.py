@@ -298,6 +298,23 @@ def _map_reso_record(r: dict) -> ListingDTO | None:
     key = str(r.get("ListingKey") or r.get("ListingId") or "")
     if not key:
         return None
+    # RESO allows 255 for a ListingKey and this column is 120. One over-long key
+    # does not fail its own listing: `_upsert_page` writes the page in a single
+    # INSERT … ON CONFLICT, and `_sync_reso` commits the rows and the cursor
+    # together — so the page fails, the cursor never advances, and the next run
+    # refetches the same page and fails identically. One record stalls the whole
+    # feed, permanently, until somebody notices by hand.
+    #
+    # Skipping the record costs one listing out of a page and keeps the feed
+    # moving. It is logged loudly because a listing silently missing from the
+    # matcher is its own kind of harm.
+    if len(key) > 120:
+        log.warning(
+            "skipping a listing whose key is %d characters (the column holds 120): %s…",
+            len(key),
+            key[:40],
+        )
+        return None
     media = [m for m in (r.get("Media") or []) if isinstance(m, dict) and m.get("MediaURL")]
     media.sort(key=lambda m: m["Order"] if isinstance(m.get("Order"), int) else 1_000_000)
     photos = [m["MediaURL"] for m in media][:12]

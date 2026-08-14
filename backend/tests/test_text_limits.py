@@ -215,10 +215,14 @@ class TestEveryUniqueStringKeyHasBeenThoughtAbout:
         # not at all: a truncated id cannot cancel the booking it names, and a
         # digest could not either. Cal.com uids are ~20 characters against 120.
         ("visits", "external_booking_id"): "must round-trip to Cal.com; never rewrite",
-        # From the MLS feed and used to match on re-sync. An over-long id fails
-        # that listing's upsert, which the next sync retries — a recoverable
-        # failure with no customer message in the transaction.
-        ("properties", "external_id"): "feed id; failure is a retried sync",
+        # From the MLS feed. The reason recorded here was WRONG when it was
+        # written: an over-long key does not fail its own listing. The page is
+        # written in one INSERT … ON CONFLICT and the cursor is committed with
+        # it, so the page fails, the cursor never advances, and the next run
+        # refetches the same page and fails the same way — one record stalling
+        # the entire feed until a human intervenes. The record is skipped at
+        # the parser now, with a loud log line.
+        ("properties", "external_id"): "feed id; over-long records skipped at the parser",
     }
 
     def test_the_inventory_is_complete(self) -> None:
@@ -254,3 +258,43 @@ class TestEveryUniqueStringKeyHasBeenThoughtAbout:
             "Say where the value comes from and which of the three failure "
             "modes applies — see this class's docstring."
         )
+
+
+class TestTheIdentityKeyOnEveryRoute:
+    """v0.46.6 said it had stopped two senders becoming one lead. It had — on
+    the inbound path only. `POST /api/v1/leads` writes the same column through
+    the model, which was still slicing, so the merge stayed reachable through
+    the route a realtor uses and the two normalisations of one key disagreed
+    with each other."""
+
+    def test_the_model_and_the_boundary_agree(self) -> None:
+        from app.models import Lead
+        from app.services._common import clip_identifier
+
+        raw = "q" * 254 + "-someone@example.invalid"
+        assert Lead(phone=raw).phone == clip_identifier(raw)
+
+    def test_two_senders_stay_two_leads_through_the_model(self) -> None:
+        from app.models import Lead
+
+        alice = "q" * 254 + "-alice@example.invalid"
+        bob = "q" * 254 + "-bob@example.invalid"
+        assert Lead(phone=alice).phone != Lead(phone=bob).phone
+
+    def test_the_create_route_normalises_before_it_looks_anything_up(self) -> None:
+        # The route searches by this value and then writes it. If the schema
+        # left it raw, the search would miss the row the model had normalised
+        # and the second attempt would hit the unique index — a 500 that
+        # repeats for ever.
+        from app.api.v1.leads import LeadCreate
+        from app.models import Lead
+
+        raw = "r" * 300
+        assert LeadCreate(phone=raw).phone == Lead(phone=raw).phone
+
+    def test_an_ordinary_number_is_untouched_everywhere(self) -> None:
+        from app.api.v1.leads import LeadCreate
+        from app.models import Lead
+
+        assert Lead(phone="+13035550001").phone == "+13035550001"
+        assert LeadCreate(phone="+13035550001").phone == "+13035550001"

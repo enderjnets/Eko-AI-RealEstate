@@ -77,6 +77,21 @@ class LeadCreate(BaseModel):
     phone: str
     name: str | None = None
     intent: LeadIntent | None = None
+    @field_validator("phone")
+    @classmethod
+    def _normalise_identifier(cls, value: str) -> str:
+        """Normalise here, so the lookup and the write below agree.
+
+        The route searches for an existing lead by this value and then creates
+        one with it. The model normalises what it stores; if this did not, the
+        two would disagree and the second request for the same person would
+        miss the row, insert, and hit the unique index — a 500 that repeats for
+        ever. Same rule as the inbound path.
+        """
+        from app.services._common import clip_identifier
+
+        return clip_identifier(value)
+
     # Column widths from the model. `CallIn` in this same file bounds all four
     # correctly; this one did not, and Postgres refuses an over-long string
     # rather than truncating it.

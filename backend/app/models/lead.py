@@ -18,7 +18,7 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db.base import Base, pg_enum
 from app.db.text_limits import clip_string_columns
@@ -204,8 +204,11 @@ class Lead(Base):
     # customer actually said. See `app/db/text_limits.py`. A test walks this
     # table and fails if a bounded column is missing from the list, because
     # forgetting one is exactly how this kept happening.
+    # `phone` is deliberately absent: it is the identity key, UNIQUE per
+    # organisation, and a plain slice makes two senders sharing a 254-character
+    # prefix into one lead — one person's messages in another's thread. It gets
+    # the digest below, the same treatment as `messages.external_id`.
     _clip = clip_string_columns(
-        "phone",
         "name",
         "email",
         "status",
@@ -219,4 +222,18 @@ class Lead(Base):
         "opted_out_channel",
         "opted_out_keyword",
     )
+
+    @validates("phone")
+    def _clip_phone(self, _key: str, value: object) -> object:
+        """Keep two different people two different leads.
+
+        Everything looks a person up by this column. Sliced, two identifiers
+        agreeing for their first 254 characters resolve to the same row, and
+        one person's conversation contains another's. Kept whole, the write
+        fails — and on the inbound path that failure rolls back the customer's
+        message. The digest is neither.
+        """
+        from app.services._common import clip_identifier  # local: avoids a cycle
+
+        return clip_identifier(value) if isinstance(value, str) else value
 

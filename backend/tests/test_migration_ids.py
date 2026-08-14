@@ -20,10 +20,19 @@ VERSIONS = Path(__file__).resolve().parents[1] / "migrations" / "versions"
 COMFORTABLE = 30
 
 
+# Both spellings. Fourteen of the thirty migrations here declare
+# `revision: str = "..."` — and so does `migrations/script.py.mako`, this
+# project's own template, which means every migration Alembic generates from
+# now on takes the form the first version of this regex could not see. A guard
+# blind to all future instances of what it guards is worse than none, because
+# it reads as coverage.
+_REVISION = re.compile(r"^revision(?::\s*str)?\s*=\s*[\"'](.+?)[\"']", re.M)
+
+
 def _revisions() -> list[tuple[str, str]]:
     found = []
     for path in sorted(VERSIONS.glob("*.py")):
-        match = re.search(r"^revision = [\"'](.+?)[\"']", path.read_text(), re.M)
+        match = _REVISION.search(path.read_text())
         if match:
             found.append((path.name, match.group(1)))
     return found
@@ -38,7 +47,16 @@ def test_every_revision_id_fits_with_room_to_spare() -> None:
     )
 
 
-def test_there_are_revisions_to_check() -> None:
-    # A guard that silently checks nothing is worse than no guard: if the glob
-    # or the regex ever stops matching, this says so instead of passing.
-    assert len(_revisions()) >= 16
+def test_the_check_sees_every_migration() -> None:
+    """Counted against the files on disk, not against a number I wrote down.
+
+    The first version of this asserted `>= 16`, which was exactly the number the
+    regex happened to match — so the guard against silently checking nothing was
+    satisfied by the very miss it existed to catch.
+    """
+    on_disk = [p for p in VERSIONS.glob("*.py") if not p.name.startswith("__")]
+    checked = _revisions()
+    assert len(checked) == len(on_disk), (
+        f"{len(on_disk) - len(checked)} migrations have a revision id this check "
+        f"cannot see: {sorted({p.name for p in on_disk} - {n for n, _ in checked})}"
+    )
