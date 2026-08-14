@@ -14,6 +14,7 @@ import {
   MessageCircle,
   MessageSquare,
   Phone,
+  PhoneCall,
   Search,
   Settings,
   Users,
@@ -159,6 +160,13 @@ export function Nav() {
               className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
             >
               {t("nav.leads")}
+            </Link>
+            <Link
+              href="/console"
+              className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+            >
+              <PhoneCall className="w-3.5 h-3.5" />
+              {t("console.title")}
             </Link>
 
             {/* Inbox — button opens a dropdown with quick access to new/pending comms. */}

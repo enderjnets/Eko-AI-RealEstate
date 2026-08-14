@@ -2,6 +2,59 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.45.0] — 2026-08-14
+
+La consola de llamada. Natalia y Robbie ya tienen llamadas; lo que aprendían en
+ellas moría en una libreta, y esa libreta es la razón de que el emparejador de
+propiedades, el scoring y el nurture —todos construidos— no giraran.
+
+### Añadido
+
+- **Panel de registro de llamada** en cada ficha de contacto. Toques, no
+  escritura, con presupuesto de **un minuto**: si marcar cuesta más, no se
+  marca, y el dato que llegue es peor que ninguno. Lo que se registra va **al
+  `Lead`**, que es de donde ya leen `match_properties_for_lead` y
+  `compute_lead_score`.
+- **Guardar ejecuta, no archiva.** Cada resultado dispara una única acción:
+  programar el seguimiento, o cancelar todo lo pendiente cuando la persona dice
+  que ya tiene agente o pide que no la contacten.
+- **Consentimiento verbal registrable**: si lo pidió en la llamada, queda
+  escrito con fecha y quién lo marcó. De una sola escritura — el primer
+  registro es el que se mostró o se habló.
+- **Página `/console` — Hoy**: llamadas y correos por hacer, seguimientos
+  **retenidos por falta de consentimiento** (antes solo visibles en los logs) y
+  calientes sin tocar. Un lead no aparece dos veces.
+- **Nuevos: `call_logs`** (con RLS y GRANT explícito), `leads.preferred_channel`,
+  `visits.property_id`, `follow_ups.call_log_id` + `UNIQUE(call_log_id, kind)`.
+  Migración 029, aditiva y reversible.
+- **`enqueue_after_call()`** — los cuatro tipos de seguimiento existentes
+  colgaban de una visita, así que el caso más común tras una llamada
+  (interesado, todavía no) no tenía forma de seguirse.
+
+### Decisión de cumplimiento
+
+**Solo SMS tiene emisor automático.** El correo y la llamada se atienden a mano
+desde la lista de Hoy, y eso está escrito en el código:
+
+- No hay proveedor de voz, y una llamada automática a un móvil es exactamente
+  lo que castiga TCPA.
+- `services/email.py` no manda cabecera de baja ni dirección postal, y
+  `optout.py` no reconoce el correo: correo comercial automático sin baja
+  operativa es una violación de CAN-SPAM.
+
+Ofrecer un canal que el sistema no puede honrar es el patrón del campo de
+perfil muerto que este repositorio ya ha pagado cuatro veces. Mejor decir en
+voz alta cuáles dos son manuales.
+
+**La preferencia estrecha, nunca abre**: reordena los canales permitidos y
+jamás salta la retención por falta de consentimiento ni el opt-out.
+
+### Corregido
+
+- Los seguimientos sin emisor automático se excluyen **en SQL**, no en el
+  bucle: permanentemente pendientes y siempre los más antiguos, habrían ocupado
+  la cabeza de cada lote y matado de hambre a los que sí se pueden enviar.
+
 ## [0.44.0] — 2026-08-13
 
 Primera cara pública del producto: la landing de la agencia, en la raíz del

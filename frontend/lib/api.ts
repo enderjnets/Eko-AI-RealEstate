@@ -297,6 +297,98 @@ export const visitsApi = {
     api<Visit>(`/v1/visits`, { method: "POST", body: JSON.stringify(body) }),
 };
 
+// ── Call console ────────────────────────────────────────────────────────────
+
+export type CallOutcome =
+  | "wants_listings"
+  | "booked_visit"
+  | "follow_up"
+  | "no_answer"
+  | "has_agent"
+  | "do_not_contact"
+  | "wrong_number";
+
+export type PreferredChannel = "sms" | "email" | "call";
+
+export interface CallLog {
+  id: number;
+  lead_id: number;
+  outcome: CallOutcome;
+  note: string | null;
+  logged_by: string | null;
+  created_at: string;
+}
+
+export interface CallIn {
+  outcome: CallOutcome;
+  note?: string;
+  intent?: LeadIntent;
+  urgency?: string;
+  zone?: string;
+  property_type?: string;
+  budget_min?: number;
+  budget_max?: number;
+  preferred_channel?: PreferredChannel;
+  name?: string;
+  email?: string;
+  follow_up_in_days?: number;
+  /** The person asked ON THE CALL to be sent something. Records consent. */
+  asked_for_texts?: boolean;
+}
+
+export interface CallResult {
+  call: CallLog;
+  score: number;
+  follow_up_scheduled_for: string | null;
+  cancelled_follow_ups: number;
+}
+
+export const callsApi = {
+  list: (leadId: number) => api<CallLog[]>(`/v1/leads/${leadId}/calls`),
+  log: (leadId: number, body: CallIn) =>
+    api<CallResult>(`/v1/leads/${leadId}/calls`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+};
+
+export interface ConsoleLead {
+  id: number;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  score: number | null;
+  status: LeadStatus;
+  zone: string | null;
+  preferred_channel: PreferredChannel | null;
+  last_message_at: string | null;
+}
+
+export interface ConsoleTask {
+  follow_up_id: number;
+  scheduled_for: string;
+  channel: PreferredChannel;
+  lead: ConsoleLead;
+}
+
+export interface HeldFollowUp {
+  follow_up_id: number;
+  scheduled_for: string;
+  holds: number;
+  lead: ConsoleLead;
+}
+
+export interface ConsoleToday {
+  tasks: ConsoleTask[];
+  held: HeldFollowUp[];
+  untouched_hot: ConsoleLead[];
+  generated_at: string;
+}
+
+export const consoleApi = {
+  today: () => api<ConsoleToday>(`/v1/console/today`),
+};
+
 export interface AgencySettings {
   agency_name: string;
   agency_phone: string | null;

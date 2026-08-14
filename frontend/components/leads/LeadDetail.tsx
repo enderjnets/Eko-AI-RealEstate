@@ -23,6 +23,7 @@ import {
 import { useViewer } from "@/lib/useViewer";
 import { IntentBadge, StatusBadge } from "@/components/ui/Badge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
+import { CallPanel } from "@/components/leads/CallPanel";
 import { VisitsSection } from "@/components/calendar/VisitsSection";
 import { MatchesSection } from "@/components/properties/MatchesSection";
 import { Composer } from "@/components/conversation/Composer";
@@ -290,6 +291,22 @@ export function LeadDetail({ leadId }: { leadId: number }) {
           onSent={refetchTimeline}
         />
       </div>
+
+      {/* Above the matches on purpose: the call updates the lead, and the
+          matcher reads the lead. Logging first is what makes the options
+          underneath reflect the conversation that just happened. Hidden from
+          viewers, who cannot write. */}
+      {!isViewer && (
+        <div id="call">
+          <CallPanel
+            lead={lead}
+            onLogged={() => {
+              leadsApi.get(lead.id).then(setLead).catch(() => {});
+              refetchTimeline();
+            }}
+          />
+        </div>
+      )}
 
       <MatchesSection leadId={lead.id} />
 

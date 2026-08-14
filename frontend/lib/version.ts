@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.44.0";
+export const CURRENT_VERSION = "0.45.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,32 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.45.0",
+    date: "2026-08-14",
+    title: {
+      en: "What you learn on a call now does something",
+      es: "Lo que aprendes en una llamada ya hace algo",
+    },
+    changes: [
+      {
+        en: "Every lead page now has a panel to log a call. It is taps, not typing, and it is meant to take under a minute: pick how the call went, correct anything that changed, and save. What you record goes onto the lead itself, so the property matcher and the lead score immediately reflect the conversation you just had.",
+        es: "Cada ficha de contacto tiene ahora un panel para registrar la llamada. Son toques, no escritura, y está pensado para tardar menos de un minuto: eliges cómo fue, corriges lo que haya cambiado y guardas. Lo que anotas va al contacto, así que el buscador de propiedades y la puntuación reflejan al instante la conversación que acabas de tener.",
+      },
+      {
+        en: "Saving is not filing. Each outcome does one thing: a follow-up gets scheduled, or everything pending gets cancelled when someone says they already have an agent or asks you to stop. Nothing further is sent to them after that.",
+        es: "Guardar no es archivar. Cada resultado hace una cosa: se programa un seguimiento, o se cancela todo lo pendiente cuando alguien dice que ya tiene agente o pide que no le contacten. A partir de ahí no se le envía nada más.",
+      },
+      {
+        en: "You can record that someone asked, on the call, to be sent options by text. That writes down their permission with the date and who logged it — which is what makes texting them lawful, and what you would need if it were ever questioned.",
+        es: "Puedes registrar que alguien pidió en la llamada que le mandes opciones por mensaje. Eso deja escrito su permiso con la fecha y quién lo marcó — que es lo que hace lícito escribirle, y lo que haría falta si algún día se cuestiona.",
+      },
+      {
+        en: "A new Today page lists what needs a person: the leads who asked to be called or emailed (nothing sends those automatically), the follow-ups we are holding because we have no record of permission to write to them, and the highly-ranked leads nobody has spoken to lately. The middle one used to be invisible — you could not tell being patient apart from being stuck.",
+        es: "Una página nueva, Hoy, lista lo que necesita a una persona: los contactos que pidieron llamada o correo (eso no sale solo), los seguimientos que estamos reteniendo porque no consta su permiso para escribirles, y los bien puntuados con los que nadie habla hace tiempo. El del medio antes era invisible: no se distinguía tener paciencia de estar atascado.",
+      },
+    ],
+  },
   {
     version: "0.44.0",
     date: "2026-08-13",

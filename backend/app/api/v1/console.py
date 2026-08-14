@@ -24,7 +24,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_db
@@ -155,6 +155,11 @@ async def today(
     # from them within the window. The subquery is on call_logs specifically —
     # an automated nurture message going out is not somebody having spoken to
     # them, and counting it as such is how a hot lead goes quiet for a month.
+    # A lead already listed above is already on today's list. Showing them a
+    # second time makes a short list look long and a scannable one look
+    # repetitive, which is how a list stops being read.
+    already_listed = {t.lead.id for t in tasks} | {h.lead.id for h in held}
+
     cutoff = now - timedelta(days=untouched_days)
     recent_call = (
         select(func.count())
@@ -168,6 +173,7 @@ async def today(
                 select(Lead).where(
                     Lead.score >= HOT_SCORE,
                     recent_call == 0,
+                    Lead.id.notin_(already_listed) if already_listed else true(),
                     or_(
                         Lead.last_message_at.is_(None),
                         Lead.last_message_at < cutoff,
