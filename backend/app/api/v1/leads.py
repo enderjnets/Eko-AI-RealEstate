@@ -75,23 +75,7 @@ class LeadCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     phone: str
-    name: str | None = None
     intent: LeadIntent | None = None
-    @field_validator("phone")
-    @classmethod
-    def _normalise_identifier(cls, value: str) -> str:
-        """Normalise here, so the lookup and the write below agree.
-
-        The route searches for an existing lead by this value and then creates
-        one with it. The model normalises what it stores; if this did not, the
-        two would disagree and the second request for the same person would
-        miss the row, insert, and hit the unique index — a 500 that repeats for
-        ever. Same rule as the inbound path.
-        """
-        from app.services._common import clip_identifier
-
-        return clip_identifier(value)
-
     # Column widths from the model. `CallIn` in this same file bounds all four
     # correctly; this one did not, and Postgres refuses an over-long string
     # rather than truncating it.
@@ -109,6 +93,35 @@ class LeadCreate(BaseModel):
     # conversation we can't deliver.
     channel: Literal["sms", "email"] = "sms"
     first_message: str | None = None
+
+    @field_validator("phone")
+    @classmethod
+    def _normalise_identifier(cls, value: str) -> str:
+        """One person, one lead — however their number is typed.
+
+        Two things happen here, and the second one matters more than it looks.
+
+        The length rule keeps the lookup and the write agreeing: the route
+        searches by this value and then creates a lead with it, and the model
+        normalises what it stores, so without this the second request for the
+        same person would miss the row, insert, and hit the unique index.
+
+        The phone rule is the one with teeth. `+17205558217` and
+        `720-555-8217` are the same handset and were two different leads, so
+        an opt-out recorded against one of them said nothing about the other:
+        re-add somebody from your own notes with the number typed differently
+        and the system would happily message a person who had asked it to
+        stop. `normalize_phone` already existed for exactly this reason — its
+        docstring says so — and this route was not using it.
+        """
+        from app.services._common import clip_identifier
+        from app.services.capture import normalize_email, normalize_phone
+
+        raw = (value or "").strip()
+        if "@" in raw:
+            # The identity column holds an email for email-channel leads.
+            return clip_identifier(normalize_email(raw) or raw)
+        return clip_identifier(normalize_phone(raw) or raw)
 
     @model_validator(mode="after")
     def _budget_range_makes_sense(self) -> "LeadCreate":

@@ -82,8 +82,8 @@ async def test_get_lead_404_when_missing() -> None:
 
 @pytest.mark.asyncio
 async def test_patch_lead_takeover_toggle(database_url: str) -> None:
-    suffix = uuid.uuid4().hex[:8].upper()
-    phone = f"+34666PATCH{suffix}"
+    suffix = f"{uuid.uuid4().int % 10**8:08d}"
+    phone = f"+34666{suffix}"
     lead_id = await _insert_lead(database_url, phone)
     try:
         async with await _http_client() as client:
@@ -104,8 +104,8 @@ async def test_patch_lead_takeover_toggle(database_url: str) -> None:
 @pytest.mark.asyncio
 async def test_patch_lead_status_and_zone_partial_update(database_url: str) -> None:
     """Only fields in the body are written; everything else is untouched."""
-    suffix = uuid.uuid4().hex[:8].upper()
-    phone = f"+34666STAT{suffix}"
+    suffix = f"{uuid.uuid4().int % 10**8:08d}"
+    phone = f"+34666{suffix}"
     lead_id = await _insert_lead(database_url, phone)
     try:
         async with await _http_client() as client:
@@ -124,8 +124,8 @@ async def test_patch_lead_status_and_zone_partial_update(database_url: str) -> N
 
 @pytest.mark.asyncio
 async def test_patch_empty_body_400(database_url: str) -> None:
-    suffix = uuid.uuid4().hex[:8].upper()
-    phone = f"+34666EMP{suffix}"
+    suffix = f"{uuid.uuid4().int % 10**8:08d}"
+    phone = f"+34666{suffix}"
     lead_id = await _insert_lead(database_url, phone)
     try:
         async with await _http_client() as client:
@@ -166,8 +166,8 @@ async def test_patch_lead_404_when_missing() -> None:
 @pytest.mark.asyncio
 async def test_create_lead_without_first_message(database_url: str) -> None:
     """A bare manual lead is created, scored, marked source=manual, no conversation."""
-    suffix = uuid.uuid4().hex[:10].upper()
-    phone = f"+34666NEW{suffix}"
+    suffix = f"{uuid.uuid4().int % 10**10:010d}"
+    phone = f"+34666{suffix}"
     try:
         async with await _http_client() as client:
             r = await client.post(
@@ -199,8 +199,8 @@ async def test_create_lead_without_first_message(database_url: str) -> None:
 @pytest.mark.asyncio
 async def test_create_lead_with_first_message_kicks_off_ai(database_url: str) -> None:
     """A first_message is injected as inbound → AI classifies + replies (LLM mocked)."""
-    suffix = uuid.uuid4().hex[:10].upper()
-    phone = f"+34666KICK{suffix}"
+    suffix = f"{uuid.uuid4().int % 10**10:010d}"
+    phone = f"+34666{suffix}"
 
     fake_intent = IntentResult(
         intent="rent",  # type: ignore[arg-type]
@@ -254,8 +254,8 @@ async def test_create_lead_with_first_message_kicks_off_ai(database_url: str) ->
 
 @pytest.mark.asyncio
 async def test_create_lead_duplicate_contact_409(database_url: str) -> None:
-    suffix = uuid.uuid4().hex[:10].upper()
-    phone = f"+34666DUP{suffix}"
+    suffix = f"{uuid.uuid4().int % 10**10:010d}"
+    phone = f"+34666{suffix}"
     await _insert_lead(database_url, phone)
     try:
         async with await _http_client() as client:

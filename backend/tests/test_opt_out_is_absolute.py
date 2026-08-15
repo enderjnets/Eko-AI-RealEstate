@@ -12,7 +12,6 @@ willful — and having recorded the opt-out and sent anyway is what the word
 willful is for.
 """
 import ast
-import inspect
 import pathlib
 import uuid
 from datetime import UTC, datetime
@@ -141,33 +140,61 @@ async def test_an_ordinary_lead_is_unaffected(database_url: str) -> None:
                 await s.commit()
 
 
-def test_every_function_that_sends_consults_the_opt_out() -> None:
-    """The sweep that found it, kept as a test.
+# The real primitives, taken from where they are defined rather than from a
+# list I typed. The first version of this sweep named `send_whatsapp`, which
+# exists nowhere in this codebase, and `send_email`, which every caller imports
+# under an alias — so two of its four names never matched anything and the
+# sweep was blind to WhatsApp and email entirely. A guard-of-guards with the
+# defect it was written to catch.
+SENDING_PRIMITIVES = {
+    "send_text_message",  # app/services/whatsapp.py
+    "send_sms",           # app/services/sms.py
+    "send_email",         # app/services/email.py
+}
 
-    Guarding the path in front of me while its sibling keeps the defect is the
-    single most repeated mistake in this codebase. This walks every function
-    that reaches a send and fails if one of them cannot see the opt-out.
+# Functions allowed to reach a send without consulting the opt-out, each for a
+# reason that has been checked:
+SEND_EXEMPT = {
+    # The funnel every other sender goes through — it is the thing guarded.
+    "_dispatch_send",
+    # Answering someone who has just written to us. It sends only the STOP/START
+    # confirmation the carriers require and then returns; any later message is
+    # refused further down as `opted_out_no_reply`.
+    "handle_inbound_message",
+    # The adapters themselves: they are the primitive.
+    "send_text_message",
+    "send_sms",
+    "send_email",
+}
+
+APP = pathlib.Path(__file__).resolve().parents[1] / "app"
+
+
+def _reaching_functions() -> tuple[list[str], int]:
+    """Every function that can reach a send, following aliases and one hop.
+
+    Aliased imports (`send_text_message as whatsapp_send`) are resolved per
+    module, because the alias is what appears at the call site and matching on
+    the original name finds nothing.
     """
-    senders = {"_dispatch_send", "send_whatsapp", "send_sms", "send_email"}
-    # Allowed to send without checking, each for a stated reason:
-    exempt = {
-        # The low-level sender itself — it is what the others guard.
-        "_dispatch_send",
-        # Replying to a message the person just sent us. Answering someone who
-        # wrote to us is not an unsolicited message, and refusing to reply
-        # would be its own failure; it checks the opt-out separately to decide
-        # whether to say anything automated.
-        "handle_inbound_message",
-    }
-    unguarded = []
-    for path in sorted(pathlib.Path("app").rglob("*.py")):
+    reaching, walked = [], 0
+    for path in sorted(APP.rglob("*.py")):
+        walked += 1
         tree = ast.parse(path.read_text())
+
+        aliases = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                for name in node.names:
+                    if name.name in SENDING_PRIMITIVES:
+                        aliases[name.asname or name.name] = name.name
+
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
-            if node.name in exempt:
+            if node.name in SEND_EXEMPT:
                 continue
-            names = {
+            called = {
                 n.func.id
                 for n in ast.walk(node)
                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
@@ -176,12 +203,24 @@ def test_every_function_that_sends_consults_the_opt_out() -> None:
                 for n in ast.walk(node)
                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
             }
-            if not (names & senders):
+            sends = called & (SENDING_PRIMITIVES | set(aliases) | {"_dispatch_send"})
+            if not sends:
                 continue
             source = ast.dump(node)
-            aware = "opted_out_at" in source or "may_send_automated" in names
+            aware = "opted_out_at" in source or "may_send_automated" in called
             if not aware:
-                unguarded.append(f"{path}::{node.name}")
+                reaching.append(f"{path.relative_to(APP.parent)}::{node.name}")
+    return reaching, walked
+
+
+def test_every_function_that_sends_consults_the_opt_out() -> None:
+    """The sweep that found the defect, kept so it cannot come back.
+
+    Guarding the path in front of me while its sibling keeps the defect is the
+    single most repeated mistake in this codebase; this enumerates the paths
+    instead of relying on me to remember them.
+    """
+    unguarded, _ = _reaching_functions()
     assert not unguarded, (
         f"these reach a send without consulting the opt-out: {unguarded}. "
         "Opt-out is revoked consent — it outranks everything else on record."
@@ -189,8 +228,87 @@ def test_every_function_that_sends_consults_the_opt_out() -> None:
 
 
 def test_the_sweep_is_actually_looking_at_something() -> None:
-    # A sweep that matches nothing passes silently, which is the failure it was
-    # written to catch in the first place.
-    from app.services import conversation
+    """A sweep that matches nothing passes silently.
 
-    assert "_dispatch_send" in inspect.getsource(conversation)
+    The previous canary asserted a string was present in a module — true
+    regardless of whether the sweep had walked a single file. Run from the repo
+    root rather than `backend/`, the sweep's relative path resolved to nothing,
+    it walked zero files, found zero problems, and both tests went green. The
+    path is absolute now and this counts what was actually examined.
+    """
+    unguarded, walked = _reaching_functions()
+    assert walked > 50, f"the sweep only walked {walked} files — has the path moved?"
+
+    # And it can still see a sender: prove the matching works rather than
+    # trusting that an empty result means a clean codebase.
+    seen = []
+    for path in APP.rglob("*.py"):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                called = {
+                    n.func.id
+                    for n in ast.walk(node)
+                    if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                }
+                if called & (SENDING_PRIMITIVES | {"_dispatch_send"}):
+                    seen.append(node.name)
+    assert seen, "the sweep matched no sender at all — the names must be wrong"
+
+
+@pytest.mark.asyncio
+async def test_the_same_person_typed_differently_is_still_opted_out(
+    database_url: str,
+) -> None:
+    """The opt-out has to attach to a person, not to a string.
+
+    `+17205558217` and `720-555-8217` are one handset. They were two leads, so
+    a STOP recorded against one said nothing about the other: re-add somebody
+    from your own notes with the number typed differently and the system would
+    message a person who had asked it to stop. No bad intent required — a
+    hyphen is enough.
+    """
+    engine, Session = _session(database_url)
+    canonical = "+17205559911"
+    try:
+        with org_scope(1):
+            async with Session() as s:
+                s.add(
+                    Lead(
+                        org_id=1,
+                        phone=canonical,
+                        status=LeadStatus.QUALIFIED,
+                        opted_out_at=datetime.now(UTC),
+                        opted_out_keyword="STOP",
+                        opted_out_channel="sms",
+                    )
+                )
+                await s.commit()
+
+            async with await _client() as c:
+                for typed in ("720-555-9911", "(720) 555-9911", "7205559911"):
+                    r = await c.post(
+                        "/api/v1/leads",
+                        json={"phone": typed, "first_message": "Checking in!"},
+                    )
+                    assert r.status_code == 409, (
+                        f"{typed!r} created a second lead for someone who opted out: {r.text}"
+                    )
+
+            async with Session() as s:
+                count = (
+                    await s.execute(
+                        select(func.count())
+                        .select_from(Lead)
+                        .where(Lead.phone.like("%5559911"))
+                    )
+                ).scalar_one()
+            assert count == 1, "the same person exists as more than one lead"
+    finally:
+        await engine.dispose()
+        with org_scope(1):
+            async with Session() as s:
+                await s.execute(
+                    text("DELETE FROM leads WHERE phone LIKE :p"), {"p": "%5559911"}
+                )
+                await s.commit()

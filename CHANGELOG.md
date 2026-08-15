@@ -2,6 +2,21 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.47.1] — 2026-08-15
+
+### Corregido
+
+- **La baja se pega ahora a la persona, no al número escrito.** `+17205558217`
+  y `720-555-8217` son el mismo teléfono y eran dos contactos distintos, así que
+  un STOP guardado contra uno no decía nada del otro: bastaba con volver a dar
+  de alta a alguien copiando el número de tus notas con otro formato para que el
+  sistema le escribiera. Sin mala intención — un guion basta. El normalizador ya
+  existía para esto; esta ruta no lo usaba.
+- **El aviso de la ficha decía lo contrario de lo que hace el sistema.** Ponía
+  "puedes escribirle personalmente", que dejó de ser cierto en 0.47.0. Y si lo
+  intentabas, el compositor mostraba el error crudo de la API en inglés dentro
+  de un panel en español. Ambas cosas corregidas.
+
 ## [0.47.0] — 2026-08-14
 
 ### Corregido

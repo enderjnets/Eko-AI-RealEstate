@@ -54,7 +54,15 @@ export function Composer({
       // Reload the timeline client-side so the new outbound shows immediately.
       onSent?.();
     } catch (e: unknown) {
-      setError(String((e as Error)?.message || e));
+      // The backend refuses to message somebody who replied STOP, and says so
+      // with a 409. Showing the raw string here meant an English sentence in a
+      // Spanish dashboard, in eleven-pixel red — which reads as the tool being
+      // broken rather than as the tool doing its job, and that is how somebody
+      // ends up reaching for their own phone instead.
+      const message = String((e as Error)?.message || e);
+      setError(
+        /opted_out/.test(message) ? t("composer.optedOut") : message
+      );
     } finally {
       setSending(false);
     }
