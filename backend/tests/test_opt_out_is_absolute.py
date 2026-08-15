@@ -312,3 +312,30 @@ async def test_the_same_person_typed_differently_is_still_opted_out(
                     text("DELETE FROM leads WHERE phone LIKE :p"), {"p": "%5559911"}
                 )
                 await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_no_drafts_are_offered_for_someone_who_opted_out(
+    database_url: str,
+) -> None:
+    """Nothing here sends, so this is not the violation itself — it is the step
+    before it. Three ready-made messages for a person who asked us to stop
+    invites the realtor to pick one, and the refusal then lands after they have
+    written and clicked. It also stops us paying a language model to draft a
+    message that cannot be sent."""
+    lead_id, _ = await _lead_with(database_url, opted_out=True)
+    engine, Session = _session(database_url)
+    try:
+        with org_scope(1):
+            async with await _client() as c:
+                r = await c.post(f"/api/v1/leads/{lead_id}/suggestions", json={"count": 3})
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["suggestions"] == []
+            assert body["error"] == "lead_opted_out"
+    finally:
+        await engine.dispose()
+        with org_scope(1):
+            async with Session() as s:
+                await s.execute(text("DELETE FROM leads WHERE id = :i"), {"i": lead_id})
+                await s.commit()

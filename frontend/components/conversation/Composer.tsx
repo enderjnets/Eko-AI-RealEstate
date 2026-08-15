@@ -76,7 +76,13 @@ export function Composer({
     try {
       const result: SuggestionsResult = await leadsApi.suggestions(leadId, 3);
       if (result.error && result.suggestions.length === 0) {
-        setSuggestionsError(result.error);
+        // The backend declines to draft anything for someone who replied STOP.
+        // Say why in the reader's language, here at the point where they were
+        // about to write — rather than letting them compose a message and meet
+        // the refusal after they have clicked send.
+        setSuggestionsError(
+          result.error === "lead_opted_out" ? t("composer.optedOut") : result.error
+        );
         return;
       }
       setSuggestions(result.suggestions);

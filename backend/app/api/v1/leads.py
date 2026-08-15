@@ -412,6 +412,16 @@ async def post_suggestions(
     Degrades gracefully: an LLM failure returns `{"suggestions": [], "error": "..."}`
     so the UI shows an empty state instead of crashing.
     """
+    lead = await db.get(Lead, lead_id)
+    if lead is not None and lead.opted_out_at is not None:
+        # Nothing here sends, so this is not the violation the send guard
+        # prevents. It is the step before it: offering three ready-made
+        # messages for somebody who asked us to stop invites the realtor to
+        # pick one, and the refusal then arrives after they have written and
+        # clicked. Better to say so where the decision is being made — and it
+        # saves paying a language model to draft a message that cannot go.
+        return SuggestionsOut(suggestions=[], error="lead_opted_out")
+
     count = max(1, min(5, body.count if body else 3))
     result = await generate_reply_suggestions(lead_id, db, count=count)
     return SuggestionsOut(
