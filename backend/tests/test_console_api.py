@@ -37,6 +37,7 @@ from app.models import (
     Visit,
 )
 from app.models.lead import LeadStatus, PreferredChannel
+from app.services import calendar_cal
 
 
 @pytest.fixture
@@ -1012,10 +1013,14 @@ async def test_a_booking_we_cannot_record_is_undone_not_abandoned(
         cancelled.append(booking_id)
         return True
 
+    # `cancel_booking` is patched where the rule lives, not where the route
+    # is: both booking paths now go through `calendar_cal.ensure_recordable`,
+    # which is the point — guarding one route and not its sibling is the defect
+    # this codebase produces more than any other.
     real_create = visits_module.create_booking
-    real_cancel = visits_module.cancel_booking
+    real_cancel = calendar_cal.cancel_booking
     visits_module.create_booking = _fake_create
-    visits_module.cancel_booking = _fake_cancel
+    calendar_cal.cancel_booking = _fake_cancel
     try:
         async with await _client() as c:
             r = await c.post(
@@ -1027,7 +1032,7 @@ async def test_a_booking_we_cannot_record_is_undone_not_abandoned(
             )
     finally:
         visits_module.create_booking = real_create
-        visits_module.cancel_booking = real_cancel
+        calendar_cal.cancel_booking = real_cancel
 
     assert r.status_code == 502, r.text
     assert "calendar_id_too_long" in r.text
@@ -1042,3 +1047,70 @@ async def test_a_booking_we_cannot_record_is_undone_not_abandoned(
     assert rows == [], "a half-recorded visit was written"
     await engine.dispose()
     await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_the_voice_path_undoes_it_too(database_url: str) -> None:
+    """The sibling route. When the guard was written it went on the HTTP path
+    only, and this one — where the customer is on the phone being told their
+    appointment is set — kept the defect. Both go through the same rule now, so
+    this test exists to notice if they ever drift apart again."""
+    import ast
+    import inspect
+    import textwrap
+
+    from app.services import voice as voice_module
+
+    # Parsed, not grepped. The first version of this searched the function's
+    # text for the name — which is also in the import line two hundred lines
+    # up, so deleting the actual call left the test green. It passed for the
+    # wrong reason, which is the failure it exists to catch.
+    tree = ast.parse(textwrap.dedent(inspect.getsource(voice_module.handle_tool_call)))
+    called = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "ensure_recordable" in called, (
+        "the voice booking path does not check that the calendar's reference "
+        "can be stored — it can leave a real appointment nothing here records"
+    )
+
+    # And the rule itself does what both callers rely on.
+    from app.services.calendar_cal import BookingUnrecordable, ensure_recordable
+
+    class _LongId:
+        external_booking_id = "cal-" + "y" * 200
+
+    cancelled: list[str] = []
+
+    async def _fake_cancel(booking_id: str, **k: object) -> bool:
+        cancelled.append(booking_id)
+        return True
+
+    real_cancel = calendar_cal.cancel_booking
+    calendar_cal.cancel_booking = _fake_cancel
+    try:
+        with pytest.raises(BookingUnrecordable) as raised:
+            await ensure_recordable(_LongId())
+    finally:
+        calendar_cal.cancel_booking = real_cancel
+
+    assert raised.value.recovered is True
+    assert cancelled == [_LongId.external_booking_id]
+
+
+@pytest.mark.asyncio
+async def test_a_reference_that_fits_is_left_exactly_as_it_came(
+    database_url: str,
+) -> None:
+    """The other half: an ordinary Cal.com reference must pass through
+    untouched, because it is what cancels the booking later."""
+    from app.services.calendar_cal import ensure_recordable
+
+    class _Normal:
+        external_booking_id = "cal_abc123XYZ"
+
+    booking = _Normal()
+    assert (await ensure_recordable(booking)) is booking
+    assert booking.external_booking_id == "cal_abc123XYZ"

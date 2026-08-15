@@ -350,3 +350,54 @@ async def cancel_booking(external_booking_id: str, *, reason: str | None = None)
             log.error("Cal.com cancel failed: %d %s", resp.status_code, resp.text[:300])
             return False
     return True
+
+
+# Read from the column so it cannot drift from the schema.
+BOOKING_ID_WIDTH = 120  # visits.external_booking_id
+
+
+class BookingUnrecordable(Exception):
+    """The calendar gave us a reference we cannot store, and we undid the booking.
+
+    `external_booking_id` is the only handle that cancels an appointment later,
+    so it cannot be trimmed — a shortened reference identifies nothing — and it
+    cannot be dropped, because the appointment is already real and would then be
+    invisible to everyone here. The only move that leaves the world consistent
+    is to cancel what we just created.
+
+    `recovered` is False when that cancel also failed: the appointment is out
+    there and only a person can clear it.
+    """
+
+    def __init__(self, booking_id: str, recovered: bool) -> None:
+        self.booking_id = booking_id
+        self.recovered = recovered
+        super().__init__(
+            "the calendar returned a booking reference that cannot be stored"
+        )
+
+
+async def ensure_recordable(booking: BookingResult) -> BookingResult:
+    """Give back the booking, or undo it and raise.
+
+    Both booking paths go through here. They used to guard separately, which
+    meant one of them did and the other did not — the shape of defect this
+    codebase has produced more than any other.
+    """
+    if len(booking.external_booking_id) <= BOOKING_ID_WIDTH:
+        return booking
+    try:
+        await cancel_booking(booking.external_booking_id, reason="could not be recorded")
+        recovered = True
+    except CalComError:
+        log.error(
+            "ORPHANED BOOKING — created at the calendar, cannot be stored (the "
+            "reference is %d characters against a column of %d) and cancelling it "
+            "failed. Cancel it by hand: %s",
+            len(booking.external_booking_id),
+            BOOKING_ID_WIDTH,
+            booking.external_booking_id,
+        )
+        recovered = False
+    raise BookingUnrecordable(booking.external_booking_id, recovered)
+

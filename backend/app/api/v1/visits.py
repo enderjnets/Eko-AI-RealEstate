@@ -29,9 +29,11 @@ from app.models import (
     VisitStatus,
 )
 from app.services.calendar_cal import (
+    BookingUnrecordable,
     CalComError,
     cancel_booking,
     create_booking,
+    ensure_recordable,
     list_available_slots,
 )
 from app.services.tenant_context import get_org_id
@@ -193,10 +195,6 @@ async def _busy_starts(
     return {r for r in rows if r is not None}
 
 
-# Read from the column, so it cannot drift from the schema.
-_BOOKING_ID_WIDTH = Visit.__table__.c.external_booking_id.type.length
-
-
 async def _valid_property_or_400(property_id: int | None, db: AsyncSession) -> int | None:
     """Refuse a listing id that does not exist, before anything irreversible.
 
@@ -285,37 +283,27 @@ async def book_slot(
     except CalComError as exc:
         raise HTTPException(status_code=503, detail=f"Cal.com booking failed: {exc}") from exc
 
-    # The appointment exists now. Everything from here has to leave the world
-    # consistent with that fact.
-    #
-    # `external_booking_id` is the only thing that can cancel it later, so it
-    # cannot be trimmed to fit — a shortened id names no booking — and it
-    # cannot be dropped either, because then the appointment is real and
-    # invisible. If it will not fit the column, the only honest move is to undo
-    # the booking we just made.
-    if len(booking.external_booking_id) > _BOOKING_ID_WIDTH:
-        try:
-            await cancel_booking(booking.external_booking_id, reason="could not be recorded")
-            detail = (
+    # The appointment exists now, so everything from here has to leave the
+    # world consistent with that. If the calendar's reference will not fit the
+    # column that has to cancel it later, `ensure_recordable` undoes the
+    # booking — shared with the voice path, which had no such guard when this
+    # one was written, because guarding one route and not its sibling is the
+    # defect this codebase produces more than any other.
+    try:
+        booking = await ensure_recordable(booking)
+    except BookingUnrecordable as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=(
                 "calendar_id_too_long: the calendar returned a booking reference this "
                 "system cannot store, so the appointment was cancelled again. Nothing "
                 "was left on anyone's calendar."
-            )
-        except CalComError:
-            log.error(
-                "ORPHANED BOOKING — created at the calendar, cannot be stored (id is "
-                "%d characters, the column holds %d) and cancelling it failed. Cancel "
-                "it by hand: %s",
-                len(booking.external_booking_id),
-                _BOOKING_ID_WIDTH,
-                booking.external_booking_id,
-            )
-            detail = (
-                "calendar_id_too_long: the appointment was created but cannot be "
+                if exc.recovered
+                else "calendar_id_too_long: the appointment was created but cannot be "
                 "recorded or cancelled automatically. Check the calendar directly — "
                 "the reference is in the server log."
-            )
-        raise HTTPException(status_code=502, detail=detail)
+            ),
+        ) from exc
 
     visit = Visit(
         lead_id=lead.id,

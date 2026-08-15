@@ -233,7 +233,12 @@ async def handle_tool_call(
         caller (resolved/created by their phone number) and confirms.
     Any failure returns a spoken-friendly message, never raises (a thrown tool
     handler would make the assistant stall mid-call)."""
-    from app.services.calendar_cal import CalComError, create_booking, list_available_slots
+    from app.services.calendar_cal import (
+        CalComError,
+        create_booking,
+        ensure_recordable,
+        list_available_slots,
+    )
 
     tz_name = await _office_tz_name(db)
     zone = _office_zone(tz_name)
@@ -356,6 +361,14 @@ async def handle_tool_call(
                 notes=note,
                 timezone_name=tz_name,
             )
+            # Same rule as the HTTP route, from the same place. The reference
+            # the calendar returns is the only handle that can cancel this
+            # appointment later, so if it will not fit the column, the booking
+            # is undone rather than left real and unrecorded — the caller is on
+            # the phone and would otherwise be told about an appointment that
+            # nothing here can see.
+            booking = await ensure_recordable(booking)
+
             visit = Visit(
                 lead_id=lead.id,
                 calendar_provider="calcom",
