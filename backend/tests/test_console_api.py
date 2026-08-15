@@ -980,3 +980,65 @@ async def test_a_follow_up_is_never_listed_twice(database_url: str) -> None:
     finally:
         await engine.dispose()
         await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_booking_we_cannot_record_is_undone_not_abandoned(
+    database_url: str,
+) -> None:
+    """The appointment exists before the row does.
+
+    `external_booking_id` is the only handle that can cancel it later, so it
+    cannot be trimmed to fit — a shortened reference names no booking — and it
+    cannot be dropped, because then the appointment is real and invisible to
+    everyone here. If it will not fit, the only move that leaves the world
+    consistent is to undo the booking we just made.
+    """
+    lead_id = await _lead(database_url)
+    engine, Session = _session(database_url)
+
+    cancelled: list[str] = []
+
+    class _LongIdBooking:
+        external_booking_id = "cal-" + "x" * 200
+        scheduled_at = datetime.now(UTC) + timedelta(days=2)
+        duration_minutes = 30
+        meeting_url = "https://cal.example/x"
+
+    async def _fake_create(*a: object, **k: object) -> object:
+        return _LongIdBooking()
+
+    async def _fake_cancel(booking_id: str, **k: object) -> bool:
+        cancelled.append(booking_id)
+        return True
+
+    real_create = visits_module.create_booking
+    real_cancel = visits_module.cancel_booking
+    visits_module.create_booking = _fake_create
+    visits_module.cancel_booking = _fake_cancel
+    try:
+        async with await _client() as c:
+            r = await c.post(
+                f"/api/v1/leads/{lead_id}/calendar/book",
+                json={
+                    "start_time": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
+                    "duration_minutes": 30,
+                },
+            )
+    finally:
+        visits_module.create_booking = real_create
+        visits_module.cancel_booking = real_cancel
+
+    assert r.status_code == 502, r.text
+    assert "calendar_id_too_long" in r.text
+    assert cancelled == [_LongIdBooking.external_booking_id], (
+        "the appointment was left on the calendar with nothing recording it"
+    )
+
+    async with Session() as s:
+        rows = (
+            await s.execute(select(Visit).where(Visit.lead_id == lead_id))
+        ).scalars().all()
+    assert rows == [], "a half-recorded visit was written"
+    await engine.dispose()
+    await _cleanup(database_url, lead_id)

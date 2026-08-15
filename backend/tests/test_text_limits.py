@@ -600,10 +600,17 @@ class TestTheGateCannotBeEmptied:
         )
 
     def test_the_gate_is_not_empty(self) -> None:
-        # An empty parametrize passes every time. It is the same failure as the
-        # migration test that was green on zero files.
+        """An empty parametrize passes every time.
+
+        The bound is derived from the decision table rather than written down:
+        `>= 4` when there are exactly four is the "threshold equals the current
+        value" defect this file has criticised twice, and it would go green the
+        moment a table stopped claiming to trim.
+        """
+        claimed = sum(1 for mechanism, _ in HANDLED.values() if mechanism == MODEL_TRIM)
         checked = [m for m in _models_with_bounded_text() if _claims_model_trimming(m)]
-        assert len(checked) >= 4, f"only {len(checked)} tables are being checked"
+        assert claimed > 0, "no table claims model-level trimming — has the mechanism been renamed?"
+        assert len(checked) == claimed
 
     def test_every_exemption_is_recorded_with_a_reason(self) -> None:
         # An exemption subtracts a column from the check, so an empty or

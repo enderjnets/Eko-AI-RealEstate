@@ -24,7 +24,10 @@ razonamiento completo; esto es lo que cambió para quien usa el producto.
   resumen criptográfico: cabe, es estable, y dos personas siguen siendo dos.
 - **Una visita agendada ya no puede quedar fuera del CRM.** La reserva se crea
   primero en Cal.com, así que un fallo al registrarla dejaba una cita real en el
-  calendario del agente que la aplicación no podía ni listar ni cancelar.
+  calendario del agente que la aplicación no podía ni listar ni cancelar. Si la
+  referencia que devuelve el calendario no se puede guardar, la reserva **se
+  deshace**: no se puede recortar (una referencia acortada no identifica ninguna
+  cita) ni ignorar (quedaría una cita real e invisible).
 - **Un rango de presupuesto al revés es imposible** (`CHECK` en Postgres,
   migración 030): no emparejaba con ninguna casa y la página lo contaba como
   "no hay nada disponible" en vez de "esta ficha está rota".
