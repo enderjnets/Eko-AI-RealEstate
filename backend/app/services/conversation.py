@@ -233,6 +233,26 @@ async def send_human_message(
     if lead is None:
         return {"status": "error", "error": "lead_not_found"}
 
+    if lead.opted_out_at is not None:
+        # Every automated path already refuses here — the sweep, the retry, the
+        # dispatch gate, the booking route. This one did not, and it is the one
+        # a person uses on a lead who has gone quiet. Measured before it was
+        # written: a lead who texted STOP got HTTP 200 and the message was
+        # delivered.
+        #
+        # Opt-out is not a preference the sender can weigh against a good
+        # reason. It is revoked consent, it outranks everything else on record,
+        # and the fact that we stored it and sent anyway is what turns a $500
+        # message into a $1,500 one. A realtor who needs to reach this person
+        # can phone them; that consent is separate and this system is not the
+        # one making that call.
+        return {
+            "status": "error",
+            "error": "lead_opted_out",
+            "opted_out_at": lead.opted_out_at.isoformat(),
+            "opted_out_keyword": lead.opted_out_keyword,
+        }
+
     if channel is not None:
         if channel not in SENDABLE_CHANNELS:
             return {"status": "error", "error": "unsupported_channel"}

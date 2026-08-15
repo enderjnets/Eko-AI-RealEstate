@@ -2,6 +2,20 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.47.0] — 2026-08-14
+
+### Corregido
+
+- **Nadie recibe un mensaje después de pedir que paremos, tampoco escrito a
+  mano.** Todas las rutas automáticas ya lo respetaban —el barrido de
+  seguimientos, el reintento de envío, la puerta de despacho, la reserva de
+  visitas—. La única que no era **la del agente escribiendo en el panel**, que
+  es justo la que más se usa con un cliente que se ha quedado callado, y a veces
+  se ha callado porque pidió la baja. Medido antes de arreglarlo: un contacto
+  que escribió STOP recibía el mensaje, con HTTP 200 y todo. Ahora sale un 409
+  explicando por qué y **no se escribe nada**. Llamarle por teléfono es un
+  consentimiento distinto y una decisión que no toma este sistema.
+
 ## [0.46.4] – [0.46.14] — 2026-08-14
 
 Una sola línea de trabajo, diecinueve rondas de auditoría adversarial sobre

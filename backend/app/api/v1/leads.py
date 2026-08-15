@@ -358,6 +358,21 @@ async def post_human_message(
     result = await send_human_message(
         lead_id, text, db, subject=body.subject, channel=body.channel
     )
+    if result.get("error") == "lead_opted_out":
+        # A 409, the same answer `book_slot` gives for this condition — not a
+        # 200 carrying an error field. The dashboard reads the status code, and
+        # "sent" on screen for a message that was correctly refused is how a
+        # realtor concludes the system is broken and reaches for their own
+        # phone, which is the outcome the refusal exists to prevent.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "lead_opted_out: this person asked us to stop, so nothing was "
+                "sent. That applies to this channel however the message is "
+                "written — calling them is a separate consent and a separate "
+                "decision."
+            ),
+        )
     return HumanMessageResult(**result)  # type: ignore[arg-type]
 
 
