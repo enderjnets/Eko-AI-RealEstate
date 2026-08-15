@@ -114,14 +114,9 @@ class LeadCreate(BaseModel):
         stop. `normalize_phone` already existed for exactly this reason — its
         docstring says so — and this route was not using it.
         """
-        from app.services._common import clip_identifier
-        from app.services.capture import normalize_email, normalize_phone
+        from app.services._common import normalise_identifier
 
-        raw = (value or "").strip()
-        if "@" in raw:
-            # The identity column holds an email for email-channel leads.
-            return clip_identifier(normalize_email(raw) or raw)
-        return clip_identifier(normalize_phone(raw) or raw)
+        return normalise_identifier(value)
 
     @model_validator(mode="after")
     def _budget_range_makes_sense(self) -> "LeadCreate":

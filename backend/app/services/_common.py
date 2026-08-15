@@ -22,6 +22,38 @@ def clip_identifier(identifier: str) -> str:
     return f"{identifier[:213]}~{digest}"
 
 
+def normalise_identifier(identifier: str) -> str:
+    """The one place an inbound identity is made canonical.
+
+    Every channel hands us the same person written differently. Meta's `wa_id`
+    is bare digits with no plus; Twilio sends E.164; the web form sends
+    whatever somebody typed; an email address arrives in whatever case the
+    sender's client used. Stored as they came, one human becomes several leads
+    — and then an opt-out recorded against one of them protects none of the
+    others, because every guard in this system is keyed to the row.
+
+    That is the defect this codebase has produced more times than any other,
+    always one door at a time, so the rule lives here: `ParsedMessage` runs it
+    on the way in and `POST /leads` runs it too, and a channel added later
+    gets it by construction.
+
+    Synthetic keys — a voice call with no caller id, a discovery record, a
+    scraped profile URL — are identities in their own right and are left
+    exactly as they are, beyond the length rule.
+    """
+    raw = (identifier or "").strip()
+    if not raw:
+        return raw
+    if "@" in raw:
+        return clip_identifier(raw.lower())
+    if raw.startswith(("voice:", "discovery:", "http://", "https://")):
+        return clip_identifier(raw)
+
+    from app.services.capture import normalize_phone  # local: avoids a cycle
+
+    return clip_identifier(normalize_phone(raw) or raw)
+
+
 @dataclass(frozen=True)
 class ParsedMessage:
     """Channel-agnostic representation of one inbound message after parsing.
@@ -65,7 +97,7 @@ class ParsedMessage:
         anyway — it is already invalid under RFC 5321, whose own limit is 254.
         """
         object.__setattr__(
-            self, "from_identifier", clip_identifier(self.from_identifier)
+            self, "from_identifier", normalise_identifier(self.from_identifier)
         )
         # The provider's message id is the idempotency key, and the lookup that
         # decides "have we seen this already?" happens before the row is

@@ -144,30 +144,55 @@ def normalize_email(value: str | None) -> str | None:
 
 
 def normalize_phone(value: str | None) -> str | None:
-    """E.164, or None.
+    """E.164, or nothing. Never a number we invented.
 
     The same person must land on the same lead whether they type
     "(303) 555-1234" into the form or text us from +13035551234 — otherwise the
-    form manufactures a duplicate of every lead who later replies by SMS, and
-    the realtor sees half a history in each. That is the whole reason this
-    normalises to E.164 instead of storing what was typed.
+    form manufactures a duplicate of every lead who later replies by SMS, the
+    realtor sees half a history in each, and an opt-out recorded against one of
+    them says nothing about the other.
+
+    What this must never do is produce a number that belongs to somebody else.
+    The previous version took whatever digits it found and put a plus in front:
+    "720-555-7864 ext 3" became +72055578643, which is a real and deliverable
+    Russian number, and "303-555-0192 x12" became +303555019212. Before that
+    change those failed loudly at the carrier; after it they were delivered, to
+    a stranger. So an extension is cut off before anything else is read, and a
+    string of digits with no country context is refused rather than guessed at.
+
+    The one guess left is deliberate and documented: ten digits with no country
+    code are read as North American, because this is a Colorado brokerage and
+    that is how everybody here writes a local number.
     """
     raw = (value or "").strip()
     if not raw:
         return None
+
+    # "555-0192 x12", "555-0192 ext. 3", "555-0192,,3" — the extension is how
+    # you reach a desk once the call connects. Concatenating it changes which
+    # handset rings.
+    raw = re.split(
+        r"(?i)\bext(?:ension)?\b\.?|(?<=\d)\s*x\s*(?=\d)|[,;#]", raw, maxsplit=1
+    )[0]
+
     digits = "".join(ch for ch in raw if ch.isdigit())
     if not digits:
         return None
 
-    if raw.startswith("+"):
-        candidate = digits
+    if raw.lstrip().startswith("+"):
+        candidate = digits                      # the caller stated the country
     elif digits.startswith("00"):
-        candidate = digits[2:]
+        candidate = digits[2:]                  # the other way of stating it
     elif len(digits) == 10:
-        # A national number typed the way people say it out loud.
         candidate = DEFAULT_CALLING_CODE + digits
+    elif len(digits) == 11 and digits.startswith(DEFAULT_CALLING_CODE):
+        candidate = digits                      # already has the country code
     else:
-        candidate = digits
+        # No country stated, and not a shape this office writes. Anything we
+        # put in front of it would be a guess about which country's number this
+        # is, and a wrong guess reaches a real stranger's handset.
+        log.info("refusing a phone number with no country context: %r", raw[:32])
+        return None
 
     # E.164 allows 15 digits; below 8 it is not a reachable number, it is a
     # typo or a honeypot probe.

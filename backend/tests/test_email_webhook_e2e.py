@@ -93,7 +93,11 @@ async def test_inbound_email_creates_lead_and_replies(database_url: str) -> None
         Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
         async with Session() as s:
             lead = (await s.execute(select(Lead).where(Lead.id == lead_id))).scalar_one()
-            assert lead.phone == identifier  # email stored in the phone column (Phase 3 leaves it that way)
+            # Case-folded on the way in: providers do not distinguish
+            # Nat@x.com from nat@x.com, and treating them as two people is how
+            # one human becomes two leads and an opt-out on one protects
+            # neither.
+            assert lead.phone == identifier.lower()  # email lives in the phone column
             assert lead.zone == "Salamanca"
             assert lead.budget_max == 1800
             assert lead.intent is not None and lead.intent.value == "rent"

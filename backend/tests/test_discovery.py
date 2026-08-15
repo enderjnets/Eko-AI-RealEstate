@@ -114,7 +114,7 @@ async def _delete_lead(url: str, phone: str) -> None:
 
 @pytest.mark.asyncio
 async def test_import_creates_and_dedupes(database_url: str) -> None:
-    phone = f"+1303DISC{uuid.uuid4().hex[:6].upper()}"
+    phone = f"+1303{uuid.uuid4().int % 10**7:07d}"
     dto = BusinessDTO(business_name="Disc Test Co", source="google_maps", phone=phone,
                       category="Mortgage broker", city="Denver", state="CO")
     engine = create_async_engine(database_url, echo=False, future=True)

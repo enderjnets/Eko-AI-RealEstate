@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.main import app
 from app.models import Conversation, Lead, Message, MessageDirection
+from app.services._common import normalise_identifier
 from app.services.classifier import IntentEntities, IntentResult
 from app.services.llm import LLMResult
 
@@ -33,7 +34,7 @@ async def _cleanup(database_url: str, phone: str) -> None:
     Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
     try:
         async with Session() as s:
-            row = (await s.execute(select(Lead).where(Lead.phone == phone))).scalar_one_or_none()
+            row = (await s.execute(select(Lead).where(Lead.phone == normalise_identifier(phone)))).scalar_one_or_none()
             if row is not None:
                 await s.delete(row)
                 await s.commit()
@@ -76,7 +77,7 @@ async def test_inbound_sms_creates_lead_and_replies(database_url: str) -> None:
         engine = create_async_engine(database_url, echo=False, future=True)
         Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
         async with Session() as s:
-            lead = (await s.execute(select(Lead).where(Lead.phone == phone))).scalar_one()
+            lead = (await s.execute(select(Lead).where(Lead.phone == normalise_identifier(phone)))).scalar_one()
             assert lead.intent is not None and lead.intent.value == "buy"
             assert lead.zone == "Brickell"
 
@@ -121,7 +122,7 @@ async def test_inbound_sms_idempotent(database_url: str) -> None:
         engine = create_async_engine(database_url, echo=False, future=True)
         Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
         async with Session() as s:
-            lead = (await s.execute(select(Lead).where(Lead.phone == phone))).scalar_one()
+            lead = (await s.execute(select(Lead).where(Lead.phone == normalise_identifier(phone)))).scalar_one()
             conv = (
                 await s.execute(select(Conversation).where(Conversation.lead_id == lead.id))
             ).scalar_one()

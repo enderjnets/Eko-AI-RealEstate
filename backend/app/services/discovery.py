@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models import Lead, LeadStatus
-from app.services._common import clip_identifier
+from app.services._common import normalise_identifier
 
 log = logging.getLogger(__name__)
 
@@ -416,10 +416,10 @@ def lead_identifier(b: BusinessDTO) -> str:
         # writer normalise it. A plain slice here made two businesses whose
         # website or email agree for 254 characters into one lead — the second
         # counted as "skipped" and never imported, with nothing to show why.
-        return clip_identifier(real)
+        return normalise_identifier(real)
     # The synthetic key gets the same treatment, for the same reason: two
     # businesses with long similar names must not collapse into one lead.
-    return clip_identifier(
+    return normalise_identifier(
         f"discovery:{b.source}:{_slug(b.business_name)}:{_slug(b.city or '')}"
     )
 
