@@ -2,6 +2,35 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.47.5] — 2026-08-16
+
+### Corregido
+
+- **Un envío fallido dejaba de existir.** `send_human_message` marcaba el mensaje
+  `FAILED` y nada más: `next_attempt_at` quedaba en NULL, que no casa con ninguna
+  rama de la consulta del barrido de reintentos, así que la respuesta del asesor
+  se quedaba en la base de datos para siempre. La ruta automática siempre estuvo
+  encolada; la humana nunca. Ahora pasa por `schedule_retry`.
+- **El barrido de reintentos ignoraba el opt-out de los mensajes humanos.** El
+  lead solo se cargaba `if message.sender == MessageSender.AGENT`, así que para
+  un mensaje escrito por una persona `lead` era `None` y *ni* la puerta de
+  consentimiento *ni* el bloque de opt-out llegaban a evaluarse: un mensaje
+  encolado antes de que alguien respondiera STOP se entregaba igualmente después.
+  El lead se carga siempre; la distinción por remitente vive ahora en la puerta
+  de consentimiento, que es la que trata de envíos automáticos.
+- **Un error transitorio reenviaba seguimientos ya entregados.** La elección de
+  canal quedaba fuera de todo `try` por elemento y la tanda tenía un único commit
+  al final, así que una excepción tiraba las filas que decían "ya enviado" y el
+  siguiente ciclo los mandaba otra vez, con exposición TCPA por mensaje. Ahora se
+  hace commit tras cada despacho y un lead ilegible cuesta un seguimiento, no la
+  tanda.
+- **Un intento fallido contaba como respuesta en la bandeja.** La fila OUTBOUND
+  fallida pasaba a ser el mensaje más reciente del lead, así que `needs_response`
+  se apagaba y quien seguía esperando desaparecía de Pendientes.
+- **El compositor limpiaba la caja aunque no se hubiera enviado.** Ya leía
+  `outbound_status` el backend pero el frontend no lo miraba; ahora avisa de que
+  quedó en cola.
+
 ## [0.47.4] — 2026-08-16
 
 ### Corregido

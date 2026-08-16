@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.47.4";
+export const CURRENT_VERSION = "0.47.5";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,32 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.47.5",
+    date: "2026-08-16",
+    title: {
+      en: "A message that did not send no longer looks like one that did",
+      es: "Un mensaje que no salió ya no parece uno que sí salió",
+    },
+    changes: [
+      {
+        en: "When your reply cannot be handed to the phone or email provider, you are told so and it is queued and retried automatically. Before, the box cleared and nothing was said — the reply sat in the database forever and you had no way of knowing the client never heard from you.",
+        es: "Cuando tu respuesta no se puede entregar al proveedor de SMS o correo, ahora se te dice y queda en cola para reintentarla sola. Antes se vaciaba la caja y no se decía nada: la respuesta se quedaba parada para siempre y no había forma de saber que el cliente nunca la recibió.",
+      },
+      {
+        en: "A lead you tried to answer but could not reach stays in Pending. Writing a reply used to be enough to clear them from the list, so the person still waiting disappeared from the one screen where you would have noticed.",
+        es: "Un lead al que intentaste contestar sin conseguirlo sigue en Pendientes. Antes bastaba con escribir la respuesta para que saliera de la lista, así que la persona que seguía esperando desaparecía de la única pantalla donde lo habrías visto.",
+      },
+      {
+        en: "Follow-up messages are no longer sent twice. One lead with unreadable data could abort the whole batch before it recorded what it had already sent, and the next run sent those messages again to people who had received them.",
+        es: "Los seguimientos ya no se envían dos veces. Un lead con datos ilegibles podía abortar toda la tanda antes de anotar lo que ya había enviado, y la siguiente pasada volvía a mandar esos mensajes a quien ya los tenía.",
+      },
+      {
+        en: "Someone who replied STOP can no longer receive a message that was queued before they said it. The check that protects them was being skipped for anything a person had typed.",
+        es: "Quien responde STOP ya no puede recibir un mensaje que estuviera en cola de antes. La comprobación que le protege se estaba saltando para todo lo que hubiera escrito una persona.",
+      },
+    ],
+  },
   {
     version: "0.46.14",
     date: "2026-08-14",

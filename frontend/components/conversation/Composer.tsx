@@ -26,6 +26,7 @@ export function Composer({
   const [text, setText] = useState("");
   const [channel, setChannel] = useState<SendChannel>(initialChannel(defaultChannel));
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [sending, setSending] = useState(false);
 
@@ -36,6 +37,7 @@ export function Composer({
   async function handleSend() {
     if (!text.trim() || sending) return;
     setError(null);
+    setNotice(null);
     setSending(true);
     try {
       const result = await leadsApi.sendMessage(leadId, text.trim(), { channel });
@@ -49,6 +51,16 @@ export function Composer({
         setError(key ? t(key) : result.error || t("composer.unknownError"));
         return;
       }
+      // A 200 says the message was recorded, not that it reached anybody. The
+      // provider can refuse it and the reply then sits in the retry queue —
+      // which the realtor has to be told, because the previous version cleared
+      // the box and showed nothing, so they walked away believing they had
+      // answered somebody who never heard from them.
+      if (result.outbound_status === "failed") {
+        setNotice(t("composer.sendQueued"));
+      }
+      // Cleared even then: the message is already stored and queued, so leaving
+      // the text in place only invites sending it a second time.
       setText("");
       setSuggestions(null);
       // Reload the timeline client-side so the new outbound shows immediately.
@@ -148,6 +160,12 @@ export function Composer({
           {t("composer.suggest")}
         </button>
       </div>
+
+      {notice && (
+        <div className="text-[11px] text-amber-300 mb-2 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20">
+          {notice}
+        </div>
+      )}
 
       {suggestionsError && (
         <div className="text-[11px] text-red-300 mb-2 px-2 py-1 rounded bg-red-500/10 border border-red-500/20">

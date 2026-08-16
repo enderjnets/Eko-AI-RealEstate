@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -20,6 +20,7 @@ from app.models import (
     Lead,
     Message,
     MessageDirection,
+    MessageStatus,
     Visit,
     VisitStatus,
 )
@@ -69,6 +70,19 @@ async def _last_message_per_lead(db: AsyncSession) -> dict[int, object]:
                 Conversation.channel.label("channel"),
             )
             .join(Conversation, Message.conversation_id == Conversation.id)
+            # An outbound that never reached anybody is not an answer. Composing
+            # a reply wrote the row, the row became the newest message, and the
+            # lead dropped out of Pending — so a client who is still waiting
+            # looked answered, and the one place a realtor would notice is the
+            # place that stopped showing them. PENDING still counts: it is a
+            # send in flight, and if it exhausts its retries it becomes FAILED
+            # and the lead comes back.
+            .where(
+                or_(
+                    Message.direction == MessageDirection.INBOUND,
+                    Message.delivery_status != MessageStatus.FAILED,
+                )
+            )
             .order_by(Conversation.lead_id, Message.created_at.desc(), Message.id.desc())
             .distinct(Conversation.lead_id)
         )

@@ -36,6 +36,7 @@ from app.services.conversation import (
     _dispatch_send,
     reachable_active_conversations,
 )
+from app.services.delivery import schedule_retry
 from app.services.i18n import detect_language, pick_supported_language
 from app.services.tenant_context import get_org_id
 
@@ -370,17 +371,37 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             skipped += 1
             continue
 
-        candidates = await reachable_active_conversations(lead.id, lead.phone, db)
-        candidates = _prefer(candidates, lead.preferred_channel)
-        conv = None
-        for candidate in candidates:
-            # TCPA. An automated text to somebody who neither consented in
-            # writing nor wrote to us first on that channel is $500–$1,500 per
-            # message, and the exposure lands on the broker's licence rather
-            # than on the software.
-            if await may_send_automated(lead, candidate.channel, db):
-                conv = candidate
-                break
+        # Choosing *where* to send must not be able to take the batch down
+        # either. Composing was wrapped for exactly that reason and these lines
+        # were left outside it, so one lead whose conversations or consent rows
+        # raised aborted the loop before its single commit — and every
+        # follow-up already handed to the provider on that tick lost its SENT
+        # row and was sent again on the next one, to people who had already
+        # received it, at TCPA exposure per message.
+        try:
+            candidates = await reachable_active_conversations(lead.id, lead.phone, db)
+            candidates = _prefer(candidates, lead.preferred_channel)
+            conv = None
+            for candidate in candidates:
+                # TCPA. An automated text to somebody who neither consented in
+                # writing nor wrote to us first on that channel is $500–$1,500
+                # per message, and the exposure lands on the broker's licence
+                # rather than on the software.
+                if await may_send_automated(lead, candidate.channel, db):
+                    conv = candidate
+                    break
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Follow-up %d could not choose a channel: %s", fu.id, exc)
+            # Left PENDING so a transient database error is retried rather than
+            # cancelling somebody's sequence, but bounded by the same counter as
+            # the consent hold so a permanently malformed row cannot spin.
+            fu.attempts += 1
+            if fu.attempts > _HOLD_GIVE_UP_AFTER_HOLDS:
+                fu.status = FollowUpStatus.FAILED
+                failed += 1
+            else:
+                skipped += 1
+            continue
 
         if conv is None:
             # HELD, not SKIPPED. SKIPPED is terminal and never re-evaluated, so
@@ -447,9 +468,26 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             sent += 1
         except Exception as exc:  # noqa: BLE001
             log.error("Follow-up %d dispatch failed: %s", fu.id, exc)
-            outbound.delivery_status = MessageStatus.FAILED
+            # The follow-up itself is done — it produced its Message and will
+            # not compose another. Delivery of that one Message is the retry
+            # queue's job from here, so the lead gets it once, late, instead of
+            # never.
+            schedule_retry(outbound, str(exc))
             fu.status = FollowUpStatus.FAILED
             failed += 1
+
+        # Committed per item, not once at the end. A message handed to the
+        # provider is irreversible the instant it leaves, so the row that says
+        # so has to survive whatever the rest of the batch does.
+        try:
+            await db.commit()
+        except Exception as exc:  # noqa: BLE001
+            await db.rollback()
+            log.exception(
+                "Follow-up %d was dispatched but its row could not be committed "
+                "— it may be sent again next tick: %s",
+                fu.id, exc,
+            )
 
     await db.commit()
     if sent or skipped or failed:

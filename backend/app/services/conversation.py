@@ -341,7 +341,12 @@ async def send_human_message(
         outbound.delivery_status = MessageStatus.SENT
     except Exception as exc:  # noqa: BLE001
         log.error("Human-send dispatch failed for lead %d: %s", lead_id, exc)
-        outbound.delivery_status = MessageStatus.FAILED
+        # Setting FAILED and nothing else left `next_attempt_at` NULL, which
+        # matches neither branch of the retry sweep's query: the realtor's own
+        # reply sat in the database forever while the dashboard reported it
+        # sent. The automated reply below has always been queued here; this one
+        # never was.
+        schedule_retry(outbound, str(exc))
 
     lead.last_message_at = datetime.now(UTC)
     await db.commit()

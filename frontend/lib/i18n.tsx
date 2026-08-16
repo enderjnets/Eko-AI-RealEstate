@@ -309,6 +309,7 @@ const EN: Record<string, string> = {
   "composer.send": "Send",
   "composer.unknownError": "Unknown error",
   "composer.optedOut": "This person replied STOP, so nothing was sent. That holds however the message is written — calling them is a separate consent and your call to make.",
+  "composer.sendQueued": "Saved, but the provider would not take it just now. It is queued and will be retried automatically — they have not received it yet.",
   // matches
   "matches.title": "Suggested properties",
   "matches.searching": "Searching properties…",
@@ -904,6 +905,7 @@ const ES: Record<string, string> = {
   "composer.send": "Enviar",
   "composer.unknownError": "Error desconocido",
   "composer.optedOut": "Esta persona respondió STOP, así que no se envió nada. Vale igual aunque lo escribas tú — llamarla es otro consentimiento y una decisión tuya.",
+  "composer.sendQueued": "Guardado, pero el proveedor no lo aceptó ahora mismo. Queda en cola y se reintentará solo — todavía no lo ha recibido.",
   "matches.title": "Propiedades sugeridas",
   "matches.searching": "Buscando propiedades…",
   "matches.empty": "No hay listings que encajen con la zona / presupuesto / intención de este lead.",

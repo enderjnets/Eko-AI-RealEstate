@@ -173,16 +173,16 @@ async def _retry_one(db: AsyncSession, message_id: int, now: datetime) -> str:
     # checks BEFORE creating the row, so anything already in the queue sailed
     # past it. The consent gate belongs at the dispatch boundary too, not only
     # at the producer.
-    # AGENT only. The gate's documented bound — in `may_send_automated` and in
-    # docs/public-capture-form.md — is that it covers automated messages and a
-    # realtor can still write personally. Dropping on `sender` alone retired a
-    # human-authored message orphaned PENDING by a restart, which is precisely
-    # the case this sweep exists to rescue, and it did it permanently.
-    lead = (
-        await _lead_of(message, db)
-        if message.sender == MessageSender.AGENT
-        else None
-    )
+    # Loaded for every sender. Skipping the lookup for human-authored messages
+    # kept them out of the consent gate below, which is right — that gate's
+    # documented bound, in `may_send_automated` and in
+    # docs/public-capture-form.md, is automated sending, and a realtor may still
+    # write personally. But it took the opt-out check with it, and that one is
+    # absolute: a reply queued before somebody replied STOP went out anyway
+    # after they had, through the sweep, with nothing on record refusing it.
+    # The sender distinction belongs on the consent gate, not on whether the
+    # lead is looked at at all.
+    lead = await _lead_of(message, db)
     if lead is not None and lead.opted_out_at is not None:
         message.delivery_status = MessageStatus.FAILED
         message.next_attempt_at = None
@@ -213,7 +213,18 @@ async def _retry_one(db: AsyncSession, message_id: int, now: datetime) -> str:
     # this module, and a top-level import closes the cycle.
     from app.services.capture import may_send_automated
 
-    if lead is not None and channel and not await may_send_automated(lead, channel, db):
+    # Automated sending only. A reply a human typed is not an automated message,
+    # and `send_human_message` already decided it may go out: it checks the
+    # opt-out above and deliberately not this gate. Judging it here would turn a
+    # transient provider error into a permitted human reply held until it hits
+    # the attempt cap and dies — which is the failure this queue exists to stop.
+    # The opt-out block above still applies to everyone, human or not.
+    if (
+        message.sender is not MessageSender.HUMAN
+        and lead is not None
+        and channel
+        and not await may_send_automated(lead, channel, db)
+    ):
         # Backed off, NOT retired. Unlike an opt-out this is a point-in-time
         # answer that can turn into a yes: consent gets recorded, or the person
         # writes to us on this channel, and then the message is sendable. The
