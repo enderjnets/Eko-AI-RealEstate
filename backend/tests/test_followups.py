@@ -119,7 +119,11 @@ async def test_past_visit_skips_reminder(database_url: str) -> None:
 @pytest.mark.asyncio
 async def test_process_sends_due_followup(database_url: str) -> None:
     """A due post-visit follow-up (visit 2 days ago) gets sent (SIMULATED)."""
-    past = datetime.now(UTC) - timedelta(days=2)
+    # One day back, not two: the 24h message is then due right now. At two
+    # days it is a full cadence gap overdue, and `enqueue_for_visit` stops
+    # scheduling those — three post-visit messages arriving seconds apart is
+    # what a back-dated visit used to produce.
+    past = datetime.now(UTC) - timedelta(days=1)
     lead_id, visit_id = await _make_lead_visit(database_url, scheduled_at=past)
     engine, Session = _session(database_url)
     try:
@@ -140,7 +144,11 @@ async def test_process_sends_due_followup(database_url: str) -> None:
 
 @pytest.mark.asyncio
 async def test_human_takeover_skips(database_url: str) -> None:
-    past = datetime.now(UTC) - timedelta(days=2)
+    # One day back, not two: the 24h message is then due right now. At two
+    # days it is a full cadence gap overdue, and `enqueue_for_visit` stops
+    # scheduling those — three post-visit messages arriving seconds apart is
+    # what a back-dated visit used to produce.
+    past = datetime.now(UTC) - timedelta(days=1)
     lead_id, visit_id = await _make_lead_visit(database_url, scheduled_at=past, human_takeover=True)
     engine, Session = _session(database_url)
     try:

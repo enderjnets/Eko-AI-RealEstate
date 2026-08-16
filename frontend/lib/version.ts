@@ -26,6 +26,22 @@ export const CHANGELOG: VersionEntry[] = [
         en: "Booking a showing by typing a plain time — 10:00, with no timezone — no longer slips past the double-booking check. It was being compared against a diary kept in a different format, which never matched, so two clients could be confirmed for the same half-hour.",
         es: "Reservar una visita escribiendo una hora a secas —10:00, sin zona horaria— ya no se cuela por delante de la comprobación de solapamiento. Se comparaba contra una agenda guardada en otro formato, que nunca coincidía, así que dos clientes podían quedar confirmados en la misma media hora.",
       },
+      {
+        en: "A lead you could not reach no longer disappears from the Inbox. Last version's fix hid them from Pending as intended, but a lead whose only message was a failed first outreach dropped out of every tab. They are back, with the failed attempt shown.",
+        es: "Un lead al que no pudiste llegar ya no desaparece de la bandeja. El arreglo de la versión anterior lo sacaba de Pendientes como debía, pero un lead cuyo único mensaje era un primer contacto fallido se caía de todas las pestañas. Vuelve a estar, con el intento fallido a la vista.",
+      },
+      {
+        en: "The Inbox and the Leads list no longer disagree about who is waiting for an answer.",
+        es: "La bandeja y la lista de leads ya no se contradicen sobre quién está esperando respuesta.",
+      },
+      {
+        en: "Replying START now gets its confirmation even if the first attempt fails, so nobody is left thinking they resubscribed to silence.",
+        es: "Responder ALTA ahora recibe su confirmación aunque falle el primer intento, para que nadie se quede creyendo que se resuscribió al silencio.",
+      },
+      {
+        en: "Recording a visit that already happened no longer sends the client three follow-up messages at once. A visit entered with a past date queued \"how did it go?\", the reminder and \"new listings just came up\" all overdue, and they went out seconds apart. A visit logged the morning after still gets its check-in, on time.",
+        es: "Registrar una visita que ya ocurrió ya no le manda al cliente tres seguimientos de golpe. Una visita con fecha pasada encolaba \"¿qué tal fue?\", el recordatorio y \"hay pisos nuevos\" los tres vencidos, y salían con segundos de diferencia. Una visita registrada a la mañana siguiente sigue recibiendo su mensaje, a su hora.",
+      },
     ],
   },
   {

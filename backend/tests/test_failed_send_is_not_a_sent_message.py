@@ -439,3 +439,247 @@ async def test_a_reply_that_never_sent_leaves_the_lead_waiting_in_the_inbox() ->
                 )
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_back_dated_visit_does_not_fire_its_whole_sequence_at_once() -> None:
+    """Three nurture messages seconds apart is not a nurture sequence.
+
+    The reminder has always been scheduled only if it is still in the future.
+    The three post-visit messages were scheduled unconditionally, so a visit
+    entered with a past date arrived already overdue on all three and the next
+    sweep sent them together.
+    """
+    from app.models.visit import Visit, VisitStatus
+    from app.services.followups import enqueue_for_visit
+
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead_id, _ = await _lead_with_thread(db, "+13035557011")
+                long_past = Visit(
+                    lead_id=lead_id,
+                    calendar_provider="manual",
+                    external_booking_id="manual-backdated-1",
+                    status=VisitStatus.SCHEDULED,
+                    scheduled_at=datetime.now(UTC) - timedelta(days=30),
+                    duration_minutes=30,
+                    timezone="UTC",
+                )
+                db.add(long_past)
+                await db.commit()
+                created = await enqueue_for_visit(long_past, db)
+                assert created == 0, (
+                    f"{created} follow-ups queued for a visit 30 days in the past"
+                )
+
+            # Two days ago: the 24h message is already moot, the 72h and 7d
+            # ones are still ahead and should survive.
+            async with get_session_factory()() as db:
+                second_lead, _ = await _lead_with_thread(db, "+13035557012")
+                recent = Visit(
+                    lead_id=second_lead,
+                    calendar_provider="manual",
+                    external_booking_id="manual-backdated-2",
+                    status=VisitStatus.SCHEDULED,
+                    scheduled_at=datetime.now(UTC) - timedelta(days=2),
+                    duration_minutes=30,
+                    timezone="UTC",
+                )
+                db.add(recent)
+                await db.commit()
+                assert await enqueue_for_visit(recent, db) == 2
+
+            async with get_session_factory()() as db:
+                kinds = {
+                    fu.kind
+                    for fu in (
+                        await db.execute(
+                            select(FollowUp).where(FollowUp.lead_id == second_lead)
+                        )
+                    ).scalars().all()
+                }
+                assert kinds == {FollowUpKind.POST_VISIT_72H, FollowUpKind.POST_VISIT_7D}
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_lead_whose_only_message_failed_is_still_in_the_inbox() -> None:
+    """Demoting the row is not the same as removing it.
+
+    The first version of the inbox fix filtered failed outbounds out of the
+    query. `gather_inbox` builds its lead set from that query's keys, so a lead
+    whose only message is a failed first outreach lost every row and vanished
+    from the inbox entirely — every tab, not just Pending. That is the defect
+    this was meant to fix, made worse: the client the realtor could not reach
+    disappeared from the screen where they would have noticed.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                # No inbound at all: a discovery import, or a number typed in.
+                lead_id, _ = await _lead_with_thread(
+                    db, "+13035557013", with_inbound=False
+                )
+
+            async with get_session_factory()() as db:
+                with patch("app.services.conversation._dispatch_send", _boom):
+                    await send_human_message(lead_id, "Hi — saw you were looking.", db)
+
+            async with get_session_factory()() as db:
+                items = await gather_inbox(db)
+                assert any(i.lead.id == lead_id for i in items), (
+                    "the lead vanished from the inbox after the outreach failed"
+                )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_inbox_and_the_leads_list_agree_on_who_is_waiting() -> None:
+    """Two screens, one rule. They drifted the first time it changed."""
+    from app.api.v1.leads import _needs_response_map
+
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead_id, _ = await _lead_with_thread(db, "+13035557014")
+
+            async with get_session_factory()() as db:
+                with patch("app.services.conversation._dispatch_send", _boom):
+                    await send_human_message(lead_id, "Sorry for the delay!", db)
+
+            async with get_session_factory()() as db:
+                inbox_says = next(
+                    i.needs_response for i in await gather_inbox(db) if i.lead.id == lead_id
+                )
+                leads_says = (await _needs_response_map(db, [lead_id])).get(lead_id, False)
+            assert inbox_says == leads_says is True, (
+                f"inbox={inbox_says} leads={leads_says} — the two screens disagree "
+                "about the same lead"
+            )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_database_error_on_one_follow_up_does_not_starve_the_queue() -> None:
+    """The failure class the handler names, which its first version could not survive.
+
+    Without a rollback the transaction stays aborted, so the next item's query
+    raises outside every handler and the batch dies — and the attempts counter
+    meant to bound the bad row is written into the doomed transaction and lost,
+    so it can never give up. The row stays PENDING and due, sorts first by
+    `scheduled_for`, and starves that tenant's whole nurture queue on every tick.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                bad_lead, _ = await _lead_with_thread(db, "+13035557015")
+                good_lead, _ = await _lead_with_thread(db, "+13035557016")
+                for lead_id, minutes in ((bad_lead, 20), (good_lead, 10)):
+                    db.add(
+                        FollowUp(
+                            lead_id=lead_id,
+                            kind=FollowUpKind.POST_VISIT_24H,
+                            status=FollowUpStatus.PENDING,
+                            scheduled_for=datetime.now(UTC) - timedelta(minutes=minutes),
+                        )
+                    )
+                await db.commit()
+
+            delivered: list[str] = []
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                delivered.append(to)
+                return "sm.nurture", None
+
+            from app.services import followups as followups_module
+
+            real_gate = followups_module.may_send_automated
+
+            async def _breaks_the_session(lead, channel, db):  # noqa: ANN001, ANN202
+                if lead.id == bad_lead:
+                    # A real database error, not a bare exception: this is what
+                    # leaves the transaction aborted.
+                    await db.execute(text("SELECT no_such_column_at_all"))
+                return await real_gate(lead, channel, db)
+
+            async with get_session_factory()() as db:
+                with patch("app.services.followups._dispatch_send", _ok):
+                    with patch.object(
+                        followups_module, "may_send_automated", _breaks_the_session
+                    ):
+                        await process_due_followups(db)
+
+            # The healthy lead behind the bad row still got its message.
+            assert delivered == ["+13035557016"], delivered
+
+            async with get_session_factory()() as db:
+                bad_fu = (
+                    await db.execute(select(FollowUp).where(FollowUp.lead_id == bad_lead))
+                ).scalar_one()
+                assert bad_fu.attempts == 1, (
+                    "the give-up counter was rolled back with the failed "
+                    "transaction, so the bad row can never be given up on"
+                )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_come_back_confirmation_is_retried() -> None:
+    """Someone who replies START consented by definition and is waiting for it.
+
+    The opt-OUT confirmation is deliberately never retried — a failed goodbye
+    must not leave a door open. The same handler covered the opt-IN branch,
+    where that reasoning is backwards: it left the person believing they had
+    resubscribed to silence.
+    """
+    from app.services._common import ParsedMessage
+    from app.services.conversation import handle_inbound_message
+
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead_id, _ = await _lead_with_thread(db, "+13035557017")
+                lead = await db.get(Lead, lead_id)
+                lead.opted_out_at = datetime.now(UTC)
+                lead.opted_out_keyword = "STOP"
+                await db.commit()
+
+            async with get_session_factory()() as db:
+                with patch("app.services.conversation._dispatch_send", _boom):
+                    await handle_inbound_message(
+                        ParsedMessage(
+                            channel="sms",
+                            from_identifier="+13035557017",
+                            from_name="Restart Tester",
+                            content="START",
+                            external_id="sms-restart-1",
+                        ),
+                        db,
+                    )
+
+            async with get_session_factory()() as db:
+                lead = await db.get(Lead, lead_id)
+                assert lead.opted_out_at is None, "START did not resubscribe them"
+                ack = (
+                    await db.execute(
+                        select(Message)
+                        .where(Message.direction == MessageDirection.OUTBOUND)
+                        .order_by(Message.id.desc())
+                        .limit(1)
+                    )
+                ).scalar_one()
+                assert ack.next_attempt_at is not None, (
+                    "the confirmation they asked for was dropped, not queued"
+                )
+    finally:
+        await _cleanup()

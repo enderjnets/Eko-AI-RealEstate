@@ -33,6 +33,7 @@ from app.services.conversation import (
     handle_inbound_message,
     send_human_message,
 )
+from app.services.inbox import reached_somebody
 from app.services.scoring import rescore_all, rescore_lead
 
 router = APIRouter()
@@ -228,7 +229,17 @@ async def _needs_response_map(db: AsyncSession, lead_ids: list[int]) -> dict[int
             select(Conversation.lead_id, Message.direction)
             .join(Conversation, Message.conversation_id == Conversation.id)
             .where(Conversation.lead_id.in_(lead_ids))
-            .order_by(Conversation.lead_id, Message.created_at.desc(), Message.id.desc())
+            # Same ranking as the inbox, from the same expression. A reply that
+            # failed to send is not the last word, and when only this screen
+            # believed otherwise the two contradicted each other about the same
+            # lead: the inbox showed them waiting, the leads list showed them
+            # answered.
+            .order_by(
+                Conversation.lead_id,
+                reached_somebody().desc(),
+                Message.created_at.desc(),
+                Message.id.desc(),
+            )
             .distinct(Conversation.lead_id)
         )
     ).all()

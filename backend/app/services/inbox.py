@@ -25,6 +25,23 @@ from app.models import (
     VisitStatus,
 )
 
+
+def reached_somebody():
+    """True unless this is an outbound whose delivery failed.
+
+    Ranking key, deliberately not a filter — see `_last_message_per_lead`.
+
+    Exported because the leads list keeps its own copy of `needs_response` and
+    the two have to agree about what counts as the last word. They did not: this
+    rule was added here and not there, and the other one's docstring still
+    claimed it mirrored this one. One expression, imported by both.
+    """
+    return or_(
+        Message.direction == MessageDirection.INBOUND,
+        Message.delivery_status != MessageStatus.FAILED,
+    )
+
+
 PREVIEW_LEN = 140
 _ACTIVE_VISIT_STATUSES = (VisitStatus.SCHEDULED, VisitStatus.CONFIRMED)
 
@@ -70,20 +87,27 @@ async def _last_message_per_lead(db: AsyncSession) -> dict[int, object]:
                 Conversation.channel.label("channel"),
             )
             .join(Conversation, Message.conversation_id == Conversation.id)
-            # An outbound that never reached anybody is not an answer. Composing
-            # a reply wrote the row, the row became the newest message, and the
-            # lead dropped out of Pending — so a client who is still waiting
-            # looked answered, and the one place a realtor would notice is the
-            # place that stopped showing them. PENDING still counts: it is a
-            # send in flight, and if it exhausts its retries it becomes FAILED
-            # and the lead comes back.
-            .where(
-                or_(
-                    Message.direction == MessageDirection.INBOUND,
-                    Message.delivery_status != MessageStatus.FAILED,
-                )
+            # An outbound that never reached anybody is not an answer, so it
+            # loses to any message that did: composing a reply wrote the row, the
+            # row became the newest message, and the lead dropped out of Pending
+            # — a client still waiting looked answered, on the one screen where
+            # a realtor would have noticed.
+            #
+            # Demoted, NOT filtered out. Filtering was the first version of this
+            # fix and it was worse than the defect: `gather_inbox` builds its
+            # lead set from the keys of this map, so a lead whose only message is
+            # a failed outbound — a first outreach to somebody who never wrote to
+            # us — lost every row here and vanished from the inbox entirely,
+            # every tab, not just Pending.
+            #
+            # PENDING still ranks as delivered: it is a send in flight, and if it
+            # exhausts its retries it becomes FAILED and drops behind again.
+            .order_by(
+                Conversation.lead_id,
+                reached_somebody().desc(),
+                Message.created_at.desc(),
+                Message.id.desc(),
             )
-            .order_by(Conversation.lead_id, Message.created_at.desc(), Message.id.desc())
             .distinct(Conversation.lead_id)
         )
     ).all()

@@ -154,20 +154,62 @@ SENDING_PRIMITIVES = {
 
 # Functions allowed to reach a send without consulting the opt-out, each for a
 # reason that has been checked:
+# Qualified `path::function`, not bare names. A bare name exempts that function
+# in EVERY module, so any file could acquire a `handle_inbound_message` and be
+# waved through this check forever — an exemption is granted to one reviewed
+# function, not to a spelling.
 SEND_EXEMPT = {
     # The funnel every other sender goes through — it is the thing guarded.
-    "_dispatch_send",
+    "app/services/conversation.py::_dispatch_send",
     # Answering someone who has just written to us. It sends only the STOP/START
     # confirmation the carriers require and then returns; any later message is
     # refused further down as `opted_out_no_reply`.
-    "handle_inbound_message",
+    "app/services/conversation.py::handle_inbound_message",
     # The adapters themselves: they are the primitive.
-    "send_text_message",
-    "send_sms",
-    "send_email",
+    "app/services/whatsapp.py::send_text_message",
+    "app/services/sms.py::send_sms",
+    "app/services/email.py::send_email",
 }
 
 APP = pathlib.Path(__file__).resolve().parents[1] / "app"
+
+
+def _reads_opt_out(node: ast.AST) -> bool:
+    """Does this function actually look at `opted_out_at`?
+
+    An attribute access (`lead.opted_out_at`) or a keyword of that name. Text
+    that merely contains the words does not count — that is the hole this
+    replaced.
+    """
+    for inner in ast.walk(node):
+        if isinstance(inner, ast.Attribute) and inner.attr == "opted_out_at":
+            return True
+        if isinstance(inner, ast.keyword) and inner.arg == "opted_out_at":
+            return True
+    return False
+
+
+def test_the_sweep_cannot_be_satisfied_by_a_docstring() -> None:
+    """The detector, on two functions written to fool it.
+
+    A sweep that can be silenced by writing prose about the rule is worse than
+    no sweep: it reports a clean run over code nobody checked.
+    """
+    talks_about_it = ast.parse(
+        'def f(lead):\n'
+        '    """We deliberately do not check opted_out_at here."""\n'
+        '    log.info("opted_out_at is somebody else\'s problem")\n'
+        '    return send_sms(lead.phone, "hi")\n'
+    ).body[0]
+    actually_checks = ast.parse(
+        "def g(lead):\n"
+        "    if lead.opted_out_at is not None:\n"
+        "        return None\n"
+        '    return send_sms(lead.phone, "hi")\n'
+    ).body[0]
+
+    assert _reads_opt_out(talks_about_it) is False
+    assert _reads_opt_out(actually_checks) is True
 
 
 def _reaching_functions() -> tuple[list[str], int]:
@@ -192,7 +234,7 @@ def _reaching_functions() -> tuple[list[str], int]:
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
-            if node.name in SEND_EXEMPT:
+            if f"{path.relative_to(APP.parent)}::{node.name}" in SEND_EXEMPT:
                 continue
             called = {
                 n.func.id
@@ -206,8 +248,12 @@ def _reaching_functions() -> tuple[list[str], int]:
             sends = called & (SENDING_PRIMITIVES | set(aliases) | {"_dispatch_send"})
             if not sends:
                 continue
-            source = ast.dump(node)
-            aware = "opted_out_at" in source or "may_send_automated" in called
+            # A real attribute access, not a substring of the dumped tree.
+            # `ast.dump` includes every string constant, so a docstring or a log
+            # line that merely mentioned `opted_out_at` certified the function as
+            # careful — and the more thoroughly somebody documented why their
+            # sender was safe, the more certainly this check stopped looking.
+            aware = _reads_opt_out(node) or "may_send_automated" in called
             if not aware:
                 reaching.append(f"{path.relative_to(APP.parent)}::{node.name}")
     return reaching, walked

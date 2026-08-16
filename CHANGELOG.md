@@ -4,6 +4,51 @@ All notable changes to **Eko AI Realtors**.
 
 ## [0.47.6] — 2026-08-16
 
+### Corregido — hallazgos de la auditoría independiente sobre v0.47.5
+
+Cuatro defectos reales, los tres primeros confirmados ejecutándolos. Dos son
+regresiones **mías**, introducidas por los arreglos de v0.47.5.
+
+- **REGRESIÓN (v0.47.5, en producción): un lead desaparecía de la bandeja
+  entera.** Mi filtro de outbounds fallidos quitaba filas de un `DISTINCT ON`, y
+  `gather_inbox` construye su conjunto de leads con las claves de esa consulta
+  (`inbox.py:150`). Un lead cuyo único mensaje es un primer contacto fallido
+  —importado de discovery, o tecleado a mano— perdía **todas** sus filas y
+  desaparecía de la bandeja: de todas las pestañas, no solo de Pendientes.
+  Exactamente el daño que el arreglo pretendía evitar, invertido y peor.
+  Ahora la fila se **degrada en el orden**, no se elimina.
+- **La gemela en la lista de leads no se actualizó.** `_needs_response_map`
+  (`leads.py:221`) hacía la misma consulta sin la regla nueva, y su propio
+  docstring decía "Mirrors the inbox's `needs_response`" — ya no. Las dos
+  pantallas se contradecían sobre el mismo lead. Ahora comparten una única
+  expresión, `inbox.reached_somebody()`.
+- **REGRESIÓN (v0.47.5): mi `try` por elemento no hacía rollback**, así que un
+  error de base de datos —la clase de fallo que el propio comentario nombra—
+  dejaba la transacción abortada, la siguiente iteración moría fuera de todo
+  handler, y el contador de rendición se escribía en la transacción condenada y
+  se perdía: la fila mala se quedaba PENDING, la primera por `scheduled_for`, y
+  **mataba de hambre toda la cola de seguimientos de ese inquilino** en cada
+  ciclo, en silencio. Mi test usaba `RuntimeError`, que nunca toca la sesión, así
+  que pasaba sin cubrirlo. Ahora hay rollback, relectura de la fila y commit del
+  contador — y el bucle itera por **id**, porque un rollback expira los objetos
+  ORM y hasta leer `fu.id` después dispara una carga síncrona que revienta.
+- **El acuse de re-alta no se reintentaba.** El mismo handler cubría STOP y
+  START. Para STOP no reintentar es correcto; para START es al revés: la persona
+  lo ha pedido, ha consentido por definición, y se quedaba creyendo que se había
+  vuelto a suscribir al silencio.
+
+### Corregido — estabilidad de la suite
+
+- **`test_webhook_e2e.py` fallaba al azar** (medido por el auditor: 1-2 de cada
+  10 ejecuciones). Construía teléfonos con letras (`34666E2E` + sufijo hex en
+  mayúsculas) y comprobaba que lo guardado coincidía con lo enviado, pero el
+  canonicalizador de identificadores reescribe algunos de esos valores. Sufijos
+  solo de dígitos.
+- **`test_shared_resources.py` solo podía correr en un portátil.** Tres URLs con
+  host, puerto y contraseña fijos (`localhost:5434`): verde en local y en CI
+  —donde Postgres está en 5432— ni siquiera conectaba. Lo encontró el primer CI
+  sobre estos commits. Ahora deriva del `DATABASE_URL` configurado.
+
 ### Corregido
 
 - **Una hora sin zona anulaba la comprobación de solapamiento.** `book_slot`
@@ -18,6 +63,26 @@ All notable changes to **Eko AI Realtors**.
   simulado localiza con `timezone_name`. Contra un Cal.com real se envía
   `start_time.isoformat()`, que sin zona va **sin offset** y queda a
   interpretación del proveedor; no hay cuenta viva para verificar ese extremo.
+- **Una visita retro-fechada disparaba la secuencia entera de golpe.** El guard
+  de "solo si sigue en el futuro" existía para el recordatorio y no para los tres
+  post-visita, así que una visita con fecha pasada —una que se registra después
+  de hacerla, un año mal tecleado, una fecha que el agente de voz oyó mal— los
+  programaba los tres ya vencidos y el siguiente barrido mandaba "¿qué tal fue?",
+  el recordatorio y "hay pisos nuevos" con segundos de diferencia.
+  **Corregido con ventana de gracia, no con "solo futuro"**: la primera versión
+  de este arreglo tiraba también el mensaje de una visita de hace exactamente
+  24 h, que es justo cuando debe salir. Un test existente lo señaló. Ahora se
+  admite **un** mensaje vencido, por menos que el hueco más pequeño de la
+  cadencia — lo que hace imposible que sobrevivan dos, que es la ráfaga.
+- **El barrido de opt-out se podía satisfacer con un docstring.** El detector
+  hacía `"opted_out_at" in ast.dump(node)`, y `ast.dump` incluye las cadenas de
+  texto: un docstring o un log que mencionara el campo certificaba a esa función
+  como cuidadosa para siempre — cuanto mejor documentabas por qué tu emisor era
+  seguro, más seguro era que el barrido dejara de mirarlo. Ahora exige un acceso
+  real al atributo. Y las exenciones pasan de nombre suelto a `ruta::función`,
+  porque un nombre suelto eximía a esa función **en todos los módulos**. El
+  detector tiene ahora su propio test con dos funciones escritas para engañarlo.
+  Barrido actual: 71 funciones alcanzan un envío, 0 sin guard, 5 exenciones.
 - **El changelog prometía algo que el producto bloquea.** La entrada de STOP
   decía que los mensajes del lead siguen llegando "para que le contestes en
   persona", pero el compositor devuelve 409 a quien se dio de baja — que es lo

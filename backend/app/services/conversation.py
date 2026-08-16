@@ -1288,11 +1288,17 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
             ack.external_id = external_id
             ack.delivery_status = MessageStatus.SENT
         except Exception as exc:  # noqa: BLE001
-            # Not retried on purpose. The opt-out itself is already recorded
-            # and honoured; a failed confirmation must never leave the door
-            # open for the sweep to send anything else.
             log.error("Opt-out confirmation failed for lead %d: %s", lead.id, exc)
-            ack.delivery_status = MessageStatus.FAILED
+            if lead.opted_out_at is None:
+                # They asked to come back. This is the one confirmation somebody
+                # is actually waiting for, they have consented by definition, and
+                # dropping it leaves them believing they resubscribed to silence.
+                schedule_retry(ack, str(exc))
+            else:
+                # Not retried on purpose. The opt-out itself is already recorded
+                # and honoured; a failed confirmation must never leave the door
+                # open for the sweep to send anything else.
+                ack.delivery_status = MessageStatus.FAILED
         await db.commit()
         log.info(
             "Lead %d %s on %s via %r",

@@ -61,6 +61,11 @@ _POST_VISIT_OFFSETS = {
     FollowUpKind.POST_VISIT_7D: timedelta(days=7),
 }
 
+# How overdue a post-visit message may be and still be worth sending. Set to the
+# smallest gap in the cadence above, which is what makes it impossible for two
+# of them to survive as overdue at once — the burst is the thing being stopped.
+_POST_VISIT_GRACE = min(_POST_VISIT_OFFSETS.values())
+
 # Bilingual templates. {name} is dropped cleanly when the lead has no name.
 _TEMPLATES: dict[FollowUpKind, dict[str, str]] = {
     FollowUpKind.REMINDER_24H: {
@@ -149,7 +154,17 @@ async def enqueue_for_visit(visit: Visit, db: AsyncSession, *, now: datetime | N
     if reminder_at > now:  # only schedule a reminder if it's still in the future
         planned.append((FollowUpKind.REMINDER_24H, reminder_at))
     for kind, offset in _POST_VISIT_OFFSETS.items():
-        planned.append((kind, when + offset))
+        # A visit entered with a past date — a showing logged after the fact, a
+        # mistyped year, a date the voice agent misheard — used to schedule all
+        # three post-visit messages already overdue, and the next sweep sent
+        # "how did it go?", the nudge and "new listings just came up" to the
+        # same person within seconds. The burst is the defect, not lateness:
+        # a showing logged the morning after is exactly when "how did it go?"
+        # should go out. So one message may be overdue, by less than the
+        # smallest gap in the cadence — which makes two of them impossible.
+        due = when + offset
+        if due > now - _POST_VISIT_GRACE:
+            planned.append((kind, due))
 
     existing = set(
         (
@@ -298,7 +313,15 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
     sent = skipped = failed = 0
     agency = await _agency_name(db)
 
-    for fu in rows:
+    # Iterated by id, not by loaded row. A rollback in any iteration expires
+    # every ORM object in this list, and the next plain attribute access on one
+    # — even `fu.id` — becomes a synchronous lazy load and raises MissingGreenlet
+    # outside every handler here, which is the batch dying again by another
+    # route. Re-reading each row costs one indexed select and cannot go stale.
+    for fu_id in [row.id for row in rows]:
+        fu = await db.get(FollowUp, fu_id)
+        if fu is None:
+            continue
         lead = (await db.execute(select(Lead).where(Lead.id == fu.lead_id))).scalar_one_or_none()
         if lead is None:
             fu.status = FollowUpStatus.CANCELLED
@@ -391,16 +414,31 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                     conv = candidate
                     break
         except Exception as exc:  # noqa: BLE001
-            log.exception("Follow-up %d could not choose a channel: %s", fu.id, exc)
+            # Rollback first, and it is not housekeeping. A database error —
+            # the very class this handler names — leaves the transaction
+            # aborted, so without this the next iteration's `select(Lead)`
+            # raises InFailedSQLTransactionError *outside* any handler and the
+            # batch dies anyway. Worse, the increment below would be written
+            # into the aborted transaction and thrown away, so the give-up
+            # bound could never be reached: the bad row stayed PENDING and due,
+            # sorted first by `scheduled_for`, and starved that tenant's entire
+            # nurture queue on every tick, silently.
+            await db.rollback()
+            log.exception("Follow-up %d could not choose a channel: %s", fu_id, exc)
+            refreshed = await db.get(FollowUp, fu_id)
+            if refreshed is None:
+                skipped += 1
+                continue
             # Left PENDING so a transient database error is retried rather than
-            # cancelling somebody's sequence, but bounded by the same counter as
-            # the consent hold so a permanently malformed row cannot spin.
-            fu.attempts += 1
-            if fu.attempts > _HOLD_GIVE_UP_AFTER_HOLDS:
-                fu.status = FollowUpStatus.FAILED
+            # cancelling somebody's sequence, but bounded so a permanently
+            # malformed row cannot spin forever.
+            refreshed.attempts += 1
+            if refreshed.attempts > _HOLD_GIVE_UP_AFTER_HOLDS:
+                refreshed.status = FollowUpStatus.FAILED
                 failed += 1
             else:
                 skipped += 1
+            await db.commit()
             continue
 
         if conv is None:
@@ -444,8 +482,15 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             template = _TEMPLATES[fu.kind].get(lang) or _TEMPLATES[fu.kind]["en"]
             text = template.format(name=_first_name(lead), agency=agency)
         except Exception as exc:  # noqa: BLE001
-            log.exception("Follow-up %d could not be composed: %s", fu.id, exc)
-            fu.status = FollowUpStatus.FAILED
+            # Same reasoning as the channel handler above: `_lead_language`
+            # queries, so this can be a database error too, and a handler that
+            # does not roll back only moves the crash to the next iteration.
+            await db.rollback()
+            log.exception("Follow-up %d could not be composed: %s", fu_id, exc)
+            refreshed = await db.get(FollowUp, fu_id)
+            if refreshed is not None:
+                refreshed.status = FollowUpStatus.FAILED
+                await db.commit()
             failed += 1
             continue
 

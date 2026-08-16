@@ -95,8 +95,12 @@ def _load_text_payload(test_phone: str, test_msg_id: str) -> dict:
 
 @pytest.mark.asyncio
 async def test_inbound_text_creates_lead_and_replies(database_url: str) -> None:
-    suffix = uuid.uuid4().hex[:10].upper()
-    test_phone = f"34666E2E{suffix}"
+    suffix = str(uuid.uuid4().int)[:10]
+    # Digits only. A suffix with letters in it is rewritten by the identifier
+    # canonicaliser on some values and not others, so the assertion that the
+    # stored phone equals what was sent failed at random — measured at 1-2
+    # runs in 10, which is a suite that goes red for no reason.
+    test_phone = f"34666{suffix}"
     test_msg_id = f"wamid.E2E_TEXT_{suffix}"
 
     payload = _load_text_payload(test_phone, test_msg_id)
@@ -171,8 +175,8 @@ async def test_inbound_text_creates_lead_and_replies(database_url: str) -> None:
 @pytest.mark.asyncio
 async def test_inbound_same_message_id_is_idempotent(database_url: str) -> None:
     """Meta retries on non-200; we must not double-process the same wa_message_id."""
-    suffix = uuid.uuid4().hex[:10].upper()
-    test_phone = f"34666IDM{suffix}"
+    suffix = str(uuid.uuid4().int)[:10]
+    test_phone = f"34667{suffix}"
     test_msg_id = f"wamid.IDM_{suffix}"
 
     payload = _load_text_payload(test_phone, test_msg_id)

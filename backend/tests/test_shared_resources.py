@@ -81,12 +81,30 @@ async def _cleanup() -> None:
     tenant_resolver.reset_cache()
 
 
+def _url_for(database: str) -> str:
+    """The configured server, pointed at a different database on it.
+
+    These three URLs used to hardcode host, port and password, so this file only
+    ran on one laptop: green there, and on CI —where Postgres is on 5432— it
+    dialled 5434 and could not connect at all. The first CI run over this branch
+    is what surfaced it.
+    """
+    import os
+
+    from sqlalchemy.engine import make_url
+
+    base = os.environ.get("DATABASE_URL", "")
+    if not base:
+        pytest.skip("DATABASE_URL not set")
+    return make_url(base).set(database=database).render_as_string(hide_password=False)
+
+
 async def _make_empty_database(name: str) -> None:
     """A real database with no schema in it, for the first-boot test."""
     from sqlalchemy.ext.asyncio import create_async_engine
 
     engine = create_async_engine(
-        "postgresql+asyncpg://eko:eko_local_pass@localhost:5434/postgres",
+        _url_for("postgres"),
         isolation_level="AUTOCOMMIT",
     )
     try:
@@ -101,7 +119,7 @@ async def _drop_database(name: str) -> None:
     from sqlalchemy.ext.asyncio import create_async_engine
 
     engine = create_async_engine(
-        "postgresql+asyncpg://eko:eko_local_pass@localhost:5434/postgres",
+        _url_for("postgres"),
         isolation_level="AUTOCOMMIT",
     )
     try:
@@ -530,7 +548,7 @@ async def test_the_app_boots_against_a_database_with_no_schema_yet() -> None:
     from app.db.base import dispose_engine
     from app.main import _schema_is_empty, _startup_isolation_state
 
-    empty = "postgresql+asyncpg://eko:eko_local_pass@localhost:5434/eko_firstboot"
+    empty = _url_for("eko_firstboot")
     # Created here rather than assumed: a test that silently skips its own
     # premise is the kind of green this whole audit has been about.
     await _make_empty_database("eko_firstboot")
