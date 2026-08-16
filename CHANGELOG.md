@@ -2,6 +2,28 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.47.6] — 2026-08-16
+
+### Corregido
+
+- **Una hora sin zona anulaba la comprobación de solapamiento.** `book_slot`
+  aceptaba un `start_time` naive y lo pasaba tal cual; comparar un naive con las
+  horas con zona que ya están en la agenda da simplemente `False` —sin error—,
+  así que el guard de doble reserva se ejecutaba, no encontraba nada y confirmaba
+  dos visitas en la misma media hora (**verificado**: 201 en lugar de 409).
+  `create_manual_event` sí resolvía el reloj de pared contra la zona de la
+  oficina desde siempre; la ruta hermana no. Extraído a `_resolve_wall_clock` y
+  usado por las dos.
+  Nota: en modo simulado el valor acababa guardándose bien porque el Cal.com
+  simulado localiza con `timezone_name`. Contra un Cal.com real se envía
+  `start_time.isoformat()`, que sin zona va **sin offset** y queda a
+  interpretación del proveedor; no hay cuenta viva para verificar ese extremo.
+- **El changelog prometía algo que el producto bloquea.** La entrada de STOP
+  decía que los mensajes del lead siguen llegando "para que le contestes en
+  persona", pero el compositor devuelve 409 a quien se dio de baja — que es lo
+  correcto. Reescrita: llegan a la bandeja, el lead queda marcado, y llamar es
+  otro consentimiento y decisión del asesor.
+
 ## [0.47.5] — 2026-08-16
 
 ### Corregido

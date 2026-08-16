@@ -12,6 +12,7 @@ import os
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -1207,3 +1208,113 @@ async def test_a_free_slot_is_still_bookable(database_url: str) -> None:
     finally:
         visits_module.create_booking = real_create
         await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_wall_clock_booking_lands_in_the_office_timezone(
+    database_url: str,
+) -> None:
+    """10:00 in Denver is 10:00 in Denver, not 10:00 UTC.
+
+    `create_manual_event` has always resolved a naive time against the office
+    timezone; `book_slot` never did, so the same wall clock written through the
+    two routes landed six hours apart and the showing went in the diary at the
+    wrong time of day.
+    """
+    from zoneinfo import ZoneInfo
+
+    lead_id = await _lead(database_url)
+    naive = (datetime.now(UTC) + timedelta(days=3)).replace(
+        hour=10, minute=0, second=0, microsecond=0, tzinfo=None
+    )
+    expected = naive.replace(tzinfo=ZoneInfo("America/Denver")).astimezone(UTC)
+
+    real_create_booking = visits_module.create_booking
+    seen: list[datetime] = []
+
+    # A full double, not a spy that delegates. Delegating made these two pass
+    # alone and fail in the suite, because a sibling test rewrites the Cal.com
+    # settings and the real call then refuses — a test that depends on ambient
+    # state is a test that will lie to somebody later.
+    async def _fake(*args: object, **kwargs: object) -> object:
+        start = kwargs["start_time"]
+        seen.append(start)  # type: ignore[arg-type]
+        return SimpleNamespace(
+            external_booking_id=f"calcom-test-{uuid.uuid4().hex[:12]}",
+            scheduled_at=start,
+            duration_minutes=kwargs.get("duration_minutes", 30),
+            meeting_url=None,
+            simulated=True,
+        )
+
+    visits_module.create_booking = _fake
+    try:
+        async with await _client() as c:
+            r = await c.post(
+                f"/api/v1/leads/{lead_id}/calendar/book",
+                json={
+                    "start_time": naive.isoformat(),  # no offset on purpose
+                    "timezone": "America/Denver",
+                },
+            )
+        assert r.status_code == 201, r.text
+        # The calendar was asked for the right instant...
+        assert seen and seen[0] == expected, seen
+        # ...and so is what we stored.
+        assert datetime.fromisoformat(r.json()["scheduled_at"]) == expected
+    finally:
+        visits_module.create_booking = real_create_booking
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_wall_clock_booking_still_sees_the_slot_is_taken(
+    database_url: str,
+) -> None:
+    """The naive value also defeated the double-booking check silently.
+
+    Comparing a naive datetime with the aware ones already in the diary is
+    simply False — no error, no match — so the conflict check ran, found
+    nothing, and both showings were confirmed for the same half-hour.
+    """
+    from zoneinfo import ZoneInfo
+
+    first_id = await _lead(database_url)
+    second_id = await _lead(database_url)
+    naive = (datetime.now(UTC) + timedelta(days=4)).replace(
+        hour=11, minute=0, second=0, microsecond=0, tzinfo=None
+    )
+    aware = naive.replace(tzinfo=ZoneInfo("America/Denver")).astimezone(UTC)
+
+    real_create_booking = visits_module.create_booking
+
+    async def _fake(*args: object, **kwargs: object) -> object:
+        return SimpleNamespace(
+            external_booking_id=f"calcom-test-{uuid.uuid4().hex[:12]}",
+            scheduled_at=kwargs["start_time"],
+            duration_minutes=kwargs.get("duration_minutes", 30),
+            meeting_url=None,
+            simulated=True,
+        )
+
+    visits_module.create_booking = _fake
+    try:
+        async with await _client() as c:
+            first = await c.post(
+                f"/api/v1/leads/{first_id}/calendar/book",
+                json={"start_time": aware.isoformat(), "timezone": "America/Denver"},
+            )
+            assert first.status_code == 201, first.text
+
+            # Same instant, written the way a person types it.
+            second = await c.post(
+                f"/api/v1/leads/{second_id}/calendar/book",
+                json={"start_time": naive.isoformat(), "timezone": "America/Denver"},
+            )
+        assert second.status_code == 409, (
+            f"two clients were given the same half-hour: {second.status_code} "
+            f"{second.text}"
+        )
+    finally:
+        visits_module.create_booking = real_create_booking
+        await _cleanup(database_url, first_id, second_id)

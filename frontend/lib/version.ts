@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.47.5";
+export const CURRENT_VERSION = "0.47.6";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.47.6",
+    date: "2026-08-16",
+    title: {
+      en: "A time without a timezone is not a time",
+      es: "Una hora sin zona horaria no es una hora",
+    },
+    changes: [
+      {
+        en: "Booking a showing by typing a plain time — 10:00, with no timezone — no longer slips past the double-booking check. It was being compared against a diary kept in a different format, which never matched, so two clients could be confirmed for the same half-hour.",
+        es: "Reservar una visita escribiendo una hora a secas —10:00, sin zona horaria— ya no se cuela por delante de la comprobación de solapamiento. Se comparaba contra una agenda guardada en otro formato, que nunca coincidía, así que dos clientes podían quedar confirmados en la misma media hora.",
+      },
+    ],
+  },
   {
     version: "0.47.5",
     date: "2026-08-16",
@@ -181,8 +195,8 @@ export const CHANGELOG: VersionEntry[] = [
         es: "Corregido: un recordatorio de \"tu visita es mañana\" podía llegar días después de la visita.",
       },
       {
-        en: "If someone replies STOP, that now sticks: no automated message reaches them again — not the next day, and not one that was already queued when they said it. Their messages still arrive in your Inbox so you can answer personally, and the lead is clearly marked.",
-        es: "Si alguien responde STOP, ahora se mantiene: no le llega ningún mensaje automático más, ni al día siguiente ni uno que ya estuviera en cola cuando lo dijo. Sus mensajes siguen llegando a tu bandeja para que le contestes en persona, y el lead queda marcado.",
+        en: "If someone replies STOP, that now sticks: no message reaches them again on that channel — not the next day, not one that was already queued when they said it, and not one you write yourself, which the composer will refuse. Their messages still arrive in your Inbox and the lead is clearly marked. Calling them is a separate consent and your decision.",
+        es: "Si alguien responde STOP, ahora se mantiene: no le llega ningún mensaje más por ese canal, ni al día siguiente, ni uno que ya estuviera en cola cuando lo dijo, ni uno que escribas tú — el compositor lo rechaza. Sus mensajes siguen llegando a tu bandeja y el lead queda marcado. Llamarla es otro consentimiento y una decisión tuya.",
       },
       {
         en: "Replying STOP now works, in English and Spanish. The person gets one confirmation, no automated messages after that, and START brings them back. Before this it did nothing at all, even though the form promised it.",

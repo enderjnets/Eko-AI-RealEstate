@@ -251,6 +251,23 @@ async def _valid_property_or_400(property_id: int | None, db: AsyncSession) -> i
     return property_id
 
 
+def _resolve_wall_clock(when: datetime, tz: str) -> datetime:
+    """A naive time is a wall clock in the office's timezone, never UTC.
+
+    `create_manual_event` has always done this and `book_slot` never did, so the
+    same 10:00 meant two different instants depending on which route wrote it —
+    in Denver, six hours apart. A naive value also silently defeats the
+    double-booking check, because comparing it against the aware times already
+    in the diary is simply False rather than an error.
+    """
+    if when.tzinfo is not None:
+        return when
+    try:
+        return when.replace(tzinfo=ZoneInfo(tz)).astimezone(UTC)
+    except (ZoneInfoNotFoundError, ValueError):
+        return when.replace(tzinfo=UTC)
+
+
 # ── Endpoints ──────────────────────────────────────────────────────────
 
 
@@ -294,10 +311,13 @@ async def book_slot(
             detail="lead_opted_out: this person asked not to be contacted",
         )
     property_id = await _valid_property_or_400(body.property_id, db)
-    await _ensure_slot_free(
-        db, start_time=body.start_time, duration_minutes=body.duration_minutes
-    )
+    # Resolved before the conflict check, not after: a wall-clock time only
+    # names a half-hour once you know whose office it belongs to.
     tz = body.timezone or await _office_tz(db)
+    start_time = _resolve_wall_clock(body.start_time, tz)
+    await _ensure_slot_free(
+        db, start_time=start_time, duration_minutes=body.duration_minutes
+    )
 
     # Email-or-phone heuristic: lead.phone holds an email when channel is email.
     # The lead's own address when we have one; `phone` holds it for
@@ -309,7 +329,7 @@ async def book_slot(
 
     try:
         booking = await create_booking(
-            start_time=body.start_time,
+            start_time=start_time,
             attendee_name=attendee_name,
             attendee_email=attendee_email,
             booking_contact=await _booking_contact(db),
@@ -500,14 +520,7 @@ async def create_manual_event(
     if body.lead_id is not None:
         await _get_lead_or_404(body.lead_id, db)
     tz = body.timezone or await _office_tz(db)
-    # A naive scheduled_at is a wall-clock time in the office tz → localize to UTC
-    # (same convention as the voice agent). An aware value is used as-is.
-    scheduled_at = body.scheduled_at
-    if scheduled_at.tzinfo is None:
-        try:
-            scheduled_at = scheduled_at.replace(tzinfo=ZoneInfo(tz)).astimezone(UTC)
-        except (ZoneInfoNotFoundError, ValueError):
-            scheduled_at = scheduled_at.replace(tzinfo=UTC)
+    scheduled_at = _resolve_wall_clock(body.scheduled_at, tz)
 
     # Checked after the timezone is resolved, because a wall-clock time only
     # says which half-hour it occupies once you know which office it belongs
