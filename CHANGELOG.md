@@ -2,6 +2,18 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.47.4] — 2026-08-16
+
+### Corregido
+
+- **Dos clientes ya no pueden reservar la misma media hora.** Al ofrecer huecos
+  se consultaba la agenda ocupada; al **reservar** no se consultaba nunca. No
+  era una carrera: la segunda petición podía llegar un minuto después, ver el
+  mismo calendario libre, y las dos personas recibían confirmación para la
+  misma hora — con el agente citado en dos casas a la vez y alguien esperando
+  en una puerta a la que no va nadie. Vale también para los eventos manuales,
+  que es donde el agente bloquea sus propios compromisos.
+
 ## [0.47.1] — 2026-08-15
 
 ### Corregido

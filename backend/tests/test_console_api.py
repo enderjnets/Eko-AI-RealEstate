@@ -1114,3 +1114,96 @@ async def test_a_reference_that_fits_is_left_exactly_as_it_came(
     booking = _Normal()
     assert (await ensure_recordable(booking)) is booking
     assert booking.external_booking_id == "cal_abc123XYZ"
+
+
+@pytest.mark.asyncio
+async def test_two_leads_cannot_take_the_same_half_hour(database_url: str) -> None:
+    """Not a race — the second request can arrive a minute later.
+
+    `_busy_starts` was written for exactly this and its own docstring describes
+    the failure: two leads offered the same slot, both bookings succeeding, one
+    realtor sent to two houses at once. It was consulted when *offering* slots
+    and never when taking one, so the defect moved instead of closing. Whoever
+    arrives second is standing outside a house nobody is coming to.
+    """
+    first_lead = await _lead(database_url)
+    second_lead = await _lead(database_url)
+    # A slot of this test's own. The suite books plenty of visits and an
+    # o'clock a few days out collides with a sibling — which the new guard
+    # then correctly refuses, failing this test for the right reason in the
+    # wrong place.
+    when = (datetime.now(UTC) + timedelta(days=180)).replace(
+        hour=9, minute=17, second=0, microsecond=0
+    )
+    engine, Session = _session(database_url)
+
+    # The calendar is stubbed: this is about the diary check, and whether
+    # Cal.com happens to be configured is another test's business — a sibling
+    # rewrites those settings, which is how this passed alone and failed in
+    # the suite.
+    class _Booked:
+        external_booking_id = "cal-slotguard"
+        scheduled_at = when
+        duration_minutes = 30
+        meeting_url = None
+
+    async def _fake_create(*a: object, **k: object) -> object:
+        return _Booked()
+
+    real_create = visits_module.create_booking
+    visits_module.create_booking = _fake_create
+    try:
+        async with await _client() as c:
+            first = await c.post(
+                f"/api/v1/leads/{first_lead}/calendar/book",
+                json={"start_time": when.isoformat(), "duration_minutes": 30},
+            )
+            assert first.status_code == 201, first.text
+
+            second = await c.post(
+                f"/api/v1/leads/{second_lead}/calendar/book",
+                json={"start_time": when.isoformat(), "duration_minutes": 30},
+            )
+        assert second.status_code == 409, second.text
+        assert "slot_taken" in second.text
+
+        async with Session() as s:
+            booked = (
+                await s.execute(select(Visit).where(Visit.scheduled_at == when))
+            ).scalars().all()
+        assert len(booked) == 1, "two visits exist at the same time"
+    finally:
+        visits_module.create_booking = real_create
+        await engine.dispose()
+        for lid in (first_lead, second_lead):
+            await _cleanup(database_url, lid)
+
+
+@pytest.mark.asyncio
+async def test_a_free_slot_is_still_bookable(database_url: str) -> None:
+    # The guard must not cost the ordinary case: booking is the point of this.
+    lead_id = await _lead(database_url)
+    when = (datetime.now(UTC) + timedelta(days=181)).replace(
+        hour=9, minute=23, second=0, microsecond=0
+    )
+    class _Booked:
+        external_booking_id = "cal-freeslot"
+        scheduled_at = when
+        duration_minutes = 30
+        meeting_url = None
+
+    async def _fake_create(*a: object, **k: object) -> object:
+        return _Booked()
+
+    real_create = visits_module.create_booking
+    visits_module.create_booking = _fake_create
+    try:
+        async with await _client() as c:
+            r = await c.post(
+                f"/api/v1/leads/{lead_id}/calendar/book",
+                json={"start_time": when.isoformat(), "duration_minutes": 30},
+            )
+        assert r.status_code == 201, r.text
+    finally:
+        visits_module.create_booking = real_create
+        await _cleanup(database_url, lead_id)

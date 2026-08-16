@@ -195,6 +195,41 @@ async def _busy_starts(
     return {r for r in rows if r is not None}
 
 
+async def _ensure_slot_free(
+    db: AsyncSession, *, start_time: datetime, duration_minutes: int
+) -> None:
+    """Refuse a start time the agency is already committed to.
+
+    `_busy_starts` exists for this and its docstring describes this exact
+    failure — two leads offered the same half-hour, both bookings succeeding,
+    one realtor sent to two houses at once. It was fixed there and then only
+    ever consulted when *offering* slots. Booking never asked.
+
+    That is not a race: the second request can arrive a minute later, see the
+    same free-looking calendar, and both clients get a confirmation for the
+    same time. Whoever arrives second is standing outside a house nobody is
+    coming to.
+
+    Checked here, before `create_booking`, because the calendar booking is the
+    irreversible half.
+    """
+    if start_time is None:
+        return
+    busy = await _busy_starts(
+        db,
+        since=start_time - timedelta(minutes=duration_minutes),
+        until=start_time + timedelta(minutes=duration_minutes),
+    )
+    if start_time in busy:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "slot_taken: there is already a visit at that time. Pick another "
+                "slot — the calendar moved between the page loading and this click."
+            ),
+        )
+
+
 async def _valid_property_or_400(property_id: int | None, db: AsyncSession) -> int | None:
     """Refuse a listing id that does not exist, before anything irreversible.
 
@@ -259,6 +294,9 @@ async def book_slot(
             detail="lead_opted_out: this person asked not to be contacted",
         )
     property_id = await _valid_property_or_400(body.property_id, db)
+    await _ensure_slot_free(
+        db, start_time=body.start_time, duration_minutes=body.duration_minutes
+    )
     tz = body.timezone or await _office_tz(db)
 
     # Email-or-phone heuristic: lead.phone holds an email when channel is email.
@@ -470,6 +508,15 @@ async def create_manual_event(
             scheduled_at = scheduled_at.replace(tzinfo=ZoneInfo(tz)).astimezone(UTC)
         except (ZoneInfoNotFoundError, ValueError):
             scheduled_at = scheduled_at.replace(tzinfo=UTC)
+
+    # Checked after the timezone is resolved, because a wall-clock time only
+    # says which half-hour it occupies once you know which office it belongs
+    # to. Manual events are how a realtor blocks out their own commitments, so
+    # this is also where they find out they have double-booked themselves.
+    await _ensure_slot_free(
+        db, start_time=scheduled_at, duration_minutes=body.duration_minutes
+    )
+
     visit = Visit(
         lead_id=body.lead_id,
         title=body.title,
