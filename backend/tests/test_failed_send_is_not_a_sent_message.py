@@ -683,3 +683,209 @@ async def test_the_come_back_confirmation_is_retried() -> None:
                 )
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_one_items_rollback_does_not_undo_the_previous_items_work() -> None:
+    """The rollback that stopped the batch dying was throwing away its neighbours.
+
+    The skip, cancel and hold branches never committed — they relied on the one
+    commit at the end. So when a later item errored and rolled back, a terminal
+    SKIPPED reverted to PENDING and, worse, a held follow-up lost both its
+    incremented counter and its one-day delay: it could never advance toward
+    giving up and stayed at the head of every tick's queue. Exactly the
+    starvation the rollback was added to prevent, moved onto the neighbours.
+    """
+    from app.services import followups as followups_module
+
+    await _agency()
+
+    async def run(with_raiser: bool) -> dict[str, tuple[str, int]]:
+        async with get_session_factory()() as db:
+            for table in ("follow_ups", "messages", "conversations", "leads"):
+                await db.execute(text(f"DELETE FROM {table} WHERE org_id = {ORG}"))
+            await db.commit()
+
+        async with get_session_factory()() as db:
+            # Handled first (oldest): human takeover, a terminal SKIPPED.
+            skipped_lead, _ = await _lead_with_thread(db, "+13035557018")
+            lead = await db.get(Lead, skipped_lead)
+            lead.human_takeover = True
+            # Then a lead with no consent at all: the HOLD path.
+            held_lead, _ = await _lead_with_thread(db, "+13035557019", with_inbound=False)
+            # Last: the one that raises.
+            raiser_lead, _ = await _lead_with_thread(db, "+13035557020")
+            for lead_id, minutes in (
+                (skipped_lead, 90), (held_lead, 60), (raiser_lead, 30)
+            ):
+                db.add(
+                    FollowUp(
+                        lead_id=lead_id,
+                        kind=FollowUpKind.POST_VISIT_24H,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) - timedelta(minutes=minutes),
+                    )
+                )
+            await db.commit()
+
+        real = followups_module.reachable_active_conversations
+
+        async def maybe_boom(lead_id, phone, db):  # noqa: ANN001, ANN202
+            if with_raiser and lead_id == raiser_lead:
+                raise RuntimeError("simulated failure choosing a channel")
+            return await real(lead_id, phone, db)
+
+        async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+            return "sm.x", None
+
+        async with get_session_factory()() as db:
+            with patch("app.services.followups._dispatch_send", _ok):
+                with patch.object(
+                    followups_module, "reachable_active_conversations", maybe_boom
+                ):
+                    await process_due_followups(db)
+
+        async with get_session_factory()() as db:
+            out = {}
+            for fu in (await db.execute(select(FollowUp))).scalars().all():
+                lead_row = await db.get(Lead, fu.lead_id)
+                out[lead_row.phone] = (fu.status.value, fu.attempts)
+            # The raiser itself is expected to differ between the two runs —
+            # that is the whole setup. Only its neighbours are under test.
+            out.pop("+13035557020", None)
+            return out
+
+    try:
+        with org_scope(ORG):
+            control = await run(with_raiser=False)
+            with_error = await run(with_raiser=True)
+
+        assert control == with_error, (
+            f"a later item's rollback changed its neighbours' outcomes: "
+            f"{control} became {with_error}"
+        )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_send_that_just_failed_is_still_the_newest_thing_shown() -> None:
+    """Ranking the failed row out of the *display* hid the attempt entirely.
+
+    The lead has an older delivered message and a send that failed a moment ago.
+    What the realtor must see is the failed attempt, at its own time — otherwise
+    the inbox shows a day-old conversation and the lead falls out of the recent
+    activity window, which is where somebody would have caught it.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead_id, conversation_id = await _lead_with_thread(db, "+13035557021")
+                old = (
+                    await db.execute(
+                        select(Message).where(
+                            Message.conversation_id == conversation_id
+                        )
+                    )
+                ).scalar_one()
+                old.created_at = datetime.now(UTC) - timedelta(hours=30)
+                failed = Message(
+                    conversation_id=conversation_id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.HUMAN,
+                    content="Trying to reach you about the showing.",
+                    delivery_status=MessageStatus.FAILED,
+                )
+                failed.created_at = datetime.now(UTC) - timedelta(hours=1)
+                db.add(failed)
+                await db.commit()
+                failed_at = failed.created_at
+
+            async with get_session_factory()() as db:
+                item = next(i for i in await gather_inbox(db) if i.lead.id == lead_id)
+
+            assert item.last_message_at == failed_at, (
+                "the inbox showed the previous message instead of the failed send"
+            )
+            assert item.last_direction == "outbound"
+            # And the lead is still owed an answer: the newest message that
+            # actually reached anybody is their inbound.
+            assert item.needs_response is True
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_leads_list_honours_handled_too() -> None:
+    """The other half of the rule the docstring claimed to mirror."""
+    from app.api.v1.leads import _needs_response_map
+    from app.services.inbox import set_handled
+
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead_id, _ = await _lead_with_thread(db, "+13035557022")
+
+            async with get_session_factory()() as db:
+                assert (await _needs_response_map(db, [lead_id]))[lead_id] is True
+                set_handled(await db.get(Lead, lead_id), datetime.now(UTC))
+                await db.commit()
+
+            async with get_session_factory()() as db:
+                inbox_says = next(
+                    i.needs_response for i in await gather_inbox(db) if i.lead.id == lead_id
+                )
+                leads_says = (await _needs_response_map(db, [lead_id])).get(lead_id, False)
+            assert inbox_says is False and leads_says is False, (
+                f"handled lead: inbox={inbox_says} leads={leads_says}"
+            )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_outage_does_not_release_the_whole_sequence_at_once() -> None:
+    """The grace window guards creation; a worker outage bypasses creation.
+
+    These rows were scheduled correctly, days apart. Nobody ran the worker for a
+    week, so all three came due on their own — and the first tick back would
+    have sent "how did it go?", the nudge and "new listings" seconds apart. The
+    same staleness rule has to hold at send time, not only at enqueue time.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead_id, _ = await _lead_with_thread(db, "+13035557023")
+                for kind, days in (
+                    (FollowUpKind.POST_VISIT_24H, 8),
+                    (FollowUpKind.POST_VISIT_72H, 7),
+                    (FollowUpKind.POST_VISIT_7D, 3),
+                ):
+                    db.add(
+                        FollowUp(
+                            lead_id=lead_id,
+                            kind=kind,
+                            status=FollowUpStatus.PENDING,
+                            scheduled_for=datetime.now(UTC) - timedelta(days=days),
+                        )
+                    )
+                await db.commit()
+
+            delivered: list[str] = []
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                delivered.append(text[:20])
+                return "sm.x", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.followups._dispatch_send", _ok):
+                    await process_due_followups(db)
+
+            assert len(delivered) <= 1, (
+                f"the backlog fired {len(delivered)} messages in one sweep: {delivered}"
+            )
+    finally:
+        await _cleanup()

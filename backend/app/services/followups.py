@@ -281,6 +281,31 @@ async def _lead_replied_since(lead_id: int, since: datetime, db: AsyncSession) -
     return n > 0
 
 
+def _as_utc(when: datetime) -> datetime:
+    """Postgres hands these back naive on some paths; comparing one against an
+    aware `now` raises rather than answering."""
+    return when if when.tzinfo is not None else when.replace(tzinfo=UTC)
+
+
+async def _persist(db: AsyncSession, fu_id: int) -> None:
+    """Save this item's outcome, whatever path produced it.
+
+    A message handed to the provider is irreversible the instant it leaves, and
+    a skip or a hold is bookkeeping the next item's rollback must not be able to
+    undo. Failing to commit is logged rather than raised: it belongs to one
+    follow-up, and taking the batch down over it is the behaviour being removed.
+    """
+    try:
+        await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        await db.rollback()
+        log.exception(
+            "Follow-up %d finished but its row could not be committed — it may "
+            "be reprocessed next tick: %s",
+            fu_id, exc,
+        )
+
+
 async def process_due_followups(db: AsyncSession, *, now: datetime | None = None, limit: int = 50) -> dict[str, int]:
     """Send (or skip) all pending follow-ups whose time has come.
 
@@ -322,217 +347,236 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
         fu = await db.get(FollowUp, fu_id)
         if fu is None:
             continue
-        lead = (await db.execute(select(Lead).where(Lead.id == fu.lead_id))).scalar_one_or_none()
-        if lead is None:
-            fu.status = FollowUpStatus.CANCELLED
-            skipped += 1
-            continue
-
-        # Skip rules.
-        if lead.human_takeover:
-            fu.status = FollowUpStatus.SKIPPED
-            skipped += 1
-            continue
-        # Defined for every follow-up, not only the ones with a visit: a
-        # standalone nurture row has no visit and must not blow up the sweep
-        # with a NameError when the hold branch reads it.
-        visit_is_past = False
-        if fu.visit_id is not None:
-            visit = (await db.execute(select(Visit).where(Visit.id == fu.visit_id))).scalar_one_or_none()
-            # COMPLETED belongs here for the PRE-visit reminder only: telling
-            # somebody "your viewing is tomorrow" about a viewing they have
-            # already attended is the kind of message that makes the whole
-            # system look broken to the client. The post-visit follow-ups are
-            # the opposite — COMPLETED is exactly when they should go.
-            dead = {VisitStatus.CANCELLED, VisitStatus.NO_SHOW}
-            if fu.kind == FollowUpKind.REMINDER_24H:
-                dead.add(VisitStatus.COMPLETED)
-            visit_at = visit.scheduled_at if visit is not None else None
-            if visit_at is not None and visit_at.tzinfo is None:
-                visit_at = visit_at.replace(tzinfo=UTC)
-            visit_is_past = visit_at is not None and visit_at < now
-            if visit is None or visit.status in dead:
+        # Every path out of this item persists its own outcome before the
+        # next one runs. `continue` still runs a `finally`, and that is the
+        # point: with ten early exits, remembering to commit at each is the
+        # kind of thing this codebase forgets in exactly one of them. It had
+        # already gone wrong the other way — a later item's rollback threw
+        # away an earlier item's SKIPPED and its hold counter, so a held
+        # follow-up never advanced toward giving up and never moved off the
+        # head of the queue.
+        try:
+            lead = (await db.execute(select(Lead).where(Lead.id == fu.lead_id))).scalar_one_or_none()
+            if lead is None:
                 fu.status = FollowUpStatus.CANCELLED
                 skipped += 1
                 continue
-            if fu.kind == FollowUpKind.POST_VISIT_72H:
-                sched_at = visit.scheduled_at
-                if sched_at.tzinfo is None:
-                    sched_at = sched_at.replace(tzinfo=UTC)
-                if await _lead_replied_since(lead.id, sched_at, db):
-                    fu.status = FollowUpStatus.SKIPPED  # they already re-engaged
-                    skipped += 1
-                    continue
 
-        # Only channels that can actually deliver to this lead — a lead who came
-        # in through the public web form has a `web` conversation as their
-        # newest, and dispatching a nurture message to it marked every
-        # follow-up FAILED instead of sending anything.
-        #
-        # And the FIRST such channel the consent gate allows, not merely the
-        # newest one. Taking only the newest meant a lead who genuinely started
-        # a WhatsApp conversation lost their sequence for good as soon as a
-        # realtor answered them once by SMS: the SMS thread became newest, the
-        # gate correctly refused it because consent is per channel, and SKIPPED
-        # is terminal — the WhatsApp thread that would have passed was never
-        # looked at.
-        # A pre-visit reminder must never go out after its own visit, whatever
-        # else is true. This guard was written inside the "no permitted
-        # channel" branch below — the one place nothing could be sent anyway —
-        # so it did nothing at all: with a sendable channel the sweep fell
-        # straight through and dispatched "your viewing is tomorrow" days
-        # after the viewing. The COMPLETED check upstream only helps when
-        # somebody remembered to mark the visit done, which is not the
-        # ordinary state of a calendar.
-        if fu.kind == FollowUpKind.REMINDER_24H and visit_is_past:
-            log.info(
-                "Follow-up %d cancelled for lead %d: its visit is already in "
-                "the past",
-                fu.id, lead.id,
-            )
-            fu.status = FollowUpStatus.CANCELLED
-            skipped += 1
-            continue
-
-        # Choosing *where* to send must not be able to take the batch down
-        # either. Composing was wrapped for exactly that reason and these lines
-        # were left outside it, so one lead whose conversations or consent rows
-        # raised aborted the loop before its single commit — and every
-        # follow-up already handed to the provider on that tick lost its SENT
-        # row and was sent again on the next one, to people who had already
-        # received it, at TCPA exposure per message.
-        try:
-            candidates = await reachable_active_conversations(lead.id, lead.phone, db)
-            candidates = _prefer(candidates, lead.preferred_channel)
-            conv = None
-            for candidate in candidates:
-                # TCPA. An automated text to somebody who neither consented in
-                # writing nor wrote to us first on that channel is $500–$1,500
-                # per message, and the exposure lands on the broker's licence
-                # rather than on the software.
-                if await may_send_automated(lead, candidate.channel, db):
-                    conv = candidate
-                    break
-        except Exception as exc:  # noqa: BLE001
-            # Rollback first, and it is not housekeeping. A database error —
-            # the very class this handler names — leaves the transaction
-            # aborted, so without this the next iteration's `select(Lead)`
-            # raises InFailedSQLTransactionError *outside* any handler and the
-            # batch dies anyway. Worse, the increment below would be written
-            # into the aborted transaction and thrown away, so the give-up
-            # bound could never be reached: the bad row stayed PENDING and due,
-            # sorted first by `scheduled_for`, and starved that tenant's entire
-            # nurture queue on every tick, silently.
-            await db.rollback()
-            log.exception("Follow-up %d could not choose a channel: %s", fu_id, exc)
-            refreshed = await db.get(FollowUp, fu_id)
-            if refreshed is None:
+            # Skip rules.
+            if lead.human_takeover:
+                fu.status = FollowUpStatus.SKIPPED
                 skipped += 1
                 continue
-            # Left PENDING so a transient database error is retried rather than
-            # cancelling somebody's sequence, but bounded so a permanently
-            # malformed row cannot spin forever.
-            refreshed.attempts += 1
-            if refreshed.attempts > _HOLD_GIVE_UP_AFTER_HOLDS:
-                refreshed.status = FollowUpStatus.FAILED
-                failed += 1
-            else:
+            # Defined for every follow-up, not only the ones with a visit: a
+            # standalone nurture row has no visit and must not blow up the sweep
+            # with a NameError when the hold branch reads it.
+            visit_is_past = False
+            if fu.visit_id is not None:
+                visit = (await db.execute(select(Visit).where(Visit.id == fu.visit_id))).scalar_one_or_none()
+                # COMPLETED belongs here for the PRE-visit reminder only: telling
+                # somebody "your viewing is tomorrow" about a viewing they have
+                # already attended is the kind of message that makes the whole
+                # system look broken to the client. The post-visit follow-ups are
+                # the opposite — COMPLETED is exactly when they should go.
+                dead = {VisitStatus.CANCELLED, VisitStatus.NO_SHOW}
+                if fu.kind == FollowUpKind.REMINDER_24H:
+                    dead.add(VisitStatus.COMPLETED)
+                visit_at = visit.scheduled_at if visit is not None else None
+                if visit_at is not None and visit_at.tzinfo is None:
+                    visit_at = visit_at.replace(tzinfo=UTC)
+                visit_is_past = visit_at is not None and visit_at < now
+                if visit is None or visit.status in dead:
+                    fu.status = FollowUpStatus.CANCELLED
+                    skipped += 1
+                    continue
+                if fu.kind == FollowUpKind.POST_VISIT_72H:
+                    sched_at = visit.scheduled_at
+                    if sched_at.tzinfo is None:
+                        sched_at = sched_at.replace(tzinfo=UTC)
+                    if await _lead_replied_since(lead.id, sched_at, db):
+                        fu.status = FollowUpStatus.SKIPPED  # they already re-engaged
+                        skipped += 1
+                        continue
+
+            # Only channels that can actually deliver to this lead — a lead who came
+            # in through the public web form has a `web` conversation as their
+            # newest, and dispatching a nurture message to it marked every
+            # follow-up FAILED instead of sending anything.
+            #
+            # And the FIRST such channel the consent gate allows, not merely the
+            # newest one. Taking only the newest meant a lead who genuinely started
+            # a WhatsApp conversation lost their sequence for good as soon as a
+            # realtor answered them once by SMS: the SMS thread became newest, the
+            # gate correctly refused it because consent is per channel, and SKIPPED
+            # is terminal — the WhatsApp thread that would have passed was never
+            # looked at.
+            # A pre-visit reminder must never go out after its own visit, whatever
+            # else is true. This guard was written inside the "no permitted
+            # channel" branch below — the one place nothing could be sent anyway —
+            # so it did nothing at all: with a sendable channel the sweep fell
+            # straight through and dispatched "your viewing is tomorrow" days
+            # after the viewing. The COMPLETED check upstream only helps when
+            # somebody remembered to mark the visit done, which is not the
+            # ordinary state of a calendar.
+            if fu.kind == FollowUpKind.REMINDER_24H and visit_is_past:
+                log.info(
+                    "Follow-up %d cancelled for lead %d: its visit is already in "
+                    "the past",
+                    fu.id, lead.id,
+                )
+                fu.status = FollowUpStatus.CANCELLED
                 skipped += 1
-            await db.commit()
-            continue
+                continue
 
-        if conv is None:
-            # HELD, not SKIPPED. SKIPPED is terminal and never re-evaluated, so
-            # "held for consent" silently meant "cancelled": a lead who ticks
-            # the box on the website tomorrow, or replies on WhatsApp next
-            # week, would never receive the sequence that was waiting for
-            # exactly that. Push it a day and look again.
-            # Counted in HOLDS, not from `created_at`. A post-visit-7d
-            # follow-up is created the moment the visit is booked, so by the
-            # time it is due its row can already be older than the grace
-            # period — measuring from creation dropped it on its very first
-            # hold, which is the opposite of holding it.
-            fu.attempts += 1
-            if fu.attempts > _HOLD_GIVE_UP_AFTER_HOLDS:
+            # The same grace `enqueue_for_visit` applies when creating these,
+            # applied again here — because that one only guards creation. Let
+            # this worker be down for a week and all three post-visit messages
+            # come due on their own, so the first tick back sends "how did it
+            # go?", the nudge and "new listings" within seconds of each other:
+            # the burst returns by a route the creation-time check cannot see.
+            if (
+                fu.kind in _POST_VISIT_OFFSETS
+                and fu.scheduled_for is not None
+                and _as_utc(fu.scheduled_for) < now - _POST_VISIT_GRACE
+            ):
                 log.info(
-                    "Follow-up %d dropped for lead %d after %d daily holds "
-                    "with no permitted channel",
-                    fu.id, lead.id, fu.attempts,
+                    "Follow-up %d cancelled for lead %d: %s was due %s and is "
+                    "too stale to send now",
+                    fu.id, lead.id, fu.kind.value, fu.scheduled_for,
                 )
-                fu.status = FollowUpStatus.SKIPPED
-            else:
-                log.info(
-                    "Follow-up %d held for lead %d: %d reachable channel(s), "
-                    "none with consent on record or a message they sent us "
-                    "first — retrying tomorrow",
-                    fu.id, lead.id, len(candidates),
-                )
-                fu.scheduled_for = now + _HOLD_RETRY_AFTER
-            skipped += 1
-            continue
+                fu.status = FollowUpStatus.CANCELLED
+                skipped += 1
+                continue
 
-        # Composing the message must not be able to take the batch down. It
-        # did: a blank WhatsApp profile name raised IndexError out here,
-        # outside the dispatch try below, so the loop aborted before its single
-        # commit — five identical SMS handed to the provider across five ticks,
-        # zero rows written, the follow-up frozen. One malformed row must cost
-        # one follow-up, not every tenant's nurture flow.
-        try:
-            lang = await _lead_language(lead, db)
-            template = _TEMPLATES[fu.kind].get(lang) or _TEMPLATES[fu.kind]["en"]
-            text = template.format(name=_first_name(lead), agency=agency)
-        except Exception as exc:  # noqa: BLE001
-            # Same reasoning as the channel handler above: `_lead_language`
-            # queries, so this can be a database error too, and a handler that
-            # does not roll back only moves the crash to the next iteration.
-            await db.rollback()
-            log.exception("Follow-up %d could not be composed: %s", fu_id, exc)
-            refreshed = await db.get(FollowUp, fu_id)
-            if refreshed is not None:
-                refreshed.status = FollowUpStatus.FAILED
+            # Choosing *where* to send must not be able to take the batch down
+            # either. Composing was wrapped for exactly that reason and these lines
+            # were left outside it, so one lead whose conversations or consent rows
+            # raised aborted the loop before its single commit — and every
+            # follow-up already handed to the provider on that tick lost its SENT
+            # row and was sent again on the next one, to people who had already
+            # received it, at TCPA exposure per message.
+            try:
+                candidates = await reachable_active_conversations(lead.id, lead.phone, db)
+                candidates = _prefer(candidates, lead.preferred_channel)
+                conv = None
+                for candidate in candidates:
+                    # TCPA. An automated text to somebody who neither consented in
+                    # writing nor wrote to us first on that channel is $500–$1,500
+                    # per message, and the exposure lands on the broker's licence
+                    # rather than on the software.
+                    if await may_send_automated(lead, candidate.channel, db):
+                        conv = candidate
+                        break
+            except Exception as exc:  # noqa: BLE001
+                # Rollback first, and it is not housekeeping. A database error —
+                # the very class this handler names — leaves the transaction
+                # aborted, so without this the next iteration's `select(Lead)`
+                # raises InFailedSQLTransactionError *outside* any handler and the
+                # batch dies anyway. Worse, the increment below would be written
+                # into the aborted transaction and thrown away, so the give-up
+                # bound could never be reached: the bad row stayed PENDING and due,
+                # sorted first by `scheduled_for`, and starved that tenant's entire
+                # nurture queue on every tick, silently.
+                await db.rollback()
+                log.exception("Follow-up %d could not choose a channel: %s", fu_id, exc)
+                refreshed = await db.get(FollowUp, fu_id)
+                if refreshed is None:
+                    skipped += 1
+                    continue
+                # Left PENDING so a transient database error is retried rather than
+                # cancelling somebody's sequence, but bounded so a permanently
+                # malformed row cannot spin forever.
+                refreshed.attempts += 1
+                if refreshed.attempts > _HOLD_GIVE_UP_AFTER_HOLDS:
+                    refreshed.status = FollowUpStatus.FAILED
+                    failed += 1
+                else:
+                    skipped += 1
                 await db.commit()
-            failed += 1
-            continue
+                continue
 
-        outbound = Message(
-            conversation_id=conv.id,
-            direction=MessageDirection.OUTBOUND,
-            sender=MessageSender.AGENT,
-            content=text,
-            delivery_status=MessageStatus.PENDING,
-        )
-        db.add(outbound)
-        fu.attempts += 1
-        try:
-            external_id, _ = await _dispatch_send(conv.channel, to=lead.phone, text=text)
-            outbound.external_id = external_id
-            outbound.delivery_status = MessageStatus.SENT
-            fu.status = FollowUpStatus.SENT
-            fu.sent_at = now
-            lead.last_message_at = now
-            sent += 1
-        except Exception as exc:  # noqa: BLE001
-            log.error("Follow-up %d dispatch failed: %s", fu.id, exc)
-            # The follow-up itself is done — it produced its Message and will
-            # not compose another. Delivery of that one Message is the retry
-            # queue's job from here, so the lead gets it once, late, instead of
-            # never.
-            schedule_retry(outbound, str(exc))
-            fu.status = FollowUpStatus.FAILED
-            failed += 1
+            if conv is None:
+                # HELD, not SKIPPED. SKIPPED is terminal and never re-evaluated, so
+                # "held for consent" silently meant "cancelled": a lead who ticks
+                # the box on the website tomorrow, or replies on WhatsApp next
+                # week, would never receive the sequence that was waiting for
+                # exactly that. Push it a day and look again.
+                # Counted in HOLDS, not from `created_at`. A post-visit-7d
+                # follow-up is created the moment the visit is booked, so by the
+                # time it is due its row can already be older than the grace
+                # period — measuring from creation dropped it on its very first
+                # hold, which is the opposite of holding it.
+                fu.attempts += 1
+                if fu.attempts > _HOLD_GIVE_UP_AFTER_HOLDS:
+                    log.info(
+                        "Follow-up %d dropped for lead %d after %d daily holds "
+                        "with no permitted channel",
+                        fu.id, lead.id, fu.attempts,
+                    )
+                    fu.status = FollowUpStatus.SKIPPED
+                else:
+                    log.info(
+                        "Follow-up %d held for lead %d: %d reachable channel(s), "
+                        "none with consent on record or a message they sent us "
+                        "first — retrying tomorrow",
+                        fu.id, lead.id, len(candidates),
+                    )
+                    fu.scheduled_for = now + _HOLD_RETRY_AFTER
+                skipped += 1
+                continue
 
-        # Committed per item, not once at the end. A message handed to the
-        # provider is irreversible the instant it leaves, so the row that says
-        # so has to survive whatever the rest of the batch does.
-        try:
-            await db.commit()
-        except Exception as exc:  # noqa: BLE001
-            await db.rollback()
-            log.exception(
-                "Follow-up %d was dispatched but its row could not be committed "
-                "— it may be sent again next tick: %s",
-                fu.id, exc,
+            # Composing the message must not be able to take the batch down. It
+            # did: a blank WhatsApp profile name raised IndexError out here,
+            # outside the dispatch try below, so the loop aborted before its single
+            # commit — five identical SMS handed to the provider across five ticks,
+            # zero rows written, the follow-up frozen. One malformed row must cost
+            # one follow-up, not every tenant's nurture flow.
+            try:
+                lang = await _lead_language(lead, db)
+                template = _TEMPLATES[fu.kind].get(lang) or _TEMPLATES[fu.kind]["en"]
+                text = template.format(name=_first_name(lead), agency=agency)
+            except Exception as exc:  # noqa: BLE001
+                # Same reasoning as the channel handler above: `_lead_language`
+                # queries, so this can be a database error too, and a handler that
+                # does not roll back only moves the crash to the next iteration.
+                await db.rollback()
+                log.exception("Follow-up %d could not be composed: %s", fu_id, exc)
+                refreshed = await db.get(FollowUp, fu_id)
+                if refreshed is not None:
+                    refreshed.status = FollowUpStatus.FAILED
+                    await db.commit()
+                failed += 1
+                continue
+
+            outbound = Message(
+                conversation_id=conv.id,
+                direction=MessageDirection.OUTBOUND,
+                sender=MessageSender.AGENT,
+                content=text,
+                delivery_status=MessageStatus.PENDING,
             )
+            db.add(outbound)
+            fu.attempts += 1
+            try:
+                external_id, _ = await _dispatch_send(conv.channel, to=lead.phone, text=text)
+                outbound.external_id = external_id
+                outbound.delivery_status = MessageStatus.SENT
+                fu.status = FollowUpStatus.SENT
+                fu.sent_at = now
+                lead.last_message_at = now
+                sent += 1
+            except Exception as exc:  # noqa: BLE001
+                log.error("Follow-up %d dispatch failed: %s", fu.id, exc)
+                # The follow-up itself is done — it produced its Message and will
+                # not compose another. Delivery of that one Message is the retry
+                # queue's job from here, so the lead gets it once, late, instead of
+                # never.
+                schedule_retry(outbound, str(exc))
+                fu.status = FollowUpStatus.FAILED
+                failed += 1
+
+        finally:
+            await _persist(db, fu_id)
 
     await db.commit()
     if sent or skipped or failed:

@@ -2,6 +2,45 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.47.7] — 2026-08-16
+
+### Corregido — segunda ronda de auditoría independiente (sobre v0.47.6)
+
+Otra vez el mismo patrón, y esta vez lo vi venir: **el arreglo de la ronda
+anterior rompió a sus vecinos**. Encontrado por el auditor y reproducido de
+forma independiente con una sonda propia y un control limpio.
+
+- **REGRESIÓN (v0.47.6): el `rollback` que evitaba que la tanda muriera se
+  llevaba por delante el trabajo de los elementos anteriores.** Las ramas de
+  saltar, cancelar y retener no comitean —dependían del commit final—, así que
+  cuando un elemento posterior fallaba, un `SKIPPED` terminal volvía a
+  `PENDING` y, lo serio, un seguimiento retenido perdía **su contador y su
+  aplazamiento de un día**: no avanzaba nunca hacia rendirse y se quedaba a la
+  cabeza de la cola en cada ciclo. Exactamente la inanición que el rollback
+  venía a evitar, trasladada a los vecinos.
+  Ahora cada elemento persiste su resultado en un `finally`, así que las diez
+  salidas anticipadas del bucle quedan cubiertas por construcción — que es la
+  clase de cosa que este repo olvida justo en una de ellas.
+- **REGRESIÓN (v0.47.6): un envío recién fallido se volvía invisible.** Mi
+  ranking sacaba la fila fallida de **todos** los campos, no solo del criterio:
+  la bandeja mostraba el mensaje anterior, `last_message_at` se congelaba en su
+  hora y el lead se caía de la ventana de actividad reciente. Ahora hay dos
+  consultas con dos propósitos: la de **mostrar** devuelve el mensaje más
+  nuevo, fallos incluidos; la de **decidir si se debe respuesta** mira el más
+  nuevo que llegó a alguien.
+- **La gemela de `leads.py` seguía discrepando.** Ya compartía la regla de los
+  envíos fallidos, pero ignoraba `inbox_handled_at`, así que las dos pantallas
+  seguían contradiciéndose para cualquier lead ya atendido — mientras su
+  docstring afirmaba reflejarlas. Ahora implementa las dos mitades.
+- **Un corte del worker devolvía la ráfaga por la puerta de atrás.** La ventana
+  de gracia solo protegía la *creación*: con el worker caído una semana, los
+  tres mensajes post-visita vencían solos y el primer ciclo de vuelta los
+  mandaba juntos. La misma regla se aplica ahora también al enviar.
+- **El barrido de opt-out se evadía con `getattr`.** `getattr(lead,
+  "opted_out_at")` no es ni `ast.Attribute` ni `ast.keyword`, así que el
+  detector decía "no comprueba" para una función que sí comprueba. Cerrado y
+  con test.
+
 ## [0.47.6] — 2026-08-16
 
 ### Corregido — hallazgos de la auditoría independiente sobre v0.47.5

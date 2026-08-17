@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.47.6";
+export const CURRENT_VERSION = "0.47.7";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.47.7",
+    date: "2026-08-16",
+    title: {
+      en: "A send that just failed is visible again",
+      es: "Un envío recién fallido vuelve a verse",
+    },
+    changes: [
+      {
+        en: "When a message fails to send, the Inbox now shows that attempt as the latest thing that happened, at the time it happened. Last version it was hidden and the conversation looked a day older than it was, so the failure fell out of the recent activity list.",
+        es: "Cuando un mensaje falla al enviarse, la bandeja muestra ese intento como lo último ocurrido, a su hora. En la versión anterior quedaba oculto y la conversación parecía un día más vieja de lo que era, así que el fallo se caía de la lista de actividad reciente.",
+      },
+      {
+        en: "The Leads list now agrees with the Inbox about leads you have already marked as handled.",
+        es: "La lista de leads ya coincide con la bandeja en los leads que has marcado como atendidos.",
+      },
+      {
+        en: "If the follow-up worker is stopped for days, the messages that piled up are no longer all sent at once when it starts again — the client gets at most the one that is still timely.",
+        es: "Si el worker de seguimientos se para varios días, los mensajes acumulados ya no salen todos de golpe al arrancar de nuevo: al cliente le llega como mucho el que sigue teniendo sentido.",
+      },
+    ],
+  },
   {
     version: "0.47.6",
     date: "2026-08-16",

@@ -219,31 +219,57 @@ async def list_leads(
 
 
 async def _needs_response_map(db: AsyncSession, lead_ids: list[int]) -> dict[int, bool]:
-    """Per lead in `lead_ids`, True when the most recent message (any channel) is
-    inbound — i.e. the lead spoke last and is waiting on us. Scoped to the page's
-    leads (one grouped query, no N+1). Mirrors the inbox's `needs_response`."""
+    """Per lead in `lead_ids`, True when the lead spoke last and is still owed a
+    reply. Scoped to the page's leads (one grouped query, no N+1).
+
+    Mirrors the inbox's `needs_response`, and now actually does: it had drifted
+    on both halves of that rule — it counted a reply that never sent as an
+    answer, and it ignored `inbox_handled_at` entirely, so the two screens
+    contradicted each other about the same lead while this line claimed
+    otherwise.
+    """
     if not lead_ids:
         return {}
     rows = (
         await db.execute(
-            select(Conversation.lead_id, Message.direction)
+            select(Conversation.lead_id, Message.direction, Message.created_at)
             .join(Conversation, Message.conversation_id == Conversation.id)
             .where(Conversation.lead_id.in_(lead_ids))
-            # Same ranking as the inbox, from the same expression. A reply that
-            # failed to send is not the last word, and when only this screen
-            # believed otherwise the two contradicted each other about the same
-            # lead: the inbox showed them waiting, the leads list showed them
-            # answered.
+            # Same rule as the inbox, from the same expression: a reply that
+            # failed to send is not the last word. Filtering rather than ranking
+            # is right *here* — this map is only read with `.get(..., False)`,
+            # so a lead with no surviving row is simply "not waiting" and cannot
+            # disappear from anything.
+            .where(reached_somebody())
             .order_by(
                 Conversation.lead_id,
-                reached_somebody().desc(),
                 Message.created_at.desc(),
                 Message.id.desc(),
             )
             .distinct(Conversation.lead_id)
         )
     ).all()
-    return {lead_id: direction == MessageDirection.INBOUND for lead_id, direction in rows}
+    # And the second half of the same rule, which this copy never had: a lead
+    # the realtor marked handled is not waiting on us. Without it the docstring
+    # above was still false — the two screens agreed about failed sends and went
+    # on disagreeing about every handled lead.
+    handled = dict(
+        (
+            await db.execute(
+                select(Lead.id, Lead.inbox_handled_at).where(Lead.id.in_(lead_ids))
+            )
+        ).all()
+    )
+    out: dict[int, bool] = {}
+    for lead_id, direction, created_at in rows:
+        if direction != MessageDirection.INBOUND:
+            out[lead_id] = False
+            continue
+        handled_at = handled.get(lead_id)
+        out[lead_id] = handled_at is None or (
+            created_at is not None and handled_at < created_at
+        )
+    return out
 
 
 @router.post("", response_model=LeadOut, status_code=201)

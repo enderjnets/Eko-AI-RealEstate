@@ -75,6 +75,38 @@ def set_handled(lead: Lead, when: datetime | None) -> None:
     lead.inbox_handled_at = when
 
 
+async def _last_reaching_message_per_lead(db: AsyncSession) -> dict[int, object]:
+    """The most recent message per lead that actually reached somebody.
+
+    Separate from `_last_message_per_lead` on purpose, and the separation is the
+    whole point. What to *show* is the newest message, failed sends included —
+    the realtor needs to see the attempt. Whether they still owe an answer is a
+    different question, and a reply that never left does not answer anybody.
+
+    Collapsing the two made a just-failed send invisible: the display fell back
+    to the previous message, `last_message_at` froze at its timestamp, and the
+    lead dropped out of the 24-hour attention window.
+
+    Safe to filter here, unlike in `_last_message_per_lead`: this map is only
+    ever read with `.get()`, so a lead with no surviving row simply has no
+    entry — it cannot remove the lead from the inbox.
+    """
+    rows = (
+        await db.execute(
+            select(
+                Conversation.lead_id.label("lead_id"),
+                Message.direction.label("direction"),
+                Message.created_at.label("created_at"),
+            )
+            .join(Conversation, Message.conversation_id == Conversation.id)
+            .where(reached_somebody())
+            .order_by(Conversation.lead_id, Message.created_at.desc(), Message.id.desc())
+            .distinct(Conversation.lead_id)
+        )
+    ).all()
+    return {r.lead_id: r for r in rows}
+
+
 async def _last_message_per_lead(db: AsyncSession) -> dict[int, object]:
     """The most recent message (any channel) per lead, with its channel."""
     rows = (
@@ -87,27 +119,7 @@ async def _last_message_per_lead(db: AsyncSession) -> dict[int, object]:
                 Conversation.channel.label("channel"),
             )
             .join(Conversation, Message.conversation_id == Conversation.id)
-            # An outbound that never reached anybody is not an answer, so it
-            # loses to any message that did: composing a reply wrote the row, the
-            # row became the newest message, and the lead dropped out of Pending
-            # — a client still waiting looked answered, on the one screen where
-            # a realtor would have noticed.
-            #
-            # Demoted, NOT filtered out. Filtering was the first version of this
-            # fix and it was worse than the defect: `gather_inbox` builds its
-            # lead set from the keys of this map, so a lead whose only message is
-            # a failed outbound — a first outreach to somebody who never wrote to
-            # us — lost every row here and vanished from the inbox entirely,
-            # every tab, not just Pending.
-            #
-            # PENDING still ranks as delivered: it is a send in flight, and if it
-            # exhausts its retries it becomes FAILED and drops behind again.
-            .order_by(
-                Conversation.lead_id,
-                reached_somebody().desc(),
-                Message.created_at.desc(),
-                Message.id.desc(),
-            )
+            .order_by(Conversation.lead_id, Message.created_at.desc(), Message.id.desc())
             .distinct(Conversation.lead_id)
         )
     ).all()
@@ -165,6 +177,7 @@ async def _next_visit_per_lead(db: AsyncSession) -> dict[int, object]:
 async def gather_inbox(db: AsyncSession) -> list[InboxItem]:
     """Build inbox items for every lead that has at least one conversation."""
     last = await _last_message_per_lead(db)
+    last_reaching = await _last_reaching_message_per_lead(db)
     if not last:
         return []
     channels = await _channels_per_lead(db)
@@ -181,10 +194,20 @@ async def gather_inbox(db: AsyncSession) -> list[InboxItem]:
     for lead in leads:
         lm = last[lead.id]
         handled_at = lead.inbox_handled_at
-        last_inbound = lm.direction == MessageDirection.INBOUND
+        # `lm` is the newest message full stop — what the realtor should see,
+        # including a send that just failed. Whether they still owe an answer is
+        # a different question, so it reads the newest message that actually
+        # reached somebody: ranking the failed row out of the display too made a
+        # just-failed send invisible, froze `last_message_at` at the previous
+        # message's time, and dropped the lead out of the attention window.
+        reaching = last_reaching.get(lead.id)
+        last_inbound = (
+            reaching is not None and reaching.direction == MessageDirection.INBOUND
+        )
         # Pending if the lead spoke last AND we haven't handled it since then.
         needs_response = last_inbound and (
-            handled_at is None or (lm.created_at is not None and handled_at < lm.created_at)
+            handled_at is None
+            or (reaching.created_at is not None and handled_at < reaching.created_at)
         )
         # Needs attention = awaiting our reply OR a fresh, not-yet-triaged conversation
         # (e.g. a just-finished voice call). The recency window keeps old untriaged

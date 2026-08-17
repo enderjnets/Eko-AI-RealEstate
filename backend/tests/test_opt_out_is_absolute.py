@@ -186,6 +186,20 @@ def _reads_opt_out(node: ast.AST) -> bool:
             return True
         if isinstance(inner, ast.keyword) and inner.arg == "opted_out_at":
             return True
+        # `getattr(lead, "opted_out_at")` is a real read and used to slip
+        # through: it is neither an Attribute node nor a keyword, so the check
+        # said "not aware" and the sweep would have flagged a careful function.
+        # The reverse of the docstring hole, and worth closing for the same
+        # reason — the sweep should answer about the code, not about its shape.
+        if (
+            isinstance(inner, ast.Call)
+            and isinstance(inner.func, ast.Name)
+            and inner.func.id == "getattr"
+            and len(inner.args) >= 2
+            and isinstance(inner.args[1], ast.Constant)
+            and inner.args[1].value == "opted_out_at"
+        ):
+            return True
     return False
 
 
@@ -208,8 +222,16 @@ def test_the_sweep_cannot_be_satisfied_by_a_docstring() -> None:
         '    return send_sms(lead.phone, "hi")\n'
     ).body[0]
 
+    reads_it_indirectly = ast.parse(
+        "def h(lead):\n"
+        '    if getattr(lead, "opted_out_at") is not None:\n'
+        "        return None\n"
+        '    return send_sms(lead.phone, "hi")\n'
+    ).body[0]
+
     assert _reads_opt_out(talks_about_it) is False
     assert _reads_opt_out(actually_checks) is True
+    assert _reads_opt_out(reads_it_indirectly) is True
 
 
 def _reaching_functions() -> tuple[list[str], int]:
