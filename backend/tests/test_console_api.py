@@ -1318,3 +1318,51 @@ async def test_a_wall_clock_booking_still_sees_the_slot_is_taken(
     finally:
         visits_module.create_booking = real_create_booking
         await _cleanup(database_url, first_id, second_id)
+
+
+@pytest.mark.asyncio
+async def test_a_clock_time_that_does_not_exist_is_refused(database_url: str) -> None:
+    """On the spring-forward date 02:30 never happens in Denver.
+
+    `replace(tzinfo=...)` is not DST-aware and never raises for it, so the hour
+    was silently moved forward: 02:30 became a real appointment at 03:30, and
+    02:30 and 03:30 resolved to the same instant — which the double-booking
+    guard then reads as a clash between two different requests.
+    """
+    lead_id = await _lead(database_url)
+    real_create_booking = visits_module.create_booking
+
+    async def _fake(*args: object, **kwargs: object) -> object:
+        return SimpleNamespace(
+            external_booking_id=f"calcom-test-{uuid.uuid4().hex[:12]}",
+            scheduled_at=kwargs["start_time"],
+            duration_minutes=30,
+            meeting_url=None,
+            simulated=True,
+        )
+
+    visits_module.create_booking = _fake
+    try:
+        async with await _client() as c:
+            gone = await c.post(
+                f"/api/v1/leads/{lead_id}/calendar/book",
+                json={
+                    "start_time": "2027-03-14T02:30:00",  # does not exist in Denver
+                    "timezone": "America/Denver",
+                },
+            )
+            assert gone.status_code == 400, gone.text
+            assert "nonexistent_local_time" in gone.text
+
+            # The hour on either side is ordinary and still works.
+            fine = await c.post(
+                f"/api/v1/leads/{lead_id}/calendar/book",
+                json={
+                    "start_time": "2027-03-14T03:30:00",
+                    "timezone": "America/Denver",
+                },
+            )
+            assert fine.status_code == 201, fine.text
+    finally:
+        visits_module.create_booking = real_create_booking
+        await _cleanup(database_url, lead_id)

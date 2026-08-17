@@ -66,6 +66,13 @@ _POST_VISIT_OFFSETS = {
 # of them to survive as overdue at once — the burst is the thing being stopped.
 _POST_VISIT_GRACE = min(_POST_VISIT_OFFSETS.values())
 
+# The same rule at send time needs a little more room than at creation time, or
+# the two disagree about a row on the boundary: `enqueue_for_visit` deliberately
+# keeps a message 23h59m overdue — a showing logged the morning after — and the
+# very next tick would have cancelled the one message the enqueue logic went out
+# of its way to preserve.
+_SEND_STALE_AFTER = _POST_VISIT_GRACE + timedelta(hours=1)
+
 # Bilingual templates. {name} is dropped cleanly when the lead has no name.
 _TEMPLATES: dict[FollowUpKind, dict[str, str]] = {
     FollowUpKind.REMINDER_24H: {
@@ -436,8 +443,16 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             # the burst returns by a route the creation-time check cannot see.
             if (
                 fu.kind in _POST_VISIT_OFFSETS
+                # Only rows nothing has ever touched. A held row is being
+                # deliberately deferred a day at a time while it waits for
+                # consent, and its `scheduled_for` moves with it — so judging it
+                # by that date meant a single 25-hour outage cancelled every
+                # held sequence in the system, throwing away 13 of the 14 days
+                # of grace the hold exists to provide. An outage is precisely
+                # the case where nobody touched the row: attempts is still 0.
+                and fu.attempts == 0
                 and fu.scheduled_for is not None
-                and _as_utc(fu.scheduled_for) < now - _POST_VISIT_GRACE
+                and _as_utc(fu.scheduled_for) < now - _SEND_STALE_AFTER
             ):
                 log.info(
                     "Follow-up %d cancelled for lead %d: %s was due %s and is "
@@ -567,13 +582,33 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                 sent += 1
             except Exception as exc:  # noqa: BLE001
                 log.error("Follow-up %d dispatch failed: %s", fu.id, exc)
-                # The follow-up itself is done — it produced its Message and will
-                # not compose another. Delivery of that one Message is the retry
-                # queue's job from here, so the lead gets it once, late, instead of
-                # never.
-                schedule_retry(outbound, str(exc))
-                fu.status = FollowUpStatus.FAILED
                 failed += 1
+                try:
+                    # The follow-up itself is done — it produced its Message and
+                    # will not compose another. Delivery of that one Message is
+                    # the retry queue's job from here, so the lead gets it once,
+                    # late, instead of never.
+                    schedule_retry(outbound, str(exc))
+                    fu.status = FollowUpStatus.FAILED
+                    await db.commit()
+                except Exception as while_recording:  # noqa: BLE001
+                    # The send path writes through this session, so its failure
+                    # can be the session's. Its two sibling handlers roll back
+                    # and this one did not: the outbound row and the FAILED
+                    # status both vanished while the follow-up stayed PENDING,
+                    # and the next tick composed and sent it again — a duplicate
+                    # text, with the exposure that carries, from a log line
+                    # nobody reads. Record FAILED and give up the retry: sending
+                    # twice is the worse outcome of the two.
+                    await db.rollback()
+                    log.exception(
+                        "Follow-up %d could not even be marked failed: %s",
+                        fu_id, while_recording,
+                    )
+                    refreshed = await db.get(FollowUp, fu_id)
+                    if refreshed is not None:
+                        refreshed.status = FollowUpStatus.FAILED
+                        await db.commit()
 
         finally:
             await _persist(db, fu_id)

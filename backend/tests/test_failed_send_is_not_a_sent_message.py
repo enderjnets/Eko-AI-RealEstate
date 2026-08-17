@@ -889,3 +889,43 @@ async def test_an_outage_does_not_release_the_whole_sequence_at_once() -> None:
             )
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_outage_does_not_cancel_a_sequence_that_was_being_held() -> None:
+    """The staleness rule must not eat the rows the hold exists to protect.
+
+    A follow-up with no consented channel is deferred a day at a time, for up to
+    two weeks, and its `scheduled_for` moves with each hold. Judging staleness by
+    that moving date meant one worker outage longer than a day cancelled every
+    held sequence in the system — throwing away the grace it was waiting on.
+    An outage is exactly the case where nobody touched the row: attempts is 0.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                # No inbound: nothing may be sent to this lead automatically.
+                lead_id, _ = await _lead_with_thread(db, "+13035557024", with_inbound=False)
+                held = FollowUp(
+                    lead_id=lead_id,
+                    kind=FollowUpKind.POST_VISIT_24H,
+                    status=FollowUpStatus.PENDING,
+                    scheduled_for=datetime.now(UTC) - timedelta(hours=30),
+                )
+                held.attempts = 3
+                db.add(held)
+                await db.commit()
+                held_id = held.id
+
+            async with get_session_factory()() as db:
+                await process_due_followups(db)
+
+            async with get_session_factory()() as db:
+                row = await db.get(FollowUp, held_id)
+                assert row.status != FollowUpStatus.CANCELLED, (
+                    "an outage cancelled a sequence that was being held for consent"
+                )
+                assert row.attempts == 4, "it should have been held once more"
+    finally:
+        await _cleanup()

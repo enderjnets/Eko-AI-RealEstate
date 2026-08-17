@@ -407,3 +407,41 @@ async def test_no_drafts_are_offered_for_someone_who_opted_out(
             async with Session() as s:
                 await s.execute(text("DELETE FROM leads WHERE id = :i"), {"i": lead_id})
                 await s.commit()
+
+
+def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
+    """The inverse assertion, which is the one that survives a fourth channel.
+
+    `SENDING_PRIMITIVES` is hand-written. Everything above depends on it being
+    complete, and nothing made it so: add MMS, or a voice callout, or push, and
+    the sweep would go on reporting a clean run over code it never looked at —
+    quietly, because a missing entry removes work rather than adding a failure.
+    That is the original defect of this file (it once named `send_whatsapp`,
+    which did not exist) moved up one level.
+
+    So: anything in `app/services` that is shaped like an outbound primitive —
+    a module-level `async def send_*` that performs an HTTP POST — must be
+    declared. A new channel then fails this test instead of disappearing from
+    the others.
+    """
+    undeclared: list[str] = []
+    for path in sorted(APP.glob("services/*.py")):
+        tree = ast.parse(path.read_text())
+        for node in tree.body:  # module level only
+            if not isinstance(node, ast.AsyncFunctionDef):
+                continue
+            if not node.name.startswith("send_"):
+                continue
+            posts = any(
+                isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Attribute)
+                and inner.func.attr == "post"
+                for inner in ast.walk(node)
+            )
+            if posts and node.name not in SENDING_PRIMITIVES:
+                undeclared.append(f"{path.relative_to(APP.parent)}::{node.name}")
+
+    assert not undeclared, (
+        "these look like outbound primitives but are not in SENDING_PRIMITIVES, "
+        f"so the opt-out sweep never follows them: {undeclared}"
+    )

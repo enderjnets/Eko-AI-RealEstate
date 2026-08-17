@@ -263,9 +263,28 @@ def _resolve_wall_clock(when: datetime, tz: str) -> datetime:
     if when.tzinfo is not None:
         return when
     try:
-        return when.replace(tzinfo=ZoneInfo(tz)).astimezone(UTC)
+        zone = ZoneInfo(tz)
     except (ZoneInfoNotFoundError, ValueError):
         return when.replace(tzinfo=UTC)
+
+    resolved = when.replace(tzinfo=zone).astimezone(UTC)
+    # `replace(tzinfo=...)` is not DST-aware and never raises for it, so the
+    # hour that does not exist on a spring-forward date was silently moved an
+    # hour later: 02:30 became a real appointment at 03:30, and 02:30 and 03:30
+    # resolved to the same instant — which the new double-booking guard then
+    # reads as a clash between two different requests. Refuse it instead of
+    # inventing a time nobody asked for.
+    if resolved.astimezone(zone).replace(tzinfo=None) != when:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "nonexistent_local_time: that clock time does not exist on that "
+                "date in this timezone — the clocks move forward through it"
+            ),
+        )
+    # An ambiguous time on a fall-back date resolves to the first pass through
+    # it (fold=0, still on summer time), deterministically.
+    return resolved
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────

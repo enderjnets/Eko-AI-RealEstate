@@ -2,6 +2,51 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.47.8] — 2026-08-16
+
+### Corregido — tercera ronda de auditoría independiente (sobre v0.47.7)
+
+Tercera ronda seguida en la que **el arreglo de la anterior rompe a su vecino**.
+Esta vez el propio informe lo dice: "esta es exactamente la forma de las dos
+rondas previas".
+
+- **REGRESIÓN (v0.47.7): un apagón de 25 h cancelaba para siempre toda secuencia
+  retenida.** El corte por antigüedad que añadí para evitar la ráfaga se ejecuta
+  **antes** de la rama de retención, y juzgaba por `scheduled_for` — que la
+  propia retención mueve un día cada vez. Con el worker caído algo más de un
+  día, cada seguimiento en espera de consentimiento se cancelaba, tirando hasta
+  13 de los 14 días de gracia que la retención existe para dar. El
+  discriminador correcto no es la fecha sino si **alguien tocó la fila**: un
+  apagón es precisamente el caso en que `attempts` sigue en 0.
+- **Las dos ventanas de gracia usaban la misma constante contra relojes
+  distintos.** Una visita registrada 47 h 59 m tarde conservaba su mensaje por
+  un minuto en la creación, y el siguiente ciclo lo cancelaba: justo el mensaje
+  que la lógica de creación se había esforzado en salvar. El corte al enviar
+  tiene ahora una hora de holgura.
+- **El tercer handler no hacía rollback y sus dos hermanos sí.** Si el envío
+  falla con un error de base de datos —y el envío escribe a través de la misma
+  sesión—, se perdían la fila del mensaje y el estado FAILED mientras el
+  seguimiento quedaba PENDING: el siguiente ciclo lo componía y **lo enviaba de
+  nuevo**, un SMS duplicado con la exposición que eso conlleva. Ahora registra
+  FAILED y renuncia al reintento: enviar dos veces es el peor resultado.
+- **Una hora que no existe se guardaba como otra.** En el cambio de horario de
+  primavera las 02:30 no existen en Denver, y `replace(tzinfo=...)` no lanza
+  error: se convertían silenciosamente en una cita real a las 03:30, y 02:30 y
+  03:30 resolvían al mismo instante — con lo que el guard de doble-reserva
+  recién añadido leía dos peticiones distintas como un choque. Ahora se rechaza
+  con 400. La hora ambigua del cambio de otoño se resuelve al primer paso,
+  de forma determinista y documentada.
+- **La lista de primitivas de envío no estaba garantizada.** Todo el barrido de
+  opt-out depende de que `SENDING_PRIMITIVES` esté completa, y nada lo
+  aseguraba: añadir MMS, voz o push habría hecho que el barrido siguiera
+  informando "limpio" sobre código que nunca miró — en silencio, porque una
+  entrada que falta **quita** trabajo en vez de añadir un fallo. Es el defecto
+  original de este fichero subido un nivel. Ahora se afirma lo inverso: todo
+  `async def send_*` de `app/services` que haga un POST debe estar declarado.
+  Verificado por mutación (renombrar a `send_mms` pone el test en rojo).
+- La consulta añadida en v0.47.7 se ejecutaba antes de la salida temprana de
+  bandeja vacía.
+
 ## [0.47.7] — 2026-08-16
 
 ### Corregido — segunda ronda de auditoría independiente (sobre v0.47.6)

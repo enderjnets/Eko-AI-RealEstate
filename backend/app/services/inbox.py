@@ -177,6 +177,8 @@ async def _next_visit_per_lead(db: AsyncSession) -> dict[int, object]:
 async def gather_inbox(db: AsyncSession) -> list[InboxItem]:
     """Build inbox items for every lead that has at least one conversation."""
     last = await _last_message_per_lead(db)
+    if not last:
+        return []
     last_reaching = await _last_reaching_message_per_lead(db)
     if not last:
         return []

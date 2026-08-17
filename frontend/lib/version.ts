@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.47.7";
+export const CURRENT_VERSION = "0.47.8";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.47.8",
+    date: "2026-08-16",
+    title: {
+      en: "An hour that does not exist, and a pause that is not a cancellation",
+      es: "Una hora que no existe, y una pausa que no es una cancelación",
+    },
+    changes: [
+      {
+        en: "Booking 2:30am on the night the clocks move forward is now refused instead of quietly becoming 3:30am — which could also collide with a real 3:30 appointment.",
+        es: "Reservar a las 2:30 de la madrugada en que los relojes se adelantan ahora se rechaza, en vez de convertirse calladamente en las 3:30 — que además podía chocar con una cita real de las 3:30.",
+      },
+      {
+        en: "Follow-ups waiting for a client's permission are no longer cancelled if the system pauses for a day. They keep the two weeks of grace they are meant to have.",
+        es: "Los seguimientos que esperan el permiso de un cliente ya no se cancelan si el sistema se para un día. Conservan las dos semanas de margen que les corresponden.",
+      },
+      {
+        en: "If a follow-up fails to send in a way that also breaks the record of it, it is now marked failed rather than being silently re-sent to the client on the next run.",
+        es: "Si un seguimiento falla al enviarse de una forma que además rompe su registro, ahora queda marcado como fallido en vez de reenviarse al cliente en la siguiente pasada.",
+      },
+    ],
+  },
   {
     version: "0.47.7",
     date: "2026-08-16",
