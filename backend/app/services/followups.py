@@ -344,7 +344,15 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                     Lead.preferred_channel.in_(AUTOMATED_PREFERENCES),
                 ),
             )
-            .order_by(FollowUp.scheduled_for)
+            # By id after the date, because the date stops discriminating. Every
+            # hold writes the same sweep-level `now + 1 day` into every held row,
+            # so once a lead's sequence has been held the three rows carry an
+            # identical `scheduled_for` and the sort is a pure tie. It resolved
+            # backwards in practice: the lead was told "new listings similar to
+            # what you saw" first and asked "how did the visit go?" two days
+            # later. `enqueue_for_visit` inserts in cadence order, so ascending
+            # id *is* the cadence, and it is deterministic.
+            .order_by(FollowUp.scheduled_for, FollowUp.id)
             .limit(limit)
         )
     ).scalars().all()
@@ -372,6 +380,7 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
         fu = await db.get(FollowUp, fu_id)
         if fu is None:
             continue
+        counted = False
         # Every path out of this item persists its own outcome before the
         # next one runs. `continue` still runs a `finally`, and that is the
         # point: with ten early exits, remembering to commit at each is the
@@ -486,7 +495,15 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                         > visit_at
                         + _POST_VISIT_OFFSETS[fu.kind]
                         + _SEND_STALE_AFTER
-                        + _HOLD_GIVE_UP_AFTER_HOLDS * _HOLD_RETRY_AFTER
+                        # The hold window, plus one day for each message the
+                        # per-lead cap may defer. Sized against the holds alone,
+                        # the bound cleared the hold give-up by 1h1m — and the
+                        # cap spends a whole day of that per deferred row, so
+                        # the two fixes shipped together cancelled the "how did
+                        # the visit go?" message in the very scenario they were
+                        # written for. Neither was wrong alone.
+                        + (_HOLD_GIVE_UP_AFTER_HOLDS + len(_POST_VISIT_OFFSETS))
+                        * _HOLD_RETRY_AFTER
                     )
                 )
             ):
@@ -551,6 +568,7 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                 if refreshed.attempts > _HOLD_GIVE_UP_AFTER_HOLDS:
                     refreshed.status = FollowUpStatus.FAILED
                     failed += 1
+                    counted = True
                 else:
                     skipped += 1
                 await db.commit()
@@ -607,6 +625,7 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                     refreshed.status = FollowUpStatus.FAILED
                     await db.commit()
                 failed += 1
+                counted = True
                 continue
 
             outbound = Message(
@@ -631,6 +650,7 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             except Exception as exc:  # noqa: BLE001
                 log.error("Follow-up %d dispatch failed: %s", fu.id, exc)
                 failed += 1
+                counted = True
                 try:
                     # The follow-up itself is done — it produced its Message and
                     # will not compose another. Delivery of that one Message is
@@ -664,10 +684,20 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             # is the session itself their own recovery raises too, escapes the
             # loop, and leaves the row PENDING for the next tick to send again.
             # One follow-up must never cost the batch, however it fails.
-            failed += 1
+            # Not counted again if an inner handler already counted this one:
+            # the recovery inside those handlers can raise into here, and the
+            # follow-up is still one failure however many layers saw it.
+            if not counted:
+                failed += 1
             log.exception("Follow-up %d failed in a way nothing else caught: %s", fu_id, exc)
             try:
                 await db.rollback()
+                # The rollback discards whatever terminal status the inner
+                # handler managed to set, so put it back — otherwise the row
+                # stays PENDING and the next tick sends the message again.
+                refreshed = await db.get(FollowUp, fu_id)
+                if refreshed is not None:
+                    refreshed.status = FollowUpStatus.FAILED
             except Exception:  # noqa: BLE001
                 log.exception("Follow-up %d: the session could not even be rolled back", fu_id)
         finally:

@@ -430,13 +430,17 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
     # `post` alone missed the Twilio SDK, which sends with `messages.create`.
     outbound_verbs = {"post", "put", "request", "create"}
     undeclared: list[str] = []
+    walked = 0
+    considered = 0
     for path in sorted(APP.rglob("services/**/*.py")):
+        walked += 1
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
             if not node.name.startswith("send_"):
                 continue
+            considered += 1
             sends = any(
                 isinstance(inner, ast.Call)
                 and isinstance(inner.func, ast.Attribute)
@@ -446,6 +450,14 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
             if sends and node.name not in SENDING_PRIMITIVES:
                 undeclared.append(f"{path.relative_to(APP.parent)}::{node.name}")
 
+    # Its own canary. A sweep that walks nothing passes, and this file exists
+    # because that has happened here before — the count belongs to the sweep it
+    # guards, not to a neighbouring one.
+    assert walked > 10, f"only walked {walked} service files — the path is wrong"
+    assert considered >= 3, (
+        f"only {considered} functions named send_* — the sweep has stopped "
+        "seeing the senders it is supposed to police"
+    )
     assert not undeclared, (
         "these look like outbound primitives but are not in SENDING_PRIMITIVES, "
         f"so the opt-out sweep never follows them: {undeclared}"

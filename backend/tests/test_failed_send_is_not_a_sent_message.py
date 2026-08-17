@@ -1057,13 +1057,18 @@ def test_no_two_post_visit_messages_can_be_overdue_at_once() -> None:
     happen to be safe today, so the prose stayed true while the property it
     claimed to guarantee would have broken the moment somebody added a fourth
     message closer than the window to its neighbour.
+
+    Checked against `_SEND_STALE_AFTER`, which is the window that actually
+    decides whether a row is still sendable — the first version of this test
+    guarded `_POST_VISIT_GRACE`, an hour narrower, and so had the very defect
+    its own docstring is about.
     """
-    from app.services.followups import _POST_VISIT_GRACE, _POST_VISIT_OFFSETS
+    from app.services.followups import _POST_VISIT_OFFSETS, _SEND_STALE_AFTER
 
     offsets = sorted(_POST_VISIT_OFFSETS.values())
     gaps = [b - a for a, b in zip(offsets, offsets[1:], strict=False)]
     assert gaps, "there should be more than one post-visit message"
-    assert min(gaps) > _POST_VISIT_GRACE, (
+    assert min(gaps) > _SEND_STALE_AFTER, (
         f"two of these can be overdue together: smallest gap {min(gaps)} is not "
-        f"wider than the {_POST_VISIT_GRACE} grace window"
+        f"wider than the {_SEND_STALE_AFTER} window that decides sendability"
     )

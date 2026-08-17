@@ -2,6 +2,43 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.48.2] — 2026-08-16
+
+### Corregido — quinta ronda de auditoría independiente (sobre v0.48.0/0.48.1)
+
+Quinta ronda, y tampoco limpia — pero con un matiz nuevo: **las dos regresiones
+son dos arreglos del mismo commit chocando entre sí**, no con código viejo.
+Ninguno de los dos está mal por separado.
+
+- **REGRESIÓN (v0.48.0): el mensaje "¿qué tal fue la visita?" se cancelaba en el
+  escenario para el que se escribió el arreglo.** El límite absoluto dejaba
+  1 h 1 min de holgura sobre la rendición de la retención, y el tope de un
+  mensaje por barrido gasta **un día entero** de esa holgura por cada mensaje
+  aplazado. Con el consentimiento llegando el día 14, el lead recibía el de 7
+  días y el de 72 h, y el de 24 h quedaba `cancelled`, nunca enviado.
+  El límite cuenta ahora también los días que el tope puede consumir.
+- **REGRESIÓN (v0.48.0): el orden de entrega era un empate puro, y salía al
+  revés.** Cada retención escribe el mismo `now + 1 día` en todas las filas
+  vencidas, así que tras la primera retención común las tres comparten
+  `scheduled_for` y el `ORDER BY` no discrimina: al cliente le llegaba "hay
+  pisos nuevos como el que viste" primero y "¿qué tal fue la visita?" dos días
+  después. Ahora se desempata por `id`, que es el orden en que se insertan y por
+  tanto la cadencia. Era además la causa próxima del punto anterior: la fila con
+  el margen más ajustado se servía la última.
+- **Mi test de la invariante tenía el defecto que describe su propio
+  docstring**: comprobaba `_POST_VISIT_GRACE` (24 h) cuando la ventana que
+  decide si una fila sigue siendo enviable es `_SEND_STALE_AFTER` (25 h).
+- **El contador de fallos sumaba dos veces** cuando la recuperación interna
+  lanzaba hacia el handler exterior, y el rollback de ese handler descartaba el
+  estado FAILED que el interno acababa de escribir, dejando la fila PENDING para
+  que el siguiente ciclo la reenviara. Ambas cosas cerradas.
+- **Una fila aplazada por el tope no aparecía en ninguna pantalla**: la lista de
+  retenidos de la consola filtra por `attempts > 0` y el tope aplaza sin tocar
+  el contador.
+- **El barrido de primitivas no tenía canario propio.** Un barrido que no
+  recorre nada pasa, y este fichero existe precisamente porque eso ya ocurrió
+  aquí. Ahora comprueba cuántos ficheros recorre y cuántos emisores considera.
+
 ## [0.48.1] — 2026-08-16
 
 ### Corregido — los tres residuos que la cuarta ronda dejó señalados
