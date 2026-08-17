@@ -1047,3 +1047,23 @@ async def test_only_one_post_visit_message_reaches_a_lead_per_sweep() -> None:
             )
     finally:
         await _cleanup()
+
+
+def test_no_two_post_visit_messages_can_be_overdue_at_once() -> None:
+    """The invariant behind the grace window, checked against the real numbers.
+
+    A comment used to assert this and got the reason wrong — it said the window
+    was the smallest gap between offsets when it is the smallest offset. Both
+    happen to be safe today, so the prose stayed true while the property it
+    claimed to guarantee would have broken the moment somebody added a fourth
+    message closer than the window to its neighbour.
+    """
+    from app.services.followups import _POST_VISIT_GRACE, _POST_VISIT_OFFSETS
+
+    offsets = sorted(_POST_VISIT_OFFSETS.values())
+    gaps = [b - a for a, b in zip(offsets, offsets[1:], strict=False)]
+    assert gaps, "there should be more than one post-visit message"
+    assert min(gaps) > _POST_VISIT_GRACE, (
+        f"two of these can be overdue together: smallest gap {min(gaps)} is not "
+        f"wider than the {_POST_VISIT_GRACE} grace window"
+    )

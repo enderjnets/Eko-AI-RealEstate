@@ -2,6 +2,25 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.48.1] — 2026-08-16
+
+### Corregido — los tres residuos que la cuarta ronda dejó señalados
+
+- **Un comentario afirmaba la invariante equivocada.** Decía que la ventana de
+  gracia era "el hueco más pequeño de la cadencia" cuando es el *offset* más
+  pequeño (24 h; el hueco menor es 48 h). Las dos son seguras hoy, así que la
+  prosa seguiría siendo cierta mientras la propiedad que dice garantizar se
+  rompía — bastaba añadir un cuarto mensaje a menos de 24 h de su vecino. Ahora
+  hay un test que lo comprueba contra los valores reales en vez de un comentario.
+- **El test de completitud de primitivas tenía cuatro salidas.** `glob` no veía
+  subpaquetes, `tree.body` no veía métodos de una clase cliente, `AsyncFunctionDef`
+  no veía ayudantes síncronos, y buscar solo `post` no ve al SDK de Twilio, que
+  envía con `messages.create`. Ampliado en las cuatro direcciones.
+- **Verificado, no supuesto**: las dos rutas que reservan en Cal.com —el panel y
+  el agente de voz— comprueban el opt-out antes de reservar (`visits.py:287`,
+  `voice.py:353`). Importa porque Cal.com envía correos al asistente, así que
+  reservar es contactar.
+
 ## [0.48.0] — 2026-08-16
 
 ### Rendimiento — la bandeja deja de cargar entidades que no usa

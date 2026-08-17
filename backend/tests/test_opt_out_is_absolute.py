@@ -424,21 +424,26 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
     declared. A new channel then fails this test instead of disappearing from
     the others.
     """
+    # Every clause below was once narrower, and each narrowing is an exit a real
+    # sender could leave through: `glob` missed sub-packages, `tree.body` missed
+    # methods on a client class, `AsyncFunctionDef` missed sync helpers, and
+    # `post` alone missed the Twilio SDK, which sends with `messages.create`.
+    outbound_verbs = {"post", "put", "request", "create"}
     undeclared: list[str] = []
-    for path in sorted(APP.glob("services/*.py")):
+    for path in sorted(APP.rglob("services/**/*.py")):
         tree = ast.parse(path.read_text())
-        for node in tree.body:  # module level only
-            if not isinstance(node, ast.AsyncFunctionDef):
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
             if not node.name.startswith("send_"):
                 continue
-            posts = any(
+            sends = any(
                 isinstance(inner, ast.Call)
                 and isinstance(inner.func, ast.Attribute)
-                and inner.func.attr == "post"
+                and inner.func.attr in outbound_verbs
                 for inner in ast.walk(node)
             )
-            if posts and node.name not in SENDING_PRIMITIVES:
+            if sends and node.name not in SENDING_PRIMITIVES:
                 undeclared.append(f"{path.relative_to(APP.parent)}::{node.name}")
 
     assert not undeclared, (

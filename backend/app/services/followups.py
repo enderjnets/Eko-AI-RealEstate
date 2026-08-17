@@ -61,9 +61,16 @@ _POST_VISIT_OFFSETS = {
     FollowUpKind.POST_VISIT_7D: timedelta(days=7),
 }
 
-# How overdue a post-visit message may be and still be worth sending. Set to the
-# smallest gap in the cadence above, which is what makes it impossible for two
-# of them to survive as overdue at once — the burst is the thing being stopped.
+# How overdue a post-visit message may be and still be worth sending.
+#
+# The invariant this has to preserve is that no two of these can be overdue at
+# the same time, because two overdue messages are the burst. That needs the
+# window to be narrower than the smallest *gap between* offsets (48h here), and
+# the smallest offset (24h) happens to satisfy it — which is not the same
+# statement, and an earlier comment here claimed the wrong one. Add a fourth
+# offset less than 24h from its neighbour and the prose would still have read
+# true while the invariant broke, so `test_no_two_post_visit_messages_can_be_
+# overdue_at_once` checks it against the actual values instead.
 _POST_VISIT_GRACE = min(_POST_VISIT_OFFSETS.values())
 
 # The same rule at send time needs a little more room than at creation time, or
