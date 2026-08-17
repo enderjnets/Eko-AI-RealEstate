@@ -20,6 +20,7 @@ from app.models.conversation import Conversation
 from app.models.follow_up import FollowUp, FollowUpKind, FollowUpStatus
 from app.models.lead import Lead
 from app.models.message import Message, MessageDirection, MessageSender, MessageStatus
+from app.models.visit import Visit, VisitStatus
 from app.services import tenant_resolver
 from app.services.conversation import send_human_message
 from app.services.delivery import retry_pending_sends
@@ -927,5 +928,122 @@ async def test_an_outage_does_not_cancel_a_sequence_that_was_being_held() -> Non
                     "an outage cancelled a sequence that was being held for consent"
                 )
                 assert row.attempts == 4, "it should have been held once more"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_long_outage_does_not_release_a_held_sequence_as_a_burst() -> None:
+    """The other side of the coin from the previous test, and the trade I got wrong.
+
+    Exempting every touched row from the staleness rule protected held
+    sequences from being cancelled — and turned a long outage into three
+    messages arriving together, weeks after the visit they are about. A counter
+    says whether a row was touched, never how long ago, so lateness is bounded
+    from the visit the message is for.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead_id, conv_id = await _lead_with_thread(db, "+13035557025")
+                visit = Visit(
+                    lead_id=lead_id,
+                    calendar_provider="manual",
+                    external_booking_id="manual-burst-1",
+                    status=VisitStatus.SCHEDULED,
+                    scheduled_at=datetime.now(UTC) - timedelta(days=38),
+                    duration_minutes=30,
+                    timezone="UTC",
+                )
+                db.add(visit)
+                await db.flush()
+                for kind, attempts in (
+                    (FollowUpKind.POST_VISIT_24H, 3),
+                    (FollowUpKind.POST_VISIT_72H, 2),
+                    (FollowUpKind.POST_VISIT_7D, 1),
+                ):
+                    fu = FollowUp(
+                        lead_id=lead_id,
+                        visit_id=visit.id,
+                        kind=kind,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) - timedelta(minutes=5),
+                    )
+                    fu.attempts = attempts
+                    db.add(fu)
+                await db.commit()
+
+            delivered: list[str] = []
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                delivered.append(text[:18])
+                return "sm.x", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.followups._dispatch_send", _ok):
+                    await process_due_followups(db)
+
+            assert delivered == [], (
+                f"a 38-day-old sequence went out anyway: {delivered}"
+            )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_only_one_post_visit_message_reaches_a_lead_per_sweep() -> None:
+    """The cap that does not depend on getting the dates right.
+
+    The consent hold pushes every due row to the same tomorrow, so a fortnight
+    of holds collapses the 24h/72h/7d cadence onto one tick and consent arriving
+    releases all three together — a route neither grace can see, because both
+    reason about when a row is due rather than about what the lead receives.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead_id, _ = await _lead_with_thread(db, "+13035557026")
+                visit = Visit(
+                    lead_id=lead_id,
+                    calendar_provider="manual",
+                    external_booking_id="manual-burst-2",
+                    status=VisitStatus.SCHEDULED,
+                    scheduled_at=datetime.now(UTC) - timedelta(days=2),
+                    duration_minutes=30,
+                    timezone="UTC",
+                )
+                db.add(visit)
+                await db.flush()
+                for kind in (
+                    FollowUpKind.POST_VISIT_24H,
+                    FollowUpKind.POST_VISIT_72H,
+                    FollowUpKind.POST_VISIT_7D,
+                ):
+                    db.add(
+                        FollowUp(
+                            lead_id=lead_id,
+                            visit_id=visit.id,
+                            kind=kind,
+                            status=FollowUpStatus.PENDING,
+                            scheduled_for=datetime.now(UTC) - timedelta(minutes=1),
+                        )
+                    )
+                await db.commit()
+
+            delivered: list[str] = []
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                delivered.append(text[:18])
+                return "sm.x", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.followups._dispatch_send", _ok):
+                    await process_due_followups(db)
+
+            assert len(delivered) == 1, (
+                f"the lead received {len(delivered)} messages in one sweep: {delivered}"
+            )
     finally:
         await _cleanup()

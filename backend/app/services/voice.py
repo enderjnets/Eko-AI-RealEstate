@@ -181,7 +181,20 @@ def _parse_dt(value: Any, tz: ZoneInfo) -> datetime | None:
         return None
     # Drop any tz the LLM attached and treat the wall-clock as office-local.
     dt = dt.replace(tzinfo=tz)
-    return dt.astimezone(UTC)
+    resolved = dt.astimezone(UTC)
+    # And refuse the hour that does not exist, the same way the HTTP routes do.
+    # `replace(tzinfo=...)` never raises for a spring-forward gap, so a caller
+    # naming 02:30 on that morning was silently given a 03:30 appointment — and
+    # 02:30 and 03:30 became the same instant, which the double-booking guard
+    # then reads as a clash between two different people. Returning None makes
+    # the agent offer another time instead of inventing one, which is what it
+    # already does for anything it cannot parse. Guarding the HTTP routes and
+    # leaving this one is the defect this codebase produces more than any other,
+    # and I had just done it again.
+    if resolved.astimezone(tz).replace(tzinfo=None) != dt.replace(tzinfo=None):
+        log.info("Refusing a local time that does not exist on that date: %r", str(value)[:32])
+        return None
+    return resolved
 
 
 async def _office_tz_name(db: AsyncSession) -> str:

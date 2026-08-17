@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.47.8";
+export const CURRENT_VERSION = "0.48.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.48.0",
+    date: "2026-08-16",
+    title: {
+      en: "The Inbox stays fast as your list grows",
+      es: "La bandeja sigue rápida según crece tu lista",
+    },
+    changes: [
+      {
+        en: "The Inbox and its unread badge no longer slow down as leads pile up. Measured on ten thousand leads: what took ten seconds now takes under a fifth of a second.",
+        es: "La bandeja y su contador ya no se ralentizan según se acumulan los leads. Medido con diez mil: lo que tardaba diez segundos ahora tarda menos de dos décimas.",
+      },
+      {
+        en: "A client is never sent more than one follow-up message in the same run, whatever happened to the schedule beforehand — including after the system has been paused, or after a long wait for their permission to write to them.",
+        es: "A un cliente nunca le llega más de un seguimiento en la misma pasada, pase lo que pase antes con el calendario — incluso tras una parada del sistema o una espera larga por su permiso para escribirle.",
+      },
+      {
+        en: "Booking by phone now refuses the hour that does not exist on the night the clocks move forward, the same as booking through the dashboard did already.",
+        es: "Reservar por teléfono ahora rechaza la hora que no existe en la noche en que los relojes se adelantan, igual que ya hacía reservar desde el panel.",
+      },
+    ],
+  },
   {
     version: "0.47.8",
     date: "2026-08-16",

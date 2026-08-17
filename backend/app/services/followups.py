@@ -350,6 +350,17 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
     # — even `fu.id` — becomes a synchronous lazy load and raises MissingGreenlet
     # outside every handler here, which is the batch dying again by another
     # route. Re-reading each row costs one indexed select and cannot go stale.
+    # One post-visit message per lead per sweep, whatever the dates say.
+    #
+    # Both graces reason about *when a row is due*, and there is a route neither
+    # can see: the consent hold pushes every due row to the same "tomorrow", so
+    # after a fortnight of holds the 24h/72h/7d cadence has collapsed onto one
+    # tick, and the moment consent arrives all three go out together. That is
+    # the burst this module exists to prevent, arriving through the schedule
+    # rather than around it. Rather than add a third rule about dates, cap the
+    # outcome: the rest keep their rows and go out on later sweeps.
+    sent_to_lead: set[int] = set()
+
     for fu_id in [row.id for row in rows]:
         fu = await db.get(FollowUp, fu_id)
         if fu is None:
@@ -378,6 +389,7 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             # standalone nurture row has no visit and must not blow up the sweep
             # with a NameError when the hold branch reads it.
             visit_is_past = False
+            visit_at = None
             if fu.visit_id is not None:
                 visit = (await db.execute(select(Visit).where(Visit.id == fu.visit_id))).scalar_one_or_none()
                 # COMPLETED belongs here for the PRE-visit reminder only: telling
@@ -443,16 +455,33 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             # the burst returns by a route the creation-time check cannot see.
             if (
                 fu.kind in _POST_VISIT_OFFSETS
-                # Only rows nothing has ever touched. A held row is being
-                # deliberately deferred a day at a time while it waits for
-                # consent, and its `scheduled_for` moves with it — so judging it
-                # by that date meant a single 25-hour outage cancelled every
-                # held sequence in the system, throwing away 13 of the 14 days
-                # of grace the hold exists to provide. An outage is precisely
-                # the case where nobody touched the row: attempts is still 0.
-                and fu.attempts == 0
                 and fu.scheduled_for is not None
-                and _as_utc(fu.scheduled_for) < now - _SEND_STALE_AFTER
+                and (
+                    # Never touched: `scheduled_for` is still the real due date,
+                    # so staleness reads straight off it. This is the outage
+                    # case — nobody ran the worker, nothing advanced.
+                    (
+                        fu.attempts == 0
+                        and _as_utc(fu.scheduled_for) < now - _SEND_STALE_AFTER
+                    )
+                    # Touched at least once: `scheduled_for` has been moved
+                    # forward by the hold and no longer says when this message
+                    # was *for*, so it cannot answer the question. Exempting
+                    # these outright — which is what the first version of this
+                    # did — meant a held sequence survived an outage and then
+                    # fired all three messages at once, 38 days late. A counter
+                    # is not a clock. Bound the lateness absolutely instead,
+                    # from the visit the message is about, allowing the whole
+                    # hold window to elapse legitimately first.
+                    or (
+                        visit_at is not None
+                        and now
+                        > visit_at
+                        + _POST_VISIT_OFFSETS[fu.kind]
+                        + _SEND_STALE_AFTER
+                        + _HOLD_GIVE_UP_AFTER_HOLDS * _HOLD_RETRY_AFTER
+                    )
+                )
             ):
                 log.info(
                     "Follow-up %d cancelled for lead %d: %s was due %s and is "
@@ -460,6 +489,16 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                     fu.id, lead.id, fu.kind.value, fu.scheduled_for,
                 )
                 fu.status = FollowUpStatus.CANCELLED
+                skipped += 1
+                continue
+
+            if fu.kind in _POST_VISIT_OFFSETS and lead.id in sent_to_lead:
+                log.info(
+                    "Follow-up %d held for lead %d: they already received a "
+                    "post-visit message on this sweep",
+                    fu.id, lead.id,
+                )
+                fu.scheduled_for = now + _HOLD_RETRY_AFTER
                 skipped += 1
                 continue
 
@@ -579,6 +618,8 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                 fu.status = FollowUpStatus.SENT
                 fu.sent_at = now
                 lead.last_message_at = now
+                if fu.kind in _POST_VISIT_OFFSETS:
+                    sent_to_lead.add(lead.id)
                 sent += 1
             except Exception as exc:  # noqa: BLE001
                 log.error("Follow-up %d dispatch failed: %s", fu.id, exc)
@@ -610,6 +651,18 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                         refreshed.status = FollowUpStatus.FAILED
                         await db.commit()
 
+        except Exception as exc:  # noqa: BLE001
+            # The last line of defence, and it has to exist: the inner handlers
+            # recover on the same session that just failed, so when the failure
+            # is the session itself their own recovery raises too, escapes the
+            # loop, and leaves the row PENDING for the next tick to send again.
+            # One follow-up must never cost the batch, however it fails.
+            failed += 1
+            log.exception("Follow-up %d failed in a way nothing else caught: %s", fu_id, exc)
+            try:
+                await db.rollback()
+            except Exception:  # noqa: BLE001
+                log.exception("Follow-up %d: the session could not even be rolled back", fu_id)
         finally:
             await _persist(db, fu_id)
 

@@ -2,6 +2,56 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.48.0] — 2026-08-16
+
+### Rendimiento — la bandeja deja de cargar entidades que no usa
+
+`gather_inbox` con 10.000 leads: **10,0 s → 0,17 s** (mismo script, mismo
+protocolo; en régimen estable, y con 5.000 leads 0,08 s). Es lo que pollea el
+badge del nav.
+
+Lo importante es **dónde estaba el coste**, porque no era donde el plan decía ni
+donde yo supuse. Perfilando: 6,2 s en cargar los 10.000 objetos `Lead`, 3,6 s +
+3,1 s en las dos consultas de mensajes, y **0,07 s de ensamblado en Python**.
+Mi hipótesis fue que el problema era planificar una cláusula `IN` con 10.000
+literales: **falsa**. La subconsulta que probé lo empeoró a 18,3 s y `= ANY(array)`
+no cambió nada. La medición del auditor lo cerró: el filtro cuesta ~20 ms, y
+`load_only` tampoco ayuda — el coste es que SQLAlchemy construya diez mil
+objetos instrumentados con su identity map. Se seleccionan las nueve columnas
+que alguien lee de verdad, y ya está.
+
+Caveat honesto: las filas del banco de pruebas son sintéticas y sin campos
+largos, así que la proporción es el hallazgo, no los milisegundos exactos.
+
+### Corregido — cuarta ronda de auditoría independiente (sobre v0.47.8)
+
+Cuarta ronda seguida en la que el arreglo anterior rompe a su vecino.
+
+- **REGRESIÓN (v0.47.8): usar `attempts == 0` como discriminador cambió
+  "la secuencia se descarta" por "la secuencia sale de golpe, 38 días tarde".**
+  Un contador dice si alguien tocó la fila, nunca **cuándo**; y exentar a todas
+  las tocadas dejaba que un apagón largo liberase las tres a la vez. Verificado
+  ejecutando: con v0.47.7 salían 0 mensajes, con v0.47.8 salían 3. Ahora el
+  retraso se acota en absoluto desde la fecha de la visita a la que el mensaje
+  se refiere, dejando transcurrir antes toda la ventana legítima de retención.
+- **Añadido un tope que no depende de acertar con las fechas**: como mucho **un
+  mensaje post-visita por lead y por barrido**. Cubre además un defecto
+  pre-existente que ninguna de las dos ventanas de gracia podía ver — la
+  retención empuja todas las filas vencidas al mismo "mañana", así que quince
+  días de espera colapsan la cadencia 24h/72h/7d en un solo tick y la llegada
+  del consentimiento las dispara juntas.
+- **REGRESIÓN (v0.47.8): puse el arreglo de la hora inexistente en uno de los
+  dos resolutores.** `voice.py` tiene el suyo y seguía convirtiendo las 02:30
+  del cambio de horario en una cita real a las 03:30 — con las dos horas
+  resolviendo al mismo instante, que es justo el choque que el commit decía
+  arreglar. Es el defecto característico de este repo cometido dentro del
+  arreglo de ese mismo defecto.
+- **El `try` anidado no lograba su objetivo en el fallo para el que se escribió**:
+  la recuperación corre sobre la misma sesión que acaba de fallar, así que con
+  la sesión rota también falla, la excepción escapa del bucle y el siguiente
+  ciclo reenvía. El cuerpo por elemento tiene ahora un `except` de verdad.
+- Eliminada una salida temprana duplicada que quedó inalcanzable en v0.47.8.
+
 ## [0.47.8] — 2026-08-16
 
 ### Corregido — tercera ronda de auditoría independiente (sobre v0.47.7)
