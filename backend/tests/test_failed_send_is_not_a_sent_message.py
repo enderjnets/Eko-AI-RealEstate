@@ -933,46 +933,36 @@ async def test_an_outage_does_not_cancel_a_sequence_that_was_being_held() -> Non
 
 
 @pytest.mark.asyncio
-async def test_a_long_outage_does_not_release_a_held_sequence_as_a_burst() -> None:
-    """The other side of the coin from the previous test, and the trade I got wrong.
+async def test_a_sequence_held_past_the_give_up_is_not_released_later() -> None:
+    """What actually bounds a held sequence, now that `scheduled_for` is honest.
 
-    Exempting every touched row from the staleness rule protected held
-    sequences from being cancelled — and turned a long outage into three
-    messages arriving together, weeks after the visit they are about. A counter
-    says whether a row was touched, never how long ago, so lateness is bounded
-    from the visit the message is for.
+    An earlier version guarded this with an absolute lateness bound computed
+    from constants, because a hold overwrote `scheduled_for` and there was no
+    other way to tell "deferred yesterday" from "abandoned a month ago". That
+    guess was sized for one visit and cancelled the "how did it go?" message
+    for a lead with three visits the same day.
+
+    With the deferral in its own column the guess is unnecessary: a held row is
+    bounded by the give-up counter, and a row nobody ever touched is bounded by
+    its own untouched `scheduled_for`. This checks the first half — held past
+    the fortnight, it is given up rather than released weeks later.
     """
     await _agency()
     try:
         with org_scope(ORG):
             async with get_session_factory()() as db:
-                lead_id, conv_id = await _lead_with_thread(db, "+13035557025")
-                visit = Visit(
+                lead_id, _ = await _lead_with_thread(db, "+13035557025", with_inbound=False)
+                exhausted = FollowUp(
                     lead_id=lead_id,
-                    calendar_provider="manual",
-                    external_booking_id="manual-burst-1",
-                    status=VisitStatus.SCHEDULED,
-                    scheduled_at=datetime.now(UTC) - timedelta(days=38),
-                    duration_minutes=30,
-                    timezone="UTC",
+                    kind=FollowUpKind.POST_VISIT_24H,
+                    status=FollowUpStatus.PENDING,
+                    scheduled_for=datetime.now(UTC) - timedelta(days=38),
                 )
-                db.add(visit)
-                await db.flush()
-                for kind, attempts in (
-                    (FollowUpKind.POST_VISIT_24H, 3),
-                    (FollowUpKind.POST_VISIT_72H, 2),
-                    (FollowUpKind.POST_VISIT_7D, 1),
-                ):
-                    fu = FollowUp(
-                        lead_id=lead_id,
-                        visit_id=visit.id,
-                        kind=kind,
-                        status=FollowUpStatus.PENDING,
-                        scheduled_for=datetime.now(UTC) - timedelta(minutes=5),
-                    )
-                    fu.attempts = attempts
-                    db.add(fu)
+                exhausted.postponed_until = datetime.now(UTC) - timedelta(minutes=1)
+                exhausted.attempts = 15  # one past the fortnight of daily holds
+                db.add(exhausted)
                 await db.commit()
+                fu_id = exhausted.id
 
             delivered: list[str] = []
 
@@ -984,9 +974,9 @@ async def test_a_long_outage_does_not_release_a_held_sequence_as_a_burst() -> No
                 with patch("app.services.followups._dispatch_send", _ok):
                     await process_due_followups(db)
 
-            assert delivered == [], (
-                f"a 38-day-old sequence went out anyway: {delivered}"
-            )
+            assert delivered == [], f"a sequence held out of time still sent: {delivered}"
+            async with get_session_factory()() as db:
+                assert (await db.get(FollowUp, fu_id)).status == FollowUpStatus.SKIPPED
     finally:
         await _cleanup()
 
@@ -1072,3 +1062,91 @@ def test_no_two_post_visit_messages_can_be_overdue_at_once() -> None:
         f"two of these can be overdue together: smallest gap {min(gaps)} is not "
         f"wider than the {_SEND_STALE_AFTER} window that decides sendability"
     )
+
+
+@pytest.mark.asyncio
+async def test_no_amount_of_holding_makes_a_row_look_stale() -> None:
+    """The invariant six rounds of patches were working around.
+
+    `scheduled_for` used to mean two things — when the message was for, and when
+    to look again — and the hold overwrote the first with the second. Every
+    staleness rule after that needed a slack term guessed from constants to
+    compensate, and each guess was wrong for some shape of data: sized for one
+    visit, it cancelled the "how did it go?" message for a lead with three
+    visits on the same day.
+
+    With the deferral in its own column the property is structural: hold a row
+    as many times as you like and the date it is judged by does not move.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                # No inbound: no consent, so every sweep takes the hold path.
+                lead_id, _ = await _lead_with_thread(db, "+13035557027", with_inbound=False)
+                fu = FollowUp(
+                    lead_id=lead_id,
+                    kind=FollowUpKind.POST_VISIT_24H,
+                    status=FollowUpStatus.PENDING,
+                    scheduled_for=datetime.now(UTC) - timedelta(minutes=1),
+                )
+                db.add(fu)
+                await db.commit()
+                fu_id = fu.id
+                originally_for = fu.scheduled_for
+
+            for day in range(1, 11):
+                async with get_session_factory()() as db:
+                    await process_due_followups(
+                        db, now=datetime.now(UTC) + timedelta(days=day)
+                    )
+                async with get_session_factory()() as db:
+                    row = await db.get(FollowUp, fu_id)
+                    assert row.status == FollowUpStatus.PENDING, (
+                        f"day {day}: a held row became {row.status}"
+                    )
+                    assert row.scheduled_for == originally_for, (
+                        f"day {day}: the date it is judged by moved to "
+                        f"{row.scheduled_for}"
+                    )
+                    assert row.postponed_until is not None
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_call_follow_up_from_four_months_ago_is_not_sent_now() -> None:
+    """The staleness rule used to be gated on the visit-derived kinds only.
+
+    The call nudge was added later and nobody re-checked the guard, so one
+    scheduled before an outage went out on the first sweep back — asking
+    whether anything had changed since a conversation four months old.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead_id, _ = await _lead_with_thread(db, "+13035557028")
+                db.add(
+                    FollowUp(
+                        lead_id=lead_id,
+                        kind=FollowUpKind.CALL_FOLLOW_UP,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) - timedelta(days=119),
+                    )
+                )
+                await db.commit()
+
+            delivered: list[str] = []
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                delivered.append(text[:18])
+                return "sm.x", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.followups._dispatch_send", _ok):
+                    await process_due_followups(db)
+
+            assert delivered == [], f"a four-month-old call nudge went out: {delivered}"
+    finally:
+        await _cleanup()

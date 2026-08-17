@@ -1366,3 +1366,45 @@ async def test_a_clock_time_that_does_not_exist_is_refused(database_url: str) ->
     finally:
         visits_module.create_booking = real_create_booking
         await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_a_normal_booking_does_not_appear_as_held(database_url: str) -> None:
+    """"Held" means somebody could not get through, not "not due yet".
+
+    The list is what an operator scans for people the system cannot reach. A
+    previous version widened its filter to `scheduled_for > now` so it would
+    catch a row the per-sweep cap had postponed — and matched every freshly
+    booked follow-up in the system, burying the real holds under them.
+    """
+    lead_id = await _lead(database_url)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            from app.models import VisitStatus
+
+            visit = Visit(
+                lead_id=lead_id,
+                calendar_provider="manual",
+                external_booking_id=f"manual-held-{uuid.uuid4().hex[:10]}",
+                status=VisitStatus.SCHEDULED,
+                scheduled_at=datetime.now(UTC) + timedelta(days=4),
+                duration_minutes=30,
+                timezone="UTC",
+            )
+            s.add(visit)
+            await s.flush()
+            from app.services.followups import enqueue_for_visit
+
+            await enqueue_for_visit(visit, s)
+
+        async with await _client() as c:
+            r = await c.get("/api/v1/console/today")
+        assert r.status_code == 200, r.text
+        held = [h for h in r.json()["held"] if h["lead_id"] == lead_id]
+        assert held == [], (
+            f"a booking nobody has had trouble with is listed as held: {held}"
+        )
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)

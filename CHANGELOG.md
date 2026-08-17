@@ -2,6 +2,47 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.49.0] — 2026-08-16
+
+### Cambiado — una columna nueva que cierra una clase entera de fallos
+
+Migración **032** (aditiva y reversible): `follow_ups.postponed_until`.
+
+La sexta ronda de auditoría no solo encontró ocho cosas — encontró **la causa
+que llevaba seis rondas generando parches**. `scheduled_for` significaba dos
+cosas a la vez: *cuándo era este mensaje* y *cuándo volver a mirar*. La
+retención y el tope por barrido sobrescribían la segunda encima de la primera, y
+de ahí salían síntomas que parecían no tener relación:
+
+- la regla de antigüedad no podía distinguir "nadie ha mirado esto en un mes" de
+  "aplazado ayer a propósito", así que necesitaba una holgura **adivinada** a
+  partir de constantes — dimensionada para una visita, cancelaba en silencio el
+  "¿qué tal fue?" de un lead con **tres visitas el mismo día** (8 mensajes de 9);
+- la consola no podía distinguir una fila aplazada de una que simplemente aún no
+  toca, así que el filtro que la mostraba **inundaba** la lista de retenidos con
+  todas las reservas futuras del sistema, enterrando las retenciones reales.
+
+Con dos significados en dos columnas, los dos desaparecen: `scheduled_for` no se
+sobrescribe nunca más, la holgura adivinada **se elimina entera**, y el filtro de
+la consola es exacto (`postponed_until IS NOT NULL`).
+
+### Corregido — el resto de la sexta ronda
+
+- **El seguimiento de llamada no tenía límite de antigüedad**: la regla estaba
+  condicionada a los tipos derivados de visita, y el aviso de llamada se añadió
+  después. Uno programado hace cuatro meses salía en el primer barrido de vuelta,
+  preguntando si algo había cambiado desde una conversación que nadie recuerda.
+- **El handler exterior inventaba un `FAILED`**: lo ponía también para
+  excepciones que ningún handler interno había visto (un fallo transitorio en la
+  consulta del lead o de la visita). `FAILED` es terminal, así que **un parpadeo
+  de conexión cancelaba para siempre** el aviso de ese lead — lo contrario de lo
+  que la ruta de retención promete. Ahora solo restaura un estado que alguien
+  eligió de verdad.
+- **Una fila podía contarse como saltada y fallida a la vez.**
+- La agenda del calendario y el orden del barrido leen ahora la fecha efectiva
+  (`COALESCE(postponed_until, scheduled_for)`), así que una fila retenida no
+  desaparece del calendario ni aparece en el pasado.
+
 ## [0.48.2] — 2026-08-16
 
 ### Corregido — quinta ronda de auditoría independiente (sobre v0.48.0/0.48.1)

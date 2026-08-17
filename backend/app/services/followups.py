@@ -332,7 +332,11 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             .join(Lead, Lead.id == FollowUp.lead_id)
             .where(
                 FollowUp.status == FollowUpStatus.PENDING,
-                FollowUp.scheduled_for <= now,
+                # Due when nothing has deferred it and its own time has come, or
+                # when the deferral has expired. `scheduled_for` is no longer
+                # overwritten by a hold, so it keeps saying what the message was
+                # for — which is what the staleness rule below needs from it.
+                func.coalesce(FollowUp.postponed_until, FollowUp.scheduled_for) <= now,
                 # A lead whose stated channel has no automated sender is a task
                 # for the console, not work for this sweep — see
                 # AUTOMATED_PREFERENCES. Excluded in SQL, not in the loop: left
@@ -352,7 +356,17 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             # what you saw" first and asked "how did the visit go?" two days
             # later. `enqueue_for_visit` inserts in cadence order, so ascending
             # id *is* the cadence, and it is deterministic.
-            .order_by(FollowUp.scheduled_for, FollowUp.id)
+            .order_by(
+                func.coalesce(FollowUp.postponed_until, FollowUp.scheduled_for),
+                # By id after the date, because the date stops discriminating:
+                # a hold writes the same sweep-level "tomorrow" into every held
+                # row, so once a lead's sequence has been held the three rows
+                # tie. It resolved backwards in practice — the lead was told
+                # "new listings similar to what you saw" first and asked "how
+                # did the visit go?" two days later. `enqueue_for_visit` inserts
+                # in cadence order, so ascending id *is* the cadence.
+                FollowUp.id,
+            )
             .limit(limit)
         )
     ).scalars().all()
@@ -381,6 +395,7 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
         if fu is None:
             continue
         counted = False
+        marked_failed = False
         # Every path out of this item persists its own outcome before the
         # next one runs. `continue` still runs a `finally`, and that is the
         # point: with ten early exits, remembering to commit at each is the
@@ -463,49 +478,31 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                 skipped += 1
                 continue
 
-            # The same grace `enqueue_for_visit` applies when creating these,
-            # applied again here — because that one only guards creation. Let
-            # this worker be down for a week and all three post-visit messages
-            # come due on their own, so the first tick back sends "how did it
-            # go?", the nudge and "new listings" within seconds of each other:
-            # the burst returns by a route the creation-time check cannot see.
+            # Stale means: nobody deferred this, and its own time passed long
+            # ago. That is the outage — the worker was down, the row sat there,
+            # and sending "how did the visit go?" weeks late helps nobody.
+            #
+            # It reads `scheduled_for` directly now, and can, because a hold no
+            # longer overwrites it. The previous version had to guess a slack
+            # term from the hold constants to compensate, and the guess was
+            # sized for one visit: a lead with three visits the same day lost
+            # the third "how did it go?" entirely. That whole term is gone.
+            #
+            # Applies to the call follow-up too. The rule used to be gated on
+            # the visit-derived kinds only, so a call nudge scheduled four
+            # months ago went out on the first sweep back, cheerfully asking
+            # whether anything had changed since a conversation nobody
+            # remembers.
             if (
-                fu.kind in _POST_VISIT_OFFSETS
+                fu.postponed_until is None
+                # And nothing has touched it by any other route either. A row an
+                # error handler has already tried is bounded by the same give-up
+                # counter as a hold, so it does not need this rule as well —
+                # and judging it by a date nobody moved would cancel it for
+                # having been unlucky once.
+                and fu.attempts == 0
                 and fu.scheduled_for is not None
-                and (
-                    # Never touched: `scheduled_for` is still the real due date,
-                    # so staleness reads straight off it. This is the outage
-                    # case — nobody ran the worker, nothing advanced.
-                    (
-                        fu.attempts == 0
-                        and _as_utc(fu.scheduled_for) < now - _SEND_STALE_AFTER
-                    )
-                    # Touched at least once: `scheduled_for` has been moved
-                    # forward by the hold and no longer says when this message
-                    # was *for*, so it cannot answer the question. Exempting
-                    # these outright — which is what the first version of this
-                    # did — meant a held sequence survived an outage and then
-                    # fired all three messages at once, 38 days late. A counter
-                    # is not a clock. Bound the lateness absolutely instead,
-                    # from the visit the message is about, allowing the whole
-                    # hold window to elapse legitimately first.
-                    or (
-                        visit_at is not None
-                        and now
-                        > visit_at
-                        + _POST_VISIT_OFFSETS[fu.kind]
-                        + _SEND_STALE_AFTER
-                        # The hold window, plus one day for each message the
-                        # per-lead cap may defer. Sized against the holds alone,
-                        # the bound cleared the hold give-up by 1h1m — and the
-                        # cap spends a whole day of that per deferred row, so
-                        # the two fixes shipped together cancelled the "how did
-                        # the visit go?" message in the very scenario they were
-                        # written for. Neither was wrong alone.
-                        + (_HOLD_GIVE_UP_AFTER_HOLDS + len(_POST_VISIT_OFFSETS))
-                        * _HOLD_RETRY_AFTER
-                    )
-                )
+                and _as_utc(fu.scheduled_for) < now - _SEND_STALE_AFTER
             ):
                 log.info(
                     "Follow-up %d cancelled for lead %d: %s was due %s and is "
@@ -522,7 +519,7 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                     "post-visit message on this sweep",
                     fu.id, lead.id,
                 )
-                fu.scheduled_for = now + _HOLD_RETRY_AFTER
+                fu.postponed_until = now + _HOLD_RETRY_AFTER
                 skipped += 1
                 continue
 
@@ -569,8 +566,13 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                     refreshed.status = FollowUpStatus.FAILED
                     failed += 1
                     counted = True
+                    marked_failed = True
                 else:
                     skipped += 1
+                # Counted either way: the commit below can raise into the outer
+                # handler, which would otherwise tally the same row a second
+                # time — once skipped and once failed.
+                counted = True
                 await db.commit()
                 continue
 
@@ -600,7 +602,7 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                         "first — retrying tomorrow",
                         fu.id, lead.id, len(candidates),
                     )
-                    fu.scheduled_for = now + _HOLD_RETRY_AFTER
+                    fu.postponed_until = now + _HOLD_RETRY_AFTER
                 skipped += 1
                 continue
 
@@ -626,6 +628,7 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                     await db.commit()
                 failed += 1
                 counted = True
+                marked_failed = True
                 continue
 
             outbound = Message(
@@ -651,6 +654,7 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                 log.error("Follow-up %d dispatch failed: %s", fu.id, exc)
                 failed += 1
                 counted = True
+                marked_failed = True
                 try:
                     # The follow-up itself is done — it produced its Message and
                     # will not compose another. Delivery of that one Message is
@@ -692,12 +696,17 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             log.exception("Follow-up %d failed in a way nothing else caught: %s", fu_id, exc)
             try:
                 await db.rollback()
-                # The rollback discards whatever terminal status the inner
-                # handler managed to set, so put it back — otherwise the row
-                # stays PENDING and the next tick sends the message again.
-                refreshed = await db.get(FollowUp, fu_id)
-                if refreshed is not None:
-                    refreshed.status = FollowUpStatus.FAILED
+                # Only restore a terminal status an inner handler actually
+                # chose — `counted` is exactly that condition. Setting FAILED
+                # unconditionally meant this handler *invented* one for
+                # exceptions no inner handler ever saw (a blip in the lead or
+                # visit query), and FAILED is terminal: one transient error
+                # permanently cancelled that lead's nudge, which is the opposite
+                # of what the hold path a few lines up is written to guarantee.
+                if marked_failed:
+                    refreshed = await db.get(FollowUp, fu_id)
+                    if refreshed is not None:
+                        refreshed.status = FollowUpStatus.FAILED
             except Exception:  # noqa: BLE001
                 log.exception("Follow-up %d: the session could not even be rolled back", fu_id)
         finally:

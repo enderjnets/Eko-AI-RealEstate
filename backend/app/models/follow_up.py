@@ -69,7 +69,17 @@ class FollowUp(Base):
         index=True,
     )
 
+    # When this message is FOR. Written once, at enqueue, and never again — the
+    # staleness rule and the operator console both need it to keep meaning that.
     scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    # When to look at this row again, if something deferred it: a consent hold,
+    # or the cap that stops a lead receiving two post-visit messages at once.
+    # NULL means nothing has ever deferred it. Splitting this out of
+    # `scheduled_for` is what lets "nobody has looked at this in a month" be
+    # told apart from "deliberately postponed yesterday".
+    postponed_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 

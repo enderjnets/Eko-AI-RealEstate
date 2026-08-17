@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_db
@@ -598,10 +598,14 @@ async def visits_agenda(
             select(FollowUp)
             .where(
                 FollowUp.status == FollowUpStatus.PENDING,
-                FollowUp.scheduled_for >= floor,
-                FollowUp.scheduled_for <= horizon,
+                # When it will actually go out, not when it was originally for:
+                # a held follow-up keeps its `scheduled_for` now and carries the
+                # deferral in `postponed_until`, so reading the raw column would
+                # show it in the past — or drop it off the calendar entirely.
+                func.coalesce(FollowUp.postponed_until, FollowUp.scheduled_for) >= floor,
+                func.coalesce(FollowUp.postponed_until, FollowUp.scheduled_for) <= horizon,
             )
-            .order_by(FollowUp.scheduled_for.asc())
+            .order_by(func.coalesce(FollowUp.postponed_until, FollowUp.scheduled_for).asc())
         )
     ).scalars().all()
     for f in frows:

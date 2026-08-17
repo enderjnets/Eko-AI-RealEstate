@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.48.2";
+export const CURRENT_VERSION = "0.49.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,36 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.49.0",
+    date: "2026-08-16",
+    title: {
+      en: "Follow-ups keep their place, however long they wait",
+      es: "Los seguimientos mantienen su sitio, esperen lo que esperen",
+    },
+    changes: [
+      {
+        en: "A client with several viewings on the same day now gets asked about every one of them. Before, the third \"how did the viewing go?\" could be dropped without a trace.",
+        es: "Un cliente con varias visitas el mismo día ahora recibe la pregunta por todas. Antes, el tercer \"¿qué tal fue la visita?\" podía perderse sin dejar rastro.",
+      },
+      {
+        en: "Follow-up messages arrive in the right order again. After a long wait for a client's permission, they could come out backwards — \"new listings similar to what you saw\" before \"how did the viewing go?\".",
+        es: "Los seguimientos vuelven a llegar en el orden correcto. Tras una espera larga por el permiso del cliente, podían salir al revés: \"hay pisos nuevos como el que viste\" antes que \"¿qué tal fue la visita?\".",
+      },
+      {
+        en: "The \"not getting through\" list shows only the people the system genuinely could not reach. It had started listing every upcoming booking, which buried the ones that needed you.",
+        es: "La lista de \"no consigo contactar\" muestra solo a quien de verdad no se ha podido alcanzar. Había empezado a listar toda reserva futura, y eso enterraba las que te necesitaban.",
+      },
+      {
+        en: "A call follow-up left over from months ago is no longer sent as if the conversation were yesterday.",
+        es: "Un seguimiento de llamada que quedó de hace meses ya no se envía como si la conversación hubiera sido ayer.",
+      },
+      {
+        en: "A momentary database hiccup no longer cancels a client's follow-up for good.",
+        es: "Un fallo momentáneo de base de datos ya no cancela para siempre el seguimiento de un cliente.",
+      },
+    ],
+  },
   {
     version: "0.48.0",
     date: "2026-08-16",

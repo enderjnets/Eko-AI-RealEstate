@@ -165,13 +165,15 @@ async def today(
     # PENDING holds are the ones a person can act on right now (ask for consent,
     # or pick up the phone), so they must never be crowded out by delivery
     # failures — which is precisely what a shared limit did.
-    # `attempts > 0` alone missed a row the sweep postponed rather than held:
-    # the per-lead cap defers a second post-visit message to tomorrow without
-    # advancing the counter, so it was pushed back and appeared on no screen.
+    # Postponed, not merely "not due yet". `attempts > 0` alone missed a row the
+    # per-lead cap deferred without advancing the counter; widening it to
+    # `scheduled_for > now` then matched every freshly booked follow-up in the
+    # system and buried the real consent holds under them. `postponed_until`
+    # says exactly this and nothing else.
     hold_rows = await _held(
         and_(
             FollowUp.status == FollowUpStatus.PENDING,
-            or_(FollowUp.attempts > 0, FollowUp.scheduled_for > datetime.now(UTC)),
+            or_(FollowUp.attempts > 0, FollowUp.postponed_until.is_not(None)),
         ),
         limit,
     )

@@ -382,13 +382,17 @@ async def test_a_held_followup_is_retried_not_cancelled() -> None:
             # Pushed forward by about a day — not merely "into the future".
             # `> now` is satisfied by a year, and a nurture sequence that
             # re-checks annually is cancelled with extra steps.
-            delay = fu.scheduled_for - datetime.now(UTC)
+            # The deferral lives in `postponed_until` now; `scheduled_for`
+            # keeps saying when the message was for, which is what lets a stale
+            # row be told apart from a deliberately held one.
+            assert fu.postponed_until is not None
+            delay = fu.postponed_until - datetime.now(UTC)
             assert timedelta(hours=12) < delay < timedelta(days=2), delay
 
             # Now they consent. The next sweep must actually send it.
             lead.consent_at = datetime.now(UTC)
             lead.consent_text = "I agree to receive texts."
-            fu.scheduled_for = datetime.now(UTC) - timedelta(minutes=1)
+            fu.postponed_until = datetime.now(UTC) - timedelta(minutes=1)
             await db.commit()
 
             again = await process_due_followups(db)
