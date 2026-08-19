@@ -1025,7 +1025,7 @@ async def test_only_one_post_visit_message_reaches_a_lead_per_sweep() -> None:
             delivered: list[str] = []
 
             async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
-                delivered.append(text[:18])
+                delivered.append(text[:60])
                 return "sm.x", None
 
             async with get_session_factory()() as db:
@@ -1035,11 +1035,20 @@ async def test_only_one_post_visit_message_reaches_a_lead_per_sweep() -> None:
             assert len(delivered) == 1, (
                 f"the lead received {len(delivered)} messages in one sweep: {delivered}"
             )
+            # And it is the RIGHT one. Asserting only the count let the cadence
+            # invert unnoticed: the tie-break that orders these is `id`, which
+            # is only the cadence because `_POST_VISIT_OFFSETS` happens to be
+            # written 24h/72h/7d — reordering those three lines is a cosmetic
+            # edit no reviewer would stop, and it would silently send "new
+            # listings similar to what you saw" before "how did it go?".
+            assert "how did the visit go" in delivered[0].lower(), (
+                f"the sequence started with the wrong message: {delivered[0]!r}"
+            )
     finally:
         await _cleanup()
 
 
-def test_no_two_post_visit_messages_can_be_overdue_at_once() -> None:
+def test_two_untouched_post_visit_messages_cannot_be_overdue_at_once() -> None:
     """The invariant behind the grace window, checked against the real numbers.
 
     A comment used to assert this and got the reason wrong — it said the window
@@ -1052,6 +1061,11 @@ def test_no_two_post_visit_messages_can_be_overdue_at_once() -> None:
     decides whether a row is still sendable — the first version of this test
     guarded `_POST_VISIT_GRACE`, an hour narrower, and so had the very defect
     its own docstring is about.
+
+    Scope, because the name used to over-promise: this constrains the *untouched*
+    path only. A row that has been held is judged by the give-up counter, not by
+    this window, and what stops a burst there is the one-per-lead-per-sweep cap
+    — see `test_only_one_post_visit_message_reaches_a_lead_per_sweep`.
     """
     from app.services.followups import _POST_VISIT_OFFSETS, _SEND_STALE_AFTER
 
@@ -1148,5 +1162,74 @@ async def test_a_call_follow_up_from_four_months_ago_is_not_sent_now() -> None:
                     await process_due_followups(db)
 
             assert delivered == [], f"a four-month-old call nudge went out: {delivered}"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_cadence_survives_rows_created_out_of_order() -> None:
+    """The tie-break is `id`, and `id` is only the cadence by convention.
+
+    Once a lead's sequence has been held every row carries the same deferral, so
+    the sort falls through to id — which matches the cadence solely because
+    `enqueue_for_visit` iterates `_POST_VISIT_OFFSETS` in the order that dict
+    literal happens to be written. Nothing enforced that, and reordering three
+    lines is the kind of edit that passes review on sight.
+
+    So the ordering is stated where it belongs: by the offset each message is
+    for, not by the order its row was inserted.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead_id, _ = await _lead_with_thread(db, "+13035557029")
+                visit = Visit(
+                    lead_id=lead_id,
+                    calendar_provider="manual",
+                    external_booking_id="manual-order-1",
+                    status=VisitStatus.SCHEDULED,
+                    scheduled_at=datetime.now(UTC) - timedelta(days=2),
+                    duration_minutes=30,
+                    timezone="UTC",
+                )
+                db.add(visit)
+                await db.flush()
+                # Inserted latest-cadence-first, and all on the identical
+                # timestamp — which is what a common hold produces, and the only
+                # situation where the tie-break decides anything. Computing the
+                # time inside the loop gave each row its own microsecond and the
+                # first sort key silently did the work.
+                due = datetime.now(UTC) - timedelta(minutes=1)
+                for kind in (
+                    FollowUpKind.POST_VISIT_7D,
+                    FollowUpKind.POST_VISIT_72H,
+                    FollowUpKind.POST_VISIT_24H,
+                ):
+                    db.add(
+                        FollowUp(
+                            lead_id=lead_id,
+                            visit_id=visit.id,
+                            kind=kind,
+                            status=FollowUpStatus.PENDING,
+                            scheduled_for=due,
+                        )
+                    )
+                await db.commit()
+
+            delivered: list[str] = []
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                delivered.append(text[:60])
+                return "sm.x", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.followups._dispatch_send", _ok):
+                    await process_due_followups(db)
+
+            assert len(delivered) == 1, delivered
+            assert "how did the visit go" in delivered[0].lower(), (
+                f"insertion order decided the cadence, not the cadence: {delivered[0]!r}"
+            )
     finally:
         await _cleanup()

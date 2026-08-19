@@ -2,6 +2,27 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.49.1] — 2026-08-16
+
+### Corregido — los tres residuos de la sexta ronda, y dos tests que mentían
+
+- **El orden de la cadencia era una convención tipográfica.** El desempate era
+  `id`, e `id` coincidía con la cadencia solo porque `enqueue_for_visit` recorre
+  `_POST_VISIT_OFFSETS` en el orden en que ese diccionario está *escrito*.
+  Reordenar tres líneas —una edición que pasa cualquier revisión— invertía lo
+  que recibe el cliente. Ahora el orden se deriva de los propios offsets.
+  **El test que escribí para esto pasaba sin probar nada**: cada fila tomaba su
+  `datetime.now()` y difería en microsegundos, así que el primer criterio ya
+  desempataba. Con las marcas igualadas se puso rojo y mostró el fallo real.
+- **El canario del nuevo barrido estaba un punto por debajo de la cuenta real**
+  (exigía 3 emisores habiendo 4), así que el renombrado que existe para atrapar
+  seguía pasándolo. Ahora cada canal —`sms`, `whatsapp`, `email`— responde por
+  sí mismo. Verificado por mutación.
+- **Un test prometía más de lo que comprueba**: la invariante de la ventana solo
+  acota la ruta de las filas que nadie ha tocado; a las retenidas las acota el
+  contador de rendición y la ráfaga la impide el tope por barrido. Nombre y
+  docstring dicen ahora exactamente eso.
+
 ## [0.49.0] — 2026-08-16
 
 ### Cambiado — una columna nueva que cierra una clase entera de fallos

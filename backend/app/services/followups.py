@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,6 +72,18 @@ _POST_VISIT_OFFSETS = {
 # true while the invariant broke, so `test_no_two_post_visit_messages_can_be_
 # overdue_at_once` checks it against the actual values instead.
 _POST_VISIT_GRACE = min(_POST_VISIT_OFFSETS.values())
+
+# The cadence, derived from the offsets rather than from the order the dict
+# literal above happens to be written in. Sorting by `id` put these in cadence
+# order only because `enqueue_for_visit` inserts them in the order it reads
+# them — so reordering three lines, or creating the rows by any other route,
+# sent "new listings similar to what you saw" before "how did the visit go?".
+_CADENCE_RANK = {
+    kind: rank
+    for rank, (kind, _) in enumerate(
+        sorted(_POST_VISIT_OFFSETS.items(), key=lambda item: item[1])
+    )
+}
 
 # The same rule at send time needs a little more room than at creation time, or
 # the two disagree about a row on the boundary: `enqueue_for_visit` deliberately
@@ -358,13 +370,18 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             # id *is* the cadence, and it is deterministic.
             .order_by(
                 func.coalesce(FollowUp.postponed_until, FollowUp.scheduled_for),
-                # By id after the date, because the date stops discriminating:
-                # a hold writes the same sweep-level "tomorrow" into every held
-                # row, so once a lead's sequence has been held the three rows
-                # tie. It resolved backwards in practice — the lead was told
-                # "new listings similar to what you saw" first and asked "how
-                # did the visit go?" two days later. `enqueue_for_visit` inserts
-                # in cadence order, so ascending id *is* the cadence.
+                # Then by cadence, because the date stops discriminating: a hold
+                # writes the same sweep-level "tomorrow" into every held row, so
+                # once a lead's sequence has been held the three rows tie. It
+                # resolved backwards in practice — the lead was told "new
+                # listings similar to what you saw" first and asked "how did the
+                # visit go?" two days later.
+                case(
+                    *[(FollowUp.kind == k, rank) for k, rank in _CADENCE_RANK.items()],
+                    else_=-1,
+                ),
+                # And id last, so two rows of the same kind (two visits) stay
+                # deterministic.
                 FollowUp.id,
             )
             .limit(limit)

@@ -431,7 +431,7 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
     outbound_verbs = {"post", "put", "request", "create"}
     undeclared: list[str] = []
     walked = 0
-    considered = 0
+    seen_per_module: dict[str, int] = {}
     for path in sorted(APP.rglob("services/**/*.py")):
         walked += 1
         tree = ast.parse(path.read_text())
@@ -440,7 +440,7 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
                 continue
             if not node.name.startswith("send_"):
                 continue
-            considered += 1
+            seen_per_module[path.name] = seen_per_module.get(path.name, 0) + 1
             sends = any(
                 isinstance(inner, ast.Call)
                 and isinstance(inner.func, ast.Attribute)
@@ -454,10 +454,15 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
     # because that has happened here before — the count belongs to the sweep it
     # guards, not to a neighbouring one.
     assert walked > 10, f"only walked {walked} service files — the path is wrong"
-    assert considered >= 3, (
-        f"only {considered} functions named send_* — the sweep has stopped "
-        "seeing the senders it is supposed to police"
-    )
+    # Per module, not a global floor. A floor of three sat exactly one below the
+    # real count of four, so renaming a sender — the precise way one escapes an
+    # AST sweep keyed on `startswith("send_")` — dropped it to three and the
+    # canary was still satisfied. Each channel has to keep answering for itself.
+    for module in ("sms.py", "whatsapp.py", "email.py"):
+        assert seen_per_module.get(module), (
+            f"{module} contributes no send_* function — either the channel was "
+            "renamed out of this sweep's sight, or the file moved"
+        )
     assert not undeclared, (
         "these look like outbound primitives but are not in SENDING_PRIMITIVES, "
         f"so the opt-out sweep never follows them: {undeclared}"

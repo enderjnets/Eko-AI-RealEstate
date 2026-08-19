@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.49.0";
+export const CURRENT_VERSION = "0.49.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
