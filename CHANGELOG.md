@@ -2,6 +2,25 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.50.1] — 2026-08-16
+
+### Corregido — los tres menores de la séptima ronda
+
+- **El contador se marcaba antes de que la base de datos lo confirmara.** En el
+  handler de selección de canal, `counted` se ponía antes del commit: si ese
+  commit fallaba, el handler exterior deshacía el incremento —así que el límite
+  de rendición era inalcanzable por esa vía— mientras `counted` silenciaba el
+  recuento de fallos y la fila volvía a PENDING. El número afirmaba un
+  desenlace que la base de datos no tenía. Ahora se cuenta después del commit.
+- **La consola no decía cuándo se volverá a intentar.** Desde que el
+  aplazamiento tiene columna propia, `scheduled_for` se queda en la fecha para
+  la que era el mensaje —correcto y más útil—, pero el asesor veía "retenido, 7
+  intentos, vencía hace 7 días" sin saber cuándo lo intentará el sistema. Añadido
+  `next_attempt_at`.
+- **El canario por módulo comprobaba que hubiera *alguno*, no cuántos**, así que
+  pasaba si un módulo bajaba de dos emisores a uno — el mismo adelgazamiento que
+  el umbral global permitía.
+
 ## [0.50.0] — 2026-08-16
 
 ### Corregido — séptima ronda de auditoría

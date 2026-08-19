@@ -636,18 +636,23 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                 # cancelling somebody's sequence, but bounded so a permanently
                 # malformed row cannot spin forever.
                 refreshed.attempts += 1
-                if refreshed.attempts > _HOLD_GIVE_UP_AFTER_HOLDS:
+                gave_up = refreshed.attempts > _HOLD_GIVE_UP_AFTER_HOLDS
+                if gave_up:
                     refreshed.status = FollowUpStatus.FAILED
+                await db.commit()
+                # Tallied only once the commit has actually landed. Marking it
+                # counted beforehand meant that if the commit raised, the outer
+                # handler rolled the increment back — the give-up counter never
+                # advanced, so its bound was unreachable on this path — while
+                # `counted` suppressed the failure tally and the row went back
+                # to PENDING. The count claimed an outcome the database did not
+                # have.
+                if gave_up:
                     failed += 1
-                    counted = True
                     marked_failed = True
                 else:
                     skipped += 1
-                # Counted either way: the commit below can raise into the outer
-                # handler, which would otherwise tally the same row a second
-                # time — once skipped and once failed.
                 counted = True
-                await db.commit()
                 continue
 
             if conv is None:

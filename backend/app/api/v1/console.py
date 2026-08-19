@@ -75,7 +75,12 @@ class HeldFollowUp(BaseModel):
     or the sends themselves failed."""
 
     follow_up_id: int
+    # When the message was for. Since the deferral moved to its own column this
+    # stays put, which is what makes "held, 7 attempts, due 7 days ago" honest —
+    # but on its own it left the operator with no idea when the system would
+    # look again, so `next_attempt_at` carries that.
     scheduled_for: datetime
+    next_attempt_at: datetime | None = None
     holds: int
     status: FollowUpStatus
     lead: ConsoleLead
@@ -226,6 +231,7 @@ async def today(
         HeldFollowUp(
             follow_up_id=fu.id,
             scheduled_for=fu.scheduled_for,
+            next_attempt_at=fu.postponed_until,
             holds=fu.attempts,
             status=fu.status,
             lead=ConsoleLead.model_validate(lead),
