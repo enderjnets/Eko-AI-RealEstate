@@ -431,7 +431,7 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
     outbound_verbs = {"post", "put", "request", "create"}
     undeclared: list[str] = []
     walked = 0
-    seen_per_module: dict[str, int] = {}
+    seen_per_module: dict[str, set[str]] = {}
     for path in sorted(APP.rglob("services/**/*.py")):
         walked += 1
         tree = ast.parse(path.read_text())
@@ -440,7 +440,7 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
                 continue
             if not node.name.startswith("send_"):
                 continue
-            seen_per_module[path.name] = seen_per_module.get(path.name, 0) + 1
+            seen_per_module.setdefault(path.name, set()).add(node.name)
             sends = any(
                 isinstance(inner, ast.Call)
                 and isinstance(inner.func, ast.Attribute)
@@ -454,20 +454,35 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
     # because that has happened here before — the count belongs to the sweep it
     # guards, not to a neighbouring one.
     assert walked > 10, f"only walked {walked} service files — the path is wrong"
-    # Per module, not a global floor. A floor of three sat exactly one below the
-    # real count of four, so renaming a sender — the precise way one escapes an
-    # AST sweep keyed on `startswith("send_")` — dropped it to three and the
-    # canary was still satisfied. Each channel has to keep answering for itself.
-    # The count, not merely its truthiness: asserting "at least one" passes a
-    # module that quietly drops from two senders to one, which is the same
-    # thinning the global floor of three used to allow.
-    expected_per_module = {"sms.py": 1, "whatsapp.py": 1, "email.py": 1}
+    # Per module, and by name rather than by count. A global floor of three sat
+    # one below the real four, so renaming a sender — the precise way one
+    # escapes an AST sweep keyed on `startswith("send_")` — dropped it to three
+    # and the canary was still satisfied. Moving to a per-module floor of one
+    # did not fix that: `>= 1` is `bool()`, so `send_sms` could vanish and any
+    # other `send_*` in the same file would keep the assertion green.
+    #
+    # Names, compared as sets, is the only form with no slack in it. The sweep
+    # has to find exactly what `SENDING_PRIMITIVES` claims exists: a rename, a
+    # move, a deletion and an undeclared newcomer are all the same failure —
+    # the two lists disagreeing — and each says which side drifted.
+    expected_per_module = {
+        "sms.py": {"send_sms"},
+        "whatsapp.py": {"send_text_message"},
+        "email.py": {"send_email"},
+    }
     for module, expected in expected_per_module.items():
-        assert seen_per_module.get(module, 0) >= expected, (
-            f"{module} contributes {seen_per_module.get(module, 0)} send_* "
-            f"functions, expected at least {expected} — either a channel was "
-            "renamed out of this sweep's sight, or the file moved"
+        found = seen_per_module.get(module, set())
+        assert found == expected, (
+            f"{module} contributes {sorted(found)}, expected {sorted(expected)}"
+            " — a sender was renamed out of this sweep's sight, the file moved,"
+            " or a new one arrived undeclared"
         )
+    # And the union has to be the declared list itself, so a primitive cannot be
+    # quietly relocated to a module this table does not name.
+    assert set().union(*expected_per_module.values()) == SENDING_PRIMITIVES, (
+        "the per-module table and SENDING_PRIMITIVES disagree about what the "
+        "outbound primitives are"
+    )
     assert not undeclared, (
         "these look like outbound primitives but are not in SENDING_PRIMITIVES, "
         f"so the opt-out sweep never follows them: {undeclared}"

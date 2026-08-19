@@ -1281,9 +1281,15 @@ async def test_a_later_message_waits_for_the_earlier_one_about_the_same_visit() 
                 db.add(first)
                 db.add(
                     FollowUp(
+                        # 7D, not 72H. `_lead_with_thread` seeds an inbound
+                        # dated now, and the re-engagement rule
+                        # (`followups.py:475`) applies to 72H alone — so with
+                        # 72H this row was SKIPPED a hundred lines before the
+                        # cadence invariant was reached, and the assertion
+                        # below held with the invariant deleted entirely.
                         lead_id=lead_id,
                         visit_id=visit.id,
-                        kind=FollowUpKind.POST_VISIT_72H,
+                        kind=FollowUpKind.POST_VISIT_7D,
                         status=FollowUpStatus.PENDING,
                         scheduled_for=datetime.now(UTC) - timedelta(minutes=1),
                     )
@@ -1303,5 +1309,206 @@ async def test_a_later_message_waits_for_the_earlier_one_about_the_same_visit() 
             assert delivered == [], (
                 f"the later message overtook the one still owed: {delivered}"
             )
+
+            # An empty `delivered` is what EVERY skip rule in the module
+            # produces, which is why this assertion alone stayed green with the
+            # invariant deleted outright. The invariant leaves a signature no
+            # other rule leaves: the row is still PENDING — it is owed, not
+            # refused — and carries a stamp to look again tomorrow.
+            async with get_session_factory()() as db:
+                held = (
+                    await db.execute(
+                        select(FollowUp).where(
+                            FollowUp.lead_id == lead_id,
+                            FollowUp.kind == FollowUpKind.POST_VISIT_7D,
+                        )
+                    )
+                ).scalar_one()
+                assert held.status is FollowUpStatus.PENDING, (
+                    f"the later message was settled as {held.status}, so some "
+                    "other rule handled it and this test is not watching the "
+                    "cadence invariant at all"
+                )
+                assert held.postponed_until is not None, (
+                    "held without a retry stamp: nothing will ever look at "
+                    "this row again"
+                )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_sequence_that_gives_up_takes_the_rest_of_the_sequence_with_it() -> None:
+    """One hold clock per sequence, not one per message.
+
+    A consent hold retries daily and gives up after a fortnight. Dropping only
+    the row that ran out let the cadence invariant release its sibling, which
+    started a fresh fortnight, and the third a third: three serial clocks that
+    outlast the staleness ceiling. The 7-day message was then cancelled unsent
+    with holds to spare — and when consent did arrive late, the lead got a lone
+    "how did the visit go?" a month after the visit, its two earlier messages
+    never sent. The sequence has one fate, so it settles together.
+    """
+    from app.services.followups import _HOLD_GIVE_UP_AFTER_HOLDS
+
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                # No inbound: nothing has given consent, so every channel is
+                # refused and the hold path is the one under test.
+                lead_id, _ = await _lead_with_thread(
+                    db, "+13035557031", with_inbound=False
+                )
+                visit = Visit(
+                    lead_id=lead_id,
+                    calendar_provider="manual",
+                    external_booking_id="manual-giveup-1",
+                    status=VisitStatus.SCHEDULED,
+                    scheduled_at=datetime.now(UTC) - timedelta(days=15),
+                    duration_minutes=30,
+                    timezone="UTC",
+                )
+                db.add(visit)
+                await db.flush()
+                db.add(
+                    FollowUp(
+                        lead_id=lead_id,
+                        visit_id=visit.id,
+                        kind=FollowUpKind.POST_VISIT_24H,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) - timedelta(days=14),
+                        # One short of the limit: this sweep's hold is the last.
+                        attempts=_HOLD_GIVE_UP_AFTER_HOLDS,
+                        # A row with holds on it always carries the stamp the
+                        # hold path wrote. Without one it is not a held row, it
+                        # is an abandoned one, and the staleness rule cancels it
+                        # long before the give-up path is reached.
+                        postponed_until=datetime.now(UTC) - timedelta(minutes=1),
+                    )
+                )
+                db.add(
+                    FollowUp(
+                        lead_id=lead_id,
+                        visit_id=visit.id,
+                        kind=FollowUpKind.POST_VISIT_72H,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) - timedelta(days=12),
+                        # Held behind the 24h row by the cadence invariant,
+                        # which stamps the same way.
+                        postponed_until=datetime.now(UTC) - timedelta(minutes=1),
+                    )
+                )
+                db.add(
+                    FollowUp(
+                        # Not due yet, so it is not even in the batch. It has to
+                        # be reached through the database, not through the rows
+                        # this sweep happens to be holding.
+                        lead_id=lead_id,
+                        visit_id=visit.id,
+                        kind=FollowUpKind.POST_VISIT_7D,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) + timedelta(days=2),
+                    )
+                )
+                await db.commit()
+
+            delivered: list[str] = []
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                delivered.append(text[:60])
+                return "sm.x", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.followups._dispatch_send", _ok):
+                    await process_due_followups(db)
+
+            assert delivered == [], (
+                f"nothing has consent, so nothing may go out: {delivered}"
+            )
+
+            async with get_session_factory()() as db:
+                rows = (
+                    await db.execute(
+                        select(FollowUp).where(FollowUp.lead_id == lead_id)
+                    )
+                ).scalars().all()
+                by_kind = {r.kind: r.status for r in rows}
+                assert by_kind == {
+                    FollowUpKind.POST_VISIT_24H: FollowUpStatus.SKIPPED,
+                    FollowUpKind.POST_VISIT_72H: FollowUpStatus.SKIPPED,
+                    FollowUpKind.POST_VISIT_7D: FollowUpStatus.SKIPPED,
+                }, (
+                    "the sequence outlived the hold clock that ran out: "
+                    f"{by_kind}"
+                )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_staleness_ceiling_is_derived_and_it_bites() -> None:
+    """Past the ceiling a message is cancelled, not sent — and the ceiling is
+    tied to the longest wait the module can legitimately produce.
+
+    The relationship is the point. Written as a flat 30 days it silently
+    cancelled work that the hold clock had not finished with; anyone raising
+    `_HOLD_GIVE_UP_AFTER_HOLDS` past the literal would have reintroduced that,
+    and nothing would have gone red.
+    """
+    from app.services.followups import (
+        _HOLD_GIVE_UP_AFTER_HOLDS,
+        _HOLD_RETRY_AFTER,
+        _MAX_LATENESS,
+    )
+
+    assert _MAX_LATENESS > _HOLD_GIVE_UP_AFTER_HOLDS * _HOLD_RETRY_AFTER, (
+        "the ceiling cancels sequences the hold clock is still working on: "
+        f"ceiling {_MAX_LATENESS}, one clock "
+        f"{_HOLD_GIVE_UP_AFTER_HOLDS * _HOLD_RETRY_AFTER}"
+    )
+
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                # With an inbound on file the consent gate permits the send, so
+                # the only thing that can stop it is the ceiling.
+                lead_id, _ = await _lead_with_thread(db, "+13035557032")
+                db.add(
+                    FollowUp(
+                        lead_id=lead_id,
+                        kind=FollowUpKind.POST_VISIT_24H,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) - _MAX_LATENESS
+                        - timedelta(days=1),
+                        # Deferred, so the shorter staleness rule for rows
+                        # nobody ever looked at does not apply here.
+                        postponed_until=datetime.now(UTC) - timedelta(minutes=1),
+                    )
+                )
+                await db.commit()
+
+            delivered: list[str] = []
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                delivered.append(text[:60])
+                return "sm.x", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.followups._dispatch_send", _ok):
+                    await process_due_followups(db)
+
+            assert delivered == [], (
+                f"a message this late is not worth sending: {delivered}"
+            )
+
+            async with get_session_factory()() as db:
+                row = (
+                    await db.execute(
+                        select(FollowUp).where(FollowUp.lead_id == lead_id)
+                    )
+                ).scalar_one()
+                assert row.status is FollowUpStatus.CANCELLED, row.status
     finally:
         await _cleanup()

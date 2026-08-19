@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.50.1";
+export const CURRENT_VERSION = "0.51.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.51.0",
+    date: "2026-08-19",
+    title: {
+      en: "A follow-up sequence now ends all at once",
+      es: "Una secuencia de seguimiento ahora termina de una vez",
+    },
+    changes: [
+      {
+        en: "When a fortnight goes by with no channel permitted to write to a client, we stop trying. Until now we stopped trying with that one message only: the next in the sequence was released and began its own fortnight, and the third began a third. Strung end to end those outlast our staleness limit, so the 7-day message was cancelled unsent \u2014 and if permission did arrive late, the client received a single \"how did the viewing go?\" a month after the viewing, with the two earlier messages never sent. A sequence has one fate and now closes as one.",
+        es: "Cuando pasan quince d\u00edas sin que ning\u00fan canal tenga permiso para escribir a un cliente, dejamos de intentarlo. Hasta ahora dej\u00e1bamos de intentarlo solo con ese mensaje: el siguiente de la secuencia quedaba liberado y empezaba su propia quincena, y el tercero la suya. Encadenadas superan nuestro l\u00edmite de antig\u00fcedad, as\u00ed que el mensaje de los 7 d\u00edas se cancelaba sin enviarse \u2014 y si el permiso llegaba tarde, al cliente le llegaba un \u00fanico \"\u00bfqu\u00e9 tal la visita?\" un mes despu\u00e9s de la visita, con los dos anteriores nunca enviados. Una secuencia tiene un solo destino y ahora se cierra entera.",
+      },
+      {
+        en: "The limit that stops us sending something too late is now worked out from the retry window it has to clear, instead of being a number somebody picked. The window itself does not change \u2014 it is still 30 days \u2014 but it can no longer end up shorter than the work still in progress underneath it.",
+        es: "El l\u00edmite que impide enviar algo demasiado tarde se calcula ahora a partir del plazo de reintentos que tiene que dejar pasar, en vez de ser un n\u00famero elegido. El plazo no cambia \u2014 siguen siendo 30 d\u00edas \u2014 pero ya no puede quedarse por debajo del trabajo que todav\u00eda est\u00e1 en curso.",
+      },
+      {
+        en: "Correcting our own record: the ordering rule we announced in 0.50.0 was real, but nothing tested it \u2014 it could be deleted outright and every check stayed green. It is covered now, and we verified the cover by deleting the rule and watching the check fail. The same applies to the safeguard that keeps any sending channel from escaping opt-out control, which was written in a way that accepted anything.",
+        es: "Corrigiendo nuestro propio registro: la regla de orden que anunciamos en la 0.50.0 era real, pero nada la probaba \u2014 se pod\u00eda borrar entera y todas las comprobaciones segu\u00edan en verde. Ya est\u00e1 cubierta, y lo verificamos borr\u00e1ndola y viendo fallar la comprobaci\u00f3n. Lo mismo con la salvaguarda que impide que un canal de env\u00edo se escape del control de bajas, que estaba escrita de forma que aceptaba cualquier cosa.",
+      },
+    ],
+  },
   {
     version: "0.50.0",
     date: "2026-08-16",

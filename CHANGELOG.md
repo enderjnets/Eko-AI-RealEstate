@@ -2,6 +2,43 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.51.0] — 2026-08-19
+
+### Corregido — la octava ronda de auditoría
+
+- **La secuencia de seguimiento ya no se muere a plazos.** Cuando pasan catorce
+  días sin que ningún canal tenga permiso, el sistema se rinde con ese mensaje.
+  Hasta ahora se rendía **solo con ese**: el siguiente de la secuencia quedaba
+  liberado y empezaba su propia quincena, y el tercero la suya. Tres relojes en
+  fila superan el límite de antigüedad, así que el mensaje de los 7 días se
+  cancelaba sin enviarse — y si el permiso llegaba tarde, el cliente recibía un
+  único "¿qué tal la visita?" un mes después de la visita, con los dos mensajes
+  anteriores nunca enviados. La secuencia tiene un solo destino y ahora se cierra
+  entera a la vez.
+- **El límite de antigüedad se calcula, ya no se escribe a mano.** Estaba fijado
+  en 30 días, un número elegido que no guardaba ninguna relación con la quincena
+  de reintentos que tiene que dejar pasar; por eso cancelaba trabajo que todavía
+  estaba en curso. Ahora se deriva de esa quincena. **El plazo real no cambia:
+  siguen siendo 30 días.** Lo que cambia es que subir los reintentos mueve el
+  límite con ellos en vez de reintroducir el fallo en silencio.
+- **Un mensaje ya resuelto no se vuelve a procesar en la misma pasada.** El
+  barrido recargaba cada fila de memoria sin comprobar que siguiera pendiente,
+  así que una decisión tomada sobre un mensaje al principio del lote podía
+  deshacerse sobre ese mismo mensaje al final.
+
+### Corregido — dos comprobaciones que no comprobaban nada
+
+Ninguna de las dos afecta a lo que usted ve; las dos afectan a lo que podemos
+prometerle sobre lo que ya está en marcha.
+
+- La regla de orden publicada en la v0.50.0 **no tenía ninguna prueba que la
+  respaldara**: se podía borrar entera y todo seguía en verde. La prueba que
+  debía cubrirla se detenía en una regla anterior sin llegar nunca a ella. Ya
+  está cubierta, y verificada borrándola: ahora se pone en rojo.
+- La comprobación que vigila que ningún canal de envío se escape del control de
+  bajas **aceptaba cualquier cosa** por cómo estaba escrita. Ahora compara la
+  lista real contra la declarada, nombre a nombre.
+
 ## [0.50.1] — 2026-08-16
 
 ### Corregido — los tres menores de la séptima ronda

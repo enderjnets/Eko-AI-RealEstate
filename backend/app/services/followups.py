@@ -93,11 +93,23 @@ _CADENCE_RANK = {
 _SEND_STALE_AFTER = _POST_VISIT_GRACE + timedelta(hours=1)
 
 # However legitimately a message has been deferred, past this it is not worth
-# sending. Comfortably clear of the fortnight a consent hold may take, so a
-# sequence waiting on permission still completes; what it stops is the open-ended
-# drift the per-sweep cap can accumulate — one message per lead per day means a
-# buyer with many viewings would otherwise hear about the first one weeks later.
-_MAX_LATENESS = timedelta(days=30)
+# sending. Derived rather than chosen: it has to sit above the longest wait the
+# rest of this module can legitimately produce, and the flat 30 days it used to
+# be did not — three rows each running their own fortnight came to 43, so the
+# ceiling cancelled a 7-day message whose hold clock had not run out. A ceiling
+# that fires early does the exact thing it exists to prevent.
+#
+# A sequence now dies together, so there is only ever one hold clock to clear.
+# Written as a relationship, raising `_HOLD_GIVE_UP_AFTER_HOLDS` moves the
+# ceiling with it instead of quietly reintroducing that.
+#
+# The drain term is the open-ended part and the reason the ceiling exists at
+# all: the per-sweep cap releases one message per lead per day, so a buyer with
+# many viewings queues a backlog that takes as many days to clear as it has
+# messages in it. Sixteen days of it, which is where the flat 30 landed — this
+# is a hardening of the relationship, not a change to what anyone receives.
+_DRAIN_ALLOWANCE = timedelta(days=16)
+_MAX_LATENESS = _HOLD_GIVE_UP_AFTER_HOLDS * _HOLD_RETRY_AFTER + _DRAIN_ALLOWANCE
 
 # Bilingual templates. {name} is dropped cleanly when the lead has no name.
 _TEMPLATES: dict[FollowUpKind, dict[str, str]] = {
@@ -418,6 +430,13 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
         fu = await db.get(FollowUp, fu_id)
         if fu is None:
             continue
+        # The batch was PENDING when it was selected; an earlier item in this
+        # same batch can have settled this one since. `db.get` serves the
+        # identity map, so it hands back that decision rather than the row the
+        # query saw — and without this the loop would carry on and apply the
+        # send rules to a message it has already given up on.
+        if fu.status is not FollowUpStatus.PENDING:
+            continue
         counted = False
         marked_failed = False
         # Every path out of this item persists its own outcome before the
@@ -674,6 +693,40 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                         fu.id, lead.id, fu.attempts,
                     )
                     fu.status = FollowUpStatus.SKIPPED
+                    # The rest of the sequence dies with it. Those rows are the
+                    # same lead in the same consent state, and the cadence
+                    # invariant has been holding them behind this one — so
+                    # releasing them now just starts a second fortnight, then a
+                    # third. Three serial hold clocks outlast the staleness
+                    # ceiling, which is how a lone "how did the visit go?"
+                    # arrived a month after the visit with its two earlier
+                    # messages never sent. One clock per sequence, not per row.
+                    #
+                    # Same commit as the give-up above (`_persist` in the
+                    # `finally`), so the batch can never be interrupted with the
+                    # sequence half-buried.
+                    if fu.visit_id is not None:
+                        doomed = (
+                            (
+                                await db.execute(
+                                    select(FollowUp).where(
+                                        FollowUp.visit_id == fu.visit_id,
+                                        FollowUp.id != fu.id,
+                                        FollowUp.status == FollowUpStatus.PENDING,
+                                    )
+                                )
+                            )
+                            .scalars()
+                            .all()
+                        )
+                        for sibling in doomed:
+                            sibling.status = FollowUpStatus.SKIPPED
+                        if doomed:
+                            log.info(
+                                "Dropped %d remaining follow-up(s) of visit %d "
+                                "with it — the sequence shares one hold clock",
+                                len(doomed), fu.visit_id,
+                            )
                 else:
                     log.info(
                         "Follow-up %d held for lead %d: %d reachable channel(s), "
