@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.49.1";
+export const CURRENT_VERSION = "0.50.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.50.0",
+    date: "2026-08-16",
+    title: {
+      en: "Follow-ups really do arrive in order now",
+      es: "Los seguimientos sí llegan ahora en orden",
+    },
+    changes: [
+      {
+        en: "Correcting the previous entry: the fix that claimed follow-ups would arrive in the right order did not actually take effect. A client could still be asked \"just checking in on the property you saw\" before \"how did the viewing go?\". A later message now waits for the earlier one about the same viewing, which no timing quirk can get around.",
+        es: "Corrigiendo la entrada anterior: el arreglo que decía que los seguimientos llegarían en el orden correcto no llegaba a aplicarse. A un cliente aún podía llegarle \"solo por saber cómo va lo del piso que viste\" antes que \"¿qué tal fue la visita?\". Ahora un mensaje posterior espera al anterior de la misma visita, y eso no depende de la hora exacta de nada.",
+      },
+      {
+        en: "A postponed follow-up shows on the calendar at the date it will actually go out, instead of weeks in the past.",
+        es: "Un seguimiento aplazado aparece en el calendario en la fecha en que va a salir de verdad, y no semanas atrás.",
+      },
+      {
+        en: "Nothing reaches a client absurdly late any more: a message more than a month past its moment is dropped rather than sent. A buyer with many viewings was getting \"new listings similar to what you saw\" six weeks afterwards.",
+        es: "Ya no llega nada absurdamente tarde: un mensaje con más de un mes de retraso se descarta en vez de enviarse. Un comprador con muchas visitas recibía \"hay pisos nuevos como el que viste\" seis semanas después.",
+      },
+    ],
+  },
   {
     version: "0.49.0",
     date: "2026-08-16",

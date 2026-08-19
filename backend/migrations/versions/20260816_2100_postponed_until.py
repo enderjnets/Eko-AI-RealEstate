@@ -38,8 +38,11 @@ def upgrade() -> None:
         "follow_ups",
         sa.Column("postponed_until", sa.DateTime(timezone=True), nullable=True),
     )
-    # The sweep reads `COALESCE(postponed_until, scheduled_for)` to decide what
-    # is due, and both halves are already indexed alone; this covers the pair.
+    # NOTE: this index turned out to be useless and 034 replaces it. Postgres
+    # cannot use an index on either column for a predicate on
+    # `COALESCE(a, b)` — the claim originally written here was wrong, and the
+    # sweep was scanning every PENDING row. Left in place rather than rewritten
+    # so a database already migrated to 032 follows the same path as a new one.
     op.create_index(
         "ix_follow_ups_postponed_until",
         "follow_ups",

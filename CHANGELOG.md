@@ -2,6 +2,43 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.50.0] — 2026-08-16
+
+### Corregido — séptima ronda de auditoría
+
+La ronda confirmó que el cambio estructural cerró lo suyo (tres visitas el mismo
+día: 9 encoladas, 9 entregadas, 0 canceladas) y encontró que **no lo terminé**.
+
+- **El arreglo del orden no se ejecutaba nunca, y el changelog ya lo prometía.**
+  Puse la cadencia como segundo criterio de ordenación, detrás de la fecha — y
+  las fechas **no empatan**: una retención estampa "mañana + el desfase del
+  tick" sobre una fila ya vencida mientras su hermana conserva su hora exacta.
+  El desempate nunca llegaba a consultarse. Reproducido al ritmo real de
+  producción. Ahora es una **invariante**, no un truco de ordenación: un mensaje
+  post-visita espera mientras siga pendiente otro anterior **de la misma
+  visita**. Ninguna fase de reloj puede con eso.
+- **La agenda se arregló en el filtro y no en la proyección.** Seleccionaba y
+  ordenaba por la fecha efectiva y luego devolvía la columna cruda, así que un
+  seguimiento aplazado se pintaba semanas en el pasado, antes del propio suelo
+  del endpoint. Arreglar una consulta en su WHERE y no en su SELECT la deja a
+  medias y con aspecto de estar bien.
+- **El defecto de "una columna, dos significados" se había mudado a
+  `attempts`.** Lo quité de `scheduled_for` y añadí `attempts == 0` a la regla
+  de antigüedad, que le daba un cuarto significado ("¿alguien tocó esto?")
+  encima de los tres que ya tiene. Además exentaba para siempre a cualquier fila
+  que hubiera tenido **un** fallo transitorio: un aviso de cuatro meses volvía a
+  salir. Migración **033** hace explícitos los aplazamientos anteriores a la 032
+  y el conjunto sobra.
+- **Nada acotaba lo tarde que podía llegar un mensaje aplazado por el tope.**
+  Se drena uno por lead y día, así que un comprador con quince visitas recibía
+  "hay pisos nuevos" seis semanas después. Ahora hay un techo absoluto de 30
+  días — escribible solo porque `scheduled_for` ya es honesto.
+- **Migración 034: el índice que la 032 decía tener, no lo tenía.** Postgres no
+  puede usar un índice de ninguna de las dos columnas para un predicado sobre
+  `COALESCE(a, b)`; medido con 50.000 filas, el barrido recorría **todas** las
+  PENDING, unas 10× más lento y creciendo con la cola. Índice de expresión
+  parcial, y fuera el que no usaba nadie.
+
 ## [0.49.1] — 2026-08-16
 
 ### Corregido — los tres residuos de la sexta ronda, y dos tests que mentían

@@ -615,7 +615,13 @@ async def visits_agenda(
                 kind="followup",
                 id=f.id,
                 title=_FOLLOWUP_LABELS.get(f.kind.value, "Follow-up"),
-                scheduled_at=f.scheduled_for,
+                # The effective date, matching the filter and the sort above.
+                # Projecting the raw column put a deferred follow-up back at its
+                # original date — selected because COALESCE fell inside the
+                # window, then rendered weeks in the past, before the endpoint's
+                # own floor. Fixing a query in its WHERE and not in its SELECT
+                # leaves it half-fixed and looking right.
+                scheduled_at=f.postponed_until or f.scheduled_for,
                 duration_minutes=None,
                 timezone=tz,
                 status=f.status.value,

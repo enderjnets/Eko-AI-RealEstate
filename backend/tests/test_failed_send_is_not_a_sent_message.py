@@ -914,6 +914,9 @@ async def test_an_outage_does_not_cancel_a_sequence_that_was_being_held() -> Non
                     status=FollowUpStatus.PENDING,
                     scheduled_for=datetime.now(UTC) - timedelta(hours=30),
                 )
+                # A held row says so: since migration 032 the deferral lives in
+                # its own column, and 033 backfilled the ones that predate it.
+                held.postponed_until = datetime.now(UTC) - timedelta(minutes=1)
                 held.attempts = 3
                 db.add(held)
                 await db.commit()
@@ -956,7 +959,9 @@ async def test_a_sequence_held_past_the_give_up_is_not_released_later() -> None:
                     lead_id=lead_id,
                     kind=FollowUpKind.POST_VISIT_24H,
                     status=FollowUpStatus.PENDING,
-                    scheduled_for=datetime.now(UTC) - timedelta(days=38),
+                    # Inside `_MAX_LATENESS`, so the give-up counter is what
+                    # decides here and not the lateness ceiling in front of it.
+                    scheduled_for=datetime.now(UTC) - timedelta(days=20),
                 )
                 exhausted.postponed_until = datetime.now(UTC) - timedelta(minutes=1)
                 exhausted.attempts = 15  # one past the fortnight of daily holds
@@ -1230,6 +1235,73 @@ async def test_the_cadence_survives_rows_created_out_of_order() -> None:
             assert len(delivered) == 1, delivered
             assert "how did the visit go" in delivered[0].lower(), (
                 f"insertion order decided the cadence, not the cadence: {delivered[0]!r}"
+            )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_later_message_waits_for_the_earlier_one_about_the_same_visit() -> None:
+    """The cadence stated as an invariant, not as a sort key.
+
+    Ordering the batch could not express it: the due date sorts ahead of the
+    cadence rank and the dates never tie, because a hold stamps "tomorrow plus
+    the tick lag" on an already-due row while its sibling keeps its exact time.
+    So the rank was never reached and the client was asked "just checking in on
+    the property you saw" before "how did the visit go?".
+
+    Here the 24h message is held for want of consent and the 72h one is due and
+    sendable. Nothing may go out until the first one is settled.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead_id, _ = await _lead_with_thread(db, "+13035557030")
+                visit = Visit(
+                    lead_id=lead_id,
+                    calendar_provider="manual",
+                    external_booking_id="manual-cadence-1",
+                    status=VisitStatus.SCHEDULED,
+                    scheduled_at=datetime.now(UTC) - timedelta(days=4),
+                    duration_minutes=30,
+                    timezone="UTC",
+                )
+                db.add(visit)
+                await db.flush()
+                # The 24h row deferred to tomorrow-ish; the 72h row plainly due.
+                first = FollowUp(
+                    lead_id=lead_id,
+                    visit_id=visit.id,
+                    kind=FollowUpKind.POST_VISIT_24H,
+                    status=FollowUpStatus.PENDING,
+                    scheduled_for=datetime.now(UTC) - timedelta(days=3),
+                )
+                first.postponed_until = datetime.now(UTC) + timedelta(hours=20)
+                db.add(first)
+                db.add(
+                    FollowUp(
+                        lead_id=lead_id,
+                        visit_id=visit.id,
+                        kind=FollowUpKind.POST_VISIT_72H,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) - timedelta(minutes=1),
+                    )
+                )
+                await db.commit()
+
+            delivered: list[str] = []
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                delivered.append(text[:60])
+                return "sm.x", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.followups._dispatch_send", _ok):
+                    await process_due_followups(db)
+
+            assert delivered == [], (
+                f"the later message overtook the one still owed: {delivered}"
             )
     finally:
         await _cleanup()

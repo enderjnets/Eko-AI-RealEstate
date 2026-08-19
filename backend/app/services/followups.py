@@ -92,6 +92,13 @@ _CADENCE_RANK = {
 # of its way to preserve.
 _SEND_STALE_AFTER = _POST_VISIT_GRACE + timedelta(hours=1)
 
+# However legitimately a message has been deferred, past this it is not worth
+# sending. Comfortably clear of the fortnight a consent hold may take, so a
+# sequence waiting on permission still completes; what it stops is the open-ended
+# drift the per-sweep cap can accumulate — one message per lead per day means a
+# buyer with many viewings would otherwise hear about the first one weeks later.
+_MAX_LATENESS = timedelta(days=30)
+
 # Bilingual templates. {name} is dropped cleanly when the lead has no name.
 _TEMPLATES: dict[FollowUpKind, dict[str, str]] = {
     FollowUpKind.REMINDER_24H: {
@@ -510,16 +517,26 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             # months ago went out on the first sweep back, cheerfully asking
             # whether anything had changed since a conversation nobody
             # remembers.
-            if (
-                fu.postponed_until is None
-                # And nothing has touched it by any other route either. A row an
-                # error handler has already tried is bounded by the same give-up
-                # counter as a hold, so it does not need this rule as well —
-                # and judging it by a date nobody moved would cancel it for
-                # having been unlucky once.
-                and fu.attempts == 0
-                and fu.scheduled_for is not None
-                and _as_utc(fu.scheduled_for) < now - _SEND_STALE_AFTER
+            if fu.scheduled_for is not None and (
+                # Nobody deferred it and its own time passed long ago: the
+                # outage. `attempts == 0` used to be a third condition here,
+                # protecting rows whose deferral predated migration 032 — but it
+                # handed `attempts` a fourth meaning on top of hold count, error
+                # count and dispatch count, and it exempted for good any row
+                # that had ever been unlucky once. Migration 033 marks those old
+                # deferrals explicitly so the conjunct is unnecessary.
+                (
+                    fu.postponed_until is None
+                    and _as_utc(fu.scheduled_for) < now - _SEND_STALE_AFTER
+                )
+                # Or it is simply too late to be worth sending, deferred or not.
+                # This bound is only safe to write because `scheduled_for` is
+                # honest now: it is the date the message was for, so the
+                # question "how late is this?" finally has an answer that no
+                # hold or cap can move. Without it the per-sweep cap was bounded
+                # by nothing at all — a buyer with fifteen viewings would get
+                # "new listings similar to what you saw" six weeks afterwards.
+                or _as_utc(fu.scheduled_for) < now - _MAX_LATENESS
             ):
                 log.info(
                     "Follow-up %d cancelled for lead %d: %s was due %s and is "
@@ -529,6 +546,46 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                 fu.status = FollowUpStatus.CANCELLED
                 skipped += 1
                 continue
+
+            # The cadence is an order, not three independent messages. Ordering
+            # the batch was not enough to express that: the sort key in front of
+            # the cadence rank is the due date, and the dates do not tie — a
+            # hold stamps "tomorrow plus the tick lag" on a row that is already
+            # due while its not-yet-due sibling keeps its exact time, so the
+            # rank was never consulted and the lead was asked "just checking in
+            # on the property you saw" before "how did the visit go?".
+            #
+            # Stated as an invariant instead, which no tick phase can defeat: a
+            # post-visit message waits while an earlier one about the same visit
+            # is still owed. Terminal states (SENT, SKIPPED, CANCELLED, FAILED)
+            # are not owed, so a sequence that gives up does not block the rest.
+            if fu.kind in _POST_VISIT_OFFSETS and fu.visit_id is not None:
+                earlier = [
+                    kind
+                    for kind, rank in _CADENCE_RANK.items()
+                    if rank < _CADENCE_RANK[fu.kind]
+                ]
+                if earlier:
+                    still_owed = (
+                        await db.execute(
+                            select(FollowUp.id)
+                            .where(
+                                FollowUp.visit_id == fu.visit_id,
+                                FollowUp.kind.in_(earlier),
+                                FollowUp.status == FollowUpStatus.PENDING,
+                            )
+                            .limit(1)
+                        )
+                    ).scalar_one_or_none()
+                    if still_owed is not None:
+                        log.info(
+                            "Follow-up %d held for lead %d: an earlier message "
+                            "about the same visit has not gone out yet",
+                            fu.id, lead.id,
+                        )
+                        fu.postponed_until = now + _HOLD_RETRY_AFTER
+                        skipped += 1
+                        continue
 
             if fu.kind in _POST_VISIT_OFFSETS and lead.id in sent_to_lead:
                 log.info(
