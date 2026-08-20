@@ -120,6 +120,30 @@ async def test_the_repair_clamps_poisoned_counts_and_keeps_honest_ones(
 
 
 @pytest.mark.asyncio
+async def test_the_clamp_is_right_at_the_edges(database_url: str) -> None:
+    """The boundaries the first backfill got wrong are the ones pinned.
+
+    A row scheduled in the future cannot have been held at all (its ceiling is
+    zero); a row due today can have been held exactly once. Off-by-one here is
+    a day of grace granted or stolen from every mid-hold lead at once.
+    """
+    future = await _seed("+13035557805", holds=5, scheduled_days_ago=-3)
+    today = await _seed("+13035557806", holds=5, scheduled_days_ago=0)
+    try:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(text(_corrective_sql()))
+            await db.commit()
+        assert await _holds_of(future) == 0, (
+            "a future row kept holds it cannot have had yet"
+        )
+        assert await _holds_of(today) == 1, (
+            "a row due today can have been held exactly once"
+        )
+    finally:
+        await _cleanup("+13035557805", "+13035557806")
+
+
+@pytest.mark.asyncio
 async def test_the_repair_leaves_settled_rows_alone(database_url: str) -> None:
     """A SKIPPED row's count is history, and history is not repaired."""
     settled = await _seed(

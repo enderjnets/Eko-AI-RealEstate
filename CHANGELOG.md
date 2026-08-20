@@ -2,6 +2,35 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.54.1] — 2026-08-20
+
+### Corregido — la duodécima ronda de auditoría (auditor independiente)
+
+Primera auditoría del Estudio de Contenido entero. Dos huecos reales, los dos
+**latentes** — el publicador aún no existe, así que ninguno era visible hoy;
+cerrarlos antes de que exista es exactamente para lo que se audita. Y por
+primera vez en doce rondas, **los arreglos de la ronda anterior volvieron
+limpios**.
+
+- **La vigilancia del futuro publicador se fiaba del nombre.** Solo examinaba
+  funciones llamadas publish_*/upload_*: un publicador llamado de otra forma
+  habría entrado sin pasar por la puerta de aprobación, con todo en verde — el
+  mismo defecto de filtro-por-nombre que la ronda once quitó del control de
+  bajas, sentado en la puerta de contenido. Ahora clasifica por lo que la
+  función hace, y cada función que toca la red debe estar declarada o exenta
+  con motivo.
+- **Una agencia podía referenciar la pieza de otra.** La clave foránea solo
+  comprobaba que la pieza existiera — y esa comprobación no pasa por el
+  aislamiento entre agencias. Reproducido: la agencia B insertó un registro de
+  publicación apuntando a una pieza de la agencia A que no puede ni leer, y con
+  ello habría bloqueado para siempre que A registrara su propia publicación en
+  esa plataforma. Ahora la base de datos misma exige que publicación y pieza
+  pertenezcan a la misma agencia.
+- El filtro de vivienda justa aprende dos frases más ("kid-free",
+  "child-free") y la reparación de contadores fija sus dos bordes exactos en
+  pruebas: una fila futura no pudo tener retenciones (0) y una de hoy
+  exactamente una.
+
 ## [0.54.0] — 2026-08-20
 
 ### Nuevo — el clip del móvil sale listo para publicar

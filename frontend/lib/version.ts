@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.54.0";
+export const CURRENT_VERSION = "0.54.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.54.1",
+    date: "2026-08-20",
+    title: {
+      en: "Two gaps closed before they could open",
+      es: "Dos huecos cerrados antes de poder abrirse",
+    },
+    changes: [
+      {
+        en: "First full audit of the Content Studio. Both findings were latent \u2014 the publisher does not exist yet, so neither was visible today \u2014 and closing them before it exists is what auditing is for. The watchdog over the future publisher trusted names (a publisher called anything but publish_* would have skipped the approval gate with everything green); it now classifies by what a function does, and everything that touches the wire must be declared or exempted with a reason.",
+        es: "Primera auditor\u00eda completa del Estudio de Contenido. Los dos hallazgos eran latentes \u2014 el publicador a\u00fan no existe, as\u00ed que ninguno era visible hoy \u2014 y cerrarlos antes de que exista es para lo que se audita. La vigilancia del futuro publicador se fiaba de los nombres (un publicador llamado de otra forma habr\u00eda saltado la puerta de aprobaci\u00f3n con todo en verde); ahora clasifica por lo que la funci\u00f3n hace, y todo lo que toca la red debe estar declarado o exento con motivo.",
+      },
+      {
+        en: "One agency could reference another's piece: the database's existence check does not pass through tenant isolation, so agency B could plant a publication record on a piece of agency A it cannot even read \u2014 blocking A from ever recording its own. The database itself now requires publication and piece to belong to the same agency. Plus: the Fair Housing filter learns \"kid-free\"/\"child-free\", and the counter repair pins its exact edges in tests.",
+        es: "Una agencia pod\u00eda referenciar la pieza de otra: la comprobaci\u00f3n de existencia de la base de datos no pasa por el aislamiento entre agencias, as\u00ed que la agencia B pod\u00eda plantar un registro de publicaci\u00f3n sobre una pieza de la agencia A que ni siquiera puede leer \u2014 bloqueando que A registrara la suya. Ahora la base de datos misma exige que publicaci\u00f3n y pieza pertenezcan a la misma agencia. Adem\u00e1s: el filtro de vivienda justa aprende \"kid-free\"/\"child-free\", y la reparaci\u00f3n de contadores fija sus bordes exactos en pruebas.",
+      },
+    ],
+  },
   {
     version: "0.54.0",
     date: "2026-08-20",

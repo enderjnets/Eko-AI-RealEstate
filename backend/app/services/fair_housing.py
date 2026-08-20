@@ -44,6 +44,8 @@ FORBIDDEN: dict[str, tuple[str, ...]] = {
         "mature couple",
         "single professionals only",
         "empty nesters",
+        "kid free",
+        "child free",
         "ideal para familias",
         "perfecto para familias",
         "perfecta para familias",

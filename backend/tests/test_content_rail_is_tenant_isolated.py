@@ -182,3 +182,49 @@ async def test_no_org_set_sees_nothing_rather_than_everything() -> None:
         )
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_publication_cannot_reference_another_agencys_piece() -> None:
+    """The foreign key sees through what row security cannot.
+
+    FK existence checks run with the referenced table's row security out of
+    the picture, so a tenant that cannot READ a piece could still REFERENCE
+    it — an existence oracle over another agency's id space, and a denial of
+    service through UNIQUE (piece_id, platform): a foreign row occupying
+    (piece, 'instagram') blocks the real owner from ever recording its own
+    publication there. The composite FK makes the database itself refuse.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    b_piece = await _seed(MARKER_B, ORG_B)
+    try:
+        async with get_bypass_session_factory()() as db:
+            db.add(
+                ContentPublication(
+                    org_id=ORG_A,
+                    piece_id=b_piece,
+                    platform=PublicationPlatform.INSTAGRAM,
+                )
+            )
+            with pytest.raises(IntegrityError):
+                await db.commit()
+            await db.rollback()
+
+        async with get_bypass_session_factory()() as db:
+            squatters = (
+                (
+                    await db.execute(
+                        select(ContentPublication.id).where(
+                            ContentPublication.piece_id == b_piece
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert squatters == [], (
+            "a foreign publication row was planted on another agency's piece"
+        )
+    finally:
+        await _cleanup()

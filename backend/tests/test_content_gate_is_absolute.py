@@ -339,31 +339,87 @@ def test_the_sweep_is_looking_at_something() -> None:
     )
 
 
-def test_no_publisher_exists_yet_and_the_list_says_so() -> None:
-    """`PUBLISH_PRIMITIVES` is empty and has to stay honest.
+def test_every_wire_touching_function_is_declared_or_exempt() -> None:
+    """The sweep that forces the first publisher through the gate.
 
-    When the first publisher lands it must be declared here, and the assertion
-    below is what forces that: it fails the moment a function that hands a
-    video to a platform exists without being listed.
+    Classified by BODY, never by name. The first version of this test only
+    examined functions named `publish_*`/`upload_*` calling a hand-picked verb
+    list — the identical name-filter defect the opt-out canary shed in round
+    eleven, sitting in the content gate until round twelve pointed at it. A
+    publisher named `blast_reel` doing a bare `client.post()` walked through.
+
+    Every function whose body touches the wire has to be accounted for:
+    a messaging primitive (whose opt-out gating `test_opt_out_is_absolute.py`
+    enforces), a declared publisher in `PUBLISH_PRIMITIVES` (whose approval
+    gating `_reaching` below will enforce the day one exists), or a qualified
+    exemption with the reason it is neither.
     """
-    platform_calls = {"upload", "publish", "create_media", "post_video"}
-    found: list[str] = []
+    wire_verbs = {
+        "post",
+        "put",
+        "send",
+        "sendmail",
+        "publish",
+        "send_message",
+        "upload",
+        "create_media",
+        "post_video",
+        "request",
+    }
+    # Wire-touching but neither messaging nor publishing, each with its reason.
+    # Qualified path::function, so a same-named function elsewhere is not
+    # silently covered.
+    WIRE_NOT_PUBLISHING = {
+        "app/api/v1/public.py::_turnstile_ok":
+            "POSTs a captcha token to Cloudflare; no content leaves",
+        "app/services/calendar_cal.py::create_booking":
+            "books a visit on Cal.com at the lead's request",
+        "app/services/calendar_cal.py::cancel_booking":
+            "cancels that same booking",
+        "app/services/llm.py::_ollama_generate":
+            "POSTs a prompt to a local model",
+    }
+    # The messaging senders, accounted for by the opt-out sweep next door.
+    MESSAGING = {"send_email", "send_sms", "send_text_message"}
+
+    flagged: dict[str, str] = {}
     for path in sorted(APP.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
-            if not node.name.startswith(("publish_", "upload_")):
-                continue
-            if any(
+            touches_wire = any(
                 isinstance(inner, ast.Call)
-                and isinstance(inner.func, ast.Attribute)
-                and inner.func.attr in platform_calls
-                for inner in ast.walk(node)
-            ):
-                found.append(node.name)
-    assert set(found) == PUBLISH_PRIMITIVES, (
-        f"publishers found in the tree: {sorted(found)}, declared: "
-        f"{sorted(PUBLISH_PRIMITIVES)} — a publisher that is not declared is "
-        "one nothing checks the approval gate for"
+                and (
+                    (
+                        isinstance(inner.func, ast.Attribute)
+                        and inner.func.attr in wire_verbs
+                    )
+                    or (
+                        isinstance(inner.func, ast.Name)
+                        and inner.func.id in wire_verbs
+                    )
+                )
+                for stmt in node.body
+                for inner in ast.walk(stmt)
+            )
+            if touches_wire:
+                flagged[f"{path.relative_to(APP.parent)}::{node.name}"] = node.name
+
+    unaccounted = [
+        qualified
+        for qualified, name in flagged.items()
+        if qualified not in WIRE_NOT_PUBLISHING
+        and name not in MESSAGING
+        and name not in PUBLISH_PRIMITIVES
+    ]
+    assert unaccounted == [], (
+        "these touch the wire and are neither a declared messaging primitive, "
+        "a declared publisher, nor exempted with a reason — a publisher here "
+        f"would skip the approval gate unnoticed: {unaccounted}"
+    )
+    # And a declared publisher has to actually exist, so the list cannot rot.
+    assert PUBLISH_PRIMITIVES <= set(flagged.values()), (
+        f"declared publishers not found in the tree: "
+        f"{PUBLISH_PRIMITIVES - set(flagged.values())}"
     )
