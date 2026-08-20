@@ -50,6 +50,10 @@ HANDLED = {
     # `logged_by` is not advisor input: it is the signed-in email the route
     # reads from the session (`leads.py`, `current_email(request)`).
     "call_logs": (OURS, "logged_by is the session's email, not user input"),
+    # The hook comes from a language model, which does not count characters.
+    # Losing the tail of a draft beats losing the draft, and a person reads
+    # every one of these before it can go anywhere.
+    "content_pieces": (MODEL_TRIM, "hook/media_path/approved_by are in the clip list"),
     # `last_ip` derives from X-Forwarded-For, which the client sets. The
     # middleware swallows the failure, so the blast radius is telemetry for one
     # user rather than their request — but "our own strings" was not true.
@@ -323,6 +327,9 @@ class TestEveryUniqueStringKeyHasBeenThoughtAbout:
         ("messages", "external_id"): "digest — idempotency key from providers",
         # Written from fixed literals in our own code, never from input.
         ("channel_routes", "channel"): "literal, set by the adapter that received it",
+        # A database enum: the value set is closed by the type, so there is no
+        # length to exceed and no input path that could widen it.
+        ("content_publications", "platform"): "pg enum — closed value set",
         ("conversations", "channel"): "trimmed on the model — it is in the clip list",
         ("follow_ups", "kind"): "enum value",
         ("properties", "source"): "literal: reso | idx | mls | manual",

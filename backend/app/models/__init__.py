@@ -7,6 +7,15 @@ from app.models.agent_settings import AgentSettings
 from app.models.allowed_user import AllowedUser
 from app.models.call_log import CallLog, CallOutcome
 from app.models.channel_route import CHANNELS, ChannelRoute, normalize_destination
+from app.models.content import (
+    ContentKind,
+    ContentLanguage,
+    ContentPiece,
+    ContentPublication,
+    ContentStatus,
+    PublicationPlatform,
+    PublicationStatus,
+)
 from app.models.conversation import Conversation, ConversationStatus
 from app.models.follow_up import FollowUp, FollowUpKind, FollowUpStatus
 from app.models.lead import Lead, LeadIntent, LeadStatus
@@ -37,6 +46,13 @@ __all__: list[str] = [
     "AgentSettings",
     "AllowedUser",
     "CallLog",
+    "ContentKind",
+    "ContentLanguage",
+    "ContentPiece",
+    "ContentPublication",
+    "ContentStatus",
+    "PublicationPlatform",
+    "PublicationStatus",
     "CallOutcome",
     "Conversation",
     "ConversationStatus",
