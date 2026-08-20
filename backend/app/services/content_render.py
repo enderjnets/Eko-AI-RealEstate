@@ -1,0 +1,328 @@
+"""Lane A: a phone clip becomes a publishable vertical video, or says why not.
+
+Three stages, in a deliberate order:
+
+1. **Probe.** ffprobe answers what the file actually is. The gate on the input
+   is STRUCTURAL only — a video stream exists, the duration is workable, the
+   file is not garbage. Nothing here measures how the video looks: the pipeline
+   next door taught, at the cost of correct work rejected for the colour of its
+   background, that aesthetic gates reject what they do not understand. A
+   person approves every piece anyway; the machine checks what a machine can
+   know.
+2. **Render.** Normalise to 1080×1920 (scale to fit, pad with blurred edges —
+   never crop: the agent framed the shot, not us), and burn the brokerage line
+   into the last seconds of the video itself. Colorado requires advertising to
+   identify the brokerage; burned pixels survive every platform's re-encoding,
+   crops and mute buttons, which a caption does not.
+3. **Verify.** ffprobe the OUTPUT and require what the render promised:
+   1080×1920, an audio track when the source had one, sane duration. A render
+   that silently produced something else is a render that failed.
+
+The ffmpeg command is built by a pure function so tests can hold the command
+itself — including the brokerage text inside it — without shelling out, and
+one integration test actually runs it.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import get_settings
+from app.models import AgentSettings, ContentKind, ContentPiece
+
+log = logging.getLogger(__name__)
+
+# Structural bounds on the INPUT clip. Wide on purpose: a raw phone clip is
+# trimmed by a person in review, not refused by a machine at the door.
+_MIN_INPUT_SECONDS = 3.0
+_MAX_INPUT_SECONDS = 600.0
+
+# How long the burned identification stays on screen at the end.
+_END_CARD_SECONDS = 3.0
+
+_RENDER_TIMEOUT_SECONDS = 600
+
+# The image installs fonts-dejavu-core, so the first candidate is the one
+# production uses. On a dev Mac none may exist; drawtext then falls back to
+# fontconfig's default, which is fine for tests and never for production.
+_FONT_CANDIDATES = (
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+)
+
+
+def _font() -> str | None:
+    for candidate in _FONT_CANDIDATES:
+        if Path(candidate).is_file():
+            return candidate
+    return None
+
+OUT_W, OUT_H = 1080, 1920
+
+
+class RenderRefused(Exception):
+    """The clip cannot be rendered, with the reason a person needs."""
+
+
+@dataclass(frozen=True)
+class Probe:
+    duration: float
+    width: int
+    height: int
+    has_audio: bool
+
+
+async def _run(*argv: str, timeout_s: float) -> tuple[int, bytes]:
+    proc = await asyncio.create_subprocess_exec(
+        *argv,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+    except TimeoutError:
+        proc.kill()
+        raise RenderRefused(
+            f"renderer timed out after {int(timeout_s)}s — the clip may be "
+            "corrupt or far longer than its header claims"
+        ) from None
+    return proc.returncode or 0, out
+
+
+async def probe_media(path: Path) -> Probe:
+    code, out = await _run(
+        "ffprobe",
+        "-v", "error",
+        "-print_format", "json",
+        "-show_streams",
+        "-show_format",
+        str(path),
+        timeout_s=60,
+    )
+    if code != 0:
+        raise RenderRefused("the file is not a readable video")
+    try:
+        data = json.loads(out)
+        streams = data["streams"]
+        video = next(s for s in streams if s.get("codec_type") == "video")
+        duration = float(data["format"]["duration"])
+    except (KeyError, StopIteration, ValueError, json.JSONDecodeError):
+        raise RenderRefused("the file has no video stream") from None
+    return Probe(
+        duration=duration,
+        width=int(video.get("width", 0)),
+        height=int(video.get("height", 0)),
+        has_audio=any(s.get("codec_type") == "audio" for s in streams),
+    )
+
+
+def check_input(probe: Probe) -> None:
+    """The structural gate. Refusals name the number that failed."""
+    if probe.duration < _MIN_INPUT_SECONDS:
+        raise RenderRefused(
+            f"clip is {probe.duration:.1f}s — under {_MIN_INPUT_SECONDS:.0f}s "
+            "there is nothing to publish"
+        )
+    if probe.duration > _MAX_INPUT_SECONDS:
+        raise RenderRefused(
+            f"clip is {probe.duration:.0f}s — over {_MAX_INPUT_SECONDS:.0f}s; "
+            "trim it to the moment worth keeping first"
+        )
+    if probe.width <= 0 or probe.height <= 0:
+        raise RenderRefused("the video stream reports no dimensions")
+
+
+def _escape_drawtext(text: str) -> str:
+    """ffmpeg's drawtext micro-language, defused.
+
+    The brokerage line is operator input and drawtext treats %, :, ' and \\ as
+    syntax. Unescaped, "Natalia & Robbie: E&V" breaks the filter graph — or
+    worse, parses as more filter.
+    """
+    out = []
+    for ch in text:
+        if ch in ("\\", ":", "'", "%"):
+            out.append("\\" + ch)
+        elif ch in ("\n", "\r"):
+            out.append(" ")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _font_clause() -> str:
+    font = _font()
+    return f"fontfile={font}:" if font else ""
+
+
+def build_render_command(
+    source: Path,
+    destination: Path,
+    *,
+    brokerage_line: str,
+    duration: float,
+    has_audio: bool,
+) -> list[str]:
+    """The whole render as data. Pure, so tests can assert on the command."""
+    start = max(0.0, duration - _END_CARD_SECONDS)
+    text = _escape_drawtext(brokerage_line)
+    # Scale to fit inside 1080×1920, then centre over a blurred, stretched copy
+    # of itself — the standard vertical treatment that never crops the shot.
+    filter_graph = (
+        f"[0:v]split=2[bg][fg];"
+        f"[bg]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,"
+        f"crop={OUT_W}:{OUT_H},gblur=sigma=20[bgb];"
+        f"[fg]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=decrease[fgs];"
+        f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2,"
+        f"drawtext={_font_clause()}text='{text}':"
+        f"fontcolor=white:fontsize=54:box=1:boxcolor=black@0.55:boxborderw=18:"
+        f"x=(w-text_w)/2:y=h-260:enable='gte(t,{start:.3f})'"
+        f"[vout]"
+    )
+    argv = [
+        "ffmpeg",
+        "-y",
+        "-i", str(source),
+        "-filter_complex", filter_graph,
+        "-map", "[vout]",
+    ]
+    if has_audio:
+        argv += ["-map", "0:a:0", "-c:a", "aac", "-b:a", "128k"]
+    argv += [
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "22",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        str(destination),
+    ]
+    return argv
+
+
+async def render_clip(
+    source: Path, destination: Path, *, brokerage_line: str
+) -> Probe:
+    """Probe → gate → render → verify. Returns the OUTPUT's probe."""
+    probe = await probe_media(source)
+    check_input(probe)
+
+    argv = build_render_command(
+        source,
+        destination,
+        brokerage_line=brokerage_line,
+        duration=probe.duration,
+        has_audio=probe.has_audio,
+    )
+    code, out = await _run(*argv, timeout_s=_RENDER_TIMEOUT_SECONDS)
+    if code != 0:
+        await asyncio.to_thread(destination.unlink, missing_ok=True)
+        tail = out[-400:].decode(errors="replace")
+        raise RenderRefused(f"ffmpeg failed ({code}): {tail}")
+
+    # The render's own promises, checked against the file that exists rather
+    # than the command that ran. "It returned 0" is not verification.
+    result = await probe_media(destination)
+    problems = []
+    if (result.width, result.height) != (OUT_W, OUT_H):
+        problems.append(f"output is {result.width}x{result.height}")
+    if probe.has_audio and not result.has_audio:
+        problems.append("the source had audio and the output does not")
+    if abs(result.duration - probe.duration) > 2.0:
+        problems.append(
+            f"duration drifted {probe.duration:.1f}s -> {result.duration:.1f}s"
+        )
+    if problems:
+        await asyncio.to_thread(destination.unlink, missing_ok=True)
+        raise RenderRefused("render verification failed: " + "; ".join(problems))
+    return result
+
+
+async def render_pending(db: AsyncSession) -> int:
+    """Render every recorded clip that has not been tried yet. Returns count.
+
+    Runs per organisation under RLS via `run_for_every_org`, like every other
+    worker here. One at a time — ffmpeg saturates the cores it gets, and two
+    renders in parallel on this box is one render at half speed twice.
+    """
+    settings_row = (
+        await db.execute(select(AgentSettings))
+    ).scalars().first()
+    brokerage = (
+        (settings_row.brokerage_line or "").strip() if settings_row else ""
+    )
+
+    rows = (
+        (
+            await db.execute(
+                select(ContentPiece).where(
+                    ContentPiece.kind == ContentKind.RECORDED,
+                    ContentPiece.media_path.is_not(None),
+                    ContentPiece.rendered_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        return 0
+
+    if not brokerage:
+        # Without the identification there is nothing legal to burn, so
+        # rendering now would only have to be done again. The clips wait, the
+        # reason is visible on each row, and nothing is marked tried.
+        for piece in rows:
+            if piece.render_error != _NO_BROKERAGE_NOTE:
+                piece.render_error = _NO_BROKERAGE_NOTE
+        await db.commit()
+        return 0
+
+    media_root = Path(get_settings().CONTENT_MEDIA_DIR)
+    done = 0
+    for piece in rows:
+        source = media_root / piece.media_path
+        destination = media_root / f"{uuid.uuid4().hex}.mp4"
+        try:
+            if not source.is_file():
+                raise RenderRefused("the uploaded file is missing from the volume")
+            await render_clip(
+                source, destination, brokerage_line=brokerage
+            )
+        except RenderRefused as exc:
+            piece.rendered_at = datetime.now(UTC)
+            piece.render_error = str(exc)
+            log.warning("Render refused for piece %d: %s", piece.id, exc)
+        except Exception:  # noqa: BLE001 — one bad clip must not stop the rest
+            destination.unlink(missing_ok=True)
+            log.exception("Render crashed for piece %d", piece.id)
+            piece.rendered_at = datetime.now(UTC)
+            piece.render_error = "renderer crashed; see server log"
+        else:
+            old = source
+            piece.media_path = destination.name
+            piece.rendered_at = datetime.now(UTC)
+            piece.render_error = None
+            done += 1
+            # The original is deleted only after the new path is committed;
+            # a crash between the two leaves an orphan file, never a piece
+            # pointing at nothing.
+            await db.commit()
+            old.unlink(missing_ok=True)
+            continue
+        await db.commit()
+    return done
+
+
+_NO_BROKERAGE_NOTE = (
+    "waiting: no brokerage line on record — set it in Settings and the clip "
+    "renders on the next pass"
+)

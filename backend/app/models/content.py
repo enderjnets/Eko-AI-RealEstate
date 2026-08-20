@@ -123,6 +123,14 @@ class ContentPiece(Base):
     )
     rejected_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # NULL means "not rendered yet" and nothing else does. Set together with
+    # `render_error` it means "tried, failed, not worth retrying until the
+    # file changes" — the loop skips it and a person reads the reason.
+    rendered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    render_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

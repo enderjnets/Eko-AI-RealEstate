@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.53.1";
+export const CURRENT_VERSION = "0.54.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.54.0",
+    date: "2026-08-20",
+    title: {
+      en: "Phone clips come out ready to publish",
+      es: "El clip del móvil sale listo para publicar",
+    },
+    changes: [
+      {
+        en: "The Content Studio's first render lane: a clip filmed on the phone becomes a vertical 1080\u00d71920 video on its own \u2014 scaled over a blurred copy of itself, never cropped, because the agent framed the shot. And your brokerage identification is BURNED into the final seconds of the video itself: Colorado requires advertising to identify the brokerage, and burned pixels survive every platform's crops, mutes and re-encodes where a caption does not. Without a brokerage line in Settings, clips wait with the reason visible and render themselves the moment it is filled in.",
+        es: "El primer carril de render del Estudio de Contenido: un clip grabado con el tel\u00e9fono se convierte solo en un v\u00eddeo vertical 1080\u00d71920 \u2014 escalado sobre una copia desenfocada de s\u00ed mismo, nunca recortado, porque el encuadre lo eligi\u00f3 el agente. Y la identificaci\u00f3n de su brokerage va QUEMADA en los segundos finales del propio v\u00eddeo: Colorado exige que la publicidad identifique la brokerage, y unos p\u00edxeles grabados sobreviven a los recortes, silencios y re-codificaciones de cada plataforma donde un pie de texto no. Sin l\u00ednea de brokerage en Ajustes, los clips esperan con el motivo visible y se renderizan solos en cuanto se rellena.",
+      },
+      {
+        en: "The quality gate measures structure, never looks: there is a video stream, the duration is workable, the original's audio survived. The output is verified against the file that exists, not the command that ran \u2014 a render that claimed success but produced something else is a failed render. A corrupt clip fails visibly on its own row and never blocks the rest.",
+        es: "La puerta de calidad mide estructura, nunca est\u00e9tica: que haya v\u00eddeo, que la duraci\u00f3n sea trabajable, que el audio del original siga en el resultado. La salida se verifica contra el archivo que existe, no contra el comando que corri\u00f3 \u2014 un render que dijo \u00e9xito pero produjo otra cosa es un render fallido. Un clip corrupto falla visible en su propia fila y nunca bloquea a los dem\u00e1s.",
+      },
+    ],
+  },
   {
     version: "0.53.1",
     date: "2026-08-20",

@@ -390,6 +390,7 @@ app.include_router(discovery.router, prefix="/api/v1/discovery", tags=["discover
 _followups_task: asyncio.Task | None = None
 _enrichment_task: asyncio.Task | None = None
 _content_studio_task: asyncio.Task | None = None
+_content_render_task: asyncio.Task | None = None
 _delivery_retry_task: asyncio.Task | None = None
 _listings_sync_task: asyncio.Task | None = None
 
@@ -431,6 +432,24 @@ async def _content_studio_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.error("Content studio tick failed: %s", exc)
+
+
+async def _content_render_loop() -> None:
+    """Background worker: lane A renders (v0.54). One clip at a time — ffmpeg
+    saturates the cores it gets, so parallel renders are one render at half
+    speed twice."""
+    from app.services.content_render import render_pending
+    from app.services.tenant_context import run_for_every_org
+
+    interval = max(60, settings.CONTENT_RENDER_INTERVAL_SECONDS)
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await run_for_every_org(render_pending)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Content render tick failed: %s", exc)
 
 
 async def _enrichment_loop() -> None:
@@ -1040,6 +1059,13 @@ async def _startup() -> None:
             settings.CONTENT_STUDIO_INTERVAL_SECONDS,
             settings.CONTENT_MAX_DRAFTS_PER_DAY,
         )
+    if settings.CONTENT_RENDER_ENABLED:
+        global _content_render_task
+        _content_render_task = asyncio.create_task(_content_render_loop())
+        logger.info(
+            "Content render worker started (every %ds)",
+            settings.CONTENT_RENDER_INTERVAL_SECONDS,
+        )
 
     if settings.DELIVERY_RETRY_ENABLED:
         global _delivery_retry_task
@@ -1059,7 +1085,7 @@ async def _startup() -> None:
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task, _content_studio_task):
+    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task, _content_studio_task, _content_render_task):
         if task is not None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

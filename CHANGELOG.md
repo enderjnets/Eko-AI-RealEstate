@@ -2,6 +2,29 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.54.0] — 2026-08-20
+
+### Nuevo — el clip del móvil sale listo para publicar
+
+El primer carril de render del Estudio de Contenido. Un clip grabado con el
+teléfono se convierte solo en un vídeo vertical publicable — y si no puede,
+dice por qué en la propia cola, no en un registro que nadie lee.
+
+- **Vertical sin recortar el encuadre.** El clip se ajusta a 1080×1920 sobre un
+  fondo desenfocado de sí mismo: el agente encuadró el plano, no nosotros.
+- **La identificación de la brokerage va QUEMADA en el vídeo.** Colorado exige
+  que la publicidad identifique la brokerage; unos píxeles grabados sobreviven
+  a los recortes, silencios y re-codificaciones de cada plataforma — un pie de
+  texto no. Sin línea de brokerage en Ajustes, los clips esperan con el motivo
+  visible y se renderizan solos en cuanto se rellena.
+- **La puerta de calidad mide estructura, nunca estética**: que haya vídeo, que
+  la duración sea trabajable, que el audio del original siga en el resultado.
+  Lo aprendido al lado: las puertas que miden cómo "se ve" un vídeo rechazan
+  trabajo correcto que no entienden — para eso está la persona que aprueba.
+- **El resultado se verifica contra el archivo, no contra el comando.** Un
+  render que devolvió éxito pero produjo otra cosa es un render fallido.
+- Un clip corrupto falla visible en su fila y no bloquea a los demás.
+
 ## [0.53.1] — 2026-08-20
 
 ### Corregido — la undécima ronda de auditoría (auditor independiente)
