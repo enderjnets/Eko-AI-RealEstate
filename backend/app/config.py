@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.52.0"
+    APP_VERSION: str = "0.53.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -194,6 +194,14 @@ class Settings(BaseSettings):
     # Inside the container; compose mounts a volume here. Media is served only
     # through the authenticated route, never as static files.
     CONTENT_MEDIA_DIR: str = "/data/media"
+
+    # The generation loop. Off by default: turning it on is a per-install
+    # decision with an LLM bill attached, and the cap bounds that bill from
+    # day one — the pipeline next door ran ten days broken because nobody had
+    # put a number on its quota.
+    CONTENT_STUDIO_ENABLED: bool = False
+    CONTENT_MAX_DRAFTS_PER_DAY: int = 3
+    CONTENT_STUDIO_INTERVAL_SECONDS: int = 3600
 
     # ─── Dashboard auth (Phase 11) ──────────────────────────────────────
     # One deploy = one office → a single shared dashboard password. When

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.52.0";
+export const CURRENT_VERSION = "0.53.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.53.0",
+    date: "2026-08-20",
+    title: {
+      en: "The Content Studio writes drafts on its own",
+      es: "El Estudio de Contenido escribe borradores solo",
+    },
+    changes: [
+      {
+        en: "Daily generated drafts \u2014 off by default, capped at 3 per day, and still publishing nothing: generated work lands, at most, in the console's approval queue. Topics rotate through the Denver questions every buyer and seller asks (inspections, offer to close, earnest money, pre-approval, reading the market), the language alternates between the ones your agency works in, and property listings are deliberately out until the MLS feed and image rights exist.",
+        es: "Borradores generados a diario \u2014 apagado de f\u00e1brica, tope de 3 al d\u00eda, y sigue sin publicar nada: lo generado termina, como mucho, en la cola de aprobaci\u00f3n de la consola. Los temas rotan por las preguntas de Denver que todo comprador y vendedor hace (inspecci\u00f3n, de la oferta al cierre, dep\u00f3sito de seriedad, preaprobaci\u00f3n, leer el mercado), el idioma alterna entre los que trabaje su agencia, y las fichas de propiedades quedan fuera a prop\u00f3sito hasta tener feed MLS y derechos de imagen.",
+      },
+      {
+        en: "The Fair Housing filter corrects the machine before it corrects anyone: a draft that comes out with forbidden phrasing gets exactly one rewrite with the phrases named, and if it comes back dirty it stays in Drafts wearing the findings for a person to edit. A flagged draft never walks itself into the queue.",
+        es: "El filtro de vivienda justa corrige a la m\u00e1quina antes que a nadie: un borrador con frases prohibidas recibe exactamente una reescritura con las frases nombradas, y si reincide se queda en Borradores con los hallazgos puestos para que una persona lo edite. Un borrador marcado nunca entra solo en la cola.",
+      },
+    ],
+  },
   {
     version: "0.52.0",
     date: "2026-08-20",

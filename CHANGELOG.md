@@ -2,6 +2,30 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.53.0] — 2026-08-20
+
+### Nuevo — el Estudio de Contenido escribe borradores solo
+
+La generación diaria, con las dos puertas automáticas por delante de la humana.
+**Sigue sin publicar nada**: lo generado termina, como máximo, en la cola de
+aprobación de la consola.
+
+- **Un borrador de vídeo al día por defecto (máximo 3), apagado de fábrica.**
+  Encenderlo es una decisión por instalación (`CONTENT_STUDIO_ENABLED`), y el
+  tope diario acota la factura de IA desde el primer día.
+- **Temas de Denver que no necesitan permisos de nadie**: qué compra un
+  presupuesto hoy, la inspección, de la oferta al cierre, el depósito de
+  seriedad, preaprobación, la primera semana de venta, cómo leer el mercado.
+  Sin fichas de propiedades (eso requiere el feed MLS y derechos de imagen).
+  Los temas rotan y el idioma alterna entre los que trabaje la agencia.
+- **El filtro de vivienda justa corrige a la máquina antes que a nadie.** Si el
+  borrador sale con frases prohibidas, se le pide UNA reescritura nombrando las
+  frases; si reincide, se queda en Borradores con las frases señaladas para que
+  una persona lo edite. Un borrador marcado nunca entra solo en la cola.
+- **La salida del modelo se trata como entrada hostil**: se valida contra un
+  esquema y, si no es un borrador, se descarta con registro — nunca tumba el
+  ciclo, porque un ciclo caído es también el borrador de mañana.
+
 ## [0.52.0] — 2026-08-20
 
 ### Nuevo — Estudio de Contenido: el carril y la puerta

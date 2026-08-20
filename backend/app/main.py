@@ -389,6 +389,7 @@ app.include_router(discovery.router, prefix="/api/v1/discovery", tags=["discover
 # loops behind a leader lock or into their own service first.
 _followups_task: asyncio.Task | None = None
 _enrichment_task: asyncio.Task | None = None
+_content_studio_task: asyncio.Task | None = None
 _delivery_retry_task: asyncio.Task | None = None
 _listings_sync_task: asyncio.Task | None = None
 
@@ -409,6 +410,27 @@ async def _followups_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.error("Follow-ups worker tick failed: %s", exc)
+
+
+async def _content_studio_loop() -> None:
+    """Background worker: the daily generated drafts (v0.53).
+
+    Hourly tick rather than a daily one, but the writer self-limits by the
+    per-day cap, so a restart never doubles the day's output and a failed tick
+    is retried within the hour instead of tomorrow.
+    """
+    from app.services.content_writer import generate_draft
+    from app.services.tenant_context import run_for_every_org
+
+    interval = max(300, settings.CONTENT_STUDIO_INTERVAL_SECONDS)
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await run_for_every_org(generate_draft)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Content studio tick failed: %s", exc)
 
 
 async def _enrichment_loop() -> None:
@@ -1010,6 +1032,14 @@ async def _startup() -> None:
         global _enrichment_task
         _enrichment_task = asyncio.create_task(_enrichment_loop())
         logger.info("Enrichment worker started (every %ds)", settings.ENRICHMENT_INTERVAL_SECONDS)
+    if settings.CONTENT_STUDIO_ENABLED:
+        global _content_studio_task
+        _content_studio_task = asyncio.create_task(_content_studio_loop())
+        logger.info(
+            "Content studio started (every %ds, cap %d drafts/day)",
+            settings.CONTENT_STUDIO_INTERVAL_SECONDS,
+            settings.CONTENT_MAX_DRAFTS_PER_DAY,
+        )
 
     if settings.DELIVERY_RETRY_ENABLED:
         global _delivery_retry_task
@@ -1029,7 +1059,7 @@ async def _startup() -> None:
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task):
+    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task, _content_studio_task):
         if task is not None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
