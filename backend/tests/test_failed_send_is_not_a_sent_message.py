@@ -1894,3 +1894,124 @@ def test_the_staleness_ceiling_is_written_as_a_formula() -> None:
         f"raising the clock leaves it behind: {sorted(referenced)}"
     )
 
+
+
+@pytest.mark.asyncio
+async def test_an_error_stamp_does_not_immunise_a_row_against_staleness() -> None:
+    """The erred twin of a cancelled row must not go out 30 hours late.
+
+    A single transient error stamps a one-hour backoff. That stamp used to
+    satisfy "somebody looked at this" for the staleness rule, so after an
+    outage the pristine copy of a row was cancelled while its erred twin —
+    identical in every way that matters — was sent, thirty hours past a
+    24-hour message's meaning.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                pristine_lead, _ = await _lead_with_thread(db, "+13035557040")
+                erred_lead, _ = await _lead_with_thread(db, "+13035557041")
+                db.add(
+                    FollowUp(
+                        lead_id=pristine_lead,
+                        kind=FollowUpKind.POST_VISIT_24H,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) - timedelta(hours=30),
+                    )
+                )
+                db.add(
+                    FollowUp(
+                        lead_id=erred_lead,
+                        kind=FollowUpKind.POST_VISIT_24H,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) - timedelta(hours=30),
+                        # The error episode: one try, stamped, and the stamp
+                        # has been expired for longer than the whole episode
+                        # window — sweeps were down, nobody decided anything.
+                        attempts=1,
+                        postponed_until=datetime.now(UTC) - timedelta(hours=26),
+                    )
+                )
+                await db.commit()
+
+            delivered: list[str] = []
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                delivered.append(text[:40])
+                return "sm.x", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.followups._dispatch_send", _ok):
+                    await process_due_followups(db)
+
+            assert delivered == [], (
+                f"a 30-hour-late message went out because it once erred: {delivered}"
+            )
+            async with get_session_factory()() as db:
+                rows = (
+                    await db.execute(
+                        select(FollowUp).where(
+                            FollowUp.lead_id.in_([pristine_lead, erred_lead])
+                        )
+                    )
+                ).scalars().all()
+            assert {r.status for r in rows} == {FollowUpStatus.CANCELLED}, (
+                "the twins were treated differently: "
+                f"{[(r.lead_id, r.status.value) for r in rows]}"
+            )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_error_counter_measures_an_episode_not_a_lifetime() -> None:
+    """A row that recovers stops carrying the count.
+
+    Without the reset, a row that weathered blips across its life kept the
+    total for ever, and the next single transient error — on a day everything
+    else was fine — marked it FAILED when the following sweep would have sent
+    it.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                # No inbound: channel selection succeeds and the row is HELD,
+                # which is "getting past channel selection" without sending.
+                lead_id, _ = await _lead_with_thread(
+                    db, "+13035557042", with_inbound=False
+                )
+                db.add(
+                    FollowUp(
+                        lead_id=lead_id,
+                        kind=FollowUpKind.POST_VISIT_24H,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) - timedelta(hours=1),
+                        # A lifetime of survived blips, one short of give-up.
+                        attempts=24,
+                    )
+                )
+                await db.commit()
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                return "sm.x", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.followups._dispatch_send", _ok):
+                    await process_due_followups(db)
+
+            async with get_session_factory()() as db:
+                row = (
+                    await db.execute(
+                        select(FollowUp).where(FollowUp.lead_id == lead_id)
+                    )
+                ).scalar_one()
+            assert row.status is FollowUpStatus.PENDING
+            assert row.attempts == 0, (
+                f"the episode ended and the counter still reads {row.attempts} "
+                "— the next blip would kill a healthy row"
+            )
+            assert row.consent_holds == 1, "the hold itself must still count"
+    finally:
+        await _cleanup()

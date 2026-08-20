@@ -2,6 +2,35 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.53.1] — 2026-08-20
+
+### Corregido — la undécima ronda de auditoría (auditor independiente)
+
+- **La reparación del contador que la propia corrección envenenó.** La 0.51.2
+  separó el contador de la quincena de permiso, y su relleno inicial copió el
+  total contaminado por errores: un cliente retenido UNA vez que atravesó una
+  avería llegaba con el contador a 14, su segunda retención real se convertía
+  en la rendición número quince, y la secuencia entera moría dos días después
+  de la visita — el mismo defecto que esa versión arreglaba, resucitado por su
+  propia migración. La reparación acota el contador a los días realmente
+  transcurridos (las retenciones son como mucho una al día): una fila retenida
+  con honestidad conserva su cuenta exacta y una envenenada recupera la
+  quincena que se le debe. **Y esta vez el relleno tiene pruebas que lo
+  ejecutan contra datos**, que es exactamente lo que faltó la primera vez.
+- **Un error pasajero ya no indulta un mensaje rancio.** El reintento por error
+  dejaba una marca que contaba como "alguien decidió aplazar esto", así que
+  tras una caída larga el gemelo con un error de hace días se enviaba 30 horas
+  tarde mientras el limpio se cancelaba. La marca de un error compra su hora de
+  reintento y nada más.
+- **El contador de errores mide un episodio, no una vida.** No se reiniciaba
+  nunca, así que una fila que sobrevivió averías durante semanas moría al
+  primer tropiezo de un día por lo demás sano.
+- **La vigilancia de canales de envío ya no se fía del nombre.** Solo
+  examinaba funciones llamadas send_*: un canal nuevo llamado de otra forma
+  (notify..., place_call...) entraba con cero control de bajas y todo en
+  verde. Ahora clasifica por lo que la función HACE, no por cómo se llama, y
+  las tres formas de fuga encontradas en tres rondas distintas quedan cazadas.
+
 ## [0.53.0] — 2026-08-20
 
 ### Nuevo — el Estudio de Contenido escribe borradores solo

@@ -565,6 +565,23 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                     fu.postponed_until is None
                     and _as_utc(fu.scheduled_for) < now - _SEND_STALE_AFTER
                 )
+                # An error backoff is not a deferral decision — the stamp
+                # bought the row its retry hour and nothing more. Thanks to
+                # the reset further down, `attempts > 0` means the LAST thing
+                # that happened here was an error; once the whole episode's
+                # window has also gone by unvisited (sweeps were down), the
+                # row is as untouched as a stampless one and the same
+                # staleness applies. Without this, one transient error
+                # immunised a row against this rule for thirty days: after an
+                # outage, the erred twin of a cancelled row went out 30 hours
+                # late.
+                or (
+                    fu.attempts > 0
+                    and fu.postponed_until is not None
+                    and _as_utc(fu.postponed_until)
+                    < now - _ERROR_GIVE_UP_AFTER_TRIES * _ERROR_RETRY_AFTER
+                    and _as_utc(fu.scheduled_for) < now - _SEND_STALE_AFTER
+                )
                 # Or it is simply too late to be worth sending, deferred or not.
                 # This bound is only safe to write because `scheduled_for` is
                 # honest now: it is the date the message was for, so the
@@ -642,6 +659,15 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
             # received it, at TCPA exposure per message.
             try:
                 candidates = await reachable_active_conversations(lead.id, lead.phone, db)
+                # The error counter measures one episode, not a lifetime.
+                # Without this reset, a row that weathered a blip carried the
+                # count for ever, and the 25th transient error of its life
+                # marked it FAILED on a day everything else was fine. It also
+                # makes the counter a reliable witness: attempts > 0 now means
+                # "the LAST thing that happened to this row was an error",
+                # which the staleness rule below leans on.
+                if fu.attempts:
+                    fu.attempts = 0
                 candidates = _prefer(candidates, lead.preferred_channel)
                 conv = None
                 for candidate in candidates:

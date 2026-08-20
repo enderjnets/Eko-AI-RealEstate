@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.53.0";
+export const CURRENT_VERSION = "0.53.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.53.1",
+    date: "2026-08-20",
+    title: {
+      en: "The repair of the counter our own fix poisoned",
+      es: "La reparación del contador que nuestra propia corrección envenenó",
+    },
+    changes: [
+      {
+        en: "0.51.2 gave the consent fortnight its own counter, and its data migration copied the error-inflated total: a client held ONCE who sat through an outage arrived with the counter at 14, their second real hold became give-up number fifteen, and the whole sequence died two days after the viewing \u2014 the very defect that release fixed, resurrected by its own migration. The repair caps the counter at the days actually elapsed (holds happen at most once a day), so an honestly-held row keeps its exact count and a poisoned one gets its fortnight back. And this time the migration has tests that run it against data \u2014 which is precisely what was missing the first time.",
+        es: "La 0.51.2 le dio contador propio a la quincena de permiso, y su migraci\u00f3n de datos copi\u00f3 el total inflado por errores: un cliente retenido UNA vez que atraves\u00f3 una aver\u00eda llegaba con el contador en 14, su segunda retenci\u00f3n real se convert\u00eda en la rendici\u00f3n n\u00famero quince, y la secuencia entera mor\u00eda dos d\u00edas despu\u00e9s de la visita \u2014 el mismo defecto que esa versi\u00f3n arreglaba, resucitado por su propia migraci\u00f3n. La reparaci\u00f3n acota el contador a los d\u00edas realmente transcurridos (las retenciones son como mucho una al d\u00eda): una fila retenida con honestidad conserva su cuenta exacta y una envenenada recupera su quincena. Y esta vez la migraci\u00f3n tiene pruebas que la ejecutan contra datos \u2014 justo lo que falt\u00f3 la primera vez.",
+      },
+      {
+        en: "A transient error no longer pardons a stale message: its retry mark used to count as \"somebody decided to defer this\", so after a long outage the twin that had erred days ago went out 30 hours late while the clean one was cancelled. An error's mark buys its retry hour and nothing more. The error counter also measures one episode now, not a lifetime.",
+        es: "Un error pasajero ya no indulta un mensaje rancio: su marca de reintento contaba como \"alguien decidi\u00f3 aplazar esto\", as\u00ed que tras una ca\u00edda larga el gemelo que err\u00f3 hace d\u00edas sal\u00eda 30 horas tarde mientras el limpio se cancelaba. La marca de un error compra su hora de reintento y nada m\u00e1s. El contador de errores adem\u00e1s mide ahora un episodio, no una vida.",
+      },
+      {
+        en: "The watchdog over sending channels no longer trusts names: it only examined functions called send_*, so a new channel named anything else shipped with zero opt-out enforcement and everything green. It now classifies by what a function DOES, and all three escape shapes found across three audit rounds are caught.",
+        es: "La vigilancia de canales de env\u00edo ya no se f\u00eda de los nombres: solo examinaba funciones llamadas send_*, as\u00ed que un canal nuevo con otro nombre entraba con cero control de bajas y todo en verde. Ahora clasifica por lo que la funci\u00f3n HACE, y las tres formas de fuga halladas en tres rondas de auditor\u00eda quedan cazadas.",
+      },
+    ],
+  },
   {
     version: "0.53.0",
     date: "2026-08-20",

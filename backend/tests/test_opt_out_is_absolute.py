@@ -434,15 +434,33 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
     # shape. The bare-name case matters too: `from httpx import post` makes the
     # call an `ast.Name`, not an `ast.Attribute`, and the old check only looked
     # at attributes.
+    # The wire-touching verbs, matched in function BODIES only. Decorators are
+    # excluded on purpose: `@router.post` made every POST route in the API
+    # look like a sender. `request`/`create` are deliberately NOT here — every
+    # LLM client calls `.create` — because this list is for the narrow shapes
+    # that actually put bytes on a messaging wire.
     outbound_verbs = {
         "post",
         "put",
-        "request",
-        "create",
         "send",
-        "publish",
         "sendmail",
+        "publish",
         "send_message",
+    }
+
+    # Functions the classifier flags that are OUTBOUND but not MESSAGING —
+    # each with the reason it does not need the opt-out gate. Qualified, so a
+    # same-named function in a new module is not silently covered.
+    OUTBOUND_NOT_MESSAGING = {
+        "app/api/v1/public.py::_turnstile_ok":
+            "POSTs a captcha token to Cloudflare; no lead is addressed",
+        "app/services/calendar_cal.py::create_booking":
+            "books a visit on Cal.com at the lead's own request; transactional,"
+            " lead-initiated, not nurture",
+        "app/services/calendar_cal.py::cancel_booking":
+            "cancels that same booking; same reasoning",
+        "app/services/llm.py::_ollama_generate":
+            "POSTs a prompt to a local model; no lead is addressed",
     }
     undeclared: list[str] = []
     walked = 0
@@ -458,8 +476,12 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
-            if not node.name.startswith("send_"):
-                continue
+            # No name filter. The old sweep only examined functions named
+            # `send_*`, which defended renames of the three known senders and
+            # nothing else: a `notify_lead_by_push` doing a bare client.post()
+            # shipped a whole channel with zero opt-out enforcement and every
+            # test stayed green. What a function is called is not evidence
+            # about what it does — its body is.
             sends = any(
                 isinstance(inner, ast.Call)
                 and (
@@ -472,16 +494,17 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
                         and inner.func.id in outbound_verbs
                     )
                 )
-                for inner in ast.walk(node)
+                for stmt in node.body
+                for inner in ast.walk(stmt)
             )
             if not sends:
-                # Named like a primitive but reaches the wire through one, e.g.
-                # `conversation.send_human_message`. It is a caller, and callers
-                # are what `_reaching_functions` checks for the opt-out read.
+                continue
+            qualified = f"{path.relative_to(APP.parent)}::{node.name}"
+            if qualified in OUTBOUND_NOT_MESSAGING:
                 continue
             seen_per_module.setdefault(path.name, set()).add(node.name)
             if node.name not in SENDING_PRIMITIVES:
-                undeclared.append(f"{path.relative_to(APP.parent)}::{node.name}")
+                undeclared.append(qualified)
 
     # Its own canary. A sweep that walks nothing passes, and this file exists
     # because that has happened here before — the count belongs to the sweep it
