@@ -218,7 +218,7 @@ async def test_today_shows_a_follow_up_held_for_want_of_consent(
                     kind=FollowUpKind.CALL_FOLLOW_UP,
                     status=FollowUpStatus.PENDING,
                     scheduled_for=datetime.now(UTC) + timedelta(hours=6),
-                    attempts=3,
+                    consent_holds=3,
                 )
             )
             await s.commit()
@@ -256,7 +256,7 @@ async def test_a_lead_who_opted_out_appears_nowhere_on_the_list(
                     kind=FollowUpKind.CALL_FOLLOW_UP,
                     status=FollowUpStatus.PENDING,
                     scheduled_for=datetime.now(UTC) - timedelta(hours=2),
-                    attempts=2,
+                    consent_holds=2,
                 )
             )
             await s.commit()
@@ -702,7 +702,7 @@ async def test_a_burst_of_failures_does_not_bury_the_consent_holds(
                     lead_id=held_lead,
                     kind=FollowUpKind.CALL_FOLLOW_UP,
                     status=FollowUpStatus.PENDING,
-                    attempts=1,
+                    consent_holds=1,
                     scheduled_for=datetime.now(UTC) - timedelta(days=1),
                 )
             )
@@ -920,7 +920,7 @@ async def test_the_page_returns_the_number_of_rows_it_was_asked_for(
                         lead_id=lid,
                         kind=FollowUpKind.CALL_FOLLOW_UP,
                         status=FollowUpStatus.PENDING if i < 2 else FollowUpStatus.FAILED,
-                        attempts=1 if i < 2 else 0,
+                        consent_holds=1 if i < 2 else 0,
                         scheduled_for=datetime.now(UTC) - timedelta(hours=1),
                     )
                 )
@@ -957,7 +957,7 @@ async def test_a_follow_up_is_never_listed_twice(database_url: str) -> None:
                     lead_id=lead_id,
                     kind=FollowUpKind.CALL_FOLLOW_UP,
                     status=FollowUpStatus.PENDING,
-                    attempts=1,
+                    consent_holds=1,
                     scheduled_for=datetime.now(UTC) - timedelta(hours=1),
                 )
             )

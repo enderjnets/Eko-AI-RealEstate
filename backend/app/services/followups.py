@@ -54,6 +54,16 @@ _HOLD_RETRY_AFTER = timedelta(days=1)
 # it. One hold a day, so fourteen holds is a fortnight of grace.
 _HOLD_GIVE_UP_AFTER_HOLDS = 14
 
+# An error is not a consent hold and must not be paid for out of the same
+# budget. Backing off an hour rather than a day: the thing that raised is
+# usually transient, and a day would turn a blip into a day of silence — but
+# without any stamp at all the row simply falls due on the next sweep, which is
+# how thirteen sweeps of a one-hour outage spent thirteen days of grace.
+_ERROR_RETRY_AFTER = timedelta(hours=1)
+# Roughly a day of hourly retries. Bounded so a permanently malformed row stops,
+# generous enough that an outage lasting a working day does not lose the row.
+_ERROR_GIVE_UP_AFTER_TRIES = 24
+
 # Offsets relative to the visit's scheduled_at.
 _POST_VISIT_OFFSETS = {
     FollowUpKind.POST_VISIT_24H: timedelta(hours=24),
@@ -425,6 +435,12 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
     # rather than around it. Rather than add a third rule about dates, cap the
     # outcome: the rest keep their rows and go out on later sweeps.
     sent_to_lead: set[int] = set()
+    # Follow-ups this sweep has already reached and reported an outcome for.
+    # A row held earlier in the batch is counted where it was held; counting it
+    # again when a sibling's give-up takes it down reports four outcomes for
+    # three follow-ups, during exactly the consent-hold wave this number exists
+    # to make honest.
+    processed: set[int] = set()
 
     for fu_id in [row.id for row in rows]:
         fu = await db.get(FollowUp, fu_id)
@@ -437,6 +453,7 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
         # send rules to a message it has already given up on.
         if fu.status is not FollowUpStatus.PENDING:
             continue
+        processed.add(fu_id)
         counted = False
         marked_failed = False
         # Every path out of this item persists its own outcome before the
@@ -654,8 +671,17 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                 # Left PENDING so a transient database error is retried rather than
                 # cancelling somebody's sequence, but bounded so a permanently
                 # malformed row cannot spin forever.
+                #
+                # Its own counter and its own clock. This used to spend
+                # `attempts`, which was also the consent fortnight, and wrote no
+                # `postponed_until` — so the row fell due again on the next
+                # five-minute sweep and a one-hour blip burned thirteen days of
+                # somebody's grace. Since v0.51.0 the give-up takes the rest of
+                # the sequence with it, so that hour cost three messages, none
+                # of which had ever been held.
                 refreshed.attempts += 1
-                gave_up = refreshed.attempts > _HOLD_GIVE_UP_AFTER_HOLDS
+                refreshed.postponed_until = now + _ERROR_RETRY_AFTER
+                gave_up = refreshed.attempts > _ERROR_GIVE_UP_AFTER_TRIES
                 if gave_up:
                     refreshed.status = FollowUpStatus.FAILED
                 await db.commit()
@@ -685,12 +711,12 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                 # time it is due its row can already be older than the grace
                 # period — measuring from creation dropped it on its very first
                 # hold, which is the opposite of holding it.
-                fu.attempts += 1
-                if fu.attempts > _HOLD_GIVE_UP_AFTER_HOLDS:
+                fu.consent_holds += 1
+                if fu.consent_holds > _HOLD_GIVE_UP_AFTER_HOLDS:
                     log.info(
                         "Follow-up %d dropped for lead %d after %d daily holds "
                         "with no permitted channel",
-                        fu.id, lead.id, fu.attempts,
+                        fu.id, lead.id, fu.consent_holds,
                     )
                     fu.status = FollowUpStatus.SKIPPED
                     # The rest of the sequence dies with it. Those rows are the
@@ -727,7 +753,8 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                             # without this the sweep reports one row settled
                             # having settled three — and a consent-hold wave is
                             # exactly when somebody reconciles that number.
-                            skipped += len(doomed)
+                            fresh = [d for d in doomed if d.id not in processed]
+                            skipped += len(fresh)
                             log.info(
                                 "Dropped %d remaining follow-up(s) of visit %d "
                                 "with it — the sequence shares one hold clock",

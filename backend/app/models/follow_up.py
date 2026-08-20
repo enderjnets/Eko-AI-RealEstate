@@ -81,6 +81,20 @@ class FollowUp(Base):
         DateTime(timezone=True), nullable=True, index=True
     )
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Three different things used to share `attempts`: how many days we have
+    # waited for permission to write to this lead, how many times choosing a
+    # channel raised, and how many times a dispatch was tried. They have
+    # nothing to do with each other and they bound different clocks, so a
+    # one-hour outage spent a fortnight of consent grace in thirteen sweeps and
+    # killed the sequence two days after the visit.
+    #
+    # `consent_holds` is the fortnight. Nothing but a consent hold may spend it.
+    consent_holds: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    # Errors and dispatch tries. Bounded on its own so a permanently malformed
+    # row cannot spin forever, but it can no longer end anybody's sequence.
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(

@@ -135,8 +135,9 @@ async def today(
     ]
 
     # 2. Held: due, sendable in principle, but not getting through — either the
-    # consent gate refused every channel (`attempts` is the hold counter the
-    # worker increments) or the sends themselves failed.
+    # consent gate refused every channel (`consent_holds` is the counter the
+    # worker increments, and only a consent hold may spend it) or the sends
+    # themselves failed.
     #
     # Each kind gets its own budget. Sharing one `limit` across both means a
     # burst of one buries the other entirely, and a burst is exactly when this
@@ -162,7 +163,7 @@ async def today(
                 # head of every page, so the oldest dead rows crowded out the live
                 # ones; sorting on the due date has the same flaw as filtering on
                 # it, since a row that failed this morning can be weeks overdue.
-                .order_by(FollowUp.updated_at.desc(), FollowUp.attempts.desc())
+                .order_by(FollowUp.updated_at.desc(), FollowUp.consent_holds.desc())
                 .limit(budget)
             )
         ).all()
@@ -178,7 +179,10 @@ async def today(
     hold_rows = await _held(
         and_(
             FollowUp.status == FollowUpStatus.PENDING,
-            or_(FollowUp.attempts > 0, FollowUp.postponed_until.is_not(None)),
+            or_(
+                FollowUp.consent_holds > 0,
+                FollowUp.postponed_until.is_not(None),
+            ),
         ),
         limit,
     )
@@ -207,7 +211,7 @@ async def today(
     seen: set[int] = set()
     ranked = sorted(
         hold_rows + failed_rows,
-        key=lambda row: (row[0].updated_at, row[0].attempts),
+        key=lambda row: (row[0].updated_at, row[0].consent_holds),
         reverse=True,
     )
     deduped = [row for row in ranked if not (row[0].id in seen or seen.add(row[0].id))]
@@ -225,14 +229,14 @@ async def today(
         for queue in by_kind.values():
             if queue and len(held_rows) < limit:
                 held_rows.append(queue.pop(0))
-    held_rows.sort(key=lambda row: (row[0].updated_at, row[0].attempts), reverse=True)
+    held_rows.sort(key=lambda row: (row[0].updated_at, row[0].consent_holds), reverse=True)
 
     held = [
         HeldFollowUp(
             follow_up_id=fu.id,
             scheduled_for=fu.scheduled_for,
             next_attempt_at=fu.postponed_until,
-            holds=fu.attempts,
+            holds=fu.consent_holds,
             status=fu.status,
             lead=ConsoleLead.model_validate(lead),
         )

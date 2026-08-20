@@ -2,6 +2,37 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.51.2] — 2026-08-19
+
+### Corregido — la décima ronda de auditoría (auditor independiente)
+
+- **Una hora de errores ya no mata una secuencia entera.** Un contador servía
+  para tres cosas a la vez: los días que llevamos esperando permiso para
+  escribir a un cliente, los fallos al elegir canal, y los intentos de envío.
+  Solo el primero debe agotar la quincena de reintentos, pero cualquiera de los
+  tres la gastaba — y la rama de error, además, no dejaba marca de "reintentar
+  luego", así que el mensaje volvía a vencer a los cinco minutos. Trece pasadas
+  de una avería de una hora agotaban trece días de margen; dos pasadas normales
+  después la secuencia se cerraba, y desde la 0.51.0 se cierra **entera**. Un
+  cliente que visitó una propiedad el día 3 no recibía **ninguno** de los tres
+  mensajes, y la secuencia moría el día 5. Ahora la quincena tiene su propio
+  contador y **solo una espera de permiso puede gastarla**; un error espera una
+  hora y se cuenta aparte.
+- **El recuento de la pasada volvía a mentir**, ahora al alza: un mensaje
+  retenido al principio del lote y cerrado después por su secuencia se contaba
+  dos veces. Cuatro resultados para tres mensajes.
+- **Una secuencia sin visita ya no alcanza a los demás clientes.** El cierre en
+  cadena buscaba "los demás mensajes de esta visita"; en un seguimiento de
+  llamada, que no tiene visita, eso significaba **todos los seguimientos de
+  llamada de la organización**. Un cliente quedándose sin margen habría cerrado
+  los recordatorios de llamada de toda la cartera. La protección existía; lo que
+  no existía era nada que avisara si alguien la quitaba.
+- **Dos formas de enviar se escapaban del control de bajas.** La comprobación
+  que vigila que ningún canal salga del sistema de opt-out no reconocía una de
+  las maneras habituales de mandar una petición HTTP, ni miraba fuera de una
+  carpeta concreta — justo donde va a vivir el canal de voz. Las dos quedan
+  cubiertas.
+
 ## [0.51.1] — 2026-08-19
 
 ### Corregido — la novena ronda de auditoría

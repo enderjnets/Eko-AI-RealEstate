@@ -421,7 +421,7 @@ async def test_a_hold_gives_up_eventually() -> None:
             # moment the visit is booked, so an age-based cutoff dropped it on
             # its very first hold — the opposite of holding it.
             await db.execute(
-                sqltext("UPDATE follow_ups SET attempts = 14 WHERE id = :i"),
+                sqltext("UPDATE follow_ups SET consent_holds = 14 WHERE id = :i"),
                 {"i": fu_id},
             )
             await db.commit()
@@ -470,7 +470,7 @@ async def test_an_old_followup_is_not_dropped_on_its_first_hold() -> None:
             ).scalar_one()
             await db.refresh(fu)
             assert fu.status == FollowUpStatus.PENDING, "held, despite the old row"
-            assert fu.attempts == 1
+            assert fu.consent_holds == 1
     finally:
         await _cleanup()
 

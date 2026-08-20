@@ -428,11 +428,31 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
     # sender could leave through: `glob` missed sub-packages, `tree.body` missed
     # methods on a client class, `AsyncFunctionDef` missed sync helpers, and
     # `post` alone missed the Twilio SDK, which sends with `messages.create`.
-    outbound_verbs = {"post", "put", "request", "create"}
+    # Widened twice by things that walked straight through. `client.send(req)`
+    # is how httpx sends a pre-built request and it carried a real POST out of
+    # here; `resend.Emails.send`, `sns.publish` and `smtp.sendmail` are the same
+    # shape. The bare-name case matters too: `from httpx import post` makes the
+    # call an `ast.Name`, not an `ast.Attribute`, and the old check only looked
+    # at attributes.
+    outbound_verbs = {
+        "post",
+        "put",
+        "request",
+        "create",
+        "send",
+        "publish",
+        "sendmail",
+        "send_message",
+    }
     undeclared: list[str] = []
     walked = 0
     seen_per_module: dict[str, set[str]] = {}
-    for path in sorted(APP.rglob("services/**/*.py")):
+    # The whole application tree, not just `services/`. `_reaching_functions`
+    # below walks `APP.rglob("*.py")`, so a primitive living anywhere else —
+    # `app/integrations/`, which is where the voice provider will land — was
+    # invisible to this canary while being perfectly visible to the sweep that
+    # depends on it.
+    for path in sorted(APP.rglob("*.py")):
         walked += 1
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
@@ -440,14 +460,27 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
                 continue
             if not node.name.startswith("send_"):
                 continue
-            seen_per_module.setdefault(path.name, set()).add(node.name)
             sends = any(
                 isinstance(inner, ast.Call)
-                and isinstance(inner.func, ast.Attribute)
-                and inner.func.attr in outbound_verbs
+                and (
+                    (
+                        isinstance(inner.func, ast.Attribute)
+                        and inner.func.attr in outbound_verbs
+                    )
+                    or (
+                        isinstance(inner.func, ast.Name)
+                        and inner.func.id in outbound_verbs
+                    )
+                )
                 for inner in ast.walk(node)
             )
-            if sends and node.name not in SENDING_PRIMITIVES:
+            if not sends:
+                # Named like a primitive but reaches the wire through one, e.g.
+                # `conversation.send_human_message`. It is a caller, and callers
+                # are what `_reaching_functions` checks for the opt-out read.
+                continue
+            seen_per_module.setdefault(path.name, set()).add(node.name)
+            if node.name not in SENDING_PRIMITIVES:
                 undeclared.append(f"{path.relative_to(APP.parent)}::{node.name}")
 
     # Its own canary. A sweep that walks nothing passes, and this file exists
@@ -477,6 +510,15 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
             " — a sender was renamed out of this sweep's sight, the file moved,"
             " or a new one arrived undeclared"
         )
+    # The set of MODULES has to match too. The loop above only visits the names
+    # this table already knows, so a primitive appearing in a module nobody
+    # listed was skipped in silence — which is how a whole channel could ship
+    # with no opt-out enforcement behind it.
+    assert set(seen_per_module) == set(expected_per_module), (
+        f"modules carrying an outbound primitive: {sorted(seen_per_module)}, "
+        f"table names: {sorted(expected_per_module)} — a channel arrived or "
+        "moved and this sweep was not told"
+    )
     # And the union has to be the declared list itself, so a primitive cannot be
     # quietly relocated to a module this table does not name.
     assert set().union(*expected_per_module.values()) == SENDING_PRIMITIVES, (

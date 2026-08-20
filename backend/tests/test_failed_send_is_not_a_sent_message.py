@@ -9,12 +9,15 @@ from them; nothing anywhere said otherwise.
 """
 from __future__ import annotations
 
+import ast
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select, text
 
+import app.services.followups
 from app.db.base import get_bypass_session_factory, get_session_factory
 from app.models.conversation import Conversation
 from app.models.follow_up import FollowUp, FollowUpKind, FollowUpStatus
@@ -917,7 +920,7 @@ async def test_an_outage_does_not_cancel_a_sequence_that_was_being_held() -> Non
                 # A held row says so: since migration 032 the deferral lives in
                 # its own column, and 033 backfilled the ones that predate it.
                 held.postponed_until = datetime.now(UTC) - timedelta(minutes=1)
-                held.attempts = 3
+                held.consent_holds = 3
                 db.add(held)
                 await db.commit()
                 held_id = held.id
@@ -930,7 +933,7 @@ async def test_an_outage_does_not_cancel_a_sequence_that_was_being_held() -> Non
                 assert row.status != FollowUpStatus.CANCELLED, (
                     "an outage cancelled a sequence that was being held for consent"
                 )
-                assert row.attempts == 4, "it should have been held once more"
+                assert row.consent_holds == 4, "it should have been held once more"
     finally:
         await _cleanup()
 
@@ -964,7 +967,7 @@ async def test_a_sequence_held_past_the_give_up_is_not_released_later() -> None:
                     scheduled_for=datetime.now(UTC) - timedelta(days=20),
                 )
                 exhausted.postponed_until = datetime.now(UTC) - timedelta(minutes=1)
-                exhausted.attempts = 15  # one past the fortnight of daily holds
+                exhausted.consent_holds = 15  # one past the fortnight of daily holds
                 db.add(exhausted)
                 await db.commit()
                 fu_id = exhausted.id
@@ -1379,7 +1382,7 @@ async def test_a_sequence_that_gives_up_takes_the_rest_of_the_sequence_with_it()
                         status=FollowUpStatus.PENDING,
                         scheduled_for=datetime.now(UTC) - timedelta(days=14),
                         # One short of the limit: this sweep's hold is the last.
-                        attempts=_HOLD_GIVE_UP_AFTER_HOLDS,
+                        consent_holds=_HOLD_GIVE_UP_AFTER_HOLDS,
                         # A row with holds on it always carries the stamp the
                         # hold path wrote. Without one it is not a held row, it
                         # is an abandoned one, and the staleness rule cancels it
@@ -1556,3 +1559,338 @@ async def test_the_staleness_ceiling_is_derived_and_it_bites() -> None:
                 assert row.status is FollowUpStatus.CANCELLED, row.status
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_hour_of_errors_does_not_spend_the_consent_fortnight() -> None:
+    """An outage is not a lead declining to be written to.
+
+    Choosing a channel raised for an hour. The sweep runs every five minutes, so
+    that is thirteen passes. The error handler used to spend `attempts` — which
+    was also the consent counter — and write no `postponed_until`, so the row
+    fell due again on the very next pass. Thirteen sweeps put it two short of
+    the fortnight; two ordinary passes later the consent give-up fired, and
+    since v0.51.0 it takes the rest of the sequence with it.
+
+    A lead who viewed a property on the 3rd then received none of the three
+    post-visit messages, and the sequence was dead on the 5th, with the other
+    two rows never having been held at all.
+    """
+    from app.services.followups import _HOLD_GIVE_UP_AFTER_HOLDS
+
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead_id, _ = await _lead_with_thread(db, "+13035557033")
+                visit = Visit(
+                    lead_id=lead_id,
+                    calendar_provider="manual",
+                    external_booking_id="manual-blip-1",
+                    status=VisitStatus.SCHEDULED,
+                    scheduled_at=datetime.now(UTC) - timedelta(days=2),
+                    duration_minutes=30,
+                    timezone="UTC",
+                )
+                db.add(visit)
+                await db.flush()
+                # 24h and 7d only. `_lead_with_thread` seeds an inbound dated
+                # now and the re-engagement rule fires on 72H alone, which
+                # would settle that row for an unrelated reason and hide what
+                # this test is watching.
+                for kind, age in (
+                    (FollowUpKind.POST_VISIT_24H, timedelta(days=1)),
+                    (FollowUpKind.POST_VISIT_7D, timedelta(0)),
+                ):
+                    db.add(
+                        FollowUp(
+                            lead_id=lead_id,
+                            visit_id=visit.id,
+                            kind=kind,
+                            status=FollowUpStatus.PENDING,
+                            scheduled_for=datetime.now(UTC) - age,
+                        )
+                    )
+                await db.commit()
+
+            async def _raises(*a, **k):  # noqa: ANN002, ANN003, ANN202
+                raise RuntimeError("channel selection is down")
+
+            # Thirteen sweeps in one hour, which is what a five-minute worker
+            # does while something is broken.
+            for _ in range(13):
+                async with get_session_factory()() as db:
+                    with patch(
+                        "app.services.followups.reachable_active_conversations",
+                        _raises,
+                    ):
+                        await process_due_followups(db)
+
+            async with get_session_factory()() as db:
+                rows = (
+                    await db.execute(
+                        select(FollowUp).where(FollowUp.lead_id == lead_id)
+                    )
+                ).scalars().all()
+
+            alive = [r for r in rows if r.status is FollowUpStatus.PENDING]
+            assert len(alive) == 2, (
+                "an hour of errors settled part of the sequence: "
+                f"{[(r.kind.value, r.status.value) for r in rows]}"
+            )
+            assert all(r.consent_holds == 0 for r in rows), (
+                "an outage was charged to the consent fortnight: "
+                f"{[(r.kind.value, r.consent_holds) for r in rows]}"
+            )
+            # And the retry stamp is what stops the burn: without it the row is
+            # due again on the next tick and the hour costs thirteen passes.
+            assert all(r.postponed_until is not None for r in rows), (
+                "a row that errored carries no retry stamp, so it falls due "
+                "again immediately"
+            )
+            assert all(r.attempts <= _HOLD_GIVE_UP_AFTER_HOLDS for r in rows), (
+                f"error tries ran past the consent budget: "
+                f"{[(r.kind.value, r.attempts) for r in rows]}"
+            )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_counts_each_follow_up_once() -> None:
+    """Three follow-ups cannot produce four outcomes.
+
+    The batch is ordered by `coalesce(postponed_until, scheduled_for)` first and
+    cadence rank only as a tie-break, so a later-cadence row that was never
+    postponed can sort ahead of the earlier row that was. It is then held by the
+    cadence invariant — counted, and still PENDING — and counted a second time
+    when the earlier row gives up and takes it down.
+
+    The number is returned by the sweep and logged. It over-reported during
+    precisely the consent-hold wave it was added to make honest.
+    """
+    from app.services.followups import _HOLD_GIVE_UP_AFTER_HOLDS
+
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                lead_id, _ = await _lead_with_thread(
+                    db, "+13035557034", with_inbound=False
+                )
+                visit = Visit(
+                    lead_id=lead_id,
+                    calendar_provider="manual",
+                    external_booking_id="manual-count-1",
+                    status=VisitStatus.SCHEDULED,
+                    scheduled_at=datetime.now(UTC) - timedelta(days=15),
+                    duration_minutes=30,
+                    timezone="UTC",
+                )
+                db.add(visit)
+                await db.flush()
+                # The 24h row is one hold short of giving up and drifted, so its
+                # `postponed_until` sorts it AFTER the 7d row, which never was
+                # postponed and is due on its own `scheduled_for`.
+                db.add(
+                    FollowUp(
+                        lead_id=lead_id,
+                        visit_id=visit.id,
+                        kind=FollowUpKind.POST_VISIT_24H,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) - timedelta(days=14),
+                        consent_holds=_HOLD_GIVE_UP_AFTER_HOLDS,
+                        postponed_until=datetime.now(UTC) - timedelta(minutes=1),
+                    )
+                )
+                db.add(
+                    FollowUp(
+                        lead_id=lead_id,
+                        visit_id=visit.id,
+                        kind=FollowUpKind.POST_VISIT_7D,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) - timedelta(hours=2),
+                    )
+                )
+                await db.commit()
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                return "sm.x", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.followups._dispatch_send", _ok):
+                    counts = await process_due_followups(db)
+
+            async with get_session_factory()() as db:
+                rows = (
+                    await db.execute(
+                        select(FollowUp).where(FollowUp.lead_id == lead_id)
+                    )
+                ).scalars().all()
+
+            reported = counts["sent"] + counts["skipped"] + counts["failed"]
+            assert reported <= len(rows), (
+                f"reported {reported} outcomes for {len(rows)} follow-ups: "
+                f"{counts}"
+            )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_visitless_give_up_does_not_reach_the_rest_of_the_tenant() -> None:
+    """`visit_id IS NULL` is not a visit.
+
+    The sibling cancellation finds the rest of a sequence with
+    `FollowUp.visit_id == fu.visit_id`. On a follow-up that has no visit that
+    renders `visit_id IS NULL`, which matches every visit-less PENDING row in
+    the organisation — across every lead. `CALL_FOLLOW_UP` rows are exactly
+    that: one is created per logged call, for whoever the office rang.
+
+    So one lead running out of consent grace would settle the call follow-ups of
+    every other client on the books. The guard is a single `is not None`, and
+    removing it left the whole suite green.
+    """
+    from app.services.followups import _HOLD_GIVE_UP_AFTER_HOLDS
+
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                doomed_lead, _ = await _lead_with_thread(
+                    db, "+13035557035", with_inbound=False
+                )
+                bystander, _ = await _lead_with_thread(
+                    db, "+13035557036", with_inbound=False
+                )
+                # Out of grace, no visit: this one gives up on this sweep.
+                db.add(
+                    FollowUp(
+                        lead_id=doomed_lead,
+                        visit_id=None,
+                        kind=FollowUpKind.CALL_FOLLOW_UP,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) - timedelta(days=14),
+                        consent_holds=_HOLD_GIVE_UP_AFTER_HOLDS,
+                        postponed_until=datetime.now(UTC) - timedelta(minutes=1),
+                    )
+                )
+                # Somebody else entirely, also without a visit.
+                db.add(
+                    FollowUp(
+                        lead_id=bystander,
+                        visit_id=None,
+                        kind=FollowUpKind.CALL_FOLLOW_UP,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) + timedelta(days=3),
+                    )
+                )
+                await db.commit()
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                return "sm.x", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.followups._dispatch_send", _ok):
+                    await process_due_followups(db)
+
+            async with get_session_factory()() as db:
+                others = (
+                    await db.execute(
+                        select(FollowUp).where(FollowUp.lead_id == bystander)
+                    )
+                ).scalars().all()
+
+            assert [r.status for r in others] == [FollowUpStatus.PENDING], (
+                "another client's call follow-up was settled by a give-up on a "
+                f"lead they have nothing to do with: {[r.status for r in others]}"
+            )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_cadence_invariant_does_not_treat_no_visit_as_one_visit() -> None:
+    """The invariant's own copy of the same guard.
+
+    It holds a later-cadence message while an earlier one *about the same
+    visit* is still owed. Without the `visit_id is not None` check, a row with
+    no visit compares `visit_id IS NULL` and is held behind an unrelated
+    client's visit-less follow-up — silently, for ever, since that other row
+    has no reason to move.
+    """
+    await _agency()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                mine, _ = await _lead_with_thread(db, "+13035557037")
+                stranger, _ = await _lead_with_thread(db, "+13035557038")
+                db.add(
+                    FollowUp(
+                        lead_id=mine,
+                        visit_id=None,
+                        kind=FollowUpKind.POST_VISIT_7D,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) - timedelta(minutes=1),
+                    )
+                )
+                # Earlier in the cadence, no visit, belongs to somebody else.
+                db.add(
+                    FollowUp(
+                        lead_id=stranger,
+                        visit_id=None,
+                        kind=FollowUpKind.POST_VISIT_24H,
+                        status=FollowUpStatus.PENDING,
+                        scheduled_for=datetime.now(UTC) + timedelta(days=5),
+                    )
+                )
+                await db.commit()
+
+            delivered: list[str] = []
+
+            async def _ok(channel, *, to, text, **kwargs):  # noqa: ANN001, ANN202
+                delivered.append(text[:40])
+                return "sm.x", None
+
+            async with get_session_factory()() as db:
+                with patch("app.services.followups._dispatch_send", _ok):
+                    await process_due_followups(db)
+
+            assert len(delivered) == 1, (
+                "a due message was held behind a stranger's follow-up that "
+                f"shares nothing but having no visit: {delivered}"
+            )
+    finally:
+        await _cleanup()
+
+
+def test_the_staleness_ceiling_is_written_as_a_formula() -> None:
+    """Not merely equal to the right number today.
+
+    The literal `timedelta(days=30)` satisfies every numeric assertion about
+    the ceiling — it is identical to 14 + 16 — so the property the derivation
+    exists for went unchecked: that raising the hold clock MOVES the ceiling.
+    Only the source can answer that, and somebody who bumps the holds should
+    get a failure pointing at the formula rather than one telling them to edit
+    a literal.
+    """
+    tree = ast.parse(
+        Path(app.services.followups.__file__).read_text(encoding="utf-8")
+    )
+    ceiling = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(t, ast.Name) and t.id == "_MAX_LATENESS"
+            for t in node.targets
+        )
+    )
+    referenced = {
+        n.id for n in ast.walk(ceiling.value) if isinstance(n, ast.Name)
+    }
+    assert "_HOLD_GIVE_UP_AFTER_HOLDS" in referenced, (
+        "the ceiling no longer mentions the hold clock it has to clear, so "
+        f"raising the clock leaves it behind: {sorted(referenced)}"
+    )
+

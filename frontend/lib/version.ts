@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.51.1";
+export const CURRENT_VERSION = "0.51.2";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.51.2",
+    date: "2026-08-19",
+    title: {
+      en: "An hour of errors no longer kills a whole sequence",
+      es: "Una hora de errores ya no mata una secuencia entera",
+    },
+    changes: [
+      {
+        en: "One counter was doing three jobs: the days we have waited for permission to write to a client, failures picking a channel, and delivery attempts. Only the first should ever exhaust the fortnight of retries \u2014 but any of the three spent it, and the error path left no \"try again later\" mark, so the message fell due again five minutes on. Thirteen passes of a one-hour outage burned thirteen days of grace; two ordinary passes later the sequence closed, and since 0.51.0 it closes entirely. A client who viewed a property on the 3rd received none of the three messages and the sequence was dead on the 5th. The fortnight now has its own counter and only a wait for permission can spend it.",
+        es: "Un contador hac\u00eda tres trabajos: los d\u00edas esperando permiso para escribir a un cliente, los fallos al elegir canal, y los intentos de env\u00edo. Solo el primero debe agotar la quincena de reintentos \u2014 pero cualquiera la gastaba, y la rama de error no dejaba marca de \"reintentar luego\", as\u00ed que el mensaje volv\u00eda a vencer a los cinco minutos. Trece pasadas de una aver\u00eda de una hora agotaban trece d\u00edas de margen; dos pasadas despu\u00e9s la secuencia se cerraba, y desde la 0.51.0 se cierra entera. Un cliente que visit\u00f3 una propiedad el d\u00eda 3 no recib\u00eda ninguno de los tres mensajes y la secuencia mor\u00eda el d\u00eda 5. Ahora la quincena tiene contador propio y solo una espera de permiso puede gastarla.",
+      },
+      {
+        en: "A follow-up with no viewing attached no longer reaches your other clients. The cascade looked for \"the rest of the messages about this viewing\"; on a call reminder, which has no viewing, that meant every call reminder in the account.",
+        es: "Un seguimiento sin visita ya no alcanza a sus dem\u00e1s clientes. El cierre en cadena buscaba \"los dem\u00e1s mensajes de esta visita\"; en un recordatorio de llamada, que no tiene visita, eso significaba todos los recordatorios de llamada de la cuenta.",
+      },
+      {
+        en: "Two ways of sending could slip past the opt-out safeguard \u2014 one common form of HTTP request it did not recognise, and anything outside one folder, which is exactly where the voice channel is going to live. Both are covered now.",
+        es: "Dos formas de enviar pod\u00edan escaparse del control de bajas: una manera habitual de hacer una petici\u00f3n HTTP que no reconoc\u00eda, y cualquier cosa fuera de una carpeta concreta \u2014 justo donde va a vivir el canal de voz. Las dos quedan cubiertas.",
+      },
+    ],
+  },
   {
     version: "0.51.1",
     date: "2026-08-19",
