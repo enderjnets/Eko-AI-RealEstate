@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.51.2";
+export const CURRENT_VERSION = "0.52.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.52.0",
+    date: "2026-08-20",
+    title: {
+      en: "Content Studio: the rail and the gate",
+      es: "Estudio de Contenido: el carril y la puerta",
+    },
+    changes: [
+      {
+        en: "A new Content tab in the console: drafts, pieces awaiting approval, approved and rejected, with an inline editor and a player for clips. Nothing generates or publishes yet \u2014 this release deliberately builds the gate first: nothing can ever be published without a person approving it here, and the approval records who and when. Editing an approved piece sends it back to the queue, because the approval was of the old text.",
+        es: "Nueva pesta\u00f1a Contenido en la consola: borradores, piezas por aprobar, aprobadas y rechazadas, con editor en l\u00ednea y reproductor para clips. Todav\u00eda no genera ni publica nada \u2014 esta versi\u00f3n construye primero la puerta, a prop\u00f3sito: nada puede publicarse sin que una persona lo apruebe aqu\u00ed, y la aprobaci\u00f3n registra qui\u00e9n y cu\u00e1ndo. Editar una pieza aprobada la devuelve a la cola: lo aprobado era el texto anterior.",
+      },
+      {
+        en: "A deterministic Fair Housing filter, in English and Spanish. Over 90 phrases that cannot appear in housing advertising \u2014 \"perfect for families\", \"safe neighborhood\", \"good schools\" \u2014 are flagged as you write, on submit, and AGAIN at publish time. A draft with flagged phrases stays a draft, with the phrases named, until a person fixes them.",
+        es: "Filtro de vivienda justa determinista, en ingl\u00e9s y espa\u00f1ol. M\u00e1s de 90 frases que no pueden aparecer en publicidad de vivienda \u2014 \"perfect for families\", \"barrio seguro\", \"good schools\" \u2014 se marcan al escribir, al enviar y OTRA VEZ al publicar. Un borrador con frases marcadas se queda en borrador, con las frases se\u00f1aladas, hasta que una persona las corrige.",
+      },
+      {
+        en: "Without your brokerage identification nothing publishes: Colorado requires advertising to identify the brokerage, the field now lives in Settings, and the gate refuses while it is empty. Plus: clip uploads from the phone (up to 500 MB, streamed), served only behind sign-in and inside each agency's boundary.",
+        es: "Sin la identificaci\u00f3n de su brokerage nada se publica: Colorado exige que la publicidad identifique la brokerage, el campo vive ahora en Ajustes y la puerta se niega mientras est\u00e9 vac\u00edo. Adem\u00e1s: subida de clips desde el m\u00f3vil (hasta 500 MB, en streaming), servidos solo tras iniciar sesi\u00f3n y dentro de la frontera de cada agencia.",
+      },
+    ],
+  },
   {
     version: "0.51.2",
     date: "2026-08-19",

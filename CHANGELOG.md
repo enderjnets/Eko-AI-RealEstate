@@ -2,6 +2,42 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.52.0] — 2026-08-20
+
+### Nuevo — Estudio de Contenido: el carril y la puerta
+
+La base del estudio de vídeo corto para agentes. **Todavía no genera ni publica
+nada**: esta versión construye, a propósito y primero, la puerta que hace
+imposible publicar sin una persona.
+
+- **Cola de aprobación en la consola.** Pestaña "Contenido": borradores,
+  pendientes de aprobar, aprobados y rechazados, con reproductor para clips,
+  edición en línea y los dos botones que lo resuelven. En inglés y español.
+- **Nada se publica sin una persona.** El estado APROBADO solo puede ponerlo
+  alguien desde la consola, y queda registrado quién y cuándo. Editar una pieza
+  aprobada la devuelve a la cola: lo aprobado era el texto anterior.
+- **Filtro de vivienda justa (Fair Housing), determinista y en dos idiomas.**
+  Más de 90 frases que la ley no permite en publicidad de vivienda —
+  "perfect for families", "barrio seguro", "good schools" — se detectan al
+  escribir, al enviar a aprobación y OTRA VEZ al publicar. Un borrador con
+  frases marcadas no llega solo a la cola: se queda en borradores con las
+  frases señaladas para que una persona las corrija.
+- **Sin identificación de brokerage no se publica.** Colorado exige que la
+  publicidad identifique la brokerage; el campo existe ahora en Ajustes y la
+  puerta se niega mientras esté vacío.
+- **Clips desde el móvil.** Subida de vídeo (hasta 500 MB, en streaming) que
+  queda como borrador; el archivo se sirve solo autenticado y dentro de la
+  frontera de cada agencia.
+
+### Interno
+
+- Tablas `content_pieces` y `content_publications` (migraciones 035–037) con
+  aislamiento por agencia verificado en ambos sentidos y por mutación.
+- Máquina de estados cerrada: toda transición no declarada es un error, y un
+  barrido del árbol garantiza que nadie escribe un estado por fuera.
+- `PUBLISH_PRIMITIVES` está vacío y una comprobación lo obliga a ser honesto:
+  el primer publicador que llegue sin declararse pone la suite en rojo.
+
 ## [0.51.2] — 2026-08-19
 
 ### Corregido — la décima ronda de auditoría (auditor independiente)

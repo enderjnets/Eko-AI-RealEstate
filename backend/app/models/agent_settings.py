@@ -33,6 +33,13 @@ class AgentSettings(Base):
     )
 
     agency_name: Mapped[str] = mapped_column(String(160), default="Inmobiliaria", nullable=False)
+
+    # The brokerage identification Colorado requires on advertising. Nullable
+    # and with no default on purpose: the exact wording is a legal question the
+    # brokerage answers, and inventing one would be worse than having none.
+    # Nothing may be published without it — a video that does not identify the
+    # brokerage is a licence problem for the agent, not for us.
+    brokerage_line: Mapped[str | None] = mapped_column(String(200), nullable=True)
     agency_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # Where Cal.com sends the booking confirmation when the lead has no email

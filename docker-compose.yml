@@ -41,6 +41,10 @@ services:
       dockerfile: Dockerfile
     container_name: eko-realestate-backend
     restart: unless-stopped
+    volumes:
+      # Uploaded clips and rendered pieces. A named volume, not a bind mount:
+      # the media survives image rebuilds and never lands inside the repo.
+      - content-media:/data/media
     depends_on:
       db:
         condition: service_healthy
@@ -117,6 +121,9 @@ services:
       OUTSCRAPER_API_KEY: ${OUTSCRAPER_API_KEY:-}
       SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
       FILE_IMPORT_MAX_MB: ${FILE_IMPORT_MAX_MB:-25}
+      # Content Studio (v0.52+): clip uploads land on the media volume.
+      CONTENT_UPLOAD_MAX_MB: ${CONTENT_UPLOAD_MAX_MB:-500}
+      CONTENT_MEDIA_DIR: ${CONTENT_MEDIA_DIR:-/data/media}
       # Dashboard auth (Phase 11) — off by default (open demo); installer turns it on.
       AUTH_ENABLED: ${AUTH_ENABLED:-false}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
@@ -252,3 +259,4 @@ services:
 
 volumes:
   postgres-data:
+  content-media:

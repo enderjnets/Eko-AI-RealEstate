@@ -14,6 +14,7 @@ from app.api.v1 import (
     analytics,
     auth,
     console,
+    content,
     conversations,
     discovery,
     health,
@@ -213,6 +214,8 @@ app.add_middleware(TenantMiddleware)
 # checks the size, so passing it through costs one copy instead of three.
 _STREAM_PATHS: dict[str, int] = {
     "/api/v1/discovery/upload": settings.FILE_IMPORT_MAX_MB * 1024 * 1024,
+    # A phone clip; the route enforces the cap itself while streaming to disk.
+    "/api/v1/content/upload": settings.CONTENT_UPLOAD_MAX_MB * 1024 * 1024,
 }
 DEFAULT_MAX_BODY_BYTES = 256 * 1024
 
@@ -370,6 +373,7 @@ app.include_router(properties.router, prefix="/api/v1/properties", tags=["proper
 app.include_router(properties.lead_matches_router, prefix="/api/v1", tags=["properties"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"], dependencies=_auth)
 app.include_router(console.router, prefix="/api/v1/console", tags=["console"], dependencies=_auth)
+app.include_router(content.router, prefix="/api/v1/content", tags=["content"], dependencies=_auth)
 app.include_router(discovery.router, prefix="/api/v1/discovery", tags=["discovery"], dependencies=_auth)
 
 

@@ -402,6 +402,67 @@ export const consoleApi = {
   today: () => api<ConsoleToday>(`/v1/console/today`),
 };
 
+// ─── Content Studio (v0.52+) ────────────────────────────────────────────
+
+export type ContentStatus =
+  | "draft"
+  | "needs_approval"
+  | "approved"
+  | "publishing"
+  | "published"
+  | "rejected"
+  | "failed";
+
+export interface ContentPublication {
+  id: number;
+  platform: string;
+  status: string;
+  external_id: string | null;
+  published_at: string | null;
+  last_error: string | null;
+}
+
+export interface ContentPiece {
+  id: number;
+  kind: "generated" | "recorded";
+  language: "en" | "es";
+  status: ContentStatus;
+  hook: string | null;
+  script: string | null;
+  caption: string | null;
+  media_path: string | null;
+  violations: { phrase: string; category: string }[] | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejected_reason: string | null;
+  created_at: string;
+  updated_at: string;
+  publications: ContentPublication[];
+}
+
+export const contentApi = {
+  list: (status?: ContentStatus) =>
+    api<ContentPiece[]>(
+      status ? `/v1/content?status=${status}` : `/v1/content`,
+    ),
+  edit: (id: number, body: { hook?: string; script?: string; caption?: string }) =>
+    api<ContentPiece>(`/v1/content/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  submit: (id: number) =>
+    api<ContentPiece>(`/v1/content/${id}/submit`, { method: "POST" }),
+  approve: (id: number) =>
+    api<ContentPiece>(`/v1/content/${id}/approve`, { method: "POST" }),
+  reject: (id: number, reason: string) =>
+    api<ContentPiece>(`/v1/content/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+  /** The clip itself, behind the same auth as everything else. */
+  mediaUrl: (id: number) => `/api/v1/content/${id}/media`,
+};
+
 export interface AgencySettings {
   agency_name: string;
   agency_phone: string | null;

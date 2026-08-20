@@ -133,8 +133,11 @@ class ContentPiece(Base):
         nullable=False,
     )
 
+    # Eager ("selectin"), not lazy: the API serialises pieces with their
+    # publications, and a lazy relationship read from an async session raises
+    # MissingGreenlet the first time anything touches it after a commit.
     publications: Mapped[list[ContentPublication]] = relationship(
-        back_populates="piece", cascade="all, delete-orphan"
+        back_populates="piece", cascade="all, delete-orphan", lazy="selectin"
     )
 
     # The hook is written by a language model, which does not count characters

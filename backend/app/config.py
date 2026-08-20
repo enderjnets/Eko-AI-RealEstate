@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.51.2"
+    APP_VERSION: str = "0.52.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -186,6 +186,14 @@ class Settings(BaseSettings):
     SERPAPI_API_KEY: str = ""        # LinkedIn via SerpApi Google search — legacy
     ATTOM_API_KEY: str = ""          # ATTOM property/owner data — absentee/preforeclosure/high_equity
     FILE_IMPORT_MAX_MB: int = 25
+
+    # ─── Content Studio (v0.52+) ────────────────────────────────────────
+    # A phone clip in 4K runs a few hundred MB. The cap is enforced by the
+    # upload route itself while streaming, not by the body-buffering middleware.
+    CONTENT_UPLOAD_MAX_MB: int = 500
+    # Inside the container; compose mounts a volume here. Media is served only
+    # through the authenticated route, never as static files.
+    CONTENT_MEDIA_DIR: str = "/data/media"
 
     # ─── Dashboard auth (Phase 11) ──────────────────────────────────────
     # One deploy = one office → a single shared dashboard password. When
