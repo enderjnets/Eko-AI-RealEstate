@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.51.0";
+export const CURRENT_VERSION = "0.51.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.51.1",
+    date: "2026-08-19",
+    title: {
+      en: "Three guards that were not guarding",
+      es: "Tres salvaguardas que no salvaguardaban",
+    },
+    changes: [
+      {
+        en: "Found by deleting each of yesterday's fixes and checking whether anything went red. None of these changes what you receive; all three change what we can promise you about what is already running.",
+        es: "Encontrados borrando cada arreglo de ayer y comprobando si algo se pon\u00eda en rojo. Ninguno cambia lo que usted recibe; los tres cambian lo que podemos garantizarle sobre lo que ya est\u00e1 en marcha.",
+      },
+      {
+        en: "A message already given up on could keep taking retries. When a whole sequence was closed, the messages that fell with it went back through the sending rules in the same pass and ended up marked \"retry tomorrow\" despite being closed \u2014 a record that contradicts itself, and the one the console reads.",
+        es: "Un mensaje ya descartado pod\u00eda seguir acumulando reintentos. Al cerrar una secuencia entera, los mensajes que ca\u00edan con ella volv\u00edan a pasar por las reglas de env\u00edo en la misma pasada y quedaban marcados como \"reintentar ma\u00f1ana\" pese a estar cerrados \u2014 un registro que se contradice a s\u00ed mismo, y es el que lee la consola.",
+      },
+      {
+        en: "The 30-day limit was anchored to nothing: it could be changed without any check noticing. We verified that by setting it to 114 days and watching everything stay green. It is now pinned to the number we publish here.",
+        es: "El plazo de 30 d\u00edas no estaba anclado a nada: se pod\u00eda cambiar sin que ninguna comprobaci\u00f3n se enterara. Lo verificamos poni\u00e9ndolo en 114 d\u00edas y viendo que todo segu\u00eda en verde. Ahora est\u00e1 fijado al n\u00famero que publicamos aqu\u00ed.",
+      },
+    ],
+  },
   {
     version: "0.51.0",
     date: "2026-08-19",

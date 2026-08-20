@@ -722,6 +722,12 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                         for sibling in doomed:
                             sibling.status = FollowUpStatus.SKIPPED
                         if doomed:
+                            # They are settled here and skipped by the guard at
+                            # the top of the loop when it reaches them, so
+                            # without this the sweep reports one row settled
+                            # having settled three — and a consent-hold wave is
+                            # exactly when somebody reconciles that number.
+                            skipped += len(doomed)
                             log.info(
                                 "Dropped %d remaining follow-up(s) of visit %d "
                                 "with it — the sequence shares one hold clock",

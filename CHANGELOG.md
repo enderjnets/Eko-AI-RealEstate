@@ -2,6 +2,26 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.51.1] — 2026-08-19
+
+### Corregido — la novena ronda de auditoría
+
+Tres fallos en los arreglos de la 0.51.0, encontrados borrando cada arreglo y
+comprobando si algo se ponía en rojo. Ninguno cambia lo que usted recibe; los
+tres afectan a lo que podemos garantizarle sobre lo que ya está en marcha.
+
+- **Un mensaje ya descartado podía seguir acumulando reintentos.** Al cerrar una
+  secuencia entera, los mensajes que caían con ella volvían a pasar por las
+  reglas de envío en la misma pasada y quedaban marcados como "reintentar
+  mañana" pese a estar cerrados. Un registro que se contradice a sí mismo, y es
+  el que lee la consola.
+- **El recuento de la pasada mentía.** Al cerrar una secuencia de tres mensajes
+  informaba de uno.
+- **El plazo de 30 días no estaba anclado a nada.** Se podía cambiar sin que
+  ninguna comprobación se enterara — lo verificamos poniéndolo en 114 días y
+  todo siguió en verde. Ahora está fijado al número que le prometemos aquí: si
+  alguien lo mueve, algo se pone en rojo y esta entrada tiene que actualizarse.
+
 ## [0.51.0] — 2026-08-19
 
 ### Corregido — la octava ronda de auditoría

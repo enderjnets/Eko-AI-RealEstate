@@ -1421,10 +1421,20 @@ async def test_a_sequence_that_gives_up_takes_the_rest_of_the_sequence_with_it()
 
             async with get_session_factory()() as db:
                 with patch("app.services.followups._dispatch_send", _ok):
-                    await process_due_followups(db)
+                    counts = await process_due_followups(db)
 
             assert delivered == [], (
                 f"nothing has consent, so nothing may go out: {delivered}"
+            )
+
+            # Three rows were settled, so the sweep has to say three. The two
+            # taken down with the give-up are settled outside the loop's own
+            # accounting and then skipped by the guard at the top when it
+            # reaches them, so they are invisible unless counted here — and a
+            # consent-hold wave is exactly when this number gets reconciled.
+            assert counts["skipped"] == 3, (
+                f"settled three follow-ups and reported {counts['skipped']}: "
+                f"{counts}"
             )
 
             async with get_session_factory()() as db:
@@ -1441,6 +1451,24 @@ async def test_a_sequence_that_gives_up_takes_the_rest_of_the_sequence_with_it()
                 }, (
                     "the sequence outlived the hold clock that ran out: "
                     f"{by_kind}"
+                )
+
+                # The 72h row was settled by the row before it in this same
+                # batch, and the loop reaches it afterwards through the identity
+                # map. A settled message must not go on accumulating holds: a
+                # SKIPPED row carrying a fresh "retry tomorrow" stamp and a
+                # bumped counter is a record that contradicts itself, and the
+                # operator console reads both of those columns.
+                settled = next(
+                    r for r in rows if r.kind is FollowUpKind.POST_VISIT_72H
+                )
+                assert settled.attempts == 0, (
+                    "a message already given up on was put back through the "
+                    f"send rules and took another hold: attempts={settled.attempts}"
+                )
+                assert settled.postponed_until < datetime.now(UTC), (
+                    "a settled message was stamped to be retried tomorrow: "
+                    f"{settled.postponed_until}"
                 )
     finally:
         await _cleanup()
@@ -1460,6 +1488,22 @@ async def test_the_staleness_ceiling_is_derived_and_it_bites() -> None:
         _HOLD_GIVE_UP_AFTER_HOLDS,
         _HOLD_RETRY_AFTER,
         _MAX_LATENESS,
+    )
+
+    # Pinned to the number we told customers, because everything else in this
+    # test moves with the constant: the row below is seeded at
+    # `now - _MAX_LATENESS - 1 day`, so it proves the clause FIRES and says
+    # nothing about the clause being right. The ceiling went from 30 days to
+    # 114 in the working tree and all 27 tests in this file stayed green.
+    #
+    # A customer-visible delay is a published promise. Changing it means
+    # changing this number and the CHANGELOG in the same commit — which is the
+    # whole point of it being here.
+    assert _MAX_LATENESS == timedelta(days=30), (
+        f"the staleness ceiling is {_MAX_LATENESS}, but CHANGELOG.md 0.51.0 "
+        'tells customers "el plazo real no cambia: siguen siendo 30 días". '
+        "One of the two is wrong. If the new value is deliberate, change this "
+        "assertion and correct the changelog entry in the same commit"
     )
 
     assert _MAX_LATENESS > _HOLD_GIVE_UP_AFTER_HOLDS * _HOLD_RETRY_AFTER, (
