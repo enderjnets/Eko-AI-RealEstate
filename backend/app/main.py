@@ -1043,6 +1043,39 @@ async def _startup() -> None:
             "⚠️  AUTH_ENABLED=false AND APP_ENV=production — the dashboard + data API are OPEN "
             "(no login). Set AUTH_ENABLED=true + DASHBOARD_PASSWORD before exposing customer data."
         )
+    # The last-resort LLM. `OLLAMA_ENABLED=true` is intent, not fact: this install
+    # carried that flag for twelve weeks while the server was unreachable from the
+    # container AND the configured model was not downloaded, and nothing anywhere
+    # said so — the only reason nobody was hurt is that no lead wrote in that
+    # window. Probed once here, cached, and served on /api/v1/health so the
+    # failure is one curl away instead of invisible until a lead pays for it.
+    try:
+        from app.services.llm import check_fallback_provider
+
+        app.state.llm_fallback = await check_fallback_provider()
+    except Exception as exc:  # noqa: BLE001 — a check must not block startup
+        # "We could not tell" is reported as broken on purpose. Erring towards
+        # the reassuring answer is what let this hide for three months.
+        logger.debug("LLM fallback probe raised: %s", exc)
+        app.state.llm_fallback = "unreachable"
+
+    if app.state.llm_fallback == "unreachable":
+        logger.error(
+            "⚠️  OLLAMA_ENABLED=true but %s does not answer. The last-resort LLM is "
+            "NOT there: if Kimi and MiniMax fail together (a 429 on a subscription "
+            "plan is routine), leads get the canned holding line instead of a reply.",
+            settings.OLLAMA_BASE_URL,
+        )
+    elif app.state.llm_fallback == "model-missing":
+        logger.error(
+            "⚠️  Ollama answers at %s but does not have OLLAMA_MODEL=%s. The "
+            "last-resort LLM is reachable and still cannot reply — run "
+            "`ollama pull %s`.",
+            settings.OLLAMA_BASE_URL,
+            settings.OLLAMA_MODEL,
+            settings.OLLAMA_MODEL,
+        )
+
     if settings.FOLLOWUPS_ENABLED:
         global _followups_task
         _followups_task = asyncio.create_task(_followups_loop())

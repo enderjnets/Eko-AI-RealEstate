@@ -149,3 +149,99 @@ async def test_primary_unconfigured_skips_to_fallback(monkeypatch: pytest.Monkey
     assert result.provider == "minimax"
     primary_client.messages.create.assert_not_awaited()
     fallback_client.messages.create.assert_awaited_once()
+
+
+# ── check_fallback_provider: is the safety net actually there? ─────────────
+#
+# These exist because the production install ran with OLLAMA_ENABLED=true for
+# twelve weeks while BOTH the server was unreachable from the container and the
+# configured model was not downloaded. A probe that only checked the port would
+# have caught the first fault and reported the second one as healthy, so the
+# model case below is the one that matters most.
+
+
+def _probe_client(payload: Any = None, *, raises: Exception | None = None) -> MagicMock:
+    """Stand in for httpx.AsyncClient so GET /api/tags returns what we say."""
+    resp = MagicMock()
+    resp.raise_for_status = MagicMock()
+    resp.json = MagicMock(return_value=payload if payload is not None else {})
+    client = MagicMock()
+    client.get = AsyncMock(side_effect=raises) if raises else AsyncMock(return_value=resp)
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=client)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    return MagicMock(return_value=ctx)
+
+
+def _enable_ollama(monkeypatch: pytest.MonkeyPatch, model: str) -> None:
+    monkeypatch.setenv("OLLAMA_ENABLED", "true")
+    monkeypatch.setenv("OLLAMA_MODEL", model)
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+
+def _tags(*names: str) -> dict[str, Any]:
+    return {"models": [{"name": n} for n in names]}
+
+
+@pytest.mark.asyncio
+async def test_probe_ok_when_server_answers_and_has_the_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_ollama(monkeypatch, "gemma3:4b")
+    with patch.object(llm_module.httpx, "AsyncClient", _probe_client(_tags("gemma3:4b"))):
+        assert await llm_module.check_fallback_provider() == "ok"
+
+
+@pytest.mark.asyncio
+async def test_probe_reports_model_missing_when_server_answers_without_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The exact fault that survived twelve weeks: reachable, and still useless.
+
+    MUTATION GUARD — delete the model check in `check_fallback_provider` (return
+    "ok" as soon as /api/tags responds) and this test must go red. If it stays
+    green the probe is decoration.
+    """
+    _enable_ollama(monkeypatch, "gemma3:4b")
+    with patch.object(
+        llm_module.httpx, "AsyncClient", _probe_client(_tags("qwen2.5:14b", "moondream:latest"))
+    ):
+        assert await llm_module.check_fallback_provider() == "model-missing"
+
+
+@pytest.mark.asyncio
+async def test_probe_unreachable_when_connection_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """What the container actually got: ECONNREFUSED against the bridge gateway."""
+    _enable_ollama(monkeypatch, "gemma3:4b")
+    refused = httpx.ConnectError("[Errno 111] Connection refused")
+    with patch.object(llm_module.httpx, "AsyncClient", _probe_client(raises=refused)):
+        assert await llm_module.check_fallback_provider() == "unreachable"
+
+
+@pytest.mark.asyncio
+async def test_probe_says_off_when_disabled_and_never_touches_the_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Not configured is a choice, not a fault — and must not cost a request."""
+    monkeypatch.setenv("OLLAMA_ENABLED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    factory = _probe_client(_tags("gemma3:4b"))
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "off"
+    factory.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_probe_treats_a_bare_name_as_its_latest_tag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ollama resolves `qwen3.5` to `qwen3.5:latest`; calling that missing is a
+    false alarm, and a probe that cries wolf gets switched off."""
+    _enable_ollama(monkeypatch, "qwen3.5")
+    with patch.object(llm_module.httpx, "AsyncClient", _probe_client(_tags("qwen3.5:latest"))):
+        assert await llm_module.check_fallback_provider() == "ok"

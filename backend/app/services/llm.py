@@ -33,6 +33,15 @@ log = logging.getLogger(__name__)
 # analytics can tell a held line apart from something a model wrote.
 ProviderName = Literal["kimi", "minimax", "ollama", "fallback"]
 
+# What `check_fallback_provider()` can say about the last-resort provider.
+# "off" is a choice, not a fault; the other two are faults with different fixes.
+FallbackStatus = Literal["ok", "unreachable", "model-missing", "off"]
+
+# The probe is not a generation, so it does not get the generation timeout
+# (OLLAMA_TIMEOUT_SECONDS, 120s by default). A readiness check that can hold the
+# startup for two minutes is a readiness check someone will delete.
+_PROBE_TIMEOUT_SECONDS = 5.0
+
 
 @dataclass(frozen=True)
 class ProviderConfig:
@@ -260,3 +269,47 @@ async def generate_reply(
     raise LLMUnavailable(
         f"All LLM providers failed. order={order}; last_error={type(last_error).__name__ if last_error else 'NoneConfigured'}: {last_error}"
     )
+
+
+def _model_is_available(configured: str, available: set[str]) -> bool:
+    """Is `configured` one of the tags this Ollama actually holds?
+
+    Ollama resolves a bare name to its `:latest` tag, so a config that says
+    `qwen3.5` and a server that lists `qwen3.5:latest` are talking about the
+    same model. Calling that missing would be a false alarm, and a probe that
+    cries wolf gets switched off.
+    """
+    if configured in available:
+        return True
+    return ":" not in configured and f"{configured}:latest" in available
+
+
+async def check_fallback_provider() -> FallbackStatus:
+    """Can the last-resort provider actually answer right now?
+
+    Two things have to be true, and checking only the first is precisely how
+    this stayed broken for twelve weeks: the server has to respond, AND the
+    configured model has to exist on it. A reachable Ollama pointed at a model
+    it does not have is exactly as useless as no Ollama at all — and it looks
+    healthier, which is worse.
+
+    `OLLAMA_ENABLED=true` is a statement of intent. This is the statement of
+    fact. Never raises: a probe that can break the caller is a liability.
+    """
+    s = get_settings()
+    if not s.OLLAMA_ENABLED:
+        return "off"
+
+    try:
+        async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_SECONDS) as client:
+            resp = await client.get(f"{s.OLLAMA_BASE_URL.rstrip('/')}/api/tags")
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:  # noqa: BLE001 — every failure to reach it means the same thing
+        log.debug("Ollama probe failed against %s: %s", s.OLLAMA_BASE_URL, exc)
+        return "unreachable"
+
+    available = {
+        str((m or {}).get("name") or "") for m in (data.get("models") or [])
+    }
+    return "ok" if _model_is_available(s.OLLAMA_MODEL, available) else "model-missing"

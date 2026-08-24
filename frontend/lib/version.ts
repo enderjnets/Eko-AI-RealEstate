@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.54.1";
+export const CURRENT_VERSION = "0.54.2";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.54.2",
+    date: "2026-08-24",
+    title: {
+      en: "The safety net that was not there",
+      es: "La red de seguridad que no estaba",
+    },
+    changes: [
+      {
+        en: "When both paid AI providers fail at the same time, a third one runs on our own machine so your leads still get a real answer. It had been unreachable for twelve weeks, and the model it needs was not even downloaded — two separate faults, either one enough to kill it. Both are fixed. This is not hypothetical: on June 1st both paid providers hit their limits within the same minute, and that local model answered ten real conversations.",
+        es: "Cuando los dos proveedores de IA de pago fallan a la vez, un tercero corre en nuestra propia máquina para que tus clientes reciban igualmente una respuesta de verdad. Llevaba doce semanas inalcanzable, y el modelo que necesita ni siquiera estaba descargado — dos averías distintas, cualquiera de ellas bastaba para matarlo. Las dos están arregladas. No es hipotético: el 1 de junio los dos de pago agotaron su límite en el mismo minuto, y ese modelo local respondió diez conversaciones reales.",
+      },
+      {
+        en: "And so it cannot fail silently again: at startup the system now verifies that the safety net can actually answer — not just that the machine responds, but that the model it needs is really there — and publishes the result on the health endpoint. Declaring something enabled used to be taken as proof it worked. That is what let this hide for three months.",
+        es: "Y para que no vuelva a fallar en silencio: al arrancar, el sistema comprueba que la red de seguridad puede responder de verdad — no solo que la máquina contesta, sino que el modelo que necesita está realmente ahí — y publica el resultado en el endpoint de salud. Antes, declarar algo activado se tomaba como prueba de que funcionaba. Eso es lo que dejó esto escondido tres meses.",
+      },
+    ],
+  },
   {
     version: "0.54.1",
     date: "2026-08-20",

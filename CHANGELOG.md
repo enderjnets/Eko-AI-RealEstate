@@ -2,6 +2,49 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.54.2] — 2026-08-24
+
+### Corregido — el tercer eslabón de la cadena de LLM no existía
+
+La cadena es Kimi → MiniMax → Ollama local. El tercero llevaba **doce semanas
+declarado y muerto**, por **dos averías independientes** — cualquiera de ellas
+bastaba, y arreglar solo una habría dejado el fallback igual de inútil con
+aspecto de arreglado:
+
+- **Red.** Ollama escucha solo en `127.0.0.1`, pero el backend lo busca en el
+  gateway del puente de Docker (`172.20.0.1`): `Connection refused` desde el
+  contenedor, `200` desde el host. Arreglado con un proxy `socat` en el host
+  (`ollama-bridge.service`) atado **exclusivamente** a esa interfaz. Ollama no
+  se reconfigura ni se reinicia: no tiene autenticación, y este host está en una
+  WiFi doméstica y en una tailnet con `ufw` inactivo, así que `OLLAMA_HOST=0.0.0.0`
+  habría publicado una API abierta en las dos redes.
+- **Modelo.** `OLLAMA_MODEL=gemma3:4b` no estaba descargado (`/api/show` → 404).
+  Descargado; es además el único candidato que cabe en la VRAM libre.
+
+No es hipotético: el **1-jun-2026** Kimi devolvió 403 y MiniMax 429 en el mismo
+minuto, y ese Ollama respondió **10 conversaciones reales** (`llm_provider='ollama'`
+en `messages`). Hoy no habría podido. MiniMax aquí es plan de suscripción, así
+que el 429 es el modo de fallo normal, no un accidente.
+
+Nota: el lead nunca se quedó sin respuesta — `conversation.py` captura
+`LLMUnavailable` y devuelve un acuse bilingüe sellado `provider="fallback"`. El
+daño era de **calidad**: una línea de espera en vez de una respuesta.
+
+### Añadido — que un proveedor declarado tenga que demostrarlo
+
+`OLLAMA_ENABLED=true` era una declaración de intenciones que no afirmaba nada
+sobre el mundo, y por eso las dos averías sobrevivieron tres meses.
+
+- `check_fallback_provider()` comprueba **las dos** cosas: que el servidor
+  responde **y** que `OLLAMA_MODEL` está realmente ahí. Una sonda de solo-puerto
+  habría cazado la primera avería y declarado sana la segunda.
+- Se ejecuta al arrancar (con `log.error` accionable, sin bloquear el arranque)
+  y su resultado se publica en `GET /api/v1/health` como `llm_fallback`:
+  `ok` | `unreachable` | `model-missing` | `off`. Mismo precedente que el campo
+  `captcha`, y por el mismo motivo: el fallo es invisible desde fuera.
+- Test de mutación: borrar la comprobación del nombre del modelo pone en rojo
+  `test_probe_reports_model_missing_when_server_answers_without_it`.
+
 ## [0.54.1] — 2026-08-20
 
 ### Corregido — la duodécima ronda de auditoría (auditor independiente)
