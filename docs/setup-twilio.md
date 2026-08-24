@@ -105,8 +105,15 @@ set `TWILIO_MESSAGING_SERVICE_SID` in `.env` so outbound uses the campaign.
 Twilio handles **STOP/UNSUBSCRIBE** (opt-out) and **HELP** keywords automatically
 at the account / Messaging Service level (Advanced Opt-Out). When a lead texts
 STOP, Twilio blocks further messages to them; our `send_sms` will then get an
-error from Twilio (surfaced as a `failed` Message) rather than delivering. No
-extra code needed, but keep default opt-out enabled for compliance.
+error from Twilio (surfaced as a `failed` Message) rather than delivering. Keep
+default opt-out enabled for compliance.
+
+**"No extra code needed" applies to Twilio's own blocking, and only to SMS.** The
+app enforces opt-out again at the dispatch boundary
+(`app/services/delivery.py`), and that gate is what covers the two things Twilio
+cannot see: a message already queued in our own scheduler *before* the lead
+replied STOP, and the lead's other channels (WhatsApp, email). Do not read this
+section as "the app needs no opt-out logic" — it has some, on purpose.
 
 ## Cost & safety notes
 

@@ -137,6 +137,12 @@ Builds on Phase 11 auth:
 - The **entire Settings page is admin-only** (hidden + 403 for members).
 - See [`setup-google-signin.md`](setup-google-signin.md).
 
-## Phase 13 · Voice agent (VAPI / Retell) — ⏳ deferred
+## Phase 13 · Voice agent (VAPI) — ✅ shipped
 
-Inbound/outbound voice. Deferred until a provider account is set up.
+Inbound voice on VAPI, with `check_availability` and `book_visit` as live tool
+calls: the agent reads the calendar and books the visit during the call. This is
+the "future phase" [`setup-calcom.md`](setup-calcom.md) anticipated when it put
+agent auto-booking out of scope for Phase 5 — the realtor clicking the slot is no
+longer the only way a visit gets booked.
+
+See [`setup-vapi.md`](setup-vapi.md) for wiring.
