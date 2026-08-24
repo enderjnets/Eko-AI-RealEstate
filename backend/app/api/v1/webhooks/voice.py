@@ -26,7 +26,12 @@ from app.services.channel_identity import inbound_secret_or_503
 from app.services.conversation import ingest_voice_call
 from app.services.tenant_context import set_org_id
 from app.services.tenant_resolver import WebhookOrgUnresolved, webhook_org_or_refuse
-from app.services.voice import handle_tool_call, parse_end_of_call_report, verify_vapi_secret
+from app.services.voice import (
+    flag_for_human,
+    handle_tool_call,
+    parse_end_of_call_report,
+    verify_vapi_secret,
+)
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -220,6 +225,11 @@ async def voice_inbound(request: Request, db: AsyncSession = Depends(get_db)) ->
                 # `results` — so the assistant would tell the caller their visit
                 # was booked after the row had been discarded.
                 log.exception("Voice tool dispatch failed (%s): %s", name, exc)
+                # The third place that makes this promise, and the one that
+                # fires when `handle_tool_call` itself could not run. Backing it
+                # here too keeps "a team member will follow up" true wherever it
+                # is said. No rollback first, for the reason above.
+                await flag_for_human(number, f"dispatch {name}: {exc}", db)
                 result = "Something went wrong on my side. A team member will follow up."
             results.append({"toolCallId": tool_call_id, "result": result})
         return {"results": results}

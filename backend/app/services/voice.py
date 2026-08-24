@@ -39,6 +39,7 @@ __all__ = [
     "VoiceCallReport",
     "parse_end_of_call_report",
     "handle_tool_call",
+    "flag_for_human",
 ]
 
 
@@ -230,6 +231,75 @@ async def _resolve_or_create_lead(identifier: str, name: str | None, db: AsyncSe
     return lead
 
 
+async def flag_for_human(
+    phone: str | None,
+    reason: str,
+    db: AsyncSession,
+) -> bool:
+    """Leave a task a person will actually see, for a caller we just promised
+    one to.
+
+    Every failure path in the voice tools tells the caller "a team member will
+    follow up". Until this existed the only trace was a `log.error`: nobody is
+    subscribed to the log, so the promise was made to a human on the phone and
+    kept by nothing. A pending CALL_FOLLOW_UP due now puts them in the console's
+    own list of today, which is the list a person reads.
+
+    Best effort by construction — it runs from `except` blocks, and a failure to
+    record the failure must never replace the spoken message with a stall.
+    Returns whether the task was recorded.
+
+    Idempotency is the read in `first_or_create`, not a constraint: with no
+    visit and no call log to anchor to, both unique indexes on `follow_ups` see
+    NULL and never collide. A retried tool-call webhook is the realistic case
+    and the read catches it. Two truly concurrent ones could still leave two
+    rows — a duplicate "call this person back" costs a person ten seconds, and
+    dropping the only trace costs the lead.
+
+    `reason` goes to the log, not the row: `follow_ups` has no free-text column,
+    and inventing one for this would be a migration on the money path.
+    """
+    if not phone:
+        return False
+    try:
+        from app.db.base import first_or_create
+        from app.models import FollowUp, FollowUpKind, FollowUpStatus, Lead
+
+        lead = (
+            await db.execute(select(Lead).where(Lead.phone == phone.strip()))
+        ).scalars().first()
+        if lead is None:
+            log.error("Cannot flag caller %s for follow-up: no lead", clip_identifier(phone))
+            return False
+
+        pending = select(FollowUp).where(
+            FollowUp.lead_id == lead.id,
+            FollowUp.kind == FollowUpKind.CALL_FOLLOW_UP,
+            FollowUp.status == FollowUpStatus.PENDING,
+            FollowUp.visit_id.is_(None),
+            FollowUp.call_log_id.is_(None),
+        )
+        await first_or_create(
+            db,
+            pending,
+            lambda: FollowUp(
+                org_id=lead.org_id,
+                lead_id=lead.id,
+                kind=FollowUpKind.CALL_FOLLOW_UP,
+                status=FollowUpStatus.PENDING,
+                scheduled_for=datetime.now(UTC),
+            ),
+        )
+        await db.commit()
+        log.warning(
+            "Voice call needs a human for lead %d (%s): %s", lead.id, clip_identifier(phone), reason
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001 — never let this mask the tool error
+        log.exception("Could not flag caller for human follow-up: %s", exc)
+        return False
+
+
 async def handle_tool_call(
     name: str,
     arguments: dict[str, Any],
@@ -411,10 +481,14 @@ async def handle_tool_call(
         return f"I'm not able to do '{name}' right now."
     except CalComError as exc:
         log.error("Voice tool %s calendar error: %s", name, exc)
+        # Back the promise before making it. See `flag_for_human`.
+        await flag_for_human(customer_number, f"{name}: calendar error: {exc}", db)
         return "I'm having trouble with the calendar at the moment. A team member will follow up."
     except Exception as exc:  # noqa: BLE001
         await db.rollback()
         log.exception("Voice tool %s failed: %s", name, exc)
+        # After the rollback, so the flag is not discarded with the failed work.
+        await flag_for_human(customer_number, f"{name}: {exc}", db)
         return "Something went wrong on my side. A team member will follow up with you."
 
 
