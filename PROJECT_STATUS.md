@@ -16,7 +16,7 @@ evitar.
 | # | Fase | Estado |
 |---|---|---|
 | 1 | Capa 1: `alerted_state` + máquina de estados + tests | ✅ completada |
-| 2 | Capa 2: `deploy/heartbeat.sh` escribe estado solo tras acuse | ⬜ pendiente |
+| 2 | Capa 2: `deploy/heartbeat.sh` escribe estado solo tras acuse | ✅ completada |
 | 3 | Cierre: bump v0.54.4, changelog, checklist de despliegue | ⬜ pendiente |
 
 Rama: `feat/alert-delivery-durable`. **Sin commits a `main`. Sin despliegue.**
@@ -106,6 +106,75 @@ corre bajo el rol con RLS FORCE, así que no hay fuga entre agencias.
 `APP_VERSION` sigue en `0.54.3` dentro de la imagen. El bump a `0.54.4` va en la
 fase de cierre, antes de cualquier despliegue — `/api/v1/health` es la única
 superficie con la que se comprueba que el despliegue entró.
+
+---
+
+## Fase 2 — capa 2, el vigía externo (completada)
+
+**Commit:** pendiente (a la espera de la auditoría).
+
+### Qué cambia
+
+`send_alert` pasa de booleano a **tres desenlaces**: `0` entregado, `1` el
+intento falló (reintentar), `2` no se puede entregar en absoluto (canal sin
+configurar — no reintentar). El fichero de estado se escribe solo con `0` o `2`.
+El contador diario cobra el **intento**, no la entrega, por la misma razón que
+en la fase 1. Y `RESEND_URL` es overridable, que es lo único que permite probar
+el camino de éxito sin mandarle un correo a una persona real en cada prueba.
+
+### Checklist de "terminado"
+
+| # | Criterio | Resultado real |
+|---|---|---|
+| 1 | Tests en verde, sin saltados | ✅ `997 passed` desde base recreada (985 → +12 del script). Cero `skipped`. |
+| 2 | Lint / typecheck | ✅ `shellcheck deploy/heartbeat.sh` → sin avisos · `bash -n` → OK · `ruff` → `All checks passed!` |
+| 3 | Build compila | ✅ El artefacto es el propio script: `bash -n` + `shellcheck` + **9 tests que lo ejecutan como subproceso de verdad**, no que lo lean. |
+| 4 | Cobertura del código nuevo no baja | ✅ Medida con traza `PS4='+${LINENO} '` sobre los escenarios: **76%** de sentencias. Lo no cubierto son líneas de continuación que `bash -x` atribuye al comando entero (el `curl` multilínea, el cuerpo del email). La medición **encontró un hueco real** —la rama "responde 200 pero `llm_fallback` no es ok"— y se añadió el test que faltaba. Antes de esta fase el script tenía **0 tests**. |
+| 5 | Sin secretos en el diff | ✅ Barrido limpio, y hay un test que lo afirma: `test_the_alert_carries_no_credentials` comprueba que ni la clave ni `Bearer` viajan en el cuerpo |
+| 6 | Entrada validada, errores manejados, sin prints | ✅ `$code` y el contador se sanean contra basura (`case ... *[!0-9]*`); el payload se construye con `python3`/`json.dumps` y variables de entorno, no pegando cadenas en shell; sin `set -x` ni `echo` de depuración |
+
+### Mutaciones verificadas
+
+| Mutación | Resultado |
+|---|---|
+| Escribir `$STATE_FILE` incondicionalmente (el bug original) | 🔴 `test_a_rejected_alert_does_not_retire_the_outage` (+ el del techo) |
+| Cobrar la entrega en vez del intento | 🔴 `test_the_retry_is_capped_so_a_broken_transport_cannot_mail_all_day` |
+| Que `alert_rc` recoja el código de otra orden en la rama de recuperación | 🔴 `test_a_rejected_recovery_does_not_retire_it_either` |
+
+### Auditoría de la fase 2 — hallazgos y qué se hizo
+
+Dos auditorías (correctitud y seguridad). **Ningún bloqueante.** Lo notable es
+que casi todo lo encontrado eran **guardarraíles míos a medio hacer**, no fallos
+del script.
+
+| # | Clas. | Hallazgo | Estado |
+|---|---|---|---|
+| G | IMPORTANTE | La rama de **recuperación** no la cubría ningún test: un mutante que hacía a `alert_rc` recoger el código equivocado sobrevivía 11/11, con una recuperación rechazada escribiendo `up` igualmente. El script hacía lo correcto; faltaba el guard. | ✅ **corregido**: test nuevo, verificado con el mutante del auditor |
+| H | IMPORTANTE | La clave de Resend viajaba en el `argv` de `curl` → legible en `/proc/<pid>/cmdline` por cualquier usuario local. El `chmod 600` del `.env` no servía de nada. Preexistente, pero el diff reescribe ese mismo `curl`. | ✅ **corregido**: clave por `--config -` (stdin), cuerpo por fichero `0600`. Verificado mirando el `argv` en vuelo |
+| I | IMPORTANTE | **Backlog**: cobrar el intento puede dejar mudo al vigía hasta ~13 h si el proveedor tiene un bache de 45 min. Es el intercambio consciente frente al bucle sin techo, y no es peor que `main` (allí el aviso se perdía del todo). Cierre propuesto por el auditor: techo **horario** para intentos, reservando el diario para entregas. | 🔶 **backlog** |
+| J | MENOR | Mi test de la clave se esquivaba con `${RESEND_API_KEY}` (llaves) — un guard con bypass trivial es peor que ninguno. | ✅ corregido |
+| K | MENOR | La mitad `Bearer` de `test_the_alert_carries_no_credentials` **no podía fallar**: el stub no guardaba cabeceras. | ✅ corregido: el stub las guarda y ahora se afirma que la cabecera llega íntegra |
+| L | MENOR | Un fallo **permanente** al construir el payload (sin `python3` en el PATH escaso de cron) reintentaba sin techo y sin síntoma. | ✅ corregido: el contador se cobra por encima de todo lo que puede fallar |
+| M | MENOR | El cron **documentado** mandaba toda la salida a `/dev/null` — justo el único canal donde se ve la deuda pendiente, el reintento y el canal inentregable. | ✅ corregido: la instalación documentada ahora escribe a `~/.eko-heartbeat/log` |
+| N | MENOR | Un test omitía `RESEND_URL`: si alguien movía la construcción del payload, ese test llamaría al **Resend real** desde CI. | ✅ corregido |
+| O | MENOR | Sin `flock`: dos ejecuciones solapadas mandan 2 correos y cobran 1. Preexistente e inalcanzable hoy (el script dura ~46 s contra un cron de 900 s). | 🔶 **backlog** |
+| P | — | Mi comentario prometía un "reparto en tres" que el llamante no hace (0 y 2 se tratan igual). | ✅ comentario corregido para decir la verdad |
+
+Verificado limpio con evidencia: sin inyección de shell ni de JSON desde el
+cuerpo del endpoint (probado con `$(id)`, backticks, `;`, y con un intento de
+inyectar un destinatario extra — `json.dumps` lo escapó); sin inyección de
+cabeceras de correo (`tr -d` elimina CR/LF antes del `sed`); los saneadores
+`case ... *[!a-z0-9]*` cierran la evaluación aritmética; ficheros de estado
+corruptos degradan sin colgar ni perder el aviso; el cambio de día UTC libera el
+presupuesto correctamente.
+
+### Incidencia (mía, no del código)
+
+Una pasada de la suite dio un rojo en `test_consent_holds_backfill`, ajeno a
+esta fase. Causa: **reusé la base de datos sin recrearla**, y este repo tiene
+documentado que la suite no es idempotente. Recreada, 994 en verde. No era
+regresión — pero conviene recordar que saltarse ese paso produce un rojo que
+parece de otro sitio.
 
 ---
 
