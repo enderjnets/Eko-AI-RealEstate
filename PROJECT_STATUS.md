@@ -25,7 +25,7 @@ Rama: `feat/alert-delivery-durable`. **Sin commits a `main`. Sin despliegue.**
 
 ## Fase 1 — capa 1 (en curso)
 
-**Commit:** pendiente (a la espera de la auditoría).
+**Commit:** `b1fa424` en `feat/alert-delivery-durable` (subida a origin).
 
 ### Checklist de "terminado"
 
@@ -95,8 +95,14 @@ código 0. Arrancados los dos; la suite corre desde base recreada.
 
 ## Siguiente paso concreto
 
-Cerrar la auditoría de la fase 1, corregir lo BLOQUEANTE si lo hay, commit en
-`feat/alert-delivery-durable` y push. Después, **fase 2**: quitar de
-`deploy/heartbeat.sh` la escritura incondicional del fichero de estado (y el
-comentario que la defendía con un argumento falso — el tope se comprueba antes
-de intentar la entrega, así que reintentar no puede quemar cuota).
+**Fase 2** — `deploy/heartbeat.sh`: la escritura final del fichero de estado es
+incondicional, así que un aviso que no salió también da la caída por comunicada.
+Aplicar la misma invariante que la fase 1, **incluida la lección de A**: el
+reintento necesita techo. Ojo — el comentario actual del script defiende la
+escritura incondicional diciendo que reintentar quemaría el presupuesto; ahí sí
+es cierto que `send_alert` comprueba el tope antes de intentar la entrega, pero
+ese tope solo cuenta **envíos aceptados**, así que tiene el mismo agujero que
+tenía la capa 1. Contar intentos, no entregas.
+
+Después, **fase 3**: bump a v0.54.4 (`config.py` + `version.ts` + los dos
+changelogs), y preparar el checklist de despliegue **sin desplegar**.
