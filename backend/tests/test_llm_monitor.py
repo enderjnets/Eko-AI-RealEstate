@@ -368,3 +368,35 @@ async def test_budget_exhaustion_delivers_after_the_day_rolls_over(
     assert alert.await_count == MAX_ALERTS_PER_DAY + 1, "al dia siguiente se entrega"
     row = await _row(clean_state)
     assert row is not None and row.alerted_state == "ok"
+
+
+@pytest.mark.asyncio
+async def test_an_unconfigured_channel_also_consumes_the_damage_mark(
+    clean_state,
+) -> None:
+    """The sweep branch of the same decision, which had no test at all.
+
+    An audit found this one uncovered, and it is the more uncomfortable half:
+    the high-water mark records that a real customer already received the
+    holding line, and here it advances without anyone being told. That is still
+    the right call — no retry reaches an unconfigured channel, and holding the
+    cutoff back would re-count an unbounded window across every organization on
+    every tick, over a column with no index. But it means the evidence lives
+    only in `messages.llm_provider` from then on, so the behaviour is pinned
+    here rather than left to be rediscovered.
+    """
+    newest = datetime.now(UTC) + timedelta(seconds=1)
+    alert = AsyncMock(return_value=True)
+    with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value="ok")), \
+         patch.object(llm_monitor, "send_operator_alert", alert):
+        with patch.object(llm_monitor, "_count_canned_replies", AsyncMock(return_value=(0, None))):
+            await run_monitor_tick()  # establishes the mark
+        with patch.object(llm_monitor, "undeliverable_reason", lambda: "OPS_ALERT_FROM is unset"), \
+             patch.object(llm_monitor, "_count_canned_replies", AsyncMock(return_value=(3, newest))):
+            await run_monitor_tick()
+
+    alert.assert_not_awaited()
+    row = await _row(clean_state)
+    assert row is not None
+    assert row.last_seen_fallback_at == newest, "consumido: no hay nada que reintentar"
+    assert row.alerts_today == 0

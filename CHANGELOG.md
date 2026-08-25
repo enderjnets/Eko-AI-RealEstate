@@ -2,6 +2,91 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.54.4] — 2026-08-25
+
+### Corregido — un aviso que no salió daba la avería por comunicada
+
+Una revisión adversarial de Codex encontró el **mismo defecto en las dos capas**
+de vigilancia de v0.54.3: se consumaba la transición de estado aunque el email
+no hubiera salido. Un tropiezo del transporte en el momento equivocado retiraba
+la avería y la siguiente comprobación veía "sin cambio": **detectada y luego
+olvidada para siempre**, que es exactamente el fallo que un vigilante existe
+para impedir, reproducido dentro del vigilante.
+
+**Capa 1 — `services/llm_monitor.py` + migración 042.** Ver y decir pasan a ser
+dos hechos: `monitor_state.state` es la última lectura (avanza siempre; es lo
+que publica `/api/v1/health`) y `alerted_state` es lo último que el operador
+recibió confirmado. Un envío **rechazado** ya no lo avanza, así que la avería
+sigue pendiente y se reintenta. Misma regla para `last_seen_fallback_at`, que es
+la única señal aquí que describe daño consumado y no riesgo: un mensaje
+rechazado no puede borrar la prueba de que un cliente real recibió la línea de
+espera.
+
+**La excepción, dicha en voz alta:** si el canal **no está configurado**
+(sin `OPS_ALERT_FROM`, sin destinatarios o sin clave), los dos avanzan sin que
+salga ningún correo. No es un descuido: ningún número de reintentos llega a
+nadie hasta que un humano edite el `.env`, y mantener el hueco abierto dejaría
+el cutoff del barrido congelado, recontando una ventana sin límite en cada
+organización cada cinco minutos. Queda en el log y en `/api/v1/health`, y en el
+caso del barrido la prueba sigue en `messages.llm_provider`.
+
+**Capa 2 — `deploy/heartbeat.sh`.** `send_alert` pasa de booleano a tres
+desenlaces: entregado, el intento falló (reintentar) y no se puede entregar en
+absoluto (canal sin configurar → consumir, porque ningún número de intentos
+llega a nadie hasta que un humano edite el fichero). El fichero de estado se escribe
+en el **primero y el tercero**; el segundo —el intento que falló— es el único
+que **no** lo escribe, que es exactamente lo que hace posible el reintento.
+
+### El reintento tiene techo, y esa es la mitad difícil
+
+Dos auditorías independientes encontraron que la primera versión de este arreglo
+cambiaba un fallo por otro peor: el contador diario solo subía con éxito, así
+que el presupuesto nunca cerraba y cada tick reintentaba — 288 al día en la capa
+1, 96 en la capa 2. Y como **un mensaje que el proveedor aceptó pero cuya
+respuesta expiró se lee aquí como fallo**, esos reintentos serían duplicados
+reales contra la misma cuota que responde a los leads: el vigilante tumbando el
+producto que vigila. Ahora se cobra el **intento**, no la entrega. Un reintento
+acotado puede retrasar un aviso un día; uno sin acotar no puede existir.
+
+El backfill de la migración también estaba mal por la misma clase de error: daba
+por comunicada toda fila existente, sobre la premisa —falsa— de que v0.54.3 solo
+escribía `state` tras intentar avisar. Esa asignación estaba fuera de todo
+condicional. Solo se rellenan las filas sanas; cualquier otra queda NULL, que
+bajo las reglas nuevas es una deuda y se entrega en el siguiente tick.
+
+### Añadido — el vigía externo tenía cero pruebas
+
+`deploy/heartbeat.sh` corre por cron en otra máquina, así que nada en la suite
+lo tocaba. Ahora hay **12 tests**, y **11 lo ejecutan de verdad como subproceso** contra un
+proveedor de correo simulado: ninguno manda un email. El doceavo es una
+afirmación sobre el fuente — que la clave no aparezca en el `argv` del `curl` —
+porque comprobarlo en caliente exigiría leer la tabla de procesos y eso no es
+portable entre macOS y CI. Ese sí se verificó a mano contra un envío en vuelo. `RESEND_URL` es
+overridable justo para eso — la rama de éxito decide si una avería cuenta como
+comunicada, y la única otra forma de probarla es escribirle a una persona real
+en cada ejecución.
+
+### Seguridad
+
+La clave de Resend viajaba en el `argv` de `curl`, donde `/proc/<pid>/cmdline`
+es legible por cualquier usuario local: el `chmod 600` del fichero de entorno no
+servía de nada. Ahora va por stdin (`--config -`) y el cuerpo por un fichero
+`0600`, no por una línea de comandos que nombra hosts y contenedores internos.
+Verificado leyendo el `argv` de un envío en vuelo.
+
+### Límites, dichos en voz alta
+
+Cobrar intentos puede dejar mudo al vigía tras un bache del proveedor, y el
+peor caso es más largo de lo que parece: el presupuesto se indexa por **día
+UTC**, no por ventana móvil, así que tres intentos quemados poco después de las
+00:00 UTC dejan mudo **hasta ~23 h**. Es el intercambio consciente frente al
+bucle sin techo, y no es peor que antes (donde el aviso se perdía del todo).
+Cierre pendiente: un techo **horario** para intentos, reservando el diario para
+entregas.
+
+997 backend + 90 frontend en verde; ruff, tsc, shellcheck y `bash -n` limpios.
+Mutaciones verificadas en las dos capas.
+
 ## [0.54.3] — 2026-08-25
 
 ### Añadido — la vigilancia, en dos capas y con sus límites dichos

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.54.3";
+export const CURRENT_VERSION = "0.54.4";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.54.4",
+    date: "2026-08-25",
+    title: {
+      en: "An alert that never arrived does not count as told",
+      es: "Un aviso que no llegó no cuenta como avisado",
+    },
+    changes: [
+      {
+        en: "An outside review found the same flaw in both watchmen: if the email failed to go out — a provider blip, a bad configuration — the system still marked the problem as reported. The next check saw nothing new and never mentioned it again. A fault could be spotted and then silently forgotten, which is the exact thing a watchman exists to prevent. Now nothing counts as told until the mail provider confirms it, and anything unconfirmed is tried again \u2014 with one deliberate exception: if no sender is configured at all, there is nobody a retry could reach, so it is recorded and said plainly in the log instead of looping.",
+        es: "Una revisión externa encontró el mismo fallo en los dos vigilantes: si el correo no llegaba a salir —un tropiezo del proveedor, una configuración incompleta— el sistema daba el problema por comunicado igualmente. La comprobación siguiente no veía nada nuevo y no volvía a mencionarlo. Una avería podía detectarse y luego olvidarse en silencio, que es justo lo que un vigilante existe para impedir. Ahora nada cuenta como avisado hasta que el proveedor de correo lo confirma, y lo no confirmado se reintenta \u2014 con una excepci\u00f3n deliberada: si no hay remitente configurado, ning\u00fan reintento llegar\u00eda a nadie, as\u00ed que se registra y se dice claro en el log en vez de dar vueltas.",
+      },
+      {
+        en: "That retry is deliberately capped. Left uncapped it would try every few minutes forever — and because a message that timed out has often already been delivered, those retries would be real duplicates spending the same email allowance your clients' replies use. A watchman is not allowed to take down what it watches.",
+        es: "Ese reintento tiene tope a propósito. Sin él lo intentaría cada pocos minutos indefinidamente — y como un mensaje que expiró a menudo ya se entregó, esos reintentos serían duplicados reales gastando el mismo cupo de correo que usan las respuestas a tus clientes. Un vigilante no puede tumbar aquello que vigila.",
+      },
+      {
+        en: "Also hardened along the way: the alert key no longer appears on the machine's process list, and the outside watchman — which had no automated tests at all — now has twelve — eleven of which run it for real, as a subprocess.",
+        es: "Endurecido de paso: la clave de los avisos ya no aparece en la lista de procesos de la máquina, y el vigilante externo —que no tenía ninguna prueba automática— ahora tiene doce, once de ellas ejecutándolo de verdad como subproceso.",
+      },
+    ],
+  },
   {
     version: "0.54.3",
     date: "2026-08-25",

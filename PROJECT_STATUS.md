@@ -17,7 +17,7 @@ evitar.
 |---|---|---|
 | 1 | Capa 1: `alerted_state` + máquina de estados + tests | ✅ completada |
 | 2 | Capa 2: `deploy/heartbeat.sh` escribe estado solo tras acuse | ✅ completada |
-| 3 | Cierre: bump v0.54.4, changelog, checklist de despliegue | ⬜ pendiente |
+| 3 | Cierre: bump v0.54.4, changelog, checklist de despliegue | ✅ completada |
 
 Rama: `feat/alert-delivery-durable`. **Sin commits a `main`. Sin despliegue.**
 
@@ -168,13 +168,169 @@ cabeceras de correo (`tr -d` elimina CR/LF antes del `sed`); los saneadores
 corruptos degradan sin colgar ni perder el aviso; el cambio de día UTC libera el
 presupuesto correctamente.
 
-### Incidencia (mía, no del código)
+### Test intermitente ajeno a estas fases (diagnosticado, NO corregido)
 
-Una pasada de la suite dio un rojo en `test_consent_holds_backfill`, ajeno a
-esta fase. Causa: **reusé la base de datos sin recrearla**, y este repo tiene
-documentado que la suite no es idempotente. Recreada, 994 en verde. No era
-regresión — pero conviene recordar que saltarse ese paso produce un rojo que
-parece de otro sitio.
+`test_consent_holds_backfill.py::test_the_clamp_is_right_at_the_edges` falla de
+forma intermitente. **Primero lo atribuí a no haber recreado la base; era falso**
+— volvió a fallar recreándola. Causa real, probada:
+
+```
+siembra: scheduled_for = datetime.now(UTC)     <- reloj del HOST (Python)
+SQL:     1 + FLOOR(EXTRACT(EPOCH FROM (NOW() - scheduled_for))/86400)
+                                        ^ reloj del CONTENEDOR (Postgres)
+```
+
+Con `scheduled_days_ago=0` el caso queda **exactamente sobre un cambio de
+signo**: transcurrido ≥ 0 da `1`; negativo por un microsegundo da
+`FLOOR(-1e-7) = -1` → `1 + (-1) = 0`. La deriva medida entre los dos relojes es
+de ~26 ms y cambia de signo, así que el test gana o pierde según el instante.
+
+No es un fallo del producto (el SQL de la migración es correcto) ni de estas
+fases (`test_consent_holds_backfill` no se toca en ninguna). Arreglo de una
+línea: sembrar con el reloj de la base, no con el de Python. **Deliberadamente
+no lo hago aquí**: tocar el test de otro módulo para que mi release salga verde
+es una decisión que merece su propio commit, no colarse en este.
+
+---
+
+## Fase 3 — cierre (completada)
+
+**Commit:** pendiente (a la espera de la auditoría).
+
+`APP_VERSION` y `CURRENT_VERSION` a **0.54.4** (`test_version_is_one_number.py`
+fuerza la paridad y está en verde), entrada en `CHANGELOG.md` y entrada bilingüe
+EN/ES en el changelog de la app.
+
+### Checklist de "terminado"
+
+| # | Criterio | Resultado real |
+|---|---|---|
+| 1 | Tests en verde, sin saltados | ✅ `997 passed` backend + `90 passed` frontend, cero `skipped`. ⚠️ Con una salvedad honesta: `test_consent_holds_backfill::test_the_clamp_is_right_at_the_edges` falla **de forma intermitente**, por comparar el reloj del host con el del contenedor sobre un cambio de signo. Ajeno a estas fases y diagnosticado abajo; no lo corrijo aquí. |
+| 2 | Lint / typecheck | ✅ `ruff` → `All checks passed!` · `npx tsc --noEmit` → limpio · `shellcheck` → limpio |
+| 3 | Build compila | ✅ backend: `docker build -f backend/Dockerfile` verificado en la fase 1 · frontend: `tsc` + `vitest` |
+| 4 | Cobertura del código nuevo no baja | ✅ Esta fase no añade código ejecutable (versión + textos). Medida de la rama completa: `main` 89% → rama 90% en los módulos tocados. |
+| 5 | Sin secretos en el diff | ✅ Barrido limpio |
+| 6 | Entrada validada, errores manejados, sin prints | ✅ N/A en esta fase (sin lógica nueva) |
+
+---
+
+# 🚀 DESPLIEGUE — preparado, NO ejecutado
+
+**Producción, comprobada ahora mismo:** `/api/v1/health` → `0.54.3`,
+`llm_fallback: ok` · ROG en `30d0668` · migración `041_monitor_state` ·
+`monitor_state` con una fila `llm_fallback / state='ok' / alerts_today=0` ·
+vigía externo en `ender-vps` con `state=up` y su cron.
+
+**Espero tu autorización en un mensaje aparte.**
+
+### Variables de entorno
+
+**Ninguna nueva.** `OPS_ALERT_FROM` ya se añadió al `.env` del ROG en v0.54.3
+(`alertas@realtors.ekoaiautomation.com`, respaldo en `.env.bak.20260825`).
+`LLM_MONITOR_INTERVAL_SECONDS` mantiene su valor por defecto de 300.
+
+### Migración
+
+`042_alerted_state`: **aditiva** — añade `monitor_state.alerted_state`
+(`VARCHAR(30) NULL`) y rellena `alerted_state = state WHERE state = 'ok'`.
+Sin bloqueo relevante: la tabla tiene **una fila**. No necesita `GRANT` (el de
+tabla de 041 ya cubre columnas añadidas después; verificado en
+`information_schema.column_privileges`). No activa RLS.
+
+**Efecto concreto en esta instalación:** la fila está en `state='ok'`, así que
+quedará `alerted_state='ok'` y el primer tick tras el despliegue **no** mandará
+ningún correo. Si en el momento de migrar estuviera en cualquier otro estado,
+quedaría NULL y el primer tick avisaría — que es lo correcto, porque ese aviso
+nunca se entregó. Matiz: si entre migrar y ese primer tick el fallback se
+recupera, la deuda NULL se consume en silencio (una lectura sana con
+`alerted_state` NULL es una primera observación, no un cambio). Ventana de
+minutos, y hoy no aplica porque la fila está en `ok`.
+
+### Orden de pasos
+
+```bash
+# 0. Tras aprobar el merge de la rama a main: etiquetar (el bundle usa --tags,
+#    pero nadie crea el tag por su cuenta)
+git tag -a v0.54.4 -m "v0.54.4 — un aviso que no salio no comunica nada"
+git push origin main && git push origin --tags
+
+# 1. Llevar el código (bundle: no depende de que el ROG llegue a GitHub)
+git bundle create /tmp/v0544.bundle main --tags
+scp /tmp/v0544.bundle pcrug:/tmp/
+ssh pcrug 'cd ~/Eko-AI-RealEstate && git fetch /tmp/v0544.bundle "main:refs/remotes/bundle/main" "+refs/tags/*:refs/tags/*" && git merge --ff-only refs/remotes/bundle/main'
+
+# 2. CONSTRUIR ANTES DE MIGRAR (la migración corre con la imagen nueva)
+ssh pcrug 'cd ~/Eko-AI-RealEstate && docker compose build backend frontend'
+
+# 3. Migrar
+ssh pcrug 'cd ~/Eko-AI-RealEstate && docker compose run --rm -T backend alembic upgrade head'
+
+# 4. Levantar
+ssh pcrug 'cd ~/Eko-AI-RealEstate && docker compose up -d backend frontend'
+
+# 5. Actualizar el vigía externo (NO tocar ~/.eko-heartbeat.env)
+scp deploy/heartbeat.sh ender-vps:~/eko-heartbeat.sh
+ssh ender-vps 'chmod +x ~/eko-heartbeat.sh && chmod 700 ~/.eko-heartbeat'
+# y cambiar el cron para que deje de tirar la salida a /dev/null:
+#   */15 * * * * $HOME/eko-heartbeat.sh >>$HOME/.eko-heartbeat/log 2>&1
+```
+
+### Verificación posterior (con salida real, no inspección)
+
+1. `curl .../api/v1/health` → `"version":"0.54.4"` y `"llm_fallback":"ok"`.
+2. `SELECT key,state,alerted_state FROM monitor_state` → `ok | ok`.
+3. Logs de arranque: `LLM fallback monitor started (every 300s)` + los tres workers.
+4. **`PLATFORM_ADMIN_EMAILS` y `EMAIL_SIMULATED`** — los dos deciden en silencio
+   si algún aviso llega a un humano, y ninguno es "nuevo", que es justo por lo
+   que se olvidan:
+   `docker exec eko-realestate-backend printenv | grep -E "PLATFORM_ADMIN_EMAILS|EMAIL_SIMULATED"`
+   Con `PLATFORM_ADMIN_EMAILS` vacío, **todo** aviso cae en la rama
+   consumir-sin-reintentar. Con `EMAIL_SIMULATED=true`, el envío "tiene éxito"
+   sin tocar la red y `alerted_state` avanza por un correo que nadie mandó.
+5. **Probar el reintento en vivo** (ojo: NO usando el canal sin configurar —
+   esa rama consuma el estado a propósito, así que probaría lo contrario).
+   Parchear `send_operator_alert` para que devuelva `False` en un tick forzado
+   dentro del contenedor → `alerted_state` **no** debe avanzar y `alerts_today`
+   sube a 1; segundo tick → vuelve a intentarlo. Restaurar y devolver
+   `alerts_today` a 0.
+6. En `ender-vps`: `~/eko-heartbeat.sh` con `HEARTBEAT_STATE_DIR` desechable y
+   `RESEND_URL` a un stub → confirmar los tres desenlaces. Limpiar después.
+7. Confirmar que **`~/.eko-heartbeat/log`** empieza a recibir líneas (esa es la
+   ruta del cron; `~/eko-heartbeat.log` no existe).
+
+### Plan de rollback
+
+⚠️ **Solo existen imágenes `:latest`**, así que volver atrás significa
+**recompilar desde el tag**, no arrancar una imagen guardada.
+
+⚠️ **EL ORDEN IMPORTA Y NO ES EL INTUITIVO.** `backend/Dockerfile` hace `COPY . .`,
+así que una imagen construida desde el árbol de v0.54.3 **no contiene** el
+script `20260825_1200_alerted_state.py`. Si se hace el checkout primero, Alembic
+aborta con `Can't locate revision identified by '042_alerted_state'` y el
+rollback muere a medias. **La migración se baja ANTES de tocar el código.**
+
+```bash
+# 1. Bajar la migración PRIMERO, con la imagen que todavía tiene el script 042
+ssh pcrug 'cd ~/Eko-AI-RealEstate && docker compose run --rm -T backend alembic downgrade 041_monitor_state'
+# 2. Ahora sí, el código a v0.54.3 (rama, no tag: un checkout de tag deja
+#    HEAD desacoplado y el siguiente `merge --ff-only` fallaría)
+ssh pcrug 'cd ~/Eko-AI-RealEstate && git checkout main && git reset --hard v0.54.3'
+# 3. Reconstruir
+ssh pcrug 'cd ~/Eko-AI-RealEstate && docker compose build backend frontend'
+# 4. Levantar y verificar que /api/v1/health dice 0.54.3
+ssh pcrug 'cd ~/Eko-AI-RealEstate && docker compose up -d backend frontend'
+# 5. Devolver el vigía externo a la versión de v0.54.3
+ssh pcrug 'cd ~/Eko-AI-RealEstate && cat deploy/heartbeat.sh' | ssh ender-vps 'cat > ~/eko-heartbeat.sh'
+```
+
+**Qué se pierde al hacer rollback:** vuelve el defecto original — un aviso que no
+salga dará la avería por comunicada. `alerted_state` se borra; `state`,
+`alerts_today` y `last_seen_fallback_at` sobreviven. El vigía externo vuelve a
+escribir su estado incondicionalmente.
+
+**Punto sin retorno:** ninguno **si se respeta el orden de arriba**. La migración
+es aditiva y reversible y no toca datos de clientes, pero deja de ser reversible
+en el momento en que el árbol ya no contiene su propio script de bajada.
 
 ---
 
