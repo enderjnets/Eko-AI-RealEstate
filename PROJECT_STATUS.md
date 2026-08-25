@@ -111,7 +111,7 @@ superficie con la que se comprueba que el despliegue entró.
 
 ## Fase 2 — capa 2, el vigía externo (completada)
 
-**Commit:** pendiente (a la espera de la auditoría).
+**Commit:** `65f86be` en `feat/alert-delivery-durable`.
 
 ### Qué cambia
 
