@@ -116,3 +116,32 @@ async def test_simulated_mode_does_not_touch_the_network(
     with patch.object(ops_alert.httpx, "AsyncClient", factory):
         assert await send_operator_alert("asunto", "cuerpo") is True
     client.post.assert_not_awaited()
+
+
+# ── "this attempt failed" vs "no attempt can succeed" ──────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_fully_configured_channel_reports_no_reason() -> None:
+    assert ops_alert.undeliverable_reason() is None
+
+
+@pytest.mark.parametrize(
+    "unset,expected",
+    [
+        ("PLATFORM_ADMIN_EMAILS", "PLATFORM_ADMIN_EMAILS"),
+        ("OPS_ALERT_FROM", "OPS_ALERT_FROM"),
+        ("RESEND_API_KEY", "RESEND_API_KEY"),
+    ],
+)
+def test_each_missing_setting_is_named_so_the_log_is_actionable(
+    monkeypatch: pytest.MonkeyPatch, unset: str, expected: str
+) -> None:
+    """The caller writes this straight into a log line. "not configured" sends
+    somebody hunting through three files; the name of the setting does not."""
+    monkeypatch.setenv(unset, "")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    reason = ops_alert.undeliverable_reason()
+    assert reason is not None and expected in reason

@@ -33,8 +33,15 @@ class MonitorState(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # What is being watched, e.g. "llm_fallback". Unique: one row per subject.
     key: Mapped[str] = mapped_column(String(40), unique=True, nullable=False, index=True)
-    # The last value we alerted about — the thing a new reading is compared to.
+    # The last value OBSERVED. Pure observability: it moves every tick and is
+    # what /api/v1/health reports.
     state: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # The last value the operator was CONFIRMED to have been told — advanced
+    # only after the mail provider accepted the message, and the thing a new
+    # reading is compared against. Seeing and saying are two different facts;
+    # collapsing them into one column is what let a failed send mark an outage
+    # as reported and silence every later retry.
+    alerted_state: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
     # Rate limiting, kept here rather than in memory for the same reason as
     # `state`: a process that restarts must not get a fresh budget to spend.

@@ -44,6 +44,26 @@ class OpsAlertNotSent(RuntimeError):
     """The alert could not be sent. Never raised at the caller — logged."""
 
 
+def undeliverable_reason() -> str | None:
+    """Why no alert could ever be delivered, or None if the channel is usable.
+
+    Callers that retry need this, because "this attempt failed" and "no attempt
+    can succeed" deserve opposite responses. A provider that rejected one
+    message may accept the next; a missing sender address will reject every
+    message until a human edits `.env`, and retrying that on a timer produces
+    identical log lines forever while a customer-impact mark sits frozen behind
+    it. Checked before any network call, so asking is free.
+    """
+    s = get_settings()
+    if not s.platform_admin_emails_list:
+        return "PLATFORM_ADMIN_EMAILS is empty"
+    if not (s.OPS_ALERT_FROM or "").strip():
+        return "OPS_ALERT_FROM is unset"
+    if not (s.RESEND_API_KEY or "").strip():
+        return "RESEND_API_KEY is unset"
+    return None
+
+
 async def send_operator_alert(subject: str, body: str) -> bool:
     """Email the platform operators. Returns True only if it actually went out.
 

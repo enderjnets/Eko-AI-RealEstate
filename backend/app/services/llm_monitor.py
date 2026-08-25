@@ -23,6 +23,21 @@ spend subscription quota, so the watchman would cause the exhaustion he is
 watching for. They are observed for free from real traffic instead — and the
 reason that is tolerable is precisely that the local fallback is now provably
 healthy: if both paid providers die, the lead still gets a real reply.
+
+**Seeing and saying are two separate facts.** `MonitorState.state` is the last
+reading; `MonitorState.alerted_state` is the last thing the operator was
+confirmed to have received, and only a 2xx from the mail provider advances it.
+The first version collapsed them, so a transport failure at the wrong moment
+retired the transition and the outage went unreported forever — this module
+reproducing, internally, the exact failure it was built to catch.
+
+The retry is simply the next tick, and it is **budgeted by attempt**, not by
+delivery. An earlier draft charged only successful sends, reasoning that a
+retry costs nothing; that reasoning was wrong in the expensive direction. A
+send whose response times out has often already been delivered, so an unbudgeted
+retry loop does not fail quietly — it mails the operator 288 times a day out of
+the same quota that answers leads. A capped retry can delay an alert by a day.
+An uncapped one can take down the product it is watching.
 """
 from __future__ import annotations
 
@@ -37,7 +52,11 @@ from app.db.base import get_bypass_session_factory
 from app.models.message import Message
 from app.models.monitor_state import MonitorState
 from app.services.llm import FallbackStatus, check_fallback_provider
-from app.services.ops_alert import MAX_ALERTS_PER_DAY, send_operator_alert
+from app.services.ops_alert import (
+    MAX_ALERTS_PER_DAY,
+    send_operator_alert,
+    undeliverable_reason,
+)
 from app.services.tenant_context import run_for_every_org
 
 log = logging.getLogger(__name__)
@@ -158,35 +177,68 @@ async def run_monitor_tick() -> FallbackStatus:
     session_factory = get_bypass_session_factory()
     async with session_factory() as session:
         row = await _load_or_create(session)
-        previous = row.state
+        # What the operator last HEARD — not what we last saw. The distinction
+        # is the whole point: comparing against `row.state` meant a send that
+        # failed still consumed the transition, and the outage was never
+        # mentioned again.
+        previous = row.alerted_state
 
-        # ── the probe: alert only on a transition ────────────────────────
+        # `row.state` is observability and moves unconditionally; the alert
+        # decision below never reads it.
+        if row.state != status:
+            log.warning("LLM fallback state changed: %s -> %s", row.state, status)
+        row.state = status
+
+        # ── the probe: alert until the operator has actually been told ───
         #
         # `previous is None` is the first observation ever, not a change. It
         # still alerts when the reading is bad: discovering at boot that the net
         # is missing is exactly what we want to hear about. A first reading of
         # "ok" is silent, because nothing happened.
-        changed = previous != status
-        worth_saying = status not in _HEALTHY or previous is not None
-        if changed and worth_saying:
+        if status in _HEALTHY and previous is None:
+            row.alerted_state = status
+        elif status != previous:
             subject, body = _describe(status, previous)
-            if _budget_left(row):
+            undeliverable = undeliverable_reason()
+            if undeliverable:
+                # Nothing here is worth retrying: no number of attempts reaches
+                # anyone until a human edits the configuration. Consume the
+                # transition, say why once, and let /api/v1/health and the
+                # external heartbeat carry the state in the meantime.
+                log.error(
+                    "LLM monitor: %s -> %s but the alert channel cannot deliver "
+                    "(%s); not retrying. Subject was %r.",
+                    previous, status, undeliverable, subject,
+                )
+                row.alerted_state = status
+            elif _budget_left(row):
+                # The ATTEMPT is charged, not the delivery, and that asymmetry
+                # is deliberate. Charging only successes means a failing send
+                # costs nothing, so the budget never closes and the next tick
+                # tries again — 288 times a day, forever. Worse, a message the
+                # provider accepted whose response timed out reads as a failure
+                # here, so those 288 would be real duplicates spending the same
+                # quota that answers leads. A capped retry can delay an alert by
+                # a day; an uncapped one can take down the product it watches.
+                row.alerts_today += 1
+                row.last_alert_at = datetime.now(UTC)
                 if await send_operator_alert(subject, body):
-                    row.alerts_today += 1
-                    row.last_alert_at = datetime.now(UTC)
+                    row.alerted_state = status
+                else:
+                    # `alerted_state` stays put: the next tick finds the same
+                    # gap and tries again, within the budget above.
+                    log.error(
+                        "LLM monitor: %s -> %s but the alert did not go out; "
+                        "will retry (attempt %d of %d today).",
+                        previous, status, row.alerts_today, MAX_ALERTS_PER_DAY,
+                    )
             else:
-                # The state still advances. Holding it back so the next tick
-                # retries would spend tomorrow's budget on today's loop, and the
-                # reading is on /api/v1/health either way — which is what the
-                # external heartbeat reads.
                 log.error(
                     "LLM monitor: %s -> %s but the daily alert budget (%d) is spent; "
-                    "not sending. Live state stays on /api/v1/health.",
+                    "not sending. Will retry after the UTC day rolls over. Live "
+                    "state stays on /api/v1/health.",
                     previous, status, MAX_ALERTS_PER_DAY,
                 )
-        if changed:
-            log.warning("LLM fallback state changed: %s -> %s", previous, status)
-        row.state = status
 
         # ── the ground truth: a customer already paid for an outage ──────
         cutoff = row.last_seen_fallback_at
@@ -198,8 +250,22 @@ async def run_monitor_tick() -> FallbackStatus:
         else:
             count, newest = await _count_canned_replies(cutoff)
             if count and newest is not None:
-                row.last_seen_fallback_at = newest
-                if _budget_left(row):
+                undeliverable = undeliverable_reason()
+                if undeliverable:
+                    # Same reasoning as above, plus one specific to this branch:
+                    # holding the mark back for a channel that can never deliver
+                    # would freeze the cutoff, and this sweep re-counts from it
+                    # on every tick across every organization — an unbounded
+                    # window over a column with no index.
+                    log.error(
+                        "LLM monitor: %d canned replies since %s but the alert "
+                        "channel cannot deliver (%s); not retrying.",
+                        count, cutoff, undeliverable,
+                    )
+                    row.last_seen_fallback_at = newest
+                elif _budget_left(row):
+                    row.alerts_today += 1
+                    row.last_alert_at = datetime.now(UTC)
                     sent = await send_operator_alert(
                         "[Eko Realtors] Un cliente recibio la respuesta enlatada",
                         f"{count} mensaje(s) salieron sellados provider='fallback' "
@@ -211,8 +277,17 @@ async def run_monitor_tick() -> FallbackStatus:
                         "Revisa las conversaciones recientes en la consola.",
                     )
                     if sent:
-                        row.alerts_today += 1
-                        row.last_alert_at = datetime.now(UTC)
+                        # The mark moves only now. Advancing it before the send
+                        # meant a rejected message erased the evidence that a
+                        # real customer had been let down — the one signal here
+                        # that describes damage rather than risk.
+                        row.last_seen_fallback_at = newest
+                    else:
+                        log.error(
+                            "LLM monitor: %d canned replies since %s but the alert did "
+                            "not go out; will retry (attempt %d of %d today).",
+                            count, cutoff, row.alerts_today, MAX_ALERTS_PER_DAY,
+                        )
                 else:
                     log.error(
                         "LLM monitor: %d canned replies since %s but the daily alert "
