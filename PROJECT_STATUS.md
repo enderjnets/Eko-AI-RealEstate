@@ -23,7 +23,7 @@ Rama: `feat/alert-delivery-durable`. **Sin commits a `main`. Sin despliegue.**
 
 ---
 
-## Fase 1 — capa 1 (en curso)
+## Fase 1 — capa 1 (completada)
 
 **Commit:** `b1fa424` en `feat/alert-delivery-durable` (subida a origin).
 
@@ -34,7 +34,7 @@ Rama: `feat/alert-delivery-durable`. **Sin commits a `main`. Sin despliegue.**
 | 1 | Tests en verde, sin saltados | ✅ `985 passed, 20 warnings in 125.28s` desde base recreada + `alembic upgrade head`. Cero `skipped`. (Antes del cambio: 977.) |
 | 2 | Lint / typecheck | ✅ `ruff check app tests` → `All checks passed!` · `npx tsc --noEmit` → limpio (frontend sin tocar, control de regresión) |
 | 3 | Build compila | ⚠️ Parcial. El backend no tiene paso de build propio (su "build" es la imagen Docker, que se construye en el despliegue — y el despliegue está explícitamente fuera de alcance). Typecheck del frontend sí verificado. |
-| 4 | Cobertura del código nuevo no baja | ❌ **NO VERIFICABLE.** No hay herramienta de cobertura: `pytest --help` no expone `--cov`, `import coverage` → `ModuleNotFoundError`, y no está declarada en `pyproject.toml` ni en ningún `requirements*.txt`. Instalarla sería un cambio de entorno fuera del alcance de la fase. **Evidencia sustitutiva** (más fuerte que un porcentaje, porque una línea puede estar cubierta y no comprobada): 3 tests nuevos + **2 mutaciones verificadas** (abajo). |
+| 4 | Cobertura del código nuevo no baja | ❌ **NO VERIFICABLE.** No hay herramienta de cobertura: `pytest --help` no expone `--cov`, `import coverage` → `ModuleNotFoundError`, y no está declarada en `pyproject.toml` ni en ningún `requirements*.txt`. Instalarla sería un cambio de entorno fuera del alcance de la fase. **Evidencia sustitutiva** (más fuerte que un porcentaje, porque una línea puede estar cubierta y no comprobada): 4 tests nuevos en el monitor + 4 en el canal + **3 mutaciones verificadas** (abajo). |
 | 5 | Sin secretos en el diff | ✅ Barrido del diff por `api_key\|secret\|token\|password\|bearer\|re_[a-z0-9]{20,}` → sin coincidencias reales |
 | 6 | Entrada validada, errores manejados, sin prints | ✅ Sin `print(`/`console.log`/`breakpoint(` añadidos. Todos los caminos de fallo de envío quedan en `log.error` y el tick continúa; `send_operator_alert` ya no puede propagar excepción (probado en `test_ops_alert.py`). |
 
@@ -75,13 +75,18 @@ corre bajo el rol con RLS FORCE, así que no hay fuga entre agencias.
   observado) y `alerted_state` (lo comunicado) son dos hechos distintos y los
   dos hacen falta: `state` alimenta `/api/v1/health`, que es lo que lee el vigía
   externo. Colapsarlos fue el bug.
-- **Backfill `alerted_state = state` en la propia migración 042.** Producción ya
-  tiene la fila `key='llm_fallback'`; dejarla en NULL la haría parecer "nunca se
-  comunicó nada".
-- **El reintento es el siguiente tick, sin backoff propio.** El intervalo (300 s)
-  ya es el backoff, y reintentar no cuesta: `_budget_left` se consulta **antes**
-  de llamar al proveedor, así que un reintento no gasta cuota hasta que uno se
-  acepta. Añadir una cola de pendientes habría sido maquinaria sin ganancia.
+- **Backfill solo de las filas sanas.** La versión inicial copiaba `state` en
+  toda fila; la auditoría demostró que la premisa era falsa. Una fila averiada
+  se queda en NULL, que bajo las reglas nuevas es una deuda y se entrega en el
+  siguiente tick.
+- **El reintento es el siguiente tick, y se cobra el INTENTO.** El intervalo
+  (300 s) es el backoff. La versión inicial cobraba solo las entregas, con el
+  argumento de que reintentar es gratis; no lo es, porque un envío entregado
+  cuya respuesta expira se lee como fallo. Cobrar intentos acota el bucle sin
+  perder la deuda: sigue pendiente para el día siguiente.
+- **Fallo permanente ≠ fallo transitorio.** Un canal sin remitente no se
+  reintenta: ningún número de intentos llega a nadie, y mantener el hueco
+  abierto congelaba el cutoff del barrido.
 - **Sin Redis.** Está configurado pero ningún servicio lo usa; estrenar esa
   dependencia para cuatro campos no se justifica.
 
