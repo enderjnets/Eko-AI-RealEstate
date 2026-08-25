@@ -195,7 +195,7 @@ es una decisión que merece su propio commit, no colarse en este.
 
 ## Fase 3 — cierre (completada)
 
-**Commit:** pendiente (a la espera de la auditoría).
+**Commit:** `f7a80bd`.
 
 `APP_VERSION` y `CURRENT_VERSION` a **0.54.4** (`test_version_is_one_number.py`
 fuerza la paridad y está en verde), entrada en `CHANGELOG.md` y entrada bilingüe
