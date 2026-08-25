@@ -33,8 +33,8 @@ Rama: `feat/alert-delivery-durable`. **Sin commits a `main`. Sin despliegue.**
 |---|---|---|
 | 1 | Tests en verde, sin saltados | ✅ `985 passed, 20 warnings in 125.28s` desde base recreada + `alembic upgrade head`. Cero `skipped`. (Antes del cambio: 977.) |
 | 2 | Lint / typecheck | ✅ `ruff check app tests` → `All checks passed!` · `npx tsc --noEmit` → limpio (frontend sin tocar, control de regresión) |
-| 3 | Build compila | ⚠️ Parcial. El backend no tiene paso de build propio (su "build" es la imagen Docker, que se construye en el despliegue — y el despliegue está explícitamente fuera de alcance). Typecheck del frontend sí verificado. |
-| 4 | Cobertura del código nuevo no baja | ❌ **NO VERIFICABLE.** No hay herramienta de cobertura: `pytest --help` no expone `--cov`, `import coverage` → `ModuleNotFoundError`, y no está declarada en `pyproject.toml` ni en ningún `requirements*.txt`. Instalarla sería un cambio de entorno fuera del alcance de la fase. **Evidencia sustitutiva** (más fuerte que un porcentaje, porque una línea puede estar cubierta y no comprobada): 4 tests nuevos en el monitor + 4 en el canal + **3 mutaciones verificadas** (abajo). |
+| 3 | Build compila | ✅ `docker build -f backend/Dockerfile backend/` → OK, y dentro de la imagen `import app.main, app.services.llm_monitor, app.services.ops_alert` → OK. (Vía `docker compose build` falla en el Mac por interpolación: el `.env` vive en el ROG, no en este portátil — es entorno, no código.) Frontend: `npx tsc --noEmit` limpio. |
+| 4 | Cobertura del código nuevo no baja | ✅ **SUBE.** No había herramienta; se instaló `pytest-cov` en el venv y se midió contra `main` en un worktree aparte, misma orden y mismos ficheros.<br>`main`: `llm_monitor 87%` · `ops_alert 94%` · **TOTAL 89%** (15 tests)<br>rama: `llm_monitor 87%` · `ops_alert 96%` · **TOTAL 90%** (23 tests)<br>Más **3 mutaciones verificadas** (abajo), que es la evidencia que un porcentaje no da: una línea puede estar cubierta y no comprobada. |
 | 5 | Sin secretos en el diff | ✅ Barrido del diff por `api_key\|secret\|token\|password\|bearer\|re_[a-z0-9]{20,}` → sin coincidencias reales |
 | 6 | Entrada validada, errores manejados, sin prints | ✅ Sin `print(`/`console.log`/`breakpoint(` añadidos. Todos los caminos de fallo de envío quedan en `log.error` y el tick continúa; `send_operator_alert` ya no puede propagar excepción (probado en `test_ops_alert.py`). |
 
@@ -90,11 +90,22 @@ corre bajo el rol con RLS FORCE, así que no hay fuga entre agencias.
 - **Sin Redis.** Está configurado pero ningún servicio lo usa; estrenar esa
   dependencia para cuatro campos no se justifica.
 
-### Incidencia de entorno (resuelta, para que no sorprenda)
+### Incidencias de entorno (resueltas, para que no sorprendan)
 
-Docker Desktop del Mac estaba parado y el contenedor **local de desarrollo**
-`eko-realestate-db` (no producción; producción vive en el ROG) había salido con
-código 0. Arrancados los dos; la suite corre desde base recreada.
+- Docker Desktop del Mac estaba parado y el contenedor **local de desarrollo**
+  `eko-realestate-db` (no producción; producción vive en el ROG) había salido
+  con código 0. Arrancados los dos.
+- No había herramienta de cobertura. Instalada `pytest-cov` **en el venv**, no
+  declarada en el repo. Si se quiere que la métrica sea reproducible en CI hay
+  que añadirla a las dependencias — queda como MENOR en el backlog.
+- `docker compose build` no funciona en el Mac (sin `.env`); el build real se
+  hace con `docker build -f backend/Dockerfile`.
+
+### Pendiente de la fase 3 (no es un hallazgo, es el orden del plan)
+
+`APP_VERSION` sigue en `0.54.3` dentro de la imagen. El bump a `0.54.4` va en la
+fase de cierre, antes de cualquier despliegue — `/api/v1/health` es la única
+superficie con la que se comprueba que el despliegue entró.
 
 ---
 
