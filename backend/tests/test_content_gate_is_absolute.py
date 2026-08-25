@@ -378,6 +378,10 @@ def test_every_wire_touching_function_is_declared_or_exempt() -> None:
             "cancels that same booking",
         "app/services/llm.py::_ollama_generate":
             "POSTs a prompt to a local model",
+        "app/services/ops_alert.py::send_operator_alert":
+            "emails the platform operator that the machinery broke; the body is"
+            " a status word and a remedy, never a content piece, and it is"
+            " addressed to PLATFORM_ADMIN_EMAILS rather than to any audience",
     }
     # The messaging senders, accounted for by the opt-out sweep next door.
     MESSAGING = {"send_email", "send_sms", "send_text_message"}

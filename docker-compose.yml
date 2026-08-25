@@ -86,6 +86,11 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://172.20.0.1:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma3:4b}
       OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-120}
+      # Watchdog over the fallback above. The check is cheap and frequent; the
+      # alert is rare and capped. OPS_ALERT_FROM must be a sender on a domain
+      # verified with Resend — empty means alerts are logged, never sent.
+      LLM_MONITOR_INTERVAL_SECONDS: ${LLM_MONITOR_INTERVAL_SECONDS:-300}
+      OPS_ALERT_FROM: ${OPS_ALERT_FROM:-}
       # WhatsApp Business Cloud API
       WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}
       WHATSAPP_SIMULATED: ${WHATSAPP_SIMULATED:-true}

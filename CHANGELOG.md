@@ -2,6 +2,62 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.54.3] — 2026-08-25
+
+### Añadido — la vigilancia, en dos capas y con sus límites dichos
+
+v0.54.2 puso `llm_fallback` en `/health` y ahí se quedó: **una foto del arranque
+que nadie consultaba**. Una medición que nadie lee es la misma forma de error
+que un flag que nadie comprueba. Tres puntos ciegos, verificados antes de tocar
+código:
+
+1. Se sondeaba una vez en el lifespan. Si Ollama moría a las 3 de la mañana,
+   `/health` seguía diciendo `ok` hasta el siguiente reinicio.
+2. **No existía ningún canal de aviso.** `PLATFORM_ADMIN_EMAILS` era solo una
+   lista de identidad; nada le escribía.
+3. Un mensaje sellado `provider='fallback'` —un cliente real que recibió la
+   línea de espera— solo se veía abriendo esa conversación, una por una.
+
+**Capa 1, dentro (`services/llm_monitor.py`).** Un cuarto worker re-mide cada
+`LLM_MONITOR_INTERVAL_SECONDS` (300 por defecto) y barre la base en busca de
+respuestas enlatadas nuevas, vía `run_for_every_org` — un worker sin org vería
+cero filas bajo RLS default-deny, para siempre y en silencio. **Cero cambios en
+el camino de respuesta al lead**: el bucle observa la base de datos, no se mete
+en el hot path.
+
+**Aviso por CAMBIO de estado, nunca por reloj**, y con el comando que lo arregla
+en el cuerpo. Un correo al romperse, uno al recuperarse. Tope duro de 3 al día:
+comparte la cuota de Resend con las respuestas a clientes, y un aviso de nivel
+cada 5 minutos (288/día) agotaría el free tier y **tumbaría el producto que
+vigila**.
+
+**Canal propio (`services/ops_alert.py`), no `send_email()`.** Aquel resuelve la
+identidad *de la organización actuante*; un worker no tiene org, y un aviso al
+operador no es tráfico de inquilino. Confundirlos es el patrón que ya hizo que
+la agencia B respondiera desde la dirección de la A.
+
+**Capa 2, fuera (`deploy/heartbeat.sh`).** Un proceso no puede avisar de su
+propia muerte. Cron cada 15 min en `ender-vps` contra el endpoint público, por
+Resend directo y nunca a través del ROG. **Debounce de dos fallos consecutivos**:
+cada despliegue reinicia el backend, y un vigía que avisa en cada despliegue es
+un vigía al que se deja de creer.
+
+**Tabla `monitor_state`** (migración 041): compartida, **sin `org_id` y sin RLS
+a propósito**, como `properties` y `sync_state` — la salud de la instalación no
+pertenece a ninguna agencia. Persistida y no en memoria porque un backend en
+crash-loop mandaría un correo por reinicio.
+
+Mutación verificada: quitar la comparación `previous != status` pone en rojo
+`test_second_tick_in_the_same_state_says_nothing`. 977 backend + 90 frontend.
+
+### Límites, dichos en voz alta
+
+Las dos capas comparten transporte: **si Resend cae o se queda sin cuota,
+enmudecen a la vez.** Y no se vigilan activamente Kimi ni MiniMax: cada sondeo
+gastaría cuota de suscripción, así que el vigilante causaría el agotamiento que
+busca. Se observan gratis desde el tráfico real — y lo que hace tolerable ese
+hueco es que el eslabón local está ahora probadamente sano.
+
 ## [0.54.2] — 2026-08-24
 
 ### Corregido — el tercer eslabón de la cadena de LLM no existía

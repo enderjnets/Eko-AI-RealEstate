@@ -25,6 +25,7 @@ from app.models.message import (
     MessageSender,
     MessageStatus,
 )
+from app.models.monitor_state import MonitorState
 from app.models.organization import (
     DEFAULT_ORG_ID,
     DEMO_ORG_ID,
@@ -69,6 +70,7 @@ __all__: list[str] = [
     "Property",
     "PropertySource",
     "PropertyStatus",
+    "MonitorState",
     "SyncState",
     "UserActivity",
     "Visit",

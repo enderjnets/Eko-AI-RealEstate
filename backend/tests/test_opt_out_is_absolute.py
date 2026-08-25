@@ -461,6 +461,11 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
             "cancels that same booking; same reasoning",
         "app/services/llm.py::_ollama_generate":
             "POSTs a prompt to a local model; no lead is addressed",
+        "app/services/ops_alert.py::send_operator_alert":
+            "emails the platform operator about the machinery, addressed to"
+            " PLATFORM_ADMIN_EMAILS and never to a lead. The exemption runs both"
+            " ways and both matter: a lead's STOP must not silence an outage"
+            " report, and an outage report must never land in a lead's inbox",
     }
     undeclared: list[str] = []
     walked = 0

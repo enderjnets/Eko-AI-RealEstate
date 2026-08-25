@@ -41,6 +41,8 @@ HANDLED = {
     "allowed_users": (LOUD, "admin config; loud failure is correct"),
     "agent_settings": (LOUD, "admin config; loud failure is correct"),
     "sync_state": (OURS, "written from our own literals"),
+    "monitor_state": (OURS, "our own literals: a status word the probe returns, "
+                            "a module-constant key, and counters we compute"),
     # Written from our own values, or after the customer's words are safe.
     # Was recorded as "our own values, written after the commit". Both halves
     # were false: `property_address` and `timezone` come from a caller's JSON
@@ -334,6 +336,7 @@ class TestEveryUniqueStringKeyHasBeenThoughtAbout:
         ("follow_ups", "kind"): "enum value",
         ("properties", "source"): "literal: reso | idx | mls | manual",
         ("sync_state", "source"): "literal, one per feed",
+        ("monitor_state", "key"): "module constant, one per watched subject",
         # Admin configuration through an authenticated form. Failing loudly is
         # right here: silently storing a different email than the one typed
         # would lock somebody out of an account they think they created.

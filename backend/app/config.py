@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.54.2"
+    APP_VERSION: str = "0.54.3"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -59,6 +59,15 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://172.20.0.1:11434"
     OLLAMA_MODEL: str = "gemma3:4b"
     OLLAMA_TIMEOUT_SECONDS: float = 120.0  # local cold-load + generation can be slow
+
+    # How often the monitor re-checks that the last-resort provider can answer.
+    # Probing /api/tags is local and free and does not load the model, so this
+    # can be frequent; it is the *alert* that has to be rare, not the check.
+    LLM_MONITOR_INTERVAL_SECONDS: int = 300
+    # Sender for operator alerts. NOT a tenant identity: a monitor has no org,
+    # and an alert to us is not a reply to somebody's lead. Empty = alerts are
+    # logged and not sent, which is stated out loud rather than failing quietly.
+    OPS_ALERT_FROM: str = ""
 
     # ─── WhatsApp Business Cloud API (Phase 1) ──────────────────────────
     # OFF by default, and for most installs that is the final answer: a US

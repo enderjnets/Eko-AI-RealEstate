@@ -393,6 +393,7 @@ _content_studio_task: asyncio.Task | None = None
 _content_render_task: asyncio.Task | None = None
 _delivery_retry_task: asyncio.Task | None = None
 _listings_sync_task: asyncio.Task | None = None
+_llm_monitor_task: asyncio.Task | None = None
 
 
 async def _followups_loop() -> None:
@@ -411,6 +412,29 @@ async def _followups_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.error("Follow-ups worker tick failed: %s", exc)
+
+
+async def _llm_monitor_loop() -> None:
+    """Background worker: keep measuring the LLM safety net, and say when it moves.
+
+    The startup probe answers "is the net there?" once. This answers it again,
+    because the failure it guards against is silent decay — a model deleted, a
+    docker subnet reassigned, a service that did not come back after a reboot.
+    Cheap enough to run often (a local /api/tags listing, no model load); the
+    thing that has to stay rare is the email, and that rareness lives in
+    `run_monitor_tick`, not in this interval.
+    """
+    from app.services.llm_monitor import run_monitor_tick
+
+    interval = max(60, settings.LLM_MONITOR_INTERVAL_SECONDS)
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            app.state.llm_fallback = await run_monitor_tick()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — a watchdog that dies is worse than none
+            logger.error("LLM monitor tick failed: %s", exc)
 
 
 async def _content_studio_loop() -> None:
@@ -1076,6 +1100,12 @@ async def _startup() -> None:
             settings.OLLAMA_MODEL,
         )
 
+    global _llm_monitor_task
+    _llm_monitor_task = asyncio.create_task(_llm_monitor_loop())
+    logger.info(
+        "LLM fallback monitor started (every %ds)", settings.LLM_MONITOR_INTERVAL_SECONDS
+    )
+
     if settings.FOLLOWUPS_ENABLED:
         global _followups_task
         _followups_task = asyncio.create_task(_followups_loop())
@@ -1118,7 +1148,7 @@ async def _startup() -> None:
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task, _content_studio_task, _content_render_task):
+    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task, _content_studio_task, _content_render_task, _llm_monitor_task):
         if task is not None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

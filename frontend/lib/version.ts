@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.54.2";
+export const CURRENT_VERSION = "0.54.3";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.54.3",
+    date: "2026-08-25",
+    title: {
+      en: "Now something is actually watching",
+      es: "Ahora hay algo mirando de verdad",
+    },
+    changes: [
+      {
+        en: "The last release could tell you the backup AI was broken — but only when it started up, and only if you went looking. Now it re-checks every five minutes and emails you when the answer changes: one message when it breaks, naming the command that fixes it, and one when it recovers. It fires on a change, never on a schedule, because an alarm that repeats every five minutes is one you learn to ignore.",
+        es: "La versión anterior podía decirte que la IA de respaldo estaba rota, pero solo al arrancar y solo si ibas a mirarlo. Ahora lo vuelve a comprobar cada cinco minutos y te escribe cuando la respuesta cambia: un correo al romperse, con el comando exacto que lo arregla, y otro al recuperarse. Avisa por cambio, nunca por reloj, porque una alarma que suena cada cinco minutos es una que se aprende a ignorar.",
+      },
+      {
+        en: "It also watches the thing that actually costs you money: if a real client ever receives the canned \"someone will get back to you shortly\" instead of an answer, you hear about it. That is the difference between knowing you are at risk and knowing you were hit.",
+        es: "También vigila lo que de verdad te cuesta dinero: si un cliente real llega a recibir el \"alguien te responderá en breve\" en vez de una respuesta, te enteras. Esa es la diferencia entre saber que estás en riesgo y saber que ya te pasó.",
+      },
+      {
+        en: "And a second watchman lives on a different machine entirely, because a program cannot report its own death. If the server stops answering at all, that one tells you — after two failed checks, not one, so a routine deployment does not wake you up.",
+        es: "Y un segundo vigía vive en otra máquina distinta, porque un programa no puede avisar de su propia muerte. Si el servidor deja de responder del todo, ese te avisa — tras dos comprobaciones fallidas, no una, para que un despliegue rutinario no te despierte.",
+      },
+    ],
+  },
   {
     version: "0.54.2",
     date: "2026-08-24",
