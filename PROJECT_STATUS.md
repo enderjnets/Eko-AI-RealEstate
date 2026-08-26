@@ -18,7 +18,7 @@ riesgo.
 
 | # | Fase | Estado |
 |---|---|---|
-| 1 | El filtro corre sobre lo que sale hacia el lead | ✅ completada |
+| 1 | El filtro corre sobre lo que sale hacia el lead | ✅ completada — `f63ef4e` |
 | 2 | Recortar espacios donde el usuario escribe | ⏳ pendiente |
 | 3 | Aviso de tamaño antes de gastar la subida | ⏳ pendiente |
 | 4 | El nav entre 768 y 1279 px + bump v0.56.0 | ⏳ pendiente |
