@@ -322,14 +322,49 @@ imposible); `viewer` recibe 403 en backend; cookie `samesite=lax` corta CSRF;
 - Los botones aprobar/rechazar tampoco están ocultos para `viewer`
   (preexistente).
 
-### Siguiente paso concreto
+### Estado de producción
 
-Las cuatro fases en verde. Preparar el despliegue y **detenerse**: checklist
-previo, plan de reversión, variables, orden de pasos. La autorización de
-desplegar la da el dueño en un mensaje aparte.
+**✅ v0.55.0 DESPLEGADA y verificada el 26-ago-2026.** `/api/v1/health` →
+`0.55.0`, `/content` → 200, los cuatro workers arrancados sin errores, sin
+migraciones que aplicar (verificado: 0 ficheros en el diff), y
+`CONTENT_STUDIO_ENABLED` / `CONTENT_RENDER_ENABLED` **siguen en `false`** —
+esta versión no enciende nada. `GET /content/status` devuelve 401 a un anónimo.
 
-**Paso post-despliegue confirmado por el dueño (26-ago):** poner
-`Engel & Völkers Aspen` en Ajustes → Identificación de la brokerage, **desde la
-interfaz nueva**, no con SQL a mano. Es el texto de la firma de Natalia y el
-único de los tres candidatos que **cabe** en el ancho del vídeo: los otros dos
-tocan los bordes o se cortan (renderizado y comprobado con el código real).
+**⏳ v0.55.1 lista y sin desplegar** (`9c46d62`, tag subido): corrige la cifra
+de subida publicada. Solo texto, sin cambio de comportamiento.
+
+### El límite de subida, medido contra producción
+
+```
+ 99 MB -> HTTP 401  (respondió nuestro backend: Cloudflare lo dejó pasar)
+120 MB -> HTTP 413  (respondió Cloudflare en el borde)
+```
+
+**El túnel corta en ~100 MB, no en los 500 del ajuste.** Salió como sospecha de
+la auditoría de la Fase 4 —que dijo explícitamente «verifícalo, no lo leí de una
+fuente»— y por eso se midió. Las pruebas no crearon ninguna fila.
+
+### Pendiente de una persona (no de código)
+
+Con `AUTH_ENABLED=true`, tres comprobaciones necesitan sesión y el agente no
+maneja contraseñas:
+
+1. **Ajustes** → escribir `Engel & Völkers Aspen` en «Identificación de la
+   brokerage». Decidido el 26-ago: es el texto de la firma de Natalia y el único
+   de tres candidatos que **cabe** en el ancho del vídeo (los otros tocan los
+   bordes o se cortan; renderizado con el código real).
+2. **Contenido** → tras el paso 1, la causa «no hay identificación de la
+   brokerage» debe **desaparecer**. Si no, el diagnóstico es decoración.
+3. **Inbox** → abrir el desplegable en escritorio y comprobar que se ve entero.
+   Se rompió durante la Fase 2 y ningún test lo cubre.
+
+### Backlog abierto
+
+- **Sin comprobación de tamaño en el navegador**: un clip de 4K sube ~100 MB y
+  recibe HTML de Cloudflare en vez de una frase. `CONTENT_UPLOAD_MAX_MB=500`
+  produce un 413 propio que el túnel hace inalcanzable: texto muerto.
+- Nav de escritorio no cabe entre 768 y 1279 px (preexistente, 20 px mejor).
+- Un render fallido es irreversible aunque el fallo sea transitorio.
+- Fichero huérfano si falla el commit tras el streaming; sin rate limit por org.
+- Botones aprobar/rechazar visibles para `viewer` (preexistente).
+- `/docs` sin acceso por debajo de 1280 px.
