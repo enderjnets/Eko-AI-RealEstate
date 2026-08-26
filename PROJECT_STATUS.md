@@ -330,8 +330,22 @@ migraciones que aplicar (verificado: 0 ficheros en el diff), y
 `CONTENT_STUDIO_ENABLED` / `CONTENT_RENDER_ENABLED` **siguen en `false`** —
 esta versión no enciende nada. `GET /content/status` devuelve 401 a un anónimo.
 
-**⏳ v0.55.1 lista y sin desplegar** (`9c46d62`, tag subido): corrige la cifra
-de subida publicada. Solo texto, sin cambio de comportamiento.
+**✅ v0.55.1 DESPLEGADA** (`9c46d62`, tag subido): corrige la cifra de subida
+publicada. `/api/v1/health` → `0.55.1`, cero errores en el log, y verificado en
+el bundle servido que no queda ninguna afirmación de «500 MB» — la única
+mención que sobrevive es la frase de la corrección explicando lo que decíamos.
+
+**🔴 Ajustes: el texto entró en el campo equivocado.** El dueño escribió
+`Engel & Völkers Aspen` en **`agency_name`**, no en `brokerage_line`. Un solo
+PUT en el log, `updated_at` 21:15. Consecuencias: los vídeos **siguen sin poder
+renderizarse** (la puerta lee `brokerage_line`, que sigue vacío), y el asistente
+ahora se presenta a los leads como «Engel & Völkers Aspen» — más correcto que
+antes, pero no era lo buscado. Los dos campos son confundibles: `agency_name` va
+primero en la misma caja. **Backlog: separarlos o renombrarlos.**
+
+**🔴 Fallo vivo encontrado de rebote:** el saludo dice *«...and which area of
+Miami»* — resto de los datos de demostración. Estas agentes son de Denver/Aspen.
+Cualquier lead que escriba hoy recibe eso.
 
 ### El límite de subida, medido contra producción
 
