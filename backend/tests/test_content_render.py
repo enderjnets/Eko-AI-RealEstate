@@ -30,7 +30,7 @@ from app.services.content_render import (
     OUT_W,
     Probe,
     RenderRefused,
-    _escape_drawtext,
+    _escape_graph_path,
     build_render_command,
     check_input,
     probe_media,
@@ -55,24 +55,24 @@ def test_the_brokerage_line_is_in_the_command() -> None:
     argv = build_render_command(
         Path("in.mp4"),
         Path("out.mp4"),
-        brokerage_line=BROKERAGE,
+        brokerage_file=Path("/tmp/x.brokerage.txt"),
         duration=30.0,
         has_audio=True,
     )
     graph = argv[argv.index("-filter_complex") + 1]
     assert "drawtext=" in graph
-    assert "Natalia & Robbie" in graph
+    assert "textfile=/tmp/x.brokerage.txt" in graph
     assert f"scale={OUT_W}:{OUT_H}" in graph
 
 
 def test_audio_is_mapped_only_when_the_source_has_it() -> None:
     with_audio = build_render_command(
         Path("a.mp4"), Path("b.mp4"),
-        brokerage_line=BROKERAGE, duration=10.0, has_audio=True,
+        brokerage_file=Path("/tmp/x.txt"), duration=10.0, has_audio=True,
     )
     silent = build_render_command(
         Path("a.mp4"), Path("b.mp4"),
-        brokerage_line=BROKERAGE, duration=10.0, has_audio=False,
+        brokerage_file=Path("/tmp/x.txt"), duration=10.0, has_audio=False,
     )
     assert "0:a:0" in with_audio
     assert "0:a:0" not in silent, (
@@ -80,13 +80,37 @@ def test_audio_is_mapped_only_when_the_source_has_it() -> None:
     )
 
 
-def test_drawtext_syntax_in_the_line_is_defused() -> None:
-    """The brokerage line is operator input; drawtext treats : ' % \\ as
-    syntax. 'Natalia: 100%' must render as text, not parse as filter."""
-    escaped = _escape_drawtext("Natalia: 100% 'the' \\ best")
-    assert "\\:" in escaped and "\\%" in escaped and "\\'" in escaped
-    assert "\\\\" in escaped
-    assert "\n" not in _escape_drawtext("two\nlines")
+def test_the_operator_text_never_enters_the_filter_language() -> None:
+    """The brokerage line goes in a file, not in the graph, and that is the
+    whole defence.
+
+    The version this replaces escaped the text into `text='...'` and asserted
+    on the SHAPE of the escaping — it asserted `\\'` was produced, which is
+    exactly the encoding that broke: inside single quotes ffmpeg copies
+    backslashes literally, so "O'Brien Realty" ended the quote and the graph
+    was re-parsed as filter syntax. The test passed while the feature was
+    broken because no test ever sent an apostrophe through real ffmpeg.
+    """
+    hostile = "O'Brien, [E&V]; 100%: \\ best"
+    argv = build_render_command(
+        Path("in.mp4"), Path("out.mp4"),
+        brokerage_file=Path("/tmp/x.txt"), duration=30.0, has_audio=False,
+    )
+    graph = argv[argv.index("-filter_complex") + 1]
+    assert hostile not in graph
+    # Precisely `text=` as a drawtext option — `textfile=` and `text_w` both
+    # contain those five characters and are not the thing being ruled out.
+    assert ":text=" not in graph and "drawtext=text=" not in graph, (
+        "the text= option is the one that could not be escaped safely"
+    )
+    assert "textfile=" in graph
+
+
+def test_a_path_with_filter_syntax_in_it_is_escaped() -> None:
+    """We generate the path, so it is safe — which is the assumption that
+    produced the bug this module already paid for. Escape it anyway."""
+    assert _escape_graph_path("/tmp/a:b") == "/tmp/a\\\\:b"
+    assert _escape_graph_path("/tmp/a,b") == "/tmp/a\\,b"
 
 
 def test_the_structural_gate_names_the_number_that_failed() -> None:
@@ -295,3 +319,72 @@ async def test_without_a_brokerage_line_clips_wait_and_say_why(
     finally:
         await _cleanup()
         await _brokerage(BROKERAGE)
+
+
+@pytest.mark.skipif(FFMPEG is None, reason="ffmpeg not installed on this machine")
+@pytest.mark.parametrize(
+    "brokerage",
+    [
+        "O'Brien Realty Group",              # the apostrophe that broke it
+        "Smith & Jones, Realty, Inc.",       # commas: what a brokerage is called
+        "A; B Realty",
+        "[E&V] Denver",
+        "Realty: 100% Denver \\ CO",
+        "X',drawtext=textfile=/etc/passwd,drawtext=text='",
+        "Natalia & Robbie · Engel & Völkers Aspen",
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_hostile_brokerage_line_still_renders(tmp_path, brokerage: str) -> None:
+    """Real ffmpeg, real characters. This is the test that was missing.
+
+    Its predecessor asserted the escaper's output shape and passed while an
+    apostrophe made ffmpeg exit non-zero — and a refused render stamps
+    `rendered_at`, which nothing resets, so every queued clip died permanently.
+    Brokerage names contain apostrophes and commas; refusing them is not an
+    option, and asserting on a string instead of on ffmpeg is how that went
+    unnoticed. Anything that reintroduces a filter micro-language for operator
+    input turns this red.
+    """
+    source = tmp_path / "phone.mp4"
+    _make_clip(source, seconds=4.0, with_audio=False)
+    out = tmp_path / "rendered.mp4"
+
+    result = await render_clip(source, out, brokerage_line=brokerage)
+
+    assert (result.width, result.height) == (OUT_W, OUT_H)
+    assert not list(tmp_path.glob("*.brokerage.txt")), (
+        "the text file outlived the render"
+    )
+
+
+@pytest.mark.skipif(FFMPEG is None, reason="ffmpeg not installed on this machine")
+@pytest.mark.asyncio
+async def test_the_brokerage_text_actually_reaches_the_pixels(tmp_path) -> None:
+    """Two different lines must produce two different end cards.
+
+    Without this, "it rendered" covers "it rendered nothing": a regression that
+    silently passes an empty string still exits 0, still produces 1080x1920,
+    and still satisfies every other check here — while shipping a video with no
+    brokerage identification on it, which is the one thing Colorado requires.
+    Found by mutating the module: the old `text='...'` form drew an empty
+    string and every structural assertion stayed green.
+    """
+    source = tmp_path / "phone.mp4"
+    _make_clip(source, seconds=4.0, with_audio=False)
+
+    def end_card(video: Path, png: Path) -> bytes:
+        subprocess.run(
+            ["ffmpeg", "-y", "-ss", "3.5", "-i", str(video), "-frames:v", "1", str(png)],
+            check=True, capture_output=True,
+        )
+        return png.read_bytes()
+
+    first = tmp_path / "one.mp4"
+    await render_clip(source, first, brokerage_line="O'Brien Realty Group")
+    second = tmp_path / "two.mp4"
+    await render_clip(source, second, brokerage_line="Smith & Jones, Realty, Inc.")
+
+    assert end_card(first, tmp_path / "a.png") != end_card(second, tmp_path / "b.png"), (
+        "both end cards are identical — the brokerage text is not being drawn"
+    )

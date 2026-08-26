@@ -81,6 +81,7 @@ export function SettingsForm() {
     try {
       const updated = await settingsApi.update({
         agency_name: data.agency_name,
+        brokerage_line: data.brokerage_line,
         agency_phone: data.agency_phone,
         agent_persona: data.agent_persona,
         greeting_template: data.greeting_template,
@@ -157,6 +158,19 @@ export function SettingsForm() {
             />
             <span className="mt-1 block text-[11px] text-gray-500">
               {t("settings.bookingEmailHelp")}
+            </span>
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="text-xs text-gray-400">{t("settings.brokerageLine")}</span>
+            <input
+              value={data.brokerage_line ?? ""}
+              onChange={(e) => set("brokerage_line", e.target.value || null)}
+              maxLength={200}
+              placeholder="Natalia & Robbie · Engel & Völkers"
+              className="mt-1 w-full px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-eko-violet/50"
+            />
+            <span className="mt-1 block text-[11px] text-gray-500">
+              {t("settings.brokerageLineHelp")}
             </span>
           </label>
         </div>

@@ -169,8 +169,8 @@ export const CHANGELOG: VersionEntry[] = [
         es: "Filtro de vivienda justa determinista, en ingl\u00e9s y espa\u00f1ol. M\u00e1s de 90 frases que no pueden aparecer en publicidad de vivienda \u2014 \"perfect for families\", \"barrio seguro\", \"good schools\" \u2014 se marcan al escribir, al enviar y OTRA VEZ al publicar. Un borrador con frases marcadas se queda en borrador, con las frases se\u00f1aladas, hasta que una persona las corrige.",
       },
       {
-        en: "Without your brokerage identification nothing publishes: Colorado requires advertising to identify the brokerage, the field now lives in Settings, and the gate refuses while it is empty. Plus: clip uploads from the phone (up to 500 MB, streamed), served only behind sign-in and inside each agency's boundary.",
-        es: "Sin la identificaci\u00f3n de su brokerage nada se publica: Colorado exige que la publicidad identifique la brokerage, el campo vive ahora en Ajustes y la puerta se niega mientras est\u00e9 vac\u00edo. Adem\u00e1s: subida de clips desde el m\u00f3vil (hasta 500 MB, en streaming), servidos solo tras iniciar sesi\u00f3n y dentro de la frontera de cada agencia.",
+        en: "The gate that blocks publishing without a brokerage identification is live: Colorado requires advertising to identify the brokerage, and render + publish both refuse while it is empty. The upload endpoint for phone clips exists too (up to 500 MB, streamed, served only behind sign-in). This release is the enforcement rather than the door \u2014 reaching either one from the dashboard came later.",
+        es: "La puerta que bloquea publicar sin identificaci\u00f3n de la brokerage ya funciona: Colorado exige que la publicidad la identifique, y tanto el render como la publicaci\u00f3n se niegan mientras est\u00e9 vac\u00eda. Tambi\u00e9n existe el endpoint para subir clips desde el m\u00f3vil (hasta 500 MB, en streaming, solo tras iniciar sesi\u00f3n). Esta versi\u00f3n es la puerta, no la entrada: llegar a cualquiera de las dos desde el panel vino despu\u00e9s.",
       },
     ],
   },

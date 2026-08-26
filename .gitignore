@@ -55,3 +55,10 @@ graphify-out/
 *.mutbak
 *.mymutbak
 *.solobak
+
+# Coverage databases. `pytest --cov` writes .coverage next to the tests, and it
+# got committed once (6d90380) by the very checklist that mandates measuring
+# coverage — a binary blob that re-dirties the tree on every later run.
+.coverage
+.coverage.*
+htmlcov/

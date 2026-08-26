@@ -32,6 +32,11 @@ class SettingsOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     agency_name: str
+    # The Colorado-required brokerage identification, burned into every
+    # rendered clip and checked again at publish time (content_render.py,
+    # content_studio.py). Nullable: an unset value is what keeps both gates
+    # closed, and is a fact the dashboard has to be able to show.
+    brokerage_line: str | None
     agency_phone: str | None
     booking_contact_email: str | None
     agent_persona: str
@@ -51,6 +56,10 @@ class SettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     agency_name: str | None = Field(default=None, min_length=1, max_length=160)
+    # No min_length: sending "" is how a broker clears it, which must be
+    # possible without a special endpoint — the render/publish gates already
+    # treat blank-or-whitespace as "not set" (see content_render.py:279).
+    brokerage_line: str | None = Field(default=None, max_length=200)
     agency_phone: str | None = Field(default=None, max_length=32)
     # Where Cal.com sends the confirmation for a lead who only gave a
     # phone number, which is most of them.
@@ -113,6 +122,16 @@ async def update_settings(
         if not cleaned:
             raise HTTPException(status_code=400, detail="`languages` cannot be empty")
         updates["languages"] = cleaned
+
+    if "brokerage_line" in updates and updates["brokerage_line"] is not None:
+        # Normalised here rather than trusted, because both consumers strip
+        # before deciding (`content_render.py`, `content_studio.py`) and a
+        # whitespace-only value would therefore render the Settings box as
+        # FILLED while every gate treats it as empty. On a field whose whole
+        # job is a legal obligation, a silent false "yes, it is set" is the
+        # expensive direction to be wrong in. Trailing spaces would also be
+        # burned into the video verbatim.
+        updates["brokerage_line"] = updates["brokerage_line"].strip() or None
 
     if "timezone" in updates:
         tz = str(updates["timezone"]).strip()

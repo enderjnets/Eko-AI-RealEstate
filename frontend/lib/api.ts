@@ -465,6 +465,8 @@ export const contentApi = {
 
 export interface AgencySettings {
   agency_name: string;
+  /** Colorado-required brokerage identification, burned into rendered clips. */
+  brokerage_line: string | null;
   agency_phone: string | null;
   /** Where Cal.com sends the confirmation for a lead who only gave a phone. */
   booking_contact_email: string | null;
@@ -479,6 +481,7 @@ export interface AgencySettings {
 
 export interface AgencySettingsPatch {
   agency_name?: string;
+  brokerage_line?: string | null;
   agency_phone?: string | null;
   booking_contact_email?: string | null;
   agent_persona?: string;

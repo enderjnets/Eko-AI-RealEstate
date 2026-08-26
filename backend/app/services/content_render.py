@@ -141,19 +141,41 @@ def check_input(probe: Probe) -> None:
         raise RenderRefused("the video stream reports no dimensions")
 
 
-def _escape_drawtext(text: str) -> str:
-    """ffmpeg's drawtext micro-language, defused.
+# drawtext's `text=` is a micro-language wrapped in another micro-language: the
+# filtergraph parser (which splits on , ; [ ] and handles quotes) runs first,
+# then drawtext's own option parser (which splits on :). Escaping operator
+# input for both was tried and abandoned. The record, measured against real
+# ffmpeg rather than reasoned about:
+#
+#   * The original `text='...'` with `'` escaped as `\'` broke on the first
+#     apostrophe — inside single quotes ffmpeg copies backslashes literally,
+#     so "O'Brien Realty" ended the quote and the rest of the graph was
+#     re-parsed as filter syntax.
+#   * Unquoted with doubled backslashes fixed `'` `:` `%` `\` `"` `&` `$` —
+#     and still died on `,` `;` `[` `]`. "Smith & Jones, Realty, Inc." is not
+#     an exotic input; it is what a brokerage is called.
+#
+# Each round of escaping fixed the characters someone thought of and left the
+# ones they did not, and the failure is not cosmetic: `render_pending` stamps
+# `rendered_at` on a refusal and nothing resets it, so one bad character kills
+# every queued clip permanently. `textfile=` removes the language entirely —
+# ffmpeg reads the bytes verbatim — leaving only a path we generate ourselves.
+_TEXTFILE_NAME = "brokerage.txt"
 
-    The brokerage line is operator input and drawtext treats %, :, ' and \\ as
-    syntax. Unescaped, "Natalia & Robbie: E&V" breaks the filter graph — or
-    worse, parses as more filter.
+
+def _escape_graph_path(path: str) -> str:
+    """Escape a path for use as a filter option value.
+
+    Our own temp paths contain none of these, which is exactly why this is
+    here: the assumption "the path is safe" is the shape of assumption that
+    produced the bug above, and it costs three lines to not make it.
     """
     out = []
-    for ch in text:
-        if ch in ("\\", ":", "'", "%"):
+    for ch in path:
+        if ch in ("\\", ":", "'"):
+            out.append("\\\\" + ch)
+        elif ch in (",", ";", "[", "]"):
             out.append("\\" + ch)
-        elif ch in ("\n", "\r"):
-            out.append(" ")
         else:
             out.append(ch)
     return "".join(out)
@@ -168,13 +190,18 @@ def build_render_command(
     source: Path,
     destination: Path,
     *,
-    brokerage_line: str,
+    brokerage_file: Path,
     duration: float,
     has_audio: bool,
 ) -> list[str]:
-    """The whole render as data. Pure, so tests can assert on the command."""
+    """The whole render as data. Pure, so tests can assert on the command.
+
+    `brokerage_file` holds the identification text, written by the caller. It
+    is a file rather than a string for the reason recorded above
+    `_escape_graph_path`.
+    """
     start = max(0.0, duration - _END_CARD_SECONDS)
-    text = _escape_drawtext(brokerage_line)
+    textfile = _escape_graph_path(str(brokerage_file))
     # Scale to fit inside 1080×1920, then centre over a blurred, stretched copy
     # of itself — the standard vertical treatment that never crops the shot.
     filter_graph = (
@@ -183,7 +210,7 @@ def build_render_command(
         f"crop={OUT_W}:{OUT_H},gblur=sigma=20[bgb];"
         f"[fg]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=decrease[fgs];"
         f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2,"
-        f"drawtext={_font_clause()}text='{text}':"
+        f"drawtext={_font_clause()}textfile={textfile}:"
         f"fontcolor=white:fontsize=54:box=1:boxcolor=black@0.55:boxborderw=18:"
         f"x=(w-text_w)/2:y=h-260:enable='gte(t,{start:.3f})'"
         f"[vout]"
@@ -215,14 +242,23 @@ async def render_clip(
     probe = await probe_media(source)
     check_input(probe)
 
+    # Beside the output, so it inherits the same writable directory, and
+    # removed in `finally` — ffmpeg reads it at filter init, not per frame.
+    brokerage_file = destination.parent / f"{destination.stem}.{_TEXTFILE_NAME}"
     argv = build_render_command(
         source,
         destination,
-        brokerage_line=brokerage_line,
+        brokerage_file=brokerage_file,
         duration=probe.duration,
         has_audio=probe.has_audio,
     )
-    code, out = await _run(*argv, timeout_s=_RENDER_TIMEOUT_SECONDS)
+    try:
+        await asyncio.to_thread(
+            brokerage_file.write_text, brokerage_line, encoding="utf-8"
+        )
+        code, out = await _run(*argv, timeout_s=_RENDER_TIMEOUT_SECONDS)
+    finally:
+        await asyncio.to_thread(brokerage_file.unlink, missing_ok=True)
     if code != 0:
         await asyncio.to_thread(destination.unlink, missing_ok=True)
         tail = out[-400:].decode(errors="replace")
