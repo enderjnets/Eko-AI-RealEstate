@@ -37,3 +37,24 @@ export function usePlatformOperator(): boolean {
   }, []);
   return isOperator;
 }
+
+/**
+ * True when the session may open Settings.
+ *
+ * `SettingsContent` bounces non-admins to /leads and the settings API is behind
+ * `require_admin`, so a "fix it in Settings" link shown to a member is a link
+ * into a wall. Every other Settings entry point in the app is already gated on
+ * this; the Content page's was not.
+ */
+export function useSettingsAccess(): boolean {
+  const [canOpen, setCanOpen] = useState(false);
+  useEffect(() => {
+    authApi
+      .me()
+      // Auth off (dev / single-customer demo) means everyone is an admin,
+      // which is how the rest of the app reads it too.
+      .then((m) => setCanOpen(!m.auth_enabled || m.role === "admin"))
+      .catch(() => {});
+  }, []);
+  return canOpen;
+}

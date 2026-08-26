@@ -282,6 +282,20 @@ async def render_clip(
     return result
 
 
+def _for_the_console(reason: str) -> str:
+    """What a realtor is told, as opposed to what the log records.
+
+    ffmpeg's stderr tail carries absolute container paths — the media volume,
+    the temp file the drawtext filter reads — and `render_error` is shown in
+    the console to any signed-in user, including a `viewer`. The messages this
+    module writes itself are already written for a person and pass through; a
+    transport's own words do not. The log keeps everything.
+    """
+    if reason.startswith("ffmpeg failed"):
+        return "the video tool could not process this clip; see server log"
+    return reason
+
+
 async def render_pending(db: AsyncSession) -> int:
     """Render every recorded clip that has not been tried yet. Returns count.
 
@@ -335,7 +349,10 @@ async def render_pending(db: AsyncSession) -> int:
             )
         except RenderRefused as exc:
             piece.rendered_at = datetime.now(UTC)
-            piece.render_error = str(exc)
+            piece.render_error = _for_the_console(str(exc))
+            # The full reason, ffmpeg's own words included, goes here and only
+            # here. The column is read by the console (v0.55) and therefore by
+            # every signed-in member and viewer.
             log.warning("Render refused for piece %d: %s", piece.id, exc)
         except Exception:  # noqa: BLE001 — one bad clip must not stop the rest
             destination.unlink(missing_ok=True)

@@ -31,6 +31,7 @@ from app.services.content_render import (
     Probe,
     RenderRefused,
     _escape_graph_path,
+    _for_the_console,
     build_render_command,
     check_input,
     probe_media,
@@ -388,3 +389,28 @@ async def test_the_brokerage_text_actually_reaches_the_pixels(tmp_path) -> None:
     assert end_card(first, tmp_path / "a.png") != end_card(second, tmp_path / "b.png"), (
         "both end cards are identical — the brokerage text is not being drawn"
     )
+
+
+def test_the_console_never_sees_ffmpeg_s_own_words() -> None:
+    """`render_error` is shown to every signed-in user since v0.55.
+
+    ffmpeg's stderr tail names absolute container paths — the media volume and
+    the temp file drawtext reads. Making the field visible is what turned that
+    from a column nobody read into disclosure, so the transport's words stop at
+    the log. Messages this module writes for a person pass through unchanged.
+    """
+    leaky = (
+        "ffmpeg failed (1): [AVFilterGraph] Unable to open "
+        "/data/media/tmp/9f3.brokerage.txt: No such file"
+    )
+    shown = _for_the_console(leaky)
+    assert "/data/media" not in shown
+    assert "brokerage.txt" not in shown
+    assert "server log" in shown
+
+    for ours in (
+        "the uploaded file is missing from the volume",
+        "waiting: no brokerage line on record",
+        "render verification failed: output is 640x480",
+    ):
+        assert _for_the_console(ours) == ours

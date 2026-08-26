@@ -11,19 +11,27 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   AlertCircle,
   Check,
+  Info,
   Loader2,
   Pencil,
   RefreshCw,
   ShieldAlert,
   X,
 } from "lucide-react";
-import { type ContentPiece, type ContentStatus, contentApi } from "@/lib/api";
+import {
+  type ContentPiece,
+  type ContentStatus,
+  type StudioStatus,
+  contentApi,
+} from "@/lib/api";
 import type { Lang } from "@/lib/i18n";
 import { relativeTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import { useSettingsAccess } from "@/lib/useViewer";
 
 const TABS: ContentStatus[] = ["needs_approval", "draft", "approved", "rejected"];
 
@@ -31,13 +39,21 @@ export function ContentQueue() {
   const { t, lang } = useI18n();
   const [tab, setTab] = useState<ContentStatus>("needs_approval");
   const [pieces, setPieces] = useState<ContentPiece[] | null>(null);
+  const [studio, setStudio] = useState<StudioStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      setPieces(await contentApi.list(tab));
+      // In parallel, and the status is not allowed to break the list: if it
+      // fails the queue still renders, just without the explanation.
+      const [list, status] = await Promise.all([
+        contentApi.list(tab),
+        contentApi.status().catch(() => null),
+      ]);
+      setPieces(list);
+      setStudio(status);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -98,12 +114,17 @@ export function ContentQueue() {
         </div>
       )}
 
+      {pieces !== null && pieces.length > 0 && <StudioDiagnosis studio={studio} tab={tab} compact />}
+
       {pieces === null ? (
         <div className="mt-6 flex justify-center text-gray-400">
           <Loader2 className="w-6 h-6 animate-spin" />
         </div>
       ) : pieces.length === 0 ? (
-        <p className="mt-6 text-sm text-gray-500">{t("content.empty")}</p>
+        <div className="mt-6">
+          <p className="text-sm text-gray-500">{t("content.empty")}</p>
+          <StudioDiagnosis studio={studio} tab={tab} />
+        </div>
       ) : (
         <ul className="mt-4 space-y-4">
           {pieces.map((piece) => (
@@ -125,6 +146,93 @@ export function ContentQueue() {
     </section>
   );
 }
+
+/**
+ * Why this screen looks the way it does.
+ *
+ * "Nothing here right now" is true and answers nothing: the reasons live in
+ * three unrelated places — two server flags and a settings row — and no screen
+ * showed any of them.
+ *
+ * The trap this walked into first: the emptiness is per TAB, the studio state
+ * is global. On an installation with twelve pieces awaiting approval, opening
+ * the empty "Rejected" tab announced "nothing is waiting, and these are the
+ * reasons why" and then blamed the configuration. Both halves false, and the
+ * second one sends a broker off to fix something while twelve approved clips
+ * sit one tab away. `counts` arrives in the same response precisely so this
+ * screen can tell the two apart — an empty tab in a busy studio says where the
+ * work is; an empty studio explains itself.
+ */
+function StudioDiagnosis({
+  studio,
+  tab,
+  compact = false,
+}: {
+  studio: StudioStatus | null;
+  tab: ContentStatus;
+  compact?: boolean;
+}) {
+  const { t } = useI18n();
+  const canOpenSettings = useSettingsAccess();
+  if (!studio) return null;
+
+  const total = Object.values(studio.counts).reduce((a, b) => a + b, 0);
+  const elsewhere = total - (studio.counts[tab] ?? 0);
+
+  // Only what someone can act on. "Publishing is not built yet" is true
+  // forever until v0.56, so putting it in the list would pin a permanent
+  // banner to a page whose whole point is that its box means something.
+  const blockers: { key: string; fixable?: boolean }[] = [];
+  if (!studio.brokerage_line_set) {
+    blockers.push({ key: "brokerage", fixable: canOpenSettings });
+  }
+  if (!studio.studio_enabled) blockers.push({ key: "studio" });
+  if (!studio.render_enabled) blockers.push({ key: "render" });
+
+  // With pieces on screen the box is only worth showing when something is
+  // actually switched off — otherwise it is noise on every load.
+  if (compact && blockers.length === 0) return null;
+
+  const heading = compact
+    ? "content.whyLimited"
+    : elsewhere > 0
+      ? "content.emptyTabBusyStudio"
+      : blockers.length > 0
+        ? "content.whyEmpty"
+        : "content.whyEmptyAndReady";
+
+  return (
+    <div
+      className={`${compact ? "mt-3" : "mt-4"} rounded-lg border border-white/10 bg-white/[0.02] p-3 text-sm`}
+    >
+      <p className="flex items-center gap-1.5 text-gray-300">
+        <Info className="w-4 h-4 text-eko-violet shrink-0" />
+        {t(heading, { count: String(elsewhere) })}
+      </p>
+      {blockers.length > 0 && (
+        <ul className="mt-2 space-y-1 text-gray-400">
+          {blockers.map(({ key, fixable }) => (
+            <li key={key} className="flex gap-2">
+              <span aria-hidden className="text-gray-600">·</span>
+              <span>
+                {t(`content.why.${key}`)}{" "}
+                {fixable && (
+                  <Link href="/settings" className="text-eko-violet hover:underline">
+                    {t("content.whyFixHere")}
+                  </Link>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!compact && !studio.publishing_available && (
+        <p className="mt-2 text-gray-500">{t("content.why.publishing")}</p>
+      )}
+    </div>
+  );
+}
+
 
 function PieceCard({
   piece,
@@ -250,6 +358,27 @@ function PieceCard({
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {piece.render_error && (
+        <p className="mt-3 text-sm text-gray-400 bg-white/[0.03] border border-white/10 rounded-lg p-3">
+          <span className="text-gray-500">{t("content.renderStatus")}: </span>
+          {piece.render_error}
+        </p>
+      )}
+
+      {piece.publications.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {piece.publications.map((pub) => (
+            <span
+              key={pub.id}
+              className="px-2 py-0.5 rounded-full text-[11px] border border-white/10 text-gray-300"
+              title={pub.last_error ?? undefined}
+            >
+              {pub.platform} · {pub.status}
+            </span>
+          ))}
         </div>
       )}
 

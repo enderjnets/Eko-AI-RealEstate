@@ -431,6 +431,8 @@ export interface ContentPiece {
   script: string | null;
   caption: string | null;
   media_path: string | null;
+  /** Why the clip is not rendered, in the render's own words. */
+  render_error: string | null;
   violations: { phrase: string; category: string }[] | null;
   approved_by: string | null;
   approved_at: string | null;
@@ -440,7 +442,17 @@ export interface ContentPiece {
   publications: ContentPublication[];
 }
 
+/** Why the queue looks the way it does — booleans and counts, no config values. */
+export interface StudioStatus {
+  studio_enabled: boolean;
+  render_enabled: boolean;
+  brokerage_line_set: boolean;
+  publishing_available: boolean;
+  counts: Record<string, number>;
+}
+
 export const contentApi = {
+  status: () => api<StudioStatus>(`/v1/content/status`),
   list: (status?: ContentStatus) =>
     api<ContentPiece[]>(
       status ? `/v1/content?status=${status}` : `/v1/content`,

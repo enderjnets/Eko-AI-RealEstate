@@ -85,6 +85,16 @@ _ALLOWED: dict[ContentStatus, set[ContentStatus]] = {
 }
 
 
+# Whether anything in this installation can actually publish to a platform.
+# False until the publishers land (v0.56): the tables and the API field for
+# publications exist since v0.52, which makes an empty `publications` list
+# ambiguous — "nothing published yet" and "publishing does not exist" look
+# identical to a reader, and the second one is the true answer today. One
+# constant so the interface cannot drift from the code: flipping it is part of
+# shipping a publisher, not a separate thing to remember.
+PUBLISHING_AVAILABLE = False
+
+
 def advance(piece: ContentPiece, to: ContentStatus) -> None:
     """Move a piece to `to`, or raise.
 

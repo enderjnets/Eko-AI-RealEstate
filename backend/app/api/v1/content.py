@@ -27,20 +27,26 @@ import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import current_email
 from app.config import get_settings
 from app.db.base import get_db
 from app.models import (
+    AgentSettings,
     ContentKind,
     ContentLanguage,
     ContentPiece,
     ContentStatus,
 )
-from app.services.content_studio import IllegalTransition, advance
+from app.services.content_studio import (
+    PUBLISHING_AVAILABLE,
+    IllegalTransition,
+    advance,
+)
 from app.services.fair_housing import find_violations
+from app.services.tenant_context import get_org_id
 
 router = APIRouter()
 
@@ -69,6 +75,10 @@ class PieceOut(BaseModel):
     script: str | None = None
     caption: str | None = None
     media_path: str | None = None
+    # Why this clip is not rendered, in the render's own words. Written since
+    # v0.52 and never returned by any route, so an agency whose clip was
+    # waiting on a missing brokerage line saw it sit there with no reason.
+    render_error: str | None = None
     violations: list | None = None
     approved_by: str | None = None
     approved_at: datetime | None = None
@@ -107,6 +117,76 @@ def _refresh_violations(piece: ContentPiece) -> None:
         piece.language,
     )
     piece.violations = found or None
+
+
+class StudioStatus(BaseModel):
+    """Why the queue looks the way it does.
+
+    Booleans and counts only — no URLs, no key names, no environment variable
+    names. "Nothing here right now" is true and useless; the question a person
+    actually has is why, and the answers live in three different places (two
+    env flags and a settings row) that no single screen was showing.
+    """
+
+    studio_enabled: bool
+    render_enabled: bool
+    brokerage_line_set: bool
+    publishing_available: bool
+    counts: dict[str, int]
+
+
+@router.get("/status", response_model=StudioStatus)
+async def studio_status(db: AsyncSession = Depends(get_db)) -> StudioStatus:
+    """Declared before the parametric routes on purpose — a rule this repo has
+    already paid for: `/status` would otherwise be read as a piece id."""
+    s = get_settings()
+    # Scoped explicitly, like every other query that runs inside a request
+    # (`settings.py:_get_or_create`, `visits.py`, `conversation.py`). RLS does
+    # cover both tables, so this is belt and braces — but the belt has a known
+    # hole: when `DATABASE_URL_APP` is unset the app connects as the owning
+    # role and RLS does not apply, a state the startup check tolerates for a
+    # single real organisation even though the demo org from migration 015 is
+    # also present. In that state an unfiltered `.first()` with no ORDER BY
+    # returns whichever row Postgres hands back, so this endpoint could have
+    # told an admin their brokerage line was missing while it was set.
+    org_id = get_org_id()
+    if org_id is None:
+        # Same refusal as `settings.py:_acting_org`. Not reachable today —
+        # `require_auth` 401s a token with no org — but the alternative is an
+        # endpoint that answers "no brokerage line, nothing queued" with total
+        # confidence about an organisation it could not identify.
+        raise RuntimeError(
+            "no acting organization is bound; refusing to report the studio "
+            "state of an unidentified one"
+        )
+    row = (
+        await db.execute(
+            select(AgentSettings).where(AgentSettings.org_id == org_id)
+        )
+    ).scalars().first()
+    rows = (
+        await db.execute(
+            select(ContentPiece.status, func.count())
+            .where(ContentPiece.org_id == org_id)
+            .group_by(ContentPiece.status)
+        )
+    ).all()
+    counts = {status.value: 0 for status in ContentStatus}
+    for status, total in rows:
+        # `status` is always the enum member: the pg_enum type returns members,
+        # never strings. A `str(status)` fallback would have written the key
+        # "ContentStatus.DRAFT" and left "draft" at zero — a wrong answer
+        # wearing the costume of a defensive one.
+        counts[status.value] = total
+    return StudioStatus(
+        studio_enabled=bool(s.CONTENT_STUDIO_ENABLED),
+        render_enabled=bool(s.CONTENT_RENDER_ENABLED),
+        # `.strip()` because both gates strip before deciding: a whitespace-only
+        # value is "set" to a naive check and "unset" to everything that matters.
+        brokerage_line_set=bool((row.brokerage_line or "").strip() if row else ""),
+        publishing_available=PUBLISHING_AVAILABLE,
+        counts=counts,
+    )
 
 
 @router.get("", response_model=list[PieceOut])

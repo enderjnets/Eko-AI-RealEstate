@@ -266,3 +266,161 @@ async def test_upload_refuses_what_is_not_a_video(
 async def test_media_of_a_missing_piece_is_a_404(database_url: str) -> None:
     async with _client() as client:
         assert (await client.get("/api/v1/content/999999/media")).status_code == 404
+
+
+# --------------------------------------------------------------------------
+# Why the queue is empty — the question "nothing here right now" does not answer
+# --------------------------------------------------------------------------
+
+
+async def _read_brokerage() -> str | None:
+    async with get_bypass_session_factory()() as db:
+        return (
+            await db.execute(
+                text("SELECT brokerage_line FROM agent_settings WHERE org_id = 1")
+            )
+        ).scalar_one_or_none()
+
+
+async def _set_brokerage(line: str | None) -> None:
+    """Scoped to org 1, and the caller restores what was there.
+
+    The first version of this had no WHERE clause and ran on a bypass session,
+    so RLS did not stop it: it rewrote `brokerage_line` for EVERY organisation
+    and the `finally` left them all NULL. `agent_settings` is not test material
+    the way `content_pieces` is — it is the configuration row carrying a legal
+    obligation, and a suite that blanks it makes `render_pending` refuse every
+    clip afterwards, which reads as a product bug rather than as a test.
+    """
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text("UPDATE agent_settings SET brokerage_line = :v WHERE org_id = 1"),
+            {"v": line},
+        )
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_status_answers_with_the_whole_contract(database_url: str) -> None:
+    """Every field the console reads, present in one response.
+
+    This used to be named for route ordering and claimed `/status` had to be
+    declared before the parametric routes. It does not: there is no
+    `GET /{piece_id}` in this router, so moving the decorator to the bottom of
+    the file leaves the test green. A test whose name promises something it
+    cannot detect is worse than no test — it is a claim nobody will re-check.
+    Ordering is still correct here, and still the repo's rule; it just is not
+    what this asserts.
+    """
+    async with _client() as client:
+        r = await client.get("/api/v1/content/status")
+    assert r.status_code == 200, r.text
+    assert set(r.json()) == {
+        "studio_enabled",
+        "render_enabled",
+        "brokerage_line_set",
+        "publishing_available",
+        "counts",
+    }
+
+
+@pytest.mark.asyncio
+async def test_status_reports_the_brokerage_line_as_the_gates_read_it(
+    database_url: str,
+) -> None:
+    """Whitespace is not a brokerage line — `content_render` and
+    `content_studio` both strip before deciding, so a status that answered
+    `true` for "   " would send a person looking for a different problem."""
+    previous = await _read_brokerage()
+    try:
+        await _set_brokerage("Natalia & Robbie · Engel & Völkers")
+        async with _client() as client:
+            assert (await client.get("/api/v1/content/status")).json()[
+                "brokerage_line_set"
+            ] is True
+
+        await _set_brokerage("   ")
+        async with _client() as client:
+            assert (await client.get("/api/v1/content/status")).json()[
+                "brokerage_line_set"
+            ] is False
+
+        await _set_brokerage(None)
+        async with _client() as client:
+            assert (await client.get("/api/v1/content/status")).json()[
+                "brokerage_line_set"
+            ] is False
+    finally:
+        await _set_brokerage(previous)
+
+
+@pytest.mark.asyncio
+async def test_status_counts_every_state_including_the_empty_ones(
+    database_url: str,
+) -> None:
+    """A missing key and a zero are different answers to "how many drafts".
+    The console renders per state, so every state has to be present."""
+    try:
+        async with _client() as client:
+            before = (await client.get("/api/v1/content/status")).json()["counts"]
+            assert set(before) == {
+                "draft",
+                "needs_approval",
+                "approved",
+                "rejected",
+                "publishing",
+                "published",
+                "failed",
+            }, before
+
+            created = await client.post("/api/v1/content", json=CLEAN)
+            assert created.status_code == 201, created.text
+            after = (await client.get("/api/v1/content/status")).json()["counts"]
+        assert after["draft"] == before["draft"] + 1
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_publishing_is_reported_as_unavailable_while_it_is(
+    database_url: str,
+) -> None:
+    """An empty `publications` list cannot distinguish "not published yet"
+    from "no publisher exists". Today the second is the true answer.
+
+    Asserted as a literal `False`, not against `PUBLISHING_AVAILABLE`: the
+    first version compared the endpoint's output to the very constant the
+    endpoint reads, so flipping that constant to True left the test green. It
+    proved the two agreed, which they cannot help doing. This fails on the day
+    someone flips it — which is the day the console's wording, the release
+    notes and this test all need revisiting together, and the failure is how
+    that gets noticed.
+    """
+    async with _client() as client:
+        body = (await client.get("/api/v1/content/status")).json()
+    assert body["publishing_available"] is False
+
+
+@pytest.mark.asyncio
+async def test_the_render_reason_reaches_the_console(database_url: str) -> None:
+    """`render_error` was written from v0.52 and returned by nothing.
+
+    An agency whose clip could not render — no brokerage line, ffmpeg refused,
+    anything — saw it sit unrendered with no reason anywhere in the product.
+    """
+    try:
+        async with _client() as client:
+            piece_id = (await client.post("/api/v1/content", json=CLEAN)).json()["id"]
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE content_pieces SET render_error = :e WHERE id = :i"),
+                {"e": "waiting: no brokerage line on record", "i": piece_id},
+            )
+            await db.commit()
+        async with _client() as client:
+            listed = (await client.get("/api/v1/content?status=draft")).json()
+        mine = [p for p in listed if p["id"] == piece_id]
+        assert mine, "the piece disappeared from its own status listing"
+        assert mine[0]["render_error"] == "waiting: no brokerage line on record"
+    finally:
+        await _cleanup()

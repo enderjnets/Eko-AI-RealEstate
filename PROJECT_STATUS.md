@@ -205,7 +205,63 @@ tanto el desbordamiento a **768 px (380), 900 (248) y 1024 (132)** es
 **preexistente** y queda ligeramente mejor. Arreglarlo de verdad es rediseñar
 la navegación de tablet: ver backlog.
 
+## Fase 3 — el vacío explica por qué está vacío (completada)
+
+**Commit:** `PENDIENTE_3` en `feat/estudio-visible`.
+
+`GET /api/v1/content/status` (booleanos + conteos, sin valores de configuración),
+`render_error` expuesto y pintado por fin, chips por plataforma, y un diagnóstico
+que nombra las causas reales en vez de «no hay nada aquí».
+
+### Checklist — resultado real
+
+**1020 backend** (base recreada, cero saltados) + **92 frontend** · `ruff`/`tsc`
+limpios · `next build` OK · cobertura `content.py` 63%→64%, `content_studio.py`
+100%→100% · diff sin secretos.
+
+### Verificado rompiéndolo
+
+- **El instrumento discrimina**: con la brokerage vacía el diagnóstico lista esa
+  causa; al ponerla **desaparece**. Mutar `brokerage_line_set` a `True` pone un
+  test en rojo; mutar `PUBLISHING_AVAILABLE` a `True`, otro.
+- **El caso que el auditor describió**, en navegador: pestaña «Rechazados» vacía
+  con 3 piezas en otra → «Nada en esta pestaña — pero hay 3 pieza(s) en las
+  otras», en vez de culpar a la configuración.
+- **Control positivo**: con todo encendido y piezas en pantalla, la caja
+  **desaparece**. Ya no es un banner permanente.
+
+### Auditoría de cierre — 1 bloqueante (en mi propio test), corregido
+
+🔴 **BLOQUEANTE: mi helper de test borraba la línea de brokerage de TODAS las
+organizaciones.** `UPDATE agent_settings SET brokerage_line = :v` **sin
+`WHERE`**, sobre una sesión *bypass* que la RLS no frena, y el `finally` las
+dejaba a `NULL` en vez de restaurar. En una base con datos reales, correr la
+suite dejaba `render_pending` rechazando todos los clips — una avería que se lee
+como bug de producto. Ahora lee el valor previo, filtra por `org_id` y lo
+devuelve.
+
+**Multi-tenant (la sospecha que yo mismo levanté):** el auditor verificó la
+cadena completa y **la RLS sí cubre las dos consultas** en la configuración
+soportada. Pero con `DATABASE_URL_APP` vacío la app conecta como dueño, la RLS
+no aplica, y el arranque **tolera** ese estado con una org real + la demo: ahí
+un `.first()` sin filtro devuelve la fila que Postgres quiera, y el panel podría
+decirle a un admin que le falta la identificación legal teniéndola. Filtrado
+explícito + el mismo rechazo ruidoso que `settings.py` cuando no hay org atada.
+
+**Dos de mis cinco tests no podían ponerse rojos**: uno comparaba la salida del
+endpoint contra **la misma constante que el endpoint lee**; el otro prometía
+verificar el orden de rutas, que aquí no es determinante. Corregidos y
+verificados por mutación.
+
+**Otros corregidos en fase**: la caja era global pero el vacío es **por
+pestaña** (`counts` llegaba en la misma respuesta y no lo usaba nadie); el
+enlace «Ponerla en Ajustes» era un muro para roles `member`; `render_error`
+filtraba el `stderr` de ffmpeg con rutas internas a cualquier autenticado — y
+**mi cambio es el que lo puso en pantalla**; y el `hasattr(status,"value")` era
+rama muerta que, de dispararse, habría escrito una clave inventada.
+
 ### Siguiente paso concreto
 
-Fase 3: `GET /api/v1/content/status` + estado vacío que nombra la causa +
-exponer `render_error` (hallazgo de la Fase 1) + chips por plataforma.
+Fase 4: subir el clip desde el teléfono (`contentApi.upload` con XHR para tener
+progreso, `UploadClip.tsx`, sin atributo `capture`) + bump a v0.55.0 y
+changelog bilingüe. Después: preparar el despliegue y detenerse.
