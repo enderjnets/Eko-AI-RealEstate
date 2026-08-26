@@ -2,6 +2,29 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.55.1] — 2026-08-26
+
+### Corregido — el tamaño de subida que anunciábamos no era el real
+
+- **Decíamos «hasta 500 MB» y el límite real es ~100 MB.** `CONTENT_UPLOAD_MAX_MB`
+  vale 500 y el backend lo respeta, pero el panel se sirve por un túnel de
+  Cloudflare que corta el cuerpo de la petición **en el borde**, antes de que
+  llegue a nosotros. Medido contra producción el 26-ago-2026:
+
+  ```
+   99 MB -> HTTP 401  (respondió nuestro backend: pasó)
+  120 MB -> HTTP 413  (respondió Cloudflare: cortado)
+  ```
+
+  Lo detectó una auditoría como sospecha («verifícalo contra tu plan, no lo leí
+  de una fuente») y se comprobó midiendo. Corregido en las notas de v0.52.0 y
+  v0.55.0, que es donde la cifra estaba publicada al cliente.
+
+- **Pendiente, en el backlog:** el navegador no comprueba el tamaño antes de
+  subir, así que un clip de 4K sube ~100 MB y recibe una página HTML de
+  Cloudflare en vez de una frase. Y el 413 propio del backend («Clip exceeds
+  500 MB») es inalcanzable por el túnel: texto muerto hasta que el ajuste baje.
+
 ## [0.55.0] — 2026-08-26
 
 ### Añadido — el Estudio de Contenido deja de estar escondido
@@ -13,9 +36,10 @@ All notable changes to **Eko AI Realtors**.
 - **Subida de clips desde el móvil con barra de progreso.** `XMLHttpRequest` y
   no `fetch`, porque `fetch` no puede reportar progreso de subida en ningún
   navegador y un vídeo de cientos de MB sin progreso parece una página colgada.
-  Cuerpo crudo en streaming a disco (hasta 500 MB). Que los bytes llegan
-  intactos lo ata `test_upload_stores_the_clip_and_serves_it_back`, que compara
-  el fichero servido con el subido.
+  Cuerpo crudo en streaming a disco. Que los bytes llegan intactos lo ata
+  `test_upload_stores_the_clip_and_serves_it_back`, que compara el fichero
+  servido con el subido. **Límite real: ~100 MB**, no los 500 de
+  `CONTENT_UPLOAD_MAX_MB` — ver v0.55.1.
 - **`GET /api/v1/content/status`**: booleanos y conteos, sin valores de
   configuración. El vacío pasa a decir POR QUÉ está vacío, y una pestaña vacía
   en un estudio con trabajo señala dónde está ese trabajo en vez de culpar a la
@@ -352,7 +376,8 @@ imposible publicar sin una persona.
 - **Sin identificación de brokerage no se publica.** Colorado exige que la
   publicidad identifique la brokerage; el campo existe ahora en Ajustes y la
   puerta se niega mientras esté vacío.
-- **Clips desde el móvil.** Subida de vídeo (hasta 500 MB, en streaming) que
+- **Clips desde el móvil.** Subida de vídeo en streaming (el ajuste dice 500 MB;
+  el límite real por el sitio es ~100 MB — ver v0.55.1) que
   queda como borrador; el archivo se sirve solo autenticado y dentro de la
   frontera de cada agencia.
 

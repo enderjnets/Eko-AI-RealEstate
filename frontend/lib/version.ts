@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.55.0";
+export const CURRENT_VERSION = "0.55.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -15,6 +15,20 @@ export interface VersionEntry {
 
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.55.1",
+    date: "2026-08-26",
+    title: {
+      en: "A correction: the real upload size",
+      es: "Una correcci\u00f3n: el tama\u00f1o real de subida",
+    },
+    changes: [
+      {
+        en: "We said clips could be up to 500 MB. The real limit is about 100 MB: the setting on our side allows 500, but the connection that serves this dashboard stops a larger upload before it reaches us. We measured it rather than assumed it, and corrected the earlier notes that carried the wrong figure. Filming in 1080p instead of 4K keeps a clip well under it.",
+        es: "Dec\u00edamos que un clip pod\u00eda pesar hasta 500 MB. El l\u00edmite real es de unos 100 MB: el ajuste de nuestro lado permite 500, pero la conexi\u00f3n que sirve este panel detiene una subida mayor antes de que nos llegue. Lo medimos en vez de suponerlo, y corregimos las notas anteriores que llevaban la cifra equivocada. Grabar en 1080p en vez de 4K deja el clip holgadamente por debajo.",
+      },
+    ],
+  },
+  {
     version: "0.55.0",
     date: "2026-08-26",
     title: {
@@ -27,8 +41,8 @@ export const CHANGELOG: VersionEntry[] = [
         es: "Contenido tiene p\u00e1gina propia y sitio propio en el men\u00fa \u2014 tambi\u00e9n en el m\u00f3vil, que es donde se graba un clip. Antes viv\u00eda al fondo de \u00abHoy\u00bb bajo la consola de llamadas, as\u00ed que la cola que decide qu\u00e9 se publica estaba construida, funcionando, y era invisible en la pr\u00e1ctica.",
       },
       {
-        en: "Upload a clip straight from your phone, with a progress bar \u2014 a video takes minutes on mobile data, and a page with no progress looks frozen. Up to 500 MB, streamed to disk rather than held in memory, and the clip lands in Drafts ready for you to submit it.",
-        es: "Sube un clip directamente desde el m\u00f3vil, con barra de progreso \u2014 un v\u00eddeo tarda minutos con datos m\u00f3viles, y una p\u00e1gina sin progreso parece colgada. Hasta 500 MB, en streaming a disco en vez de en memoria, y el clip aparece en Borradores listo para enviarlo.",
+        en: "Upload a clip straight from your phone, with a progress bar \u2014 a video takes minutes on mobile data, and a page with no progress looks frozen. Up to about 100 MB per clip, streamed to disk rather than held in memory, and the clip lands in Drafts ready for you to submit it. 4K video reaches that size quickly, so film in 1080p.",
+        es: "Sube un clip directamente desde el m\u00f3vil, con barra de progreso \u2014 un v\u00eddeo tarda minutos con datos m\u00f3viles, y una p\u00e1gina sin progreso parece colgada. Hasta unos 100 MB por clip, en streaming a disco en vez de en memoria, y el clip aparece en Borradores listo para enviarlo. El v\u00eddeo en 4K llega a ese tama\u00f1o enseguida, as\u00ed que grabe en 1080p.",
       },
       {
         en: "Your brokerage identification now has a field in Settings. It is required by Colorado on real-estate advertising and both the render and the publish gate refuse while it is empty \u2014 and until now the only way to set it was by hand in the database. It also survives an apostrophe: a brokerage called O\u2019Brien Realty would previously have stopped every queued clip from ever rendering.",
@@ -199,8 +213,8 @@ export const CHANGELOG: VersionEntry[] = [
         es: "Filtro de vivienda justa determinista, en ingl\u00e9s y espa\u00f1ol. M\u00e1s de 90 frases que no pueden aparecer en publicidad de vivienda \u2014 \"perfect for families\", \"barrio seguro\", \"good schools\" \u2014 se marcan al escribir, al enviar y OTRA VEZ al publicar. Un borrador con frases marcadas se queda en borrador, con las frases se\u00f1aladas, hasta que una persona las corrige.",
       },
       {
-        en: "The gate that blocks publishing without a brokerage identification is live: Colorado requires advertising to identify the brokerage, and render + publish both refuse while it is empty. The upload endpoint for phone clips exists too (up to 500 MB, streamed, served only behind sign-in). This release is the enforcement rather than the door \u2014 reaching either one from the dashboard came later.",
-        es: "La puerta que bloquea publicar sin identificaci\u00f3n de la brokerage ya funciona: Colorado exige que la publicidad la identifique, y tanto el render como la publicaci\u00f3n se niegan mientras est\u00e9 vac\u00eda. Tambi\u00e9n existe el endpoint para subir clips desde el m\u00f3vil (hasta 500 MB, en streaming, solo tras iniciar sesi\u00f3n). Esta versi\u00f3n es la puerta, no la entrada: llegar a cualquiera de las dos desde el panel vino despu\u00e9s.",
+        en: "The gate that blocks publishing without a brokerage identification is live: Colorado requires advertising to identify the brokerage, and render + publish both refuse while it is empty. The upload endpoint for phone clips exists too (streamed, served only behind sign-in). This release is the enforcement rather than the door \u2014 reaching either one from the dashboard came later.",
+        es: "La puerta que bloquea publicar sin identificaci\u00f3n de la brokerage ya funciona: Colorado exige que la publicidad la identifique, y tanto el render como la publicaci\u00f3n se niegan mientras est\u00e9 vac\u00eda. Tambi\u00e9n existe el endpoint para subir clips desde el m\u00f3vil (en streaming, solo tras iniciar sesi\u00f3n). Esta versi\u00f3n es la puerta, no la entrada: llegar a cualquiera de las dos desde el panel vino despu\u00e9s.",
       },
     ],
   },
