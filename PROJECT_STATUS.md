@@ -262,7 +262,7 @@ rama muerta que, de dispararse, habría escrito una clave inventada.
 
 ## Fase 4 — subir el clip desde el teléfono (completada)
 
-**Commit:** `PENDIENTE_4` en `feat/estudio-visible`. Bump a **v0.55.0**.
+**Commit:** `b78aba5` en `feat/estudio-visible`. Bump a **v0.55.0**.
 
 `contentApi.upload` con `XMLHttpRequest` (no `fetch`: no puede reportar
 progreso de subida en ningún navegador, y el caso de uso es un teléfono con
