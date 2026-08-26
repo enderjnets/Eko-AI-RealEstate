@@ -14,6 +14,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db.base import Base, pg_enum
@@ -91,6 +92,25 @@ class Message(Base):
     # Provenance for outbound messages — which LLM generated this reply.
     llm_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
     llm_model: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+    # What the Fair Housing filter found in this message on its way out, in
+    # `find_violations` shape: [{"phrase": ..., "category": ...}].
+    #
+    # NULL and [] are different answers and both are used: NULL means the text
+    # never went through the filter (every row written before v0.56, and the
+    # inbound side, which is the lead's own words and not ours to police), [] —
+    # written as NULL by the caller to keep the column sparse — means it was
+    # screened and came back clean. Deliberately NOT in `_clip` below: that
+    # list trims bounded strings and this is JSONB.
+    #
+    # `none_as_null=True` is load-bearing, not tidiness. SQLAlchemy's default
+    # for JSON columns stores a Python `None` as the JSON value `null`, which
+    # is NOT SQL NULL — so `fair_housing_flags IS NOT NULL` matched every clean
+    # reply, and the watcher reported a flagged day every day. An alarm that
+    # fires on all-clear is worse than none: it is ignored within a week.
+    fair_housing_flags: Mapped[list | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True

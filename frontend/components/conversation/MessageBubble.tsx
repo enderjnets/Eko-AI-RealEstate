@@ -49,6 +49,16 @@ export function MessageBubble({ msg, channel }: { msg: Message; channel?: string
               {t("msg.manual")}
             </span>
           )}
+          {msg.fair_housing_flags && msg.fair_housing_flags.length > 0 && (
+            <span
+              className="text-[10px] px-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20"
+              title={msg.fair_housing_flags
+                .map((f) => `${f.phrase} (${f.category})`)
+                .join(", ")}
+            >
+              {t("msg.fairHousing", { n: msg.fair_housing_flags.length })}
+            </span>
+          )}
           <span>· {exactTime(msg.created_at, lang)}</span>
         </div>
         {channel === "email" && msg.subject && (

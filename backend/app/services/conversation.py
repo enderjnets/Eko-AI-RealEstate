@@ -45,6 +45,7 @@ from app.models import (
 from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
 from app.services.delivery import schedule_retry
+from app.services.fair_housing import find_violations
 from app.services.i18n import detect_language, language_instruction, pick_supported_language
 from app.services.lead_fields import (
     merge_budget,
@@ -1500,6 +1501,27 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # meaning anything.
     reply_text = _with_broker_credits(reply.text, offered_listings, parsed.channel)
 
+    # Fair Housing, on the text that actually leaves — after the broker credit,
+    # because IDX attribution is reproduced verbatim by legal obligation and a
+    # brokerage called "Perfect for Families Realty" would otherwise walk
+    # straight past a filter pointed at `reply.text`.
+    #
+    # It RECORDS, it does not block: the lead gets an answer at the speed they
+    # asked for it, and `services/fair_housing_watch.py` tells the operator out
+    # of band. Read `find_violations` before trusting this: it matches listed
+    # phrases, not paraphrase. Measured against the live module, "It's a safe
+    # neighborhood with good schools" scores 2 and "You'll love how safe this
+    # area feels for raising kids" scores 0. This is a floor, not a ceiling.
+    flags = find_violations(reply_text, target_lang)
+    if flags:
+        log.warning(
+            "Fair Housing: outbound reply for lead %d carries %d flagged "
+            "phrase(s): %s",
+            lead.id,
+            len(flags),
+            sorted({f["category"] for f in flags}),
+        )
+
     outbound = Message(
         conversation_id=conv.id,
         direction=MessageDirection.OUTBOUND,
@@ -1509,6 +1531,13 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         llm_provider=reply.provider,
         llm_model=reply.model,
         subject=reply_subject,
+        # `[]`, not NULL, when it came back clean. The two are different claims
+        # and the column is a compliance artifact: NULL means "never screened"
+        # (every row written before v0.56, plus the inbound side and the lanes
+        # that do not run this filter), `[]` means "screened, nothing found".
+        # Collapsing them into NULL to save a few bytes would make the honest
+        # answer to "was this reply checked?" unavailable forever.
+        fair_housing_flags=flags,
     )
     db.add(outbound)
     await db.flush()

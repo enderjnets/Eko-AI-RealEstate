@@ -67,6 +67,8 @@ export interface Message {
   channel: string; // channel of this message's conversation (for mixed timelines)
   llm_provider: string | null;
   llm_model: string | null;
+  /** Fair Housing hits found on the way out. null = never screened. */
+  fair_housing_flags: { phrase: string; category: string }[] | null;
   created_at: string;
 }
 

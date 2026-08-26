@@ -424,6 +424,7 @@ async def _llm_monitor_loop() -> None:
     thing that has to stay rare is the email, and that rareness lives in
     `run_monitor_tick`, not in this interval.
     """
+    from app.services.fair_housing_watch import run_fair_housing_tick
     from app.services.llm_monitor import run_monitor_tick
 
     interval = max(60, settings.LLM_MONITOR_INTERVAL_SECONDS)
@@ -435,6 +436,19 @@ async def _llm_monitor_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001 — a watchdog that dies is worse than none
             logger.error("LLM monitor tick failed: %s", exc)
+
+        # Rides this loop rather than owning one: same cadence, same "tell the
+        # operator once, on a change" contract, and no second task to register,
+        # cancel and forget to cancel. Its own try/except, so that a failure in
+        # either watch neither hides nor is misattributed to the other — the
+        # first version logged "LLM monitor tick failed" for a fair-housing
+        # exception and pointed the operator at the wrong module.
+        try:
+            await run_fair_housing_tick()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — same reason as above
+            logger.error("Fair Housing watch tick failed: %s", exc)
 
 
 async def _content_studio_loop() -> None:
