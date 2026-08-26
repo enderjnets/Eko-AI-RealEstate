@@ -160,7 +160,7 @@ Checklist: **1014 backend** + **92 frontend** verdes · `tsc` sin errores ·
 
 ## Fase 2 — Contenido sale del escondite (completada)
 
-**Commit:** `PENDIENTE_2` en `feat/estudio-visible`.
+**Commit:** `3c3b296` en `feat/estudio-visible`.
 
 `ContentQueue` movido a `components/content/`, página propia `/content`, quitado
 de «Hoy», restyleado del tema claro al oscuro, y entrada «Contenido» en el nav
