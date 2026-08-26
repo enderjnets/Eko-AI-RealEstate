@@ -424,3 +424,46 @@ async def test_the_render_reason_reaches_the_console(database_url: str) -> None:
         assert mine[0]["render_error"] == "waiting: no brokerage line on record"
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_clip_arrives_even_with_no_brokerage_line(
+    database_url: str, tmp_path, monkeypatch
+) -> None:
+    """The brokerage gate stops rendering and publishing, not uploading.
+
+    Refusing the upload would lose the footage — she filmed it, the studio is
+    where it lives, and the missing line is a five-second fix she may not be
+    the person to make. It lands in DRAFT and the console says why it has not
+    rendered.
+    """
+    monkeypatch.setattr(get_settings(), "CONTENT_MEDIA_DIR", str(tmp_path))
+    previous = await _read_brokerage()
+    try:
+        await _set_brokerage(None)
+        async with _client() as client:
+            r = await client.post(
+                "/api/v1/content/upload?filename=phone.mov&language=en",
+                content=b"not really a video, but bytes are bytes here",
+            )
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["status"] == "draft"
+        assert body["kind"] == "recorded"
+        assert body["media_path"].endswith(".mov")
+    finally:
+        await _cleanup()
+        await _set_brokerage(previous)
+
+
+@pytest.mark.asyncio
+async def test_a_file_that_is_not_a_video_is_named_as_such(database_url: str) -> None:
+    """415, not a generic failure: "that is not a video" and "that is too big"
+    have different fixes, and the console shows the server's own words."""
+    async with _client() as client:
+        r = await client.post(
+            "/api/v1/content/upload?filename=notes.pdf&language=en",
+            content=b"%PDF-1.4",
+        )
+    assert r.status_code == 415
+    assert "video" in r.json()["detail"].lower()

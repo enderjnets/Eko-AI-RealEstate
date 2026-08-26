@@ -2,6 +2,44 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.55.0] — 2026-08-26
+
+### Añadido — el Estudio de Contenido deja de estar escondido
+
+- **Página `/content` propia y entrada «Contenido» en el menú**, también en el
+  tab-bar del móvil: el clip se graba y se sube desde un teléfono. Antes la cola
+  vivía al fondo de «Hoy», bajo la consola de llamadas — construida, funcionando
+  y en la práctica invisible.
+- **Subida de clips desde el móvil con barra de progreso.** `XMLHttpRequest` y
+  no `fetch`, porque `fetch` no puede reportar progreso de subida en ningún
+  navegador y un vídeo de cientos de MB sin progreso parece una página colgada.
+  Cuerpo crudo en streaming a disco (hasta 500 MB). Que los bytes llegan
+  intactos lo ata `test_upload_stores_the_clip_and_serves_it_back`, que compara
+  el fichero servido con el subido.
+- **`GET /api/v1/content/status`**: booleanos y conteos, sin valores de
+  configuración. El vacío pasa a decir POR QUÉ está vacío, y una pestaña vacía
+  en un estudio con trabajo señala dónde está ese trabajo en vez de culpar a la
+  configuración.
+- **`render_error` visible por fin.** El render lo escribía desde la v0.52 y
+  ninguna ruta lo devolvía. Las palabras de ffmpeg se quedan en el log: la
+  tarjeta muestra un mensaje escrito para una persona.
+
+### Corregido
+
+- **`brokerage_line` no tenía puerta de entrada.** El campo existía en el modelo
+  y dos puertas lo exigían, pero `SettingsPatch` lo rechazaba con 400 y no había
+  campo en Ajustes: la única forma de ponerlo era un `UPDATE` a mano.
+- **Un apóstrofo mataba todos los clips en cola, para siempre.** `text='...'`
+  con `'` escapado como `\'` rompía el grafo de filtros, y un render rechazado
+  estampa `rendered_at` sin que nada lo reinicie. El texto del operador pasa a
+  `textfile=`, que no tiene micro-lenguaje. «O'Brien Realty» y
+  «Smith & Jones, Realty, Inc.» renderizan.
+- **`booking_contact_email` se podía escribir y no se guardaba nunca.** Salía
+  «Guardado ✓» y el valor desaparecía de la pantalla. Sin él, un lead que solo
+  dejó teléfono no se puede agendar.
+- El endpoint de estado filtra por organización explícitamente, y se niega
+  ruidosamente si no hay ninguna atada.
+
 ## [0.54.4] — 2026-08-25
 
 ### Corregido — un aviso que no salió daba la avería por comunicada

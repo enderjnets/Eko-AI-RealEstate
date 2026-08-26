@@ -167,7 +167,7 @@ export function SettingsForm() {
               value={data.brokerage_line ?? ""}
               onChange={(e) => set("brokerage_line", e.target.value || null)}
               maxLength={200}
-              placeholder="Natalia & Robbie · Engel & Völkers"
+              placeholder="Engel & Völkers Aspen"
               className="mt-1 w-full px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-eko-violet/50"
             />
             <span className="mt-1 block text-[11px] text-gray-500">

@@ -451,6 +451,39 @@ export interface StudioStatus {
   counts: Record<string, number>;
 }
 
+/** Ten minutes: a 500 MB clip on slow mobile data, with room to spare. */
+const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * The reason a rejected upload failed, in whatever form the server sent it.
+ *
+ * Mirrors `errorDetail()` including its last resort, and that last resort is
+ * the point: `xhr.statusText` is the empty string on HTTP/2, so a 413 from a
+ * proxy — an HTML page, no JSON — used to render as "API 413:" and nothing
+ * after it. The most likely rejection produced the least useful sentence.
+ */
+function xhrDetail(xhr: XMLHttpRequest): string {
+  const raw = xhr.responseText ?? "";
+  try {
+    const body = JSON.parse(raw);
+    if (typeof body?.detail === "string") return body.detail;
+    if (Array.isArray(body?.detail)) {
+      return body.detail
+        .map((e: { loc?: unknown[]; msg?: string }) =>
+          `${(e.loc ?? []).slice(1).join(".")}: ${e.msg ?? ""}`.trim(),
+        )
+        .join("; ");
+    }
+  } catch {
+    /* not JSON — fall through to the raw body */
+  }
+  return raw.trim().slice(0, 200) || xhr.statusText || "no reason given";
+}
+
+/** Client-side failures, keyed so the UI can translate them. */
+export type UploadFailure = "network" | "cancelled" | "timeout";
+const uploadFailure = (kind: UploadFailure) => `upload:${kind}`;
+
 export const contentApi = {
   status: () => api<StudioStatus>(`/v1/content/status`),
   list: (status?: ContentStatus) =>
@@ -473,6 +506,62 @@ export const contentApi = {
     }),
   /** The clip itself, behind the same auth as everything else. */
   mediaUrl: (id: number) => `/api/v1/content/${id}/media`,
+
+  /**
+   * A clip from the phone, streamed as a RAW body.
+   *
+   * Not multipart, unlike `discoveryApi.upload`: this route reads
+   * `request.stream()` and enforces the size cap while writing to disk, so a
+   * 4K clip never sits in memory. The filename is a query parameter and only
+   * survives long enough to give the server a suffix.
+   *
+   * XHR rather than fetch, and that is the whole reason this is not three
+   * lines: fetch cannot report upload progress in any browser, and the device
+   * this exists for is a phone on mobile data sending hundreds of megabytes.
+   * Without a progress bar that is indistinguishable from a frozen page, and
+   * a person who thinks it froze presses the button again.
+   */
+  upload: (
+    file: File,
+    language: "en" | "es",
+    onProgress?: (percent: number) => void,
+  ): Promise<ContentPiece> =>
+    new Promise((resolve, reject) => {
+      const url =
+        `/api/v1/content/upload?filename=${encodeURIComponent(file.name)}` +
+        `&language=${language}`;
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+      if (onProgress) {
+        xhr.upload.onprogress = (e) => {
+          // `total > 0` as well as lengthComputable: a zero-length body
+          // divides to NaN and paints a bar of width "NaN%".
+          if (e.lengthComputable && e.total > 0) {
+            onProgress(Math.min(100, Math.round((e.loaded / e.total) * 100)));
+          }
+        };
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText) as ContentPiece);
+          } catch {
+            reject(new Error(`API ${xhr.status}: unreadable response`));
+          }
+          return;
+        }
+        reject(new Error(`API ${xhr.status}: ${xhrDetail(xhr)}`));
+      };
+      xhr.onerror = () => reject(new Error(uploadFailure("network")));
+      xhr.onabort = () => reject(new Error(uploadFailure("cancelled")));
+      // Without a timeout an upload can hang forever on a half-open mobile
+      // connection — which is the exact situation this feature exists for —
+      // and the caller's `finally` never runs, so the progress bar sticks and
+      // the button stays disabled with no way out but a page reload.
+      xhr.timeout = UPLOAD_TIMEOUT_MS;
+      xhr.ontimeout = () => reject(new Error(uploadFailure("timeout")));
+      xhr.send(file);
+    }),
 };
 
 export interface AgencySettings {

@@ -10,7 +10,7 @@
  * legible: the person approved the old text.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -31,7 +31,9 @@ import {
 import type { Lang } from "@/lib/i18n";
 import { relativeTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
-import { useSettingsAccess } from "@/lib/useViewer";
+import { latestWins } from "@/lib/latestWins";
+import { useSettingsAccess, useViewer } from "@/lib/useViewer";
+import { UploadClip } from "@/components/content/UploadClip";
 
 const TABS: ContentStatus[] = ["needs_approval", "draft", "approved", "rejected"];
 
@@ -40,11 +42,21 @@ export function ContentQueue() {
   const [tab, setTab] = useState<ContentStatus>("needs_approval");
   const [pieces, setPieces] = useState<ContentPiece[] | null>(null);
   const [studio, setStudio] = useState<StudioStatus | null>(null);
+  // Write controls hide themselves for viewers everywhere else in this app
+  // (`useViewer`), and the backend 403s them anyway — a visible upload button
+  // for a read-only account is a button that can only ever fail.
+  const readOnly = useViewer();
+  // Uploading switches to Drafts AND reloads, so two loads are in flight with
+  // different `tab` closures. Without this the older one can land last and
+  // leave the person on Drafts looking at the previous tab's list — the exact
+  // damage this helper was written for, in the panel next door.
+  const gate = useRef(latestWins()).current;
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
+    const mine = gate.start();
     try {
       // In parallel, and the status is not allowed to break the list: if it
       // fails the queue still renders, just without the explanation.
@@ -52,12 +64,14 @@ export function ContentQueue() {
         contentApi.list(tab),
         contentApi.status().catch(() => null),
       ]);
+      if (!mine()) return;
       setPieces(list);
       setStudio(status);
     } catch (err) {
+      if (!mine()) return;
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [tab]);
+  }, [tab, gate]);
 
   useEffect(() => {
     void load();
@@ -80,13 +94,23 @@ export function ContentQueue() {
     <section>
       {/* Title and subtitle live in the page's PageHeader — repeating them here
           is what the move out of /console was for. */}
-      <div className="flex items-center justify-end">
+      <div className="flex items-start justify-end gap-3 flex-wrap">
         <button
           onClick={() => void load()}
-          className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white transition-colors"
+          className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white transition-colors mt-1.5"
         >
           <RefreshCw className="w-4 h-4" /> {t("content.refresh")}
         </button>
+        {/* A new clip lands in Drafts, so send the person there rather than
+            leaving them on a tab where nothing appeared. */}
+        {!readOnly && (
+        <UploadClip
+          onUploaded={() => {
+            setTab("draft");
+            void load();
+          }}
+        />
+        )}
       </div>
 
       <div className="mt-3 flex gap-2 flex-wrap" role="tablist">

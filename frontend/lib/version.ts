@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.54.4";
+export const CURRENT_VERSION = "0.55.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,36 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.55.0",
+    date: "2026-08-26",
+    title: {
+      en: "The Content Studio, where you can find it",
+      es: "El Estudio de Contenido, donde se encuentra",
+    },
+    changes: [
+      {
+        en: "Content has its own page and its own place in the menu \u2014 on the phone too, which is where a clip is filmed. It used to sit at the bottom of \u201cToday\u201d under the call console, so the queue that decides what gets published was built, working, and effectively invisible.",
+        es: "Contenido tiene p\u00e1gina propia y sitio propio en el men\u00fa \u2014 tambi\u00e9n en el m\u00f3vil, que es donde se graba un clip. Antes viv\u00eda al fondo de \u00abHoy\u00bb bajo la consola de llamadas, as\u00ed que la cola que decide qu\u00e9 se publica estaba construida, funcionando, y era invisible en la pr\u00e1ctica.",
+      },
+      {
+        en: "Upload a clip straight from your phone, with a progress bar \u2014 a video takes minutes on mobile data, and a page with no progress looks frozen. Up to 500 MB, streamed to disk rather than held in memory, and the clip lands in Drafts ready for you to submit it.",
+        es: "Sube un clip directamente desde el m\u00f3vil, con barra de progreso \u2014 un v\u00eddeo tarda minutos con datos m\u00f3viles, y una p\u00e1gina sin progreso parece colgada. Hasta 500 MB, en streaming a disco en vez de en memoria, y el clip aparece en Borradores listo para enviarlo.",
+      },
+      {
+        en: "Your brokerage identification now has a field in Settings. It is required by Colorado on real-estate advertising and both the render and the publish gate refuse while it is empty \u2014 and until now the only way to set it was by hand in the database. It also survives an apostrophe: a brokerage called O\u2019Brien Realty would previously have stopped every queued clip from ever rendering.",
+        es: "La identificaci\u00f3n de su brokerage tiene por fin un campo en Ajustes. Colorado la exige en publicidad inmobiliaria y tanto el render como la publicaci\u00f3n se niegan mientras est\u00e9 vac\u00eda \u2014 y hasta ahora la \u00fanica forma de ponerla era a mano en la base de datos. Adem\u00e1s ya sobrevive a un ap\u00f3strofo: una brokerage llamada O\u2019Brien Realty habr\u00eda impedido para siempre que se renderizara ning\u00fan clip en cola.",
+      },
+      {
+        en: "An empty queue now says WHY it is empty, and an empty tab in a busy studio tells you where the work is instead of blaming the setup. Clips that could not be rendered show the reason on the card \u2014 the render had been recording it since v0.52 and nothing ever displayed it.",
+        es: "Una cola vac\u00eda dice ahora POR QU\u00c9 est\u00e1 vac\u00eda, y una pesta\u00f1a vac\u00eda en un estudio con trabajo le dice d\u00f3nde est\u00e1 ese trabajo en vez de culpar a la configuraci\u00f3n. Los clips que no se pudieron renderizar muestran el motivo en la tarjeta \u2014 el render lo ven\u00eda anotando desde la v0.52 y no lo ense\u00f1aba nadie.",
+      },
+      {
+        en: "Fixed: the booking confirmation address in Settings was editable and never saved. You typed it, the page said \u201cSaved\u201d, and the value silently disappeared \u2014 which meant a lead who left only a phone number could not be booked at all.",
+        es: "Corregido: la direcci\u00f3n de confirmaci\u00f3n de reservas en Ajustes se pod\u00eda escribir y no se guardaba nunca. Usted la escrib\u00eda, la p\u00e1gina dec\u00eda \u00abGuardado\u00bb, y el valor desaparec\u00eda en silencio \u2014 lo que significaba que un lead que solo dej\u00f3 tel\u00e9fono no se pod\u00eda agendar.",
+      },
+    ],
+  },
   {
     version: "0.54.4",
     date: "2026-08-25",

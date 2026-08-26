@@ -1,0 +1,120 @@
+"use client";
+
+/**
+ * The way a clip gets into the studio.
+ *
+ * The endpoint has existed since v0.52 and nothing ever called it: the API
+ * client had no `upload` and no component referenced one, so the recorded lane
+ * — an agent filming on her phone, which is half the product — had a back door
+ * and no front one.
+ *
+ * No `capture` attribute on the input. With it, a phone goes straight to the
+ * camera and refuses to offer the library, which inverts the real workflow:
+ * she films first and uploads later, often not the same day. Without it, iOS
+ * offers Photo Library / Take Video / Choose File and the camera is still one
+ * tap away.
+ */
+
+import { useRef, useState } from "react";
+import { AlertCircle, Loader2, Upload } from "lucide-react";
+import { type UploadFailure, contentApi } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
+
+export function UploadClip({ onUploaded }: { onUploaded: () => void }) {
+  const { t } = useI18n();
+  const input = useRef<HTMLInputElement>(null);
+  const [language, setLanguage] = useState<"en" | "es">("en");
+  const [percent, setPercent] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const busy = percent !== null;
+
+  async function send(file: File) {
+    setError(null);
+    setPercent(0);
+    try {
+      await contentApi.upload(file, language, setPercent);
+      onUploaded();
+    } catch (err) {
+      // The server's own words where there are any — 415 is "that is not a
+      // video", 400 is "empty", and those are different fixes. The size
+      // refusal usually comes from the body-size middleware or a proxy rather
+      // than from the route, so it may arrive as `body_too_large` or as an
+      // HTML page; `xhrDetail` falls back to the raw body for that reason.
+      // Our own client failures arrive as `upload:<kind>` so they can be said
+      // in the reader's language instead of hard-coded English in the API layer.
+      const raw = err instanceof Error ? err.message : String(err);
+      const mine = raw.startsWith("upload:")
+        ? (raw.slice("upload:".length) as UploadFailure)
+        : null;
+      setError(mine ? t(`content.upload.${mine}`) : raw);
+    } finally {
+      setPercent(null);
+      if (input.current) input.current.value = "";
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-2">
+      <div className="flex items-center gap-2">
+        <select
+          value={language}
+          onChange={(e) => setLanguage(e.target.value as "en" | "es")}
+          disabled={busy}
+          aria-label={t("content.uploadLanguage")}
+          className="px-2 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white focus:outline-none focus:border-eko-violet/50 disabled:opacity-50"
+        >
+          <option value="en" className="bg-eko-noir">EN</option>
+          <option value="es" className="bg-eko-noir">ES</option>
+        </select>
+
+        <button
+          type="button"
+          onClick={() => input.current?.click()}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-eko-violet text-white text-sm font-medium hover:bg-eko-violet-dark disabled:opacity-50"
+        >
+          {busy ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Upload className="w-4 h-4" />
+          )}
+          {busy ? `${percent}%` : t("content.uploadClip")}
+        </button>
+
+        <input
+          ref={input}
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void send(file);
+          }}
+        />
+      </div>
+
+      {busy && (
+        <div
+          className="w-48 h-1 rounded-full bg-white/10 overflow-hidden"
+          role="progressbar"
+          aria-valuenow={percent ?? 0}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className="h-full bg-eko-violet transition-[width] duration-200"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+      )}
+
+      {error && (
+        <p className="flex items-start gap-1.5 text-xs text-red-300 max-w-sm text-right">
+          <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span className="break-words">{error}</span>
+        </p>
+      )}
+    </div>
+  );
+}

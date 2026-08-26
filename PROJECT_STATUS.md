@@ -21,7 +21,7 @@ API lo rechazaba con 400 y no había campo en Ajustes.
 | 1b | `booking_contact_email` se guarda (fuera de plan, pedido por el dueño) | ✅ completada |
 | 2 | Contenido sale del escondite (`/content` + menú + tema oscuro) | ✅ completada |
 | 3 | El vacío explica por qué está vacío (`/content/status`) | ⏳ pendiente |
-| 4 | Subir el clip desde el teléfono + bump v0.55.0 | ⏳ pendiente |
+| 4 | Subir el clip desde el teléfono + bump v0.55.0 | ✅ completada |
 
 Rama única: `feat/estudio-visible`. **Sin commits a `main`. Sin despliegue.**
 
@@ -260,8 +260,76 @@ filtraba el `stderr` de ffmpeg con rutas internas a cualquier autenticado — y
 **mi cambio es el que lo puso en pantalla**; y el `hasattr(status,"value")` era
 rama muerta que, de dispararse, habría escrito una clave inventada.
 
+## Fase 4 — subir el clip desde el teléfono (completada)
+
+**Commit:** `PENDIENTE_4` en `feat/estudio-visible`. Bump a **v0.55.0**.
+
+`contentApi.upload` con `XMLHttpRequest` (no `fetch`: no puede reportar
+progreso de subida en ningún navegador, y el caso de uso es un teléfono con
+datos móviles mandando cientos de MB), `UploadClip.tsx` sin atributo `capture`
+—con él el móvil fuerza la cámara y no deja elegir de la galería, que invierte
+el flujo real—, y el clip aterriza en Borradores.
+
+### Checklist — resultado real
+
+**1022 backend** (base recreada, cero saltados) + **101 frontend** · `ruff` y
+`tsc` limpios · `next build` OK · cobertura `content.py` 63%→64% · versión
+0.55.0 en los tres sitios con paridad atada por test · diff sin secretos.
+
+### Verificado en navegador, no por inspección
+
+Subida real de un clip de 2,1 MB desde la interfaz, y **hash del fichero en
+disco idéntico al original** — la prueba de que el cuerpo crudo llegó intacto.
+Un `FormData` habría escrito bytes multipart como si fueran el vídeo y habría
+devuelto 201 igual. Un PDF devuelve `API 415: Expected a video file (...)` y
+**no deja fichero huérfano**.
+
+Siete mutaciones, siete tests muertos: `FormData` en vez de cuerpo crudo ·
+quitar `encodeURIComponent` (los clips se llaman `IMG_0421 (1).mov`) · quitar
+el progreso · volver a `statusText` · quitar el timeout · quitar la guarda de
+`total > 0` · quitar el tope de 100.
+
+### Auditoría de cierre — 0 bloqueantes; 4 hallazgos míos corregidos
+
+Los cuatro vectores de seguridad, descartados **con prueba**: del `filename`
+solo sobrevive el sufijo y el fichero se guarda como UUID (traversal
+imposible); `viewer` recibe 403 en backend; cookie `samesite=lax` corta CSRF;
+`org_id` se estampa en `before_flush`.
+
+- **Carrera introducida por mí**: al saltar a Borradores quedaban dos cargas en
+  vuelo sin guarda y la vieja podía ganar. `lib/latestWins.ts` existía para
+  esto, con un docstring que describe este daño, y no lo usé. Aplicado.
+- **El mensaje de error se quedaba vacío en el camino más probable**: bajo
+  HTTP/2 `statusText` es `""`, así que un 413 de proxy se leía `"API 413: "`.
+  Y **mi propio test lo bendecía** al comprobar `/413/` con regex en vez del
+  mensaje entero. Ahora `xhrDetail` cae al cuerpo crudo, como `errorDetail`.
+- **La barra se quedaba pegada para siempre** sin timeout ni salida — en la
+  situación exacta para la que existe la barra. Timeout de 10 min + clave
+  traducible.
+- **El CHANGELOG afirmaba un mecanismo inventado**: «verificado con un hash
+  byte a byte». La comprobación la hice yo a mano; el test no existía. Ahora
+  cita `test_upload_stores_the_clip_and_serves_it_back`, que sí compara.
+- Menores corregidos: `NaN%` con fichero de 0 bytes, botón de subir oculto para
+  `viewer` (convención del repo), y los textos de fallo del cliente por i18n.
+
+### Backlog nuevo (no bloquea)
+
+- Cloudflare puede cortar el cuerpo muy por debajo de 500 MB en planes
+  no-Enterprise: **verificar contra el plan real** antes de prometer 500 MB por
+  el túnel. No hay comprobación de tamaño en cliente.
+- Fichero huérfano si falla el commit tras el streaming (preexistente, ahora
+  alcanzable desde la UI). Sin rate limit ni cuota por organización.
+- Los botones aprobar/rechazar tampoco están ocultos para `viewer`
+  (preexistente).
+
 ### Siguiente paso concreto
 
-Fase 4: subir el clip desde el teléfono (`contentApi.upload` con XHR para tener
-progreso, `UploadClip.tsx`, sin atributo `capture`) + bump a v0.55.0 y
-changelog bilingüe. Después: preparar el despliegue y detenerse.
+Las cuatro fases en verde. Preparar el despliegue y **detenerse**: checklist
+previo, plan de reversión, variables, orden de pasos. La autorización de
+desplegar la da el dueño en un mensaje aparte.
+
+**Paso post-despliegue confirmado por el dueño (26-ago):** poner
+`Engel & Völkers Aspen` en Ajustes → Identificación de la brokerage, **desde la
+interfaz nueva**, no con SQL a mano. Es el texto de la firma de Natalia y el
+único de los tres candidatos que **cabe** en el ancho del vídeo: los otros dos
+tocan los bordes o se cortan (renderizado y comprobado con el código real).
