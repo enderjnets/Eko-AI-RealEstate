@@ -119,7 +119,7 @@ prometía "ships in v0.55.0"; el test de vaciado probaba `""` cuando la UI manda
 
 ## Fase 1b — `booking_contact_email` se guarda (completada)
 
-**Commit:** `PENDIENTE_1B` en `feat/estudio-visible`. Fuera del plan: salió de la
+**Commit:** `87541ed` en `feat/estudio-visible`. Fuera del plan: salió de la
 auditoría de la Fase 1 y el dueño pidió arreglarlo antes de seguir.
 
 El input existía desde que se añadió el campo y **nunca estuvo en el payload de
