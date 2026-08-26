@@ -61,17 +61,17 @@ export function ContentQueue() {
   };
 
   return (
-    <section className="mt-8">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h2 className="text-lg font-semibold">{t("content.title")}</h2>
+    <section>
+      {/* Title and subtitle live in the page's PageHeader — repeating them here
+          is what the move out of /console was for. */}
+      <div className="flex items-center justify-end">
         <button
           onClick={() => void load()}
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800"
+          className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white transition-colors"
         >
           <RefreshCw className="w-4 h-4" /> {t("content.refresh")}
         </button>
       </div>
-      <p className="text-sm text-gray-500 mt-1">{t("content.subtitle")}</p>
 
       <div className="mt-3 flex gap-2 flex-wrap" role="tablist">
         {TABS.map((status) => (
@@ -82,8 +82,8 @@ export function ContentQueue() {
             onClick={() => setTab(status)}
             className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
               tab === status
-                ? "bg-gray-900 text-white border-gray-900"
-                : "bg-white text-gray-600 border-gray-300 hover:border-gray-500"
+                ? "bg-eko-violet/15 text-eko-violet border-eko-violet/40"
+                : "bg-white/[0.03] text-gray-400 border-white/10 hover:border-white/20"
             }`}
           >
             {t(`content.tab.${status}`)}
@@ -92,7 +92,7 @@ export function ContentQueue() {
       </div>
 
       {error && (
-        <div className="mt-4 flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+        <div className="mt-4 flex items-start gap-2 text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
           <span className="break-words">{error}</span>
         </div>
@@ -103,7 +103,7 @@ export function ContentQueue() {
           <Loader2 className="w-6 h-6 animate-spin" />
         </div>
       ) : pieces.length === 0 ? (
-        <p className="mt-6 text-sm text-gray-400">{t("content.empty")}</p>
+        <p className="mt-6 text-sm text-gray-500">{t("content.empty")}</p>
       ) : (
         <ul className="mt-4 space-y-4">
           {pieces.map((piece) => (
@@ -157,7 +157,7 @@ function PieceCard({
   };
 
   return (
-    <li className="border border-gray-200 rounded-xl p-4 bg-white shadow-sm">
+    <li className="border border-white/10 rounded-xl p-4 bg-white/[0.02]">
       <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500">
         <span className="uppercase tracking-wide">{t(`content.kind.${piece.kind}`)}</span>
         <span>·</span>
@@ -167,7 +167,7 @@ function PieceCard({
         {piece.approved_by && (
           <>
             <span>·</span>
-            <span className="inline-flex items-center gap-1 text-green-700">
+            <span className="inline-flex items-center gap-1 text-eko-green">
               <Check className="w-3 h-3" /> {piece.approved_by}
             </span>
           </>
@@ -191,46 +191,46 @@ function PieceCard({
             onChange={(e) => setHook(e.target.value)}
             maxLength={300}
             placeholder={t("content.hookLabel")}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="w-full px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-eko-violet/50"
           />
           <textarea
             value={script}
             onChange={(e) => setScript(e.target.value)}
             rows={4}
             placeholder={t("content.scriptLabel")}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="w-full px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-eko-violet/50"
           />
           <textarea
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
             rows={2}
             placeholder={t("content.captionLabel")}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="w-full px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-eko-violet/50"
           />
           <div className="flex gap-2">
             <button
               onClick={submitEdit}
               disabled={busy}
-              className="px-3 py-1.5 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-50"
+              className="px-3 py-1.5 rounded-lg bg-eko-violet text-white text-sm font-medium hover:bg-eko-violet-dark disabled:opacity-50"
             >
               {t("content.saveEdit")}
             </button>
             <button
               onClick={() => setEditing(false)}
-              className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm"
+              className="px-3 py-1.5 rounded-lg border border-white/10 text-gray-300 text-sm hover:border-white/20"
             >
               {t("content.cancel")}
             </button>
           </div>
           {piece.status === "approved" && (
-            <p className="text-xs text-amber-700">{t("content.editRevokes")}</p>
+            <p className="text-xs text-amber-300">{t("content.editRevokes")}</p>
           )}
         </div>
       ) : (
         <div className="mt-3 space-y-1">
-          {piece.hook && <p className="font-medium">{piece.hook}</p>}
+          {piece.hook && <p className="font-medium text-white">{piece.hook}</p>}
           {piece.script && (
-            <p className="text-sm text-gray-600 whitespace-pre-wrap">{piece.script}</p>
+            <p className="text-sm text-gray-300 whitespace-pre-wrap">{piece.script}</p>
           )}
           {piece.caption && (
             <p className="text-sm text-gray-500 italic">{piece.caption}</p>
@@ -239,11 +239,11 @@ function PieceCard({
       )}
 
       {piece.violations && piece.violations.length > 0 && (
-        <div className="mt-3 text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
-          <p className="flex items-center gap-1 font-medium text-amber-800">
+        <div className="mt-3 text-sm bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+          <p className="flex items-center gap-1 font-medium text-amber-300">
             <ShieldAlert className="w-4 h-4" /> {t("content.violationsTitle")}
           </p>
-          <ul className="mt-1 list-disc list-inside text-amber-800">
+          <ul className="mt-1 list-disc list-inside text-amber-200">
             {piece.violations.map((v) => (
               <li key={`${v.category}:${v.phrase}`}>
                 “{v.phrase}” — {t(`content.category.${v.category}`)}
@@ -254,7 +254,7 @@ function PieceCard({
       )}
 
       {piece.rejected_reason && piece.status === "rejected" && (
-        <p className="mt-2 text-sm text-red-700">
+        <p className="mt-2 text-sm text-red-300">
           {t("content.rejectedBecause")}: {piece.rejected_reason}
         </p>
       )}
@@ -265,7 +265,7 @@ function PieceCard({
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder={t("content.rejectReason")}
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="flex-1 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-eko-violet/50"
           />
           <button
             onClick={() => {
@@ -282,7 +282,7 @@ function PieceCard({
           </button>
           <button
             onClick={() => setRejecting(false)}
-            className="px-3 py-2 rounded-lg border border-gray-300 text-sm"
+            className="px-3 py-2 rounded-lg border border-white/10 text-gray-300 text-sm hover:border-white/20"
           >
             {t("content.cancel")}
           </button>
@@ -296,7 +296,7 @@ function PieceCard({
               {piece.status === "needs_approval" && (
                 <button
                   onClick={onApprove}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-eko-green text-eko-noir text-sm font-semibold hover:brightness-110"
                 >
                   <Check className="w-4 h-4" /> {t("content.approve")}
                 </button>
@@ -304,7 +304,7 @@ function PieceCard({
               {piece.status === "draft" && (
                 <button
                   onClick={onSubmit}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-900 text-white text-sm"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-eko-violet text-white text-sm font-medium hover:bg-eko-violet-dark"
                 >
                   {t("content.submit")}
                 </button>
@@ -315,13 +315,13 @@ function PieceCard({
                 <>
                   <button
                     onClick={() => setEditing(true)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-sm"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-white/10 text-gray-300 text-sm hover:border-white/20"
                   >
                     <Pencil className="w-4 h-4" /> {t("content.edit")}
                   </button>
                   <button
                     onClick={() => setRejecting(true)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 text-sm"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-300 text-sm hover:border-red-500/50"
                   >
                     <X className="w-4 h-4" /> {t("content.reject")}
                   </button>

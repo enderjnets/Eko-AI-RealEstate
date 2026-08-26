@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   CalendarDays,
+  Clapperboard,
   Eye,
   Home,
   Inbox,
@@ -120,6 +121,9 @@ export function Nav() {
     // Operator-only; see app/discovery/page.tsx.
     ...(isOperator ? [{ href: "/discovery", label: t("nav.discovery"), Icon: Search }] : []),
     { href: "/leads", label: t("nav.leads"), Icon: Users },
+    // On the phone by necessity, not for symmetry: the clip is filmed and
+    // uploaded here, and the desktop nav is `hidden md:flex`.
+    { href: "/content", label: t("nav.content"), Icon: Clapperboard },
     { href: "/inbox", label: t("nav.inbox"), Icon: Inbox, dot: attention > 0 },
     { href: "/calendar", label: t("nav.calendar"), Icon: CalendarDays },
     { href: "/properties", label: t("nav.properties"), Icon: Home },
@@ -132,7 +136,7 @@ export function Nav() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
           {/* /leads, not /. Since v0.44.0 the root is the public marketing
               page, so the dashboard logo pointed staff out of the dashboard. */}
-          <Link href="/leads" className="flex items-center gap-2.5">
+          <Link href="/leads" className="flex items-center gap-2.5 shrink-0">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-eko-violet to-eko-magenta flex items-center justify-center">
               <Zap className="w-4 h-4 text-white" />
             </div>
@@ -146,27 +150,41 @@ export function Nav() {
             </div>
           </Link>
 
-          {/* Desktop links — hidden on phones (the bottom tab bar replaces them). */}
+          {/* Desktop links — hidden on phones (the bottom tab bar replaces them).
+              No `overflow` here, and that is load-bearing: the Inbox dropdown
+              below is absolutely positioned INSIDE this container, and CSS
+              computes `overflow-y: visible` to `auto` as soon as `overflow-x`
+              is not visible. Scrolling the row sideways therefore clipped the
+              402px dropdown to zero visible pixels on every page — measured,
+              not theorised. The items do not all fit between md and xl; that
+              is in the backlog, and it predates the Content entry. */}
           <div className="hidden md:flex items-center gap-1">
             <Link
               href="/discovery"
-              className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+              className="px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
             >
               <Search className="w-3.5 h-3.5" />
               {t("nav.discovery")}
             </Link>
             <Link
               href="/leads"
-              className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+              className="px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
             >
               {t("nav.leads")}
             </Link>
             <Link
               href="/console"
-              className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+              className="px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
             >
               <PhoneCall className="w-3.5 h-3.5" />
               {t("console.title")}
+            </Link>
+            <Link
+              href="/content"
+              className="px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+            >
+              <Clapperboard className="w-3.5 h-3.5" />
+              {t("nav.content")}
             </Link>
 
             {/* Inbox — button opens a dropdown with quick access to new/pending comms. */}
@@ -176,7 +194,7 @@ export function Nav() {
                 onClick={toggleMenu}
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
-                className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+                className="px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
               >
                 <Inbox className="w-3.5 h-3.5" />
                 {t("nav.inbox")}
@@ -258,21 +276,21 @@ export function Nav() {
 
             <Link
               href="/properties"
-              className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+              className="px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
             >
               <Home className="w-3.5 h-3.5" />
               {t("nav.properties")}
             </Link>
             <Link
               href="/calendar"
-              className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+              className="px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
             >
               <CalendarDays className="w-3.5 h-3.5" />
               {t("nav.calendar")}
             </Link>
             <Link
               href="/analytics"
-              className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+              className="px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
             >
               <BarChart3 className="w-3.5 h-3.5" />
               {t("nav.analytics")}
@@ -280,17 +298,20 @@ export function Nav() {
             {isAdmin && (
               <Link
                 href="/settings"
-                className="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+                className="px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
               >
                 <Settings className="w-3.5 h-3.5" />
                 {t("nav.settings")}
               </Link>
             )}
+            {/* Wide screens only: it points at the backend's Swagger UI, which
+                is a developer's link, and it was the item being clipped once
+                Contenido joined a bar that was already too full. */}
             <a
               href="/docs"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-1.5 rounded-md text-sm text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+              className="hidden xl:inline-block px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
               title="OpenAPI docs (backend Swagger UI)"
             >
               {t("nav.api")}
@@ -298,7 +319,7 @@ export function Nav() {
           </div>
 
           {/* Actions — always visible. On phones this is the whole right side. */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             {/* Settings isn't in the bottom tab bar, so expose it here on phones. */}
             {isAdmin && (
               <Link
@@ -348,12 +369,12 @@ export function Nav() {
               key={href}
               href={href}
               aria-current={active ? "page" : undefined}
-              className={`relative flex-1 flex flex-col items-center justify-center gap-1 min-h-[56px] py-2 text-[10px] font-medium transition-colors ${
+              className={`relative flex-1 min-w-0 flex flex-col items-center justify-center gap-1 min-h-[56px] py-2 text-[10px] font-medium transition-colors ${
                 active ? "text-eko-violet" : "text-gray-500 hover:text-gray-300"
               }`}
             >
-              <Icon className="w-[21px] h-[21px]" />
-              <span>{label}</span>
+              <Icon className="w-[21px] h-[21px] shrink-0" />
+              <span className="max-w-full truncate px-0.5">{label}</span>
               {dot && (
                 <span className="absolute top-[7px] left-[calc(50%+8px)] w-2 h-2 rounded-full bg-amber-400 border-[1.5px] border-eko-noir" />
               )}

@@ -19,7 +19,7 @@ API lo rechazaba con 400 y no había campo en Ajustes.
 |---|---|---|
 | 1 | `brokerage_line` tiene por fin una puerta (API + Ajustes) | ✅ completada |
 | 1b | `booking_contact_email` se guarda (fuera de plan, pedido por el dueño) | ✅ completada |
-| 2 | Contenido sale del escondite (`/content` + menú + tema oscuro) | ⏳ pendiente |
+| 2 | Contenido sale del escondite (`/content` + menú + tema oscuro) | ✅ completada |
 | 3 | El vacío explica por qué está vacío (`/content/status`) | ⏳ pendiente |
 | 4 | Subir el clip desde el teléfono + bump v0.55.0 | ⏳ pendiente |
 
@@ -114,6 +114,17 @@ prometía "ships in v0.55.0"; el test de vaciado probaba `""` cuando la UI manda
 - 🟡 **MENOR — skew de despliegue**: con `extra="forbid"`, un frontend nuevo
   contra un backend viejo devuelve 422 para **todo** el formulario. Riesgo bajo:
   compose levanta ambos juntos.
+- 🟠 **IMPORTANTE, PREEXISTENTE — el nav de escritorio no cabe entre 768 y
+  1279 px**: desborda 380/248/132 px a 768/900/1024. Se muestra desde `md` pero
+  solo cabe desde `xl`. El arreglo real es que el nav de escritorio empiece en
+  `xl` y el tab-bar cubra la tablet — lo que exige meter «Hoy» (`/console`) en
+  el tab-bar, que hoy no está. No se puede contener con `overflow` (rompe el
+  desplegable del Inbox: ver Fase 2).
+- 🟡 **MENOR — el tab-bar elide etiquetas en pantallas pequeñas** con las 7
+  pestañas del operador: a 375 px «Contenido» (por 1 px) y «Propiedades»; a
+  320 px cuatro de siete. Sin desbordamiento de página; el icono identifica.
+- 🟡 **MENOR — `/docs` sin acceso por debajo de 1280 px**: es su único enlace
+  en toda la interfaz y ahora es `hidden xl:inline-block`.
 - 🟡 **MENOR — suciedad entre tests**: `test_content_gate_is_absolute.py` deja
   `brokerage_line` con su constante en vez de `NULL`.
 
@@ -147,8 +158,54 @@ y no probarían nada).
 Checklist: **1014 backend** + **92 frontend** verdes · `tsc` sin errores ·
 `next build` *Compiled successfully* · diff de 1 línea sin secretos.
 
+## Fase 2 — Contenido sale del escondite (completada)
+
+**Commit:** `PENDIENTE_2` en `feat/estudio-visible`.
+
+`ContentQueue` movido a `components/content/`, página propia `/content`, quitado
+de «Hoy», restyleado del tema claro al oscuro, y entrada «Contenido» en el nav
+de escritorio **y en el tab-bar del móvil** (el clip se graba y se sube ahí).
+
+### Checklist — resultado real
+
+**1014 backend** + **92 frontend** verdes · `ruff`/`tsc` sin errores ·
+`next build` *Compiled successfully* con `/content` en la tabla de rutas ·
+diff sin secretos · sin `console.log`.
+
+### Verificado en navegador, con datos sembrados
+
+Los cinco estados que un grep no puede ver, renderizados a 500 px (móvil real):
+cola de aprobación, borrador con la caja de Fair Housing en ámbar nombrando las
+4 frases, editor en línea, campo de motivo de rechazo, y pieza rechazada. La
+puerta devolvió **422** al intentar enviar a aprobación la pieza que viola Fair
+Housing. Datos de prueba borrados después.
+
+### Auditoría de cierre — 1 bloqueante, corregido en fase
+
+🔴 **BLOQUEANTE (mío, corregido): `overflow-x-auto` en la fila de enlaces
+rompía el desplegable del Inbox en TODAS las páginas.** Lo añadí para contener
+un desbordamiento horizontal. Por CSS, en cuanto `overflow-x` deja de ser
+`visible`, **`overflow-y` computa a `auto`**: el contenedor recorta en ambos
+ejes y el desplegable vive dentro de él. Medido en la app real: menú de 402 px,
+**0 px visibles**, y un clic sobre él lo recibía `MAIN`. Agravante: ocultar la
+barra de scroll —también mío, para ganar espacio— **borraba la única pista
+visual** del recorte. Retirado; ahora `overflow-y: visible`, el menú sale
+410 px fuera de la fila y el clic lo recibe el menú.
+
+🟠 **Dos regresiones de contraste, mías, corregidas**: los placeholders del
+editor **son los únicos rótulos** de esos campos (no hay `<label>`) y quedaron
+a **2,37:1** → ahora **7,04:1**; el botón Aprobar a **2,54:1**, peor que el
+3,30:1 que sustituyó → texto oscuro sobre el verde de marca, **7,74:1**.
+
+### Lo que NO se arregló, medido en vez de inferido
+
+El nav ocupa **845 px frente a 865 px antes de estos cambios** — 20 px menos,
+con un elemento más (padding `px-2 xl:px-3` y `API` reservado a `xl`). Por
+tanto el desbordamiento a **768 px (380), 900 (248) y 1024 (132)** es
+**preexistente** y queda ligeramente mejor. Arreglarlo de verdad es rediseñar
+la navegación de tablet: ver backlog.
+
 ### Siguiente paso concreto
 
-Fase 2: mover `ContentQueue` a `components/content/`, crear `app/content/page.tsx`,
-sacarlo de `/console`, restylarlo al tema oscuro y añadir «Contenido» al nav de
-escritorio **y al tab-bar móvil**, verificando a 320/375/390 px.
+Fase 3: `GET /api/v1/content/status` + estado vacío que nombra la causa +
+exponer `render_error` (hallazgo de la Fase 1) + chips por plataforma.
