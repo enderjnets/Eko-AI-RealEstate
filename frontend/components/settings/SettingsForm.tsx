@@ -82,6 +82,7 @@ export function SettingsForm() {
       const updated = await settingsApi.update({
         agency_name: data.agency_name,
         brokerage_line: data.brokerage_line,
+        booking_contact_email: data.booking_contact_email,
         agency_phone: data.agency_phone,
         agent_persona: data.agent_persona,
         greeting_template: data.greeting_template,

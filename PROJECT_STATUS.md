@@ -18,6 +18,7 @@ API lo rechazaba con 400 y no había campo en Ajustes.
 | # | Fase | Estado |
 |---|---|---|
 | 1 | `brokerage_line` tiene por fin una puerta (API + Ajustes) | ✅ completada |
+| 1b | `booking_contact_email` se guarda (fuera de plan, pedido por el dueño) | ✅ completada |
 | 2 | Contenido sale del escondite (`/content` + menú + tema oscuro) | ⏳ pendiente |
 | 3 | El vacío explica por qué está vacío (`/content/status`) | ⏳ pendiente |
 | 4 | Subir el clip desde el teléfono + bump v0.55.0 | ⏳ pendiente |
@@ -103,11 +104,6 @@ prometía "ships in v0.55.0"; el test de vaciado probaba `""` cuando la UI manda
 
 ### Hallazgos abiertos (backlog, no bloquean)
 
-- 🟠 **IMPORTANTE, PREEXISTENTE — `booking_contact_email` se pierde al guardar.**
-  Input editable en `SettingsForm.tsx:153-154`, pero **ausente del payload de
-  `handleSave()`**. Peor: `setData(updated)` hace que lo escrito **desaparezca de
-  la pantalla a la vez que sale «Guardado ✓»**. Cobertura cero. Sin ese correo,
-  un lead que solo dejó teléfono **no se puede agendar** (CLAUDE.md). Una línea.
 - 🟠 **IMPORTANTE, PREEXISTENTE — un render fallido es irreversible.**
   `render_pending` estampa `rendered_at` en cualquier fallo y la consulta solo
   toma `rendered_at IS NULL`; nada lo reinicia. Un fallo transitorio (disco
@@ -120,6 +116,36 @@ prometía "ships in v0.55.0"; el test de vaciado probaba `""` cuando la UI manda
   compose levanta ambos juntos.
 - 🟡 **MENOR — suciedad entre tests**: `test_content_gate_is_absolute.py` deja
   `brokerage_line` con su constante en vez de `NULL`.
+
+## Fase 1b — `booking_contact_email` se guarda (completada)
+
+**Commit:** `PENDIENTE_1B` en `feat/estudio-visible`. Fuera del plan: salió de la
+auditoría de la Fase 1 y el dueño pidió arreglarlo antes de seguir.
+
+El input existía desde que se añadió el campo y **nunca estuvo en el payload de
+`handleSave()`**. El fallo era silencioso en la peor forma: el PUT sale, devuelve
+200, aparece «Guardado ✓», y acto seguido `setData(updated)` sobrescribe el
+estado local con el del servidor — así que **la dirección escrita desaparece de
+la pantalla mientras la página dice que guardó**. Sin ella, Cal.com no puede
+agendar a un lead que solo dejó teléfono, que son la mayoría.
+
+**Verificado rompiéndolo, en el navegador contra Postgres:**
+
+| | PUT | valor en la BD |
+|---|---|---|
+| con el bug reintroducido en vivo | sí, 200 | `None` — descartado en silencio |
+| con el arreglo | sí, 200 | `'visitas@ejemplo-verificacion.com'` |
+
+**La guarda no es para este campo, es para el siguiente.** Un test de este campo
+habría sido un test del bug de ayer. `frontend/lib/__tests__/settingsFormWiring.test.ts`
+afirma la FORMA: el conjunto de campos pasados a `set(...)` y el conjunto de
+claves del payload de `settingsApi.update({...})` deben ser iguales. Quitar la
+línea del arreglo pone el test en rojo **nombrando el campo**. Incluye un test
+de cordura (si los regex dejan de casar, dos conjuntos vacíos serían "iguales"
+y no probarían nada).
+
+Checklist: **1014 backend** + **92 frontend** verdes · `tsc` sin errores ·
+`next build` *Compiled successfully* · diff de 1 línea sin secretos.
 
 ### Siguiente paso concreto
 
