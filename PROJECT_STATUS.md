@@ -214,14 +214,23 @@ EN/ES en el changelog de la app.
 
 ---
 
-# 🚀 DESPLIEGUE — preparado, NO ejecutado
+# ✅ DESPLEGADO — 26-ago-2026 (autorizado por el dueño)
 
-**Producción, comprobada ahora mismo:** `/api/v1/health` → `0.54.3`,
-`llm_fallback: ok` · ROG en `30d0668` · migración `041_monitor_state` ·
-`monitor_state` con una fila `llm_fallback / state='ok' / alerts_today=0` ·
-vigía externo en `ender-vps` con `state=up` y su cron.
+**Ejecutado y verificado:** merge fast-forward a `main` + tag `v0.54.4` en
+GitHub · bundle al ROG (`20200e4`) · imágenes construidas ANTES de migrar ·
+`042_alerted_state` aplicada · `up -d` · vigía externo actualizado en
+`ender-vps` con el cron corregido para dejar de tirar la salida a `/dev/null`.
 
-**Espero tu autorización en un mensaje aparte.**
+| Verificación | Resultado real |
+|---|---|
+| `/api/v1/health` | `"version":"0.54.4"`, `"llm_fallback":"ok"` · frontend 200 |
+| Backfill | `state='ok'` → `alerted_state='ok'`; el primer tick **no** mandó nada, como estaba previsto |
+| Arranque | `LLM fallback monitor started (every 300s)` + los tres workers, sin errores |
+| **Capa 1, reintento en vivo** | envío mockeado a `False`: `(unreachable, ok, 1)` → `(unreachable, ok, 2)` — **no se dio por comunicada y reintentó**. Al entregar: `(unreachable, unreachable, 3)`. Estado y presupuesto restaurados a `(ok, ok, 0)` |
+| **Capa 2, reintento en vivo** | en `ender-vps` con estado desechable: fallo de entrega → `state` sigue `up` + `state NOT recorded`, y el siguiente ciclo **reintenta**. Estado real intacto |
+
+Antes: `0.54.3` / migración `041`. Rollback documentado más abajo — **bajar la
+migración ANTES de volver el código**.
 
 ### Variables de entorno
 
