@@ -207,7 +207,7 @@ la navegación de tablet: ver backlog.
 
 ## Fase 3 — el vacío explica por qué está vacío (completada)
 
-**Commit:** `PENDIENTE_3` en `feat/estudio-visible`.
+**Commit:** `e51cda2` en `feat/estudio-visible`.
 
 `GET /api/v1/content/status` (booleanos + conteos, sin valores de configuración),
 `render_error` expuesto y pintado por fin, chips por plataforma, y un diagnóstico
