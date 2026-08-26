@@ -28,7 +28,7 @@ Rama única: `feat/estudio-visible`. **Sin commits a `main`. Sin despliegue.**
 
 ## Fase 1 — la puerta de `brokerage_line` (completada)
 
-**Commit:** `8a34595` en `feat/estudio-visible`.
+**Commit:** `c16487e` en `feat/estudio-visible`.
 
 ### Checklist de "terminado" — resultado real
 
