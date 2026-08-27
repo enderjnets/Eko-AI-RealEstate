@@ -6,9 +6,19 @@ __pycache__/
 .Python
 .venv/
 venv/
+# Secrets are ignored by SHAPE, not by name. The three patterns that used to be
+# here (`.env`, `.env.local`, `.env.*.local`) covered the names somebody thought
+# of in advance, and backups never come back with those names: on the ROG
+# checkout this left `.env.pre-mudanza-20260827` — written during the VPS
+# migration, carrying the live Twilio auth token — sitting untracked one
+# `git add -A` away from the repo, along with `.env.pre-v0.41.0` and
+# `.env.pre-v0.46.3`. Nothing was ever committed; the exposure was one careless
+# command away, which is not the same as safe.
+# `!.env.example` keeps the one that MUST stay tracked: it is the template, and
+# a guard test asserts every setting appears in it.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
