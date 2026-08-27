@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.60.0";
+export const CURRENT_VERSION = "0.61.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.61.0",
+    date: "2026-08-27",
+    title: {
+      en: "Your clients see your brand, not ours",
+      es: "Sus clientes ven su marca, no la nuestra",
+    },
+    changes: [
+      {
+        en: "The phone assistant now introduces herself as Clara, Natalia and Robbie\u2019s assistant at Denver Home Story. If a caller asks whether she is a person, she says plainly that she is an AI assistant \u2014 she will never deny it or dodge the question, and she will tell them who they will actually meet.",
+        es: "La asistente telef\u00f3nica se presenta ya como Clara, la asistente de Natalia y Robbie en Denver Home Story. Si quien llama pregunta si es una persona, responde con claridad que es una asistente de IA \u2014 nunca lo niega ni esquiva la pregunta, y dice qui\u00e9n le atender\u00e1 en persona.",
+      },
+      {
+        en: "Your public website and your working panel are now separated by address, ready for the day your own domain goes live: the brand site will answer only the pages your clients should see, and the internal pages \u2014 including the one that describes the software behind this service \u2014 stay on the working address. Nothing changes until the domain moves.",
+        es: "Su web p\u00fablica y su panel de trabajo quedan separados por direcci\u00f3n, listos para el d\u00eda que su dominio propio entre en servicio: la web de marca responder\u00e1 solo las p\u00e1ginas que sus clientes deben ver, y las internas \u2014 incluida la que describe el software que hay detr\u00e1s \u2014 se quedan en la direcci\u00f3n de trabajo. Nada cambia hasta que el dominio se mueva.",
+      },
+    ],
+  },
   {
     version: "0.60.0",
     date: "2026-08-27",

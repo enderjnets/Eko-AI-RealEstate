@@ -2,6 +2,34 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.61.0] — 2026-08-27
+
+### Cambiado — la plataforma deja de asomar por las superficies del cliente
+
+Regla del dueño: **Eko AI Realtors es la plataforma DETRÁS de
+`denverhomestory.com`; su público no debe verla.**
+
+- **La asistente telefónica es ahora «Clara»**, de Natalia y Robbie en Denver
+  Home Story. Y si le preguntan qué es, **dice que es una IA sin evasivas**:
+  hoy ninguna ley de Colorado lo exige (la SB 24-205 nunca entró en vigor; su
+  sustituta llega el 1-ene-2027), pero quien reserva una visita creyendo hablar
+  con una persona y luego se entera, reclama al broker con licencia.
+- **`/about` sale del dominio de marca.** Esa página vende *esta plataforma* a
+  inmobiliarias; servírsela a un vendedor de casa llegado de un vídeo era la
+  peor página disponible ahí. Estaba en `PUBLIC_PATHS`.
+- **El nombre de pantalla de inicio.** Los metadatos de Next se *mezclan*, no se
+  reemplazan: la landing heredaba «Eko AI Realtors» del layout raíz.
+
+### Corregido — dos trampas que muerden al configurar los dominios
+
+- Un `Host` acabado en punto (`www.denverhomestory.com.`) es el **mismo nombre**
+  para DNS y otra cadena para `===`: caía por todas las comparaciones y servía
+  el panel interno bajo el dominio de marca. Normalizado en ambos lados.
+- `BRAND_URL == PANEL_URL` producía **redirección infinita**. Ahora se trata
+  como «sin configurar». La guarda deja además de comprobar las URLs:
+  `hostOf("") === ""`, así que esas cláusulas eran código muerto con forma de
+  comprobación.
+
 ## [0.60.0] — 2026-08-27
 
 ### Añadido — el expediente de la cita, y la atribución que ya se guardaba
