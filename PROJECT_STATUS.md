@@ -641,3 +641,53 @@ demás canales **sí** son reales: `EMAIL_SIMULATED=false`, `SMS_SIMULATED=false
 **Ejecutar A.1, el corte**, en cuanto el dueño lo autorice viendo estas
 evidencias. Después: encender el puente de Ollama y verificar `off → ok`, mover
 el vigía al ROG (A.2), y cerrar (A.3). Solo entonces, la Fase B con la landing.
+
+---
+
+# 🚀 DESPLIEGUE PREPARADO — v0.60.0 (esperando autorización, 27-ago-2026)
+
+Producción: VPS `ender-vps`, **v0.59.0**, migración en `043_fair_housing_flags`.
+Esta tanda añade **una** migración: `044_message_internal`.
+
+## Antes de empezar
+- Ramas apiladas: citas-ics → idioma → temas-de-vendedor → **registro-de-la-cita**.
+  Desplegar esta última lleva todo lo anterior; v0.59.0 ya está vivo.
+- Push desde la terminal del dueño (el clasificador lo bloquea al agente):
+  `cd ~/Eko-AI-RealEstate && git push -u origin feat/registro-de-la-cita`
+- ⚠️ En el VPS conviven `zorros-*` y `blackvolt-*`: **no tocarlos**.
+
+## Pasos, en este orden
+1. Bundle desde el Mac y `scp` (el VPS no puede clonar de GitHub):
+   `git bundle create /tmp/eko-v060.bundle feat/registro-de-la-cita`
+2. En el VPS: `git fetch /tmp/eko-v060.bundle feat/registro-de-la-cita:refs/deploy/v060`
+   y `git checkout -B deploy-v060 refs/deploy/v060`
+3. `docker compose build backend frontend` — **construir ANTES de migrar**
+4. `docker compose run --rm -T backend alembic upgrade head` → debe pasar a
+   `044_message_internal`
+5. `docker compose up -d backend frontend`
+6. Verificar **en `/api/v1/health` por el dominio público**, nunca el tag local:
+   `0.60.0`, `llm_fallback:"ok"`, `captcha:"on"`
+
+## Variables de entorno
+**Ninguna nueva.** Nada que añadir al `.env` del VPS.
+
+## Verificación post-deploy (medida, no «debería»)
+- `SELECT count(*) FROM messages WHERE internal` → 0 (aún no hay citas nuevas)
+- `SELECT count(*) FROM messages WHERE internal AND external_id IS NULL` → 0
+- Cita de prueba **al correo del dueño, nunca al de Natalia**: aparecen 2 filas,
+  una `internal=true`, ambas con su `external_id` real de Resend. Borrarlas.
+- Abrir esa conversación en el panel: la nota interna se ve marcada como tal.
+- Un lead con `?utm_source=…` en la landing muestra su origen en la ficha.
+- Zorros y Black Volt siguen arriba.
+
+## Reversión
+La migración 044 tiene `downgrade()` (`DROP COLUMN messages.internal`), pero el
+camino rápido es el de siempre: `git checkout deploy-v059` + `build` + `up -d`.
+La columna sobrante es **inerte** para v0.59.0 (nada la lee), así que **no hace
+falta bajar la migración** para volver — y no bajarla evita perder las notas
+internas ya escritas si se re-despliega. Bajarla solo si se abandona la función.
+
+**Riesgo real bajo**: sin variables nuevas, una columna aditiva con
+`server_default`, y ningún cambio en el camino de respuesta al lead. Lo que sí
+cambia de comportamiento visible: el Inbox deja de contar las notas internas
+como «última palabra» (era el bloqueante B1).
