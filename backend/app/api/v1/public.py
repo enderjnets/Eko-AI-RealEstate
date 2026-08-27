@@ -249,6 +249,18 @@ async def capture(
     except CaptureRejected as exc:
         raise HTTPException(status_code=422, detail=exc.code) from exc
 
+    # A lead we cannot reach is not a lead. Every field on this form is optional,
+    # which was correct while there were two automatic channels; SMS is not one
+    # of them today (Twilio accepts and the carrier drops it — error 30034,
+    # measured), so a phone-only submission produces a row nobody can answer.
+    # Refusing it in front of the person, while they are still on the page and
+    # can add an address, is better than accepting it and going quiet.
+    #
+    # After the captcha check would be wrong: this costs nothing to evaluate and
+    # tells an honest visitor what to fix, whereas a bot never gets this far.
+    if get_settings().CAPTURE_REQUIRE_EMAIL and not (submission.email or "").strip():
+        raise HTTPException(status_code=422, detail="email_required")
+
     # 3. Captcha before the global budget is touched. A request the captcha
     #    will refuse must not be able to spend a slot: that turned the ceiling
     #    into a kill switch anyone could hold down without solving anything.

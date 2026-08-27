@@ -17,10 +17,12 @@ new message in the same Conversation row (matched by Conversation.external_threa
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
@@ -325,6 +327,22 @@ def parse_inbound_email(payload: dict[str, Any]) -> list[ParsedMessage]:
 # ── Outbound send ──────────────────────────────────────────────────────
 
 
+@dataclass(frozen=True)
+class Attachment:
+    """One file to hang off an email.
+
+    Carried as raw bytes and base64-encoded at the point of sending, so callers
+    never have to know Resend's wire format and no caller can pass a
+    half-encoded string. Resend's cap is 40 MB per email AFTER encoding; nothing
+    we attach today is within three orders of magnitude of that, and the one
+    thing that could be — an uploaded clip — has no business on an email.
+    """
+
+    filename: str
+    content: bytes
+    content_type: str | None = None
+
+
 async def send_email(
     *,
     to: str,
@@ -333,6 +351,7 @@ async def send_email(
     body_html: str | None = None,
     in_reply_to: str | None = None,
     references: str | None = None,
+    attachments: list[Attachment] | None = None,
 ) -> dict[str, Any]:
     """Send via Resend, or LOG when EMAIL_SIMULATED=true.
 
@@ -344,8 +363,12 @@ async def send_email(
     if s.EMAIL_SIMULATED:
         fake_id = f"resend.SIMULATED_{uuid4().hex}"
         log.info(
-            "Email SIMULATED outbound to=%s subject=%r body_len=%d in_reply_to=%s (would-be id=%s)",
-            to, subject, len(body_text), in_reply_to, fake_id,
+            "Email SIMULATED outbound to=%s subject=%r body_len=%d attachments=%s in_reply_to=%s (would-be id=%s)",
+            to, subject, len(body_text),
+            # Names and sizes, never contents: an .ics carries a lead's name and
+            # the address of a property they are visiting.
+            [(a.filename, len(a.content)) for a in (attachments or [])],
+            in_reply_to, fake_id,
         )
         return {"id": fake_id, "simulated": True}
 
@@ -384,6 +407,20 @@ async def send_email(
         body["html"] = body_html
     if headers:
         body["headers"] = headers
+    if attachments:
+        # Resend takes `content` as a base64 string; `content_type` is derived
+        # from the filename when omitted, but an .ics that arrives as
+        # application/octet-stream is a file the recipient must save and open
+        # by hand instead of a button that says "Add to calendar" — so it is
+        # always sent explicitly.
+        body["attachments"] = [
+            {
+                "filename": a.filename,
+                "content": base64.b64encode(a.content).decode("ascii"),
+                **({"content_type": a.content_type} if a.content_type else {}),
+            }
+            for a in attachments
+        ]
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         resp = await client.post(

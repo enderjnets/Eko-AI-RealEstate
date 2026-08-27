@@ -511,6 +511,20 @@ async def book_slot(
     except Exception as exc:  # noqa: BLE001
         log.warning("Could not enqueue follow-ups for visit %d: %s", visit.id, exc)
 
+    # The calendar invitation. AFTER the commit, on purpose: the booking is the
+    # fact and this is the announcement of it, so nothing here may cost the
+    # visit. `send_visit_invitation` swallows its own failures for the same
+    # reason — and this is what makes the appointment reach a real calendar,
+    # which `create_booking` has never done while CALENDAR_SIMULATED is true.
+    from app.services.followups import _lead_language  # single source of truth
+    from app.services.visit_invite import send_visit_invitation
+
+    try:
+        language = await _lead_language(lead, db)
+    except Exception:  # noqa: BLE001 — a language guess must not cost the invitation
+        language = "en"
+    await send_visit_invitation(db, visit, lead, language=language)
+
     return VisitOut.model_validate(visit)
 
 

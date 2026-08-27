@@ -2,6 +2,34 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.58.0] — 2026-08-27
+
+### Añadido — invitaciones de calendario (.ics), y las citas dejan de ser mentira
+
+- Medido en producción: **las 4 visitas llevan `external_booking_id`
+  `calcom-sim-…`**. `CALENDAR_SIMULATED` está en true, así que `create_booking`
+  inventa un id y no reserva nada. El panel mostraba la cita y el asistente de
+  voz se lo decía al que llamaba **en voz alta**.
+- `services/icalendar.py` construye el VEVENT a mano. Las cuatro cosas que
+  fallan en un `.ics` y ninguna falla ruidosamente: **CRLF** (Outlook y Apple
+  rechazan el fichero sin él), **plegado a 75 OCTETOS** sin partir un carácter
+  multibyte, **escapado** (una coma sin escapar corta la dirección), y **UTC de
+  verdad** — un naive se **rechaza** en vez de suponerlo, que es el fallo de
+  seis horas que este repo ya pagó.
+- Se envía al lead y a la agencia, con adjunto `text/calendar; method=REQUEST`.
+  La copia de la agencia lleva **quién, teléfono, correo y qué pidió**.
+- El camino del lead **consulta la baja** (`may_send_automated`): lo cazó el
+  barrido AST del repo, y tenía razón — una invitación a un lead es un mensaje
+  a un lead. La copia interna a la agencia no pasa por ahí porque no lo es.
+- Nunca rompe una reserva: la visita es el hecho, la invitación es el aviso.
+
+### Cambiado — el formulario público exige email mientras el SMS esté caído
+
+- Twilio acepta el SMS (201) y la operadora lo tira: **error 30034**, el número
+  no está registrado en A2P 10DLC. Un lead que solo deja teléfono no es
+  alcanzable por ningún canal automático. `CAPTURE_REQUIRE_EMAIL` (ajuste, no
+  constante) lo exige; vuelve a false cuando el SMS entregue.
+
 ## [0.57.0] — 2026-08-27
 
 ### Añadido — copias de seguridad, que no existían

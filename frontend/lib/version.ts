@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.57.0";
+export const CURRENT_VERSION = "0.58.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.58.0",
+    date: "2026-08-27",
+    title: {
+      en: "Appointments that reach a real calendar",
+      es: "Citas que llegan a un calendario de verdad",
+    },
+    changes: [
+      {
+        en: "Appointments now reach a real calendar. Booking a visit \u2014 from the website, from the dashboard, or by phone with the assistant \u2014 sends a calendar invitation by email to the client and to you, with the file that adds it to your calendar in one click. Until now a booking existed only inside this dashboard: the assistant told callers out loud that their visit was confirmed and no calendar anywhere was told.",
+        es: "Las citas llegan ya a un calendario de verdad. Al agendar una visita \u2014 desde la web, desde el panel, o por tel\u00e9fono con el asistente \u2014 se env\u00eda una invitaci\u00f3n por correo al cliente y a usted, con el archivo que la a\u00f1ade a su calendario en un clic. Hasta ahora la cita exist\u00eda solo dentro de este panel: el asistente le dec\u00eda al que llamaba, en voz alta, que su visita quedaba confirmada, y ning\u00fan calendario se enteraba.",
+      },
+      {
+        en: "Your copy of the invitation carries who you are about to meet: name, phone, email and what they asked for, so you walk into the visit informed without opening the dashboard.",
+        es: "Su copia de la invitaci\u00f3n lleva a qui\u00e9n va a ver: nombre, tel\u00e9fono, correo y qu\u00e9 pidi\u00f3, para que llegue a la visita informada sin abrir el panel.",
+      },
+      {
+        en: "The public form now asks for an email address. Text messages are not being delivered by the US carriers until the number completes its A2P registration, so a lead who left only a phone number could not be answered by any automatic channel. Asking for the address while the person is still on the page is better than accepting the enquiry and going quiet.",
+        es: "El formulario p\u00fablico pide ahora una direcci\u00f3n de correo. Los mensajes de texto no los est\u00e1n entregando las operadoras de EE.UU. hasta que el n\u00famero complete su registro A2P, as\u00ed que un lead que dejaba solo el tel\u00e9fono no pod\u00eda ser atendido por ning\u00fan canal autom\u00e1tico. Pedir la direcci\u00f3n mientras la persona sigue en la p\u00e1gina es mejor que aceptar la consulta y quedarse callados.",
+      },
+    ],
+  },
   {
     version: "0.57.0",
     date: "2026-08-27",

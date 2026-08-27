@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.57.0"
+    APP_VERSION: str = "0.58.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -131,6 +131,18 @@ class Settings(BaseSettings):
     # TWILIO_* values and flip SIMULATED to false. TWILIO_WEBHOOK_URL is the exact
     # public URL configured in the Twilio console (used for signature validation
     # behind a proxy); if blank we reconstruct it from forwarded headers.
+    # The public form takes name, email, phone and message, and until now all
+    # four were optional — so a lead could arrive reachable only by SMS. That
+    # was fine while SMS worked. It does not: Twilio accepts the message and the
+    # carrier drops it (error 30034, the number is not registered for A2P
+    # 10DLC), so a phone-only lead today cannot be reached by ANY automatic
+    # channel and only a human calling them recovers it.
+    #
+    # A setting rather than a constant, because this is a statement about the
+    # world and not about the product: when A2P registration completes, this
+    # goes back to false without a deploy.
+    CAPTURE_REQUIRE_EMAIL: bool = True
+
     SMS_SIMULATED: bool = True
     TWILIO_ACCOUNT_SID: str = ""
     # Two jobs used to ride on this one value: authenticating what we SEND, and

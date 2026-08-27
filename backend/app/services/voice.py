@@ -436,6 +436,15 @@ async def handle_tool_call(
             except Exception as exc:  # noqa: BLE001
                 log.warning("Could not enqueue follow-ups for voice visit %d: %s", visit.id, exc)
 
+            # The invitation matters MOST on this path. Here the assistant is
+            # about to say out loud, to a person on the phone, that the visit is
+            # booked — and until this line existed, that sentence was the only
+            # trace of the appointment outside our own table. A caller who left
+            # an email now gets something they can put in their calendar.
+            from app.services.visit_invite import send_visit_invitation
+
+            await send_visit_invitation(db, visit, lead)
+
             when_str = booking.scheduled_at.astimezone(zone).strftime("%A %b %d at %I:%M %p")
             return f"Your visit is booked for {when_str}. You'll get a reminder beforehand."
 

@@ -869,6 +869,7 @@ async def test_a_consent_record_is_written_once_and_never_replaced() -> None:
         status, _ = await _post(
             {
                 "phone": "(999) 555-4321",
+                "email": "consent-once@example.com",
                 "consent": True,
                 "consent_text": "OVERWRITTEN BY A STRANGER",
             },
@@ -907,6 +908,7 @@ async def test_consent_on_an_existing_contact_is_flagged() -> None:
         await _post(
             {
                 "phone": "(999) 555-4322",
+                "email": "consent-flagged@example.com",
                 "consent": True,
                 "consent_text": "I agree to receive texts.",
             }
@@ -1119,3 +1121,79 @@ async def test_two_leads_sharing_an_address_are_not_merged() -> None:
             )
             await db.commit()
         await _cleanup()
+
+
+# ── A lead we cannot reach is not a lead ──────────────────────────────────────
+#
+# Every field on this form is optional, which was right while there were two
+# automatic channels. There is one: SMS is dead at the carrier (Twilio returns
+# 201 and the carrier drops the message — error 30034, the number is not
+# registered for A2P 10DLC, measured in production on 27-ago-2026). A phone-only
+# submission therefore produces a row that no automatic channel can answer, and
+# only a human phoning them recovers it.
+
+
+@pytest.mark.asyncio
+async def test_a_phone_only_submission_is_refused_while_sms_is_dead() -> None:
+    """Refused in front of the person, while they can still add an address.
+
+    Accepting it and going quiet is the worse failure: the visitor believes
+    they asked for a call back, and nothing in the system can tell them
+    otherwise.
+    """
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    status, body = await _post(
+        {
+            "name": "Solo Telefono",
+            "phone": "(999) 555-8801",
+            "message": "Quiero vender mi casa",
+        }
+    )
+    assert status == 422
+    assert body.get("detail") == "email_required"
+    # Nothing should have been written. Asserted rather than assumed: a 422 that
+    # still inserts is the interesting failure, and the first version of this
+    # test picked a phone number another test already used, so the collision it
+    # caused was mistaken for pollution from elsewhere.
+    async with get_bypass_session_factory()() as session:
+        left = (
+            await session.execute(
+                text("SELECT count(*) FROM leads WHERE phone = '+19995558801'")
+            )
+        ).scalar()
+    assert left == 0
+
+
+@pytest.mark.asyncio
+async def test_the_requirement_is_a_setting_and_lifts_when_sms_comes_back(
+    monkeypatch,
+) -> None:
+    """The instrument, validated by turning it off.
+
+    Without this the previous test passes for a setting that is hard-coded, and
+    the day A2P registration completes nobody can tell whether flipping the flag
+    actually does anything.
+    """
+    from app.config import get_settings
+
+    monkeypatch.setenv("CAPTURE_REQUIRE_EMAIL", "false")
+    get_settings.cache_clear()
+    try:
+        status, _ = await _post(
+            {
+                "name": "Solo Telefono",
+                "phone": "(999) 555-8802",
+                "message": "Quiero vender mi casa",
+            }
+        )
+        assert status == 202
+    finally:
+        monkeypatch.delenv("CAPTURE_REQUIRE_EMAIL", raising=False)
+        get_settings.cache_clear()
+        async with get_bypass_session_factory()() as session:
+            await session.execute(
+                text("DELETE FROM leads WHERE phone = '+19995558802'")
+            )
+            await session.commit()
