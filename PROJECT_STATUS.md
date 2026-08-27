@@ -423,6 +423,52 @@ producto, dos respuestas a una entrada». No lo hace — `settings.py` devuelve
 400 y `visits.py` 422, porque un validador de Pydantic no puede emitir 400. Las
 dos rechazan, que era lo que importaba, pero la unificación no ocurrió.
 
-**Siguiente paso concreto**: Fase 3 — el aviso de tamaño antes de subir
-(bajar `CONTENT_UPLOAD_MAX_MB` de 500 a 95 en los tres sitios a la vez,
-exponerlo en `StudioStatus`, y comprobar `file.size` antes de abrir el XHR).
+## Fase 3 — el aviso de tamaño, antes de gastar la subida (completada)
+
+`3b1db3b` (implementación) + `9d034cb` (arreglos de auditoría).
+
+**Checklist, resultado real**: 1107 backend + 108 frontend verdes, 0 saltados ·
+`ruff check app tests` y `npx tsc --noEmit` limpios · imagen compila · sin
+secretos en el diff · mutaciones verificadas en las dos capas del backend y en
+la guarda del cliente.
+
+**Qué cambió**: `CONTENT_UPLOAD_MAX_MB` de 500 a **95** en los tres sitios a la
+vez, `upload_max_mb` expuesto en `StudioStatus`, y el navegador comprueba
+`file.size` **antes** de abrir la petición. El test que importa no comprueba que
+rechace: comprueba que **`sent` quede vacío**.
+
+### La auditoría, y el hallazgo que era mío
+
+| Hallazgo | Clase | Estado |
+|---|---|---|
+| **Bajar el tope no desbloqueó la puerta: movió el ladrillo.** Escribí que a 95 respondería la ruta con su mensaje. No: el middleware `BodySizeLimit` de `main.py` corta cualquier petición que declare `Content-Length` —toda subida de navegador— y devuelve el token interno `body_too_large`. Medido: `95 MB + 1 byte -> {"detail":"body_too_large"}` | 🔴 bloqueante | ✅ arreglado |
+| **Mi test pasaba precisamente por eso**: `monkeypatch` del ajuste a 1 MB, pero `_STREAM_PATHS` se construye al importar desde ese ajuste, así que el middleware seguía en 95. Una configuración que no puede existir | 🔴 bloqueante | ✅ arreglado |
+| `API 413: body_too_large` en crudo a la agente, en inglés, con la frase traducida para ese evento sin usar | importante | ✅ arreglado |
+| El changelog nombraba la 0.56.0, que aún no existe | importante | ✅ quitado |
+| `toFixed(1)` decía «pesa 95 MB y el límite son 95 MB» | menor | ✅ redondeo hacia arriba |
+| El tope no se enseñaba antes de elegir fichero — la justificación que escribí y no cumplí | menor | ✅ arreglado |
+| Docstring espejo de TS, `CHANGELOG.md`, y el número de línea del comentario | menor | ✅ los tres |
+
+**La forma del error, otra vez**: afirmé en un comentario algo que el código no
+hacía, y escribí un test que no podía fallar por el motivo por el que producción
+falla. Lo irónico es que **mi propio comentario en `UploadClip.tsx:48` ya avisaba**
+de que el rechazo «puede llegar como `body_too_large`». El comentario tenía razón
+y el mensaje del commit lo contradijo.
+
+**Las dos capas se quedan, y no son redundantes**: el middleware mira el
+`Content-Length` declarado (lo que fija un navegador) y la ruta cuenta bytes al
+llegar, que es la única guarda contra un cuerpo **troceado** que no declara
+longitud. Mutando cada capa por separado cae exactamente un test distinto.
+
+**Coste dicho en voz alta**: un clip de 96 MB que ayer pasaba, hoy se rechaza.
+95 y no 99 porque ~100 MB es donde se **observó** que rompe el túnel, no una
+cifra documentada, y un tope al borde de un acantilado medido falla intermitente
+en vez de limpio.
+
+**Deuda anotada, no arreglada**: un clip de 4K de más de 95 MB sigue sin poder
+subirse. La salida real es subida por trozos, y es otra versión.
+
+**Siguiente paso concreto**: Fase 4 — el nav entre 768 y 1279 px (mover el corte
+de `md` a `lg` en `Nav.tsx` **y** en `globals.css:31`, un `OverflowMenu`
+reutilizable, y gatear `/discovery` con `isOperator` en escritorio), más el bump
+a **v0.56.0** en los cuatro sitios.
