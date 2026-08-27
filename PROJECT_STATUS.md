@@ -396,15 +396,21 @@ acababa de escribir (`except (ZoneInfoNotFoundError, ValueError)`) en vez de la
 por eso encontró el sitio que se parecía al mío y no los tres que hacían el
 mismo daño.
 
-**Dos que NO he arreglado, y por qué** — necesitan una decisión tuya:
+### Los otros dos sitios — decididos y cerrados en `2cf1ce0`
 
-- `calendar_cal.py:85` y `conversation.py:833` siguen cayendo a UTC cuando el
-  timezone **de la propia agencia** es inservible. El segundo formatea las horas
-  que un lead real recibe por SMS/WhatsApp como «HUECOS REALES DISPONIBLES (zona
-  de la oficina)». Arreglarlo no es técnico: hay que decidir **qué oye un lead
-  cuando la zona horaria de la agencia está rota** — ¿no se le ofrecen horas, o
-  se le ofrecen en UTC con un aviso? Callar y ofrecer horas mal es la única
-  opción que hoy está descartada.
+**Decisión del dueño**: cuando la zona horaria de la agencia es inservible, el
+lead **no recibe horas**. Ni en UTC con aviso, ni deducidas del prefijo del
+teléfono. La respuesta sale igual, sin horas dentro.
+
+`calendar_cal.py` lanza ahora `UnusableTimezone` (subclase de `CalComError`, así
+que todos los llamadores que ya degradaban con elegancia siguen haciéndolo) y
+`conversation.py` devuelve `""`. **Las dos guardas se dejan a propósito**:
+medido, cada una por separado basta, y esa redundancia es la que quiero.
+
+**Descartada, con motivo**: usar el huso del visitante. No hay ningún visitante
+con navegador — `public.py` tiene un solo endpoint sin login (el formulario de
+captura) y el panel ya muestra la zona de la oficina deliberadamente
+(`BookingDialog.tsx:50`). Un lead por SMS es un número de teléfono.
 
 **Comprobación pre-despliegue que no pude hacer** (el clasificador bloqueó el
 `ssh`): si alguna fila de producción tiene `agent_settings.timezone` inválido,
