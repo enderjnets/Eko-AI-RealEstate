@@ -798,7 +798,8 @@ async def _real_slots_note(
     from datetime import timedelta
 
     from app.api.v1.visits import _busy_starts
-    from app.services.calendar_cal import list_available_slots
+    from app.services.calendar_cal import UnusableTimezone, list_available_slots
+    from app.services.timezones import resolve_zone
 
     now = datetime.now(UTC)
     try:
@@ -823,17 +824,33 @@ async def _real_slots_note(
             ),
             timeout=_SLOTS_BUDGET_SECONDS,
         )
+    except UnusableTimezone as exc:
+        # Not a blip: the agency's own timezone is unusable, so every hour we
+        # could offer would be wrong by its offset. The lead gets a reply with
+        # no hours in it rather than hours it cannot keep — a person who is
+        # asked to wait is better served than one who is given the wrong
+        # Tuesday. Logged at error, because this is a config fault somebody has
+        # to fix, not weather.
+        log.error("refusing to offer hours for org %s: %s", agent_cfg.org_id, exc)
+        return ""
     except Exception as exc:  # noqa: BLE001 — a calendar blip must not cost a reply
         log.warning("could not read availability for the reply: %s", exc)
         return ""
     if not slots:
         return ""
-    from zoneinfo import ZoneInfo
-
-    try:
-        zone = ZoneInfo(agent_cfg.timezone or "UTC")
-    except Exception:  # noqa: BLE001
-        zone = UTC
+    # No UTC fallback. `list_available_slots` has already refused an unusable
+    # zone above, so this cannot normally be None — but the previous version
+    # substituted UTC here as well, which meant the SAME wrong hours could be
+    # printed even on a path where generation had succeeded in a different
+    # zone. Two silent substitutions of the same value is how it survived.
+    zone = resolve_zone(agent_cfg.timezone or "UTC")
+    if zone is None:
+        log.error(
+            "office timezone %r is unusable; offering no hours for org %s",
+            agent_cfg.timezone,
+            agent_cfg.org_id,
+        )
+        return ""
     offered = ", ".join(
         slot.start.astimezone(zone).strftime("%A %d %H:%M") for slot in slots[:5]
     )
