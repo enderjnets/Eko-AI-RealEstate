@@ -46,15 +46,27 @@ Fotografía DNS completa guardada como línea base para el cotejo posterior.
 
 ### Lo que necesito del dueño (y por qué no puedo hacerlo yo)
 
-1. **GoDaddy → DNS → DNSSEC → desactivar.** Su API no expone DNSSEC. Va
-   **primero**: mover los NS con los DS vivos deja el dominio entero en
-   SERVFAIL hasta 6 h.
+1. ✅ **HECHO (27-ago, ~17:05)** — GoDaddy → DNS → DNSSEC desactivado.
+   Verificado: los **13 servidores del registro `.com` ya no publican DS**
+   (`a/b/m.gtld-servers.net` → solo SOA). El dominio sigue resolviendo.
+   ⏳ **Pero aún NO se pueden mover los NS**: la caché de los resolutores
+   públicos es **inconsistente entre nodos** — unos ya la soltaron y otros
+   retienen los DS viejos con **~5,5 h** de TTL. Mover ahora haría que quien
+   caiga en un nodo con caché valide contra una clave que ya no existe →
+   **SERVFAIL**. Ventana segura medida: **a partir de las 22:37 del 27-ago**.
+   Antes de dar luz verde, recomprobar que los tres resolutores devuelven
+   vacío de forma estable.
 1.b **Apagar el «Domain Lock»** antes de tocar los nameservers, y volver a
    encenderlo después. RDAP dice `clientUpdateProhibited`: con el candado
    puesto, GoDaddy rechaza el cambio. (El bloqueo ICANN de 60 días por ser un
    registro nuevo **no** afecta: eso impide transferir de registrador, no
    cambiar NS.)
-2. **Twilio → TwiML Bins → crear `voz-a-vapi`** con el XML del plan. No hay API.
+2. ~~Twilio → TwiML Bins~~ **RETIRADO el 27-ago: el dueño tenía razón.** No hay
+   que arreglar el número de Twilio, hay que tener un teléfono que conteste — y
+   `+17208249313` (VAPI) ya contesta. El de Twilio no está publicado y su único
+   trabajo futuro es el SMS, aparcado. El reenvío añadía una pata, coste por
+   minuto y una pieza más para llegar al mismo sitio. **Este bloqueo ya no
+   existe.**
 3. *(opcional)* El token de Cloudflare acotado a esa zona, para que yo haga
    SPF/DMARC y luego el correo. **El de GoDaddy no lo recomiendo**: no puede
    hacer lo único que hace falta, y tras el cambio GoDaddy solo es registrador.
@@ -65,6 +77,10 @@ Fotografía DNS completa guardada como línea base para el cotejo posterior.
 viven en consolas sin API — medido, no supuesto: la especificación de GoDaddy no
 tiene DNSSEC, y los TwiML Bins no tienen endpoint REST. No es un fallo de
 ejecución ni un intento fallido; es una dependencia externa.
+
+> Actualización 27-ago: de los dos clics **solo queda uno** (el DNSSEC, ya
+> hecho). El del TwiML Bin se retiró por innecesario. Lo de abajo queda como
+> registro del razonamiento.
 
 **Salida 1 (recomendada) — esperar los dos clics.** ~5 minutos del dueño. Un
 TwiML Bin lo hospeda Twilio, así que el reenvío **sigue funcionando aunque
@@ -77,26 +93,48 @@ pida: convierte nuestro backend en **dependencia de las llamadas entrantes**
 despliegue que ahora mismo no está autorizado. Peor fiabilidad para ahorrar dos
 minutos de consola.
 
-### Hallazgo: el plan estaba desfasado sobre el enrutado por host
+## ✅ FASE CERRADA — Enrutado por nombre de host · commit `7d2e35e`
 
-Al ir a construir la pieza siguiente resultó que **ya estaba construida**
-(`7d2e35e`): `middleware.ts`, `lib/hosts.ts`, `robots` y canónicas
-condicionales, y `hostRouting.test.ts`. El plan la listaba como pendiente. Se
-corrigió el plan en vez de volver a escribirla.
+Se descubrió al ir a construirla: **ya estaba escrita**. El plan la listaba como
+pendiente; se corrigió el plan en vez de reescribir código. Lo que aporta esta
+sesión es la **validación** que le faltaba, medida hoy y no por inspección.
 
-Checklist verificado hoy sobre ese trabajo (frontend, que es lo único que toca):
+| # | Punto del checklist | Resultado real |
+|---|---|---|
+| 1 | Tests | **142/142 en verde**, 10 ficheros, **0 saltados** (`npx vitest run`) |
+| 2 | Typecheck | `npx tsc --noEmit` → **sin salida = sin errores** |
+| 3 | Build | `npx next build` **compila**; el middleware entra en el bundle (26,7 kB) |
+| 4 | Cobertura del código nuevo | `middleware.ts` + `lib/hosts.ts`: **100% líneas, 100% sentencias, 100% funciones, 95,65% ramas** (v8, instalado con `--no-save`: `package.json` intacto) |
+| 5 | Secretos en el diff | **0** |
+| 6 | Entrada validada / sin depuración | `hostOf()` devuelve `""` ante URL malformada en vez de reventar dentro del middleware; **0** `console.*` en los ficheros de la fase |
 
-| Punto | Resultado real |
-|---|---|
-| Tests | **142/142** en verde, 10 ficheros, sin saltados (`npx vitest run`) |
-| Typecheck | `npx tsc --noEmit` **sin salida** = sin errores |
-| Build | `npx next build` **compila**; el middleware entra en el bundle (26,7 kB) |
-| Secretos en el diff | 0 (solo `PROJECT_STATUS.md` en esta rama) |
-| Backend | **no se re-corre**: esta rama no toca `backend/`; su suite ya se verificó al desplegar v0.60.0 |
+**Qué hace, en una línea:** el dominio de marca sirve solo `/`, `/contact` y
+`/about` (308 el resto al panel); el panel manda `/` a `/leads` (307). Lista
+**blanca**, no negra: olvidar añadir una página nueva la deja fuera del dominio
+público, que es la dirección segura.
 
-⚠️ **Trampa para el día del despliegue**: `NEXT_PUBLIC_BRAND_URL` y
+⚠️ **Trampa del día del despliegue**: `NEXT_PUBLIC_BRAND_URL` y
 `NEXT_PUBLIC_PANEL_URL` son **build args** (`docker-compose.yml:295-296`).
-Ponerlas y hacer `up -d` no hace nada: **hay que reconstruir el frontend**.
+Ponerlas y hacer `up -d` **no hace nada**: hay que **reconstruir** el frontend.
+Hoy están vacías en el VPS, así que todo esto está inerte — y es un requisito,
+no un apaño: redirigir a un nombre que aún no resuelve tumbaría el sitio vivo.
+
+### Hallazgos abiertos del asistente de voz (importantes, no bloquean)
+
+Medido en el asistente vivo `5d975722` el 27-ago:
+
+- 🔴 **Fallo de marca**: saluda con *«thanks for calling Eko AI Realtors»*. Quien
+  llama viene de un vídeo de **Denver Home Story** y busca un agente
+  inmobiliario, no una empresa de software. Cambiable por API; el texto lo
+  decide el dueño.
+- ⚠️ Corre con `claude-sonnet-4-5` de **Anthropic** mientras el resto del
+  producto va con Kimi/MiniMax. No viola CLAUDE.md (la regla prohíbe el OAuth
+  del plan Max, no una clave de pago dentro de VAPI), pero es gasto por token
+  que nadie vigila.
+- ⚠️ Transcripción fijada a **inglés**. Coherente con la decisión de «todo en
+  inglés por ahora»; un hispanohablante saldría transcrito como basura.
+- `agency_phone` **vacío** en Ajustes: hasta que lleve `+17208249313`, el
+  sistema no se identifica con ningún teléfono.
 
 ### Decisiones tomadas y por qué
 
