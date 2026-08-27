@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.55.1"
+    APP_VERSION: str = "0.56.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -197,9 +197,35 @@ class Settings(BaseSettings):
     FILE_IMPORT_MAX_MB: int = 25
 
     # ─── Content Studio (v0.52+) ────────────────────────────────────────
-    # A phone clip in 4K runs a few hundred MB. The cap is enforced by the
-    # upload route itself while streaming, not by the body-buffering middleware.
-    CONTENT_UPLOAD_MAX_MB: int = 500
+    # The cap is enforced by the upload route itself while streaming, not by
+    # the body-buffering middleware.
+    #
+    # 95, not 500, and the number is measured rather than chosen. Against
+    # production on 26-ago-2026: 99 MB reached our backend and answered; 120 MB
+    # was cut at the edge by Cloudflare with a 413 that our app never saw. The
+    # tunnel gives out around 100 MB, so a 500 MB cap was a promise the
+    # infrastructure did not keep.
+    #
+    # 95 rather than 99: the ~100 MB ceiling is where the tunnel was OBSERVED to
+    # break, not a documented figure, and a cap set at the edge of a measured
+    # cliff fails intermittently instead of cleanly. The cost is real and is not
+    # hand-waved — a 96 MB clip that would have squeezed through yesterday is
+    # refused today — and a predictable refusal before the upload beats a
+    # coin-flip failure after it.
+    #
+    # WHICH layer answers, corrected after an audit caught the first version of
+    # this comment claiming the wrong one: for any client that declares a
+    # Content-Length — every browser upload — the 413 comes from
+    # `BodySizeLimit` in `main.py`, not from the route's streaming check
+    # (`content.py`, `raise HTTPException(413, "Clip exceeds …")`). The route's
+    # check is the guard for a CHUNKED body that declares no length. Both are
+    # needed; only the middleware one is what a person sees.
+    #
+    # The honest consequence, and it is a real one: a 4K phone clip over 95 MB
+    # cannot be uploaded at all. The answer to that is chunked upload, which is
+    # its own piece of work. Until then the number tells the truth, and the
+    # browser can warn BEFORE spending the upload instead of after.
+    CONTENT_UPLOAD_MAX_MB: int = 95
     # Inside the container; compose mounts a volume here. Media is served only
     # through the authenticated route, never as static files.
     CONTENT_MEDIA_DIR: str = "/data/media"

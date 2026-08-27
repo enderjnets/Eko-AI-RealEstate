@@ -37,6 +37,7 @@ from app.services.conversation import (
     reachable_active_conversations,
 )
 from app.services.delivery import schedule_retry
+from app.services.fair_housing import find_violations
 from app.services.i18n import detect_language, pick_supported_language
 from app.services.tenant_context import get_org_id
 
@@ -822,12 +823,36 @@ async def process_due_followups(db: AsyncSession, *, now: datetime | None = None
                 marked_failed = True
                 continue
 
+            # The nurture lane goes through the same filter as the reply lane.
+            #
+            # The plan for this release excluded it, and the reasoning had a
+            # hole: "these are OUR templates, fixed, so a test that sweeps the
+            # templates is enough". The templates are ours. `{agency}` is not —
+            # it is `agent_settings.agency_name`, typed by the client. A sweep
+            # over the templates proves the template is clean and says nothing
+            # about the value poured into it, so an agency literally named
+            # "Perfect for Families Realty" sent that phrase to every lead with
+            # the column reading "never screened".
+            #
+            # Same policy as the reply lane: record and warn, never block. A
+            # nurture message that does not go out is a lead that hears nothing.
+            flags = find_violations(text, lang)
+            if flags:
+                log.warning(
+                    "Fair Housing: follow-up %d for lead %d carries %d flagged "
+                    "phrase(s): %s",
+                    fu_id,
+                    lead.id,
+                    len(flags),
+                    sorted({f["category"] for f in flags}),
+                )
             outbound = Message(
                 conversation_id=conv.id,
                 direction=MessageDirection.OUTBOUND,
                 sender=MessageSender.AGENT,
                 content=text,
                 delivery_status=MessageStatus.PENDING,
+                fair_housing_flags=flags,
             )
             db.add(outbound)
             fu.attempts += 1

@@ -29,7 +29,14 @@ const EN: Record<string, string> = {
   "nav.analytics": "Analytics",
   "nav.discovery": "Discovery",
   "nav.api": "API",
-  "nav.stats": "Stats",
+  "nav.more": "More",
+  // Bottom-bar-only short forms. The bar divides the screen into equal slots,
+  // so at 320px with the operator tab present each is 52px — and "Calendario"
+  // needs 57, "Contenido" 55. Measured, not guessed: both were rendering as
+  // "Calendari…" and "Contenid…". English already fits, so these are the same
+  // word there; Spanish gets the short form it would use out loud anyway.
+  "nav.tab.content": "Content",
+  "nav.tab.calendar": "Calendar",
   // calendar
   "calendar.title": "Calendar",
   "calendar.subtitle": "Visits, events and pending system tasks — in your office timezone.",
@@ -469,6 +476,7 @@ const EN: Record<string, string> = {
   "msg.sender.agent": "AI agent",
   "msg.sender.human": "You",
   "msg.manual": "manual",
+  "msg.fairHousing": "Fair Housing: {n}",
   "msg.subject": "Subject:",
   "msg.status.pending": "Pending",
   "msg.status.sent": "Sent",
@@ -559,6 +567,9 @@ const EN: Record<string, string> = {
   "content.upload.network": "The upload stopped: the connection dropped. Try again when you have signal.",
   "content.upload.cancelled": "Upload cancelled.",
   "content.upload.timeout": "The upload took too long and was stopped. A big clip needs a steady connection.",
+  "content.upload.tooLarge": "That clip is {size} MB and the limit is {limit} MB, so it was not sent — nothing was uploaded. Trim it or export it at a lower resolution and try again.",
+  "content.upload.tooLargeUnknown": "That clip is {size} MB and the connection refused it — nothing was uploaded. Trim it or export it at a lower resolution and try again.",
+  "content.upload.limitHint": "Up to {limit} MB",
   "content.empty": "Nothing here right now.",
   "content.tab.needs_approval": "Awaiting approval",
   "content.tab.draft": "Drafts",
@@ -709,7 +720,9 @@ const ES: Record<string, string> = {
   "nav.analytics": "Analíticas",
   "nav.discovery": "Descubrir",
   "nav.api": "API",
-  "nav.stats": "Stats",
+  "nav.more": "M\u00e1s",
+  "nav.tab.content": "Clips",
+  "nav.tab.calendar": "Agenda",
   // bandeja de comunicaciones
   "inbox.title": "Bandeja",
   "inbox.subtitle": "Leads con conversaciones abiertas — respondé los pendientes, mirá quién tiene cita agendada, ordenados por prioridad.",
@@ -1106,6 +1119,7 @@ const ES: Record<string, string> = {
   "msg.sender.agent": "Agente IA",
   "msg.sender.human": "Tú",
   "msg.manual": "manual",
+  "msg.fairHousing": "Fair Housing: {n}",
   "msg.subject": "Asunto:",
   "msg.status.pending": "Pendiente",
   "msg.status.sent": "Enviado",
@@ -1191,6 +1205,9 @@ const ES: Record<string, string> = {
   "content.upload.network": "La subida se cortó: se perdió la conexión. Inténtelo otra vez cuando tenga señal.",
   "content.upload.cancelled": "Subida cancelada.",
   "content.upload.timeout": "La subida tardó demasiado y se detuvo. Un clip grande necesita conexión estable.",
+  "content.upload.tooLarge": "Ese clip pesa {size} MB y el límite son {limit} MB, así que no se envió — no se subió nada. Recórtelo o expórtelo con menos resolución e inténtelo otra vez.",
+  "content.upload.tooLargeUnknown": "Ese clip pesa {size} MB y la conexi\u00f3n lo rechaz\u00f3 \u2014 no se subi\u00f3 nada. Rec\u00f3rtelo o exp\u00f3rtelo con menos resoluci\u00f3n e int\u00e9ntelo otra vez.",
+  "content.upload.limitHint": "Hasta {limit} MB",
   "content.empty": "No hay nada aquí ahora mismo.",
   "content.tab.needs_approval": "Por aprobar",
   "content.tab.draft": "Borradores",

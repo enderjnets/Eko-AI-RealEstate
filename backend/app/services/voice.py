@@ -25,12 +25,13 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services._common import clip_identifier
+from app.services.timezones import resolve_zone
 
 log = logging.getLogger(__name__)
 
@@ -155,13 +156,35 @@ def parse_end_of_call_report(payload: dict[str, Any]) -> VoiceCallReport | None:
 # ── Tool calls (answered live during the call) ───────────────────────────────
 
 
-def _office_zone(tz_name: str) -> ZoneInfo:
-    """ZoneInfo for the office tz, falling back to UTC on a bad/unknown name."""
-    try:
-        return ZoneInfo(tz_name or "UTC")
-    except (ZoneInfoNotFoundError, ValueError):
-        log.warning("Unknown office timezone %r — falling back to UTC", tz_name)
-        return ZoneInfo("UTC")
+def _office_zone(tz_name: str) -> ZoneInfo | None:
+    """ZoneInfo for the office tz, or None when the configured name is unusable.
+
+    It used to fall back to UTC, which is the same defect `visits.py` carried:
+    every hour this call quotes and every appointment it books lands in the
+    wrong zone. In Denver that is six hours — a caller told "Tuesday at 2 PM"
+    who finds the door locked at 8 AM. A warning in a log nobody is reading
+    during a phone call is not a control.
+
+    None rather than an exception, because this module's tool handler promises
+    never to raise: a thrown handler stalls the assistant mid-call. The callers
+    below turn None into a spoken apology, which is the honest answer — we
+    cannot tell this person a time we cannot compute.
+
+    That promise was false when first written: this caught two of `ZoneInfo`'s
+    three exception types, so an office timezone of `"America"` (a tzdata
+    DIRECTORY) raised `IsADirectoryError` from a call sited outside the handler's
+    own `try`, straight past a docstring that says it never raises. `resolve_zone`
+    is now the single place that knows the surface — see
+    `app/services/timezones.py`.
+    """
+    zone = resolve_zone(tz_name or "UTC")
+    if zone is None:
+        log.error(
+            "Office timezone %r is not a known IANA zone; refusing to quote or "
+            "book times rather than answering in the wrong one. Fix it in Settings.",
+            tz_name,
+        )
+    return zone
 
 
 def _parse_dt(value: Any, tz: ZoneInfo) -> datetime | None:
@@ -255,6 +278,15 @@ async def handle_tool_call(
 
     tz_name = await _office_tz_name(db)
     zone = _office_zone(tz_name)
+    if zone is None:
+        # Every branch below either quotes a time or books one, and both are
+        # wrong by the office's UTC offset without a usable zone. Say so
+        # instead — a caller who is asked to hold is better served than one
+        # given an appointment six hours from the one they agreed to.
+        return (
+            "I'm sorry — I can't check the calendar right now. "
+            "Someone from the team will call you back shortly to arrange a time."
+        )
 
     try:
         if name == "check_availability":

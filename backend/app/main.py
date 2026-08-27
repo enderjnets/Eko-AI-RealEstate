@@ -214,7 +214,13 @@ app.add_middleware(TenantMiddleware)
 # checks the size, so passing it through costs one copy instead of three.
 _STREAM_PATHS: dict[str, int] = {
     "/api/v1/discovery/upload": settings.FILE_IMPORT_MAX_MB * 1024 * 1024,
-    # A phone clip; the route enforces the cap itself while streaming to disk.
+    # A phone clip. Both layers enforce the same cap and they are NOT redundant:
+    # this one reads the declared Content-Length, which is what a browser always
+    # sends and therefore the check that actually fires in production; the route
+    # counts bytes as they arrive, which is the only guard against a chunked
+    # body that declares no length at all. An audit found the commit that
+    # lowered this cap claiming the route would be the one to answer. It is not,
+    # for any real client — hence `limit_mb` in the 413 below.
     "/api/v1/content/upload": settings.CONTENT_UPLOAD_MAX_MB * 1024 * 1024,
 }
 DEFAULT_MAX_BODY_BYTES = 256 * 1024
@@ -258,9 +264,21 @@ class BodySizeLimit:
                     declared = None
                 break
         if declared is not None and declared > limit:
-            await JSONResponse({"detail": "body_too_large"}, status_code=413)(
-                scope, receive, send
-            )
+            # `limit_mb` alongside the token, because THIS is the 413 a browser
+            # actually gets. Any client that declares a Content-Length — which
+            # is every `xhr.send(file)` — is refused here, before the route's
+            # own check ever runs, so the route's message naming the cap is
+            # unreachable for the product's only caller. Without a number here
+            # the dashboard could only show the raw token `body_too_large`, in
+            # English, to a bilingual user.
+            await JSONResponse(
+                # `max(1, …)`: integer division reports 0 MB for the 256 KB
+                # default, and a limit of "0 MB" in a public response is a wrong
+                # number, not a small one. Only the upload path reads this field
+                # today, but the body is public on every route.
+                {"detail": "body_too_large", "limit_mb": max(1, limit // (1024 * 1024))},
+                status_code=413,
+            )(scope, receive, send)
             return
 
         if self._streams(scope.get("path", "")):
@@ -286,9 +304,14 @@ class BodySizeLimit:
                 break
             total += len(message.get("body", b""))
             if total > limit:
-                await JSONResponse({"detail": "body_too_large"}, status_code=413)(
-                    scope, receive, send
-                )
+                await JSONResponse(
+                    # `max(1, …)`: integer division reports 0 MB for the 256 KB
+                # default, and a limit of "0 MB" in a public response is a wrong
+                # number, not a small one. Only the upload path reads this field
+                # today, but the body is public on every route.
+                {"detail": "body_too_large", "limit_mb": max(1, limit // (1024 * 1024))},
+                    status_code=413,
+                )(scope, receive, send)
                 return
             chunks.append(message.get("body", b""))
             if not message.get("more_body", False):
@@ -424,6 +447,7 @@ async def _llm_monitor_loop() -> None:
     thing that has to stay rare is the email, and that rareness lives in
     `run_monitor_tick`, not in this interval.
     """
+    from app.services.fair_housing_watch import run_fair_housing_tick
     from app.services.llm_monitor import run_monitor_tick
 
     interval = max(60, settings.LLM_MONITOR_INTERVAL_SECONDS)
@@ -435,6 +459,19 @@ async def _llm_monitor_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001 — a watchdog that dies is worse than none
             logger.error("LLM monitor tick failed: %s", exc)
+
+        # Rides this loop rather than owning one: same cadence, same "tell the
+        # operator once, on a change" contract, and no second task to register,
+        # cancel and forget to cancel. Its own try/except, so that a failure in
+        # either watch neither hides nor is misattributed to the other — the
+        # first version logged "LLM monitor tick failed" for a fair-housing
+        # exception and pointed the operator at the wrong module.
+        try:
+            await run_fair_housing_tick()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — same reason as above
+            logger.error("Fair Housing watch tick failed: %s", exc)
 
 
 async def _content_studio_loop() -> None:
@@ -1073,6 +1110,29 @@ async def _startup() -> None:
     # said so — the only reason nobody was hurt is that no lead wrote in that
     # window. Probed once here, cached, and served on /api/v1/health so the
     # failure is one curl away instead of invisible until a lead pays for it.
+    # The timezone every NEW organisation is born with. Never validated until
+    # now, and that was survivable while an unusable zone silently became UTC.
+    # It is not survivable since v0.56.0: `_resolve_wall_clock` refuses rather
+    # than inventing a time, so a typo here means every agency created from
+    # this point cannot file a manual appointment (400), the phone assistant
+    # will not quote an hour, and SMS replies carry no availability — all of it
+    # correct behaviour reacting to a value nobody checked.
+    #
+    # The sweep that centralised "is this a usable zone" covered the four places
+    # that READ one and missed the one that SEEDS it. Loud at startup, where an
+    # operator is already watching, rather than at the first booking of a client
+    # who has just signed up.
+    from app.services.timezones import resolve_zone
+
+    if resolve_zone(settings.DEFAULT_TIMEZONE) is None:
+        logger.error(
+            "⚠️  DEFAULT_TIMEZONE=%r is not a known IANA zone. Every organisation "
+            "created from now on inherits it and will refuse to book or quote "
+            "times until its timezone is fixed in Settings. Set it to something "
+            "like 'America/Denver'.",
+            settings.DEFAULT_TIMEZONE,
+        )
+
     try:
         from app.services.llm import check_fallback_provider
 

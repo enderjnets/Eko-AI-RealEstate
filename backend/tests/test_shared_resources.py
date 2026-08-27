@@ -1201,3 +1201,67 @@ def test_the_footer_stripper_never_eats_the_body() -> None:
 
     with_footer = "Tengo una en Wash Park.\n\nCortesía de Kentwood Real Estate"
     assert strip_broker_credits(with_footer) == "Tengo una en Wash Park."
+
+
+@pytest.mark.asyncio
+async def test_a_broken_office_timezone_offers_no_hours_rather_than_wrong_ones() -> None:
+    """The owner's call, and it is the strict one: say nothing about times.
+
+    `list_available_slots` used to catch every exception and generate the slots
+    in UTC — "a bad tz must not empty the calendar" — and `_real_slots_note`
+    then formatted them with a second UTC fallback of its own. Two silent
+    substitutions of the same wrong value, on the lane that answers real leads
+    by SMS and WhatsApp, under a heading that says "zona de la oficina".
+
+    In Denver that is six hours. A lead told "Tuesday at 2 PM" arrives to a
+    locked door at 8 AM, and the only trace is a `log.warning`.
+
+    An empty calendar is a problem somebody fixes; a calendar full of wrong
+    hours is a problem somebody keeps. So the reply still goes out — the lead
+    is never left unanswered — it just carries no hours in it.
+    """
+    from app.models.agent_settings import AgentSettings
+    from app.services import conversation as conv
+
+    cfg = AgentSettings(agency_name="Acme")
+    cfg.timezone = " America/Denver"  # one pasted leading space, the real case
+
+    async def _no_busy(*a: object, **k: object) -> set[object]:
+        return set()
+
+    # NOT patched: the real `list_available_slots` has to be the thing that
+    # refuses, or this test proves only that the mock was written correctly.
+    with patch("app.api.v1.visits._busy_starts", _no_busy):
+        note = await conv._real_slots_note(cfg, "can I book a viewing?", None)
+
+    assert note == "", f"offered hours in an unusable zone: {note!r}"
+
+
+@pytest.mark.asyncio
+async def test_the_calendar_refuses_an_unusable_zone_instead_of_using_utc() -> None:
+    """The refusal lives in the one function that decides which hours exist.
+
+    Every caller already degrades gracefully on `CalComError`, so
+    `UnusableTimezone` subclasses it: nothing has to learn a new failure mode
+    in order to stop being wrong.
+    """
+    from datetime import timedelta
+
+    from app.services.calendar_cal import UnusableTimezone, list_available_slots
+
+    start = datetime(2028, 9, 25, 0, 0, tzinfo=UTC)
+
+    # The instrument can say yes, or it proves nothing.
+    good = await list_available_slots(
+        start=start, end=start + timedelta(days=2), timezone_name="America/Denver"
+    )
+    assert good, "a real zone must still produce slots"
+    assert good[0].start.utcoffset() != timedelta(0), (
+        "Denver slots came back on a UTC offset — the fallback is still in place"
+    )
+
+    for bad in (" America/Denver", "Mars/Phobos", "America", "A" * 300):
+        with pytest.raises(UnusableTimezone):
+            await list_available_slots(
+                start=start, end=start + timedelta(days=2), timezone_name=bad
+            )

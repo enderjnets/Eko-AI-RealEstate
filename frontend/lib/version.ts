@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.55.1";
+export const CURRENT_VERSION = "0.56.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -15,6 +15,36 @@ export interface VersionEntry {
 
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.56.0",
+    date: "2026-08-26",
+    title: {
+      en: "Fair Housing on every reply, and a menu that fits your tablet",
+      es: "Fair Housing en cada respuesta, y un men\u00fa que cabe en su tableta",
+    },
+    changes: [
+      {
+        en: "Every message we generate for a lead \u2014 the AI replies and the automatic follow-ups, including your agency name where it appears in them \u2014 is now screened for Fair Housing language on its way out, and anything flagged is recorded beside the message and raised with us. It does not delay or block anything. Two limits, said plainly: it catches specific prohibited phrases rather than every possible way of implying one, and what YOU type yourself in a conversation is your own words and is not screened. It is a floor, not a ceiling \u2014 your judgement still matters most.",
+        es: "Cada mensaje que generamos para un lead \u2014 las respuestas de la IA y los seguimientos autom\u00e1ticos, incluido el nombre de su agencia donde aparece en ellos \u2014 se revisa ahora en busca de lenguaje contrario a Fair Housing antes de salir, y lo se\u00f1alado queda registrado junto al mensaje y nos llega. No retrasa ni bloquea nada. Dos l\u00edmites, dichos claro: detecta frases prohibidas concretas, no toda forma posible de insinuarlas, y lo que usted escribe de su pu\u00f1o y letra en una conversaci\u00f3n son sus palabras y no se revisa. Es un suelo, no un techo \u2014 su criterio sigue siendo lo que m\u00e1s cuenta.",
+      },
+      {
+        en: "A pasted timezone no longer files an appointment six hours early. A space copied along with \"America/Denver\" used to store a 10 AM showing at 4 AM, answer \"created\", and say nothing. The same fault was fixed on the phone assistant, on the availability list and in the times we quote by text.",
+        es: "Una zona horaria pegada ya no registra una cita seis horas antes. Un espacio copiado junto a \"America/Denver\" guardaba una visita de las 10:00 a las 04:00, respond\u00eda \"creada\" y no dec\u00eda nada. El mismo fallo estaba en el asistente telef\u00f3nico, en la lista de horas libres y en las horas que ofrecemos por mensaje.",
+      },
+      {
+        en: "The dashboard tells you a clip is too big BEFORE it uploads it, instead of after several minutes of mobile data. The limit is now 95 MB and it is shown next to the upload button. Filming in 1080p instead of 4K keeps a clip well under it.",
+        es: "El panel le avisa de que un clip es demasiado grande ANTES de subirlo, en vez de despu\u00e9s de varios minutos de datos m\u00f3viles. El l\u00edmite es ahora de 95 MB y se muestra junto al bot\u00f3n de subir. Grabar en 1080p en vez de 4K deja el clip holgadamente por debajo.",
+      },
+      {
+        en: "The menu works on a tablet. Between a phone and a wide screen the links used to run off the edge; the ones that do not fit now sit behind a \"More\" button. The call console is finally reachable from a phone \u2014 it was in no phone menu at all.",
+        es: "El men\u00fa funciona en tableta. Entre un tel\u00e9fono y una pantalla ancha los enlaces se sal\u00edan del borde; los que no caben est\u00e1n ahora tras un bot\u00f3n \u00abM\u00e1s\u00bb. La consola de llamadas por fin se alcanza desde el m\u00f3vil \u2014 no estaba en ning\u00fan men\u00fa de tel\u00e9fono.",
+      },
+      {
+        en: "Text you type into settings, events and drafts is trimmed of stray spaces, so an agency name saved as \"Ashly \" stops greeting leads as \"assistant at Ashly .\"",
+        es: "El texto que escribe en ajustes, eventos y borradores se limpia de espacios sueltos, para que un nombre guardado como \"Ashly \" deje de saludar a los leads como \"asistente de Ashly .\"",
+      },
+    ],
+  },
+  {
     version: "0.55.1",
     date: "2026-08-26",
     title: {
@@ -23,8 +53,8 @@ export const CHANGELOG: VersionEntry[] = [
     },
     changes: [
       {
-        en: "We said clips could be up to 500 MB. The real limit is about 100 MB: the setting on our side allows 500, but the connection that serves this dashboard stops a larger upload before it reaches us. We measured it rather than assumed it, and corrected the earlier notes that carried the wrong figure. Filming in 1080p instead of 4K keeps a clip well under it.",
-        es: "Dec\u00edamos que un clip pod\u00eda pesar hasta 500 MB. El l\u00edmite real es de unos 100 MB: el ajuste de nuestro lado permite 500, pero la conexi\u00f3n que sirve este panel detiene una subida mayor antes de que nos llegue. Lo medimos en vez de suponerlo, y corregimos las notas anteriores que llevaban la cifra equivocada. Grabar en 1080p en vez de 4K deja el clip holgadamente por debajo.",
+        en: "We said clips could be up to 500 MB. The real limit is about 100 MB: our own setting allowed 500, but the connection that serves this dashboard stops a larger upload before it ever reaches us. We measured it rather than assumed it, and corrected the earlier notes that carried the wrong figure. Filming in 1080p instead of 4K keeps a clip well under it.",
+        es: "Dec\u00edamos que un clip pod\u00eda pesar hasta 500 MB. El l\u00edmite real es de unos 100 MB: nuestro propio ajuste permit\u00eda 500, pero la conexi\u00f3n que sirve este panel detiene una subida mayor antes de que nos llegue. Lo medimos en vez de suponerlo, y corregimos las notas anteriores que llevaban la cifra equivocada. Grabar en 1080p en vez de 4K deja el clip holgadamente por debajo.",
       },
     ],
   },

@@ -232,3 +232,108 @@ async def test_no_reminder_for_a_visit_already_completed(database_url: str) -> N
     finally:
         await _delete_lead(database_url, lead_id)
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_the_agency_name_reaches_the_lead_through_the_filter(
+    database_url: str,
+) -> None:
+    """The hole the plan's own reasoning left open, closed with a real send.
+
+    The plan excluded this lane because "these are OUR templates, fixed, so a
+    build-time sweep of the templates is enough". The templates are ours.
+    `{agency}` is not — it is `agent_settings.agency_name`, typed by the client
+    and interpolated verbatim (`followups.py`, `template.format(agency=…)`).
+
+    So the template sweep proved the template was clean and said nothing about
+    the value poured into it. A brokerage that named itself "Perfect for
+    Families Realty" sent that phrase to every lead on this lane, with
+    `fair_housing_flags` reading NULL, which the watcher's predicate
+    (`jsonb_array_length(...) > 0`) cannot see — no chip in the timeline, no
+    alert, nothing. Meanwhile the release notes told that same realtor every
+    answer we send is screened.
+
+    Not a hypothetical name: the broker attribution this product reproduces
+    verbatim by legal obligation is exactly where a phrase like that arrives.
+
+    Record and warn, never block — the same policy as the reply lane. A nurture
+    message that does not go out is a lead who hears nothing.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from app.models.agent_settings import AgentSettings
+
+    # CALL_FOLLOW_UP on purpose: it is one of only TWO templates that interpolate
+    # `{agency}`, and interpolation is the whole point of this test. The
+    # post-visit kinds do not, so enqueuing those would send a message with no
+    # client-controlled text in it and pass while proving nothing.
+    past = datetime.now(UTC) - timedelta(days=1)
+    lead_id, visit_id = await _make_lead_visit(
+        database_url, scheduled_at=past, visit_status=VisitStatus.COMPLETED
+    )
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            row = (await s.execute(select(AgentSettings))).scalars().first()
+            before = row.agency_name if row else None
+            if row is None:
+                row = AgentSettings(agency_name="Perfect for Families Realty")
+                s.add(row)
+            else:
+                row.agency_name = "Perfect for Families Realty"
+            # Due yesterday, so the sweep picks it up on this tick.
+            s.add(
+                FollowUp(
+                    lead_id=lead_id,
+                    visit_id=visit_id,
+                    kind=FollowUpKind.CALL_FOLLOW_UP,
+                    status=FollowUpStatus.PENDING,
+                    scheduled_for=datetime.now(UTC) - timedelta(hours=2),
+                )
+            )
+            await s.commit()
+
+        try:
+            with patch(
+                "app.services.followups._dispatch_send",
+                new=AsyncMock(return_value=("ext-fh-1", None)),
+            ) as sent:
+                async with Session() as s:
+                    result = await process_due_followups(s)
+
+            assert result["sent"] >= 1, result
+            assert sent.await_count >= 1, "nothing was actually dispatched"
+
+            async with Session() as s:
+                msgs = (
+                    await s.execute(
+                        select(Message)
+                        .join(Conversation, Message.conversation_id == Conversation.id)
+                        .where(
+                            Conversation.lead_id == lead_id,
+                            Message.direction == MessageDirection.OUTBOUND,
+                        )
+                    )
+                ).scalars().all()
+                assert msgs, "the follow-up wrote no outbound message"
+                carrying = [m for m in msgs if m.content and "Perfect for Families" in m.content]
+                assert carrying, [m.content for m in msgs]
+                for m in carrying:
+                    assert m.fair_housing_flags, (
+                        "the agency name reached the lead unscreened: "
+                        f"{m.content!r} -> {m.fair_housing_flags!r}"
+                    )
+                    assert any(
+                        f["category"] == "familial_status" for f in m.fair_housing_flags
+                    ), m.fair_housing_flags
+                    # And it still went out. Recording is not blocking.
+                    assert m.delivery_status == MessageStatus.SENT
+        finally:
+            async with Session() as s:
+                row = (await s.execute(select(AgentSettings))).scalars().first()
+                if row is not None and before is not None:
+                    row.agency_name = before
+                    await s.commit()
+    finally:
+        await engine.dispose()
+        await _delete_lead(database_url, lead_id)

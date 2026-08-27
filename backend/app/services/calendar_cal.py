@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -29,6 +29,7 @@ from app.services.channel_identity import (
     MissingChannelCredential,
     resolve_calendar_identity,
 )
+from app.services.timezones import resolve_zone
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +39,22 @@ SIMULATED_DURATION_MIN = 30
 
 class CalComError(RuntimeError):
     pass
+
+
+class UnusableTimezone(CalComError):
+    """The office's own configured zone is not a real one, so no hour is safe.
+
+    A `CalComError` subclass on purpose: every caller that already degrades
+    gracefully on a calendar outage — the voice tool, the visits endpoint, the
+    reply lane — keeps doing exactly that, and gets to say something better if
+    it wants to. Nothing has to learn a new failure mode to stop being wrong.
+
+    Raised instead of the UTC fallback this used to do. That fallback answered
+    "a bad tz must not empty the calendar", which sounds right and is not: it
+    filled the calendar with hours that were wrong by the office's offset — in
+    Denver, six — and told nobody. An empty calendar is a problem somebody
+    fixes. A calendar full of wrong hours is a problem somebody keeps.
+    """
 
 
 @dataclass(frozen=True)
@@ -56,6 +73,23 @@ class BookingResult:
 
 
 # ── Simulated slots (dev mode) ─────────────────────────────────────────
+
+
+def _office_or_refuse(timezone_name: str) -> ZoneInfo:
+    """The office zone, or `UnusableTimezone`. Never a substitute one.
+
+    `list_available_slots` checks this too, so reaching a bad value here means
+    a caller went around the front door. Refusing in both places is deliberate:
+    this is the function that decides which hours exist, and a silent stand-in
+    zone is the whole defect.
+    """
+    zone = resolve_zone(timezone_name)
+    if zone is None:
+        raise UnusableTimezone(
+            f"Timezone {timezone_name!r} is not a known IANA zone, so no hour "
+            "can be offered in it. Fix the agency timezone in Settings."
+        )
+    return zone
 
 
 def _simulated_slots(
@@ -81,11 +115,7 @@ def _simulated_slots(
     """
     busy = busy_starts or set()
     out: list[Slot] = []
-    try:
-        office = ZoneInfo(timezone_name)
-    except Exception:  # noqa: BLE001 — a bad tz must not empty the calendar
-        log.warning("Unknown timezone %r; generating slots in UTC", timezone_name)
-        office = UTC
+    office = _office_or_refuse(timezone_name)
 
     day = start.astimezone(office).replace(hour=0, minute=0, second=0, microsecond=0)
     end_day = end.astimezone(office).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -118,7 +148,18 @@ async def list_available_slots(
     busy_starts: set[datetime] | None = None,
 ) -> list[Slot]:
     """Return slots between [start, end). In SIMULATED mode, generated locally;
-    otherwise hits Cal.com v2 `/slots/available`."""
+    otherwise hits Cal.com v2 `/slots/available`.
+
+    Refuses an unusable `timezone_name` before doing any work — see
+    `UnusableTimezone`. Every hour this function returns is an hour somebody
+    will be told out loud, so producing them in a zone that is not the one
+    asked for is the one outcome worse than producing none.
+    """
+    if resolve_zone(timezone_name) is None:
+        raise UnusableTimezone(
+            f"Timezone {timezone_name!r} is not a known IANA zone, so no hour "
+            "can be offered in it. Fix the agency timezone in Settings."
+        )
     s = get_settings()
 
     if s.CALENDAR_SIMULATED:

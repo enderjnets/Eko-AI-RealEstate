@@ -14,6 +14,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
+import app.main as main_module
 from app.config import get_settings
 from app.db.base import get_bypass_session_factory
 from app.main import app
@@ -301,6 +302,107 @@ async def _set_brokerage(line: str | None) -> None:
 
 
 @pytest.mark.asyncio
+async def test_an_oversized_clip_is_cut_mid_stream_and_leaves_nothing_behind(
+    database_url: str, tmp_path, monkeypatch
+) -> None:
+    """The app's own 413, which until now could not be reached.
+
+    With the limit at 500 MB this branch was dead text: production measured
+    99 MB through and 120 MB cut at the edge by Cloudflare with a 413 our app
+    never saw. The tunnel gives out around 100 MB, so the limit the code
+    enforced was guarding a door a different wall had already bricked up. At 95
+    the app is the one that answers, which is the only way the message can name
+    the real number.
+
+    The limit is monkeypatched down rather than sending 95 MB: what is under
+    test is the mid-stream cut, not the arithmetic of megabytes.
+
+    Asserts the cleanup too. The refusal happens PART WAY through writing, so
+    the obvious bug is a truncated file left on the volume — bytes nobody
+    accounted for, under a name that looks like a real clip.
+    """
+    monkeypatch.setattr(get_settings(), "CONTENT_MEDIA_DIR", str(tmp_path))
+    monkeypatch.setattr(get_settings(), "CONTENT_UPLOAD_MAX_MB", 1)
+    # BOTH layers, or this test is a fiction. `_STREAM_PATHS` is built at import
+    # from the setting, so monkeypatching the setting alone leaves the
+    # middleware at 95 MB while the route sits at 1 — a configuration that
+    # cannot exist, exercising a branch production never enters. The first
+    # version of this test did exactly that and passed.
+    monkeypatch.setitem(
+        main_module._STREAM_PATHS, "/api/v1/content/upload", 1 * 1024 * 1024
+    )
+    payload = b"\x00\x00\x00\x18ftypmp42" + b"x" * (2 * 1024 * 1024)
+    try:
+        async with _client() as client:
+            too_big = await client.post(
+                "/api/v1/content/upload",
+                params={"filename": "4k-from-the-phone.mp4", "language": "en"},
+                content=payload,
+            )
+            assert too_big.status_code == 413, too_big.text
+            # The number has to be in the ANSWER, or the person cannot act on
+            # it: "too large" with no limit is a dead end on a phone. It comes
+            # from `limit_mb`, not from `detail`: a browser always declares a
+            # Content-Length, so the refusal a real user gets is the
+            # middleware's `body_too_large`, never the route's prose.
+            assert too_big.json()["limit_mb"] == 1, too_big.text
+
+            leftovers = list(tmp_path.iterdir())
+            assert leftovers == [], (
+                f"a cut upload left a truncated clip on the volume: {leftovers}"
+            )
+
+            # And nothing reached the queue: a piece with a half-written file
+            # would be rendered, reviewed and published from bytes that stop.
+            listed = await client.get("/api/v1/content")
+            assert listed.status_code == 200
+            assert listed.json() == []
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_chunked_upload_that_declares_no_length_is_still_cut(
+    database_url: str, tmp_path, monkeypatch
+) -> None:
+    """The case the ROUTE's own check exists for, and the only one it answers.
+
+    A browser always declares a Content-Length, so `BodySizeLimit` in `main.py`
+    refuses an oversized clip before the route sees a byte — which is why the
+    route's prose about the cap is never what a person reads. But a chunked
+    body declares nothing to check, the middleware waves streaming paths
+    through untouched, and then the route counting bytes as they land is the
+    only thing standing between us and a disk filled by an authenticated
+    caller.
+
+    So the two checks are not redundant, and this is the half that would go
+    unnoticed if it broke: no client in the product exercises it, and the other
+    test in this file cannot reach it.
+    """
+    monkeypatch.setattr(get_settings(), "CONTENT_MEDIA_DIR", str(tmp_path))
+    monkeypatch.setattr(get_settings(), "CONTENT_UPLOAD_MAX_MB", 1)
+
+    async def _chunks():
+        yield b"\x00\x00\x00\x18ftypmp42"
+        for _ in range(3):
+            yield b"x" * (512 * 1024)
+
+    try:
+        async with _client() as client:
+            r = await client.post(
+                "/api/v1/content/upload",
+                params={"filename": "chunked.mp4", "language": "en"},
+                content=_chunks(),
+            )
+            assert r.status_code == 413, r.text
+            # The route's own words this time, naming the cap.
+            assert "1 MB" in r.json()["detail"], r.text
+            assert list(tmp_path.iterdir()) == [], "a cut chunked upload left bytes"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
 async def test_status_answers_with_the_whole_contract(database_url: str) -> None:
     """Every field the console reads, present in one response.
 
@@ -315,13 +417,23 @@ async def test_status_answers_with_the_whole_contract(database_url: str) -> None
     async with _client() as client:
         r = await client.get("/api/v1/content/status")
     assert r.status_code == 200, r.text
-    assert set(r.json()) == {
+    body = r.json()
+    assert set(body) == {
         "studio_enabled",
         "render_enabled",
         "brokerage_line_set",
         "publishing_available",
+        "upload_max_mb",
         "counts",
     }
+    # The value, not just the key. The browser refuses a file by comparing
+    # `file.size` against this number, so a status endpoint that reports a
+    # limit the server does not enforce would reject good clips or wave
+    # through ones the upload will kill halfway.
+    from app.config import get_settings
+
+    assert body["upload_max_mb"] == get_settings().CONTENT_UPLOAD_MAX_MB
+    assert body["upload_max_mb"] > 0
 
 
 @pytest.mark.asyncio
@@ -467,3 +579,79 @@ async def test_a_file_that_is_not_a_video_is_named_as_such(database_url: str) ->
         )
     assert r.status_code == 415
     assert "video" in r.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_a_caption_can_be_cleared(database_url: str) -> None:
+    """Emptying a text field must actually empty it.
+
+    The console sends hook, script and caption as strings on every save
+    (`ContentQueue.tsx:287`), and the trimming validator turns "" into None. The
+    handler skipped None — a reasonable rule on its own — so clearing a caption
+    returned 200 with the old text still in the database. The realtor emptied
+    the box, saw "saved", and watched the words come back.
+
+    A 200 that discards the edit is worse than a 400: nobody goes looking.
+    Worse here than elsewhere, because this is how flagged wording gets removed
+    — and if the delete never lands, `_refresh_violations` never re-runs and the
+    Fair Housing hit stays attached to a piece whose text looks clean.
+
+    The distinction the handler needs is "was this field sent?", which is
+    `model_fields_set`, not "is it None?".
+    """
+    try:
+        async with _client() as client:
+            created = await client.post(
+                "/api/v1/content", json={**CLEAN, "caption": "Original caption."}
+            )
+            piece_id = created.json()["id"]
+            assert created.json()["caption"] == "Original caption."
+
+            cleared = await client.patch(
+                f"/api/v1/content/{piece_id}", json={"caption": ""}
+            )
+            assert cleared.status_code == 200, cleared.text
+            assert cleared.json()["caption"] is None, "the clear was silently dropped"
+
+            # And it really is gone, not just absent from this response.
+            fetched = await client.get("/api/v1/content?status=draft")
+            mine = [p for p in fetched.json() if p["id"] == piece_id][0]
+            assert mine["caption"] is None
+
+            # Whitespace-only means the same thing.
+            await client.patch(
+                f"/api/v1/content/{piece_id}", json={"caption": "Back again."}
+            )
+            blanked = await client.patch(
+                f"/api/v1/content/{piece_id}", json={"caption": "   "}
+            )
+            assert blanked.json()["caption"] is None
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_unsent_field_is_left_alone(database_url: str) -> None:
+    """The control for the test above.
+
+    Without it, "clear whatever is None" would pass — and a PATCH naming only
+    the hook would wipe the script and caption it never mentioned.
+    """
+    try:
+        async with _client() as client:
+            created = await client.post(
+                "/api/v1/content",
+                json={**CLEAN, "script": "Keep me.", "caption": "Me too."},
+            )
+            piece_id = created.json()["id"]
+
+            edited = await client.patch(
+                f"/api/v1/content/{piece_id}", json={"hook": "Only the hook moves."}
+            )
+            assert edited.status_code == 200, edited.text
+            assert edited.json()["hook"] == "Only the hook moves."
+            assert edited.json()["script"] == "Keep me.", "an unsent field was cleared"
+            assert edited.json()["caption"] == "Me too.", "an unsent field was cleared"
+    finally:
+        await _cleanup()
+

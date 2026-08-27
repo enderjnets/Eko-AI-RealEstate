@@ -20,8 +20,14 @@ import { AlertCircle, Loader2, Upload } from "lucide-react";
 import { type UploadFailure, contentApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
-export function UploadClip({ onUploaded }: { onUploaded: () => void }) {
-  const { t } = useI18n();
+export function UploadClip({
+  onUploaded,
+  maxMb,
+}: {
+  onUploaded: () => void;
+  maxMb?: number;
+}) {
+  const { t, lang } = useI18n();
   const input = useRef<HTMLInputElement>(null);
   const [language, setLanguage] = useState<"en" | "es">("en");
   const [percent, setPercent] = useState<number | null>(null);
@@ -33,7 +39,7 @@ export function UploadClip({ onUploaded }: { onUploaded: () => void }) {
     setError(null);
     setPercent(0);
     try {
-      await contentApi.upload(file, language, setPercent);
+      await contentApi.upload(file, language, setPercent, maxMb);
       onUploaded();
     } catch (err) {
       // The server's own words where there are any — 415 is "that is not a
@@ -44,10 +50,41 @@ export function UploadClip({ onUploaded }: { onUploaded: () => void }) {
       // Our own client failures arrive as `upload:<kind>` so they can be said
       // in the reader's language instead of hard-coded English in the API layer.
       const raw = err instanceof Error ? err.message : String(err);
-      const mine = raw.startsWith("upload:")
-        ? (raw.slice("upload:".length) as UploadFailure)
-        : null;
-      setError(mine ? t(`content.upload.${mine}`) : raw);
+      if (raw.startsWith("upload:")) {
+        // `upload:<kind>` or `upload:<kind>:<detail>…`. Only `tooLarge` carries
+        // detail today, and it carries the two numbers the sentence needs: a
+        // limit without the file's own size leaves the person guessing which
+        // clip to blame, and a size without the limit gives them nothing to
+        // aim at.
+        const [kind, ...detail] = raw.slice("upload:".length).split(":");
+        // Formatted in the reader's language, not with a bare `toFixed`. In
+        // Spanish the dot is the THOUSANDS separator, so "143.7 MB" reads as a
+        // hundred and forty-three thousand megabytes — a number so absurd it
+        // reads as a bug in us rather than as a clip to trim. `toLocaleString`
+        // gives "143,7" there and "143.7" in English.
+        const asNumber = (raw2: string | undefined) => {
+          const n = Number(raw2);
+          return Number.isFinite(n)
+            ? n.toLocaleString(lang, { maximumFractionDigits: 1 })
+            : (raw2 ?? "");
+        };
+        // A refusal with no limit to name gets its own sentence rather than
+        // "the limit is  MB". The number is missing only when the status GET
+        // failed AND the 413 came from a proxy's HTML page instead of us —
+        // rare, but the message has to still be a sentence when it happens.
+        const key =
+          kind === "tooLarge" && !detail[1]
+            ? "content.upload.tooLargeUnknown"
+            : `content.upload.${kind as UploadFailure}`;
+        setError(
+          t(key, {
+            size: asNumber(detail[0]),
+            limit: asNumber(detail[1]),
+          }),
+        );
+      } else {
+        setError(raw);
+      }
     } finally {
       setPercent(null);
       if (input.current) input.current.value = "";
@@ -81,6 +118,18 @@ export function UploadClip({ onUploaded }: { onUploaded: () => void }) {
           )}
           {busy ? `${percent}%` : t("content.uploadClip")}
         </button>
+
+        {/* The cap, before the file picker opens. `StudioStatus` carries this
+            number precisely so the choice can be informed; showing it only in
+            the refusal would mean the person still learns it by being told
+            "no" — which is the thing this phase set out to stop. Hidden while
+            uploading, where it is noise, and when the status GET failed, where
+            we would be inventing it. */}
+        {!busy && maxMb !== undefined && (
+          <span className="text-xs text-gray-500 whitespace-nowrap">
+            {t("content.upload.limitHint", { limit: maxMb })}
+          </span>
+        )}
 
         <input
           ref={input}

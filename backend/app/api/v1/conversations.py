@@ -44,6 +44,7 @@ class MessageOut(BaseModel):
     # per-message so a merged multichannel timeline can icon each bubble.
     channel: str = ""
     llm_provider: str | None
+    fair_housing_flags: list[dict[str, str]] | None
     llm_model: str | None
     created_at: datetime
 
@@ -92,6 +93,7 @@ def _message_out(m: Message, channel: str) -> MessageOut:
         subject=m.subject,
         channel=channel,
         llm_provider=m.llm_provider,
+        fair_housing_flags=m.fair_housing_flags,
         llm_model=m.llm_model,
         created_at=m.created_at,
     )

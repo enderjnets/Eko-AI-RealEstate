@@ -45,6 +45,7 @@ from app.models import (
 from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
 from app.services.delivery import schedule_retry
+from app.services.fair_housing import find_violations
 from app.services.i18n import detect_language, language_instruction, pick_supported_language
 from app.services.lead_fields import (
     merge_budget,
@@ -683,11 +684,13 @@ def _office_hours_note(agent_cfg: AgentSettings) -> str:
     what to say, not a gate on replying — a lead who writes at 11pm should get
     an answer, just not one that implies someone is at a desk.
     """
-    from zoneinfo import ZoneInfo
+    from app.services.timezones import resolve_zone
 
-    try:
-        zone = ZoneInfo(agent_cfg.timezone or "UTC")
-    except Exception:  # noqa: BLE001 — a bad timezone must not cost a reply
+    # The fifth call site. The sweep that centralised this said "four", and an
+    # audit counted five — the miscount is the finding, not the behaviour, which
+    # was already right: an unusable zone costs the note, never the reply.
+    zone = resolve_zone(agent_cfg.timezone or "UTC")
+    if zone is None:
         return ""
     now = datetime.now(zone)
     note = (
@@ -797,7 +800,8 @@ async def _real_slots_note(
     from datetime import timedelta
 
     from app.api.v1.visits import _busy_starts
-    from app.services.calendar_cal import list_available_slots
+    from app.services.calendar_cal import UnusableTimezone, list_available_slots
+    from app.services.timezones import resolve_zone
 
     now = datetime.now(UTC)
     try:
@@ -822,17 +826,33 @@ async def _real_slots_note(
             ),
             timeout=_SLOTS_BUDGET_SECONDS,
         )
+    except UnusableTimezone as exc:
+        # Not a blip: the agency's own timezone is unusable, so every hour we
+        # could offer would be wrong by its offset. The lead gets a reply with
+        # no hours in it rather than hours it cannot keep — a person who is
+        # asked to wait is better served than one who is given the wrong
+        # Tuesday. Logged at error, because this is a config fault somebody has
+        # to fix, not weather.
+        log.error("refusing to offer hours for org %s: %s", agent_cfg.org_id, exc)
+        return ""
     except Exception as exc:  # noqa: BLE001 — a calendar blip must not cost a reply
         log.warning("could not read availability for the reply: %s", exc)
         return ""
     if not slots:
         return ""
-    from zoneinfo import ZoneInfo
-
-    try:
-        zone = ZoneInfo(agent_cfg.timezone or "UTC")
-    except Exception:  # noqa: BLE001
-        zone = UTC
+    # No UTC fallback. `list_available_slots` has already refused an unusable
+    # zone above, so this cannot normally be None — but the previous version
+    # substituted UTC here as well, which meant the SAME wrong hours could be
+    # printed even on a path where generation had succeeded in a different
+    # zone. Two silent substitutions of the same value is how it survived.
+    zone = resolve_zone(agent_cfg.timezone or "UTC")
+    if zone is None:
+        log.error(
+            "office timezone %r is unusable; offering no hours for org %s",
+            agent_cfg.timezone,
+            agent_cfg.org_id,
+        )
+        return ""
     offered = ", ".join(
         slot.start.astimezone(zone).strftime("%A %d %H:%M") for slot in slots[:5]
     )
@@ -1500,6 +1520,27 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # meaning anything.
     reply_text = _with_broker_credits(reply.text, offered_listings, parsed.channel)
 
+    # Fair Housing, on the text that actually leaves — after the broker credit,
+    # because IDX attribution is reproduced verbatim by legal obligation and a
+    # brokerage called "Perfect for Families Realty" would otherwise walk
+    # straight past a filter pointed at `reply.text`.
+    #
+    # It RECORDS, it does not block: the lead gets an answer at the speed they
+    # asked for it, and `services/fair_housing_watch.py` tells the operator out
+    # of band. Read `find_violations` before trusting this: it matches listed
+    # phrases, not paraphrase. Measured against the live module, "It's a safe
+    # neighborhood with good schools" scores 2 and "You'll love how safe this
+    # area feels for raising kids" scores 0. This is a floor, not a ceiling.
+    flags = find_violations(reply_text, target_lang)
+    if flags:
+        log.warning(
+            "Fair Housing: outbound reply for lead %d carries %d flagged "
+            "phrase(s): %s",
+            lead.id,
+            len(flags),
+            sorted({f["category"] for f in flags}),
+        )
+
     outbound = Message(
         conversation_id=conv.id,
         direction=MessageDirection.OUTBOUND,
@@ -1509,9 +1550,21 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         llm_provider=reply.provider,
         llm_model=reply.model,
         subject=reply_subject,
+        # `[]`, not NULL, when it came back clean. The two are different claims
+        # and the column is a compliance artifact: NULL means "never screened"
+        # (every row written before v0.56, plus the inbound side and the lanes
+        # that do not run this filter), `[]` means "screened, nothing found".
+        # Collapsing them into NULL to save a few bytes would make the honest
+        # answer to "was this reply checked?" unavailable forever.
+        fair_housing_flags=flags,
     )
     db.add(outbound)
     await db.flush()
+    # Held as a plain int for the handlers below. Once a savepoint rolls back,
+    # `outbound.id` is an expired attribute, and reading one inside an `except`
+    # is a synchronous lazy load that raises MissingGreenlet out of every
+    # handler in this function.
+    outbound_id = outbound.id
 
     # ── 10. Dispatch send through the right channel adapter ──────────
     try:
@@ -1549,15 +1602,38 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
                 outbound.delivery_status = MessageStatus.SENT
                 await db.flush()
         except IntegrityError:
+            # A savepoint rollback EXPIRES every object it touched, so reading
+            # `outbound.id` here was a synchronous lazy load inside async code.
+            # It raised MissingGreenlet — not an IntegrityError — so it escaped
+            # to the outer handler below, whose first act was to read
+            # `outbound.id` again. The recovery written to save the turn was
+            # what killed it, and by then the reply had already gone out over
+            # the wire: the lead was answered and we kept no record of it.
+            #
+            # Two guards, and measured rather than assumed: EITHER one alone
+            # makes the test pass, so neither is load-bearing on its own. Both
+            # are kept because they cover different ground and each costs a
+            # line — `refresh` restores the object for everything after this
+            # block (the assignments, `rescore_lead`, the commit and the final
+            # log line, all of which read it), while `outbound_id` also serves
+            # the outer `except Exception`, which catches states this savepoint
+            # never saw. Saying they are both required would be the kind of
+            # comment that defends a choice with an argument that is not true.
+            #
+            # `followups.py:423-427` learned this first, in the same words.
+            await db.refresh(outbound)
             log.warning(
                 "Duplicate provider id %s on outbound msg %d; keeping the turn "
                 "and leaving the id unset",
-                external_id, outbound.id,
+                external_id, outbound_id,
             )
             outbound.external_id = None
             outbound.delivery_status = MessageStatus.SENT
     except Exception as exc:  # noqa: BLE001
-        log.error("Channel %s send failed for outbound msg %d: %s", parsed.channel, outbound.id, exc)
+        log.error(
+            "Channel %s send failed for outbound msg %d: %s",
+            parsed.channel, outbound_id, exc,
+        )
         # Not just FAILED. A provider blip used to end the reply's life here:
         # one POST, no retry, and no sweep looking for what was left behind.
         schedule_retry(outbound, str(exc))

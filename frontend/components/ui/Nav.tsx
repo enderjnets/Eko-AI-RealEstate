@@ -8,6 +8,7 @@ import {
   CalendarDays,
   Clapperboard,
   Eye,
+  FileCode,
   Home,
   Inbox,
   LogOut,
@@ -25,6 +26,7 @@ import { authApi, inboxApi, type InboxItem } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { usePlatformOperator } from "@/lib/useViewer";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
+import { OverflowMenu } from "@/components/ui/OverflowMenu";
 import { VersionButton } from "@/components/ui/VersionButton";
 
 const MAX_MENU_ITEMS = 6;
@@ -117,17 +119,28 @@ export function Nav() {
   const isActive = (href: string) =>
     href === "/leads" ? pathname.startsWith("/leads") : pathname.startsWith(href);
 
+  // Five links plus a "More" tab, instead of seven crammed labels. The bar now
+  // covers phones AND tablets (`lg:hidden`), so it has to hold up from 320px to
+  // 1023px on one set of classes.
   const tabs = [
     // Operator-only; see app/discovery/page.tsx.
     ...(isOperator ? [{ href: "/discovery", label: t("nav.discovery"), Icon: Search }] : []),
     { href: "/leads", label: t("nav.leads"), Icon: Users },
     // On the phone by necessity, not for symmetry: the clip is filmed and
-    // uploaded here, and the desktop nav is `hidden md:flex`.
-    { href: "/content", label: t("nav.content"), Icon: Clapperboard },
+    // uploaded here, and the desktop row does not exist below `lg`.
+    { href: "/content", label: t("nav.tab.content"), Icon: Clapperboard },
     { href: "/inbox", label: t("nav.inbox"), Icon: Inbox, dot: attention > 0 },
-    { href: "/calendar", label: t("nav.calendar"), Icon: CalendarDays },
+    { href: "/calendar", label: t("nav.tab.calendar"), Icon: CalendarDays },
+  ];
+
+  // What "More" holds. `/console` is the reason this exists: the call console
+  // was in NO phone navigation at all — not in the tab array, and the desktop
+  // row is hidden — so the one screen a realtor needs while standing in a
+  // driveway was unreachable from the only device she has with her.
+  const overflowTabs = [
+    { href: "/console", label: t("console.title"), Icon: PhoneCall },
     { href: "/properties", label: t("nav.properties"), Icon: Home },
-    { href: "/analytics", label: t("nav.stats"), Icon: BarChart3 },
+    { href: "/analytics", label: t("nav.analytics"), Icon: BarChart3 },
   ];
 
   return (
@@ -156,16 +169,30 @@ export function Nav() {
               computes `overflow-y: visible` to `auto` as soon as `overflow-x`
               is not visible. Scrolling the row sideways therefore clipped the
               402px dropdown to zero visible pixels on every page — measured,
-              not theorised. The items do not all fit between md and xl; that
-              is in the backlog, and it predates the Content entry. */}
-          <div className="hidden md:flex items-center gap-1">
-            <Link
-              href="/discovery"
-              className="px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
-            >
-              <Search className="w-3.5 h-3.5" />
-              {t("nav.discovery")}
-            </Link>
+              not theorised. Still true, and still the reason this row is not a
+              scroller.
+
+              The row now starts at `lg` (1024), not `md` (768): the items never
+              fitted in a 768px tablet, which is what the old note called
+              backlog. Between `lg` and `xl` the tail of the row moves into an
+              overflow menu instead of being clipped; at `xl` and up the layout
+              is exactly what it always was. If you change this breakpoint,
+              change `globals.css` too — it hard-codes the matching width for
+              the padding that keeps the tab bar off the content. */}
+          <div className="hidden lg:flex items-center gap-1">
+            {/* `isOperator`, at last. The whole `/discovery` API sits behind
+                `require_platform_admin`, and the bottom tab bar has always
+                gated it — only this link did not, so an ordinary member saw it,
+                clicked it and was handed a 403. Two navs, one route, one rule. */}
+            {isOperator && (
+              <Link
+                href="/discovery"
+                className="hidden 2xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
+              >
+                <Search className="w-3.5 h-3.5" />
+                {t("nav.discovery")}
+              </Link>
+            )}
             <Link
               href="/leads"
               className="px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
@@ -276,7 +303,7 @@ export function Nav() {
 
             <Link
               href="/properties"
-              className="px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+              className="hidden 2xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
             >
               <Home className="w-3.5 h-3.5" />
               {t("nav.properties")}
@@ -290,7 +317,7 @@ export function Nav() {
             </Link>
             <Link
               href="/analytics"
-              className="px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+              className="hidden 2xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
             >
               <BarChart3 className="w-3.5 h-3.5" />
               {t("nav.analytics")}
@@ -298,7 +325,7 @@ export function Nav() {
             {isAdmin && (
               <Link
                 href="/settings"
-                className="px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors inline-flex items-center gap-1.5"
+                className="hidden 2xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
               >
                 <Settings className="w-3.5 h-3.5" />
                 {t("nav.settings")}
@@ -311,11 +338,35 @@ export function Nav() {
               href="/docs"
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden xl:inline-block px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+              className="hidden 2xl:inline-block px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
               title="OpenAPI docs (backend Swagger UI)"
             >
               {t("nav.api")}
             </a>
+
+            {/* 1024–1279: the five links above that are `hidden xl:inline-flex`
+                live here instead. The trigger disappears at `xl`, where they
+                are all back in the row and this would be a second way to reach
+                the same pages.
+
+                Role gates repeated, not delegated: an item that is hidden from
+                the row for a reason must be hidden here for the same reason, or
+                the menu becomes the back door to it. */}
+            <OverflowMenu
+              label={t("nav.more")}
+              className="2xl:hidden"
+              items={[
+                ...(isOperator
+                  ? [{ href: "/discovery", label: t("nav.discovery"), Icon: Search }]
+                  : []),
+                { href: "/properties", label: t("nav.properties"), Icon: Home },
+                { href: "/analytics", label: t("nav.analytics"), Icon: BarChart3 },
+                ...(isAdmin
+                  ? [{ href: "/settings", label: t("nav.settings"), Icon: Settings }]
+                  : []),
+                { href: "/docs", label: t("nav.api"), Icon: FileCode, external: true },
+              ]}
+            />
           </div>
 
           {/* Actions — always visible. On phones this is the whole right side. */}
@@ -326,7 +377,7 @@ export function Nav() {
                 href="/settings"
                 title={t("nav.settings")}
                 aria-label={t("nav.settings")}
-                className="md:hidden inline-flex items-center justify-center min-w-[40px] h-10 rounded-md text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                className="lg:hidden inline-flex items-center justify-center min-w-[40px] h-10 rounded-md text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
               >
                 <Settings className="w-4 h-4" />
               </Link>
@@ -360,7 +411,7 @@ export function Nav() {
       {/* Bottom tab bar — native-app navigation on phones only. */}
       <nav
         aria-label="Primary"
-        className="eko-tabbar md:hidden fixed inset-x-0 bottom-0 z-50 flex border-t border-white/10 bg-eko-noir/90 backdrop-blur-lg pb-[env(safe-area-inset-bottom,0px)]"
+        className="eko-tabbar lg:hidden fixed inset-x-0 bottom-0 z-50 flex border-t border-white/10 bg-eko-noir/90 backdrop-blur-lg pb-[env(safe-area-inset-bottom,0px)]"
       >
         {tabs.map(({ href, label, Icon, dot }) => {
           const active = isActive(href);
@@ -381,6 +432,14 @@ export function Nav() {
             </Link>
           );
         })}
+        {/* `direction="up"`: this bar is pinned to the bottom of the viewport,
+            so a panel that opens downward opens off-screen entirely. */}
+        <OverflowMenu
+          label={t("nav.more")}
+          variant="tab"
+          direction="up"
+          items={overflowTabs}
+        />
       </nav>
     </>
   );

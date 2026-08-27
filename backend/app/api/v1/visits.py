@@ -11,13 +11,13 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1._validators import trimmed, trimmed_or_none
 from app.db.base import get_db
 from app.models import (
     AgentSettings,
@@ -37,6 +37,7 @@ from app.services.calendar_cal import (
     list_available_slots,
 )
 from app.services.tenant_context import get_org_id
+from app.services.timezones import resolve_zone
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +59,54 @@ class SlotsResponse(BaseModel):
     days: int
 
 
+def _valid_timezone(value: object) -> object:
+    """Trim, then prove it is a real IANA zone. Refuse rather than fall back.
+
+    An unrecognised zone used to be swallowed by `_resolve_wall_clock`, which
+    returned the wall clock stamped UTC. In Denver that files a 10:00
+    appointment at 04:00 — six hours early, answered 201, with the bad string
+    stored beside it. `" America/Denver"` pasted with a leading space was
+    enough, and nothing anywhere said so.
+
+    `settings.py` has always validated this field with `ZoneInfo` and returned
+    a 400. The same string was shouted at on one endpoint and quietly moved an
+    appointment six hours on another.
+
+    Bad zones are told apart from unusable ones by `resolve_zone`, which is the
+    single place that knows how many ways `ZoneInfo` can fail. The first version
+    of this helper inlined that knowledge and got it wrong: it caught two of the
+    three exception types, so a 300-character timezone escaped as an `OSError`
+    and FastAPI answered **500** — where the same input, before this validator
+    existed, had been a clean 422 from `max_length`. Adding a guard made that
+    input strictly worse, which is why the knowledge now lives in one module and
+    not in each caller. See `app/services/timezones.py` for the measured surface
+    and for the macOS/Linux case-sensitivity difference.
+
+    `bytes` is handled by `resolve_zone` rather than falling through the
+    `isinstance(value, str)` gate: Pydantic coerces bytes to str **after** a
+    `mode="before"` validator runs, so a str-only guard hands the model an
+    unvalidated, untrimmed value. Not reachable over JSON — but this is the
+    second time that exact hole has been written down in this repo without
+    being closed.
+    """
+    if isinstance(value, bytes):
+        try:
+            value = value.decode("utf-8")
+        except UnicodeDecodeError:
+            return value
+    if not isinstance(value, str):
+        return value
+    trimmed = value.strip()
+    if not trimmed:
+        return None
+    if resolve_zone(trimmed) is None:
+        raise ValueError(
+            f"Unknown timezone {trimmed!r}. Use an IANA name such as "
+            "'America/Denver'."
+        )
+    return trimmed
+
+
 class BookingIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     start_time: datetime
@@ -74,6 +123,19 @@ class BookingIn(BaseModel):
     # Defaults to the office timezone (AgentSettings) when omitted, so visits are
     # stored + displayed in the office's local tz rather than UTC.
     timezone: str | None = Field(default=None, max_length=50)
+
+    _tz = field_validator("timezone", mode="before")(
+        classmethod(lambda cls, v: _valid_timezone(v))
+    )
+    # The SAME two nullable columns `ManualEventIn` writes, through the other
+    # route into `visits`. The blank-means-absent rule was added to one schema
+    # and not to the other, so `notes="  "` was still stored as "  " here and
+    # asking whether a visit has notes still meant checking `IS NULL` AND
+    # `= ''` — the fix's own stated reason, left half-applied one class away.
+    # `Visit._clip` truncates but never strips, so nothing downstream repairs it.
+    _trim_optional = field_validator("property_address", "notes", mode="before")(
+        classmethod(lambda cls, v: trimmed_or_none(v))
+    )
 
 
 class VisitOut(BaseModel):
@@ -117,6 +179,21 @@ class ManualEventIn(BaseModel):
     property_id: int | None = None
     lead_id: int | None = None
     timezone: str | None = Field(default=None, max_length=50)
+
+    _tz = field_validator("timezone", mode="before")(
+        classmethod(lambda cls, v: _valid_timezone(v))
+    )
+
+    # Split by the column's nullability, not by convenience: `title` refuses
+    # NULL so it is trim-only and `min_length=1` refuses the blank; `notes` and
+    # `property_address` accept NULL, where blank means absent. Lumping the
+    # three together stored "" where the schema says "no notes".
+    _trim_title = field_validator("title", mode="before")(
+        classmethod(lambda cls, v: trimmed(v))
+    )
+    _trim_optional = field_validator("notes", "property_address", mode="before")(
+        classmethod(lambda cls, v: trimmed_or_none(v))
+    )
 
 
 class CalendarItemOut(BaseModel):
@@ -262,10 +339,22 @@ def _resolve_wall_clock(when: datetime, tz: str) -> datetime:
     """
     if when.tzinfo is not None:
         return when
-    try:
-        zone = ZoneInfo(tz)
-    except (ZoneInfoNotFoundError, ValueError):
-        return when.replace(tzinfo=UTC)
+    zone = resolve_zone(tz)
+    if zone is None:
+        # NOT a fallback to UTC. That is what turned an unrecognised zone into
+        # a six-hour error in Denver, stored with a 201 and no complaint —
+        # exactly the "same 10:00, two different instants" this function was
+        # written to end. The schemas now refuse a bad zone from the caller, so
+        # reaching here means the ORGANISATION's configured timezone is
+        # unusable, and saying so is the only answer that does not invent a
+        # time for somebody's appointment.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"The configured timezone {tz!r} is not a known IANA zone, so "
+                "this time cannot be resolved. Fix it in Settings."
+            ),
+        )
 
     resolved = when.replace(tzinfo=zone).astimezone(UTC)
     # `replace(tzinfo=...)` is not DST-aware and never raises for it, so the
@@ -294,9 +383,25 @@ def _resolve_wall_clock(when: datetime, tz: str) -> datetime:
 async def list_slots(
     lead_id: int,
     days: int = Query(default=7, ge=1, le=30),
-    tz: str = Query(default="UTC", alias="timezone"),
+    tz: str = Query(default="UTC", alias="timezone", max_length=50),
     db: AsyncSession = Depends(get_db),
 ) -> SlotsResponse:
+    # The same defect the POST beside this one was fixed for, on the GET that
+    # feeds it. `" America/Denver"` — one pasted leading space — reached
+    # `list_available_slots`, whose `except Exception` turns any bad zone into
+    # UTC, and the slots came back six hours out with the bad string echoed
+    # back in `timezone` so the caller believed they were the office's. Measured:
+    # 10:00-06:00 becomes 10:00+00:00. Offering an hour is the same promise as
+    # booking one, so it gets the same answer instead of a quiet fallback.
+    #
+    # Trimmed and defaulted exactly as `_valid_timezone` does for the request
+    # bodies, so one product does not accept a pasted space on the POST and
+    # refuse it on the GET next door — which is the shape of the bug being
+    # fixed, not a fix for it.
+    try:
+        tz = _valid_timezone(tz) or "UTC"  # type: ignore[assignment]
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     await _get_lead_or_404(lead_id, db)
     now = datetime.now(UTC)
     start = now.replace(minute=0, second=0, microsecond=0)

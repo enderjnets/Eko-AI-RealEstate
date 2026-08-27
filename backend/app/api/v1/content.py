@@ -26,10 +26,11 @@ from pathlib import Path
 import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1._validators import trimmed, trimmed_or_none
 from app.api.v1.auth import current_email
 from app.config import get_settings
 from app.db.base import get_db
@@ -88,14 +89,34 @@ class PieceOut(BaseModel):
     publications: list[PublicationOut] = []
 
 
+def _trim_or_clear(value: object) -> object:
+    """Trim, and treat whitespace-only as absent.
+
+    These strings are burned into a video and read aloud by the caption, so a
+    trailing space is not cosmetic. Shared by the two edit schemas below.
+    """
+    return trimmed_or_none(value)
+
+
 class PieceEdit(BaseModel):
     hook: str | None = Field(default=None, max_length=300)
     script: str | None = None
     caption: str | None = None
 
+    _trim = field_validator("hook", "script", "caption", mode="before")(
+        classmethod(lambda cls, v: _trim_or_clear(v))
+    )
+
 
 class RejectIn(BaseModel):
     reason: str = Field(min_length=3, max_length=2000)
+
+    # `mode="before"`, so `min_length=3` judges the trimmed value: "   " used to
+    # pass as a three-character rejection reason and be stored as blank.
+    @field_validator("reason", mode="before")
+    @classmethod
+    def _trim_reason(cls, value: object) -> object:
+        return trimmed(value)
 
 
 class DraftIn(BaseModel):
@@ -104,6 +125,10 @@ class DraftIn(BaseModel):
     hook: str | None = Field(default=None, max_length=300)
     script: str | None = None
     caption: str | None = None
+
+    _trim = field_validator("hook", "script", "caption", mode="before")(
+        classmethod(lambda cls, v: _trim_or_clear(v))
+    )
 
 
 def _refresh_violations(piece: ContentPiece) -> None:
@@ -122,16 +147,31 @@ def _refresh_violations(piece: ContentPiece) -> None:
 class StudioStatus(BaseModel):
     """Why the queue looks the way it does.
 
-    Booleans and counts only — no URLs, no key names, no environment variable
-    names. "Nothing here right now" is true and useless; the question a person
-    actually has is why, and the answers live in three different places (two
-    env flags and a settings row) that no single screen was showing.
+    Booleans, counts, and one number — no URLs, no key names, no environment
+    variable names. "Nothing here right now" is true and useless; the question
+    a person actually has is why, and the answers live in three different
+    places (two env flags and a settings row) that no single screen was showing.
+
+    `upload_max_mb` is the amendment to "booleans and counts only", and it is
+    made deliberately rather than quietly. The rule was written to keep this
+    endpoint from leaking configuration to a browser: what is CONFIGURED is our
+    business, and naming an env var tells an attacker what to look for. A size
+    limit is neither. It is a number the person needs BEFORE choosing a file,
+    and withholding it means the only way to learn it is to spend the upload
+    and read the error — on a phone, over mobile data, with a clip that takes
+    minutes to send. The value is also already discoverable by anyone who can
+    reach the route: upload something too big and the 413 says it. Publishing
+    it costs nothing and saves the upload.
     """
 
     studio_enabled: bool
     render_enabled: bool
     brokerage_line_set: bool
     publishing_available: bool
+    # Megabytes. Named in the unit rather than bytes because it is shown to a
+    # person, and the client compares it against `file.size` before opening the
+    # request — see `UploadClip.tsx`.
+    upload_max_mb: int
     counts: dict[str, int]
 
 
@@ -185,6 +225,7 @@ async def studio_status(db: AsyncSession = Depends(get_db)) -> StudioStatus:
         # value is "set" to a naive check and "unset" to everything that matters.
         brokerage_line_set=bool((row.brokerage_line or "").strip() if row else ""),
         publishing_available=PUBLISHING_AVAILABLE,
+        upload_max_mb=s.CONTENT_UPLOAD_MAX_MB,
         counts=counts,
     )
 
@@ -249,8 +290,17 @@ async def edit_piece(
 
     changed = False
     for field in ("hook", "script", "caption"):
+        # `model_fields_set`, not `is not None`. The two are different questions
+        # and only this one has an answer: "was this field sent?" versus "did it
+        # arrive empty?". Skipping None made clearing a caption impossible —
+        # the trimming validator turns "" into None, the console sends all
+        # three fields as strings on every save, so emptying the textarea
+        # returned 200 and put the old text straight back. A 200 that discards
+        # the edit is worse than a 400, because nobody goes looking.
+        if field not in payload.model_fields_set:
+            continue
         value = getattr(payload, field)
-        if value is not None and value != getattr(piece, field):
+        if value != getattr(piece, field):
             setattr(piece, field, value)
             changed = True
 

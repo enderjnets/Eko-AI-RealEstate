@@ -14,6 +14,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db.base import Base, pg_enum
@@ -91,6 +92,35 @@ class Message(Base):
     # Provenance for outbound messages — which LLM generated this reply.
     llm_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
     llm_model: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+    # What the Fair Housing filter found in this message on its way out, in
+    # `find_violations` shape: [{"phrase": ..., "category": ...}].
+    #
+    # NULL and [] are different answers and both are used: NULL means the text
+    # never went through the filter (every row written before v0.56, and the
+    # inbound side, which is the lead's own words and not ours to police); []
+    # means it WAS screened and came back clean, and it is stored as a real
+    # empty JSON array, not as NULL.
+    #
+    # An earlier version of this comment said the caller wrote `[]` as NULL "to
+    # keep the column sparse". That was the first design, and it was dropped
+    # precisely because it destroys the distinction this column exists for — on
+    # the one field whose whole value is telling "clean" apart from "never
+    # looked". The code, the migration docstring and
+    # `test_a_screened_clean_reply_is_an_empty_list_not_null` have always
+    # agreed; only this comment disagreed.
+    #
+    # Deliberately NOT in `_clip` below: that list trims bounded strings and
+    # this is JSONB.
+    #
+    # `none_as_null=True` is load-bearing, not tidiness. SQLAlchemy's default
+    # for JSON columns stores a Python `None` as the JSON value `null`, which
+    # is NOT SQL NULL — so `fair_housing_flags IS NOT NULL` matched every clean
+    # reply, and the watcher reported a flagged day every day. An alarm that
+    # fires on all-clear is worse than none: it is ignored within a week.
+    fair_housing_flags: Mapped[list | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True

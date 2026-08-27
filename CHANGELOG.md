@@ -2,6 +2,68 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.56.0] — 2026-08-26
+
+### Añadido — el filtro Fair Housing llega al carril que habla con leads
+
+- `find_violations` no se llamaba en **ningún** punto del camino que responde a
+  leads reales: sus tres consumidores eran del carril de vídeo. Ahora corre
+  sobre el texto final que sale por SMS, email y WhatsApp — **después** del pie
+  de broker, que se reproduce verbatim por obligación legal y era por donde una
+  frase prohibida entraría sin que nadie la mirase.
+- **Registra y avisa, no bloquea** (decisión del dueño): el lead recibe su
+  respuesta sin retraso y sin una segunda llamada al LLM en el camino caliente.
+- **Su techo, dicho por escrito**: caza frases literales, no paráfrasis. Medido
+  contra el módulo real: `"It's a safe neighborhood with good schools"` → 2
+  hallazgos; `"You'll love how safe this area feels for raising kids"` → **0**.
+  Es un suelo, no un techo, y el comentario del código lo dice con el
+  contraejemplo delante.
+- Vigilante propio (`fair_housing_watch`) con ventana rodante de 24 h, no día
+  natural UTC: un corte a medianoche daba por comunicada una avería no entregada
+  y abría una ventana muda hasta el primer tick del día siguiente.
+
+### Corregido — una zona horaria pegada archivaba las citas seis horas antes
+
+- `" America/Denver"` con un espacio delante guardaba una visita de las 10:00 a
+  las 04:00 hora de Denver, respondía **201** y dejaba la cadena mala al lado.
+- **Cuatro sitios, no uno.** El primer barrido buscó la forma del `except` que
+  yo acababa de escribir en vez de la pregunta que importaba, y encontró uno.
+  Los otros tres estaban escritos distinto: el asistente telefónico, el GET de
+  huecos libres y el carril de texto que ofrece horas a un lead por SMS.
+- **`ZoneInfo` lanza tres familias de excepción**, no dos. El primer guard cogía
+  dos, así que una zona de 300 caracteres —que siempre había sido un 422 limpio
+  de `max_length`— pasaba a **500**. Ese conocimiento vive ahora en un módulo
+  que comparten sus llamadores. (Una auditoría contó **cinco**, no cuatro:
+  `conversation.py:_office_hours_note` seguía con su `ZoneInfo` a mano. Su
+  comportamiento ya era correcto; la cifra de esta frase no lo era.)
+- Con la zona de la agencia inservible **no se ofrecen horas**, en vez de
+  ofrecerlas en UTC: una hora equivocada es peor que ninguna.
+
+### Corregido — el aviso de tamaño llega antes de gastar la subida
+
+- **`CONTENT_UPLOAD_MAX_MB` baja de 500 a 95**, en `config.py`, `.env.example` y
+  `docker-compose.yml` a la vez. El túnel se rinde sobre los 100 MB, así que un
+  tope de 500 era una promesa que la infraestructura no cumplía. 95 y no 99
+  porque ~100 es donde se **observó** que rompe, no una cifra documentada: un
+  tope al borde de un acantilado medido falla de forma intermitente en vez de
+  limpia. El coste es real y va dicho: un clip de 96 MB que ayer pasaba, hoy se
+  rechaza.
+
+- **El navegador mira `file.size` antes de abrir la petición**, y la página dice
+  el tope antes de que se elija el fichero. Antes no lo miraba en ninguna parte.
+
+- **Qué capa responde, corregido tras una auditoría.** El primer intento afirmó
+  que al bajar el tope respondería la ruta con su mensaje. No: cualquier cliente
+  que declare `Content-Length` —toda subida de navegador— lo corta el middleware
+  `BodySizeLimit` de `main.py`, y el mensaje de la ruta sigue siendo
+  inalcanzable para él. El 413 del middleware lleva ahora `limit_mb`, y el panel
+  lo convierte en la misma frase traducida que el aviso del cliente, en vez del
+  token interno `body_too_large`. La comprobación de la ruta **no** sobra: es la
+  única guarda contra un cuerpo troceado que no declara longitud.
+
+- **Deuda anotada, no arreglada:** un clip de 4K de más de 95 MB sigue sin poder
+  subirse. La salida real es subida por trozos, y es otra versión.
+
 ## [0.55.1] — 2026-08-26
 
 ### Corregido — el tamaño de subida que anunciábamos no era el real
@@ -20,10 +82,9 @@ All notable changes to **Eko AI Realtors**.
   de una fuente») y se comprobó midiendo. Corregido en las notas de v0.52.0 y
   v0.55.0, que es donde la cifra estaba publicada al cliente.
 
-- **Pendiente, en el backlog:** el navegador no comprueba el tamaño antes de
-  subir, así que un clip de 4K sube ~100 MB y recibe una página HTML de
-  Cloudflare en vez de una frase. Y el 413 propio del backend («Clip exceeds
-  500 MB») es inalcanzable por el túnel: texto muerto hasta que el ajuste baje.
+- **Pendiente cuando se escribió esto, resuelto después** (ver «No publicado»):
+  el navegador no comprobaba el tamaño antes de subir, así que un clip de 4K
+  subía ~100 MB para recibir una página HTML en vez de una frase.
 
 ## [0.55.0] — 2026-08-26
 
@@ -38,7 +99,7 @@ All notable changes to **Eko AI Realtors**.
   navegador y un vídeo de cientos de MB sin progreso parece una página colgada.
   Cuerpo crudo en streaming a disco. Que los bytes llegan intactos lo ata
   `test_upload_stores_the_clip_and_serves_it_back`, que compara el fichero
-  servido con el subido. **Límite real: ~100 MB**, no los 500 de
+  servido con el subido. **Límite real: ~100 MB**, no los 500 que el ajuste valía entonces (95 desde la 0.56.0) de
   `CONTENT_UPLOAD_MAX_MB` — ver v0.55.1.
 - **`GET /api/v1/content/status`**: booleanos y conteos, sin valores de
   configuración. El vacío pasa a decir POR QUÉ está vacío, y una pestaña vacía
@@ -376,7 +437,7 @@ imposible publicar sin una persona.
 - **Sin identificación de brokerage no se publica.** Colorado exige que la
   publicidad identifique la brokerage; el campo existe ahora en Ajustes y la
   puerta se niega mientras esté vacío.
-- **Clips desde el móvil.** Subida de vídeo en streaming (el ajuste dice 500 MB;
+- **Clips desde el móvil.** Subida de vídeo en streaming (el ajuste decía 500 MB entonces; son 95 desde la 0.56.0;
   el límite real por el sitio es ~100 MB — ver v0.55.1) que
   queda como borrador; el archivo se sirve solo autenticado y dentro de la
   frontera de cada agencia.

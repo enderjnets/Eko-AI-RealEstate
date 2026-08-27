@@ -194,3 +194,56 @@ async def test_tool_call_book_visit_keys_on_caller_id(database_url: str) -> None
         await engine.dispose()
     finally:
         await _cleanup(database_url, caller_id)
+
+
+@pytest.mark.asyncio
+async def test_a_broken_office_timezone_stops_the_booking_not_just_the_log() -> None:
+    """The same six-hour bug as `visits.py`, on the lane that talks out loud.
+
+    `_office_zone` used to fall back to UTC with a `log.warning`. Every hour the
+    assistant quoted and every appointment it booked then landed in the wrong
+    zone — in Denver, six hours off. A caller told "Tuesday at 2 PM" finds the
+    door locked at 8 AM, and the only trace is a warning line nobody reads
+    during a phone call.
+
+    None rather than an exception, because the tool handler promises never to
+    raise: a thrown handler stalls the assistant mid-call. The spoken apology
+    is the honest answer — we cannot offer a time we cannot compute.
+    """
+    from app.services.voice import _office_zone
+
+    assert _office_zone("America/Denver") is not None
+    assert _office_zone("") is not None, "blank still means UTC, as documented"
+    assert _office_zone("Invented/Zone") is None, (
+        "an unusable zone still resolves, so times will be quoted in the wrong one"
+    )
+
+    # And the promise has to hold for EVERY way the lookup fails, not just the
+    # two exception types the first version happened to catch. `"America"` is a
+    # tzdata directory: it raised `IsADirectoryError` from a call sited outside
+    # `handle_tool_call`'s own `try`, straight past a docstring saying it never
+    # raises. A handler that stalls mid-call is exactly what None was for.
+    for unusable in ("America", "Etc", "A" * 300):
+        assert _office_zone(unusable) is None, f"{unusable[:12]!r} must not resolve"
+
+
+@pytest.mark.asyncio
+async def test_the_assistant_apologises_instead_of_quoting_a_wrong_hour(
+    monkeypatch,
+) -> None:
+    """And the refusal reaches the caller as speech, not as a stall or a stack trace."""
+    from app.services import voice
+
+    async def _bad_tz(db: object) -> str:
+        return "Invented/Zone"
+
+    monkeypatch.setattr(voice, "_office_tz_name", _bad_tz)
+
+    spoken = await voice.handle_tool_call(
+        "check_availability", {}, customer_number="+13035550000", db=None
+    )
+
+    assert isinstance(spoken, str) and spoken, "the handler must always speak"
+    assert "call you back" in spoken.lower(), spoken
+    # And nothing that looks like a time was offered.
+    assert "AM" not in spoken and "PM" not in spoken, spoken
