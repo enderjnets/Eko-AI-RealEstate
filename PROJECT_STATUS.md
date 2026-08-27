@@ -119,6 +119,51 @@ Ponerlas y hacer `up -d` **no hace nada**: hay que **reconstruir** el frontend.
 Hoy están vacías en el VPS, así que todo esto está inerte — y es un requisito,
 no un apaño: redirigir a un nombre que aún no resuelve tumbaría el sitio vivo.
 
+## 🔴 REGLA DEL DUEÑO (27-ago): «Eko AI Realtors» es INTERNO
+
+> «Eko AI Realtors es la plataforma que está detrás de `www.denverhomestory.com`
+> y sus redes; el público de denverhomestory.com no debe ver nada de Eko AI
+> Realtors. Para uso interno sí.»
+
+Barrido de TODAS las superficies que ve un cliente. Lo que fuga, medido hoy:
+
+| Superficie | Qué ve el cliente | Gravedad |
+|---|---|---|
+| **Remitente de TODO correo** | `RESEND_FROM = "Eko AI Realtors <noreply@realtors.ekoaiautomation.com>"` — nombre Y dominio de nuestra empresa de software, en cada respuesta y en la invitación de la cita | 🔴 **el peor**: es lo primero que ve en la bandeja |
+| Teléfono, saludo | *«thanks for calling Eko AI Realtors»* | 🔴 |
+| Teléfono, prompt | *«You are Eko, the friendly AI assistant…»* — puede decirlo si le preguntan quién es | 🔴 |
+| `appleWebApp.title` (`app/layout.tsx:29`) | «Eko AI Realtors» si alguien añade la landing a su pantalla de inicio | ⚠️ menor |
+
+**Limpio, comprobado**: la landing (`page.tsx` sobrescribe el título con los
+nombres de los asesores), `/contact`, los componentes de landing, y **todo** el
+texto del backend (`conversation.py`, `visit_invite.py`, `followups.py`,
+`email.py`, `sms.py`, `optout.py`: cero apariciones). El `ORGANIZER` del `.ics`
+usa `booking_contact_email`, que en org 1 es Natalia — correcto.
+
+**Arreglo, en dos tiempos:**
+1. **Ahora, sin DNS**: cambiar el *nombre visible* del remitente y el saludo del
+   teléfono. El dominio sigue verificado en Resend, solo cambia el nombre.
+2. **Tras la mudanza del dominio**: `hello@denverhomestory.com` (Parte 3 del
+   plan) elimina también el dominio delator.
+
+Los textos exactos los decide el dueño: es su marca de cara al cliente.
+
+## Auditoría independiente del enrutado por host (`7d2e35e`)
+
+**Bloqueantes: ninguno.** Descartó con evidencia el open-redirect, el salto del
+matcher por `%2e%2e`/`//` (Next normaliza antes del middleware), y verificó la
+inercia en servidor real con las variables vacías.
+
+| # | Hallazgo | Estado |
+|---|---|---|
+| I1 | **`/about` quedó desindexada hoy**: el `robots:{index:false}` del layout raíz es nuevo y `/about` no exporta `metadata` que lo sobrescriba, pero sí está en `PUBLIC_PATHS`. Regresión real y ya viva | backlog, **arreglar antes de publicar la marca** |
+| I2 | `Host: www.denverhomestory.com.` (con punto final) **sirve el panel** en el dominio de marca: el middleware quita el puerto pero no el punto | backlog, **arreglar antes de configurar los hosts** |
+| I3 | `BRAND_URL == PANEL_URL` produce **bucle de redirección infinito**, sin guarda ni test | backlog, alcanzable a mano en la transición |
+| M1–M4 | 4 huecos de mutación (la suite queda verde al mutar): `307`→`302`, los dos `.toLowerCase()`, y media guarda de inercia **inalcanzable** (`hostOf("")==""` hace que `!PANEL_URL` nunca se evalúe) | backlog |
+
+I1, I2 e I3 **no bloquean hoy** (todo inerte), pero I1 ya está viva y I2/I3
+muerden justo el día que se configuren los hostnames — que es esta semana.
+
 ### Hallazgos abiertos del asistente de voz (importantes, no bloquean)
 
 Medido en el asistente vivo `5d975722` el 27-ago:
