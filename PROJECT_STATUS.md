@@ -109,15 +109,19 @@ tubería (verificada por forma: prefijo `re_`, 36 caracteres), línea base limpi
 tomada a mano antes de programarlo, cron `*/15` en el ROG y **quitado del VPS**.
 Los otros 6 crons del VPS, intactos.
 
-### 🔴 Abierto: algo levantó los contenedores del ROG después del corte
+### Resuelto: quién levantó los contenedores del ROG tras el corte
 
-Tras el `down`, aparecieron corriendo otra vez («Up 57 seconds»). El journal de
-Docker los sitúa en `14:18:27Z`. **No he identificado la causa**: no hay unidad
-systemd, ni timer, ni cron de root, ni el vigía los reinicia (sus líneas de
-`docker ps` están dentro del cuerpo de un correo, no se ejecutan). El ROG tiene
-agentes de openclaw corriendo desde el 5-ago; es el sospechoso, sin prueba.
+Aparecieron corriendo otra vez a las `14:18:27Z` según el journal de Docker.
+Descarté unidad systemd, timer, cron de root y el propio vigía (sus líneas de
+`docker ps` están dentro del cuerpo de un correo, no se ejecutan). **Causa real:
+otra sesión de Claude, «PCROG Cleaning», haciendo limpieza del ROG y levantando
+servicios.** Avisada por mensaje directo de las dos cosas que no debe tocar: no
+levantar `eko-realestate-*` (su base es la foto anterior al corte) y sobre todo
+**no arrancar `cloudflared-realtors-demo.service`**, porque sirve el MISMO
+hostname que el túnel del VPS y dos conectores repartirían el tráfico entre dos
+bases de datos distintas.
 
-**Mitigado sin destruir la reversión**: en el `.env` del ROG quedan
+**Mitigación, que se queda puesta igualmente** — el ROG lo tocan varias sesiones: en el `.env` del ROG quedan
 `SMS_SIMULATED=true`, `EMAIL_SIMULATED=true`, `FOLLOWUPS_ENABLED=false`,
 `DELIVERY_RETRY_ENABLED=false`, `ENRICHMENT_ENABLED=false`. Si algo lo resucita,
 **no puede enviar nada real** — el riesgo era que sus bucles reenviaran SMS a
