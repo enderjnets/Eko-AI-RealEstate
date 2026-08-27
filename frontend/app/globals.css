@@ -26,9 +26,16 @@ body:has(.eko-landing) :focus-visible { outline-color: #7A5C34; }
 *::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }
 *::-webkit-scrollbar-track { background: transparent; }
 
-/* Phones: reserve space so the fixed bottom tab bar never hides page content.
-   Scoped with :has() so login / about (no tab bar) keep their full layout. */
-@media (max-width: 767px) {
+/* Phones AND tablets: reserve space so the fixed bottom tab bar never hides
+   page content. Scoped with :has() so login / about (no tab bar) keep their
+   full layout.
+
+   1023px, not 767px, and the number MUST track `lg:hidden` on `.eko-tabbar` in
+   `Nav.tsx`. They are the same decision written in two languages: move one and
+   every tablet gets a bar sitting on top of the last rows of the page, with
+   nothing to hint why. Tailwind's `lg` is 1024, so the query stops one pixel
+   below it. */
+@media (max-width: 1023px) {
   body:has(.eko-tabbar) {
     padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
   }

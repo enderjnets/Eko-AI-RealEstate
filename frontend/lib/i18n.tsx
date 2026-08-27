@@ -29,7 +29,14 @@ const EN: Record<string, string> = {
   "nav.analytics": "Analytics",
   "nav.discovery": "Discovery",
   "nav.api": "API",
-  "nav.stats": "Stats",
+  "nav.more": "More",
+  // Bottom-bar-only short forms. The bar divides the screen into equal slots,
+  // so at 320px with the operator tab present each is 52px — and "Calendario"
+  // needs 57, "Contenido" 55. Measured, not guessed: both were rendering as
+  // "Calendari…" and "Contenid…". English already fits, so these are the same
+  // word there; Spanish gets the short form it would use out loud anyway.
+  "nav.tab.content": "Content",
+  "nav.tab.calendar": "Calendar",
   // calendar
   "calendar.title": "Calendar",
   "calendar.subtitle": "Visits, events and pending system tasks — in your office timezone.",
@@ -713,7 +720,9 @@ const ES: Record<string, string> = {
   "nav.analytics": "Analíticas",
   "nav.discovery": "Descubrir",
   "nav.api": "API",
-  "nav.stats": "Stats",
+  "nav.more": "M\u00e1s",
+  "nav.tab.content": "Clips",
+  "nav.tab.calendar": "Agenda",
   // bandeja de comunicaciones
   "inbox.title": "Bandeja",
   "inbox.subtitle": "Leads con conversaciones abiertas — respondé los pendientes, mirá quién tiene cita agendada, ordenados por prioridad.",

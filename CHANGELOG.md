@@ -2,7 +2,40 @@
 
 All notable changes to **Eko AI Realtors**.
 
-## [No publicado]
+## [0.56.0] — 2026-08-26
+
+### Añadido — el filtro Fair Housing llega al carril que habla con leads
+
+- `find_violations` no se llamaba en **ningún** punto del camino que responde a
+  leads reales: sus tres consumidores eran del carril de vídeo. Ahora corre
+  sobre el texto final que sale por SMS, email y WhatsApp — **después** del pie
+  de broker, que se reproduce verbatim por obligación legal y era por donde una
+  frase prohibida entraría sin que nadie la mirase.
+- **Registra y avisa, no bloquea** (decisión del dueño): el lead recibe su
+  respuesta sin retraso y sin una segunda llamada al LLM en el camino caliente.
+- **Su techo, dicho por escrito**: caza frases literales, no paráfrasis. Medido
+  contra el módulo real: `"It's a safe neighborhood with good schools"` → 2
+  hallazgos; `"You'll love how safe this area feels for raising kids"` → **0**.
+  Es un suelo, no un techo, y el comentario del código lo dice con el
+  contraejemplo delante.
+- Vigilante propio (`fair_housing_watch`) con ventana rodante de 24 h, no día
+  natural UTC: un corte a medianoche daba por comunicada una avería no entregada
+  y abría una ventana muda hasta el primer tick del día siguiente.
+
+### Corregido — una zona horaria pegada archivaba las citas seis horas antes
+
+- `" America/Denver"` con un espacio delante guardaba una visita de las 10:00 a
+  las 04:00 hora de Denver, respondía **201** y dejaba la cadena mala al lado.
+- **Cuatro sitios, no uno.** El primer barrido buscó la forma del `except` que
+  yo acababa de escribir en vez de la pregunta que importaba, y encontró uno.
+  Los otros tres estaban escritos distinto: el asistente telefónico, el GET de
+  huecos libres y el carril de texto que ofrece horas a un lead por SMS.
+- **`ZoneInfo` lanza tres familias de excepción**, no dos. El primer guard cogía
+  dos, así que una zona de 300 caracteres —que siempre había sido un 422 limpio
+  de `max_length`— pasaba a **500**. Ese conocimiento vive ahora en un módulo
+  que comparten los cuatro llamadores.
+- Con la zona de la agencia inservible **no se ofrecen horas**, en vez de
+  ofrecerlas en UTC: una hora equivocada es peor que ninguna.
 
 ### Corregido — el aviso de tamaño llega antes de gastar la subida
 
