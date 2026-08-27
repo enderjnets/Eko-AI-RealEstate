@@ -21,7 +21,7 @@ riesgo.
 | 1 | El filtro corre sobre lo que sale hacia el lead | ✅ completada — `f63ef4e` |
 | 2 | Recortar espacios donde el usuario escribe | ✅ completada — `a1820d8` |
 | 2b | El `except IntegrityError` que reventaba y perdía el turno | ✅ completada — `a1820d8` |
-| 2c | El timezone de una cita que la desplazaba seis horas | ✅ completada |
+| 2c | El timezone de una cita que la desplazaba seis horas | ✅ completada — `4b76280` |
 | 3 | Aviso de tamaño antes de gastar la subida | ⏳ pendiente |
 | 4 | El nav entre 768 y 1279 px + bump v0.56.0 | ⏳ pendiente |
 
