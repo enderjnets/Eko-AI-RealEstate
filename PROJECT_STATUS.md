@@ -204,19 +204,46 @@ así que `host..` se colaba igual. Ambos corregidos con test propio.
   configurado. Y la guarda deja de comprobar las URLs: `hostOf("") === ""`, así
   que esas cláusulas eran código muerto con forma de comprobación.
 
-## ⏸️ PREPARADO, SIN APLICAR — necesita autorización (toca producción)
+## ✅ v0.61.0 EN PRODUCCIÓN — desplegada y verificada (27-ago-2026)
 
-| Cambio | Dónde | Por qué |
-|---|---|---|
-| `RESEND_FROM` → `Denver Home Story <noreply@realtors.ekoaiautomation.com>` | `.env` del VPS + reinicio del backend | Hoy cada correo al cliente llega firmado por nuestra empresa de software. **No se cambia el default de `config.py`**: es multi-tenant, y la marca de un cliente no puede ser el valor por defecto de la plataforma |
-| `agency_name` → `Denver Home Story` | `agent_settings` org 1 | El agente firma con este campo (`conversation.py:429,755,1455`); si no casa con el remitente, se lee raro |
-| Bump a **v0.61.0** | `config.py`, `version.ts`, `CHANGELOG.md` | La rama lleva cambios de frontend visibles sin desplegar y sigue en 0.60.0 |
+Autorizada por el dueño y desplegada desde `fbd2bea`. **Sin migraciones**
+(`044_message_internal` sigue siendo la cabeza).
 
-✅ **YA APLICADO** (no toca el repo, es configuración de VAPI): el asistente se
-llama **Clara**, se presenta como asistente de Natalia y Robbie en Denver Home
-Story, y **admite ser una IA en cuanto se lo preguntan, sin evasivas**. Cero
-«Eko» en saludo y prompt; herramientas y `serverUrl` intactos. Copia del prompt
-anterior guardada.
+| Verificación | Resultado real |
+|---|---|
+| `/api/v1/health` por el dominio público | **`0.61.0`**, `llm_fallback:"ok"`, `captcha:"on"` |
+| Remitente de correo | Enviado uno real al dueño y **releído desde la API de Resend**: `from: Denver Home Story <noreply@realtors.ekoaiautomation.com>`, `last_event: delivered` |
+| Título de `/contact` en producción | `Contact Natalia & Robbie · Engel & Völkers Aspen` — era `Eko AI Realtors — Dashboard` |
+| «Eko AI» en las páginas públicas | **0** en `/` y en `/contact` |
+| Rutas con los hosts sin configurar | `/`, `/contact`, `/about`, `/leads`, `/login` → **200**: el middleware sigue inerte, como debe |
+| Formulario público | `POST /api/v1/public/leads` → **422** (validación), **nunca 3xx** |
+| Webhook de voz sin firma | **403** |
+| `agency_name` org 1 | `Denver Home Story` (era `Natalia & Robbie`) |
+| Zorros y Black Volt | arriba desde hace 3, 4 y 7 semanas; `zorros.ekoaiautomation.com` responde |
+| Datos | 77 mensajes · 38 leads · 4 visitas. El +1 es **la llamada de prueba del dueño**, no dato mío |
+
+**Hallazgo bueno de propina:** esa llamada real prueba que la identificación por
+identificador de llamada **funciona** — se archivó en la ficha que ya existía con
+ese teléfono (lead 213, del 26-may) en vez de crear una nueva. Es exactamente el
+mecanismo que el reenvío TwiML descartado habría puesto en riesgo.
+
+**Reversión (no usada, escrita):** checkout de `0857451` + `build` + `up -d`;
+borrar la línea `RESEND_FROM` del `.env` (vuelve al default de compose);
+`UPDATE agent_settings SET agency_name='Natalia & Robbie' WHERE org_id=1`; el
+prompt anterior de VAPI está guardado. Respaldo del `.env` en `~/.env.bak.v060`
+(600). Sin migraciones que revertir.
+
+### Pendiente de confirmación humana
+El dueño debe **volver a llamar** a `+1 720 824-9313`: su prueba fue a las 16:44
+y el asistente se cambió a las ~17:20, así que oyó el saludo antiguo.
+
+### Backlog nuevo (menores, no bloquean)
+- `/api/v1/health` publica `"app":"Eko AI Inmobiliario"` — nombre de la
+  plataforma **y en español**, en un endpoint público.
+- El pie de la landing enlaza a `/login`, que sí muestra el nombre de la
+  plataforma. Lo resuelve el 308 en cuanto se configuren los hosts.
+- `NEXT_PUBLIC_LANDING_BROKERAGE` dice «Engel & Völkers **Aspen**» con el
+  mercado en Denver — decisión de Natalia.
 
 ## Auditoría independiente del enrutado por host (`7d2e35e`)
 
