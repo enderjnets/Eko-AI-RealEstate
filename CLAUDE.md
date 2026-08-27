@@ -75,7 +75,16 @@ the product, used in README / landing / marketing copy, is **"Eko AI Realtors"**
    install". Followed literally on an install with no Meta app — which is every
    install today — it produced exactly the outage above.)
 
-## Port map (ROG `100.88.47.99` / `10.0.0.240`)
+## Port map (VPS `ender-vps` — 162.35.160.169, tailnet `100.116.187.14`)
+
+> **Se mudó el 27-ago-2026.** El sistema vivía en el ROG, un portátil de casa;
+> ahora corre en el VPS, junto a Zorros y Black Volt. El ROG sigue en el
+> conjunto para **producción y montaje de vídeo** (tiene la GPU) y para el
+> vigía externo. Los contenedores viejos del ROG quedan parados una semana
+> como camino de vuelta.
+
+> ⚠️ En el VPS hay **otros dos productos vivos de clientes**: todo `zorros-*` y
+> todo `blackvolt-*`. Ni parar, ni reiniciar, ni `exec`.
 
 We coexist with three other stacks. Use exactly these ports for this product:
 
@@ -245,7 +254,7 @@ agency, so its admins would have inherited it.
 | Backend OpenAPI | `http://localhost:8011/docs` — **loopback only**, see below |
 | Backend health | `http://localhost:8011/api/v1/health` (same) |
 | Frontend, direct | `http://localhost:3004` (same). Google sign-in cannot work from a raw IP, which is why the tunnel hostname is the real entrance |
-| Postgres | `localhost:5434` (bound only to 127.0.0.1 on the ROG; tunnel via Tailscale for remote) |
+| Postgres | `localhost:5434` (atado a 127.0.0.1 en el VPS; para llegar de fuera, túnel SSH) |
 | Redis | `localhost:6381` (same) |
 
 > **Los cuatro servicios están atados a `127.0.0.1`.** Antes, backend y frontend
@@ -257,18 +266,18 @@ agency, so its admins would have inherited it.
 >
 > Para llegar desde otra máquina, un túnel SSH:
 > ```
-> ssh -N -L 8011:127.0.0.1:8011 -L 3004:127.0.0.1:3004 pcrug
+> ssh -N -L 8011:127.0.0.1:8011 -L 3004:127.0.0.1:3004 ender-vps
 > ```
 > y luego `http://localhost:8011/docs` en el navegador local. La única entrada
 > pública sigue siendo el túnel de Cloudflare, que sirve **solo** el frontend:
 > `/docs` da 404 por ahí (medido), a propósito.
 
-`inmo-demo.ekoaiautomation.com` is live: a Cloudflare tunnel on the ROG points
+`inmo-demo.ekoaiautomation.com` is live: a Cloudflare tunnel on the VPS points
 it at this install.
 
 **Sign in on the domain, not on the IP.** The Google button builds its redirect
 from `window.location.origin`, so on the LAN address it asks Google for
-`http://10.0.0.240:3004/api/v1/auth/login/google/callback` and gets
+`http://<ip>:3004/api/v1/auth/login/google/callback` and gets
 `Error 400: redirect_uri_mismatch`. Adding that URI to the Google console is
 not an option — Google rejects raw IP addresses as origins and redirect URIs on
 Web clients, accepting only `localhost` and public domains. The IP is fine for

@@ -84,7 +84,55 @@ alguien creó esa carpeta a mano en mayo**. Afecta también a terceros:
 `scripts/install.sh` corre `docker compose build`. Arreglado con `mkdir -p` en
 la etapa builder, para no servir un `.gitkeep` suelto desde la raíz del sitio.
 
-### 🔴 A.1 — el corte: PREPARADO, NO EJECUTADO
+### A.1 / A.2 / A.3 — CORTE EJECUTADO ✅ 27-ago-2026
+
+**El sistema corre en el VPS.** `inmo-demo.ekoaiautomation.com` → `0.56.0`,
+`llm_fallback:"ok"`, `/login` y `/contact` en 200.
+
+| Verificación | Resultado |
+|---|---|
+| Datos íntegros | **72 mensajes, 38 leads, 4 visitas, 9 conversaciones, 2 orgs** — idénticos a la línea base tomada antes del corte. Alembic en `043` |
+| Volúmenes | 64,6 MB y 4 KB en destino, coincidentes con el origen |
+| Puertos desde fuera | `162.35.160.169:8011` y `:3004` **rechazados** |
+| Webhook de voz sin firma | **403** (sigue armado) |
+| Vigilantes | `monitor_state`: `fair_housing \| clean`, `llm_fallback \| ok` |
+| Túnel viejo del ROG | `cloudflared-realtors-demo.service` parado y deshabilitado. **El túnel de ventas intacto**: `ekoaiautomation.com`, `app.` y `landing.` los tres en 200 |
+| Zorros y Black Volt | intactos, sus 9 contenedores corriendo |
+
+**El respaldo de LLM, por Tailscale.** Puente nuevo en el ROG
+(`ollama-bridge-tailnet.service`) atado **solo** a `100.88.47.99` — verificado
+que la LAN queda cerrada. El health pasó de `off` a **`ok`**, y esa transición
+es la prueba de que funciona.
+
+**El vigía cambió de casa (A.2).** Instalado en el ROG, credencial movida por
+tubería (verificada por forma: prefijo `re_`, 36 caracteres), línea base limpia
+tomada a mano antes de programarlo, cron `*/15` en el ROG y **quitado del VPS**.
+Los otros 6 crons del VPS, intactos.
+
+### 🔴 Abierto: algo levantó los contenedores del ROG después del corte
+
+Tras el `down`, aparecieron corriendo otra vez («Up 57 seconds»). El journal de
+Docker los sitúa en `14:18:27Z`. **No he identificado la causa**: no hay unidad
+systemd, ni timer, ni cron de root, ni el vigía los reinicia (sus líneas de
+`docker ps` están dentro del cuerpo de un correo, no se ejecutan). El ROG tiene
+agentes de openclaw corriendo desde el 5-ago; es el sospechoso, sin prueba.
+
+**Mitigado sin destruir la reversión**: en el `.env` del ROG quedan
+`SMS_SIMULATED=true`, `EMAIL_SIMULATED=true`, `FOLLOWUPS_ENABLED=false`,
+`DELIVERY_RETRY_ENABLED=false`, `ENRICHMENT_ENABLED=false`. Si algo lo resucita,
+**no puede enviar nada real** — el riesgo era que sus bucles reenviaran SMS a
+leads reales desde la foto vieja. Original en `.env.pre-mudanza-20260827`.
+
+⚠️ **Para revertir hay que deshacer esa mordaza**: `cp .env.pre-mudanza-20260827 .env`
+antes de levantar el ROG.
+
+### Reversión (sigue disponible)
+
+Los volúmenes del ROG **no se tocaron**. Volver es: restaurar su `.env`,
+`cloudflared tunnel route dns --overwrite-dns eko-realtors-demo inmo-demo…`,
+`systemctl enable --now cloudflared-realtors-demo`, y `docker compose up -d`.
+
+### El corte, tal como se ejecutó
 
 Es el paso en que producción cambia de máquina. Requiere autorización expresa.
 
