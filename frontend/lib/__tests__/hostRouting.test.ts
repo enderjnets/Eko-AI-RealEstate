@@ -96,6 +96,32 @@ describe("host routing", () => {
     expect(res.status).toBe(308);
   });
 
+  it("normalises the dot on the CONFIGURED side too, not just the request", async () => {
+    // The other half of "normalised on both sides". Without the strip in
+    // `hostOf`, a BRAND_URL someone pasted with a trailing dot yields a
+    // BRAND_HOST no request can ever equal, and the split silently stops
+    // working — every panel route served under the brand domain. The request
+    // side had a test; this side had none.
+    const { middleware } = await load("https://www.denverhomestory.com.", PANEL);
+    const res = middleware(req("www.denverhomestory.com", "/leads"));
+    expect(location(res)).toBe(`${PANEL}/leads`);
+  });
+
+  it("strips every trailing dot, not just one", async () => {
+    const { middleware } = await load(BRAND, PANEL);
+    expect(location(middleware(req("www.denverhomestory.com..", "/leads")))).toBe(
+      `${PANEL}/leads`,
+    );
+  });
+
+  it("keeps the platform's sales page reachable on the panel's own hostname", async () => {
+    // The other half of the rule. Taking `/about` out of PUBLIC_PATHS must hide
+    // it from CLIENTS, not delete it: it is still how the product is explained
+    // internally. Nothing asserted this, so deleting the page would have passed.
+    const { middleware } = await load(BRAND, PANEL);
+    expect(location(middleware(req("realtors.ekoaiautomation.com", "/about")))).toBeNull();
+  });
+
   it("stays inert when both hostnames are the same, instead of looping forever", async () => {
     // Reachable by hand mid-migration. Redirecting a host to itself is an
     // infinite redirect, which is strictly worse than not redirecting at all.

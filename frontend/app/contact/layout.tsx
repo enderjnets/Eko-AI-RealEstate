@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { BRAND_URL } from "@/lib/hosts";
 import { LANDING } from "@/lib/landing";
 
@@ -22,7 +22,33 @@ import { LANDING } from "@/lib/landing";
 const PUBLIC_NAME =
   [LANDING.advisors, LANDING.brokerage].filter(Boolean).join(" \u00b7 ") || "Colorado real estate";
 
+const DESCRIPTION =
+  "Tell us what you are looking for and we will get back to you. Advisors for buyers and sellers across Colorado.";
+
 export const metadata: Metadata = {
+  /**
+   * Title and description are declared here, not inherited, and that is the
+   * whole reason this block exists.
+   *
+   * Next MERGES metadata, so a field this file does not set falls through to
+   * `app/layout.tsx` — whose title is "Eko AI Realtors — Dashboard" and whose
+   * description sells the platform to real-estate offices. Combined with the
+   * `index: true` below, the page where a stranger types their phone number was
+   * publishing our vendor name as its Google result and as its WhatsApp preview
+   * card. The platform is what runs this site; the people who reach it are the
+   * agency's clients and must never see it.
+   *
+   * `openGraph` and `twitter` are declared for the same reason a link to this
+   * page is shared: without them the preview card falls back to the `<title>`.
+   */
+  title: `Contact ${PUBLIC_NAME}`,
+  description: DESCRIPTION,
+  openGraph: {
+    type: "website",
+    title: `Contact ${PUBLIC_NAME}`,
+    description: DESCRIPTION,
+  },
+  twitter: { card: "summary", title: `Contact ${PUBLIC_NAME}`, description: DESCRIPTION },
   robots: { index: true, follow: true },
   // Same reason as the landing: the root layout's home-screen name is the
   // platform's, and this page is public.
@@ -35,3 +61,9 @@ export const metadata: Metadata = {
 export default function ContactLayout({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
+
+/**
+ * The landing's light theme, not the panel's noir. Inherited, the browser chrome
+ * around a public page was painted with the internal palette.
+ */
+export const viewport: Viewport = { themeColor: "#F4F1EA" };

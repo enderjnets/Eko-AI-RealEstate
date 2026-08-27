@@ -48,7 +48,7 @@ export function middleware(req: NextRequest) {
   const host = (req.headers.get("host") || "")
     .toLowerCase()
     .split(":")[0]
-    .replace(/\.$/, "");
+    .replace(/\.+$/, "");
   const { pathname, search } = req.nextUrl;
 
   // The brand domain serves the brand site only. Anything else on it is the

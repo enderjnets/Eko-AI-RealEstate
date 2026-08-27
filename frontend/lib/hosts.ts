@@ -36,7 +36,7 @@ function hostOf(url: string): string {
     // the request: `example.com.` and `example.com` are one name to DNS and two
     // strings to `===`. Normalising both sides is what makes the comparison mean
     // "same host".
-    return new URL(url).hostname.toLowerCase().replace(/\.$/, "");
+    return new URL(url).hostname.toLowerCase().replace(/\.+$/, "");
   } catch {
     // A malformed value must not throw inside middleware, which would 500 every
     // request on the site. Treating it as unset degrades to today's behaviour.
