@@ -684,11 +684,13 @@ def _office_hours_note(agent_cfg: AgentSettings) -> str:
     what to say, not a gate on replying — a lead who writes at 11pm should get
     an answer, just not one that implies someone is at a desk.
     """
-    from zoneinfo import ZoneInfo
+    from app.services.timezones import resolve_zone
 
-    try:
-        zone = ZoneInfo(agent_cfg.timezone or "UTC")
-    except Exception:  # noqa: BLE001 — a bad timezone must not cost a reply
+    # The fifth call site. The sweep that centralised this said "four", and an
+    # audit counted five — the miscount is the finding, not the behaviour, which
+    # was already right: an unusable zone costs the note, never the reply.
+    zone = resolve_zone(agent_cfg.timezone or "UTC")
+    if zone is None:
         return ""
     now = datetime.now(zone)
     note = (

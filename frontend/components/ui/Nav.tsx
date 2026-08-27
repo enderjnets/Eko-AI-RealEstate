@@ -187,7 +187,7 @@ export function Nav() {
             {isOperator && (
               <Link
                 href="/discovery"
-                className="hidden xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
+                className="hidden 2xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
               >
                 <Search className="w-3.5 h-3.5" />
                 {t("nav.discovery")}
@@ -303,7 +303,7 @@ export function Nav() {
 
             <Link
               href="/properties"
-              className="hidden xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
+              className="hidden 2xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
             >
               <Home className="w-3.5 h-3.5" />
               {t("nav.properties")}
@@ -317,7 +317,7 @@ export function Nav() {
             </Link>
             <Link
               href="/analytics"
-              className="hidden xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
+              className="hidden 2xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
             >
               <BarChart3 className="w-3.5 h-3.5" />
               {t("nav.analytics")}
@@ -325,7 +325,7 @@ export function Nav() {
             {isAdmin && (
               <Link
                 href="/settings"
-                className="hidden xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
+                className="hidden 2xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
               >
                 <Settings className="w-3.5 h-3.5" />
                 {t("nav.settings")}
@@ -338,7 +338,7 @@ export function Nav() {
               href="/docs"
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden xl:inline-block px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+              className="hidden 2xl:inline-block px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
               title="OpenAPI docs (backend Swagger UI)"
             >
               {t("nav.api")}
@@ -354,7 +354,7 @@ export function Nav() {
                 the menu becomes the back door to it. */}
             <OverflowMenu
               label={t("nav.more")}
-              triggerClassName="xl:hidden"
+              className="2xl:hidden"
               items={[
                 ...(isOperator
                   ? [{ href: "/discovery", label: t("nav.discovery"), Icon: Search }]

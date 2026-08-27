@@ -45,7 +45,7 @@ export function OverflowMenu({
   label,
   variant = "inline",
   direction = "down",
-  triggerClassName = "",
+  className = "",
 }: {
   items: OverflowItem[];
   /** Trigger text and accessible name. */
@@ -53,7 +53,21 @@ export function OverflowMenu({
   /** `inline` sits in a row of links; `tab` is a full-height bottom-bar tab. */
   variant?: "inline" | "tab";
   direction?: "down" | "up";
-  triggerClassName?: string;
+  /**
+   * Classes for the WRAPPER, not the button — responsive hiding included.
+   *
+   * On the button alone it hid the trigger and left the panel painted: open the
+   * menu on a tablet, rotate to landscape, and a floating list of links sat
+   * over the page with nothing to close it but ESC. It also left a zero-width
+   * flex child still earning its `gap`. Hiding the wrapper takes the panel with
+   * it.
+   *
+   * `open` is deliberately NOT reset on the way across: coming back down, the
+   * panel reappears together with the button that owns it, which is state
+   * preserved rather than a menu nobody can dismiss. Measured both directions
+   * — an earlier draft of this very comment claimed a reset that did not exist.
+   */
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -84,6 +98,20 @@ export function OverflowMenu({
     setOpen(false);
   }, [pathname]);
 
+  // And close when focus leaves it. Without this, tabbing out of an open panel
+  // left it in the DOM over the page — and a keyboard user could open this one
+  // while the Inbox dropdown was still open, painting one over the other.
+  useEffect(() => {
+    if (!open) return;
+    function onFocusOut(e: FocusEvent) {
+      const next = e.relatedTarget as Node | null;
+      if (ref.current && next && !ref.current.contains(next)) setOpen(false);
+    }
+    const node = ref.current;
+    node?.addEventListener("focusout", onFocusOut);
+    return () => node?.removeEventListener("focusout", onFocusOut);
+  }, [open]);
+
   if (items.length === 0) return null;
 
   // Whether the page being read is one of the hidden ones. Without this the bar
@@ -97,13 +125,17 @@ export function OverflowMenu({
     direction === "up" ? "bottom-full mb-2" : "top-full mt-2";
 
   return (
-    <div className={variant === "tab" ? "relative flex-1 min-w-0" : "relative"} ref={ref}>
+    <div
+      className={`${variant === "tab" ? "relative flex-1 min-w-0" : "relative"} ${className}`}
+      ref={ref}
+    >
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={label}
+        aria-current={holdsCurrent ? "page" : undefined}
         className={
           variant === "tab"
             ? `relative w-full flex flex-col items-center justify-center gap-1 min-h-[56px] py-2 text-[10px] font-medium transition-colors ${
@@ -115,7 +147,7 @@ export function OverflowMenu({
                 holdsCurrent || open
                   ? "text-white bg-white/5"
                   : "text-gray-300 hover:text-white hover:bg-white/5"
-              } ${triggerClassName}`
+              }`
         }
       >
         <MoreHorizontal

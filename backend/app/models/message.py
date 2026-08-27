@@ -98,10 +98,20 @@ class Message(Base):
     #
     # NULL and [] are different answers and both are used: NULL means the text
     # never went through the filter (every row written before v0.56, and the
-    # inbound side, which is the lead's own words and not ours to police), [] —
-    # written as NULL by the caller to keep the column sparse — means it was
-    # screened and came back clean. Deliberately NOT in `_clip` below: that
-    # list trims bounded strings and this is JSONB.
+    # inbound side, which is the lead's own words and not ours to police); []
+    # means it WAS screened and came back clean, and it is stored as a real
+    # empty JSON array, not as NULL.
+    #
+    # An earlier version of this comment said the caller wrote `[]` as NULL "to
+    # keep the column sparse". That was the first design, and it was dropped
+    # precisely because it destroys the distinction this column exists for — on
+    # the one field whose whole value is telling "clean" apart from "never
+    # looked". The code, the migration docstring and
+    # `test_a_screened_clean_reply_is_an_empty_list_not_null` have always
+    # agreed; only this comment disagreed.
+    #
+    # Deliberately NOT in `_clip` below: that list trims bounded strings and
+    # this is JSONB.
     #
     # `none_as_null=True` is load-bearing, not tidiness. SQLAlchemy's default
     # for JSON columns stores a Python `None` as the JSON value `null`, which

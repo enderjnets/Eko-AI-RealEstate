@@ -35,8 +35,25 @@ body:has(.eko-landing) :focus-visible { outline-color: #7A5C34; }
    every tablet gets a bar sitting on top of the last rows of the page, with
    nothing to hint why. Tailwind's `lg` is 1024, so the query stops one pixel
    below it. */
+:root { --eko-tabbar-space: 0px; }
+
 @media (max-width: 1023px) {
   body:has(.eko-tabbar) {
-    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+    --eko-tabbar-space: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: var(--eko-tabbar-space);
   }
+}
+
+/* Anything pinned to the bottom of the VIEWPORT has to clear the bar itself.
+   Body padding cannot do it: `position: sticky` resolves its offset against the
+   scrollport, so a `sticky bottom-4` save bar sat 16px from the bottom edge —
+   which is inside the 57px tab bar. On a tablet the Settings save button was
+   entirely behind it, and a click on it hit the bar underneath and NAVIGATED
+   AWAY, discarding the edits with no warning. Measured, not reasoned: a real
+   click at 1023px went from /settings to /calendar.
+
+   Hence one token instead of two hard-coded numbers in two languages. The next
+   sticky footer gets this for free rather than rediscovering it. */
+.eko-above-tabbar {
+  bottom: calc(var(--eko-tabbar-space) + 1rem);
 }

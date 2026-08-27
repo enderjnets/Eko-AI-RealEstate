@@ -272,7 +272,11 @@ class BodySizeLimit:
             # the dashboard could only show the raw token `body_too_large`, in
             # English, to a bilingual user.
             await JSONResponse(
-                {"detail": "body_too_large", "limit_mb": limit // (1024 * 1024)},
+                # `max(1, …)`: integer division reports 0 MB for the 256 KB
+                # default, and a limit of "0 MB" in a public response is a wrong
+                # number, not a small one. Only the upload path reads this field
+                # today, but the body is public on every route.
+                {"detail": "body_too_large", "limit_mb": max(1, limit // (1024 * 1024))},
                 status_code=413,
             )(scope, receive, send)
             return
@@ -301,7 +305,11 @@ class BodySizeLimit:
             total += len(message.get("body", b""))
             if total > limit:
                 await JSONResponse(
-                    {"detail": "body_too_large", "limit_mb": limit // (1024 * 1024)},
+                    # `max(1, …)`: integer division reports 0 MB for the 256 KB
+                # default, and a limit of "0 MB" in a public response is a wrong
+                # number, not a small one. Only the upload path reads this field
+                # today, but the body is public on every route.
+                {"detail": "body_too_large", "limit_mb": max(1, limit // (1024 * 1024))},
                     status_code=413,
                 )(scope, receive, send)
                 return
@@ -1102,6 +1110,29 @@ async def _startup() -> None:
     # said so — the only reason nobody was hurt is that no lead wrote in that
     # window. Probed once here, cached, and served on /api/v1/health so the
     # failure is one curl away instead of invisible until a lead pays for it.
+    # The timezone every NEW organisation is born with. Never validated until
+    # now, and that was survivable while an unusable zone silently became UTC.
+    # It is not survivable since v0.56.0: `_resolve_wall_clock` refuses rather
+    # than inventing a time, so a typo here means every agency created from
+    # this point cannot file a manual appointment (400), the phone assistant
+    # will not quote an hour, and SMS replies carry no availability — all of it
+    # correct behaviour reacting to a value nobody checked.
+    #
+    # The sweep that centralised "is this a usable zone" covered the four places
+    # that READ one and missed the one that SEEDS it. Loud at startup, where an
+    # operator is already watching, rather than at the first booking of a client
+    # who has just signed up.
+    from app.services.timezones import resolve_zone
+
+    if resolve_zone(settings.DEFAULT_TIMEZONE) is None:
+        logger.error(
+            "⚠️  DEFAULT_TIMEZONE=%r is not a known IANA zone. Every organisation "
+            "created from now on inherits it and will refuse to book or quote "
+            "times until its timezone is fixed in Settings. Set it to something "
+            "like 'America/Denver'.",
+            settings.DEFAULT_TIMEZONE,
+        )
+
     try:
         from app.services.llm import check_fallback_provider
 

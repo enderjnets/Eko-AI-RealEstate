@@ -307,7 +307,7 @@ export function SettingsForm() {
       </section>
 
       {/* Save bar */}
-      <div className="flex items-center justify-end gap-3 sticky bottom-4">
+      <div className="flex items-center justify-end gap-3 sticky eko-above-tabbar">
         {error && (
           <span className="text-[11px] text-red-300 px-2 py-1 rounded bg-red-500/10 border border-red-500/20">
             {error}

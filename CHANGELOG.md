@@ -33,7 +33,9 @@ All notable changes to **Eko AI Realtors**.
 - **`ZoneInfo` lanza tres familias de excepción**, no dos. El primer guard cogía
   dos, así que una zona de 300 caracteres —que siempre había sido un 422 limpio
   de `max_length`— pasaba a **500**. Ese conocimiento vive ahora en un módulo
-  que comparten los cuatro llamadores.
+  que comparten sus llamadores. (Una auditoría contó **cinco**, no cuatro:
+  `conversation.py:_office_hours_note` seguía con su `ZoneInfo` a mano. Su
+  comportamiento ya era correcto; la cifra de esta frase no lo era.)
 - Con la zona de la agencia inservible **no se ofrecen horas**, en vez de
   ofrecerlas en UTC: una hora equivocada es peor que ninguna.
 
@@ -97,7 +99,7 @@ All notable changes to **Eko AI Realtors**.
   navegador y un vídeo de cientos de MB sin progreso parece una página colgada.
   Cuerpo crudo en streaming a disco. Que los bytes llegan intactos lo ata
   `test_upload_stores_the_clip_and_serves_it_back`, que compara el fichero
-  servido con el subido. **Límite real: ~100 MB**, no los 500 de
+  servido con el subido. **Límite real: ~100 MB**, no los 500 que el ajuste valía entonces (95 desde la 0.56.0) de
   `CONTENT_UPLOAD_MAX_MB` — ver v0.55.1.
 - **`GET /api/v1/content/status`**: booleanos y conteos, sin valores de
   configuración. El vacío pasa a decir POR QUÉ está vacío, y una pestaña vacía
@@ -435,7 +437,7 @@ imposible publicar sin una persona.
 - **Sin identificación de brokerage no se publica.** Colorado exige que la
   publicidad identifique la brokerage; el campo existe ahora en Ajustes y la
   puerta se niega mientras esté vacío.
-- **Clips desde el móvil.** Subida de vídeo en streaming (el ajuste dice 500 MB;
+- **Clips desde el móvil.** Subida de vídeo en streaming (el ajuste decía 500 MB entonces; son 95 desde la 0.56.0;
   el límite real por el sitio es ~100 MB — ver v0.55.1) que
   queda como borrador; el archivo se sirve solo autenticado y dentro de la
   frontera de cada agencia.
