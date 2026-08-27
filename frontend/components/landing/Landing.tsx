@@ -209,6 +209,83 @@ function HowWeWork() {
   );
 }
 
+/**
+ * The three markets, with a photograph of each.
+ *
+ * The one section of the v4 design that was never built — the copy for every
+ * other section already lives in `i18n.tsx`, this one had nothing. It is also
+ * the only place on the page that answers "do these people actually work where
+ * I am looking?", which is the question a Denver viewer arrives with after
+ * watching a video, so its absence cost the funnel more than it looks.
+ *
+ * The images are served from `public/landing/`, not from the CDN the design
+ * references (`photos.prod.cirrussystem.net`). That host belongs to the design
+ * tool, not to us: hotlinking it would put the brand page's hero imagery behind
+ * somebody else's uptime and referrer policy, and it would break silently — the
+ * layout would still render, with holes. They were downscaled on the way in
+ * (3000px originals to 1200px, 2.4 MB to 1.5 MB across the set) because this
+ * page is reached from a phone, over mobile data, by someone who has already
+ * decided to give us fifteen seconds.
+ *
+ * Market names and neighbourhoods live in i18n with the rest of the design
+ * copy, not in `lib/landing.ts` env vars. The line `landing.ts` draws is
+ * between descriptive copy and *verifiable business data* — a phone number, a
+ * licence, an address, a years-in-business count, a testimonial — which is
+ * never invented because inventing it is false advertising. Which
+ * neighbourhoods an advisor covers is the former; if that ever becomes a
+ * per-tenant claim rather than this page's copy, it moves to env with the rest.
+ */
+function Markets() {
+  const { t } = useI18n();
+  const markets = [
+    { key: "aspen", src: "/landing/aspen-card.jpg" },
+    { key: "valley", src: "/landing/valley-card.jpg" },
+    { key: "denver", src: "/landing/denver-card.jpg" },
+  ];
+  return (
+    <section id="markets" className="scroll-mt-20 border-b border-ln-line bg-ln-paper">
+      <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
+        <p className="text-[10px] uppercase tracking-[0.22em] text-ln-body">
+          {t("landing.markets.eyebrow")}
+        </p>
+        <h2 className="mt-5 max-w-2xl font-ln-serif text-[30px] leading-[1.15] text-ln-ink sm:text-[40px]">
+          {t("landing.markets.title")}
+        </h2>
+        <div className="mt-10 grid gap-6 sm:grid-cols-3">
+          {markets.map(({ key, src }, i) => (
+            <article key={key}>
+              <div className="overflow-hidden border border-ln-line">
+                {/* eslint-disable-next-line @next/next/no-img-element -- the
+                    rest of this page uses plain <img> too: `sharp` is not
+                    installed, so next/image would optimise nothing here and
+                    only add a runtime dependency. Sized 3:2 to match the
+                    downscaled files exactly, so nothing reflows as they load. */}
+                <img
+                  src={src}
+                  alt=""
+                  width={1200}
+                  height={800}
+                  /* The first card is above the fold on a phone; the other two
+                     are not, and lazy-loading them is most of the byte saving. */
+                  loading={i === 0 ? "eager" : "lazy"}
+                  decoding="async"
+                  className="aspect-[3/2] w-full object-cover"
+                />
+              </div>
+              <h3 className="mt-4 font-ln-serif text-[21px] text-ln-ink">
+                {t(`landing.markets.${key}.title`)}
+              </h3>
+              <p className="mt-1 text-sm leading-[1.7] text-ln-body">
+                {t(`landing.markets.${key}.body`)}
+              </p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Channel({
   href,
   label,
@@ -374,6 +451,7 @@ export function Landing() {
       <main>
         <Hero />
         <HowWeWork />
+        <Markets />
         <ReachUs />
         <Voices />
         <Consult />

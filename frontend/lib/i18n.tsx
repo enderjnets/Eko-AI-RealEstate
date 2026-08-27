@@ -649,6 +649,14 @@ const EN: Record<string, string> = {
   "landing.how.answered.title": "Answered, not queued",
   "landing.how.answered.body":
     "Messages get a real reply the same day, weekends included. Showing requests come back with confirmed times.",
+  "landing.markets.eyebrow": "Where we work",
+  "landing.markets.title": "Three markets, known by heart.",
+  "landing.markets.aspen.title": "Aspen & Snowmass",
+  "landing.markets.aspen.body": "Ski-in chalets, downtown condos",
+  "landing.markets.valley.title": "Roaring Fork Valley",
+  "landing.markets.valley.body": "Basalt, Carbondale, ranch land",
+  "landing.markets.denver.title": "Denver Metro",
+  "landing.markets.denver.body": "Cherry Creek, Wash Park, Highlands",
   "landing.reach.eyebrow": "Reach us",
   "landing.reach.title": "Call, text, or email — the same two people answer.",
   "landing.reach.body":
@@ -1287,6 +1295,14 @@ const ES: Record<string, string> = {
   "landing.how.answered.title": "Te contestamos, no te encolamos",
   "landing.how.answered.body":
     "Los mensajes reciben respuesta real el mismo día, fines de semana incluidos. Las solicitudes de visita vuelven con horarios confirmados.",
+  "landing.markets.eyebrow": "Dónde trabajamos",
+  "landing.markets.title": "Tres mercados que nos sabemos de memoria.",
+  "landing.markets.aspen.title": "Aspen y Snowmass",
+  "landing.markets.aspen.body": "Chalets con acceso a pista, condominios en el centro",
+  "landing.markets.valley.title": "Roaring Fork Valley",
+  "landing.markets.valley.body": "Basalt, Carbondale, terrenos de rancho",
+  "landing.markets.denver.title": "Área metropolitana de Denver",
+  "landing.markets.denver.body": "Cherry Creek, Wash Park, Highlands",
   "landing.reach.eyebrow": "Contáctanos",
   "landing.reach.title": "Llamada, mensaje o correo: contestan las mismas dos personas.",
   "landing.reach.body":
