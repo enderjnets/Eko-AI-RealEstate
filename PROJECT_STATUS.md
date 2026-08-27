@@ -54,8 +54,12 @@ Fotografía DNS completa guardada como línea base para el cotejo posterior.
    retienen los DS viejos con **~5,5 h** de TTL. Mover ahora haría que quien
    caiga en un nodo con caché valide contra una clave que ya no existe →
    **SERVFAIL**. Ventana segura medida: **a partir de las 22:37 del 27-ago**.
-   Antes de dar luz verde, recomprobar que los tres resolutores devuelven
-   vacío de forma estable.
+   ⚠️ **Cómo comprobarlo, porque una sola consulta MIENTE.** Medido a las
+   17:28: `dig` una vez contra 8.8.8.8, 1.1.1.1, 9.9.9.9 y OpenDNS devolvió
+   «sin DS» en los cuatro. Repitiendo 20 veces contra 8.8.8.8: **9 de 20
+   seguían devolviendo la clave vieja**. Google es anycast y cada nodo tiene su
+   propia caché. El criterio de luz verde es **0 de 20**, no «una consulta
+   salió vacía».
 1.b **Apagar el «Domain Lock»** antes de tocar los nameservers, y volver a
    encenderlo después. RDAP dice `clientUpdateProhibited`: con el candado
    puesto, GoDaddy rechaza el cambio. (El bloqueo ICANN de 60 días por ser un
@@ -147,6 +151,51 @@ usa `booking_contact_email`, que en org 1 es Natalia — correcto.
    plan) elimina también el dominio delator.
 
 Los textos exactos los decide el dueño: es su marca de cara al cliente.
+
+## ✅ FASE CERRADA — La marca interna no llega al cliente · commit `f390b1c`
+
+Rama `feat/auditoria-enrutado-host`. Arregla la fuga de marca **y** dos
+hallazgos de la auditoría anterior que muerden justo al configurar los hosts.
+
+| # | Punto | Resultado real |
+|---|---|---|
+| 1 | Tests | **145/145** (eran 142; +3), 10 ficheros, 0 saltados |
+| 2 | Typecheck | `npx tsc --noEmit` sin errores |
+| 3 | Build | `✓ Compiled successfully`, 17/17 páginas, middleware 26,7 kB |
+| 4 | Cobertura | `middleware.ts` + `lib/hosts.ts`: **100% líneas/sentencias/funciones**, 95,23% ramas |
+| 5 | Secretos en el diff | 0 |
+| 6 | Depuración / validación | 0 `console.*`; `hostOf` sigue devolviendo `""` ante URL malformada |
+
+**Mutaciones verificadas (4/4 rojas, restaurado verde):** devolver `/about` a
+`PUBLIC_PATHS`, quitar el recorte del punto final, quitar la guarda de hosts
+iguales, y cambiar `307` por `302`.
+
+**Lo que arregla:**
+- `/about` fuera del dominio de marca. Esa página **vende esta plataforma a
+  inmobiliarias**; servírsela a un vendedor de casa que vino de un vídeo es la
+  peor página disponible. La auditoría dijo «está desindexada, arréglalo»; con
+  la regla del dueño, lo correcto era lo contrario.
+- `appleWebApp.title`: los metadatos de Next se **mezclan**, no se reemplazan,
+  así que la landing heredaba «Eko AI Realtors» del layout raíz.
+- Host acabado en punto (`www.denverhomestory.com.`): mismo nombre para DNS,
+  cadena distinta para `===` → servía el panel bajo el dominio de marca.
+- `BRAND_URL == PANEL_URL` → redirección infinita; ahora se trata como no
+  configurado. Y la guarda deja de comprobar las URLs: `hostOf("") === ""`, así
+  que esas cláusulas eran código muerto con forma de comprobación.
+
+## ⏸️ PREPARADO, SIN APLICAR — necesita autorización (toca producción)
+
+| Cambio | Dónde | Por qué |
+|---|---|---|
+| `RESEND_FROM` → `Denver Home Story <noreply@realtors.ekoaiautomation.com>` | `.env` del VPS + reinicio del backend | Hoy cada correo al cliente llega firmado por nuestra empresa de software. **No se cambia el default de `config.py`**: es multi-tenant, y la marca de un cliente no puede ser el valor por defecto de la plataforma |
+| `agency_name` → `Denver Home Story` | `agent_settings` org 1 | El agente firma con este campo (`conversation.py:429,755,1455`); si no casa con el remitente, se lee raro |
+| Bump a **v0.61.0** | `config.py`, `version.ts`, `CHANGELOG.md` | La rama lleva cambios de frontend visibles sin desplegar y sigue en 0.60.0 |
+
+✅ **YA APLICADO** (no toca el repo, es configuración de VAPI): el asistente se
+llama **Clara**, se presenta como asistente de Natalia y Robbie en Denver Home
+Story, y **admite ser una IA en cuanto se lo preguntan, sin evasivas**. Cero
+«Eko» en saludo y prompt; herramientas y `serverUrl` intactos. Copia del prompt
+anterior guardada.
 
 ## Auditoría independiente del enrutado por host (`7d2e35e`)
 
