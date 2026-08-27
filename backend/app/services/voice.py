@@ -25,12 +25,13 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services._common import clip_identifier
+from app.services.timezones import resolve_zone
 
 log = logging.getLogger(__name__)
 
@@ -168,16 +169,22 @@ def _office_zone(tz_name: str) -> ZoneInfo | None:
     never to raise: a thrown handler stalls the assistant mid-call. The callers
     below turn None into a spoken apology, which is the honest answer — we
     cannot tell this person a time we cannot compute.
+
+    That promise was false when first written: this caught two of `ZoneInfo`'s
+    three exception types, so an office timezone of `"America"` (a tzdata
+    DIRECTORY) raised `IsADirectoryError` from a call sited outside the handler's
+    own `try`, straight past a docstring that says it never raises. `resolve_zone`
+    is now the single place that knows the surface — see
+    `app/services/timezones.py`.
     """
-    try:
-        return ZoneInfo(tz_name or "UTC")
-    except (ZoneInfoNotFoundError, ValueError):
+    zone = resolve_zone(tz_name or "UTC")
+    if zone is None:
         log.error(
             "Office timezone %r is not a known IANA zone; refusing to quote or "
             "book times rather than answering in the wrong one. Fix it in Settings.",
             tz_name,
         )
-        return None
+    return zone
 
 
 def _parse_dt(value: Any, tz: ZoneInfo) -> datetime | None:

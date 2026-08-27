@@ -126,26 +126,37 @@ def test_a_nullable_settings_field_clears_on_blank(field: str) -> None:
     assert getattr(SettingsPatch(**{field: "   "}), field) is None
 
 
-def test_bytes_are_left_to_pydantic_on_purpose() -> None:
-    """The trimming stops at `str`, and that is the considered choice.
+def test_bytes_are_trimmed_without_manufacturing_characters() -> None:
+    """Both halves at once, which is what the first two attempts could not do.
 
     Pydantic coerces bytes to str AFTER a `mode="before"` validator runs, so
-    `isinstance(value, str)` alone lets `b"  x  "` through untrimmed. A first
-    attempt closed that with `decode("utf-8", "replace")` — and made things
-    worse: `b"\xff\xff\xff"` stopped being a clean 422 and became
-    "\ufffd\ufffd\ufffd", three characters that satisfy the very `min_length`
-    on `RejectIn.reason` that its validator exists to enforce honestly. A
-    rejection reason of three unreadable glyphs is worse than a refused
-    request.
+    `isinstance(value, str)` alone lets `b"  x  "` through untrimmed — the exact
+    value the validator exists to refuse.
 
-    Neither case is reachable over JSON, which has no byte string. Between two
-    unreachable behaviours, the one that refuses is the right default, so the
-    decode was reverted. This test holds that decision rather than the hole:
-    bytes that are not valid UTF-8 are refused, and the untrimmed-bytes gap is
-    named here so the next person finds the reasoning instead of re-deriving it.
+    Attempt one closed that with `decode("utf-8", "replace")` and made things
+    worse: `b"\xff\xff\xff"` stopped being a clean 422 and became
+    "\ufffd\ufffd\ufffd", three characters that SATISFY the very `min_length=3`
+    on `RejectIn.reason` that its validator exists to enforce honestly. A
+    rejection reason of three unreadable glyphs is worse than a refused request,
+    so it was reverted and this test held the hole open on purpose, documented.
+
+    Attempt two — a STRICT decode, handing undecodable bytes back untouched for
+    Pydantic to refuse the way it already would — has neither cost. An audit is
+    what made the difference: leaving it documented meant the same paragraph got
+    written into a second module without the code underneath, which is worse
+    than the gap it described.
+
+    Neither case is reachable over JSON, which has no byte string.
     """
+    # Invalid UTF-8 is still refused, and refused as bytes — no glyphs invented
+    # to satisfy a length rule.
     with pytest.raises(ValueError):
         RejectIn(reason=b"\xff\xff\xff")
 
-    # Valid UTF-8 bytes still reach the model untrimmed. Documented, not fixed.
-    assert SettingsPatch(agency_name=b"  x  ").agency_name == "  x  "
+    # And valid UTF-8 is now trimmed like the string it is about to become.
+    assert SettingsPatch(agency_name=b"  x  ").agency_name == "x"
+
+    # The trim happens before `min_length`, so padding cannot buy length: three
+    # spaces around one character is a 1-character reason, and refused.
+    with pytest.raises(ValueError):
+        RejectIn(reason=b"  x  ")

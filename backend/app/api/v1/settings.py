@@ -14,16 +14,17 @@ from __future__ import annotations
 
 from datetime import datetime
 from functools import lru_cache
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1._validators import trimmed, trimmed_or_none
 from app.db.base import get_db
 from app.models import AgentSettings
 from app.services.tenant_context import get_org_id
+from app.services.timezones import resolve_zone
 
 router = APIRouter()
 
@@ -92,13 +93,18 @@ class SettingsPatch(BaseModel):
     def _trim(cls, value: object) -> object:
         """NOT NULL columns: trim only. Empty is refused by `min_length=1`.
 
-    Accepts `bytes` as well as `str`: Pydantic coerces bytes to str AFTER a
-    `mode="before"` validator runs, so an `isinstance(value, str)` guard alone
-    lets `b"  x  "` through untrimmed. Not reachable over JSON, which has no
-    byte string — but a guard with a hole in it is how the next caller gets
-    surprised.
+        Accepts `bytes` as well as `str`: Pydantic coerces bytes to str AFTER a
+        `mode="before"` validator runs, so an `isinstance(value, str)` guard
+        alone lets `b"  x  "` through untrimmed. Not reachable over JSON, which
+        has no byte string — but a guard with a hole in it is how the next
+        caller gets surprised.
+
+        This docstring made that argument for a version of the code that only
+        guarded `str`, so `agency_name=b"  Ashly  "` was still stored with its
+        spaces: the exact value this validator was written to stop, describing
+        its own hole. An audit read the two together and found the gap.
         """
-        return value.strip() if isinstance(value, str) else value
+        return trimmed(value)
 
     @field_validator("brokerage_line", "agency_phone", "booking_contact_email",
                      mode="before")
@@ -117,9 +123,7 @@ class SettingsPatch(BaseModel):
         strips before writing the frame. The gate argument above is the real
         one and stands on its own.)
         """
-        if not isinstance(value, str):
-            return value
-        return value.strip() or None
+        return trimmed_or_none(value)
 
 
 @lru_cache(maxsize=1)
@@ -209,10 +213,14 @@ async def update_settings(
         # place by turning `None` into the string "None" and 400ing on it —
         # that path is now a named 422, so this was left doing nothing.
         tz = str(updates["timezone"])
-        try:
-            ZoneInfo(tz)
-        except (ZoneInfoNotFoundError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=f"Invalid timezone: {tz}") from exc
+        # `resolve_zone`, not a local try/except. The inline version here caught
+        # two of `ZoneInfo`'s three exception types, so `timezone="America"` — a
+        # tzdata DIRECTORY, and short enough to clear `max_length` — raised
+        # `IsADirectoryError` past this handler and answered 500 where a 400
+        # belongs. This is the copy that `visits.py` was modelled on, so the hole
+        # was inherited rather than invented. One module knows the surface now.
+        if resolve_zone(tz) is None:
+            raise HTTPException(status_code=400, detail=f"Invalid timezone: {tz}")
         updates["timezone"] = tz
 
     row = await _get_or_create(db)

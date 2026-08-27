@@ -218,6 +218,14 @@ async def test_a_broken_office_timezone_stops_the_booking_not_just_the_log() -> 
         "an unusable zone still resolves, so times will be quoted in the wrong one"
     )
 
+    # And the promise has to hold for EVERY way the lookup fails, not just the
+    # two exception types the first version happened to catch. `"America"` is a
+    # tzdata directory: it raised `IsADirectoryError` from a call sited outside
+    # `handle_tool_call`'s own `try`, straight past a docstring saying it never
+    # raises. A handler that stalls mid-call is exactly what None was for.
+    for unusable in ("America", "Etc", "A" * 300):
+        assert _office_zone(unusable) is None, f"{unusable[:12]!r} must not resolve"
+
 
 @pytest.mark.asyncio
 async def test_the_assistant_apologises_instead_of_quoting_a_wrong_hour(

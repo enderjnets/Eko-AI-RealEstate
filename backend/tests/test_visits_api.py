@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -398,3 +399,136 @@ def test_blank_optional_fields_are_stored_as_null_not_empty_string() -> None:
         notes="  Bring the brochures.  ",
     )
     assert kept.notes == "Bring the brochures."
+
+
+@pytest.mark.parametrize(
+    ("raw", "why"),
+    [
+        ("A" * 300, "OSError, [Errno 63] File name too long"),
+        ("America", "IsADirectoryError — a tzdata directory, not a zone"),
+        ("Etc", "IsADirectoryError — same shape, short enough to look real"),
+    ],
+)
+def test_a_timezone_that_breaks_the_lookup_is_a_422_not_a_500(
+    raw: str, why: str
+) -> None:
+    """The guard must never be worse than no guard, and this one was.
+
+    `ZoneInfo` raises THREE unrelated exception types, not two. The first
+    version of `_valid_timezone` caught `ZoneInfoNotFoundError` and `ValueError`
+    and let `OSError` through, so these inputs escaped validation entirely and
+    FastAPI answered **500**.
+
+    The damning part is the comparison with the code this replaced: before the
+    validator existed, `"A" * 300` was a clean **422** from `max_length=50`.
+    Adding a `mode="before"` validator moved the check to the wrong side of that
+    bound, so a guard written to make bad input safer made this input strictly
+    worse — a stack trace where the caller had been getting a field name.
+
+    Parametrised on the reason each one breaks, because "unknown zone" and
+    "the lookup itself failed" are different failures that must land alike.
+    """
+    from app.api.v1.visits import BookingIn, ManualEventIn
+
+    with pytest.raises(ValidationError):
+        BookingIn(start_time=datetime(2026, 9, 15, 10, 0), timezone=raw)
+
+    with pytest.raises(ValidationError):
+        ManualEventIn(
+            title="Open house",
+            scheduled_at=datetime(2026, 9, 15, 10, 0),
+            timezone=raw,
+        )
+
+
+def test_a_bytes_timezone_is_trimmed_and_validated_like_a_string() -> None:
+    """Pydantic coerces bytes to str AFTER a `mode="before"` validator runs.
+
+    So a validator guarding only `isinstance(v, str)` hands the model back the
+    raw bytes and the model accepts them — untrimmed and unchecked. Not
+    reachable over JSON, which has no byte string. It is here because this repo
+    has now written that exact argument into a docstring twice while leaving the
+    hole open underneath it; the third time it should fail a test instead.
+    """
+    from app.api.v1.visits import BookingIn
+
+    booking = BookingIn(
+        start_time=datetime(2026, 9, 15, 10, 0), timezone=b" America/Denver"
+    )
+    assert booking.timezone == "America/Denver"
+
+    with pytest.raises(ValidationError):
+        BookingIn(start_time=datetime(2026, 9, 15, 10, 0), timezone=b"Invented/Zone")
+
+
+@pytest.mark.asyncio
+async def test_a_pasted_timezone_does_not_shift_the_offered_hours(
+    database_url: str,
+) -> None:
+    """The reported bug, still live on the GET beside the POST that was fixed.
+
+    `?timezone=%20America/Denver` — one pasted leading space — reached
+    `list_available_slots`, whose `except Exception` turns any bad zone into UTC
+    with a `log.warning` nobody reads. The slots came back generated in UTC
+    while the response echoed the requested zone back in `timezone`, so the
+    caller was told these were the office's hours. Measured before the fix:
+
+        America/Denver    -> 2028-09-25T10:00:00-06:00
+        ' America/Denver' -> 2028-09-25T10:00:00+00:00
+
+    Six hours, the same number as the booking bug, on the endpoint that feeds
+    it. Offering an hour is the same promise as booking one.
+
+    Asserts the OFFSET, not the status code: a 200 with the right shape is
+    exactly what the bug already produced.
+    """
+    suffix = uuid.uuid4().hex[:8].upper()
+    phone = f"+34666TZD{suffix}"
+    lead_id = await _insert_lead(database_url, phone)
+    try:
+        async with await _http_client() as client:
+            clean = await client.get(
+                f"/api/v1/leads/{lead_id}/calendar/slots"
+                "?days=3&timezone=America/Denver"
+            )
+            pasted = await client.get(
+                f"/api/v1/leads/{lead_id}/calendar/slots"
+                "?days=3&timezone=%20America/Denver%20"
+            )
+        assert clean.status_code == 200, clean.text
+        assert pasted.status_code == 200, pasted.text
+
+        first_clean = datetime.fromisoformat(clean.json()["slots"][0]["start"])
+        first_pasted = datetime.fromisoformat(pasted.json()["slots"][0]["start"])
+        drift = abs(first_pasted - first_clean)
+        assert drift == timedelta(0), (
+            f"a pasted space moved the first offered slot by {drift} — "
+            f"{first_clean.isoformat()} became {first_pasted.isoformat()}"
+        )
+        # And the echoed value is the zone actually used, not the raw string.
+        assert pasted.json()["timezone"] == "America/Denver"
+    finally:
+        await _cleanup_lead(database_url, phone)
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_timezone_on_the_slots_endpoint_is_refused(
+    database_url: str,
+) -> None:
+    """A zone we cannot use is a question, not a reason to answer in UTC.
+
+    Covers the lookup-failure shapes too (`"America"` is a tzdata directory),
+    which is where the narrow `except` let a 500 through on the sibling POST.
+    """
+    suffix = uuid.uuid4().hex[:8].upper()
+    phone = f"+34666TZR{suffix}"
+    lead_id = await _insert_lead(database_url, phone)
+    try:
+        async with await _http_client() as client:
+            for bad in ("Mars/Phobos", "America", "A" * 300):
+                r = await client.get(
+                    f"/api/v1/leads/{lead_id}/calendar/slots?days=3&timezone={bad}"
+                )
+                assert r.status_code in (400, 422), f"{bad!r} -> {r.status_code}"
+    finally:
+        await _cleanup_lead(database_url, phone)

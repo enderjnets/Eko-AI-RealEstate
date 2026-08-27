@@ -30,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1._validators import trimmed, trimmed_or_none
 from app.api.v1.auth import current_email
 from app.config import get_settings
 from app.db.base import get_db
@@ -94,9 +95,7 @@ def _trim_or_clear(value: object) -> object:
     These strings are burned into a video and read aloud by the caption, so a
     trailing space is not cosmetic. Shared by the two edit schemas below.
     """
-    if not isinstance(value, str):
-        return value
-    return value.strip() or None
+    return trimmed_or_none(value)
 
 
 class PieceEdit(BaseModel):
@@ -117,7 +116,7 @@ class RejectIn(BaseModel):
     @field_validator("reason", mode="before")
     @classmethod
     def _trim_reason(cls, value: object) -> object:
-        return value.strip() if isinstance(value, str) else value
+        return trimmed(value)
 
 
 class DraftIn(BaseModel):

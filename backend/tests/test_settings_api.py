@@ -394,3 +394,40 @@ async def test_the_required_set_is_derived_from_the_table(_needs_db: None) -> No
     # would still pass on the 422s that Pydantic itself produces.
     assert len(expected) >= 6, f"only {len(expected)} required fields found"
 
+
+
+@pytest.mark.asyncio
+async def test_a_timezone_that_breaks_the_lookup_is_a_400_not_a_500(
+    _needs_db: None,
+) -> None:
+    """`"America"` is a tzdata DIRECTORY, and it is short enough to look real.
+
+    The inline `except (ZoneInfoNotFoundError, ValueError)` here caught two of
+    the three exception types `ZoneInfo` raises, so `IsADirectoryError` escaped
+    the handler and Postgres never even saw the request: HTTP 500 where the 400
+    beside it was already correct for `"Mars/Olympus_Mons"`.
+
+    This is the copy `visits.py` was modelled on, so the hole was inherited
+    rather than invented — which is why the knowledge now lives in
+    `app.services.timezones` and not in each call site.
+    """
+    async with await _client() as c:
+        for bad in ("America", "Etc"):
+            r = await c.put("/api/v1/settings", json={"timezone": bad})
+            assert r.status_code == 400, f"{bad!r} -> {r.status_code}: {r.text}"
+
+
+@pytest.mark.asyncio
+async def test_a_bytes_field_is_trimmed_like_a_string(_needs_db: None) -> None:
+    """The docstring here argued for this and the code did not do it.
+
+    Pydantic coerces bytes to str AFTER a `mode="before"` validator runs, so
+    the `isinstance(value, str)` guard handed the model back raw bytes and
+    `agency_name=b"  Ashly  "` was stored with its spaces — the exact value
+    this validator exists to stop, described by its own docstring as the thing
+    it prevented. Not reachable over JSON; reachable by any Python caller.
+    """
+    from app.api.v1.settings import SettingsPatch
+
+    assert SettingsPatch(agency_name=b"  Ashly  ").agency_name == "Ashly"
+    assert SettingsPatch(brokerage_line=b"   ").brokerage_line is None
