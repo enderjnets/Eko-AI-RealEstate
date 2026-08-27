@@ -207,6 +207,30 @@ export function LeadDetail({ leadId }: { leadId: number }) {
             <Field label={t("lead.field.urgency")} value={lead.urgency} />
           </div>
         )}
+
+        {/* Where this lead came from (utm_*, referrer, landing_variant…).
+            Captured since the landing shipped and readable for the first time
+            here — the number that decides whether the videos are working.
+            Absent entirely when nothing was captured: the landing's own rule,
+            a section with no data disappears instead of inventing one. */}
+        {Object.keys(lead.attribution ?? {}).length > 0 && (
+          <div className="mt-4 pt-4 border-t border-white/5">
+            <div className="text-[10px] uppercase tracking-wide text-gray-600 mb-2">
+              {t("lead.attribution")}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(lead.attribution).map(([k, v]) => (
+                <span
+                  key={k}
+                  className="text-[11px] px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/10 text-gray-300"
+                  title={k}
+                >
+                  <span className="text-gray-500">{k.replace(/^utm_/, "")}:</span> {v}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="mt-3 text-[10px] text-gray-600">
           {t("lead.created")} {exactTime(lead.created_at, lang)} · {t("lead.updated")} {exactTime(lead.updated_at, lang)}
         </div>

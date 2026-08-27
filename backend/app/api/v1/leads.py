@@ -28,6 +28,7 @@ from app.models import (
 from app.models.lead import PreferredChannel
 from app.services._common import ParsedMessage
 from app.services.calls import CallUpdates, InvertedBudget, register_call
+from app.services.capture import ATTRIBUTION_KEYS
 from app.services.conversation import (
     generate_reply_suggestions,
     handle_inbound_message,
@@ -169,9 +170,56 @@ class LeadOut(BaseModel):
     score: int
     score_breakdown: dict
     needs_response: bool = False
+    # Which video / campaign / page produced this lead — the FIRST touch, which
+    # is the one `_record_attribution` deliberately refuses to overwrite: the
+    # question is which piece of content found this person, and crediting the
+    # last submission would credit the retargeting ad every time. Later touches
+    # are kept in `meta["attribution_later"]` and are NOT returned here.
+    #
+    # Filtered through `ATTRIBUTION_KEYS` — never the raw column: `meta` also
+    # carries discovery enrichment and internal markers like `source=manual`,
+    # and handing a free-form JSON from the database to the interface is how a
+    # value nobody reviewed ends up on screen. The filter also drops
+    # `captured_at`, which the writer stamps beside the pairs.
+    #
+    # The data has been captured since the landing shipped; this is the first
+    # time anybody can read it, which matters now because the videos are about
+    # to be the main way leads arrive.
+    attribution: dict[str, str] = Field(default_factory=dict)
     last_message_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+def _attribution_of(meta: object) -> dict[str, str]:
+    """The whitelisted first-touch attribution pairs of a lead's meta.
+
+    Reads `meta["attribution"]`, the NESTED dict `_record_attribution` writes
+    (`capture.py`) — not the top level. The first version of this read the top
+    level and therefore returned `{}` for every lead the landing ever captured,
+    and its tests hand-built a flat dict so they passed against a path that
+    could not work. The shape is pinned now by a test that goes through
+    `capture_lead` itself.
+
+    String values only: the column is JSON and promises nothing about what a
+    future writer puts under a whitelisted key.
+    """
+    if not isinstance(meta, dict):
+        return {}
+    touch = meta.get("attribution")
+    if not isinstance(touch, dict):
+        return {}
+    return {
+        k: v for k, v in touch.items() if k in ATTRIBUTION_KEYS and isinstance(v, str)
+    }
+
+
+def _lead_out(row: Lead) -> LeadOut:
+    """`LeadOut.model_validate` plus the fields the ORM object does not carry
+    by the same name — the pattern `needs_response` already follows."""
+    out = LeadOut.model_validate(row)
+    out.attribution = _attribution_of(row.meta)
+    return out
 
 
 class LeadListOut(BaseModel):
@@ -212,7 +260,7 @@ async def list_leads(
     pending = await _needs_response_map(db, [r.id for r in rows])
     items = []
     for r in rows:
-        out = LeadOut.model_validate(r)
+        out = _lead_out(r)
         out.needs_response = pending.get(r.id, False)
         items.append(out)
     return LeadListOut(total=total, items=items)
@@ -321,7 +369,7 @@ async def create_lead(body: LeadCreate, db: AsyncSession = Depends(get_db)) -> L
         await db.commit()
 
     await db.refresh(lead)
-    return LeadOut.model_validate(lead)
+    return _lead_out(lead)
 
 
 @router.get("/digest", response_model=list[LeadOut])
@@ -345,7 +393,7 @@ async def lead_digest(
             .limit(limit)
         )
     ).scalars().all()
-    return [LeadOut.model_validate(r) for r in rows]
+    return [_lead_out(r) for r in rows]
 
 
 @router.post("/rescore-all", response_model=RescoreResult)
@@ -360,7 +408,7 @@ async def get_lead(lead_id: int, db: AsyncSession = Depends(get_db)) -> LeadOut:
     row = (await db.execute(select(Lead).where(Lead.id == lead_id))).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Lead not found")
-    return LeadOut.model_validate(row)
+    return _lead_out(row)
 
 
 class HumanMessageIn(BaseModel):
@@ -505,7 +553,7 @@ async def patch_lead(
 
     await db.commit()
     await db.refresh(row)
-    return LeadOut.model_validate(row)
+    return _lead_out(row)
 
 
 # ── Call console ───────────────────────────────────────────────────────────

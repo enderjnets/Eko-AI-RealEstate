@@ -46,6 +46,12 @@ export interface Lead {
     tier?: "hot" | "warm" | "cold";
   };
   needs_response?: boolean;
+  /**
+   * Which video / campaign / page produced this lead (utm_*, referrer,
+   * landing_variant…). Server-filtered through a whitelist — never the raw
+   * meta column. Empty object when nothing was captured.
+   */
+  attribution: Record<string, string>;
   last_message_at: string | null;
   created_at: string;
   updated_at: string;

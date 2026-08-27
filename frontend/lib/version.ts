@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.59.0";
+export const CURRENT_VERSION = "0.60.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.60.0",
+    date: "2026-08-27",
+    title: {
+      en: "Nothing about an appointment goes unrecorded",
+      es: "De una cita no se pierde ya ning\u00fan paso",
+    },
+    changes: [
+      {
+        en: "The appointment invitation now appears in the client\u2019s conversation, and so does the copy you receive \u2014 marked as an internal note, so you can see at a glance that you were told and when, without mistaking it for something the client read.",
+        es: "La invitaci\u00f3n de la cita aparece ya en la conversaci\u00f3n del cliente, y tambi\u00e9n la copia que recibe usted \u2014 marcada como nota interna, para que vea de un vistazo que se le avis\u00f3 y cu\u00e1ndo, sin confundirla con algo que el cliente haya le\u00eddo.",
+      },
+      {
+        en: "Each lead\u2019s card now shows where they came from \u2014 the campaign, video or page that first brought them. That was being recorded already and could not be read anywhere.",
+        es: "La ficha de cada lead muestra ya de d\u00f3nde vino: la campa\u00f1a, el v\u00eddeo o la p\u00e1gina que lo trajo la PRIMERA vez. Eso ya se guardaba y no pod\u00eda leerse en ning\u00fan sitio.",
+      },
+    ],
+  },
   {
     version: "0.59.0",
     date: "2026-08-27",

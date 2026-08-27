@@ -91,6 +91,56 @@ fijos. Arreglarlo solo merece la pena si Cal.com tarda: él se lleva esa funció
 
 ---
 
+## Atribución legible (Fase 2) — ✅ construida, SIN desplegar (27-ago-2026)
+
+Rama `feat/registro-de-la-cita`. Cierra la tanda: **bump v0.60.0**.
+
+**Qué hace**: `utm_*`, `gclid`, `fbclid`, `landing_variant`, `tier`, `referrer`
+—capturados desde que existe la landing y que **ninguna API devolvía**— salen
+ya en el lead y se pintan en su ficha («De dónde vino»). Es el dato que dice si
+los vídeos funcionan, y va a hacer falta en cuanto se enciendan.
+
+**Checklist real**:
+1. ✅ 1165 backend desde base recreada (9 nuevos) · 142 frontend · 0 saltados
+2. ✅ ruff limpio · tsc limpio
+3. ✅ `docker build` backend OK (2e43d19a)
+4. ✅ cobertura: `_attribution_of` y `_lead_out` **no aparecen en «Missing»**
+5. ✅ diff sin secretos, sin prints
+6. ✅ entrada externa: `_attribution_of` no lanza con `meta` no-dict, anidado
+   no-dict, lista o valores no-string — con test para cada forma
+7. ✅ **2 mutaciones**: quitar la lista blanca (5 rojos) · reponer el bug de
+   nivel (5 rojos, incluido el de punta a punta)
+
+**🔴 Bloqueante encontrado por la auditoría, y era mío de raíz**: la primera
+versión leía el **primer nivel** de `meta`, pero `_record_attribution` anida
+bajo `meta["attribution"]`. Devolvía `{}` **para todo lead real** y el bloque
+de la ficha no se habría pintado nunca — con el CHANGELOG anunciándolo como
+entregado. Peor: **mis tests fabricaban a mano la forma plana**, así que ocho
+tests pasaban contra un camino imposible. Es un «test que no puede fallar» en
+estado puro. Arreglado, y la regla nueva es que **todo test que toque la forma
+almacenada pasa por `capture_lead`**, nunca por un `meta` inventado.
+
+**Segundo hallazgo, del mismo tipo**: el test de la lista usaba `?q=<teléfono>`
+creyendo filtrar. Ese parámetro **no existe** y FastAPI lo ignora en silencio:
+pasaba solo porque el lead caía en la primera página. Ahora usa `sort=recent` y
+afirma la posición, que es determinista.
+
+**Decisiones**:
+- Se devuelve el **primer toque**, no el último: es lo que el escritor protege
+  a propósito (acreditar el último envío acreditaría siempre al retargeting).
+  `attribution_later` se guarda y **no** se expone; dicho en el changelog.
+- Lista blanca **importada** de `capture.py`, no copiada, con un test que
+  recorre `ATTRIBUTION_KEYS` entera — dos listas habrían derivado en silencio.
+
+**Backlog (menores)**: `tier` se pinta como chip de procedencia junto a
+`utm_source` (está en la lista blanca del propio capture, pero mezcla vocabulario);
+`attribution_later` sigue sin superficie; `message_count` cuenta las notas
+internas; `analytics.py` no las filtra.
+
+**Siguiente paso**: despliegue preparado abajo — **esperando autorización**.
+
+---
+
 ## Registro de la cita (Fase 1) — ✅ construida, SIN desplegar (27-ago-2026)
 
 Rama `feat/registro-de-la-cita` (apilada sobre feat/temas-de-vendedor). Plan:

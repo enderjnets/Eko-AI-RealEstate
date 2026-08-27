@@ -2,6 +2,54 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.60.0] — 2026-08-27
+
+### Añadido — el expediente de la cita, y la atribución que ya se guardaba
+
+- **La invitación de la cita entra en la conversación del lead.** Hasta ahora
+  `visit_invite.py` llamaba a `send_email` directo: el correo comercialmente
+  más importante del embudo no dejaba rastro en el panel.
+- La copia que recibe la agencia se guarda como **nota interna**
+  (`messages.internal`, migración 044). Está en el hilo del lead porque es su
+  expediente, pero **nunca fue un mensaje para él**, y por eso la excluyen
+  cuatro sitios: el barrido de reenvío (`delivery.py::_still_owed` — sin ese
+  filtro, la nota con el nombre y el teléfono del propio lead le habría sido
+  **entregada a él**), los dos constructores de historia del LLM, y el Inbox.
+- **La regla del Inbox era la más sutil**: `reached_somebody()` decidía «quién
+  habló el último». La nota interna alcanzaba a la agencia, no al lead, así que
+  un lead con una pregunta sin responder salía del triaje **en silencio** al
+  agendarle una visita. Peor en el lead solo-teléfono, donde esa nota es la
+  única fila que se escribe.
+- **El registro reutiliza el hilo ACTIVO más reciente del lead**, no crea uno
+  de email. Crearlo lo convertía en «primario» (nace con `last_at` = ahora): el
+  composer del panel saltaba a email para un lead que solo tiene teléfono
+  —todo envío moría con `channel_identifier_mismatch`— y las sugerencias
+  devolvían `empty_conversation`. Solo se crea el hilo de email si el lead no
+  tiene ninguno Y tiene dirección; sin hilo y sin email, se omite con log.
+- **El registro corre en su propia sesión de base de datos.** Un `rollback`
+  sobre la sesión del llamador expira todos sus objetos, y el handler de
+  reserva lee `visit` justo después: habría devuelto un **500 sobre una cita ya
+  comiteada y con los correos ya enviados**, que es justo lo que el módulo
+  promete que no puede pasar.
+- **La atribución se puede leer por fin.** `utm_*`, `gclid`, `fbclid`,
+  `landing_variant`, `tier` y `referrer` se capturan desde que existe la
+  landing y no los devolvía ninguna API. Ahora salen en el lead, **filtrados
+  por la misma lista blanca que los escribe** (importada, no copiada): `meta`
+  lleva también enriquecimiento, marcadores internos y el `captured_at` del
+  propio escritor, y volcarlo entero sería mandar a la interfaz un JSON libre
+  de la base.
+- Se devuelve el **primer toque**, que es el que `_record_attribution` se niega
+  a sobrescribir a propósito: la pregunta es qué contenido encontró a esta
+  persona, y acreditar el último envío acreditaría siempre al anuncio de
+  retargeting. Los toques posteriores siguen guardados en
+  `meta["attribution_later"]` y **no** se exponen todavía.
+- 🔴 **Corregido antes de salir, y el fallo era mío**: la primera versión leía
+  el primer nivel de `meta` cuando el escritor anida bajo `meta["attribution"]`,
+  así que devolvía vacío **para todo lead real** — y sus tests fabricaban a mano
+  la forma plana, de modo que pasaban contra un camino que no podía funcionar.
+  Ahora todo test que toca la forma almacenada pasa por `capture_lead`.
+- Siete mutaciones verificadas, una por guard.
+
 ## [0.59.0] — 2026-08-27
 
 ### Cambiado — la rotación de temas apunta al vendedor, y el pie lleva a la web
