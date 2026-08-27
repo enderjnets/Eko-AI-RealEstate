@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -17,27 +17,50 @@ import { describe, expect, it } from "vitest";
 const REPO = join(__dirname, "..", "..", "..");
 const read = (p: string) => readFileSync(join(REPO, p), "utf8");
 
-const source = read("frontend/lib/landing.ts");
 const envExample = read(".env.example");
 const dockerfile = read("frontend/Dockerfile");
 const compose = read("docker-compose.yml");
 
-const consultForm = read("frontend/components/landing/ConsultForm.tsx");
-const turnstile = read("frontend/components/ui/Turnstile.tsx");
+/**
+ * Swept by SHAPE, not from a list of files.
+ *
+ * This used to read three named files — `lib/landing.ts`, `ConsultForm.tsx`
+ * and `Turnstile.tsx`. That is a list somebody has to remember to extend, and
+ * the first time it mattered it did not get extended: `lib/hosts.ts` arrived
+ * with two new NEXT_PUBLIC_ variables and this guard stayed green while
+ * neither was declared anywhere in the build. The whole point of the test is
+ * to catch a variable that never reaches the container, and it was blind to
+ * any variable outside three paths.
+ *
+ * So it now walks the frontend source and finds every `process.env.NEXT_PUBLIC_*`
+ * there is. A new file is covered the moment it is written, by nobody.
+ */
+const SRC_DIRS = ["frontend/app", "frontend/components", "frontend/lib"];
+const SRC_EXT = /\.(ts|tsx)$/;
 
-// The landing's own variables, plus the two the consult form depends on. Those
-// two were already wired, but nothing held them there: the form silently loses
-// its bot protection if the site key stops being passed, and loses its tenant
-// routing if the capture key does.
+function walk(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(join(REPO, dir), { withFileTypes: true })) {
+    const rel = `${dir}/${entry.name}`;
+    // Tests name variables in assertions without using them at runtime; sweeping
+    // them would demand build wiring for a string that only ever appears here.
+    if (entry.isDirectory()) {
+      if (entry.name !== "__tests__" && entry.name !== "node_modules") out.push(...walk(rel));
+    } else if (SRC_EXT.test(entry.name)) {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
 const used = [
   ...new Set(
-    [
-      ...(source.match(/process\.env\.NEXT_PUBLIC_[A-Z_]+/g) ?? []),
-      ...(consultForm.match(/process\.env\.NEXT_PUBLIC_[A-Z_]+/g) ?? []),
-      ...(turnstile.match(/process\.env\.NEXT_PUBLIC_[A-Z_]+/g) ?? []),
-    ].map((m) => m.replace("process.env.", "")),
+    walk(SRC_DIRS[0])
+      .concat(walk(SRC_DIRS[1]), walk(SRC_DIRS[2]))
+      .flatMap((f) => read(f).match(/process\.env\.NEXT_PUBLIC_[A-Z_]+/g) ?? [])
+      .map((m) => m.replace("process.env.", "")),
   ),
-];
+].sort();
 
 describe("landing config wiring", () => {
   it("reads at least one landing variable — otherwise this test proves nothing", () => {

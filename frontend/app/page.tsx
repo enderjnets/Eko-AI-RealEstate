@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { LANDING } from "@/lib/landing";
+import { BRAND_URL } from "@/lib/hosts";
 import { Landing } from "@/components/landing/Landing";
 
 /**
@@ -24,6 +25,21 @@ export const metadata: Metadata = {
     description: DESCRIPTION,
   },
   robots: { index: true, follow: true },
+  /**
+   * One address for this page, whatever hostname served it.
+   *
+   * The same landing is reachable on `inmo-demo.ekoaiautomation.com` and — once
+   * DNS moves — on `www.denverhomestory.com`. Indexed under both, the domain
+   * the whole funnel points at would be competing against a copy of itself, and
+   * Google picks the winner, not us.
+   *
+   * Only declared when `NEXT_PUBLIC_BRAND_URL` is set. A canonical pointing at
+   * a domain that does not resolve yet is worse than none: it would ask Google
+   * to drop the page that IS live today in favour of one that answers nothing.
+   */
+  ...(BRAND_URL
+    ? { metadataBase: new URL(BRAND_URL), alternates: { canonical: "/" } }
+    : {}),
 };
 
 // The layout paints mobile browser chrome the dashboard's noir; on a cream

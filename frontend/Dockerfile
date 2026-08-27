@@ -54,6 +54,16 @@ ARG NEXT_PUBLIC_LANDING_BOOKING_URL
 ENV NEXT_PUBLIC_LANDING_BOOKING_URL=$NEXT_PUBLIC_LANDING_BOOKING_URL
 ARG NEXT_PUBLIC_LANDING_TESTIMONIALS
 ENV NEXT_PUBLIC_LANDING_TESTIMONIALS=$NEXT_PUBLIC_LANDING_TESTIMONIALS
+# Host split: which hostname serves the brand site and which serves the panel.
+# Both empty until the domain moves to Cloudflare, and empty means the
+# middleware and the canonical tags do nothing — see frontend/lib/hosts.ts.
+# Build-time like the rest: `middleware.ts` reads them through the same
+# NEXT_PUBLIC_ inlining, so setting them only at runtime leaves a deployment
+# where the .env looks configured and both hostnames still serve both halves.
+ARG NEXT_PUBLIC_BRAND_URL
+ENV NEXT_PUBLIC_BRAND_URL=$NEXT_PUBLIC_BRAND_URL
+ARG NEXT_PUBLIC_PANEL_URL
+ENV NEXT_PUBLIC_PANEL_URL=$NEXT_PUBLIC_PANEL_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # `public/` is empty today and git does not track empty directories, so a fresh

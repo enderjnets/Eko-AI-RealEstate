@@ -287,6 +287,9 @@ services:
         NEXT_PUBLIC_LANDING_PORTRAIT: ${NEXT_PUBLIC_LANDING_PORTRAIT:-}
         NEXT_PUBLIC_LANDING_BOOKING_URL: ${NEXT_PUBLIC_LANDING_BOOKING_URL:-}
         NEXT_PUBLIC_LANDING_TESTIMONIALS: ${NEXT_PUBLIC_LANDING_TESTIMONIALS:-}
+        # Host split — empty until denverhomestory.com moves to Cloudflare.
+        NEXT_PUBLIC_BRAND_URL: ${NEXT_PUBLIC_BRAND_URL:-}
+        NEXT_PUBLIC_PANEL_URL: ${NEXT_PUBLIC_PANEL_URL:-}
     container_name: eko-realestate-frontend
     restart: unless-stopped
     depends_on:

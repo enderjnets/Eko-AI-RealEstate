@@ -28,6 +28,23 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Eko AI Realtors",
   },
+  /**
+   * Default for the whole app: do not index. The public pages that SHOULD be
+   * indexed override this in their own `metadata` (`app/page.tsx`,
+   * `app/contact/page.tsx`), which is the safe direction — a panel screen added
+   * next month is out of the index until someone deliberately puts it in,
+   * rather than in it until someone remembers to take it out.
+   *
+   * This is not belt-and-braces with `middleware.ts`, it covers a different
+   * failure: the middleware only redirects once the hostnames are configured,
+   * and today they are not, so `inmo-demo.ekoaiautomation.com/leads` is a
+   * crawlable login screen. Measured on production, not assumed.
+   *
+   * And it is deliberately NOT a robots.txt: Cloudflare prepends its own
+   * `Allow: /` and Google honours the least restrictive rule — that has
+   * already happened on this infrastructure.
+   */
+  robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = {
