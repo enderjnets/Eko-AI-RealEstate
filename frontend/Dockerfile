@@ -56,7 +56,16 @@ ARG NEXT_PUBLIC_LANDING_TESTIMONIALS
 ENV NEXT_PUBLIC_LANDING_TESTIMONIALS=$NEXT_PUBLIC_LANDING_TESTIMONIALS
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+# `public/` is empty today and git does not track empty directories, so a fresh
+# clone does not have it — and the runner stage below unconditionally copies it.
+# The build therefore worked ONLY on the one machine where somebody had created
+# the directory by hand, and failed on every clean checkout, including a
+# third-party install (`scripts/install.sh` runs `docker compose build`).
+# Measured, not guessed: on a fresh clone the build stopped at
+# `failed to compute cache key: "/app/public": not found`.
+# Created here rather than committing a `.gitkeep`, so nothing stray ends up
+# being served from the site root.
+RUN mkdir -p public && npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app
