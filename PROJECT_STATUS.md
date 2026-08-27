@@ -13,6 +13,67 @@ de casa (ROG) al VPS, donde ya viven Zorros y Black Volt.
 
 ---
 
+## Citas `.ics` — ✅ **v0.58.0 EN PRODUCCIÓN** (27-ago-2026)
+
+Rama `feat/citas-ics`, commit `f3495be`. `/api/v1/health` del dominio público
+→ `0.58.0`, `llm_fallback:"ok"`, `captcha:"on"`. Sin migración.
+
+**El eslabón que estaba roto**: las 4 visitas de producción llevan
+`external_booking_id` = `calcom-sim-…`. `CALENDAR_SIMULATED=true`, así que el
+asistente de voz confirmaba citas **en voz alta** y no se reservaba nada. Un
+`.ics` no lee disponibilidad —eso sigue pendiente de Cal.com— pero pone la cita
+en el calendario de las dos partes, que es lo que el producto prometía.
+
+**Construido:**
+- `services/icalendar.py`: RFC 5545 a mano. CRLF, plegado a **75 octetos** sin
+  partir un carácter multibyte, escapado TEXT, UID estable por visita
+  (`eko-visit-<id>@…`), `METHOD:REQUEST`/`CANCEL`. Rechaza un `datetime` naíf en
+  vez de escribirlo como UTC.
+- `services/visit_invite.py`: manda al lead y a la agencia por separado — un
+  correo malo del lead no cuesta la copia de la agencia. **Nunca lanza**: la
+  visita es el hecho, la invitación es el aviso.
+- Cableado en **los dos** sitios que crean visitas: `api/v1/visits.py` (panel y
+  landing) y `services/voice.py` (teléfono). Test AST que lo exige, con guarda
+  sobre la guarda.
+- `send_email` acepta adjuntos (base64 en el punto de envío); la rama simulada
+  loguea **nombre y tamaño**, jamás el contenido.
+- `CAPTURE_REQUIRE_EMAIL=true`: mientras el SMS esté caído (30034), un lead que
+  solo deja teléfono no es alcanzable por ningún canal automático. Es un ajuste,
+  no una constante: vuelve a `false` sin desplegar cuando el A2P entregue.
+- `booking_contact_email` puesto en producción a `natalia.kanonerova@engelvoelkers.com`
+  (estaba **vacío**: sin él esa copia no salía de ninguna manera).
+
+**Verificación, medida contra el sistema vivo:**
+- 1133 backend desde base recreada · 142 frontend · ruff y tsc limpios.
+- Tres mutaciones verificadas (frontera multibyte del plegado, exigencia de
+  email, cableado de `send_visit_invitation`): cada una pone en rojo **un** test,
+  el correcto.
+- Cita de prueba real contra producción, en transacción con **rollback**: ICS
+  bien formado, 10:00 MDT = 16:00Z, DTEND +45 min, coma escapada en LOCATION,
+  plegado con continuación. Resend devolvió id `3f1c8027-…`, y **Gmail pintó los
+  botones Yes/No/Maybe** — un cliente de calendario real aceptó el evento.
+  `visits` sigue en 4 filas y `leads` en 38: la prueba no dejó nada.
+
+**Dos hallazgos de la verificación, los dos míos:**
+1. `.env.example` quedó corrupto por una inserción con `sed`: partió el
+   comentario del bloque SMS y dejó `SMS_SIMULATED=true (dev default), outbound…`
+   como **línea de asignación** en un fichero que la gente copia a `.env`.
+   Arreglado y barrido por **forma**: 0 líneas malformadas y 0 claves duplicadas
+   en todo el fichero.
+2. El arnés de prueba hardcodeaba `org_id=1` dentro de un `run_for_every_org`.
+   **El RLS lo rechazó** al llegar a la org 2. Efecto colateral útil: hay **dos**
+   organizaciones —`Robbie & Natalia` (activa, 38 leads) y `Demo` (trial, 0)— y
+   `Demo` **no tiene fila en `agent_settings`**, así que una cita suya se queda
+   sin copia a la agencia con un `log.warning`, sin reventar. Es el
+   comportamiento correcto, pero no estaba escrito en ningún sitio hasta ahora.
+
+**Sigue abierto y hay que decirlo:** las citas **siguen sin reservarse en
+Cal.com** (`CALENDAR_SIMULATED=true`), así que las horas ofrecidas se generan
+localmente y el sistema **puede ofrecer una hora en la que Natalia está
+ocupada**. El `.ics` cierra el aviso, no la disponibilidad.
+
+---
+
 ## Fase B (landing) — parcial ✅
 
 Rama `feat/landing-denver-home-story`. Commits `7d2e35e`, `2023856`, `e8ab9bf`.
