@@ -125,6 +125,13 @@ def _still_owed(now: datetime):  # noqa: ANN201 — a SQLAlchemy clause
     """Outbound messages that have not reached a provider."""
     return and_(
         Message.direction == MessageDirection.OUTBOUND,
+        # An internal note lives in the lead's thread but is NOT addressed to
+        # them — the agency's copy of an appointment invitation. Without this
+        # line the sweep would deliver it TO THE LEAD, complete with their own
+        # phone number and what they asked for, looking like a malfunction.
+        # This is the guard, not the column: whoever writes the row cannot be
+        # relied on to remember.
+        Message.internal.is_(False),
         Message.delivery_status.in_([MessageStatus.PENDING, MessageStatus.FAILED]),
         Message.external_id.is_(None),
         Message.send_attempts < MAX_ATTEMPTS,

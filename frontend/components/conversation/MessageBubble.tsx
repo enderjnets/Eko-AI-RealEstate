@@ -18,6 +18,12 @@ export function MessageBubble({ msg, channel }: { msg: Message; channel?: string
   const isHuman = msg.sender === "human";
   const isAgent = msg.sender === "agent";
 
+  // A note filed in this thread that the lead never received — today, the copy
+  // of an appointment invitation sent to the agency. It has to look different
+  // from everything around it: rendered like an ordinary outbound message, a
+  // realtor would believe the client read it and answer on that basis.
+  const isInternal = msg.internal;
+
   const Icon = isInbound ? User2 : isAgent ? Bot : Phone;
   const senderLabel = isInbound
     ? t("msg.sender.lead")
@@ -49,6 +55,14 @@ export function MessageBubble({ msg, channel }: { msg: Message; channel?: string
               {t("msg.manual")}
             </span>
           )}
+          {isInternal && (
+            <span
+              className="text-[10px] px-1 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20"
+              title={t("msg.internalHelp")}
+            >
+              {t("msg.internal")}
+            </span>
+          )}
           {msg.fair_housing_flags && msg.fair_housing_flags.length > 0 && (
             <span
               className="text-[10px] px-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20"
@@ -68,7 +82,9 @@ export function MessageBubble({ msg, channel }: { msg: Message; channel?: string
         )}
         <div
           className={`px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed ${
-            isInbound
+            isInternal
+              ? "bg-sky-500/[0.07] border border-dashed border-sky-500/30 text-gray-300 rounded-tr-sm"
+              : isInbound
               ? "bg-white/[0.05] border border-white/10 text-gray-100 rounded-tl-sm"
               : isHuman
               ? "bg-amber-500/10 border border-amber-500/20 text-amber-50 rounded-tr-sm"

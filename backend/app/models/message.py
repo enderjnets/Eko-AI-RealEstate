@@ -6,12 +6,14 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -120,6 +122,20 @@ class Message(Base):
     # fires on all-clear is worse than none: it is ignored within a week.
     fair_housing_flags: Mapped[list | None] = mapped_column(
         JSONB(none_as_null=True), nullable=True
+    )
+
+    # A row that belongs in the lead's file but is NOT addressed to the lead —
+    # today, the copy of the appointment invitation that goes to the agency's
+    # booking mailbox. It lives in their thread so opening a conversation shows
+    # that the agent was told, and when.
+    #
+    # Two machines walk this table by shape and BOTH must skip these rows:
+    # `delivery.py::_still_owed` would re-send it TO THE LEAD, and the two
+    # history builders in `conversation.py` would feed it to the LLM as a
+    # conversational turn. The column alone is not the protection; those two
+    # filters are, and each has a mutation test behind it.
+    internal: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
     )
 
     created_at: Mapped[datetime] = mapped_column(

@@ -64,6 +64,12 @@ export interface Message {
   external_id: string | null;
   delivery_status: MessageStatus;
   subject: string | null;
+  /**
+   * In the lead's thread but never sent to them — today, the copy of an
+   * appointment invitation that went to the agency. Must be rendered as such:
+   * unmarked, a realtor reads it as something the client received.
+   */
+  internal: boolean;
   channel: string; // channel of this message's conversation (for mixed timelines)
   llm_provider: string | null;
   llm_model: string | null;

@@ -40,6 +40,11 @@ class MessageOut(BaseModel):
     external_id: str | None
     delivery_status: MessageStatus
     subject: str | None
+    # In the lead's thread but never said to them — today, the copy of an
+    # appointment invitation that went to the agency. Exposed so the panel can
+    # mark it as such: an unmarked internal note reads as something the client
+    # received, and a realtor would answer accordingly.
+    internal: bool = False
     # Channel this message was sent/received on (from its Conversation). Carried
     # per-message so a merged multichannel timeline can icon each bubble.
     channel: str = ""
@@ -91,6 +96,7 @@ def _message_out(m: Message, channel: str) -> MessageOut:
         external_id=m.external_id,
         delivery_status=m.delivery_status,
         subject=m.subject,
+        internal=m.internal,
         channel=channel,
         llm_provider=m.llm_provider,
         fair_housing_flags=m.fair_housing_flags,

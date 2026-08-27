@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -28,7 +28,17 @@ from app.models import (
 
 
 def reached_somebody():
-    """True unless this is an outbound whose delivery failed.
+    """True unless this row cannot count as the last word of the exchange.
+
+    Two exclusions, one per clause:
+
+    * an outbound whose delivery FAILED — a reply that never left does not
+      answer anybody;
+    * an INTERNAL note — it reached somebody (the agency), but not the lead,
+      and the lead's unanswered question is still unanswered. Without this, the
+      agency's copy of an appointment invitation became the "last word" and
+      silently pulled a waiting lead out of the triage queue — worst for a
+      phone-only lead, where that note is the ONLY row the booking writes.
 
     Ranking key, deliberately not a filter — see `_last_message_per_lead`.
 
@@ -37,9 +47,12 @@ def reached_somebody():
     rule was added here and not there, and the other one's docstring still
     claimed it mirrored this one. One expression, imported by both.
     """
-    return or_(
-        Message.direction == MessageDirection.INBOUND,
-        Message.delivery_status != MessageStatus.FAILED,
+    return and_(
+        Message.internal.is_(False),
+        or_(
+            Message.direction == MessageDirection.INBOUND,
+            Message.delivery_status != MessageStatus.FAILED,
+        ),
     )
 
 
@@ -113,7 +126,15 @@ async def _last_reaching_message_per_lead(db: AsyncSession) -> dict[int, object]
 
 
 async def _last_message_per_lead(db: AsyncSession) -> dict[int, object]:
-    """The most recent message (any channel) per lead, with its channel."""
+    """The most recent message (any channel) per lead, with its channel.
+
+    Failed sends are shown on purpose (the realtor needs to see the attempt);
+    INTERNAL notes are not. This map feeds the preview line and
+    `last_message_at`: unfiltered, the inbox card read "Who: <name> / Phone:
+    <number>" — the agency's copy of an invitation — as if it were the last
+    thing said to the client, and the note's timestamp re-opened the 24-hour
+    attention window for a lead nobody actually spoke to.
+    """
     rows = (
         await db.execute(
             select(
@@ -124,6 +145,7 @@ async def _last_message_per_lead(db: AsyncSession) -> dict[int, object]:
                 Conversation.channel.label("channel"),
             )
             .join(Conversation, Message.conversation_id == Conversation.id)
+            .where(Message.internal.is_(False))
             .order_by(Conversation.lead_id, Message.created_at.desc(), Message.id.desc())
             .distinct(Conversation.lead_id)
         )

@@ -48,7 +48,7 @@ async def _seed(
     phone: str,
     *,
     holds: int,
-    scheduled_days_ago: int,
+    scheduled_days_ago: float,
     status: FollowUpStatus = FollowUpStatus.PENDING,
 ) -> int:
     async with get_bypass_session_factory()() as db:
@@ -128,7 +128,15 @@ async def test_the_clamp_is_right_at_the_edges(database_url: str) -> None:
     a day of grace granted or stolen from every mid-hold lead at once.
     """
     future = await _seed("+13035557805", holds=5, scheduled_days_ago=-3)
-    today = await _seed("+13035557806", holds=5, scheduled_days_ago=0)
+    # 0.001 days (~86s ago), NOT 0: `scheduled_days_ago=0` seeds the row at
+    # Python's now(), which sits exactly on the FLOOR discontinuity of the
+    # corrective SQL — `1 + FLOOR((NOW() - scheduled_for)/86400)`. Postgres
+    # evaluates NOW() on ITS clock, and whenever it trails Python's by even a
+    # millisecond the floor lands on -1 and the ceiling on 0 instead of 1.
+    # Measured: one red in a full run, green in isolation and on rerun. The
+    # test's claim is "a row due today caps at one hold", not "a row due at
+    # this exact instant", so a minute of slack loses nothing.
+    today = await _seed("+13035557806", holds=5, scheduled_days_ago=0.001)
     try:
         async with get_bypass_session_factory()() as db:
             await db.execute(text(_corrective_sql()))

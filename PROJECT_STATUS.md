@@ -91,6 +91,75 @@ fijos. Arreglarlo solo merece la pena si Cal.com tarda: él se lleva esa funció
 
 ---
 
+## Registro de la cita (Fase 1) — ✅ construida, SIN desplegar (27-ago-2026)
+
+Rama `feat/registro-de-la-cita` (apilada sobre feat/temas-de-vendedor). Plan:
+sección «el registro completo» de `si-haz-el-plan-jazzy-sifakis.md`.
+
+**Qué hace**: los dos correos de la invitación de una cita entran por fin en la
+conversación del lead — el suyo como mensaje normal, el de la agencia como
+**nota interna** (`messages.internal`, migración 044). El panel la pinta
+distinta (chip «nota interna», borde punteado); el barrido de reenvío y los dos
+constructores de historia del LLM la excluyen por `internal IS false`.
+
+**Checklist real**:
+1. ✅ 1156 backend desde base recreada (12 nuevos) · 142 frontend · 0 saltados
+2. ✅ ruff limpio · tsc limpio
+3. ✅ `docker build` backend OK (e77a5280)
+4. ✅ cobertura: `visit_invite.py` 88%; lo sin cubrir son ramas previas a la fase
+5. ✅ diff sin secretos (matches revisados a mano: stubs de test y el guion de
+   Cloudflare, que lee el valor en runtime y no contiene ninguno)
+6. ✅ sin prints/console.log; sin entrada externa nueva
+7. ✅ INSERT real como `eko_app` con `internal=true`: los tests escriben por
+   `get_session_factory()` (= `DATABASE_URL_APP`, RLS) — probado por el camino real
+8. ✅ **6 mutaciones verificadas**, cada una roja solo en su test: filtro del
+   barrido · filtro de las 2 historias LLM · intentos gastados en fallo ·
+   filtro de `reached_somebody` · filtro de la vista previa · elección de hilo
+
+**Auditoría independiente (1 subagente, cerrado)** — 2 bloqueantes + 1 subido:
+- **B1** el Inbox no filtraba `internal`: la nota de la agencia se volvía «la
+  última palabra» y un lead sin contestar salía del triaje en silencio (peor en
+  el lead solo-teléfono, donde la nota es la ÚNICA fila). Arreglado en la
+  expresión compartida `reached_somebody()` + la vista previa. Con mutación.
+- **B2** registrar siempre en una conversación `email` nueva la convertía en
+  «primaria» (nace con `last_at` = now): el composer saltaba a email para un
+  lead solo-teléfono (`channel_identifier_mismatch`) y las sugerencias daban
+  `empty_conversation`. Arreglado: el registro **reutiliza el hilo ACTIVO más
+  reciente del lead**; solo crea el de email si no hay ninguno Y el lead tiene
+  email; sin hilo y sin email, se omite con log. Con mutación.
+- **I1→bloqueante** (reclasificado: viola el «must never break a booking» del
+  propio módulo): el `rollback` sobre la sesión del llamador expiraba sus
+  objetos → `VisitOut.model_validate(visit)` = 500 sobre una reserva ya
+  comiteada, y la segunda fila se perdía también. Arreglado: el registro corre
+  en **su propia sesión** con valores planos, nunca objetos del llamador. Test
+  que accede a los atributos del llamador después del fallo.
+
+**Hallazgos NO de mi diff, arreglados de paso con evidencia**:
+- `test_consent_holds_backfill::test_the_clamp_is_right_at_the_edges` sembraba
+  la fila «due today» EXACTAMENTE sobre la discontinuidad del FLOOR (reloj de
+  Python vs reloj de Postgres): rojo intermitente medido. Sembrada a ~86 s.
+- El stub de Resend con `return_value` fijo repetía el id y chocaba con
+  `uq_messages_external_id`; ahora `_sender()` da un id por mensaje y hay un
+  test que fija el comportamiento bajo colisión (se pierde 1 fila, no 2).
+
+**Backlog (importantes/menores de la auditoría, con evidencia)**:
+- M1 `message_count` (`conversations.py:171`) cuenta las internas — consistente
+  con el timeline que las pinta; decidir si se excluye.
+- M2 `analytics.py:82-96` sin filtro `internal`: una nota puede contar como
+  primera respuesta. Menor mientras las notas sean solo de citas.
+- M3 el de-flake de 0→0.001 suelta el borde exacto `NOW()==scheduled_for`; una
+  mutación FLOOR→CEIL ya no se cazaría en 0. Alternativa: sembrar con now() de
+  Postgres.
+- M4 la burbuja interna aún dice «AI agent» + «Enviado»; el chip lo desmiente.
+- M5 la nota interna queda `fair_housing_flags=NULL` («nunca revisado») y el
+  vigilante no la ve — es texto nuestro; decidir si se filtra o se exime.
+
+**Siguiente paso**: Fase 2 del plan — exponer la atribución (`ATTRIBUTION_KEYS`)
+en la API del lead y pintarla en `LeadDetail.tsx`; bump v0.60.0 al cerrar la
+tanda. Después: preparar deploy y PARAR (autorización del dueño).
+
+---
+
 ## Temas de vendedor + CTA — ✅ **v0.59.0 lista, SIN desplegar** (27-ago-2026)
 
 Rama `feat/temas-de-vendedor`, apilada sobre `feat/idioma-por-defecto-ingles`.

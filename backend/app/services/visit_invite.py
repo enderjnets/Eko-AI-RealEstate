@@ -167,10 +167,12 @@ async def send_visit_invitation(
                 visit_id=visit.id,
                 who="lead",
                 # This one IS a message to a lead, so it goes through the
-                # opt-out funnel like every other. The agency copy below passes
-                # no lead because it is not a message to one.
+                # opt-out funnel like every other, and it is recorded as an
+                # ordinary outbound message in their thread.
                 lead=lead,
                 db=db,
+                language=language,
+                internal=False,
             )
         else:
             # Worth a line in the log rather than silence: with SMS parked, a
@@ -202,6 +204,15 @@ async def send_visit_invitation(
                 attachment=attachment,
                 visit_id=visit.id,
                 who="agency",
+                # Recorded in the lead's thread as an INTERNAL note: it belongs
+                # in their file — opening the conversation should show that the
+                # agent was told, and when — but it was never said to them.
+                # `internal=True` is what keeps the delivery sweep from posting
+                # it to the lead and the LLM from reading it as a turn.
+                lead=lead,
+                db=db,
+                language=language,
+                internal=True,
             )
         else:
             log.warning(
@@ -223,21 +234,23 @@ async def _send_one(
     who: str,
     lead: Lead | None = None,
     db: AsyncSession | None = None,
+    language: str = "en",
+    internal: bool = False,
 ) -> None:
-    """One recipient, failing on its own.
+    """One recipient, failing on its own, and written down either way.
 
     Separated so that a bad lead address does not cost the agency its copy —
     they are two independent notifications and the earlier draft lost both to
     the first bounce.
 
-    `lead` is passed ONLY when the recipient is that lead, and then this goes
+    `internal=False` means the recipient IS the lead, and then this goes
     through `may_send_automated` like every other outbound message. The repo's
     AST sweep caught the first version of this file for skipping it, which is
     exactly what that sweep is for: opt-out is revoked consent and it outranks
     a booking. An opted-out lead still gets their visit — the agent is told and
     can phone them — they just do not get an email they asked not to receive.
     """
-    if lead is not None and db is not None:
+    if not internal and lead is not None and db is not None:
         from app.models.channel_route import CHANNEL_EMAIL
         from app.services.capture import may_send_automated
 
@@ -247,11 +260,182 @@ async def _send_one(
                 visit_id,
             )
             return
+
+    external_id: str | None = None
+    failure: str | None = None
     try:
-        await send_email(to=to, subject=subject, body_text=body, attachments=[attachment])
+        result = await send_email(
+            to=to, subject=subject, body_text=body, attachments=[attachment]
+        )
+        external_id = (result or {}).get("id")
         log.info("Visit %s: calendar invitation sent to the %s", visit_id, who)
     except Exception as exc:  # noqa: BLE001
+        failure = str(exc)[:500]
         log.error("Visit %s: invitation to the %s failed: %s", visit_id, who, exc)
+
+    # Written AFTER the send, never before. A row inserted first and left
+    # PENDING is exactly what `delivery.py::_still_owed` sweeps up and re-sends
+    # through `_dispatch_send` — which knows nothing about attachments, so the
+    # lead would receive the invitation text with no `.ics` at all. The cost of
+    # this ordering is that a crash between the POST and the INSERT loses the
+    # record of an email that did go out; that is the status quo for every
+    # invitation sent so far, and it is the cheaper of the two failures.
+    #
+    # A MANUAL calendar event has no lead (`visits.lead_id` is nullable) and
+    # therefore no thread to file anything under.
+    if lead is not None:
+        await _record_in_thread(
+            lead_id=lead.id,
+            lead_email=((lead.email or "").strip() or None),
+            subject=subject,
+            body=body,
+            external_id=external_id,
+            failure=failure,
+            internal=internal,
+            language=language,
+            visit_id=visit_id,
+        )
+
+
+async def _record_in_thread(
+    *,
+    lead_id: int,
+    lead_email: str | None,
+    subject: str,
+    body: str,
+    external_id: str | None,
+    failure: str | None,
+    internal: bool,
+    language: str,
+    visit_id: int,
+) -> None:
+    """Put the email in the lead's conversation. Never raises.
+
+    Until this existed, the appointment invitation — the single most important
+    email the system sends — appeared nowhere in the lead's file. The panel
+    showed a visit and no trace of anybody having been told about it.
+
+    Runs on ITS OWN session, never the caller's, and takes plain values rather
+    than ORM objects for the same reason: a rollback on the caller's session
+    expires every object in it, so the booking handler's
+    `VisitOut.model_validate(visit)` would blow up on a visit that committed
+    fine and whose emails already went out — the exact "must never break a
+    booking" this module promises. With a private session, a failed first
+    record also cannot poison the second: each call opens fresh.
+
+    Where the row goes, in order — and the order is the fix for a real bug:
+
+    1. The lead's most recent ACTIVE conversation, WHATEVER its channel. The
+       record is about the lead, and reusing their live thread leaves
+       `primary_channel` alone. The first version always created an `email`
+       conversation; being the newest it became "primary", which flipped the
+       dashboard composer to email for a phone-only lead (every send then died
+       on `channel_identifier_mismatch`), and pointed the suggestions endpoint
+       at a thread whose only row is filtered out — `empty_conversation`.
+    2. No conversation at all but the lead has an email: create the email
+       thread. It is genuinely their first contact channel.
+    3. No conversation and no email (a manually added lead, booked by phone):
+       nothing to safely attach to — log and skip, which is exactly what every
+       invitation before this feature did.
+    """
+    try:
+        from app.db.base import first_or_create, get_session_factory
+        from app.models.channel_route import CHANNEL_EMAIL
+        from app.models.conversation import Conversation, ConversationStatus
+        from app.models.message import (
+            Message,
+            MessageDirection,
+            MessageSender,
+            MessageStatus,
+        )
+        from app.services.delivery import MAX_ATTEMPTS
+        from app.services.fair_housing import find_violations
+
+        async with get_session_factory()() as db:
+            conv = (
+                await db.execute(
+                    select(Conversation)
+                    .where(
+                        Conversation.lead_id == lead_id,
+                        Conversation.status == ConversationStatus.ACTIVE,
+                    )
+                    .order_by(Conversation.last_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if conv is None:
+                if not lead_email:
+                    log.warning(
+                        "Visit %s: lead %d has no conversation and no email — "
+                        "the %s was sent but has no thread to be filed in",
+                        visit_id,
+                        lead_id,
+                        "internal note" if internal else "invitation",
+                    )
+                    return
+                conv = await first_or_create(
+                    db,
+                    select(Conversation)
+                    .where(
+                        Conversation.lead_id == lead_id,
+                        Conversation.channel == CHANNEL_EMAIL,
+                        Conversation.status == ConversationStatus.ACTIVE,
+                    )
+                    .limit(1),
+                    lambda: Conversation(
+                        lead_id=lead_id,
+                        channel=CHANNEL_EMAIL,
+                        status=ConversationStatus.ACTIVE,
+                    ),
+                )
+
+            # Only the lead-facing copy is screened, and it is screened for a
+            # measured reason: the body interpolates `agency_name`, which the
+            # client types. A sweep over our templates proves the template is
+            # clean and says nothing about the value poured into it — an agency
+            # literally named "Perfect for Families Realty" would send that
+            # phrase with the column reading "never screened". Same policy as
+            # every other lane: record and warn, never block.
+            flags = None if internal else find_violations(f"{subject} {body}", language)
+            if flags:
+                log.warning(
+                    "Fair Housing: visit %s invitation carries %d flagged phrase(s): %s",
+                    visit_id,
+                    len(flags),
+                    sorted({f["category"] for f in flags}),
+                )
+
+            db.add(
+                Message(
+                    conversation_id=conv.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
+                    content=body,
+                    subject=subject,
+                    internal=internal,
+                    external_id=external_id,
+                    delivery_status=(
+                        MessageStatus.SENT if external_id else MessageStatus.FAILED
+                    ),
+                    last_error=failure,
+                    # Spent on purpose when the send failed. The row then states
+                    # the truth — it failed and is not being retried — using the
+                    # very condition the delivery sweep already honours, instead
+                    # of lying with a SENT status to keep the sweep away. Blind
+                    # retry is not an option here: it would re-send without the
+                    # `.ics`.
+                    send_attempts=0 if external_id else MAX_ATTEMPTS,
+                    fair_housing_flags=flags or None,
+                )
+            )
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001 — the booking and the email both already happened
+        log.error(
+            "Visit %s: the %s invitation was not recorded in the thread: %s",
+            visit_id,
+            "internal note" if internal else "lead copy",
+            exc,
+        )
 
 
 def _address_of(value: str) -> str | None:

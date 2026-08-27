@@ -389,7 +389,11 @@ async def generate_reply_suggestions(
 
     hist_row = await db.execute(
         select(Message)
-        .where(Message.conversation_id == conv.id)
+        # Internal notes are in the thread but were never said to the lead.
+        # Feeding one to the model makes it a conversational turn the model can
+        # quote back, so both history builders filter it out — this one and the
+        # reply lane's at the "Build history for LLM" step.
+        .where(Message.conversation_id == conv.id, Message.internal.is_(False))
         .order_by(Message.created_at.desc())
         .limit(MAX_HISTORY_TURNS)
     )
@@ -1369,7 +1373,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # ── 6. Build history for LLM ───────────────────────────────────────
     hist_row = await db.execute(
         select(Message)
-        .where(Message.conversation_id == conv.id)
+        .where(Message.conversation_id == conv.id, Message.internal.is_(False))
         .order_by(Message.created_at.desc())
         .limit(MAX_HISTORY_TURNS)
     )
