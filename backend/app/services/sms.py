@@ -131,6 +131,11 @@ async def send_sms(*, to: str, body: str) -> dict[str, Any]:
     identity = await resolve_outbound_identity(CHANNEL_SMS)
     account_sid = identity.provider_account
     auth_token = identity.credential
+    # Basic-auth username. With a Twilio API Key configured this is the key's
+    # own `SK…` SID; otherwise it is the Account SID, exactly as before. The
+    # account in the URL path below does NOT change either way — that is always
+    # the Account SID, which is why the two are kept apart here.
+    auth_user = identity.credential_user or account_sid
     messaging_service = identity.sender_override
     from_number = identity.destination
 
@@ -157,7 +162,7 @@ async def send_sms(*, to: str, body: str) -> dict[str, Any]:
         resp = await client.post(
             f"{_TWILIO_API_ROOT}/Accounts/{account_sid}/Messages.json",
             data=data,
-            auth=(account_sid, auth_token),
+            auth=(auth_user, auth_token),
         )
         if resp.status_code >= 400:
             log.error("Twilio send failed: status=%d body=%s", resp.status_code, resp.text[:400])

@@ -133,7 +133,30 @@ class Settings(BaseSettings):
     # behind a proxy); if blank we reconstruct it from forwarded headers.
     SMS_SIMULATED: bool = True
     TWILIO_ACCOUNT_SID: str = ""
+    # Two jobs used to ride on this one value: authenticating what we SEND, and
+    # validating the signature on what we RECEIVE. Twilio only requires it for
+    # the second — "Twilio hashes the signature with the HMAC-SHA1 hashing
+    # algorithm using your account auth token as the secret key" — and there is
+    # no alternative credential for that. So it stays, but it is no longer the
+    # credential we send with.
     TWILIO_AUTH_TOKEN: str = ""
+    # Sending uses an API Key instead, when one is configured. Twilio's own
+    # guidance: "Use API keys for all applications. If a key is compromised or
+    # no longer used, revoke it to prevent unauthorized access without affecting
+    # your other applications."
+    #
+    # That is the whole point of splitting them. With one value doing both jobs,
+    # a single leak hands over the ability to send messages at our expense AND
+    # to forge inbound webhooks — and rotating it breaks both halves at once.
+    # Revoking a key only stops sending, and can be done without touching the
+    # signature path that inbound SMS depends on.
+    #
+    # The SID here is the API Key's own (`SK…`), NOT the Account SID: it is the
+    # basic-auth username. The Account SID still identifies the account in the
+    # request path either way. Both empty (the default) falls back to
+    # (Account SID, Auth Token), so existing installs keep working untouched.
+    TWILIO_API_KEY_SID: str = ""
+    TWILIO_API_KEY_SECRET: str = ""
     TWILIO_PHONE_NUMBER: str = ""  # E.164, e.g. +13055551234
     TWILIO_WEBHOOK_URL: str = ""
     # A2P 10DLC: when a number is registered under a Messaging Service, Twilio

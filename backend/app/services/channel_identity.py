@@ -56,7 +56,21 @@ class ChannelIdentity:
     provider_account: str | None = None
     # The sending credential: Twilio auth token, WhatsApp access token, API key.
     credential: str | None = None
+    # Basic-auth username for `credential`, when it is not `provider_account`.
+    #
+    # This field is why the split is possible at all: the dataclass already drew
+    # the line between the sending credential and the inbound signing secret,
+    # and Twilio was simply putting the same value in both. A Twilio API Key
+    # authenticates as (SK…, secret) rather than (AccountSID, token), so sending
+    # needs its own username while `provider_account` keeps identifying the
+    # account in the request path. `None` means "use provider_account", which is
+    # every existing caller.
+    credential_user: str | None = None
     # The secret this agency's *inbound* payloads are signed with.
+    #
+    # For Twilio this is NOT interchangeable with `credential` any more: webhook
+    # signatures are HMAC-SHA1 with the account auth token as the key, and no
+    # API Key can produce or verify them.
     inbound_secret: str | None = None
     verify_token: str | None = None
     sender_override: str | None = None
@@ -260,7 +274,26 @@ def _global_identity(channel: str, *, org_id: int | None) -> ChannelIdentity:
             channel=channel,
             destination=s.TWILIO_PHONE_NUMBER or None,
             provider_account=s.TWILIO_ACCOUNT_SID or None,
-            credential=s.TWILIO_AUTH_TOKEN or None,
+            # Send with the API Key when there is one; fall back to the auth
+            # token so an install that has not configured one is untouched.
+            # Both halves of the pair are required — an SID with no secret (or
+            # the reverse) is a half-finished rotation, and silently sending
+            # with the auth token instead would hide it until someone revoked
+            # the key and wondered why nothing broke.
+            credential=(
+                s.TWILIO_API_KEY_SECRET
+                if (s.TWILIO_API_KEY_SID and s.TWILIO_API_KEY_SECRET)
+                else s.TWILIO_AUTH_TOKEN
+            )
+            or None,
+            credential_user=(
+                s.TWILIO_API_KEY_SID
+                if (s.TWILIO_API_KEY_SID and s.TWILIO_API_KEY_SECRET)
+                else None
+            )
+            or None,
+            # Always the auth token, never the API Key: Twilio signs webhooks
+            # with the account auth token and offers no way to change that.
             inbound_secret=s.TWILIO_AUTH_TOKEN or None,
             sender_override=s.TWILIO_MESSAGING_SERVICE_SID or None,
             webhook_url=s.TWILIO_WEBHOOK_URL or None,
