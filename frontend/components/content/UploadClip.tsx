@@ -68,8 +68,16 @@ export function UploadClip({
             ? n.toLocaleString(lang, { maximumFractionDigits: 1 })
             : (raw2 ?? "");
         };
+        // A refusal with no limit to name gets its own sentence rather than
+        // "the limit is  MB". The number is missing only when the status GET
+        // failed AND the 413 came from a proxy's HTML page instead of us —
+        // rare, but the message has to still be a sentence when it happens.
+        const key =
+          kind === "tooLarge" && !detail[1]
+            ? "content.upload.tooLargeUnknown"
+            : `content.upload.${kind as UploadFailure}`;
         setError(
-          t(`content.upload.${kind as UploadFailure}`, {
+          t(key, {
             size: asNumber(detail[0]),
             limit: asNumber(detail[1]),
           }),
@@ -110,6 +118,18 @@ export function UploadClip({
           )}
           {busy ? `${percent}%` : t("content.uploadClip")}
         </button>
+
+        {/* The cap, before the file picker opens. `StudioStatus` carries this
+            number precisely so the choice can be informed; showing it only in
+            the refusal would mean the person still learns it by being told
+            "no" — which is the thing this phase set out to stop. Hidden while
+            uploading, where it is noise, and when the status GET failed, where
+            we would be inventing it. */}
+        {!busy && maxMb !== undefined && (
+          <span className="text-xs text-gray-500 whitespace-nowrap">
+            {t("content.upload.limitHint", { limit: maxMb })}
+          </span>
+        )}
 
         <input
           ref={input}

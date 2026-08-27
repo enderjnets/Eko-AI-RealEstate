@@ -14,6 +14,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
+import app.main as main_module
 from app.config import get_settings
 from app.db.base import get_bypass_session_factory
 from app.main import app
@@ -322,6 +323,14 @@ async def test_an_oversized_clip_is_cut_mid_stream_and_leaves_nothing_behind(
     """
     monkeypatch.setattr(get_settings(), "CONTENT_MEDIA_DIR", str(tmp_path))
     monkeypatch.setattr(get_settings(), "CONTENT_UPLOAD_MAX_MB", 1)
+    # BOTH layers, or this test is a fiction. `_STREAM_PATHS` is built at import
+    # from the setting, so monkeypatching the setting alone leaves the
+    # middleware at 95 MB while the route sits at 1 — a configuration that
+    # cannot exist, exercising a branch production never enters. The first
+    # version of this test did exactly that and passed.
+    monkeypatch.setitem(
+        main_module._STREAM_PATHS, "/api/v1/content/upload", 1 * 1024 * 1024
+    )
     payload = b"\x00\x00\x00\x18ftypmp42" + b"x" * (2 * 1024 * 1024)
     try:
         async with _client() as client:
@@ -331,9 +340,12 @@ async def test_an_oversized_clip_is_cut_mid_stream_and_leaves_nothing_behind(
                 content=payload,
             )
             assert too_big.status_code == 413, too_big.text
-            # The message has to carry the number, or the person cannot act on
-            # it: "too large" without a limit is a dead end on a phone.
-            assert "1" in too_big.json()["detail"]
+            # The number has to be in the ANSWER, or the person cannot act on
+            # it: "too large" with no limit is a dead end on a phone. It comes
+            # from `limit_mb`, not from `detail`: a browser always declares a
+            # Content-Length, so the refusal a real user gets is the
+            # middleware's `body_too_large`, never the route's prose.
+            assert too_big.json()["limit_mb"] == 1, too_big.text
 
             leftovers = list(tmp_path.iterdir())
             assert leftovers == [], (
@@ -345,6 +357,47 @@ async def test_an_oversized_clip_is_cut_mid_stream_and_leaves_nothing_behind(
             listed = await client.get("/api/v1/content")
             assert listed.status_code == 200
             assert listed.json() == []
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_chunked_upload_that_declares_no_length_is_still_cut(
+    database_url: str, tmp_path, monkeypatch
+) -> None:
+    """The case the ROUTE's own check exists for, and the only one it answers.
+
+    A browser always declares a Content-Length, so `BodySizeLimit` in `main.py`
+    refuses an oversized clip before the route sees a byte — which is why the
+    route's prose about the cap is never what a person reads. But a chunked
+    body declares nothing to check, the middleware waves streaming paths
+    through untouched, and then the route counting bytes as they land is the
+    only thing standing between us and a disk filled by an authenticated
+    caller.
+
+    So the two checks are not redundant, and this is the half that would go
+    unnoticed if it broke: no client in the product exercises it, and the other
+    test in this file cannot reach it.
+    """
+    monkeypatch.setattr(get_settings(), "CONTENT_MEDIA_DIR", str(tmp_path))
+    monkeypatch.setattr(get_settings(), "CONTENT_UPLOAD_MAX_MB", 1)
+
+    async def _chunks():
+        yield b"\x00\x00\x00\x18ftypmp42"
+        for _ in range(3):
+            yield b"x" * (512 * 1024)
+
+    try:
+        async with _client() as client:
+            r = await client.post(
+                "/api/v1/content/upload",
+                params={"filename": "chunked.mp4", "language": "en"},
+                content=_chunks(),
+            )
+            assert r.status_code == 413, r.text
+            # The route's own words this time, naming the cap.
+            assert "1 MB" in r.json()["detail"], r.text
+            assert list(tmp_path.iterdir()) == [], "a cut chunked upload left bytes"
     finally:
         await _cleanup()
 

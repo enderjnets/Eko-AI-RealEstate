@@ -214,7 +214,13 @@ app.add_middleware(TenantMiddleware)
 # checks the size, so passing it through costs one copy instead of three.
 _STREAM_PATHS: dict[str, int] = {
     "/api/v1/discovery/upload": settings.FILE_IMPORT_MAX_MB * 1024 * 1024,
-    # A phone clip; the route enforces the cap itself while streaming to disk.
+    # A phone clip. Both layers enforce the same cap and they are NOT redundant:
+    # this one reads the declared Content-Length, which is what a browser always
+    # sends and therefore the check that actually fires in production; the route
+    # counts bytes as they arrive, which is the only guard against a chunked
+    # body that declares no length at all. An audit found the commit that
+    # lowered this cap claiming the route would be the one to answer. It is not,
+    # for any real client — hence `limit_mb` in the 413 below.
     "/api/v1/content/upload": settings.CONTENT_UPLOAD_MAX_MB * 1024 * 1024,
 }
 DEFAULT_MAX_BODY_BYTES = 256 * 1024
@@ -258,9 +264,17 @@ class BodySizeLimit:
                     declared = None
                 break
         if declared is not None and declared > limit:
-            await JSONResponse({"detail": "body_too_large"}, status_code=413)(
-                scope, receive, send
-            )
+            # `limit_mb` alongside the token, because THIS is the 413 a browser
+            # actually gets. Any client that declares a Content-Length — which
+            # is every `xhr.send(file)` — is refused here, before the route's
+            # own check ever runs, so the route's message naming the cap is
+            # unreachable for the product's only caller. Without a number here
+            # the dashboard could only show the raw token `body_too_large`, in
+            # English, to a bilingual user.
+            await JSONResponse(
+                {"detail": "body_too_large", "limit_mb": limit // (1024 * 1024)},
+                status_code=413,
+            )(scope, receive, send)
             return
 
         if self._streams(scope.get("path", "")):
@@ -286,9 +300,10 @@ class BodySizeLimit:
                 break
             total += len(message.get("body", b""))
             if total > limit:
-                await JSONResponse({"detail": "body_too_large"}, status_code=413)(
-                    scope, receive, send
-                )
+                await JSONResponse(
+                    {"detail": "body_too_large", "limit_mb": limit // (1024 * 1024)},
+                    status_code=413,
+                )(scope, receive, send)
                 return
             chunks.append(message.get("body", b""))
             if not message.get("more_body", False):

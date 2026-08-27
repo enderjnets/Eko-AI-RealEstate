@@ -444,7 +444,14 @@ export interface ContentPiece {
   publications: ContentPublication[];
 }
 
-/** Why the queue looks the way it does — booleans and counts, no config values. */
+/**
+ * Why the queue looks the way it does — booleans, counts, and one number.
+ *
+ * Mirrors `StudioStatus` in `backend/app/api/v1/content.py`, whose docstring
+ * carries the reasoning for why a size cap is allowed here when a config value
+ * would not be. An audit found this half of the pair still asserting the old
+ * rule above a field that breaks it.
+ */
 export interface StudioStatus {
   studio_enabled: boolean;
   render_enabled: boolean;
@@ -485,6 +492,18 @@ function xhrDetail(xhr: XMLHttpRequest): string {
 }
 
 /** Client-side failures, keyed so the UI can translate them. */
+/**
+ * A file's size in MB, rounded UP to one decimal.
+ *
+ * Not `toFixed(1)`, which rounds to nearest: a clip one byte over a 95 MB cap
+ * came out as "95.0" and the refusal read "That clip is 95 MB and the limit is
+ * 95 MB" — a sentence that contradicts itself and asks the person to trim a
+ * file that already looks small enough. Rounding up means the number shown is
+ * never below the cap it was refused for.
+ */
+const sizeMb = (file: File) =>
+  (Math.ceil((file.size / (1024 * 1024)) * 10) / 10).toFixed(1);
+
 export type UploadFailure = "network" | "cancelled" | "timeout" | "tooLarge";
 // `detail` carries the numbers a message needs to be actionable. Kept as a
 // string rather than a rich error type because these cross `Error.message`,
@@ -547,8 +566,7 @@ export const contentApi = {
       // send because one GET failed would break uploading every time an
       // unrelated request did, which is a worse product than a wasted upload.
       if (maxMb !== undefined && file.size > maxMb * 1024 * 1024) {
-        const mb = (file.size / (1024 * 1024)).toFixed(1);
-        reject(new Error(uploadFailure("tooLarge", `${mb}:${maxMb}`)));
+        reject(new Error(uploadFailure("tooLarge", `${sizeMb(file)}:${maxMb}`)));
         return;
       }
       const url =
@@ -572,6 +590,25 @@ export const contentApi = {
           } catch {
             reject(new Error(`API ${xhr.status}: unreadable response`));
           }
+          return;
+        }
+        // A 413 is the SAME event as the pre-flight check above, arriving from
+        // the other side. It happens whenever the limit could not be learned
+        // (`maxMb` undefined) and on any clip that clears the tunnel but not
+        // our own body-size middleware. Without this it surfaced as the raw
+        // internal token `API 413: body_too_large` — English, in a bilingual
+        // product, with a translated sentence for exactly this event sitting
+        // unused. One event, one message, whichever wall stopped it.
+        if (xhr.status === 413) {
+          let limit = maxMb;
+          try {
+            const parsed = JSON.parse(xhr.responseText) as { limit_mb?: number };
+            if (typeof parsed.limit_mb === "number") limit = parsed.limit_mb;
+          } catch {
+            // A proxy's HTML page, not our JSON. `limit` stays whatever the
+            // caller knew, and the message degrades to a blank rather than a lie.
+          }
+          reject(new Error(uploadFailure("tooLarge", `${sizeMb(file)}:${limit ?? ""}`)));
           return;
         }
         reject(new Error(`API ${xhr.status}: ${xhrDetail(xhr)}`));

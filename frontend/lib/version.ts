@@ -23,8 +23,8 @@ export const CHANGELOG: VersionEntry[] = [
     },
     changes: [
       {
-        en: "We said clips could be up to 500 MB. The real limit is about 100 MB: our own setting allowed 500, but the connection that serves this dashboard stops a larger upload before it ever reaches us. We measured it rather than assumed it, and corrected the earlier notes that carried the wrong figure. Filming in 1080p instead of 4K keeps a clip well under it. (In 0.56.0 the setting itself was lowered to match, so the app now warns you before the upload starts.)",
-        es: "Dec\u00edamos que un clip pod\u00eda pesar hasta 500 MB. El l\u00edmite real es de unos 100 MB: nuestro propio ajuste permit\u00eda 500, pero la conexi\u00f3n que sirve este panel detiene una subida mayor antes de que nos llegue. Lo medimos en vez de suponerlo, y corregimos las notas anteriores que llevaban la cifra equivocada. Grabar en 1080p en vez de 4K deja el clip holgadamente por debajo. (En la 0.56.0 bajamos el ajuste para que coincida, as\u00ed que ahora la app avisa antes de empezar la subida.)",
+        en: "We said clips could be up to 500 MB. The real limit is about 100 MB: our own setting allowed 500, but the connection that serves this dashboard stops a larger upload before it ever reaches us. We measured it rather than assumed it, and corrected the earlier notes that carried the wrong figure. Filming in 1080p instead of 4K keeps a clip well under it.",
+        es: "Dec\u00edamos que un clip pod\u00eda pesar hasta 500 MB. El l\u00edmite real es de unos 100 MB: nuestro propio ajuste permit\u00eda 500, pero la conexi\u00f3n que sirve este panel detiene una subida mayor antes de que nos llegue. Lo medimos en vez de suponerlo, y corregimos las notas anteriores que llevaban la cifra equivocada. Grabar en 1080p en vez de 4K deja el clip holgadamente por debajo.",
       },
     ],
   },

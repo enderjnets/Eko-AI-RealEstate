@@ -118,15 +118,20 @@ describe("contentApi.upload", () => {
   });
 
   it("keeps the raw body when the rejection is not JSON, because statusText is empty on HTTP/2", async () => {
-    // The likeliest rejection of all — a proxy refusing the size — arrives as
-    // an HTML page with no `detail`. The first version of this fell back to
-    // `xhr.statusText`, which HTTP/2 defines as the empty string, so the user
-    // read "API 413:" and nothing after it. Asserted with the whole message,
-    // not a /413/ match, which is what let that through.
-    stubXhr(413, "<html>Request Entity Too Large</html>");
+    // A proxy rejecting a request arrives as an HTML page with no `detail`.
+    // The first version of this fell back to `xhr.statusText`, which HTTP/2
+    // defines as the empty string, so the user read "API 502:" and nothing
+    // after it. Asserted with the whole message, not a /502/ match, which is
+    // what let that through.
+    //
+    // Uses 502, not 413: a 413 now has a dedicated path that turns it into the
+    // translated "that clip is too large" sentence rather than showing the
+    // page's markup to a realtor. That path is covered below; this one guards
+    // every OTHER status, where the raw body is still the best we have.
+    stubXhr(502, "<html>Bad Gateway</html>");
 
     await expect(contentApi.upload(clip(), "en")).rejects.toThrow(
-      "API 413: <html>Request Entity Too Large</html>",
+      "API 502: <html>Bad Gateway</html>",
     );
   });
 
@@ -226,5 +231,46 @@ describe("contentApi.upload size guard", () => {
     await contentApi.upload(bigClip(500), "en", undefined, undefined);
 
     expect(sent).toHaveLength(1);
+  });
+});
+
+describe("contentApi.upload server-side 413", () => {
+  const clipOf = (mb: number) =>
+    ({ name: "walkthrough.mov", size: Math.round(mb * 1024 * 1024), type: "video/quicktime" }) as File;
+
+  it("turns the server's 413 into the same failure the pre-flight check raises", async () => {
+    // The pre-flight guard cannot run when the limit was never learned, and a
+    // clip can also clear the tunnel but not our own middleware. Both arrive
+    // here. Before this, the user saw the raw token `API 413: body_too_large`
+    // — English, internal, in a bilingual product — while a sentence written
+    // for this exact event went unused.
+    stubXhr(413, JSON.stringify({ detail: "body_too_large", limit_mb: 95 }));
+
+    await expect(
+      contentApi.upload(clipOf(120), "es", undefined, undefined),
+    ).rejects.toThrow("upload:tooLarge:120.0:95");
+  });
+
+  it("still says something when the 413 is a proxy's HTML page", async () => {
+    // No JSON to read the limit from and no limit passed in: the message drops
+    // to the variant that does not claim a number, rather than rendering
+    // "the limit is  MB".
+    stubXhr(413, "<html><body>413 Request Entity Too Large</body></html>");
+
+    await expect(
+      contentApi.upload(clipOf(120), "en", undefined, undefined),
+    ).rejects.toThrow("upload:tooLarge:120.0:");
+  });
+
+  it("rounds the size up so the message cannot contradict itself", async () => {
+    // One byte over a 95 MB cap. `toFixed(1)` rounded to nearest and produced
+    // "95.0", so the refusal read "That clip is 95 MB and the limit is 95 MB"
+    // and asked the person to trim a file that already looked small enough.
+    const oneByteOver = { name: "x.mov", size: 95 * 1024 * 1024 + 1 } as File;
+    stubXhr(201, JSON.stringify({ id: 1 }));
+
+    await expect(
+      contentApi.upload(oneByteOver, "en", undefined, 95),
+    ).rejects.toThrow("upload:tooLarge:95.1:95");
   });
 });

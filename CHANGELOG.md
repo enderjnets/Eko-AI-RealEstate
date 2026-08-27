@@ -2,6 +2,33 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [No publicado]
+
+### Corregido — el aviso de tamaño llega antes de gastar la subida
+
+- **`CONTENT_UPLOAD_MAX_MB` baja de 500 a 95**, en `config.py`, `.env.example` y
+  `docker-compose.yml` a la vez. El túnel se rinde sobre los 100 MB, así que un
+  tope de 500 era una promesa que la infraestructura no cumplía. 95 y no 99
+  porque ~100 es donde se **observó** que rompe, no una cifra documentada: un
+  tope al borde de un acantilado medido falla de forma intermitente en vez de
+  limpia. El coste es real y va dicho: un clip de 96 MB que ayer pasaba, hoy se
+  rechaza.
+
+- **El navegador mira `file.size` antes de abrir la petición**, y la página dice
+  el tope antes de que se elija el fichero. Antes no lo miraba en ninguna parte.
+
+- **Qué capa responde, corregido tras una auditoría.** El primer intento afirmó
+  que al bajar el tope respondería la ruta con su mensaje. No: cualquier cliente
+  que declare `Content-Length` —toda subida de navegador— lo corta el middleware
+  `BodySizeLimit` de `main.py`, y el mensaje de la ruta sigue siendo
+  inalcanzable para él. El 413 del middleware lleva ahora `limit_mb`, y el panel
+  lo convierte en la misma frase traducida que el aviso del cliente, en vez del
+  token interno `body_too_large`. La comprobación de la ruta **no** sobra: es la
+  única guarda contra un cuerpo troceado que no declara longitud.
+
+- **Deuda anotada, no arreglada:** un clip de 4K de más de 95 MB sigue sin poder
+  subirse. La salida real es subida por trozos, y es otra versión.
+
 ## [0.55.1] — 2026-08-26
 
 ### Corregido — el tamaño de subida que anunciábamos no era el real
@@ -20,10 +47,9 @@ All notable changes to **Eko AI Realtors**.
   de una fuente») y se comprobó midiendo. Corregido en las notas de v0.52.0 y
   v0.55.0, que es donde la cifra estaba publicada al cliente.
 
-- **Pendiente, en el backlog:** el navegador no comprueba el tamaño antes de
-  subir, así que un clip de 4K sube ~100 MB y recibe una página HTML de
-  Cloudflare en vez de una frase. Y el 413 propio del backend («Clip exceeds
-  500 MB») es inalcanzable por el túnel: texto muerto hasta que el ajuste baje.
+- **Pendiente cuando se escribió esto, resuelto después** (ver «No publicado»):
+  el navegador no comprobaba el tamaño antes de subir, así que un clip de 4K
+  subía ~100 MB para recibir una página HTML en vez de una frase.
 
 ## [0.55.0] — 2026-08-26
 
