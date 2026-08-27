@@ -1541,6 +1541,11 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     )
     db.add(outbound)
     await db.flush()
+    # Held as a plain int for the handlers below. Once a savepoint rolls back,
+    # `outbound.id` is an expired attribute, and reading one inside an `except`
+    # is a synchronous lazy load that raises MissingGreenlet out of every
+    # handler in this function.
+    outbound_id = outbound.id
 
     # ── 10. Dispatch send through the right channel adapter ──────────
     try:
@@ -1578,15 +1583,38 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
                 outbound.delivery_status = MessageStatus.SENT
                 await db.flush()
         except IntegrityError:
+            # A savepoint rollback EXPIRES every object it touched, so reading
+            # `outbound.id` here was a synchronous lazy load inside async code.
+            # It raised MissingGreenlet — not an IntegrityError — so it escaped
+            # to the outer handler below, whose first act was to read
+            # `outbound.id` again. The recovery written to save the turn was
+            # what killed it, and by then the reply had already gone out over
+            # the wire: the lead was answered and we kept no record of it.
+            #
+            # Two guards, and measured rather than assumed: EITHER one alone
+            # makes the test pass, so neither is load-bearing on its own. Both
+            # are kept because they cover different ground and each costs a
+            # line — `refresh` restores the object for everything after this
+            # block (the assignments, `rescore_lead`, the commit and the final
+            # log line, all of which read it), while `outbound_id` also serves
+            # the outer `except Exception`, which catches states this savepoint
+            # never saw. Saying they are both required would be the kind of
+            # comment that defends a choice with an argument that is not true.
+            #
+            # `followups.py:423-427` learned this first, in the same words.
+            await db.refresh(outbound)
             log.warning(
                 "Duplicate provider id %s on outbound msg %d; keeping the turn "
                 "and leaving the id unset",
-                external_id, outbound.id,
+                external_id, outbound_id,
             )
             outbound.external_id = None
             outbound.delivery_status = MessageStatus.SENT
     except Exception as exc:  # noqa: BLE001
-        log.error("Channel %s send failed for outbound msg %d: %s", parsed.channel, outbound.id, exc)
+        log.error(
+            "Channel %s send failed for outbound msg %d: %s",
+            parsed.channel, outbound_id, exc,
+        )
         # Not just FAILED. A provider blip used to end the reply's life here:
         # one POST, no retry, and no sweep looking for what was left behind.
         schedule_retry(outbound, str(exc))

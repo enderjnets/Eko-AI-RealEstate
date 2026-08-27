@@ -26,7 +26,7 @@ from pathlib import Path
 import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -88,14 +88,36 @@ class PieceOut(BaseModel):
     publications: list[PublicationOut] = []
 
 
+def _trim_or_clear(value: object) -> object:
+    """Trim, and treat whitespace-only as absent.
+
+    These strings are burned into a video and read aloud by the caption, so a
+    trailing space is not cosmetic. Shared by the two edit schemas below.
+    """
+    if not isinstance(value, str):
+        return value
+    return value.strip() or None
+
+
 class PieceEdit(BaseModel):
     hook: str | None = Field(default=None, max_length=300)
     script: str | None = None
     caption: str | None = None
 
+    _trim = field_validator("hook", "script", "caption", mode="before")(
+        classmethod(lambda cls, v: _trim_or_clear(v))
+    )
+
 
 class RejectIn(BaseModel):
     reason: str = Field(min_length=3, max_length=2000)
+
+    # `mode="before"`, so `min_length=3` judges the trimmed value: "   " used to
+    # pass as a three-character rejection reason and be stored as blank.
+    @field_validator("reason", mode="before")
+    @classmethod
+    def _trim_reason(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
 
 class DraftIn(BaseModel):
@@ -104,6 +126,10 @@ class DraftIn(BaseModel):
     hook: str | None = Field(default=None, max_length=300)
     script: str | None = None
     caption: str | None = None
+
+    _trim = field_validator("hook", "script", "caption", mode="before")(
+        classmethod(lambda cls, v: _trim_or_clear(v))
+    )
 
 
 def _refresh_violations(piece: ContentPiece) -> None:
@@ -249,8 +275,17 @@ async def edit_piece(
 
     changed = False
     for field in ("hook", "script", "caption"):
+        # `model_fields_set`, not `is not None`. The two are different questions
+        # and only this one has an answer: "was this field sent?" versus "did it
+        # arrive empty?". Skipping None made clearing a caption impossible —
+        # the trimming validator turns "" into None, the console sends all
+        # three fields as strings on every save, so emptying the textarea
+        # returned 200 and put the old text straight back. A 200 that discards
+        # the edit is worse than a 400, because nobody goes looking.
+        if field not in payload.model_fields_set:
+            continue
         value = getattr(payload, field)
-        if value is not None and value != getattr(piece, field):
+        if value != getattr(piece, field):
             setattr(piece, field, value)
             changed = True
 

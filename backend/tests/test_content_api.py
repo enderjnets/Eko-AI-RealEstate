@@ -467,3 +467,79 @@ async def test_a_file_that_is_not_a_video_is_named_as_such(database_url: str) ->
         )
     assert r.status_code == 415
     assert "video" in r.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_a_caption_can_be_cleared(database_url: str) -> None:
+    """Emptying a text field must actually empty it.
+
+    The console sends hook, script and caption as strings on every save
+    (`ContentQueue.tsx:287`), and the trimming validator turns "" into None. The
+    handler skipped None — a reasonable rule on its own — so clearing a caption
+    returned 200 with the old text still in the database. The realtor emptied
+    the box, saw "saved", and watched the words come back.
+
+    A 200 that discards the edit is worse than a 400: nobody goes looking.
+    Worse here than elsewhere, because this is how flagged wording gets removed
+    — and if the delete never lands, `_refresh_violations` never re-runs and the
+    Fair Housing hit stays attached to a piece whose text looks clean.
+
+    The distinction the handler needs is "was this field sent?", which is
+    `model_fields_set`, not "is it None?".
+    """
+    try:
+        async with _client() as client:
+            created = await client.post(
+                "/api/v1/content", json={**CLEAN, "caption": "Original caption."}
+            )
+            piece_id = created.json()["id"]
+            assert created.json()["caption"] == "Original caption."
+
+            cleared = await client.patch(
+                f"/api/v1/content/{piece_id}", json={"caption": ""}
+            )
+            assert cleared.status_code == 200, cleared.text
+            assert cleared.json()["caption"] is None, "the clear was silently dropped"
+
+            # And it really is gone, not just absent from this response.
+            fetched = await client.get("/api/v1/content?status=draft")
+            mine = [p for p in fetched.json() if p["id"] == piece_id][0]
+            assert mine["caption"] is None
+
+            # Whitespace-only means the same thing.
+            await client.patch(
+                f"/api/v1/content/{piece_id}", json={"caption": "Back again."}
+            )
+            blanked = await client.patch(
+                f"/api/v1/content/{piece_id}", json={"caption": "   "}
+            )
+            assert blanked.json()["caption"] is None
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_unsent_field_is_left_alone(database_url: str) -> None:
+    """The control for the test above.
+
+    Without it, "clear whatever is None" would pass — and a PATCH naming only
+    the hook would wipe the script and caption it never mentioned.
+    """
+    try:
+        async with _client() as client:
+            created = await client.post(
+                "/api/v1/content",
+                json={**CLEAN, "script": "Keep me.", "caption": "Me too."},
+            )
+            piece_id = created.json()["id"]
+
+            edited = await client.patch(
+                f"/api/v1/content/{piece_id}", json={"hook": "Only the hook moves."}
+            )
+            assert edited.status_code == 200, edited.text
+            assert edited.json()["hook"] == "Only the hook moves."
+            assert edited.json()["script"] == "Keep me.", "an unsent field was cleared"
+            assert edited.json()["caption"] == "Me too.", "an unsent field was cleared"
+    finally:
+        await _cleanup()
+

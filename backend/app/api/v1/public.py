@@ -187,6 +187,25 @@ class PublicLeadIn(BaseModel):
     # and hidden in the markup, so a human never sees it and a bot fills it in.
     website: str | None = Field(default=None, max_length=200)
 
+    # No trimming validator here, deliberately, and it took writing one to find
+    # out why: `services/capture.py` already normalises every field that is
+    # stored — `clean_text` for name and message (which trims AND collapses
+    # runs of whitespace), `normalize_email` and `normalize_phone` for the
+    # other two. A validator on this model changed nothing that reached the
+    # database; measured on identical POSTs, the stored row was byte-identical
+    # with and without it. Code that does nothing is worse than absent: it
+    # reads as coverage.
+    #
+    # Two fields must never acquire one, which is the part worth writing down:
+    #
+    # - `website` is the honeypot, tested below as `if body.website` — before
+    #   the captcha and before tenant resolution. A whitespace-only value is
+    #   truthy, so a bot filling the hidden field with spaces is caught today.
+    #   Trimming it to None would wave that bot straight through.
+    # - `consent_text` reaches `clean_text` like the rest, so it is already
+    #   collapsed rather than stored verbatim. Worth knowing before anyone
+    #   relies on it reading back exactly as the person saw it.
+
 
 @router.post("/leads", status_code=202)
 async def capture(

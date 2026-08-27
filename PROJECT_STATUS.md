@@ -19,7 +19,8 @@ riesgo.
 | # | Fase | Estado |
 |---|---|---|
 | 1 | El filtro corre sobre lo que sale hacia el lead | ✅ completada — `f63ef4e` |
-| 2 | Recortar espacios donde el usuario escribe | ⏳ pendiente |
+| 2 | Recortar espacios donde el usuario escribe | ✅ completada |
+| 2b | El `except IntegrityError` que reventaba y perdía el turno | ✅ completada |
 | 3 | Aviso de tamaño antes de gastar la subida | ⏳ pendiente |
 | 4 | El nav entre 768 y 1279 px + bump v0.56.0 | ⏳ pendiente |
 
@@ -53,7 +54,7 @@ Rama única: `feat/fair-housing-carril-vivo`. **Sin commits a `main`. Sin desple
 |---|---|---|
 | 1 | Suite backend desde base recreada | ✅ **1031 passed**, 0 failed, 0 skipped |
 | 1b | Baseline `main` en worktree aparte | 1019 passed — los 12 nuevos son míos |
-| 1c | 3 `ERROR` en `test_ops_alert` / `test_whatsapp_channel` | **preexistentes**: idénticos en el baseline |
+| 1c | ~~3 `ERROR` "preexistentes"~~ | **corrección**: no eran del repo. `-p no:logging`, que yo añadía para acortar la salida, quita el plugin que provee `caplog`. Sin ese flag: **0 errores** |
 | 2 | `ruff check app tests` | ✅ All checks passed |
 | 2b | `npx tsc --noEmit` | ✅ sin errores |
 | 2c | `npx vitest run` | ✅ 101 passed (9 ficheros) |
@@ -128,6 +129,153 @@ suerte. **En la Fase 2 los auditores trabajarán sobre un `git worktree` propio.
   en la columna (el `isinstance` defensivo funciona — medido — pero no está
   fijado).
 
-**Siguiente paso concreto**: Fase 2 — recortar espacios en los campos de texto
-(dos validadores `mode="before"` según la nulabilidad de la columna; el diseño
-ingenuo de un solo validador escribe NULL en columnas NOT NULL).
+---
+
+## Fase 2 — recortar espacios donde el usuario escribe (completada)
+
+**Qué se construyó**
+
+- `settings.py`: **dos** validadores `mode="before"`, repartidos por la
+  nulabilidad **real** de la columna (verificada en `information_schema`, no
+  supuesta). `_trim` para las NOT NULL (`agency_name`, `agent_persona`,
+  `greeting_template`, `timezone`); `_trim_or_clear` para las nullable
+  (`brokerage_line`, `agency_phone`, `booking_contact_email`). Se retiró el
+  `.strip() or None` que vivía en el handler: ahora hay una sola casa.
+- `content.py`: `PieceEdit`, `DraftIn` (hook/script/caption) y `RejectIn.reason`.
+- `public.py`: `PublicLeadIn` — `name`, `email`, `phone`, `message`.
+
+**Por qué `mode="before"` y no `after`** — medido, no razonado: con `before`,
+`"  Ashly  "` → `"Ashly"` y `"   "` → `""` → lo rechaza el `min_length=1` que ya
+existía. Con `after` (o con un `.strip()` en el handler), `min_length` juzga la
+cadena CRUDA, así que `" "` pasa la validación y se persiste. Es exactamente
+cómo `agency_name` llegó a valer `"Ashly "`.
+
+**Por qué dos validadores y no uno** — el diseño ingenuo («recorta y devuelve
+None si queda vacío») convierte `agency_name=" "` en `None`, que el `setattr`
+ciego del handler escribe en una columna NOT NULL: un **500 donde toca un 422**.
+
+**Dos exclusiones deliberadas, con el motivo en el código**
+
+- `website` (honeypot): se evalúa como `if body.website`, y `"   "` es truthy —
+  hoy caza a un bot que rellena con espacios. Recortarlo lo **debilitaría**.
+  Verificado leyendo la ruta, no asumido.
+- `consent_text`: registro verbatim de lo que la persona consintió. Un registro
+  legal no se normaliza.
+
+**Bug preexistente encontrado y arreglado en esta fase**
+
+`{"agency_name": null}` llegaba al `setattr` y devolvía **500**
+(`NotNullViolationError`) — reproducido antes de arreglarlo. `exclude_unset` no
+lo caza: un `null` enviado **sí** está *set*. Ahora es un 422 que nombra el
+campo.
+
+**Checklist — resultado real**
+
+| # | Comprobación | Resultado |
+|---|---|---|
+| 1 | Suite backend desde base recreada | ✅ **1072 passed**, 0 failed, 0 errors, 0 skipped |
+| 2 | `ruff check app tests` | ✅ All checks passed |
+| 2b | `npx tsc --noEmit` · `npx vitest run` | ✅ sin errores · 101 passed |
+| 3 | `docker build -f backend/Dockerfile` | ✅ compila |
+| 4 | Cobertura del código nuevo | ✅ 6 mutaciones rojas (abajo) |
+| 5 | Secretos en el diff | ✅ sin hallazgos |
+| 6 | Validación, errores manejados, sin prints | ✅ limpio |
+
+**Mutaciones verificadas** — 6 de 6:
+
+| Mutación | Resultado |
+|---|---|
+| Quitar `_trim` (NOT NULL) | 🔴 11 tests |
+| Quitar `_trim_or_clear` (nullable) | 🔴 9 tests |
+| **`mode="before"` → `mode="after"`** | 🔴 8 tests — la trampa central de la fase |
+| Quitar el trim de `content.py` | 🔴 5 tests |
+| Quitar el trim de `public.py` | 🔴 4 tests |
+| Desactivar el guard de `null` explícito | 🔴 4 tests |
+| Quitar el manejo de `bytes` en los validadores | 🔴 3 tests |
+
+**Instrumento**: los 16 tests de `test_settings_api.py` que ya existían siguen
+verdes **sin tocarlos** — eso es lo que prueba que mover el strip del handler al
+schema no perdió nada.
+
+**Hueco encontrado alimentando basura a los validadores** (no leyéndolos):
+Pydantic convierte `bytes` a `str` **después** de un validador `mode="before"`,
+así que `isinstance(value, str)` dejaba pasar `b"  x  "` sin recortar mientras
+el mismo valor como `str` sí se recortaba. No alcanzable por JSON, que no tiene
+bytes — pero un guard con un agujero es cómo se sorprende el siguiente. Cerrado
+en los cinco validadores.
+
+**Test flaky preexistente, ajeno a esta fase**:
+`test_consent_holds_backfill.py::test_the_clamp_is_right_at_the_edges` falló una
+vez en suite y pasó aislado y en la corrida siguiente. Causa verificada: usa
+`datetime.now(UTC)` con márgenes de **1 minuto** (`postponed_until = now - 1min`,
+`:65`) dentro de una suite que tarda 3 minutos. No menciona ninguno de los
+esquemas que toqué. Al backlog.
+
+---
+
+## Fase 2b — el `except` que mataba el turno que iba a salvar (completada)
+
+Pedido por el dueño tras el informe de la Fase 1: *«corrígelo y va en v0.56»*.
+
+**El fallo, reproducido antes de tocarlo.** `messages` lleva
+UNIQUE (org_id, external_id), y estampar el id que devuelve el proveedor puede
+colisionar. `conversation.py` abre un savepoint justo para eso — pero **un
+rollback de savepoint EXPIRA todos los objetos que tocó**, así que el
+`log.warning` del propio manejador, que leía `outbound.id`, era una carga
+perezosa síncrona dentro de código async: `MissingGreenlet`. Eso no es
+`IntegrityError`, así que escapaba al `except Exception` de fuera, **cuyo primer
+acto era leer `outbound.id` otra vez**. Se perdía el turno entero — y la
+respuesta ya había salido por el cable: el lead contestado y sin registro.
+
+La lección estaba escrita en este mismo repo, en `followups.py:423-427`:
+*«even `fu.id` becomes a synchronous lazy load and raises MissingGreenlet
+outside every handler here»*. `conversation.py` la incumplía.
+
+**Arreglo**: `outbound_id` capturado como `int` antes del savepoint, y
+`await db.refresh(outbound)` en el manejador. **Medido, no supuesto: cada mitad
+basta por separado**; solo mutando las dos a la vez se pone rojo el test. El
+comentario dice eso en vez de afirmar que ambas son necesarias.
+
+**Cobertura nueva**: `test_duplicate_provider_id.py` — el turno sobrevive, el
+segundo mensaje cede el id en vez del turno, y ambos leads con su mensaje
+entrante siguen ahí. Más un control que impide que el arreglo sea «no estampar
+nunca».
+
+## Auditoría de cierre de las Fases 2 y 2b
+
+Un auditor en **worktree propio** (`/tmp/eko-audit-f2`) y base propia, tras el
+incidente de la Fase 1. **Dos bloqueantes reales, uno de ellos regresión mía.**
+
+| Hallazgo | Veredicto |
+|---|---|
+| **Vaciar hook/script/caption dejó de funcionar** | 🔴 **regresión mía, corregida**. Mi validador convierte `""` en `None` y el handler saltaba los `None`: el realtor vaciaba el campo, recibía **200**, y el texto volvía. El console manda los tres campos en cada guardado. **Cobertura previa: cero.** Ahora usa `model_fields_set` — «¿se envió?» en vez de «¿es None?» |
+| **La guarda de `null` cubría 4 de 6 columnas NOT NULL** | 🔴 real, corregida. `languages` daba `TypeError` y `business_hours` llegaba a Postgres: el mismo defecto, a medias, dentro de la función que lo arreglaba. Ahora se **deriva de `AgentSettings.__table__`** en vez de escribirse a mano |
+| **Mi manejo de `bytes` empeoró las cosas** | 🔴 revertido. Cambiaba un 422 limpio por aceptar `b"\xff\xff\xff"` → tres U+FFFD, que satisfacen el `min_length=3` que ese validador existe para hacer cumplir. Entre dos comportamientos inalcanzables por JSON, el que rechaza es el correcto |
+| **El validador de `public.py` era un no-op** | 🔴 retirado. `capture.py` ya normaliza los cuatro campos; la fila guardada era idéntica con y sin él. Código que no hace nada se lee como cobertura |
+| **`consent_text` NO se guarda verbatim** | 🔴 afirmación falsa mía, corregida. Pasa por `clean_text`, que colapsa saltos de línea. Mi comentario prometía lo contrario sobre el campo cuyo trabajo entero es defensa legal |
+| El `.strip()` del timezone era código muerto | 🔴 retirado |
+| «Los espacios se quemarían en el vídeo» | 🔴 falso: `content_render.py:310` ya recorta. Corregido |
+
+**Mutaciones verificadas** — 9 de 9 rojas, incluidas las tres nuevas:
+volver a `is not None` en el editor · lista de NOT NULL escrita a mano ·
+las dos mitades del arreglo del `except` a la vez.
+
+## Hallazgo del auditor que NO entra aquí (backlog, con evidencia)
+
+🔴 **`visits.py:119` — `ManualEventIn.timezone` no se valida, y falla en
+silencio.** `_resolve_wall_clock` (`visits.py:265-268`) se traga el
+`ZoneInfoNotFoundError` y devuelve `when.replace(tzinfo=UTC)`. Un timezone
+pegado con un espacio delante (`" America/Denver"`) guarda una cita de las 10:00
+como 10:00 **UTC** = **04:00 en Denver**: seis horas de desfase, con 201 y sin
+un solo aviso. Incoherente con `settings.py`, que valida la misma cadena con
+`ZoneInfo` y devuelve 400. Es más grave que cualquier cosa de esta fase y NO lo
+he tocado porque está fuera de su alcance. **Decisión del dueño.**
+
+Otros al backlog: `platform.py:63` (`OrgCreateIn.name="  "` crea una
+organización con nombre en blanco), `platform.py:645` (`InviteIn.email` sin
+recortar), `visits.py:109` (`title="   "`), y `form` en el formulario público
+(un valor en blanco da 404 en vez de caer al fallback).
+
+**Siguiente paso concreto**: Fase 3 — el aviso de tamaño antes de subir
+(bajar `CONTENT_UPLOAD_MAX_MB` de 500 a 95 en los tres sitios a la vez,
+exponerlo en `StudioStatus`, y comprobar `file.size` antes de abrir el XHR).

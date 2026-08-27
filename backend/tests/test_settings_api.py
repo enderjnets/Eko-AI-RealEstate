@@ -13,7 +13,12 @@ from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 
-_RESTORABLE = ("agency_name", "brokerage_line", "agency_phone", "agent_persona", "greeting_template", "languages", "timezone", "business_hours")
+# `booking_contact_email` was missing here, so any test touching it left its
+# value behind for whatever ran next.
+_RESTORABLE = (
+    "agency_name", "brokerage_line", "agency_phone", "booking_contact_email",
+    "agent_persona", "greeting_template", "languages", "timezone", "business_hours",
+)
 
 
 @pytest.fixture
@@ -233,3 +238,159 @@ async def test_surrounding_space_is_trimmed_before_it_is_burned(_needs_db: None)
         assert r.json()["brokerage_line"] == "E&V Aspen"
     finally:
         await _restore(original)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["agency_name", "agent_persona", "greeting_template", "timezone"],
+)
+@pytest.mark.asyncio
+async def test_whitespace_is_refused_for_a_column_that_cannot_be_null(
+    _needs_db: None, field: str
+) -> None:
+    """Blank input on a NOT NULL column must 422, not 500 and not persist " ".
+
+    Two failures live here, and only one of them is obvious. `min_length=1` ran
+    BEFORE any trimming, so " " passed validation and was written verbatim —
+    which is how `agency_name` came to hold "Ashly " and every greeting read
+    "assistant at Ashly .". But the naive fix, one validator that returns None
+    when the trimmed value is empty, is worse: the handler `setattr`s whatever
+    is present, so None reaches a NOT NULL column and the request 500s.
+
+    So the assertion is the status code, not just the stored value. 422 says
+    the field is named in the response and the caller can fix it; 500 says the
+    server broke.
+    """
+    snap = await _snapshot()
+    try:
+        async with await _client() as c:
+            r = await c.put("/api/v1/settings", json={field: "   "})
+        assert r.status_code == 422, (
+            f"{field} accepted whitespace with {r.status_code}: {r.text[:200]}"
+        )
+        assert field in r.text, "the 422 does not name the offending field"
+
+        async with await _client() as c:
+            after = (await c.get("/api/v1/settings")).json()
+        assert after[field] == snap[field], f"{field} was modified by a refused write"
+    finally:
+        await _restore(snap)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("agency_name", "  Ashly  "),
+        ("agent_persona", "  I am the assistant.  "),
+        ("greeting_template", "  Hello {name}!  "),
+    ],
+)
+@pytest.mark.asyncio
+async def test_surrounding_space_is_trimmed_on_the_required_fields(
+    _needs_db: None, field: str, value: str
+) -> None:
+    """The bug the owner actually saw: "assistant at Ashly ." in every greeting.
+
+    Fixed for `brokerage_line` in v0.55.0 and not generalised, which is why it
+    came back on the field next door.
+    """
+    snap = await _snapshot()
+    try:
+        async with await _client() as c:
+            r = await c.put("/api/v1/settings", json={field: value})
+        assert r.status_code == 200, r.text
+        assert r.json()[field] == value.strip()
+
+        async with await _client() as c:
+            assert (await c.get("/api/v1/settings")).json()[field] == value.strip()
+    finally:
+        await _restore(snap)
+
+
+@pytest.mark.parametrize(
+    "field", ["brokerage_line", "agency_phone", "booking_contact_email"]
+)
+@pytest.mark.asyncio
+async def test_whitespace_clears_a_nullable_field(_needs_db: None, field: str) -> None:
+    """Nullable columns take the other rule: blank means "clear it".
+
+    Sending "" is how a broker clears one of these without a special endpoint,
+    and whitespace-only has to mean the same thing — otherwise the Settings box
+    renders as FILLED while every downstream gate, which strips before
+    deciding, treats it as empty.
+    """
+    snap = await _snapshot()
+    try:
+        async with await _client() as c:
+            r = await c.put("/api/v1/settings", json={field: "  Something  "})
+        assert r.status_code == 200, r.text
+        assert r.json()[field] == "Something"
+
+        async with await _client() as c:
+            r = await c.put("/api/v1/settings", json={field: "   "})
+        assert r.status_code == 200, r.text
+        assert r.json()[field] is None, f"{field} kept whitespace instead of clearing"
+    finally:
+        await _restore(snap)
+
+
+@pytest.mark.parametrize(
+    "field",
+    # All SIX, read off the table. The first version listed four by hand and
+    # missed `languages` (TypeError in the normaliser loop) and `business_hours`
+    # (NotNullViolation at the setattr) — the same defect, left half-fixed
+    # inside the function that fixed it. The handler now derives this set from
+    # `AgentSettings.__table__`, and this list is the check on that derivation.
+    ["agency_name", "agent_persona", "greeting_template", "timezone",
+     "languages", "business_hours"],
+)
+@pytest.mark.asyncio
+async def test_an_explicit_null_on_a_required_field_is_refused(
+    _needs_db: None, field: str
+) -> None:
+    """`{"agency_name": null}` used to reach Postgres and return a 500.
+
+    `exclude_unset` does not catch it — a null that was sent IS set, it just has
+    no legal value on a NOT NULL column — so it went through the handler's blind
+    `setattr` and came back as a NotNullViolationError. The caller got a stack
+    trace where they needed the name of the field they had just cleared.
+
+    Preexisting, and reproduced before fixing: the PUT really did 500.
+    """
+    snap = await _snapshot()
+    try:
+        async with await _client() as c:
+            r = await c.put("/api/v1/settings", json={field: None})
+        assert r.status_code == 422, (
+            f"{field}=null returned {r.status_code}, not a named refusal: {r.text[:200]}"
+        )
+        assert field in r.text, "the refusal does not name the field"
+
+        async with await _client() as c:
+            after = (await c.get("/api/v1/settings")).json()
+        assert after[field] == snap[field], f"{field} changed despite the refusal"
+    finally:
+        await _restore(snap)
+
+
+@pytest.mark.asyncio
+async def test_the_required_set_is_derived_from_the_table(_needs_db: None) -> None:
+    """The guard's field list must come from the schema, not from memory.
+
+    A tuple of column names typed out beside another tuple of column names
+    typed out is the shape that drifts, and this one had drifted before it
+    shipped: four of the six NOT NULL columns. If someone adds a NOT NULL
+    column to `agent_settings` and exposes it on the patch schema, this fails
+    unless the derivation still holds.
+    """
+    from app.api.v1.settings import SettingsPatch, _not_nullable_fields
+    from app.models.agent_settings import AgentSettings
+
+    expected = {
+        c.name for c in AgentSettings.__table__.columns if not c.nullable
+    } & set(SettingsPatch.model_fields)
+    assert _not_nullable_fields() == expected
+    # A canary: an empty set would make the guard a no-op and every test above
+    # would still pass on the 422s that Pydantic itself produces.
+    assert len(expected) >= 6, f"only {len(expected)} required fields found"
+
