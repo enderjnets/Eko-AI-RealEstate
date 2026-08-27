@@ -468,7 +468,53 @@ en vez de limpio.
 **Deuda anotada, no arreglada**: un clip de 4K de más de 95 MB sigue sin poder
 subirse. La salida real es subida por trozos, y es otra versión.
 
-**Siguiente paso concreto**: Fase 4 — el nav entre 768 y 1279 px (mover el corte
-de `md` a `lg` en `Nav.tsx` **y** en `globals.css:31`, un `OverflowMenu`
-reutilizable, y gatear `/discovery` con `isOperator` en escritorio), más el bump
-a **v0.56.0** en los cuatro sitios.
+## Fase 4 — el nav en tableta, y v0.56.0 (completada)
+
+`1b76485` (implementación) + `8f491d0` (arreglos de las dos auditorías de cierre).
+
+**Checklist, resultado real**: 1108 backend + 108 frontend verdes, 0 saltados ·
+ruff y tsc limpios · `next build` y la imagen compilan · sin secretos ·
+verificación en navegador **medida**, no a ojo, en 320/375/390/768/1023/1024/
+1152/1279/1280/1536, en los dos idiomas y con y sin operador.
+
+**Dos agujeros preexistentes cerrados**: `/console` era inalcanzable desde un
+teléfono (no estaba en el array de pestañas y la fila de escritorio está oculta
+en móvil), y el corte de `globals.css` estaba en 767 px a mano, separado del de
+`Nav.tsx` — ahora es un token compartido.
+
+### Las dos auditorías de cierre de la versión
+
+| Hallazgo | Clase | Estado |
+|---|---|---|
+| **La promesa al cliente era falsa.** El changelog de la app decía «cada respuesta que enviamos a un lead se revisa», y `followups.py` no la revisaba. El plan lo excluyó por «son plantillas nuestras, fijas» — pero interpolan `{agency}`, que **lo teclea el cliente**. Una agencia llamada «Perfect for Families Realty» mandaba esa frase a cada lead con la columna diciendo «nunca revisado» | 🔴 bloqueante | ✅ filtrado de verdad, no reescribiendo la frase |
+| **Mi barra nueva enterró el botón Guardar en toda tableta.** `sticky bottom-4` resuelve contra el viewport, no contra el `padding` del body. Medido a 1023 px: el clic en «Guardar cambios» caía en la barra y **navegaba a /calendar descartando las ediciones sin avisar** | 🔴 bloqueante | ✅ token `--eko-tabbar-space`; clic real verificado |
+| A 1280 px, en español y con operador, la fila desbordaba 44 px (82 con logout). **Mi barrido saltó justo esa anchura** y yo escribí «cero scroll horizontal» | importante | ✅ corte a `2xl`; de −44 px a +11 px de holgura |
+| El panel de «Más» sobrevivía a cruzar el breakpoint y quedaba flotando sin disparador | importante | ✅ la clase responsive va en el envoltorio |
+| `DEFAULT_TIMEZONE` no se validaba nunca, y es el valor con el que **nace cada organización nueva**. El barrido de la 2c cubrió los cuatro sitios que LEEN una zona y se saltó el que la SIEMBRA | importante | ✅ grita al arrancar |
+| El comentario de `fair_housing_flags` describía la implementación **descartada** | menor | ✅ |
+| `limit_mb: 0` en el 413 por defecto · «cuatro llamadores» eran cinco · dos cifras rancias de 500 MB | menores | ✅ los cuatro |
+
+**La forma del error, repetida y por escrito**: las dos veces afirmé en un texto
+—un comentario, una nota al cliente— algo que el código no hacía. Y las dos
+veces **el propio repo ya lo sabía**: el test que barre las plantillas decía en
+su comentario «el valor interpolado no está revisado en ninguna parte, ver
+backlog», y mi docstring del `OverflowMenu` afirmaba un reseteo de estado que no
+implementé. Lo escribí, y publiqué lo contrario.
+
+**Backlog, decisión del dueño**: la entrada «Más» que lleva a `/console` se
+llama «Hoy» — el nombre del que el Estudio de Contenido se renombró en esta
+misma línea de versiones. Renombrar una página es decisión de producto.
+
+### Comprobaciones pre-despliegue contra producción — las cuatro, despejadas
+
+| Riesgo | Resultado |
+|---|---|
+| Una zona horaria inválida pasa de 201 silencioso a **400 duro** | ✅ una fila: `America/Denver` |
+| `CONTENT_UPLOAD_MAX_MB=500` en el `.env` ganaría al default del compose y el tope de 95 nunca entraría | ✅ **no está** en el `.env` |
+| `DEFAULT_TIMEZONE` con errata deja sin reservar a cada organización nueva | ✅ no está; aplica el default válido |
+| Canal de avisos mudo → el vigilante consuma el estado y nadie se entera | ✅ `OPS_ALERT_FROM`, `RESEND_API_KEY` y `PLATFORM_ADMIN_EMAILS` presentes |
+
+**Siguiente paso concreto**: desplegar. El clasificador bloquea `git merge`, así
+que el merge a `main` y el tag los tiene que lanzar el dueño; el resto del
+protocolo (bundle, build **antes** de migrar, `alembic upgrade head`, `up -d`,
+y verificar la versión en `/api/v1/health` y nunca en el tag local) lo sigo yo.
