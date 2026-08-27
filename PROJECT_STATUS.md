@@ -361,7 +361,7 @@ La Fase 3 debería re-auditar este diff cuando el límite se restablezca.
 | Punto del encargo | Resultado |
 |---|---|
 | El 400 nuevo, ¿puede saltar tras reservar en Cal.com? | ✅ **No.** `_resolve_wall_clock` corre antes de `_ensure_slot_free` y de `create_booking`. Sin riesgo de reservar fuera y fallar dentro |
-| ¿Otros sitios con el mismo fallback? | 🔴 **Sí, uno** — `voice.py:158`. Arreglado en esta fase |
+| ¿Otros sitios con el mismo fallback? | ❌ **Dije «uno». Eran cuatro.** Ver la re-auditoría abajo |
 | ¿El validador está registrado en ambos esquemas? | ✅ verificado en `__pydantic_decorators__`, no supuesto |
 | Reparto por nulabilidad de `title`/`notes`/`property_address` | 🔴 **fallo mío, corregido**: di el validador de solo-recorte a dos columnas nullable, así que guardaban `""` donde el esquema dice «sin notas». Misma regla que ya había establecido en `settings.py`, aplicada por inercia en vez de mirando las columnas |
 | DST | ✅ intacto: 02:30 del salto de primavera sigue rechazándose con 400 |
@@ -373,6 +373,49 @@ minúsculas **se acepta en mi Mac y se rechaza en producción** — `ZoneInfo` l
 tzdata del sistema de ficheros, y macOS no distingue mayúsculas. Mi entorno
 local es **más permisivo** que el real, así que un test verde aquí puede estar
 probando algo que producción rechaza. Documentado en el helper.
+
+### Re-auditoría de la Fase 2c — `d1a1603`
+
+Dos auditores independientes, en worktrees y bases aisladas, con ángulos
+separados (correctitud/regresiones y seguridad/radio de explosión).
+**Convergieron por separado en los mismos dos hallazgos grandes**, que es lo
+que los hace creíbles. Los dos eran míos. Verifiqué cada uno midiendo antes de
+aceptarlo; ninguno resultó falso esta vez.
+
+| Hallazgo | Clase | Estado |
+|---|---|---|
+| **Mi guard convertía un 422 en un 500.** `ZoneInfo` lanza **tres** tipos de excepción; yo cogía dos. Y al ser `mode="before"`, corre ANTES de `max_length=50`, así que un timezone de 300 caracteres —que siempre había sido un 422 limpio— escapaba entero. Un guard que empeora la entrada que protege | 🔴 bloqueante, **regresión mía** | ✅ arreglado |
+| **El bug reportado seguía vivo en el GET de al lado.** `list_slots` pasaba el timezone sin validar a `list_available_slots`, cuyo `except Exception` cae a UTC. Medido: `10:00-06:00` → `10:00+00:00`. Seis horas, 200, y el string malo devuelto en la respuesta. Es el endpoint que llena el diálogo de reserva | 🔴 bloqueante | ✅ arreglado |
+| `BookingIn` escribe las **mismas dos columnas nullable** que `ManualEventIn` y se quedó sin la regla de «vacío = ausente» | importante | ✅ arreglado |
+| El docstring de `settings.py` argumentaba por qué `isinstance(v, str)` no basta para `bytes`… encima de código con exactamente ese guard. `agency_name=b"  Ashly  "` se guardaba sin recortar | importante | ✅ arreglado |
+
+**Lo que esto corrige del registro de arriba**: escribí «¿otros sitios con el
+mismo fallback? Sí, uno». Eran **cuatro**. Mi barrido buscó la *forma* que yo
+acababa de escribir (`except (ZoneInfoNotFoundError, ValueError)`) en vez de la
+*pregunta* («¿dónde se convierte una zona inservible en una hora concreta?»), y
+por eso encontró el sitio que se parecía al mío y no los tres que hacían el
+mismo daño.
+
+**Dos que NO he arreglado, y por qué** — necesitan una decisión tuya:
+
+- `calendar_cal.py:85` y `conversation.py:833` siguen cayendo a UTC cuando el
+  timezone **de la propia agencia** es inservible. El segundo formatea las horas
+  que un lead real recibe por SMS/WhatsApp como «HUECOS REALES DISPONIBLES (zona
+  de la oficina)». Arreglarlo no es técnico: hay que decidir **qué oye un lead
+  cuando la zona horaria de la agencia está rota** — ¿no se le ofrecen horas, o
+  se le ofrecen en UTC con un aviso? Callar y ofrecer horas mal es la única
+  opción que hoy está descartada.
+
+**Comprobación pre-despliegue que no pude hacer** (el clasificador bloqueó el
+`ssh`): si alguna fila de producción tiene `agent_settings.timezone` inválido,
+este cambio la convierte de un 201 silencioso en un **400 duro** en cada cita
+manual y un 422 en cada reserva. Hay que mirarlo antes de desplegar:
+`SELECT id, org_id, timezone FROM agent_settings;`
+
+**Una cosa que dije de más en el commit de la 2c**: afirmé que unificaba «un
+producto, dos respuestas a una entrada». No lo hace — `settings.py` devuelve
+400 y `visits.py` 422, porque un validador de Pydantic no puede emitir 400. Las
+dos rechazan, que era lo que importaba, pero la unificación no ocurrió.
 
 **Siguiente paso concreto**: Fase 3 — el aviso de tamaño antes de subir
 (bajar `CONTENT_UPLOAD_MAX_MB` de 500 a 95 en los tres sitios a la vez,
