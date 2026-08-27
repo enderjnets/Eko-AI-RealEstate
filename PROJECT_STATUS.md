@@ -13,6 +13,60 @@ de casa (ROG) al VPS, donde ya viven Zorros y Black Volt.
 
 ---
 
+## 🔴 EN CURSO — Dominio y teléfono (27-ago-2026) · rama `feat/dominio-y-telefono`
+
+**No toca código.** No hay tests, lint, build ni cobertura que enseñar: el
+«terminado» de esta fase son medidas contra el mundo real. Dicho explícitamente
+para no declarar verde nada por inspección.
+
+**Estado: BLOQUEADA en dos clics del dueño.** Lo verificable ya está verificado.
+
+### Lo que ya medí (evidencia, no memoria)
+
+| Comprobación | Resultado |
+|---|---|
+| Nameservers de `denverhomestory.com` | `ns67/ns68.domaincontrol.com` — sin mover |
+| **DS en el padre** | **2 registros vivos**, TTL **21.600 s (6 h)** |
+| Zona en Cloudflare | **ya existe y ya responde** desde `arely.ns.cloudflare.com` |
+| Contenido real de la zona | `A @` (aparcamiento), `CNAME www`→apex, `CNAME _domainconnect`, `TXT _dmarc` de GoDaddy. **Sin MX, sin SPF, sin CAA** |
+| Riesgo del cambio de NS | **bajo**: no hay correo que romper |
+| ¿Cloudflare copió el `_dmarc`? | **No** → tras el cambio el dominio queda sin DMARC |
+| Números en Twilio | uno solo, `+17205946249` (sid `PNc42972…`) |
+| Su `voice_url` | ngrok muerto → error 11200. Su `sms_url` es correcto |
+| VAPI | `+17208249313` **activo**, asistente «Eko AI Realtors» `5d975722` |
+| `/api/v1/webhooks/voice` | JSON de VAPI, **no TwiML** → Twilio no puede apuntar ahí |
+| ¿El número está publicado? | `agency_phone` vacío, sin `NEXT_PUBLIC_PHONE` → **nadie lo tiene hoy** |
+| ¿Mi clave de Twilio puede escribir? | ✅ **sí** — escritura idempotente, HTTP 200, **0 diferencias en 34 campos** |
+| ¿La API de GoDaddy apaga DNSSEC? | 🔴 **no existe**: 0 coincidencias de «dnssec» en su OpenAPI v3 (148 KB) |
+| ¿Los TwiML Bins tienen API? | 🔴 **no**: solo consola (documentación de Twilio) |
+
+Fotografía DNS completa guardada como línea base para el cotejo posterior.
+
+### Lo que necesito del dueño (y por qué no puedo hacerlo yo)
+
+1. **GoDaddy → DNS → DNSSEC → desactivar.** Su API no expone DNSSEC. Va
+   **primero**: mover los NS con los DS vivos deja el dominio entero en
+   SERVFAIL hasta 6 h.
+2. **Twilio → TwiML Bins → crear `voz-a-vapi`** con el XML del plan. No hay API.
+3. *(opcional)* El token de Cloudflare acotado a esa zona, para que yo haga
+   SPF/DMARC y luego el correo. **El de GoDaddy no lo recomiendo**: no puede
+   hacer lo único que hace falta, y tras el cambio GoDaddy solo es registrador.
+
+### Decisiones tomadas y por qué
+
+- **Reenvío TwiML en vez de importar el número a VAPI.** Importar exige
+  entregarle a VAPI el Account SID y el **Auth Token maestro** de Twilio: con él
+  puede comprar números, mandar SMS y gastar. El reenvío no comparte ninguna
+  credencial y se revierte en 10 s.
+- **`callerId="{{From}}"` es obligatorio, no cosmético.** `book_visit` asocia el
+  lead al identificador de llamada; sin él, todos los que llamen colapsarían en
+  un único lead compartido.
+- **SPF `-all` + DMARC `p=reject` en cuanto se mueva el dominio.** No envía
+  correo, así que lo estricto es lo honesto — y hay que deshacerlo **en orden
+  inverso** (SPF/DKIM de Resend primero) cuando se arme `hello@`.
+
+---
+
 ## 📌 PENDIENTES abiertos (decisión tomada: se hacen más tarde)
 
 ### 1. La agenda se hace a ciegas — **DECIDIDO: Cal.com + la cuenta de Google de Natalia**, se hace más tarde (dueño, 27-ago)
@@ -638,56 +692,22 @@ demás canales **sí** son reales: `EMAIL_SIMULATED=false`, `SMS_SIMULATED=false
 
 ## Siguiente paso concreto
 
-**Ejecutar A.1, el corte**, en cuanto el dueño lo autorice viendo estas
-evidencias. Después: encender el puente de Ollama y verificar `off → ok`, mover
-el vigía al ROG (A.2), y cerrar (A.3). Solo entonces, la Fase B con la landing.
+**Dos clics del dueño** (sección «Dominio y teléfono» arriba): apagar DNSSEC en
+GoDaddy, y crear el TwiML Bin en Twilio. Ninguno de los dos se puede hacer por
+API — está medido, no supuesto. Todo lo demás de esa fase lo ejecuto yo.
 
 ---
 
-# 🚀 DESPLIEGUE PREPARADO — v0.60.0 (esperando autorización, 27-ago-2026)
+# ✅ v0.60.0 EN PRODUCCIÓN (27-ago-2026)
 
-Producción: VPS `ender-vps`, **v0.59.0**, migración en `043_fair_housing_flags`.
-Esta tanda añade **una** migración: `044_message_internal`.
+Desplegada y verificada por el dominio público: `/api/v1/health` → `0.60.0`,
+migración `043` → **`044_message_internal`**, las 76 filas previas de `messages`
+en `internal=false` y ninguna nula. Una cita real de prueba dejó las **dos**
+filas (cliente + nota interna) con `external_id` reales y distintos de Resend, y
+`internal AND external_id IS NULL` → 0. Datos de prueba borrados: 76 mensajes,
+38 leads, 4 visitas — idénticos a antes. `zorros-*` y `blackvolt-*` intactos.
 
-## Antes de empezar
-- Ramas apiladas: citas-ics → idioma → temas-de-vendedor → **registro-de-la-cita**.
-  Desplegar esta última lleva todo lo anterior; v0.59.0 ya está vivo.
-- Push desde la terminal del dueño (el clasificador lo bloquea al agente):
-  `cd ~/Eko-AI-RealEstate && git push -u origin feat/registro-de-la-cita`
-- ⚠️ En el VPS conviven `zorros-*` y `blackvolt-*`: **no tocarlos**.
-
-## Pasos, en este orden
-1. Bundle desde el Mac y `scp` (el VPS no puede clonar de GitHub):
-   `git bundle create /tmp/eko-v060.bundle feat/registro-de-la-cita`
-2. En el VPS: `git fetch /tmp/eko-v060.bundle feat/registro-de-la-cita:refs/deploy/v060`
-   y `git checkout -B deploy-v060 refs/deploy/v060`
-3. `docker compose build backend frontend` — **construir ANTES de migrar**
-4. `docker compose run --rm -T backend alembic upgrade head` → debe pasar a
-   `044_message_internal`
-5. `docker compose up -d backend frontend`
-6. Verificar **en `/api/v1/health` por el dominio público**, nunca el tag local:
-   `0.60.0`, `llm_fallback:"ok"`, `captcha:"on"`
-
-## Variables de entorno
-**Ninguna nueva.** Nada que añadir al `.env` del VPS.
-
-## Verificación post-deploy (medida, no «debería»)
-- `SELECT count(*) FROM messages WHERE internal` → 0 (aún no hay citas nuevas)
-- `SELECT count(*) FROM messages WHERE internal AND external_id IS NULL` → 0
-- Cita de prueba **al correo del dueño, nunca al de Natalia**: aparecen 2 filas,
-  una `internal=true`, ambas con su `external_id` real de Resend. Borrarlas.
-- Abrir esa conversación en el panel: la nota interna se ve marcada como tal.
-- Un lead con `?utm_source=…` en la landing muestra su origen en la ficha.
-- Zorros y Black Volt siguen arriba.
-
-## Reversión
-La migración 044 tiene `downgrade()` (`DROP COLUMN messages.internal`), pero el
-camino rápido es el de siempre: `git checkout deploy-v059` + `build` + `up -d`.
-La columna sobrante es **inerte** para v0.59.0 (nada la lee), así que **no hace
-falta bajar la migración** para volver — y no bajarla evita perder las notas
-internas ya escritas si se re-despliega. Bajarla solo si se abandona la función.
-
-**Riesgo real bajo**: sin variables nuevas, una columna aditiva con
-`server_default`, y ningún cambio en el camino de respuesta al lead. Lo que sí
-cambia de comportamiento visible: el Inbox deja de contar las notas internas
-como «última palabra» (era el bloqueante B1).
+**Error mío en esa verificación, anotado para no repetirlo:** la prueba mandó
+una segunda invitación a la dirección de Natalia, porque la copia de la agencia
+sale a `booking_contact_email` aunque el lead lleve otro correo. La próxima
+verificación de punta a punta reapunta ese campo antes, o se avisa primero.
