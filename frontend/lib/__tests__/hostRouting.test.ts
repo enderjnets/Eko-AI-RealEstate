@@ -70,14 +70,48 @@ describe("host routing", () => {
 
   it("leaves the public pages alone on the brand domain", async () => {
     const { middleware } = await load(BRAND, PANEL);
-    for (const p of ["/", "/contact", "/about"]) {
+    for (const p of ["/", "/contact"]) {
       expect(location(middleware(req("www.denverhomestory.com", p)))).toBeNull();
     }
   });
 
+  it("does not serve the platform's own sales page on the brand domain", async () => {
+    // `/about` pitches THIS PLATFORM to real-estate agencies. The people who
+    // reach the brand domain are sellers who watched a video; serving them the
+    // sales deck we show their agent's competitors is the worst page available.
+    // It was in PUBLIC_PATHS and this is the assertion that keeps it out.
+    const { middleware } = await load(BRAND, PANEL);
+    const res = middleware(req("www.denverhomestory.com", "/about"));
+    expect(location(res)).toBe(`${PANEL}/about`);
+    expect(res.status).toBe(308);
+  });
+
+  it("treats a fully-qualified host ending in a dot as the same host", async () => {
+    // `www.denverhomestory.com.` is the SAME name to DNS and a different string
+    // to `===`. Unstripped, it fell through every comparison and served the
+    // internal panel, crawlable, under the brand domain.
+    const { middleware } = await load(BRAND, PANEL);
+    const res = middleware(req("www.denverhomestory.com.", "/leads"));
+    expect(location(res)).toBe(`${PANEL}/leads`);
+    expect(res.status).toBe(308);
+  });
+
+  it("stays inert when both hostnames are the same, instead of looping forever", async () => {
+    // Reachable by hand mid-migration. Redirecting a host to itself is an
+    // infinite redirect, which is strictly worse than not redirecting at all.
+    const { middleware } = await load(BRAND, BRAND);
+    expect(location(middleware(req("www.denverhomestory.com", "/leads")))).toBeNull();
+    expect(location(middleware(req("www.denverhomestory.com", "/")))).toBeNull();
+  });
+
   it("sends the panel's front door to the work, not the marketing page", async () => {
     const { middleware } = await load(BRAND, PANEL);
-    expect(location(middleware(req("realtors.ekoaiautomation.com", "/")))).toBe(`${PANEL}/leads`);
+    const front = middleware(req("realtors.ekoaiautomation.com", "/"));
+    expect(location(front)).toBe(`${PANEL}/leads`);
+    // 307, not 308: the panel's front door is a convenience, not a statement
+    // that `/` has permanently moved. Asserted because the destination alone
+    // left the status free to change without a single test going red.
+    expect(front.status).toBe(307);
   });
 
   it("leaves any other hostname untouched", async () => {

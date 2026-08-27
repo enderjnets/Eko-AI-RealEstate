@@ -32,7 +32,11 @@ export const PANEL_URL = (process.env.NEXT_PUBLIC_PANEL_URL || "").trim().replac
 function hostOf(url: string): string {
   if (!url) return "";
   try {
-    return new URL(url).hostname.toLowerCase();
+    // Trailing dot stripped for the same reason the middleware strips it from
+    // the request: `example.com.` and `example.com` are one name to DNS and two
+    // strings to `===`. Normalising both sides is what makes the comparison mean
+    // "same host".
+    return new URL(url).hostname.toLowerCase().replace(/\.$/, "");
   } catch {
     // A malformed value must not throw inside middleware, which would 500 every
     // request on the site. Treating it as unset degrades to today's behaviour.
@@ -52,8 +56,15 @@ export const PANEL_HOST = hostOf(PANEL_URL);
  * the failure mode of forgetting to update this list is "an internal page is
  * not reachable on the brand domain" — which is the safe direction. A
  * block-list would silently publish it instead.
+ *
+ * `/about` is deliberately NOT here, and the reason is the whole point of the
+ * split. That page sells THIS PLATFORM to real-estate agencies — "the AI agent
+ * that handles your WhatsApp 24/7… your own office hardware". The people who
+ * reach the brand domain are Denver home sellers who watched a video; showing
+ * them the pitch we make to their agent's competitors is the single worst page
+ * we could serve there. It stays reachable internally.
  */
-export const PUBLIC_PATHS = ["/", "/contact", "/about"];
+export const PUBLIC_PATHS = ["/", "/contact"];
 
 /** `/contact` and `/contact/anything` both count; `/contactos` does not. */
 export function isPublicPath(pathname: string): boolean {

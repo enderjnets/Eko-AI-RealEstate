@@ -26,6 +26,13 @@ export const metadata: Metadata = {
   },
   robots: { index: true, follow: true },
   /**
+   * The home-screen name, overridden because the root layout's is "Eko AI
+   * Realtors" — the platform behind this site, which its public must never see.
+   * Metadata is merged, not replaced, so without this the brand page would sit
+   * on a seller's iPhone home screen labelled with their agent's vendor.
+   */
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: who || "Colorado real estate" },
+  /**
    * One address for this page, whatever hostname served it.
    *
    * The same landing is reachable on `inmo-demo.ekoaiautomation.com` and — once

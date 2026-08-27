@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { BRAND_HOST, PANEL_HOST, PANEL_URL, BRAND_URL, isPublicPath } from "@/lib/hosts";
+import { BRAND_HOST, PANEL_HOST, PANEL_URL, isPublicPath } from "@/lib/hosts";
 
 /**
  * Send each hostname to the half of the app it is meant to serve.
@@ -26,11 +26,29 @@ import { BRAND_HOST, PANEL_HOST, PANEL_URL, BRAND_URL, isPublicPath } from "@/li
  */
 export function middleware(req: NextRequest) {
   // Both must be known before either redirect is safe. Knowing only the brand
-  // host would mean redirecting the panel to an empty string.
-  if (!BRAND_HOST || !PANEL_HOST || !PANEL_URL || !BRAND_URL) return NextResponse.next();
+  // host would mean redirecting the panel to an empty string. Testing the HOSTS
+  // and not the URLs is deliberate: `hostOf("")` is `""`, so a truthy host
+  // already implies a truthy URL — testing both would be dead code that reads
+  // like a check.
+  //
+  // Equal hosts is the third way to be unconfigured, and the only one that
+  // fails loudly: pointing both variables at the same name makes every panel
+  // route redirect to itself, and `/` bounce to `/leads` and back. An infinite
+  // redirect is worse than no redirect, and this is a plausible state to pass
+  // through by hand while the DNS moves.
+  if (!BRAND_HOST || !PANEL_HOST || BRAND_HOST === PANEL_HOST) {
+    return NextResponse.next();
+  }
 
-  // `host` can carry a port (`example.com:3000`) in local and proxied setups.
-  const host = (req.headers.get("host") || "").toLowerCase().split(":")[0];
+  // `host` can carry a port (`example.com:3000`) in local and proxied setups,
+  // and a fully-qualified name may end in a dot (`example.com.`) — which is the
+  // SAME name to DNS but a different string here. Without stripping it, a
+  // request for `www.denverhomestory.com.` fell through every comparison and
+  // served the internal panel under the brand domain.
+  const host = (req.headers.get("host") || "")
+    .toLowerCase()
+    .split(":")[0]
+    .replace(/\.$/, "");
   const { pathname, search } = req.nextUrl;
 
   // The brand domain serves the brand site only. Anything else on it is the

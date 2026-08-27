@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { BRAND_URL } from "@/lib/hosts";
+import { LANDING } from "@/lib/landing";
 
 /**
  * Metadata for `/contact`, which cannot declare its own.
@@ -17,8 +18,15 @@ import { BRAND_URL } from "@/lib/hosts";
  * `NEXT_PUBLIC_BRAND_URL` is set, because pointing at a domain that does not
  * resolve yet is worse than not pointing at all.
  */
+/** Same source the landing titles itself from, so the two never drift apart. */
+const PUBLIC_NAME =
+  [LANDING.advisors, LANDING.brokerage].filter(Boolean).join(" \u00b7 ") || "Colorado real estate";
+
 export const metadata: Metadata = {
   robots: { index: true, follow: true },
+  // Same reason as the landing: the root layout's home-screen name is the
+  // platform's, and this page is public.
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: PUBLIC_NAME },
   ...(BRAND_URL
     ? { metadataBase: new URL(BRAND_URL), alternates: { canonical: "/contact" } }
     : {}),
