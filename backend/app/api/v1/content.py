@@ -147,16 +147,31 @@ def _refresh_violations(piece: ContentPiece) -> None:
 class StudioStatus(BaseModel):
     """Why the queue looks the way it does.
 
-    Booleans and counts only — no URLs, no key names, no environment variable
-    names. "Nothing here right now" is true and useless; the question a person
-    actually has is why, and the answers live in three different places (two
-    env flags and a settings row) that no single screen was showing.
+    Booleans, counts, and one number — no URLs, no key names, no environment
+    variable names. "Nothing here right now" is true and useless; the question
+    a person actually has is why, and the answers live in three different
+    places (two env flags and a settings row) that no single screen was showing.
+
+    `upload_max_mb` is the amendment to "booleans and counts only", and it is
+    made deliberately rather than quietly. The rule was written to keep this
+    endpoint from leaking configuration to a browser: what is CONFIGURED is our
+    business, and naming an env var tells an attacker what to look for. A size
+    limit is neither. It is a number the person needs BEFORE choosing a file,
+    and withholding it means the only way to learn it is to spend the upload
+    and read the error — on a phone, over mobile data, with a clip that takes
+    minutes to send. The value is also already discoverable by anyone who can
+    reach the route: upload something too big and the 413 says it. Publishing
+    it costs nothing and saves the upload.
     """
 
     studio_enabled: bool
     render_enabled: bool
     brokerage_line_set: bool
     publishing_available: bool
+    # Megabytes. Named in the unit rather than bytes because it is shown to a
+    # person, and the client compares it against `file.size` before opening the
+    # request — see `UploadClip.tsx`.
+    upload_max_mb: int
     counts: dict[str, int]
 
 
@@ -210,6 +225,7 @@ async def studio_status(db: AsyncSession = Depends(get_db)) -> StudioStatus:
         # value is "set" to a naive check and "unset" to everything that matters.
         brokerage_line_set=bool((row.brokerage_line or "").strip() if row else ""),
         publishing_available=PUBLISHING_AVAILABLE,
+        upload_max_mb=s.CONTENT_UPLOAD_MAX_MB,
         counts=counts,
     )
 

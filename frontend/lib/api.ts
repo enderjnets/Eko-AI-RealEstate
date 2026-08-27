@@ -450,10 +450,12 @@ export interface StudioStatus {
   render_enabled: boolean;
   brokerage_line_set: boolean;
   publishing_available: boolean;
+  /** Megabytes. Compared against `file.size` before the upload is opened. */
+  upload_max_mb: number;
   counts: Record<string, number>;
 }
 
-/** Ten minutes: a 500 MB clip on slow mobile data, with room to spare. */
+/** Ten minutes: a clip at the size cap on slow mobile data, with room to spare. */
 const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
@@ -483,8 +485,12 @@ function xhrDetail(xhr: XMLHttpRequest): string {
 }
 
 /** Client-side failures, keyed so the UI can translate them. */
-export type UploadFailure = "network" | "cancelled" | "timeout";
-const uploadFailure = (kind: UploadFailure) => `upload:${kind}`;
+export type UploadFailure = "network" | "cancelled" | "timeout" | "tooLarge";
+// `detail` carries the numbers a message needs to be actionable. Kept as a
+// string rather than a rich error type because these cross `Error.message`,
+// which is the only channel a rejected Promise has to the caller here.
+const uploadFailure = (kind: UploadFailure, detail?: string) =>
+  detail ? `upload:${kind}:${detail}` : `upload:${kind}`;
 
 export const contentApi = {
   status: () => api<StudioStatus>(`/v1/content/status`),
@@ -527,8 +533,24 @@ export const contentApi = {
     file: File,
     language: "en" | "es",
     onProgress?: (percent: number) => void,
+    maxMb?: number,
   ): Promise<ContentPiece> =>
     new Promise((resolve, reject) => {
+      // Before the request exists, not after. A 4K phone clip is a few hundred
+      // MB; sending it over mobile data to be told at the end that it was too
+      // big costs minutes and the person's allowance, and the answer they get
+      // is an HTML error page from a proxy rather than a sentence.
+      //
+      // `maxMb` undefined means the caller could not learn the limit —
+      // `contentApi.status()` swallows its own failure — and in that case the
+      // upload GOES AHEAD. The server is the gate and always was; refusing to
+      // send because one GET failed would break uploading every time an
+      // unrelated request did, which is a worse product than a wasted upload.
+      if (maxMb !== undefined && file.size > maxMb * 1024 * 1024) {
+        const mb = (file.size / (1024 * 1024)).toFixed(1);
+        reject(new Error(uploadFailure("tooLarge", `${mb}:${maxMb}`)));
+        return;
+      }
       const url =
         `/api/v1/content/upload?filename=${encodeURIComponent(file.name)}` +
         `&language=${language}`;

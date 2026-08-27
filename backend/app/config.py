@@ -197,9 +197,22 @@ class Settings(BaseSettings):
     FILE_IMPORT_MAX_MB: int = 25
 
     # ─── Content Studio (v0.52+) ────────────────────────────────────────
-    # A phone clip in 4K runs a few hundred MB. The cap is enforced by the
-    # upload route itself while streaming, not by the body-buffering middleware.
-    CONTENT_UPLOAD_MAX_MB: int = 500
+    # The cap is enforced by the upload route itself while streaming, not by
+    # the body-buffering middleware.
+    #
+    # 95, not 500, and the number is measured rather than chosen. Against
+    # production on 26-ago-2026: 99 MB reached our backend and answered; 120 MB
+    # was cut at the edge by Cloudflare with a 413 that our app never saw. The
+    # tunnel gives out around 100 MB, so a 500 MB limit meant the app's own 413
+    # (`content.py:420`) was UNREACHABLE — dead text guarding a door that a
+    # different wall had already bricked up. A limit that cannot be hit is not
+    # a limit; it is a promise the infrastructure does not keep.
+    #
+    # The honest consequence, and it is a real one: a 4K phone clip over 95 MB
+    # cannot be uploaded at all. The answer to that is chunked upload, which is
+    # its own piece of work. Until then the number tells the truth, and the
+    # browser can warn BEFORE spending the upload instead of after.
+    CONTENT_UPLOAD_MAX_MB: int = 95
     # Inside the container; compose mounts a volume here. Media is served only
     # through the authenticated route, never as static files.
     CONTENT_MEDIA_DIR: str = "/data/media"

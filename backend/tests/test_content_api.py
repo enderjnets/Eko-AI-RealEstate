@@ -301,6 +301,55 @@ async def _set_brokerage(line: str | None) -> None:
 
 
 @pytest.mark.asyncio
+async def test_an_oversized_clip_is_cut_mid_stream_and_leaves_nothing_behind(
+    database_url: str, tmp_path, monkeypatch
+) -> None:
+    """The app's own 413, which until now could not be reached.
+
+    With the limit at 500 MB this branch was dead text: production measured
+    99 MB through and 120 MB cut at the edge by Cloudflare with a 413 our app
+    never saw. The tunnel gives out around 100 MB, so the limit the code
+    enforced was guarding a door a different wall had already bricked up. At 95
+    the app is the one that answers, which is the only way the message can name
+    the real number.
+
+    The limit is monkeypatched down rather than sending 95 MB: what is under
+    test is the mid-stream cut, not the arithmetic of megabytes.
+
+    Asserts the cleanup too. The refusal happens PART WAY through writing, so
+    the obvious bug is a truncated file left on the volume — bytes nobody
+    accounted for, under a name that looks like a real clip.
+    """
+    monkeypatch.setattr(get_settings(), "CONTENT_MEDIA_DIR", str(tmp_path))
+    monkeypatch.setattr(get_settings(), "CONTENT_UPLOAD_MAX_MB", 1)
+    payload = b"\x00\x00\x00\x18ftypmp42" + b"x" * (2 * 1024 * 1024)
+    try:
+        async with _client() as client:
+            too_big = await client.post(
+                "/api/v1/content/upload",
+                params={"filename": "4k-from-the-phone.mp4", "language": "en"},
+                content=payload,
+            )
+            assert too_big.status_code == 413, too_big.text
+            # The message has to carry the number, or the person cannot act on
+            # it: "too large" without a limit is a dead end on a phone.
+            assert "1" in too_big.json()["detail"]
+
+            leftovers = list(tmp_path.iterdir())
+            assert leftovers == [], (
+                f"a cut upload left a truncated clip on the volume: {leftovers}"
+            )
+
+            # And nothing reached the queue: a piece with a half-written file
+            # would be rendered, reviewed and published from bytes that stop.
+            listed = await client.get("/api/v1/content")
+            assert listed.status_code == 200
+            assert listed.json() == []
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
 async def test_status_answers_with_the_whole_contract(database_url: str) -> None:
     """Every field the console reads, present in one response.
 
@@ -315,13 +364,23 @@ async def test_status_answers_with_the_whole_contract(database_url: str) -> None
     async with _client() as client:
         r = await client.get("/api/v1/content/status")
     assert r.status_code == 200, r.text
-    assert set(r.json()) == {
+    body = r.json()
+    assert set(body) == {
         "studio_enabled",
         "render_enabled",
         "brokerage_line_set",
         "publishing_available",
+        "upload_max_mb",
         "counts",
     }
+    # The value, not just the key. The browser refuses a file by comparing
+    # `file.size` against this number, so a status endpoint that reports a
+    # limit the server does not enforce would reject good clips or wave
+    # through ones the upload will kill halfway.
+    from app.config import get_settings
+
+    assert body["upload_max_mb"] == get_settings().CONTENT_UPLOAD_MAX_MB
+    assert body["upload_max_mb"] > 0
 
 
 @pytest.mark.asyncio

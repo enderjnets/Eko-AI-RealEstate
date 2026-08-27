@@ -105,6 +105,11 @@ export function ContentQueue() {
             leaving them on a tab where nothing appeared. */}
         {!readOnly && (
         <UploadClip
+          /* `studio` is null when the status GET failed — deliberately, so one
+             failed request cannot break uploading. Undefined means "limit
+             unknown", and the client-side check stands down; the server is
+             still the gate. */
+          maxMb={studio?.upload_max_mb}
           onUploaded={() => {
             setTab("draft");
             void load();

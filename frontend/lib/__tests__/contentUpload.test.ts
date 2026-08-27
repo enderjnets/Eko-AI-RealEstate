@@ -173,3 +173,58 @@ describe("contentApi.upload", () => {
     expect(seen.every((p) => Number.isFinite(p) && p <= 100)).toBe(true);
   });
 });
+
+describe("contentApi.upload size guard", () => {
+  const bigClip = (mb: number) =>
+    ({
+      name: "4K walkthrough.mov",
+      size: Math.round(mb * 1024 * 1024),
+      type: "video/quicktime",
+    }) as File;
+
+  it("refuses an oversized clip WITHOUT opening a request", async () => {
+    // The assertion that matters is `sent` being empty, not that it rejects.
+    // Rejecting after the bytes are on the wire would still pass a "throws"
+    // test while costing the person minutes of mobile data and their
+    // allowance — and the error they would get back is a proxy's HTML page,
+    // not a sentence. Saving the upload IS the feature; the message is second.
+    const sent = stubXhr(201, JSON.stringify({ id: 7 }));
+
+    await expect(
+      contentApi.upload(bigClip(200), "en", undefined, 95),
+    ).rejects.toThrow(/^upload:tooLarge:/);
+
+    expect(sent).toHaveLength(0);
+  });
+
+  it("carries both numbers, because one of them is useless alone", async () => {
+    stubXhr(201, JSON.stringify({ id: 7 }));
+
+    await expect(
+      contentApi.upload(bigClip(143.7), "en", undefined, 95),
+    ).rejects.toThrow("upload:tooLarge:143.7:95");
+  });
+
+  it("lets a clip at the limit through", async () => {
+    const sent = stubXhr(201, JSON.stringify({ id: 7, status: "draft" }));
+
+    // Exactly at the cap is allowed: the server's own test is `> limit`, and a
+    // client that refused what the server accepts would be a second, stricter
+    // limit nobody wrote down.
+    await contentApi.upload(bigClip(95), "en", undefined, 95);
+
+    expect(sent).toHaveLength(1);
+  });
+
+  it("uploads anyway when the limit could not be learned", async () => {
+    const sent = stubXhr(201, JSON.stringify({ id: 7, status: "draft" }));
+
+    // `contentApi.status()` swallows its own failure by design, so the caller
+    // may have no number. Refusing to send because an unrelated GET failed
+    // would break uploading every time the network hiccuped. The server is the
+    // gate and always was; this check only saves the trip when it can.
+    await contentApi.upload(bigClip(500), "en", undefined, undefined);
+
+    expect(sent).toHaveLength(1);
+  });
+});
