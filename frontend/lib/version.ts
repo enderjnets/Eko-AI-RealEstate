@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.58.0";
+export const CURRENT_VERSION = "0.58.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.58.1",
+    date: "2026-08-27",
+    title: {
+      en: "A new agency now starts in English",
+      es: "Una agencia nueva empieza ya en ingl\u00e9s",
+    },
+    changes: [
+      {
+        en: "An agency created from now on writes to its clients in English by default, and still switches to Spanish for a client who writes in Spanish. The default was the wrong way round \u2014 it did not affect this agency, whose languages were set by hand, but any agency added later would have introduced itself in Spanish to English-speaking clients.",
+        es: "Una agencia creada a partir de ahora escribe a sus clientes en ingl\u00e9s por defecto, y sigue cambiando a espa\u00f1ol con quien escriba en espa\u00f1ol. El valor por defecto estaba al rev\u00e9s \u2014 no afectaba a esta agencia, cuyos idiomas se pusieron a mano, pero cualquier agencia dada de alta despu\u00e9s se habr\u00eda presentado en espa\u00f1ol a clientes de habla inglesa.",
+      },
+    ],
+  },
   {
     version: "0.58.0",
     date: "2026-08-27",

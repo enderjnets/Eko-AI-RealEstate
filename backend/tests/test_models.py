@@ -114,20 +114,36 @@ async def test_lead_conversation_message_roundtrip(database_url: str) -> None:
 
 @pytest.mark.asyncio
 async def test_agent_settings_singleton(database_url: str) -> None:
-    """Verify defaults bake into AgentSettings on first insert."""
+    """Verify defaults bake into AgentSettings on first insert.
+
+    Keyed on `org_id`, NOT on `id == 1`. There is one settings row per
+    organization and the uniqueness lives in `uq_agent_settings_org_id`; the
+    primary key is just a sequence. `api/v1/settings.py:143` already says so in
+    a comment — "No pinned id: forcing id=1 made the second tenant collide" —
+    but this test kept the old singleton assumption and therefore passed for an
+    accidental reason: whichever earlier test created org 1's row happened to
+    get id 1 from the sequence, so `existing` was found and nothing was
+    inserted. Any new test that consumes one sequence value first moved that
+    row to id 2, and then this test tried to INSERT a second row for org 1 and
+    died on the unique constraint. It was asserting the wrong key.
+    """
     engine = create_async_engine(database_url, echo=False, future=True)
     Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
 
     try:
         async with Session() as s:
-            existing = (await s.execute(select(AgentSettings).where(AgentSettings.id == 1))).scalar_one_or_none()
+            existing = (
+                await s.execute(select(AgentSettings).where(AgentSettings.org_id == 1))
+            ).scalar_one_or_none()
             created = existing is None
             if created:
-                s.add(AgentSettings(id=1, agency_name="Test Agency"))
+                s.add(AgentSettings(agency_name="Test Agency"))
                 await s.commit()
 
         async with Session() as s:
-            settings_row = (await s.execute(select(AgentSettings).where(AgentSettings.id == 1))).scalar_one()
+            settings_row = (
+                await s.execute(select(AgentSettings).where(AgentSettings.org_id == 1))
+            ).scalar_one()
             # agency_name is editable via the settings API (and the demo seed sets
             # it), so just assert a non-empty value — not a specific string.
             assert settings_row.agency_name
@@ -137,7 +153,9 @@ async def test_agent_settings_singleton(database_url: str) -> None:
 
         if created:
             async with Session() as s:
-                row = (await s.execute(select(AgentSettings).where(AgentSettings.id == 1))).scalar_one()
+                row = (
+                    await s.execute(select(AgentSettings).where(AgentSettings.org_id == 1))
+                ).scalar_one()
                 await s.delete(row)
                 await s.commit()
     finally:

@@ -70,7 +70,19 @@ class AgentSettings(Base):
         nullable=False,
     )
 
-    languages: Mapped[list] = mapped_column(JSON, default=lambda: ["es", "en"], nullable=False)
+    # English FIRST, and the order is the whole meaning of this field: the
+    # follow-up and invitation code takes `languages[0]` as the language to
+    # write in when the lead has never written to us, so the head of this list
+    # is what a brand-new agency says to its clients.
+    #
+    # It used to be ["es", "en"], which contradicted every other default in the
+    # codebase — `conversation.py` falls back to ["en", "es"], `followups.py` to
+    # ["en"], and `services/i18n.py` documents "en (English, the DEFAULT)". The
+    # live agency was unaffected because its row was set by hand, so the bug was
+    # invisible: it only bit an organization created later, and this product is
+    # multi-tenant by design. There is no server_default on the column (see the
+    # phase1 baseline migration), so this literal is the only thing deciding it.
+    languages: Mapped[list] = mapped_column(JSON, default=lambda: ["en", "es"], nullable=False)
 
     # IANA timezone of the office (e.g. "America/Denver"). Used to interpret the
     # times the voice agent hears ("2 PM" → 2 PM local, not UTC) and to display

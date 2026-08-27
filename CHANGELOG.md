@@ -2,6 +2,32 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.58.1] — 2026-08-27
+
+### Corregido — el idioma por defecto de una agencia nueva estaba al revés
+
+- `models/agent_settings.py` creaba toda fila nueva con
+  `languages = ["es", "en"]`. El campo es **ordenado**: `languages[0]` es el
+  idioma en que se escribe a un lead que **nunca nos ha escrito** — justo el
+  caso de una cita agendada desde el formulario o por teléfono, donde la
+  invitación sale antes de que nadie teclee una palabra.
+- **No afectaba a la agencia viva**, cuya fila se puso a mano con
+  `["en", "es"]`, y por eso el defecto podía quedarse ahí: solo alcanza a una
+  organización creada después, y este producto se vende multi-tenant. Los dos
+  sitios que crean la fila lo hacen con un `AgentSettings()` desnudo
+  (`api/v1/settings.py:144` y `scripts/seed_demo.py:216`), así que se llevaban
+  el defecto entero.
+- Contradecía además al resto del código: `conversation.py` cae a
+  `["en", "es"]`, `followups.py` a `["en"]`, y `services/i18n.py` documenta
+  *"en (English, the DEFAULT)"*. El modelo era el único que decía lo contrario.
+- **Sin migración y sin riesgo para los datos vivos**: la columna no tiene
+  `server_default` (baseline de la fase 1), y un default de SQLAlchemy solo
+  actúa al INSERTAR — ninguna fila existente se reescribe.
+- Tests nuevos que fijan el **comportamiento**, no el literal: una agencia
+  recién creada arranca en inglés, y un lead que nunca escribió se responde en
+  inglés. Mutación verificada: devolver el default a `["es", "en"]` pone los
+  **dos** en rojo.
+
 ## [0.58.0] — 2026-08-27
 
 ### Añadido — invitaciones de calendario (.ics), y las citas dejan de ser mentira

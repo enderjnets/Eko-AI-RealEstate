@@ -15,7 +15,7 @@ de casa (ROG) al VPS, donde ya viven Zorros y Black Volt.
 
 ## 📌 PENDIENTES abiertos (decisión tomada: se hacen más tarde)
 
-### 1. La agenda se hace a ciegas — **esperando a Cal.com** (dueño, 27-ago)
+### 1. La agenda se hace a ciegas — **DECIDIDO: Cal.com + la cuenta de Google de Natalia**, se hace más tarde (dueño, 27-ago)
 
 Estado medido en producción hoy: `CALENDAR_SIMULATED=true`, `CALCOM_API_KEY` y
 `CALCOM_EVENT_TYPE_ID` **vacías**, y las 4 visitas con `external_booking_id`
@@ -26,7 +26,8 @@ Las horas se generan en `_simulated_slots` y se cruzan **solo** contra nuestra
 tabla `visits` (`_busy_starts`). De la agenda real de Natalia el sistema no sabe
 nada, así que puede ofrecer una hora en la que está ocupada.
 
-**Decisión: Cal.com, no un calendario interno.** Un calendario interno solo sabe
+**Decisión del dueño, 27-ago: opción B — Cal.com, conectado a la cuenta de
+Google de Natalia. Nada de calendario interno.** Un calendario interno solo sabe
 lo que alguien teclea en él, así que obligaría a Natalia a mantener su
 disponibilidad en dos sitios y fallaría en silencio el día que se le olvide; y
 el trabajo se tiraría al enchufar Cal.com, que se lleva la generación de horas
@@ -48,16 +49,41 @@ viernes, **cableado**. `agent_settings.business_hours` (editable en Ajustes,
 *decirle* al lead el horario. El sistema anuncia 9–19 y ofrece cinco huecos
 fijos. Arreglarlo solo merece la pena si Cal.com tarda: él se lleva esa función.
 
-### 3. El idioma por defecto de una organización nueva es español
+---
 
-`models/agent_settings.py:73` → `default=lambda: ["es", "en"]`. Los clientes de
-este producto son **de habla inglesa**; el español es solo el idioma en que el
-dueño da instrucciones. La fila de `Robbie & Natalia` ya tiene `["en", "es"]`
-puesta a mano, así que **producción escribe en inglés hoy** (verificado: el
-correo en español de la prueba lo forzó el arnés con `language="es"`, no el
-sistema). Pero toda organización nueva —el sistema es multi-tenant— nacería
-escribiendo a sus clientes en español. Cambio de una línea + test que lo fije;
-no toca filas existentes, los defaults de SQLAlchemy solo aplican al insertar.
+## Idioma por defecto — ✅ **v0.58.1 lista, SIN desplegar** (27-ago-2026)
+
+Rama `feat/idioma-por-defecto-ingles`. Los clientes de este producto son **de
+habla inglesa**; el español es solo el idioma en que el dueño da instrucciones.
+
+**Producción ya escribía en inglés** y eso se verificó antes de tocar nada: la
+fila de la agencia tiene `["en", "es"]` puesta a mano, `conversation.py` cae a
+`["en", "es"]`, `followups.py` a `["en"]` y `services/i18n.py` documenta *"en
+(English, the DEFAULT)"*. El correo en español de la prueba del `.ics` lo forzó
+**mi arnés** con `language="es"`, no el sistema.
+
+Lo que sí estaba al revés era el **default del modelo**, `["es", "en"]`: los dos
+sitios que crean la fila lo hacen con un `AgentSettings()` desnudo
+(`api/v1/settings.py:144`, `scripts/seed_demo.py:216`), así que **toda
+organización nueva** —y esto se vende multi-tenant— habría empezado hablándoles
+en español a clientes de habla inglesa. Sin migración: la columna no tiene
+`server_default`, y un default de SQLAlchemy solo actúa al INSERTAR.
+
+**Tests nuevos que fijan el comportamiento, no el literal**: una agencia recién
+creada arranca en inglés, y un lead que nunca escribió se responde en inglés.
+Mutación verificada: devolver el default pone **los dos** en rojo.
+
+**Hallazgo que destapó mi propio cambio** (`test_models.py::test_agent_settings_singleton`):
+ese test buscaba la fila por **`id == 1`**, una premisa muerta — hay una fila
+por organización y la unicidad vive en `uq_agent_settings_org_id`; el propio
+`api/v1/settings.py:143` lo dice en un comentario. Pasaba **por accidente**:
+el test que creaba la fila de la org 1 se llevaba el id 1 de la secuencia. Mi
+test consume un valor de esa secuencia antes, la fila pasó a id 2, y entonces
+intentaba INSERTAR una segunda fila para la org 1 y moría en la restricción
+única. No lo silencié: lo reclavé a `org_id`, que es la clave de verdad.
+
+Verificación: **1135 backend desde base recreada** · 142 frontend · ruff y tsc
+limpios. **No desplegado** — espera autorización.
 
 ---
 
