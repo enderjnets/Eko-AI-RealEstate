@@ -13,6 +13,59 @@ de casa (ROG) al VPS, donde ya viven Zorros y Black Volt.
 
 ---
 
+## Fase copias — producción tenía CERO copias de seguridad ✅
+
+Rama `feat/copias-de-seguridad` (desde `feat/mudanza-vps`, porque es
+consecuencia directa de la mudanza y se fusionarán juntas).
+
+**El hallazgo, medido**: ni el ROG antes ni el VPS después. Timeshift **nunca**
+cubrió los volúmenes de Docker — `/var/lib/docker/*` es una regla **built-in**
+del `exclude.list` de cada snapshot, que `timeshift.json` no puede anular. El
+único cron de copias del VPS era el de Black Volt. 38 leads y 72 mensajes de
+clientes reales de un broker con licencia, sin una sola copia.
+
+**Qué se construyó**: `deploy/backup-db.sh` (corre en el VPS, 04:15 UTC) y
+`deploy/backup-pull.sh` (corre en el ROG, 04:45 local). **El ROG tira, el VPS no
+empuja**: un push exige credenciales en el VPS que puedan escribir en el almacén
+de copias, así que quien tome el VPS se lleva también sus copias. Además es la
+única dirección que funciona (el VPS no alcanza al ROG por SSH).
+
+**Checklist, con resultado real:**
+- Copia tomada y **restaurada** en base desechable → **72 / 38 / 4 / 9**,
+  idéntico a producción. ✅
+- Guarda de suelo de bytes: dump de base vacía (820 B) → rechazado, **sin
+  rotar**. ✅
+- Guarda de `pg_restore -l`: **aislada** bajando el suelo a 1 byte → «lists only
+  0 entries» → rechazado, sin rotar. ✅ (la primera guarda enmascaraba a la
+  segunda; verificarlas por separado es lo que lo destapó)
+- Con `KEEP=1`, la copia buena de enero **sobrevivió a los dos intentos**. ✅
+- Copia en el ROG, verificada allí y **restaurada allí**. ✅
+- Crons: VPS 6→7 entradas (Black Volt intacto); ROG 45→46, **insertada encima
+  del marcador de BitTrader** (línea 12 vs marcador en 20). ✅
+
+**Hallazgo dentro del hallazgo**: restaurar el dump en un clúster limpio daba
+**36 errores, todos `role "eko_app" does not exist`**. El dump lleva las **49
+entradas POLICY/ACL** —todo el aislamiento entre agencias— pero `pg_dump` es de
+base, no de clúster, y los roles viven en `pg_dumpall`. Sin eso, una
+restauración a las 3 de la mañana devuelve **todas las filas y ninguna
+seguridad**, y `pg_restore` sale con código 0. Corregido: el script escribe
+también `eko-roles-*.sql` (`--no-role-passwords`: nombres y atributos, **no**
+hashes), el pull exige las dos mitades, y el runbook de restauración va en la
+cabecera del script.
+
+**Simulacro completo siguiendo ese runbook**: roles primero → **0 errores** de
+restauración; y `eko_app` atado a la org 1 ve **38** leads, atado a la org 2 ve
+**0**, y sin contexto ve **0**. El aislamiento vuelve vivo.
+
+**Sin suite**: no se tocó código de app (solo `deploy/*.sh`), así que ruff/tsc/
+pytest no aplican. La verificación es la de arriba, real y medida.
+
+**Abierto**: el `.env` de producción no está respaldado en ningún sitio. Perder
+el droplet pierde las claves de API. No se ha tocado: mover secretos es decisión
+del dueño.
+
+---
+
 ## Fase A — la casa: mudar el sistema al VPS (EN CURSO)
 
 ### A.0.2 — puertos atados a loopback
