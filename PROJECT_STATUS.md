@@ -514,7 +514,31 @@ misma línea de versiones. Renombrar una página es decisión de producto.
 | `DEFAULT_TIMEZONE` con errata deja sin reservar a cada organización nueva | ✅ no está; aplica el default válido |
 | Canal de avisos mudo → el vigilante consuma el estado y nadie se entera | ✅ `OPS_ALERT_FROM`, `RESEND_API_KEY` y `PLATFORM_ADMIN_EMAILS` presentes |
 
-**Siguiente paso concreto**: desplegar. El clasificador bloquea `git merge`, así
-que el merge a `main` y el tag los tiene que lanzar el dueño; el resto del
-protocolo (bundle, build **antes** de migrar, `alembic upgrade head`, `up -d`,
-y verificar la versión en `/api/v1/health` y nunca en el tag local) lo sigo yo.
+## ✅ v0.56.0 EN PRODUCCIÓN — 26-ago-2026
+
+`2258912`, tag `v0.56.0`. `/api/v1/health` → **`0.56.0`**, `llm_fallback:"ok"`,
+`captcha:"on"`.
+
+| Verificación | Resultado |
+|---|---|
+| La versión que REPORTA producción, no el tag local | ✅ `0.56.0` |
+| Migración 043 aplicada | ✅ `042_alerted_state → 043_fair_housing_flags` |
+| Las 72 filas previas de `messages` | ✅ **0 con valor** — todas NULL, «nunca revisado», que es la verdad. Sin backfill y sin afirmar lo que no se hizo |
+| El tope de subida llega al contenedor | ✅ `CONTENT_UPLOAD_MAX_MB=95` en `eko-realestate-backend` |
+| Arranque | ✅ sin errores, sin avisos, y **sin la queja nueva de `DEFAULT_TIMEZONE`**: la validación corrió y pasó |
+| El vigilante de Fair Housing corriendo | ✅ fila `fair_housing \| clean \| clean` escrita en su primer tick |
+| El frontend servido es el nuevo, no un build cacheado | ✅ el chunk pedido **por el dominio público** lleva `0.56.0`, `nav.tab.calendar`, `Agenda` y `2xl:hidden` |
+| Páginas públicas | ✅ landing y login 200 |
+
+**Punto de reversión**: `d47da38` / tag `v0.55.1`. No hay imagen guardada, así
+que revertir significa `git checkout v0.55.1` en el ROG y **reconstruir**; la
+migración 043 es `drop_column` y sí es reversible, pero no hace falta tocarla
+para volver: la columna sobra para el código viejo, no le estorba.
+
+**Lo que este despliegue NO enciende**, dicho en voz alta: el generador diario y
+el render siguen apagados (`CONTENT_STUDIO_ENABLED` / `CONTENT_RENDER_ENABLED`),
+y la publicación a redes no existe todavía — es la v0.57.0.
+
+**Siguiente construcción**: v0.57.0, publicación por Buffer. Empieza por la
+Fase 0 del plan, que es una pregunta que puede borrar una fase entera: sondear
+si la API de Buffer acepta el vídeo como bytes en vez de por URL pública.
