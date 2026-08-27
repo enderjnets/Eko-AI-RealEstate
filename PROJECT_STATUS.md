@@ -159,16 +159,37 @@ hallazgos de la auditoría anterior que muerden justo al configurar los hosts.
 
 | # | Punto | Resultado real |
 |---|---|---|
-| 1 | Tests | **145/145** (eran 142; +3), 10 ficheros, 0 saltados |
+| 1 | Tests | **153/153** (eran 142; +11), 11 ficheros, 0 saltados |
 | 2 | Typecheck | `npx tsc --noEmit` sin errores |
 | 3 | Build | `✓ Compiled successfully`, 17/17 páginas, middleware 26,7 kB |
 | 4 | Cobertura | `middleware.ts` + `lib/hosts.ts`: **100% líneas/sentencias/funciones**, 95,23% ramas |
 | 5 | Secretos en el diff | 0 |
 | 6 | Depuración / validación | 0 `console.*`; `hostOf` sigue devolviendo `""` ante URL malformada |
 
-**Mutaciones verificadas (4/4 rojas, restaurado verde):** devolver `/about` a
-`PUBLIC_PATHS`, quitar el recorte del punto final, quitar la guarda de hosts
-iguales, y cambiar `307` por `302`.
+**Mutaciones verificadas: 8/8 rojas, restaurado verde.** Devolver `/about` a
+`PUBLIC_PATHS`; quitar el recorte del punto en el middleware y (por separado) en
+`hostOf`; recortar un solo punto en vez de todos; quitar la guarda de hosts
+iguales; `307`→`302`; quitar el `title` de `/contact`; quitar el `appleWebApp`
+de la landing.
+
+### 🔴 Bloqueante que encontró la auditoría, corregido en la misma fase (`92c2251`)
+
+Con evidencia del HTML construido, no de la lectura del código:
+`.next/server/app/contact.html` llevaba
+`<title>Eko AI Realtors — Dashboard</title>` y la descripción que vende la
+plataforma a inmobiliarias, con `robots: index, follow`. Es la página donde un
+desconocido teclea su teléfono, la única pública indexable sin título propio, y
+ese título es su resultado en Google y su tarjeta al compartirla por WhatsApp.
+
+**La causa es la que yo mismo había escrito en el commit anterior y no apliqué
+aquí**: los metadatos de Next se MEZCLAN, así que lo no declarado se hereda.
+Arreglé `appleWebApp` y dejé `title` y `description` heredándose. Ahora
+`/contact` declara los cinco campos y su propio `themeColor` (heredaba el noir
+del panel). Medido tras el arreglo: **0 ocurrencias de «eko» en `contact.html`**.
+
+La auditoría midió además que **el recorte del punto en `hostOf` no lo cubría
+ningún test** — quitarlo dejaba los 13 en verde — y que recortaba un solo punto,
+así que `host..` se colaba igual. Ambos corregidos con test propio.
 
 **Lo que arregla:**
 - `/about` fuera del dominio de marca. Esa página **vende esta plataforma a
