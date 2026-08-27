@@ -13,6 +13,52 @@ de casa (ROG) al VPS, donde ya viven Zorros y Black Volt.
 
 ---
 
+## Fase B (landing) — parcial ✅
+
+Rama `feat/landing-denver-home-story`. Commits `7d2e35e`, `2023856`, `e8ab9bf`.
+
+**Hallazgo que reduce la fase**: la landing **ya implementaba el diseño v4 casi
+entero** (49 claves i18n). Lo que faltaba en la página viva estaba ausente por
+**configuración**, no por código: `NEXT_PUBLIC_LANDING_ADDRESS`, `MARKETS`,
+`PHONE`… vacías, y `lib/landing.ts` oculta la sección en vez de inventarse un
+dato de un broker con licencia. Rellenarlas es del dueño y exige **rebuild**,
+no reinicio.
+
+**Construido:**
+- Enrutado por host + canónicas + `robots:index:false` por defecto, **inerte
+  hasta que `NEXT_PUBLIC_BRAND_URL`/`PANEL_URL` estén puestas**. Mutaciones
+  verificadas: quitar un `ARG` → un solo test rojo, el correcto; quitar la
+  guarda de inercia → rojo el caso a medio configurar.
+- El guardián de cableado barría 3 ficheros a mano y no vio mis 2 variables
+  nuevas. Ahora barre por forma `app/`, `components/`, `lib/`.
+- `vitest.config.ts` con el alias `@/` (sin jsdom: solo resolución de rutas).
+- Sección **«Where we work»** con las 3 tarjetas de mercado y sus imágenes,
+  servidas desde `public/landing/` y no desde la CDN del diseño.
+- `.gitignore` por forma (`.env.*` + `!.env.example`): `.env.pre-mudanza-20260827`
+  con el token vivo estaba a un `git add -A` del repo. Historial limpio,
+  verificado en los 8 commits.
+
+**Checklist real**: tsc limpio · 142 tests verdes (10 ficheros) · `npm run build`
+compila y la salida prerenderizada contiene la sección · `public/` no
+gitignorado (si lo estuviera, las imágenes no llegarían al contenedor).
+Backend sin tocar, así que su suite no aplica.
+
+**🔴 CORRECCIÓN de una afirmación falsa de este plan**: decía que VAPI no estaba
+configurado. **Las cuatro variables están puestas**, `VOICE_SIMULATED=false`, y
+hay una conversación de voz real de **22 mensajes del 3-jun-2026**. Sin
+verificar: si la cuenta VAPI sigue activa (exige la clave).
+
+**Hueco asumido por decisión del dueño (27-ago)**: `CALENDAR_SIMULATED=true`, y
+las dos herramientas del asistente de voz (`check_availability`, `book_visit`)
+pasan por ahí. El asistente confirma citas **en voz alta** que no se reservan.
+El dueño eligió publicar la landing primero y arreglar el calendario después.
+
+**Pendiente del dueño**: rellenar las `NEXT_PUBLIC_LANDING_*`; decidir sobre la
+frase `landing.how.answered.body`, que promete «horarios confirmados»; mover los
+nameservers; rotar el `TWILIO_AUTH_TOKEN` (expuesto en `.bash_history` del ROG).
+
+---
+
 ## Fase copias — producción tenía CERO copias de seguridad ✅
 
 Rama `feat/copias-de-seguridad` (desde `feat/mudanza-vps`, porque es
