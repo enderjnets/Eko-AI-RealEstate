@@ -39,6 +39,8 @@ para no declarar verde nada por inspección.
 | ¿Mi clave de Twilio puede escribir? | ✅ **sí** — escritura idempotente, HTTP 200, **0 diferencias en 34 campos** |
 | ¿La API de GoDaddy apaga DNSSEC? | 🔴 **no existe**: 0 coincidencias de «dnssec» en su OpenAPI v3 (148 KB) |
 | ¿Los TwiML Bins tienen API? | 🔴 **no**: solo consola (documentación de Twilio) |
+| Candados del registrador (RDAP) | ⚠️ **4 activos**, incluido `clientUpdateProhibited` → hay que **apagar el Domain Lock** de GoDaddy para cambiar los NS, y volver a encenderlo |
+| Registrado / caduca | 2026-08-25 / 2028-08-25 — recién registrado, 2 años por delante |
 
 Fotografía DNS completa guardada como línea base para el cotejo posterior.
 
@@ -47,10 +49,33 @@ Fotografía DNS completa guardada como línea base para el cotejo posterior.
 1. **GoDaddy → DNS → DNSSEC → desactivar.** Su API no expone DNSSEC. Va
    **primero**: mover los NS con los DS vivos deja el dominio entero en
    SERVFAIL hasta 6 h.
+1.b **Apagar el «Domain Lock»** antes de tocar los nameservers, y volver a
+   encenderlo después. RDAP dice `clientUpdateProhibited`: con el candado
+   puesto, GoDaddy rechaza el cambio. (El bloqueo ICANN de 60 días por ser un
+   registro nuevo **no** afecta: eso impide transferir de registrador, no
+   cambiar NS.)
 2. **Twilio → TwiML Bins → crear `voz-a-vapi`** con el XML del plan. No hay API.
 3. *(opcional)* El token de Cloudflare acotado a esa zona, para que yo haga
    SPF/DMARC y luego el correo. **El de GoDaddy no lo recomiendo**: no puede
    hacer lo único que hace falta, y tras el cambio GoDaddy solo es registrador.
+
+### Bloqueo, diagnóstico y las dos salidas
+
+**Diagnóstico:** la fase no se puede cerrar porque sus dos acciones restantes
+viven en consolas sin API — medido, no supuesto: la especificación de GoDaddy no
+tiene DNSSEC, y los TwiML Bins no tienen endpoint REST. No es un fallo de
+ejecución ni un intento fallido; es una dependencia externa.
+
+**Salida 1 (recomendada) — esperar los dos clics.** ~5 minutos del dueño. Un
+TwiML Bin lo hospeda Twilio, así que el reenvío **sigue funcionando aunque
+nuestro backend esté caído**. Es la opción más fiable y la que no añade código.
+
+**Salida 2 — servir el TwiML desde nuestro backend.** Me desbloquea del todo y
+sí tendría tests, lint y build que enseñar. Se descarta salvo que el dueño la
+pida: convierte nuestro backend en **dependencia de las llamadas entrantes**
+(si está caído, nadie puede llamar), añade un endpoint público nuevo, y exige un
+despliegue que ahora mismo no está autorizado. Peor fiabilidad para ahorrar dos
+minutos de consola.
 
 ### Decisiones tomadas y por qué
 
