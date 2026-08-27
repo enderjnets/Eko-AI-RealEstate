@@ -65,6 +65,41 @@ contrato publicado no cambia, y la salida está escrita en el propio compose
 | **El comentario que escribí describía algo que Compose no hace.** Decía que un `docker-compose.override.yml` plano devuelve el puerto. Medido: sin el tag `!override` Compose conserva la entrada base y el override **no cambia nada** | importante | ✅ corregido con la medición dentro del comentario |
 | `.gitignore` no ignoraba `docker-compose.override.yml`, y mi comentario le decía al operador que lo creara. Si se commitea, republica `0.0.0.0` en **todas** las instalaciones al siguiente `git pull` — justo lo que el cambio evita. El propio `.gitignore` ya registra dos incidentes iguales | importante | ✅ ignorado, con el motivo escrito |
 
+### A.0 — preparación del VPS ✅ (nada de producción tocado)
+
+| Paso | Resultado |
+|---|---|
+| A.0.1 repo en el VPS | Por **bundle + scp**: el VPS no puede clonar de GitHub (`Permission denied (publickey)`) ni alcanzar al ROG por SSH. Es el patrón que este repo ya usa |
+| A.0.3 `.env` | Copiado **por tubería, sin imprimirlo**. Verificado por forma: 69 claves, permisos 600, secretos críticos presentes. `OLLAMA_ENABLED=false` para el corte |
+| — | `DATABASE_URL`/`REDIS_URL` apuntan a `db:5432` / `redis:` — sus **propios** contenedores, no los del ROG. Comprobado antes de arrancar nada |
+| A.0.4 ensayo en vacío | Imágenes compilan · migraciones hasta la **043** · **18 tablas** · health `0.56.0` con `llm_fallback:"off"` · frontend `/login` **200** |
+| — | `docker compose down -v`: los dos volúmenes borrados. **Zorros y Black Volt intactos**, sus 9 contenedores siguen corriendo |
+| A.0.5 túnel | `eko-realtors-vps` (`d68e4a1d…`) creado, config escrita y **validada por `cloudflared` (OK)**. **NO arrancado y sin DNS**: solo corren los 2 túneles de los otros productos |
+
+**El ensayo se ganó su sitio: encontró un fallo que solo aparece en un clon
+limpio.** `a1be1e2` — `frontend/public/` está vacía y git no trackea
+directorios vacíos, así que un checkout nuevo no la tiene; el Dockerfile la
+copia sin condición. La build **solo funcionaba en la única máquina donde
+alguien creó esa carpeta a mano en mayo**. Afecta también a terceros:
+`scripts/install.sh` corre `docker compose build`. Arreglado con `mkdir -p` en
+la etapa builder, para no servir un `.gitkeep` suelto desde la raíz del sitio.
+
+### 🔴 A.1 — el corte: PREPARADO, NO EJECUTADO
+
+Es el paso en que producción cambia de máquina. Requiere autorización expresa.
+
+**Orden**: `down` en el ROG (conserva volúmenes) → copiar
+`eko-ai-realestate_postgres-data` (**64,6 MB**) y `_content-media` (**4 KB**)
+por tubería → `up -d` en el VPS → repuntar el DNS con `--overwrite-dns` →
+arrancar el túnel del VPS → verificar por el dominio público → quitar el
+ingress de `inmo-demo` del ROG y reiniciar su `cloudflared` (⚠️ sirve también
+los dominios de los productos de ventas: comprobarlos justo después).
+
+**Reversión**: los volúmenes del ROG **no se tocan**. Volver es repuntar el DNS
+al túnel viejo y `up -d` allí.
+
+**Ventana**: minutos. Un SMS entrante durante el corte lo reintenta Twilio.
+
 ---
 
 ## Hallazgo del 27-ago: «el sistema hace las citas» no es cierto hoy
@@ -112,9 +147,20 @@ demás canales **sí** son reales: `EMAIL_SIMULATED=false`, `SMS_SIMULATED=false
 - **`OLLAMA_ENABLED=false` en el VPS desde el primer minuto.** Copiar el `.env`
   tal cual haría que el monitor mandase avisos falsos desde el primer tick.
 
+## Decisiones del dueño, 27-ago
+
+- **Las citas se reservan de verdad en Cal.com.** Hace falta cuenta, clave, tipo
+  de evento y `booking_contact_email` en Ajustes (hoy vacío).
+- **El tercer respaldo de LLM se alcanza por Tailscale** (puente atado SOLO a la
+  interfaz de la tailnet). Se enciende **después** del corte: el health pasando
+  de `off` a `ok` es la prueba de que el puente funciona.
+- **El embudo arranca solo con formulario.** El número no se anuncia en la web.
+- **La landing sale del proyecto de Claude Design** «Natalia landing page
+  mockups», fichero `Natalia Robbie Landing v4.dc.html`. Se conserva el
+  formulario existente con su honeypot, captcha y consentimiento TCPA.
+
 ## Siguiente paso concreto
 
-Cerrar A.0.2 con la auditoría del diff, commit y push. Después, **A.0 completo**
-(bundle al VPS, `.env` por tubería, ensayo en vacío con `down -v` obligatorio al
-terminar, túnel creado sin arrancar) y **detenerse antes del corte A.1**, que es
-cuando producción cambia de casa y necesita autorización expresa.
+**Ejecutar A.1, el corte**, en cuanto el dueño lo autorice viendo estas
+evidencias. Después: encender el puente de Ollama y verificar `off → ok`, mover
+el vigía al ROG (A.2), y cerrar (A.3). Solo entonces, la Fase B con la landing.
