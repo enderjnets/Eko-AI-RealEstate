@@ -13,6 +13,54 @@ de casa (ROG) al VPS, donde ya viven Zorros y Black Volt.
 
 ---
 
+## 📌 PENDIENTES abiertos (decisión tomada: se hacen más tarde)
+
+### 1. La agenda se hace a ciegas — **esperando a Cal.com** (dueño, 27-ago)
+
+Estado medido en producción hoy: `CALENDAR_SIMULATED=true`, `CALCOM_API_KEY` y
+`CALCOM_EVENT_TYPE_ID` **vacías**, y las 4 visitas con `external_booking_id`
+`calcom-sim-…`. La cita se **registra** bien y desde v0.58.0 se **avisa** bien;
+lo que no existe es la **disponibilidad**.
+
+Las horas se generan en `_simulated_slots` y se cruzan **solo** contra nuestra
+tabla `visits` (`_busy_starts`). De la agenda real de Natalia el sistema no sabe
+nada, así que puede ofrecer una hora en la que está ocupada.
+
+**Decisión: Cal.com, no un calendario interno.** Un calendario interno solo sabe
+lo que alguien teclea en él, así que obligaría a Natalia a mantener su
+disponibilidad en dos sitios y fallaría en silencio el día que se le olvide; y
+el trabajo se tiraría al enchufar Cal.com, que se lleva la generación de horas
+entera. Google Calendar directo queda descartado por coste: verificado que el
+login de Google **no** es un flujo OAuth con refresh token (no hay
+`client_secret` ni almacén de tokens en el repo), así que habría que construirlo
+desde cero — es reconstruir Cal.com.
+
+**Insumos que faltan, y son del dueño:** cuenta de Cal.com + API key, el event
+type id de la visita, y —el que se olvida— **el Google Calendar de Natalia
+conectado a Cal.com**. Sin ese tercero, encenderlo empeora las cosas: seguiría
+ofreciendo horas ocupadas, pero ya con una reserva real encima de la suya.
+
+### 2. `business_hours` no gobierna las horas que se ofrecen
+
+`calendar_cal.py:36` — `SIMULATED_HOURS_OF_DAY = (10, 11, 14, 15, 16)`, lunes a
+viernes, **cableado**. `agent_settings.business_hours` (editable en Ajustes,
+09:00–19:00) no lo lee el calendario: solo se usa en `conversation.py` para
+*decirle* al lead el horario. El sistema anuncia 9–19 y ofrece cinco huecos
+fijos. Arreglarlo solo merece la pena si Cal.com tarda: él se lleva esa función.
+
+### 3. El idioma por defecto de una organización nueva es español
+
+`models/agent_settings.py:73` → `default=lambda: ["es", "en"]`. Los clientes de
+este producto son **de habla inglesa**; el español es solo el idioma en que el
+dueño da instrucciones. La fila de `Robbie & Natalia` ya tiene `["en", "es"]`
+puesta a mano, así que **producción escribe en inglés hoy** (verificado: el
+correo en español de la prueba lo forzó el arnés con `language="es"`, no el
+sistema). Pero toda organización nueva —el sistema es multi-tenant— nacería
+escribiendo a sus clientes en español. Cambio de una línea + test que lo fije;
+no toca filas existentes, los defaults de SQLAlchemy solo aplican al insertar.
+
+---
+
 ## Citas `.ics` — ✅ **v0.58.0 EN PRODUCCIÓN** (27-ago-2026)
 
 Rama `feat/citas-ics`, commit `f3495be`. `/api/v1/health` del dominio público
