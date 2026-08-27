@@ -41,6 +41,46 @@ type id de la visita, y —el que se olvida— **el Google Calendar de Natalia
 conectado a Cal.com**. Sin ese tercero, encenderlo empeora las cosas: seguiría
 ofreciendo horas ocupadas, pero ya con una reserva real encima de la suya.
 
+### 2bis. El correo al cliente sale con el nombre de la plataforma, no el de la marca
+
+**DECIDIDO (dueño, 27-ago).** Hoy el remitente es
+`Eko AI Realtors <noreply@realtors.ekoaiautomation.com>`: el cliente abre el
+correo de su cita y lee el nombre del **software**, no el de quien le va a
+enseñar la casa. Y le pedimos que responda a un `noreply@`.
+
+**Destino:** `Natalia & Robbie <hello@denverhomestory.com>`. La persona da la
+confianza —en inmobiliaria la confianza es siempre una persona— y el dominio
+pone la marca. Cuadra con la firma que ya lleva el cuerpo. El correo de
+plataforma (avisos de operación, recuperación de contraseña) **se queda en
+`ekoaiautomation.com`**: mismo reparto que la web, marca de cara al público y
+plataforma por detrás.
+
+**Verificado antes de decidirlo:**
+- **Las respuestas del cliente SÍ llegan hoy.** `channel_routes` está vacía y el
+  resolvedor cae al camino de un solo inquilino (la org `Demo` queda excluida).
+  La frase «responde a este mensaje» del correo de la cita no es una promesa
+  falsa. **Pero vive de un fallback**: el propio código rechaza el correo en
+  cuanto exista una segunda agencia real. Al montar esto hay que crear la fila
+  de `channel_routes` de verdad, no seguir viviendo del descarte.
+- **Enviar como `@engelvoelkers.com` es imposible y además peligroso.** Su SPF
+  termina en `-all` (rechazo duro) y Resend no está incluido; su DMARC es
+  `p=quarantine` **con `ruf=mailto:MinorAlert.DMARC@engelvoelkers.com`**, así
+  que un intento le llegaría a **su equipo de seguridad como una suplantación
+  de marca**. Riesgo para la relación de Natalia con su brokerage. No se
+  intenta, ni como prueba.
+- Su dirección de E&V se queda **solo como destinataria** (`booking_contact_email`),
+  que ya funciona y no cuesta nada. Usan Google Workspace, así que nuestro
+  correo hacia ella tiene que ir impecablemente autenticado o lo filtran.
+- 🔴 **Trampa ya puesta en el dominio nuevo**: su `_dmarc` heredado de GoDaddy
+  dice `p=quarantine`. Hoy es inofensivo porque nadie envía desde ahí. En el
+  momento en que cambiemos el remitente **sin haber publicado antes los
+  registros de Resend, TODOS los correos a clientes van a spam.** No algunos.
+- Un dominio que nunca ha enviado **no tiene reputación**: los primeros envíos
+  pueden filtrarse aunque todo esté bien. Es normal, no es avería.
+
+**Va después de la mudanza de nameservers**, porque los registros de Resend se
+crean en Cloudflare.
+
 ### 2. `business_hours` no gobierna las horas que se ofrecen
 
 `calendar_cal.py:36` — `SIMULATED_HOURS_OF_DAY = (10, 11, 14, 15, 16)`, lunes a
