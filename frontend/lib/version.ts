@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.58.1";
+export const CURRENT_VERSION = "0.59.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.59.0",
+    date: "2026-08-27",
+    title: {
+      en: "The videos now talk to sellers",
+      es: "Los v\u00eddeos hablan ya a quien vende",
+    },
+    changes: [
+      {
+        en: "The topics the studio writes about now speak to people thinking of selling their home. The rotation was 6 buyer topics against 1 seller one, so the videos would have built the wrong audience: five seller topics were added \u2014 what decides a home\u2019s value today, what is worth fixing before listing, what selling really costs, why pricing high backfires, and selling and buying at the same time \u2014 and three existing ones were rewritten to speak from both sides.",
+        es: "Los temas sobre los que escribe el estudio hablan ya a quien est\u00e1 pensando en vender su casa. La rotaci\u00f3n era de 6 temas de comprador contra 1 de vendedor, as\u00ed que los v\u00eddeos habr\u00edan construido el p\u00fablico equivocado: se a\u00f1adieron cinco temas de vendedor \u2014 qu\u00e9 decide el valor de una casa hoy, qu\u00e9 merece la pena arreglar antes de listar, lo que cuesta vender de verdad, por qu\u00e9 poner un precio alto sale caro, y vender y comprar a la vez \u2014 y tres existentes se reescribieron para hablar desde los dos lados.",
+      },
+      {
+        en: "Each video\u2019s caption can now end with a link to your website. It stays off until the address is configured: a link to a site that is not live yet is worse than no link.",
+        es: "El pie de cada v\u00eddeo puede terminar ya con un enlace a su web. Queda apagado hasta que la direcci\u00f3n est\u00e9 configurada: un enlace a un sitio que a\u00fan no est\u00e1 vivo es peor que ninguno.",
+      },
+    ],
+  },
   {
     version: "0.58.1",
     date: "2026-08-27",

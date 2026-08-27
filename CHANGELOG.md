@@ -2,6 +2,35 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.59.0] — 2026-08-27
+
+### Cambiado — la rotación de temas apunta al vendedor, y el pie lleva a la web
+
+- **Medido, y el plan tenía mal el número**: no eran «10 de comprador contra 5
+  de vendedor». `content_topics.py` tenía **7 temas: 6 de comprador y 1 de
+  vendedor** (`first_week_selling`). Peor de lo que estaba escrito.
+- `Topic` gana el campo **`audience`** (`seller` / `buyer` / `both`). Declarado
+  y no deducido del brief: el equilibrio de la rotación es una decisión de
+  negocio, y una decisión que solo vive en prosa no se puede probar.
+- **Cinco temas de vendedor nuevos**: qué decide el valor de una casa hoy, qué
+  arreglar antes de listar, lo que cuesta vender de verdad, por qué el precio
+  alto sale caro, y vender y comprar a la vez. **Tres reencuadrados a `both`**
+  —inspección, oferta→cierre y pulso de mercado— porque quien vende vive esos
+  tres momentos igual que quien compra y el brief solo miraba a un lado.
+- Reparto resultante: **6 vendedor, 3 los dos, 3 comprador** (9 de 12 alcanzan
+  a quien vende). No se borró ningún tema de comprador: traen alcance, y un
+  vendedor en Denver casi siempre compra después.
+- **Llamada a la acción** `CONTENT_CTA_URL`, vacía por defecto. Se añade al pie
+  **antes** de `find_violations`, no después: lo que se publica tiene que haber
+  pasado por el filtro Fair Housing — publicar texto que la puerta no leyó es
+  la forma exacta del defecto que se corrigió en v0.56.0. El texto del enlace
+  no lo escribe el LLM: un modelo al que se le pide reproducir una URL acaba
+  dejándose un carácter, y un enlace roto en un vídeo que costó cuota es una
+  pérdida total silenciosa.
+- Mutaciones verificadas: pasar tres temas de vendedor a comprador pone en rojo
+  el test del equilibrio; quitar la CTA de antes del filtro pone en rojo el test
+  que comprueba que la puerta ve el pie publicado. Una cada uno, la correcta.
+
 ## [0.58.1] — 2026-08-27
 
 ### Corregido — el idioma por defecto de una agencia nueva estaba al revés

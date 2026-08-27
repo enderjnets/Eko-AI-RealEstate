@@ -51,6 +51,38 @@ fijos. Arreglarlo solo merece la pena si Cal.com tarda: él se lleva esa funció
 
 ---
 
+## Temas de vendedor + CTA — ✅ **v0.59.0 lista, SIN desplegar** (27-ago-2026)
+
+Rama `feat/temas-de-vendedor`, apilada sobre `feat/idioma-por-defecto-ingles`.
+Es el requisito que el plan marcaba **antes** de encender la generación de
+vídeos. No enciende nada: `CONTENT_STUDIO_ENABLED` sigue en `false`.
+
+**El plan tenía mal el número y lo repetí dos veces sin medirlo.** No eran «10
+de comprador contra 5 de vendedor»: había **7 temas, 6 de comprador y 1 de
+vendedor**. Peor de lo escrito.
+
+**Construido:**
+- `Topic.audience` (`seller`/`buyer`/`both`), **declarado y no deducido** del
+  brief: el equilibrio de la rotación es una decisión de negocio, y una
+  decisión que solo vive en prosa no se puede probar.
+- 5 temas de vendedor nuevos + 3 existentes reencuadrados a `both` (inspección,
+  oferta→cierre, pulso de mercado): quien vende vive esos tres momentos igual
+  que quien compra, y el brief solo miraba a un lado.
+- Reparto: **6 vendedor, 3 los dos, 3 comprador** — 9 de 12 alcanzan a quien
+  vende. Ningún tema de comprador borrado: traen alcance y un vendedor en
+  Denver casi siempre compra después.
+- `CONTENT_CTA_URL`, **vacía por defecto**, añadida al pie **antes** de
+  `find_violations`. Lo que se publica tiene que haber pasado por el filtro; el
+  texto del enlace no lo escribe el LLM.
+
+**Verificación:** 1144 backend desde base recreada · 142 frontend · ruff y tsc
+limpios. Dos mutaciones, cada una roja en su test y solo en el suyo.
+
+**Falta del dueño para que la CTA sirva:** `denverhomestory.com` vivo y
+`CONTENT_CTA_URL` puesta en el `.env`.
+
+---
+
 ## Idioma por defecto — ✅ **v0.58.1 lista, SIN desplegar** (27-ago-2026)
 
 Rama `feat/idioma-por-defecto-ingles`. Los clientes de este producto son **de

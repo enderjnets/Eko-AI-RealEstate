@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.58.1"
+    APP_VERSION: str = "0.59.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -272,6 +272,12 @@ class Settings(BaseSettings):
     CONTENT_STUDIO_ENABLED: bool = False
     # Bounds DRAFTS. The model bill is up to 2x this: a draft that trips the
     # Fair Housing filter gets exactly one rewrite call before it stops.
+    # Dónde mandamos a quien ve el vídeo. Vacío = sin llamada a la acción: un
+    # enlace a un dominio que todavía no resuelve es peor que ninguno, y este
+    # repo ya decide así en la landing (una sección sin dato desaparece en vez
+    # de inventárselo). Se rellena cuando denverhomestory.com esté vivo.
+    CONTENT_CTA_URL: str = ""
+
     CONTENT_MAX_DRAFTS_PER_DAY: int = 3
     CONTENT_STUDIO_INTERVAL_SECONDS: int = 3600
     # The render worker (lane A: uploaded clips -> vertical + burned brokerage

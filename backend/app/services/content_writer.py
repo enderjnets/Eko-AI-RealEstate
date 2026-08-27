@@ -113,7 +113,39 @@ async def _ask(topic: Topic, language: ContentLanguage,
         log.exception("Content writer: both providers failed for topic %s",
                       topic.key)
         return None
-    return _parse(result.text)
+    return _with_cta(_parse(result.text), language)
+
+
+# The sentence that turns a view into a visit. Kept OUT of the model's hands on
+# purpose: an LLM asked to reproduce a URL will eventually drop a character, and
+# a broken link on a video that took quota to make is a silent total loss.
+_CTA = {
+    ContentLanguage.EN: "Thinking about selling in Denver? Start here: {url}",
+    ContentLanguage.ES: "¿Estás pensando en vender en Denver? Empieza aquí: {url}",
+}
+
+
+def _with_cta(draft: DraftPayload | None, language: ContentLanguage) -> DraftPayload | None:
+    """Append the call to action to the caption.
+
+    Applied HERE, before the caller runs `find_violations`, so the filter sees
+    the caption that will actually be published. Appending it afterwards would
+    publish text the Fair Housing gate never read, which is the exact shape of
+    the defect this project fixed in v0.56.0 — the filter existed and did not
+    cover the live lane.
+
+    Inert until `CONTENT_CTA_URL` is set, in the same spirit as the landing
+    page: a section with no data disappears rather than inventing one. A CTA
+    pointing at a domain that does not resolve yet is worse than no CTA.
+    """
+    if draft is None:
+        return None
+    url = (get_settings().CONTENT_CTA_URL or "").strip()
+    if not url or url in draft.caption:
+        return draft
+    return draft.model_copy(
+        update={"caption": f"{draft.caption.rstrip()}\n\n{_CTA[language].format(url=url)}"}
+    )
 
 
 async def _generated_today(db: AsyncSession) -> int:
