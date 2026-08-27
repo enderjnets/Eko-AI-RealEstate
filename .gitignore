@@ -62,3 +62,11 @@ graphify-out/
 .coverage
 .coverage.*
 htmlcov/
+
+# A per-host Compose override, which `docker-compose.yml` tells operators to
+# create when a machine genuinely needs a port on a real interface. It is
+# host-specific by definition, and if it ever got committed it would republish
+# 0.0.0.0:3004 / 0.0.0.0:8011 to EVERY install on the next `git pull` — the
+# exact outcome the loopback binding exists to prevent. This file has a history
+# of learning that lesson twice already; this is the third.
+docker-compose.override.yml

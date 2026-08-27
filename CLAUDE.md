@@ -242,11 +242,26 @@ agency, so its admins would have inherited it.
 | **Public landing** (the root is the marketing page since v0.44.0) | **https://inmo-demo.ekoaiautomation.com** |
 | **Dashboard — sign in here** | **https://inmo-demo.ekoaiautomation.com/login** |
 | **Public capture form** (no login — this is the point) | **https://inmo-demo.ekoaiautomation.com/contact** |
-| Backend OpenAPI | http://10.0.0.240:8011/docs (or http://100.88.47.99:8011/docs via Tailscale) |
-| Backend health | http://10.0.0.240:8011/api/v1/health |
-| Frontend, direct on the LAN | http://10.0.0.240:3004 — works, but **Google sign-in cannot** |
+| Backend OpenAPI | `http://localhost:8011/docs` — **loopback only**, see below |
+| Backend health | `http://localhost:8011/api/v1/health` (same) |
+| Frontend, direct | `http://localhost:3004` (same). Google sign-in cannot work from a raw IP, which is why the tunnel hostname is the real entrance |
 | Postgres | `localhost:5434` (bound only to 127.0.0.1 on the ROG; tunnel via Tailscale for remote) |
 | Redis | `localhost:6381` (same) |
+
+> **Los cuatro servicios están atados a `127.0.0.1`.** Antes, backend y frontend
+> se publicaban en todas las interfaces y se llegaba por la IP de la LAN o la de
+> Tailscale; **eso ya no funciona** y devuelve «conexión rechazada».
+> Docker escribe sus reglas de iptables por delante del cortafuegos del host, así
+> que en una máquina con IP pública un puerto publicado está en internet aunque
+> `ufw` esté cerrado — y no aparece en `ufw status`.
+>
+> Para llegar desde otra máquina, un túnel SSH:
+> ```
+> ssh -N -L 8011:127.0.0.1:8011 -L 3004:127.0.0.1:3004 pcrug
+> ```
+> y luego `http://localhost:8011/docs` en el navegador local. La única entrada
+> pública sigue siendo el túnel de Cloudflare, que sirve **solo** el frontend:
+> `/docs` da 404 por ahí (medido), a propósito.
 
 `inmo-demo.ekoaiautomation.com` is live: a Cloudflare tunnel on the ROG points
 it at this install.

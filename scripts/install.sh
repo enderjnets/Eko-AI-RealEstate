@@ -259,6 +259,13 @@ cat <<EOF
   API (docs)  →  http://localhost:8011/docs
   Health      →  http://localhost:8011/api/v1/health
 
+  Those are localhost on THIS machine — the ports are bound to 127.0.0.1 so a
+  server with a public IP does not put the dashboard on the internet. If you
+  installed on a remote box, open a tunnel from your laptop and then use the
+  same URLs there:
+
+    ssh -N -L 3004:127.0.0.1:3004 -L 8011:127.0.0.1:8011 <user>@<host>
+
   Next steps:
     • Configure branding + persona in the Settings page.
     • To enable channels: edit .env (WHATSAPP_/RESEND_/CALCOM_ keys), set the

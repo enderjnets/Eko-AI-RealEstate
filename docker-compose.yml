@@ -217,7 +217,38 @@ services:
       WHATSAPP_BUSINESS_ACCOUNT_ID: ${WHATSAPP_BUSINESS_ACCOUNT_ID:-}
     ports:
       # 8011 — coexist with eko-backend :8000 (sales prod), eko-pipeline :8002, eko-backend-main :8010 (sales main dev)
-      - "8011:8000"
+      #
+      # Bound to 127.0.0.1, not to every interface. Docker publishes to
+      # 0.0.0.0 by default and, worse, writes its own iptables rules ahead of
+      # the host firewall — so on a public VPS `- "8011:8000"` puts the API on
+      # the internet even with ufw closed, and the operator has no way to see
+      # it from `ufw status`. On a laptop behind a home router that was
+      # invisible; on a machine with a public IP it is the whole surface.
+      #
+      # Nothing needs the published port from outside: cloudflared runs on the
+      # host and reaches this over loopback, which is exactly how the two other
+      # products on that VPS are served — neither publishes a single port.
+      # What this removes is reaching the box by its LAN or Tailscale IP. For a
+      # remote host the replacement is an SSH tunnel, which is what
+      # `docs/install.md` and `scripts/install.sh` now tell the operator:
+      #   ssh -N -L 8011:127.0.0.1:8011 -L 3004:127.0.0.1:3004 <host>
+      #
+      # If a machine genuinely needs the port on a real interface, the escape
+      # hatch is a `docker-compose.override.yml` on THAT host — deliberate, and
+      # not something a git pull can hand to a public server by accident (it is
+      # gitignored). It MUST use the `!override` tag:
+      #
+      #   services:
+      #     backend:
+      #       ports: !override
+      #         - "8011:8000"
+      #
+      # Measured, because an earlier version of this comment got it wrong and
+      # said a plain override would do: without the tag Compose keeps the base
+      # entry and the override changes nothing at all — `docker compose config`
+      # still shows `host_ip: 127.0.0.1`. A comment that describes behaviour the
+      # tool does not have is worse than no comment.
+      - "127.0.0.1:8011:8000"
 
   frontend:
     build:
@@ -265,7 +296,9 @@ services:
       INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8000}
     ports:
       # 3004 — coexist with eko-frontend :3001, eko-frontend-pricing-v2 :3002, eko-frontend-main :3003
-      - "3004:3000"
+      # Loopback only — same reasoning as the backend's 8011 above. The tunnel
+      # is the only thing that should reach this, and it lives on the host.
+      - "127.0.0.1:3004:3000"
 
 volumes:
   postgres-data:

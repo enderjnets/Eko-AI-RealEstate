@@ -45,6 +45,24 @@ When it finishes you get:
 | API docs (Swagger) | http://localhost:8011/docs |
 | Health | http://localhost:8011/api/v1/health |
 
+Those URLs are **localhost on the machine you installed on**. All four services
+bind to `127.0.0.1`, deliberately: Docker publishes to every interface by
+default and writes its iptables rules ahead of the host firewall, so on a server
+with a public IP a published port is on the internet even with `ufw` closed —
+and it never shows up in `ufw status`.
+
+**Installed on a VPS or any remote box?** Tunnel the two ports from your laptop
+and use the same URLs locally:
+
+```bash
+ssh -N -L 3004:127.0.0.1:3004 -L 8011:127.0.0.1:8011 <user>@<host>
+```
+
+For a permanent public address instead, put a reverse proxy or a Cloudflare
+Tunnel on the host — see `docs/setup-demo.md`. Do **not** republish the ports on
+`0.0.0.0`: that is the dashboard, unauthenticated by default, on the open
+internet.
+
 ## Non-interactive install
 
 For provisioning scripts:
