@@ -21,6 +21,7 @@ riesgo.
 | 1 | El filtro corre sobre lo que sale hacia el lead | ✅ completada — `f63ef4e` |
 | 2 | Recortar espacios donde el usuario escribe | ✅ completada — `a1820d8` |
 | 2b | El `except IntegrityError` que reventaba y perdía el turno | ✅ completada — `a1820d8` |
+| 2c | El timezone de una cita que la desplazaba seis horas | ✅ completada |
 | 3 | Aviso de tamaño antes de gastar la subida | ⏳ pendiente |
 | 4 | El nav entre 768 y 1279 px + bump v0.56.0 | ⏳ pendiente |
 
@@ -275,6 +276,103 @@ Otros al backlog: `platform.py:63` (`OrgCreateIn.name="  "` crea una
 organización con nombre en blanco), `platform.py:645` (`InviteIn.email` sin
 recortar), `visits.py:109` (`title="   "`), y `form` en el formulario público
 (un valor en blanco da 404 en vez de caer al fallback).
+
+---
+
+## Fase 2c — seis horas, en silencio, con un 201 (completada)
+
+Pedido por el dueño tras el informe de la Fase 2: *«sí arréglalo y agrégalo a
+la v0.56»*.
+
+**El fallo, reproducido antes de tocarlo.** `ManualEventIn.timezone` y
+`BookingIn.timezone` no se validaban, y `_resolve_wall_clock` se tragaba el
+`ZoneInfoNotFoundError` devolviendo `when.replace(tzinfo=UTC)`. Medido:
+
+```
+'America/Denver'    -> 2026-09-15T16:00:00+00:00   (10:00 Denver, correcto)
+' America/Denver'   -> 2026-09-15T10:00:00+00:00   (04:00 Denver, SEIS HORAS antes)
+'Invented/Zone'     -> 2026-09-15T10:00:00+00:00
+```
+
+Un espacio delante, pegado desde cualquier sitio, y la cita se archiva seis
+horas antes con **HTTP 201** y el string malo guardado al lado. El docstring de
+la propia función nombra ese número —*«in Denver, six hours apart»*— tres líneas
+antes de causarlo. Y `settings.py` valida esa misma cadena con `ZoneInfo` y
+devuelve 400: un producto, dos respuestas a una entrada.
+
+**Arreglo en tres capas**: helper `_valid_timezone` que recorta y prueba la zona
+· colgado de los dos esquemas · y `_resolve_wall_clock` deja de caer a UTC —
+lanza 400 nombrando el valor, porque llegar ahí ya solo puede significar que la
+configuración de la agencia está rota, y ese es un dato que hay que arreglar,
+no rodear. De paso, `title="   "` pasaba `min_length=1` y salía en blanco en la
+agenda: mismo orden mal, mismo arreglo.
+
+**El mismo defecto, encontrado buscándolo en vez de esperarlo.** Un `grep` de
+`ZoneInfoNotFoundError` destapó `voice.py:158` haciendo exactamente lo mismo en
+el carril que habla por teléfono: caía a UTC con un `log.warning`. Cada hora que
+el asistente cotiza y cada cita que reserva quedaban seis horas fuera; a un lead
+al que le dicen «martes a las 2 PM» le cierran la puerta a las 8 AM, y el único
+rastro es una línea de log que nadie lee durante una llamada. Arreglarlo solo en
+`visits.py` habría sido reparar la mitad visible.
+
+Ahí el arreglo tuvo que ser distinto: el manejador promete por contrato **no
+lanzar nunca** (una excepción cuelga al asistente en mitad de la llamada). Así
+que `_office_zone` devuelve `None` y la herramienta responde con una disculpa
+hablada — *«no puedo consultar el calendario ahora; alguien te llamará»*. No es
+lo ideal; es lo honesto: no se ofrece una hora que no se puede calcular.
+
+**Checklist — resultado real**
+
+| # | Comprobación | Resultado |
+|---|---|---|
+| 1 | Suite backend desde base recreada | ✅ **1084 passed**, 0 failed, 0 errors, 0 skipped |
+| 2 | `ruff` · `tsc` · `vitest` | ✅ limpio · limpio · 101 passed |
+| 3 | `docker build` | ✅ compila |
+| 4 | Cobertura del código nuevo | ✅ 6 mutaciones rojas |
+| 5 | Secretos en el diff | ✅ sin hallazgos |
+| 6 | Validación, errores manejados, sin prints | ✅ limpio |
+
+**Mutaciones verificadas** — 6 de 6:
+
+| Mutación | Resultado |
+|---|---|
+| Sin recorte del timezone | 🔴 5 tests |
+| Sin validar la zona | 🔴 2 tests |
+| Vuelve el fallback a UTC en `visits.py` | 🔴 2 tests |
+| Sin recorte del título | 🔴 2 tests |
+| Vuelve el fallback a UTC en `voice.py` | 🔴 2 tests |
+| **El bug original completo (tres capas revertidas)** | 🔴 el test imprime `which is 6:00:00 off` |
+
+Esa última es la que vale: el test no dice «falló», dice **el número exacto del
+daño**. Una primera mutación mía fue inválida (sustituyó un `return None` de
+otra función 70 líneas antes) y el test «sobrevivió»; lo cacé comprobando dónde
+había aterrizado en vez de creerme el resultado.
+
+### Auditoría de la Fase 2c — hecha por mí, y por qué
+
+**El auditor independiente se cortó**: `You've hit your monthly spend limit`
+(se restablece a las 19:30, hora de Denver). Alcanzó a confirmar la suite
+completa en su propia base —**1083 passed**— y murió mutando los tests de voz,
+que yo ya había verificado. Completé sus once puntos a mano. **Dicho sin
+adornos: una auto-auditoría vale menos que una independiente**, y este repo ya
+tiene registrado que mi auto-revisión declaró una vez un arreglo inexistente.
+La Fase 3 debería re-auditar este diff cuando el límite se restablezca.
+
+| Punto del encargo | Resultado |
+|---|---|
+| El 400 nuevo, ¿puede saltar tras reservar en Cal.com? | ✅ **No.** `_resolve_wall_clock` corre antes de `_ensure_slot_free` y de `create_booking`. Sin riesgo de reservar fuera y fallar dentro |
+| ¿Otros sitios con el mismo fallback? | 🔴 **Sí, uno** — `voice.py:158`. Arreglado en esta fase |
+| ¿El validador está registrado en ambos esquemas? | ✅ verificado en `__pydantic_decorators__`, no supuesto |
+| Reparto por nulabilidad de `title`/`notes`/`property_address` | 🔴 **fallo mío, corregido**: di el validador de solo-recorte a dos columnas nullable, así que guardaban `""` donde el esquema dice «sin notas». Misma regla que ya había establecido en `settings.py`, aplicada por inercia en vez de mirando las columnas |
+| DST | ✅ intacto: 02:30 del salto de primavera sigue rechazándose con 400 |
+| ¿El borrado de filas del test es determinista? | ✅ ningún otro test usa 2028-09-20; los demás usan fechas relativas |
+| Regresiones | ✅ 1084 passed |
+
+**Un hallazgo que solo aparece midiendo en los dos sitios**: `america/denver` en
+minúsculas **se acepta en mi Mac y se rechaza en producción** — `ZoneInfo` lee
+tzdata del sistema de ficheros, y macOS no distingue mayúsculas. Mi entorno
+local es **más permisivo** que el real, así que un test verde aquí puede estar
+probando algo que producción rechaza. Documentado en el helper.
 
 **Siguiente paso concreto**: Fase 3 — el aviso de tamaño antes de subir
 (bajar `CONTENT_UPLOAD_MAX_MB` de 500 a 95 en los tres sitios a la vez,

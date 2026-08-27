@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,6 +58,44 @@ class SlotsResponse(BaseModel):
     days: int
 
 
+def _valid_timezone(value: object) -> object:
+    """Trim, then prove it is a real IANA zone. Refuse rather than fall back.
+
+    An unrecognised zone used to be swallowed by `_resolve_wall_clock`, which
+    returned the wall clock stamped UTC. In Denver that files a 10:00
+    appointment at 04:00 — six hours early, answered 201, with the bad string
+    stored beside it. `" America/Denver"` pasted with a leading space was
+    enough, and nothing anywhere said so.
+
+    `settings.py` has always validated this field with `ZoneInfo` and returned
+    a 400. The same string was shouted at on one endpoint and quietly moved an
+    appointment six hours on another.
+
+    One platform wrinkle, measured on both sides rather than assumed: `ZoneInfo`
+    reads tzdata off the filesystem, so case-sensitivity follows the host.
+    "america/denver" resolves on macOS (case-insensitive volume) and raises in
+    the Linux container that actually runs this. Production is therefore the
+    STRICTER of the two — a lowercase name is refused there — so a local test
+    can pass on a string production will reject. Nothing here depends on that
+    difference, and the error message names the canonical spelling; this note
+    exists so the next person who sees a zone behave differently in two places
+    knows why before spending an afternoon on it.
+    """
+    if not isinstance(value, str):
+        return value
+    trimmed = value.strip()
+    if not trimmed:
+        return None
+    try:
+        ZoneInfo(trimmed)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ValueError(
+            f"Unknown timezone {trimmed!r}. Use an IANA name such as "
+            "'America/Denver'."
+        ) from exc
+    return trimmed
+
+
 class BookingIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     start_time: datetime
@@ -74,6 +112,10 @@ class BookingIn(BaseModel):
     # Defaults to the office timezone (AgentSettings) when omitted, so visits are
     # stored + displayed in the office's local tz rather than UTC.
     timezone: str | None = Field(default=None, max_length=50)
+
+    _tz = field_validator("timezone", mode="before")(
+        classmethod(lambda cls, v: _valid_timezone(v))
+    )
 
 
 class VisitOut(BaseModel):
@@ -117,6 +159,32 @@ class ManualEventIn(BaseModel):
     property_id: int | None = None
     lead_id: int | None = None
     timezone: str | None = Field(default=None, max_length=50)
+
+    _tz = field_validator("timezone", mode="before")(
+        classmethod(lambda cls, v: _valid_timezone(v))
+    )
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def _trim_title(cls, value: object) -> object:
+        """`min_length=1` judged the raw string, so a title of spaces passed and
+        the event showed up blank in the diary. Trimmed first, then measured."""
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("notes", "property_address", mode="before")
+    @classmethod
+    def _trim_optional(cls, value: object) -> object:
+        """Nullable columns: blank means absent, so store NULL rather than "".
+
+        Split from `_trim_title` on purpose, and the split is the same rule as
+        `settings.py`: trim-only for a column that refuses NULL, trim-or-clear
+        for one that does not. Lumping all three together stored an empty
+        string where the schema says "no notes", so `notes IS NULL` and
+        `notes = ''` both had to be checked to ask one question.
+        """
+        if not isinstance(value, str):
+            return value
+        return value.strip() or None
 
 
 class CalendarItemOut(BaseModel):
@@ -264,8 +332,21 @@ def _resolve_wall_clock(when: datetime, tz: str) -> datetime:
         return when
     try:
         zone = ZoneInfo(tz)
-    except (ZoneInfoNotFoundError, ValueError):
-        return when.replace(tzinfo=UTC)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        # NOT a fallback to UTC. That is what turned an unrecognised zone into
+        # a six-hour error in Denver, stored with a 201 and no complaint —
+        # exactly the "same 10:00, two different instants" this function was
+        # written to end. The schemas now refuse a bad zone from the caller, so
+        # reaching here means the ORGANISATION's configured timezone is
+        # unusable, and saying so is the only answer that does not invent a
+        # time for somebody's appointment.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"The configured timezone {tz!r} is not a known IANA zone, so "
+                "this time cannot be resolved. Fix it in Settings."
+            ),
+        ) from exc
 
     resolved = when.replace(tzinfo=zone).astimezone(UTC)
     # `replace(tzinfo=...)` is not DST-aware and never raises for it, so the
