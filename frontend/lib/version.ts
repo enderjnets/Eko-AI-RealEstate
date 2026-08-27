@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.56.0";
+export const CURRENT_VERSION = "0.57.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.57.0",
+    date: "2026-08-27",
+    title: {
+      en: "Your markets on the public page, and backups that were never there",
+      es: "Sus mercados en la p\u00e1gina p\u00fablica, y copias de seguridad que no exist\u00edan",
+    },
+    changes: [
+      {
+        en: "Your public page now shows the three markets you actually work \u2014 Aspen & Snowmass, the Roaring Fork Valley and the Denver metro \u2014 each with a photograph. It was the one part of the design that had never been built, and it is the part that answers the question someone arriving from a video is asking: do these people work where I am?",
+        es: "Su p\u00e1gina p\u00fablica muestra ya los tres mercados en los que trabajan \u2014 Aspen y Snowmass, el Roaring Fork Valley y el \u00e1rea metropolitana de Denver \u2014 cada uno con su fotograf\u00eda. Era la \u00fanica parte del dise\u00f1o que nunca se hab\u00eda construido, y es la que responde a lo que se pregunta quien llega desde un v\u00eddeo: \u00bfestas personas trabajan donde yo estoy?",
+      },
+      {
+        en: "Your database is backed up every night, and the backup is copied to a second machine. Until today there was none of any kind \u2014 not one copy of your leads or your conversations anywhere. Each backup is checked by actually restoring it and counting what comes back, because a file that has never been read back is a hope, not a backup.",
+        es: "Su base de datos se respalda cada noche, y la copia se lleva a una segunda m\u00e1quina. Hasta hoy no hab\u00eda ninguna \u2014 ni una sola copia de sus leads ni de sus conversaciones en ning\u00fan sitio. Cada copia se comprueba restaur\u00e1ndola de verdad y contando lo que vuelve, porque un fichero que nadie ha le\u00eddo nunca es una esperanza, no un respaldo.",
+      },
+      {
+        en: "Sending text messages can now use a dedicated key instead of your master Twilio password. They used to be the same value, so one leak would have handed over both the ability to send messages at your expense and the ability to forge incoming ones. They are separate now, and either can be replaced without disturbing the other.",
+        es: "El env\u00edo de mensajes de texto puede usar ya una clave dedicada en vez de la contrase\u00f1a maestra de su cuenta de Twilio. Antes eran el mismo valor, as\u00ed que una sola filtraci\u00f3n entregaba a la vez la capacidad de enviar mensajes a su costa y la de falsificar los entrantes. Ahora est\u00e1n separados, y cualquiera de los dos se puede sustituir sin tocar el otro.",
+      },
+    ],
+  },
   {
     version: "0.56.0",
     date: "2026-08-26",

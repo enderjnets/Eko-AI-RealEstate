@@ -2,6 +2,54 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.57.0] — 2026-08-27
+
+### Añadido — copias de seguridad, que no existían
+
+- Ni el ROG antes ni el VPS después tenían copia de la base de datos. Timeshift
+  **nunca** cubrió los volúmenes de Docker: `/var/lib/docker/*` es una regla
+  **built-in** del `exclude.list` de cada snapshot que `timeshift.json` no puede
+  anular. 38 leads y 72 mensajes de clientes reales, sin una sola copia.
+- `deploy/backup-db.sh` (VPS, 04:15 UTC) y `deploy/backup-pull.sh` (ROG, 04:45).
+  **El ROG tira, el VPS no empuja**: un push exigiría credenciales en el VPS
+  capaces de borrar el propio almacén de copias.
+- Dos guardas antes de rotar, verificadas por separado. Y el hallazgo dentro del
+  hallazgo: restaurar en un clúster limpio daba **36 errores, todos
+  `role "eko_app" does not exist`** — el dump lleva las 49 entradas POLICY/ACL
+  pero `pg_dump` es de base y los roles son de clúster. Sin ellos la
+  restauración devuelve todas las filas y **ninguna seguridad**, con
+  `pg_restore` saliendo con código 0. Se dumpean también los roles.
+
+### Añadido — la sección de mercados de la página pública
+
+- Las tres tarjetas con foto (Aspen y Snowmass, Roaring Fork Valley, Denver
+  Metro): la única parte del diseño v4 que nunca se construyó. Imágenes servidas
+  desde `public/landing/`, no desde la CDN de la herramienta de diseño.
+
+### Cambiado — la credencial de envío ya no es la que valida las firmas
+
+- `TWILIO_AUTH_TOKEN` autenticaba lo que enviamos **y** validaba la firma de lo
+  que recibimos. Una fuga entregaba las dos cosas y rotarlo rompía las dos
+  mitades. Ahora el envío usa una API Key (`TWILIO_API_KEY_SID` +
+  `TWILIO_API_KEY_SECRET`) y el auth token se queda **solo** para la firma, que
+  es lo único que Twilio no permite hacer de otra forma. Con las dos vacías no
+  cambia nada.
+
+### Añadido — enrutado por nombre de host, inerte hasta que exista el dominio
+
+- `middleware.ts` + canónicas + `robots: index:false` por defecto, para que
+  `www.denverhomestory.com` sirva la marca y `realtors.ekoaiautomation.com` el
+  panel. **No es un `robots.txt`**: Cloudflare antepone su `Allow: /` y Google
+  se queda con la regla menos restrictiva.
+- Todo desactivado mientras `NEXT_PUBLIC_BRAND_URL`/`PANEL_URL` estén vacías.
+
+### Corregido
+
+- `.gitignore` ignoraba los secretos **por nombre**; los respaldos de `.env`
+  vuelven siempre con otro nombre. Ahora por forma (`.env.*` + `!.env.example`).
+  Nunca se commiteó un valor real, verificado en los 8 commits que tocan la
+  cadena.
+
 ## [0.56.0] — 2026-08-26
 
 ### Añadido — el filtro Fair Housing llega al carril que habla con leads
