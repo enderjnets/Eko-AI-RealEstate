@@ -77,6 +77,27 @@ pida: convierte nuestro backend en **dependencia de las llamadas entrantes**
 despliegue que ahora mismo no está autorizado. Peor fiabilidad para ahorrar dos
 minutos de consola.
 
+### Hallazgo: el plan estaba desfasado sobre el enrutado por host
+
+Al ir a construir la pieza siguiente resultó que **ya estaba construida**
+(`7d2e35e`): `middleware.ts`, `lib/hosts.ts`, `robots` y canónicas
+condicionales, y `hostRouting.test.ts`. El plan la listaba como pendiente. Se
+corrigió el plan en vez de volver a escribirla.
+
+Checklist verificado hoy sobre ese trabajo (frontend, que es lo único que toca):
+
+| Punto | Resultado real |
+|---|---|
+| Tests | **142/142** en verde, 10 ficheros, sin saltados (`npx vitest run`) |
+| Typecheck | `npx tsc --noEmit` **sin salida** = sin errores |
+| Build | `npx next build` **compila**; el middleware entra en el bundle (26,7 kB) |
+| Secretos en el diff | 0 (solo `PROJECT_STATUS.md` en esta rama) |
+| Backend | **no se re-corre**: esta rama no toca `backend/`; su suite ya se verificó al desplegar v0.60.0 |
+
+⚠️ **Trampa para el día del despliegue**: `NEXT_PUBLIC_BRAND_URL` y
+`NEXT_PUBLIC_PANEL_URL` son **build args** (`docker-compose.yml:295-296`).
+Ponerlas y hacer `up -d` no hace nada: **hay que reconstruir el frontend**.
+
 ### Decisiones tomadas y por qué
 
 - **Reenvío TwiML en vez de importar el número a VAPI.** Importar exige
