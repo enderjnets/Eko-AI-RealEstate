@@ -620,7 +620,11 @@ async def cancel_visit(
     from app.services.followups import _lead_language  # single source of truth
     from app.services.visit_invite import send_visit_invitation
 
-    lead = visit.lead  # lazy="joined"; None for a manual calendar event
+    # `visit.lead` is `lazy="joined"` and the `db.refresh(visit)` above is what
+    # keeps it loaded — measured on SQLAlchemy 2.0.34: without that refresh this
+    # access raises MissingGreenlet, because a lazy load cannot do IO here.
+    # Removing the refresh as "redundant" would break the notice at runtime.
+    lead = visit.lead  # None for a manual calendar event
     try:
         language = await _lead_language(lead, db) if lead is not None else "en"
     except Exception:  # noqa: BLE001 — a language guess must not cost the notice

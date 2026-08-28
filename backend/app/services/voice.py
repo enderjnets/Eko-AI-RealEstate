@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services._common import clip_identifier
+from app.services.lead_fields import storable_text
 from app.services.timezones import resolve_zone
 
 log = logging.getLogger(__name__)
@@ -414,8 +415,24 @@ async def handle_tool_call(
             # nothing here can see.
             booking = await ensure_recordable(booking)
 
+            # The name the caller gave, on the appointment — not on the lead.
+            #
+            # A lead is keyed by phone number and keeps the first name anyone
+            # ever gave for it (`_resolve_or_create_lead`, and the same rule in
+            # every other channel). That is right: a realtor can correct a name
+            # by hand, and voice transcription is unreliable enough to undo it —
+            # the call that exposed this heard "Enter Ocando" for "Ender
+            # Ocando". But it left the owner looking at his own booking filed
+            # under a stranger's name from a months-old test.
+            #
+            # So the STATED name lands on the visit, where a bad transcription
+            # costs one appointment instead of corrupting an identity. The
+            # calendar already prefers it: `_visit_item` renders
+            # `v.title or lead_name or "Visit"`.
+            stated_name = storable_text(caller_name, "name")
             visit = Visit(
                 lead_id=lead.id,
+                title=stated_name if stated_name and stated_name != lead.name else None,
                 calendar_provider="calcom",
                 external_booking_id=booking.external_booking_id,
                 status=VisitStatus.SCHEDULED,
