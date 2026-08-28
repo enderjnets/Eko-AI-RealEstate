@@ -56,6 +56,26 @@ if printf '%s' "$RESP" | grep -q '"success":true'; then
 else
   echo "RECHAZADO: Cloudflare no lo acepta. No se ha tocado nada." >&2
   printf '%s' "$RESP" | sed -n 's/.*"message":"\([^"]*\)".*/  motivo: \1/p' >&2
+  printf '%s' "$RESP" | sed -n 's/.*"code":\([0-9]*\).*/  codigo: \1/p' >&2
+  # Diagnóstico por FORMA, nunca por valor: longitud y clase de caracteres, que
+  # es exactamente lo que este script ya imprime cuando el token SÍ vale.
+  #
+  # "Invalid API Token" sobre una cadena bien formada casi nunca es un token
+  # caducado. El fallo real es que la lista de API Tokens muestra el ID del
+  # token —32 hex, que pasa cualquier comprobación de forma— y el VALOR solo se
+  # enseña una vez, al crearlo. Sin esta pista, el segundo intento repite el
+  # primero: por eso el diagnóstico vive aquí y no en la cabeza de quien lo usa.
+  echo "  longitud de lo tecleado: ${#TOKEN} caracteres" >&2
+  if printf '%s' "$TOKEN" | grep -Eq '^[0-9a-f]{32}$'; then
+    echo "  --> ESO ES EL ID DEL TOKEN, NO EL TOKEN." >&2
+    echo "      32 caracteres hex es lo unico que enseña la LISTA de tokens." >&2
+    echo "      El valor real son ~40 caracteres y solo se ve al crearlo:" >&2
+    echo "      entra en ese token y pulsa 'Roll' para que te enseñe uno nuevo." >&2
+  elif printf '%s' "$TOKEN" | grep -Eq '^[0-9a-f]{37}$'; then
+    echo "  --> ESO PARECE LA GLOBAL API KEY, NO UN TOKEN acotado." >&2
+    echo "      La clave global no sirve aqui: crea un token con Zone:Read +" >&2
+    echo "      DNS:Edit limitado a denverhomestory.com." >&2
+  fi
   unset TOKEN; exit 1
 fi
 

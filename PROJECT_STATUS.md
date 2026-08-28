@@ -30,7 +30,7 @@ para no declarar verde nada por inspección.
 | Zona en Cloudflare | **ya existe y ya responde** desde `arely.ns.cloudflare.com` |
 | Contenido real de la zona | `A @` (aparcamiento), `CNAME www`→apex, `CNAME _domainconnect`, `TXT _dmarc` de GoDaddy. **Sin MX, sin SPF, sin CAA** |
 | Riesgo del cambio de NS | **bajo**: no hay correo que romper |
-| ¿Cloudflare copió el `_dmarc`? | **No** → tras el cambio el dominio queda sin DMARC |
+| ¿Cloudflare copió el `_dmarc`? | ✅ **SÍ — mi apunte anterior era FALSO.** Cotejado el 27-ago 19:40 registro a registro contra los dos autoritativos: `A @`, `A/CNAME www` y `TXT _dmarc` **idénticos** en GoDaddy y Cloudflare. **No se pierde nada en la mudanza.** Sigue sin haber SPF en ninguno de los dos |
 | Números en Twilio | uno solo, `+17205946249` (sid `PNc42972…`) |
 | Su `voice_url` | ngrok muerto → error 11200. Su `sms_url` es correcto |
 | VAPI | `+17208249313` **activo**, asistente «Eko AI Realtors» `5d975722` |
@@ -60,6 +60,20 @@ Fotografía DNS completa guardada como línea base para el cotejo posterior.
    seguían devolviendo la clave vieja**. Google es anycast y cada nodo tiene su
    propia caché. El criterio de luz verde es **0 de 20**, no «una consulta
    salió vacía».
+1.c **REMEDIDO el 27-ago a las 19:39 MDT — sigue sin poder moverse, y ahora
+   sé exactamente hasta cuándo.** RDAP de Verisign: `delegationSigned: **false**`
+   y `last changed` **2026-08-27T23:05:06Z** — el borrado del DS entró a las
+   **17:05 MDT**. Los 4 servidores de `.com` consultados (a, b, l, m) devuelven
+   **0** DS. Resolutores públicos, 20 consultas cada uno: **1.1.1.1 → 0/20 ✅**,
+   **9.9.9.9 → 0/20 ✅**, **8.8.8.8 → 3/20 todavía sucio**, con **11.856 s** de
+   TTL por delante. Caché limpia a partir de las **23:05 MDT**.
+   🔴 **Y la espera es obligatoria, no cautela — lo comprobé:** la zona de
+   GoDaddy **sigue firmada** (`DNSKEY` vivo en `ns67`), así que esos 3 nodos
+   funcionan bien HOY porque la firma que esperan existe: **20 de 20 consultas
+   del registro `A` devuelven `NOERROR`, cero SERVFAIL**. En cuanto los NS
+   apunten a Cloudflare —que sirve la zona **sin firmar**— esos nodos dejarían
+   de resolver el dominio entero. El SERVFAIL lo crearía el cambio, no existe ya.
+
 1.b **Apagar el «Domain Lock»** antes de tocar los nameservers, y volver a
    encenderlo después. RDAP dice `clientUpdateProhibited`: con el candado
    puesto, GoDaddy rechaza el cambio. (El bloqueo ICANN de 60 días por ser un
@@ -72,7 +86,23 @@ Fotografía DNS completa guardada como línea base para el cotejo posterior.
    minuto y una pieza más para llegar al mismo sitio. **Este bloqueo ya no
    existe.**
 3. *(opcional)* El token de Cloudflare acotado a esa zona, para que yo haga
-   SPF/DMARC y luego el correo. **El de GoDaddy no lo recomiendo**: no puede
+   SPF/DMARC y luego el correo.
+   🔴 **Primer intento RECHAZADO (27-ago, 19:45).** `set-cloudflare-token.sh`
+   hizo su trabajo: preguntó a Cloudflare antes de guardar nada y no guardó
+   nada. Pero su mensaje no bastaba para saber qué había fallado, así que el
+   segundo intento habría repetido el primero a ciegas.
+   **Mi primera hipótesis era que había copiado el ID del token en vez del
+   valor, y la descarté midiendo, no razonando:** alimenté al script con las
+   tres formas y Cloudflare las distingue con códigos distintos — 32 hex (el ID)
+   y 37 hex (la Global API Key) dan **6111 «Invalid format for Authorization
+   header»**; solo una cadena BIEN formada da **1000 «Invalid API Token»**, que
+   es exactamente lo que salió. Conclusión: la forma era correcta y el valor no
+   es el que Cloudflare tiene — pegado a medias, tecleado a mano, o el token
+   se creó/rodó después de copiarlo.
+   El script ahora imprime el **código** de Cloudflare, la **longitud** de lo
+   tecleado y nombra las dos confusiones clásicas — todo **por forma, jamás por
+   valor**, que es lo que ya hacía en la rama de éxito. Los tres casos
+   verificados contra la API real; con el token válido no cambia nada. **El de GoDaddy no lo recomiendo**: no puede
    hacer lo único que hace falta, y tras el cambio GoDaddy solo es registrador.
 
 ### Bloqueo, diagnóstico y las dos salidas
