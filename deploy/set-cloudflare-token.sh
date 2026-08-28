@@ -12,10 +12,17 @@
 # aplicación no necesita este token, es una credencial de operación. Vive en
 # ~/.eko-cloudflare.env con permisos 600, como ~/.eko-heartbeat.env.
 #
-# La comprobación de que el token sirve NO es su forma: es la respuesta del
-# propio Cloudflare a /user/tokens/verify. Un token con la forma correcta y los
+# La comprobación de que el token sirve NO es su forma: es que Cloudflare le
+# deje LEER la zona denverhomestory.com. Un token con la forma correcta y los
 # permisos equivocados pasa cualquier expresión regular y falla en el primer
 # uso real.
+#
+# Este script comprobaba antes contra /user/tokens/verify, y eso era un error
+# de medida con consecuencias: ese endpoint solo acepta tokens de USUARIO, y
+# devuelve 1000 "Invalid API Token" ante un token account-owned perfectamente
+# válido. Rechazó dos veces un token bueno del dueño y le echó la culpa a él.
+# La regla que queda: verifica la capacidad que vas a usar, no la existencia de
+# la credencial.
 set -euo pipefail
 
 DEST="$HOME/.eko-cloudflare.env"
@@ -38,49 +45,70 @@ if ! printf '%s' "$TOKEN" | grep -Eq '^[A-Za-z0-9_-]{30,60}$'; then
 fi
 
 echo "Preguntando a Cloudflare si el token vale…"
+
+# La pregunta correcta NO es "¿existe este token?", es "¿puede hacer el
+# trabajo?". Se comprueba LEYENDO la zona que vamos a editar. Tres razones, y
+# la segunda es una avería que este script ya provocó:
+#
+#  1. Zone:Read sobre denverhomestory.com es exactamente la capacidad que hace
+#     falta. Probarla es mejor que probar un proxy de ella.
+#  2. `/user/tokens/verify` SOLO sirve para tokens de USUARIO. Un token
+#     "account-owned" (Manage Account → Account API Tokens) es perfectamente
+#     válido y ese endpoint lo rechaza con **1000 "Invalid API Token"** — es
+#     decir, el instrumento declaraba malo un token bueno, que es el peor tipo
+#     de error de medida: el que culpa a quien lo usa.
+#  3. De paso devuelve el zone id, que hace falta para escribir el DNS después.
+ZONE_NAME="denverhomestory.com"
+
 RESP="$(curl -s --max-time 20 \
-  "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+  "https://api.cloudflare.com/client/v4/zones?name=${ZONE_NAME}" \
   -H "Authorization: Bearer ${TOKEN}")" || {
     echo "RECHAZADO: no se pudo hablar con Cloudflare. No se ha tocado nada." >&2
     unset TOKEN; exit 1; }
 
-# Solo se imprime el veredicto y el estado. Nunca el token, nunca la respuesta
-# entera (que lleva el id del token).
-if printf '%s' "$RESP" | grep -q '"success":true'; then
-  STATUS="$(printf '%s' "$RESP" | sed -n 's/.*"status":"\([a-z]*\)".*/\1/p')"
-  echo "  Cloudflare responde: success, status=${STATUS:-desconocido}"
-  if [ "${STATUS:-}" != "active" ]; then
-    echo "RECHAZADO: el token existe pero no está activo. No se ha tocado nada." >&2
-    unset TOKEN; exit 1
-  fi
+OK="$(printf '%s' "$RESP" | jq -r '.success // false' 2>/dev/null || echo false)"
+ZONE_ID="$(printf '%s' "$RESP" | jq -r '.result[0].id // empty' 2>/dev/null || true)"
+ZONE_STATUS="$(printf '%s' "$RESP" | jq -r '.result[0].status // empty' 2>/dev/null || true)"
+
+if [ "$OK" = "true" ] && [ -n "$ZONE_ID" ]; then
+  echo "  Cloudflare responde: success — el token LEE la zona ${ZONE_NAME}."
+  echo "  Estado de la zona: ${ZONE_STATUS:-desconocido}"
 else
-  echo "RECHAZADO: Cloudflare no lo acepta. No se ha tocado nada." >&2
-  printf '%s' "$RESP" | sed -n 's/.*"message":"\([^"]*\)".*/  motivo: \1/p' >&2
-  printf '%s' "$RESP" | sed -n 's/.*"code":\([0-9]*\).*/  codigo: \1/p' >&2
-  # Diagnóstico por FORMA, nunca por valor: longitud y clase de caracteres, que
-  # es exactamente lo que este script ya imprime cuando el token SÍ vale.
-  #
-  # "Invalid API Token" sobre una cadena bien formada casi nunca es un token
-  # caducado. El fallo real es que la lista de API Tokens muestra el ID del
-  # token —32 hex, que pasa cualquier comprobación de forma— y el VALOR solo se
-  # enseña una vez, al crearlo. Sin esta pista, el segundo intento repite el
-  # primero: por eso el diagnóstico vive aquí y no en la cabeza de quien lo usa.
-  echo "  longitud de lo tecleado: ${#TOKEN} caracteres" >&2
-  if printf '%s' "$TOKEN" | grep -Eq '^[0-9a-f]{32}$'; then
-    echo "  --> ESO ES EL ID DEL TOKEN, NO EL TOKEN." >&2
-    echo "      32 caracteres hex es lo unico que enseña la LISTA de tokens." >&2
-    echo "      El valor real son ~40 caracteres y solo se ve al crearlo:" >&2
-    echo "      entra en ese token y pulsa 'Roll' para que te enseñe uno nuevo." >&2
-  elif printf '%s' "$TOKEN" | grep -Eq '^[0-9a-f]{37}$'; then
-    echo "  --> ESO PARECE LA GLOBAL API KEY, NO UN TOKEN acotado." >&2
-    echo "      La clave global no sirve aqui: crea un token con Zone:Read +" >&2
-    echo "      DNS:Edit limitado a denverhomestory.com." >&2
+  echo "RECHAZADO: el token no sirve para esta zona. No se ha tocado nada." >&2
+
+  if [ "$OK" = "true" ]; then
+    # Existe y responde, pero no ve la zona: el fallo está en el ÁMBITO.
+    echo "  El token es válido, pero NO alcanza ${ZONE_NAME}." >&2
+    echo "  Revisa en el token: Zone Resources → Include → Specific zone →" >&2
+    echo "  ${ZONE_NAME}, y el permiso Zone:Read (además de DNS:Edit)." >&2
+    echo "  Si lo creaste en otra cuenta de Cloudflare, tampoco la verá." >&2
+  else
+    printf '%s' "$RESP" | jq -r '.errors[]? | "  error \(.code): \(.message)"' >&2 2>/dev/null || \
+      echo "  (Cloudflare no devolvió un error legible)" >&2
+    # Diagnóstico por FORMA, nunca por valor.
+    echo "  longitud de lo tecleado: ${#TOKEN} caracteres" >&2
+    if printf '%s' "$TOKEN" | grep -q '^cfut_'; then
+      echo "  La forma es la del token NUEVO de Cloudflare (prefijo 'cfut_')," >&2
+      echo "  así que el problema no es de dónde lo copiaste: o se rodó/borró" >&2
+      echo "  después, o el valor llegó incompleto. Pulsa 'Roll' y repite." >&2
+    elif printf '%s' "$TOKEN" | grep -Eq '^[0-9a-f]{32}$'; then
+      echo "  --> ESO ES EL ID DEL TOKEN, NO EL TOKEN." >&2
+      echo "      32 hex es lo único que enseña la LISTA de tokens; el valor" >&2
+      echo "      solo se ve al crearlo. Pulsa 'Roll' para que te enseñe uno." >&2
+    elif printf '%s' "$TOKEN" | grep -Eq '^[0-9a-f]{37}$'; then
+      echo "  --> ESO PARECE LA GLOBAL API KEY, NO UN TOKEN acotado." >&2
+      echo "      Crea un token con Zone:Read + DNS:Edit sobre ${ZONE_NAME}." >&2
+    fi
   fi
   unset TOKEN; exit 1
 fi
 
 umask 077
-printf 'CLOUDFLARE_API_TOKEN=%s\n' "$TOKEN" > "$DEST"
+{
+  printf 'CLOUDFLARE_API_TOKEN=%s\n' "$TOKEN"
+  # El zone id NO es un secreto; se guarda para no volver a preguntarlo.
+  printf 'CLOUDFLARE_ZONE_ID=%s\n' "$ZONE_ID"
+} > "$DEST"
 chmod 600 "$DEST"
 unset TOKEN
 

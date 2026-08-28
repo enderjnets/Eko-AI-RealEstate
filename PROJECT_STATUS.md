@@ -99,10 +99,27 @@ Fotografía DNS completa guardada como línea base para el cotejo posterior.
    es exactamente lo que salió. Conclusión: la forma era correcta y el valor no
    es el que Cloudflare tiene — pegado a medias, tecleado a mano, o el token
    se creó/rodó después de copiarlo.
-   El script ahora imprime el **código** de Cloudflare, la **longitud** de lo
-   tecleado y nombra las dos confusiones clásicas — todo **por forma, jamás por
-   valor**, que es lo que ya hacía en la rama de éxito. Los tres casos
-   verificados contra la API real; con el token válido no cambia nada. **El de GoDaddy no lo recomiendo**: no puede
+   🔴 **SEGUNDO RECHAZO, y el fallo era MÍO: el instrumento estaba roto.**
+   La longitud que imprimió el script nuevo lo destapó: **53 caracteres**. Un
+   token de usuario tiene ~40; **53 es la longitud de un token account-owned**
+   (Manage Account → Account API Tokens). Y `/user/tokens/verify` —lo que este
+   script preguntaba— **solo acepta tokens de USUARIO**: ante un token
+   account-owned válido devuelve exactamente **1000 «Invalid API Token»**.
+   Documentado en tres proyectos independientes que se comieron el mismo bug
+   (`lablabs/cloudflare-exporter#200`, `favonia/cloudflare-ddns#1197`,
+   `noorinalabs-deploy#511`). **El token del dueño estaba bien las dos veces;
+   mi comprobación decía lo contrario y le echaba la culpa a él.**
+   **Arreglo**: la verificación ya no pregunta «¿existe este token?» sino
+   «¿puede hacer el trabajo?» — `GET /zones?name=denverhomestory.com`. Es la
+   capacidad que de verdad necesitamos (Zone:Read), funciona con los dos tipos
+   de token, distingue «token no reconocido» de «token válido con el ámbito
+   mal», y de paso guarda el `CLOUDFLARE_ZONE_ID` para las ediciones de DNS.
+   Un token falso ahora da **9109 «Invalid access token»**, no el 1000 falso.
+   Sigue imprimiendo código, longitud y las confusiones de forma — **por forma,
+   jamás por valor**. Verificado contra la API real en los tres casos.
+   **Lección**: verifica la capacidad que vas a usar, no la existencia de la
+   credencial. Un instrumento que culpa al usuario merece que se dude de él
+   antes que de él. **El de GoDaddy no lo recomiendo**: no puede
    hacer lo único que hace falta, y tras el cambio GoDaddy solo es registrador.
 
 ### Bloqueo, diagnóstico y las dos salidas
