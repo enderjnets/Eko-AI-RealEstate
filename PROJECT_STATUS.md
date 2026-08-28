@@ -204,6 +204,47 @@ así que `host..` se colaba igual. Ambos corregidos con test propio.
   configurado. Y la guarda deja de comprobar las URLs: `hostOf("") === ""`, así
   que esas cláusulas eran código muerto con forma de comprobación.
 
+## 🚀 DESPLIEGUE PREPARADO — v0.62.0 (esperando autorización)
+
+Producción: VPS `ender-vps`, **v0.61.0**. **Migraciones: NINGUNA**
+(`044_message_internal` sigue siendo la cabeza). Sin variables de entorno
+nuevas. Es backend + frontend, sin cambios de esquema ni de configuración.
+
+### Antes de empezar
+- `curl -s https://inmo-demo.ekoaiautomation.com/api/v1/health` → debe decir
+  **`0.61.0`**. Si ya dice 0.62.0, alguien se adelantó: parar.
+- Confirmar que la visita **257** sigue `scheduled` (es la que se va a cancelar
+  después, y es el motivo de esta tanda).
+
+### Pasos, en este orden
+1. Bundle desde el Mac → `scp` al VPS → `git fetch` + checkout de **`7d591e4`**
+   (el VPS no puede clonar de GitHub).
+2. `docker compose build backend frontend`.
+3. `docker compose up -d backend frontend`. **No hay `alembic upgrade`**: nada
+   que migrar.
+
+### Verificación post-deploy, medida y no «debería»
+- `/api/v1/health` por el **dominio público** → `0.62.0`.
+- Abrir la conversación de voz del lead 213 en el panel: los turnos deben
+  leerse **en orden**, con el saludo primero (hoy salen revueltos).
+- `POST /api/v1/public/leads` con cuerpo vacío → **422**, nunca 3xx.
+- `zorros-*` y `blackvolt-*` arriba.
+
+### Y SOLO ENTONCES, la limpieza que motivó todo esto
+Cancelar la visita **257** por el camino arreglado → Natalia recibe un `.ics`
+`METHOD:CANCEL` con el mismo UID y `SEQUENCE:1`, que **le retira la cita del
+calendario**. ⚠️ Ese correo a su dirección es la **excepción deliberada** a la
+norma de no enviarle pruebas: no es una prueba, es retirarle la cita falsa que
+la prueba ya le puso. **Confirmar con el dueño justo antes.** Después: la visita
+en `CANCELLED`, dos filas nuevas con `external_id` real, y los **3 seguimientos**
+muertos (`followups.py:201` ya lo garantiza — comprobarlo, no suponerlo).
+
+### Reversión
+- Checkout de **`1f471f3`** (v0.61.0) + `build` + `up -d`. Sin migraciones que
+  revertir y sin variables que restaurar.
+- La cancelación de la 257, una vez hecha, **no se deshace**: habría que crear
+  una visita nueva. Por eso va la última y con confirmación.
+
 ## ✅ FASE CERRADA — El orden del expediente y el nombre de la cita · `cc7e842`
 
 Rama `feat/orden-y-nombre-de-la-cita`.
