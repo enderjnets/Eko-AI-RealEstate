@@ -13,6 +13,38 @@ de casa (ROG) al VPS, donde ya viven Zorros y Black Volt.
 
 ---
 
+## ✅ v0.63.1 — CALENDARIO REAL ENCENDIDO (28-ago-2026, ~00:55 MDT)
+
+El dueño reportó «My availability no está disponible» — la página decía la
+verdad (modo simulado). Antes de girar el interruptor se desactivaron **tres
+minas**, cada una con su test y su mutación roja:
+
+1. **Cal.com escribía al cliente en español** — `"language": "es"` cableado en
+   el attendee. Test sobre el **cuerpo real** enviado, no sobre el fuente.
+2. **Abrir la página podía vaciar la oferta**: aprovisionar crea una agenda
+   VACÍA, y una fila activa de nacimiento haría que `pick_agent` la prefiriese
+   al event type de la agencia → el asistente ofrecería CERO horas porque
+   alguien miró una página. Las filas nacen **apagadas**.
+3. **Guardar horas ES el interruptor** — guardar activa, vaciar apaga.
+
+**Verificado contra el mundo real, no «debería»:**
+| Prueba | Resultado |
+|---|---|
+| health público | `0.63.1` · `CALENDAR_SIMULATED=false` DENTRO del contenedor |
+| Huecos reales | el código de producción devolvió **20 huecos de Cal.com** (09:00, 09:45, 10:30… America/Denver) |
+| Aprovisionado real | el primer intento se comió un **500 de Cal.com** en la 3ª agenda → 502 claro, parcial conservado; el **reintento reanudó**: 200, 4 actividades configuradas, **0 duplicados, todas inactivas** |
+| Suite | **1216 backend** desde base recreada · 153 frontend · ruff/tsc limpios |
+
+⚠️ **Consecuencia viva**: las reservas de Clara son ahora REALES en Cal.com
+(confirmaciones al cliente **en inglés**). Los conflictos se leen solo del
+calendario `denverhomestory@gmail.com` hasta que Natalia comparta el suyo — la
+doble reserva de Natalia sigue posible y documentada.
+
+**Lección de instrumentación (a memoria):** el restore por `cp` del arnés de
+mutación cayó en el mismo **segundo** que el `.pyc` mutado; CPython validó el
+bytecode por mtime y ejecutó `"es"` con el fuente ya en `"en"`. Purga de
+`__pycache__` + `PYTHONDONTWRITEBYTECODE=1` en arneses desde ahora.
+
 ## ✅ DESPLEGADO — v0.63.0 en producción (28-ago-2026, ~00:15 MDT)
 
 Autorización condicionada del dueño («deploy si se pasan todas las pruebas y
