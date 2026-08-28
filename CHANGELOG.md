@@ -2,6 +2,20 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.64.1] — 2026-08-28
+
+### Añadido — el motor de efectos del diseño v4
+
+- Portado el motor de `deploy-v4` de Claude Design (coreografía de scroll por
+  atributos `data-*`): la casa del héroe sube y escala con el scroll y su vídeo
+  se frota los primeros 30 % y luego corre libre; reveals con stagger; drift de
+  títulos; parallax del retrato y del panel; carril de mercados arrastrable.
+- `prefers-reduced-motion` deja la página estática correcta. NO se portó el
+  truco de mesas de trabajo fijas del diseño (la página es responsive real) ni
+  su CTA telefónico: el formulario real sigue siendo el punto de conversión.
+- Vídeo del héroe comprimido a 4,8 MB con keyframes densos (el frotado fija
+  `currentTime` constantemente).
+
 ## [0.64.0] — 2026-08-28
 
 ### Añadido — la landing de Denver Home Story

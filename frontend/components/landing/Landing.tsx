@@ -28,8 +28,9 @@
  */
 
 import Link from "next/link";
-import { Building2, CalendarCheck, Clock, Phone, Ruler, Users } from "lucide-react";
+import { ArrowDown, ArrowRight, Building2, CalendarCheck, Clock, Phone, Ruler, Users } from "lucide-react";
 import { LANDING, dialable } from "@/lib/landing";
+import { LandingEffects } from "@/components/landing/LandingEffects";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { ConsultForm } from "@/components/landing/ConsultForm";
@@ -105,10 +106,17 @@ function LandingNav() {
 function Hero() {
   const { t } = useI18n();
   return (
-    <section className="relative overflow-hidden bg-[linear-gradient(180deg,#A9BDD2_0%,#C7D0D6_26%,#E1DBD1_52%,#EFE3D0_74%,#E4D4BC_100%)]">
-      {/* The design's radial glow: it is what keeps the paragraph readable
-          where the composition lets it ride over the house. */}
-      <div className="relative z-10 flex flex-col items-center px-5 pb-[46vw] pt-28 text-center [background:radial-gradient(58%_66%_at_50%_44%,rgba(244,241,234,0.78)_0%,rgba(244,241,234,0.44)_54%,rgba(244,241,234,0)_80%)] sm:px-10 sm:pt-36 md:pb-[380px] lg:pt-40">
+    <section
+      data-rise-host="1"
+      className="relative h-[660px] overflow-hidden bg-[linear-gradient(180deg,#A9BDD2_0%,#C7D0D6_26%,#E1DBD1_52%,#EFE3D0_74%,#E4D4BC_100%)] md:h-[min(69.4vw,1000px)]"
+    >
+      {/* The design's radial glow keeps the copy readable where the
+          composition lets it ride over the house; data-fade-out lifts and
+          fades it as the hero scrolls away. */}
+      <div
+        data-fade-out="1"
+        className="absolute inset-x-0 top-[86px] z-[3] flex flex-col items-center px-5 text-center [background:radial-gradient(58%_66%_at_50%_44%,rgba(244,241,234,0.78)_0%,rgba(244,241,234,0.44)_54%,rgba(244,241,234,0)_80%)] sm:px-10 md:top-[150px]"
+      >
         <p className="mb-7 text-[10px] font-medium uppercase tracking-[0.32em] text-ln-ink/60">
           {t("landing.hero.kicker")}
         </p>
@@ -140,22 +148,32 @@ function Hero() {
         </div>
       </div>
 
-      {/* The house, rising into the composition from below. Poster-first: the
-          clip is an enhancement the page must never depend on. */}
-      <div className="absolute inset-x-0 bottom-0 z-0 h-[52vw] max-h-[560px] overflow-hidden [mask-image:radial-gradient(135%_108%_at_50%_100%,#000_70%,transparent_99%)]">
+      {/* The house, rising and scaling from the bottom as the page scrolls
+          (data-rise), its clip scrubbing with the scroll (data-hero-video).
+          Poster-first: without the mp4 or with JS off, the plate IS the hero. */}
+      <div
+        data-rise="0.86,1.22,-200"
+        className="absolute inset-x-0 bottom-[-40px] z-[2] h-[400px] origin-bottom overflow-hidden [mask-image:radial-gradient(135%_108%_at_50%_100%,#000_70%,transparent_99%)] md:bottom-[max(-4.2vw,-60px)] md:h-[min(54.2vw,780px)]"
+      >
         <video
+          data-hero-video="1"
           autoPlay
           muted
           loop
           playsInline
-          preload="metadata"
+          preload="auto"
           poster="/landing/hero-plate.jpg"
           className="h-full w-full object-cover [object-position:50%_42%]"
         >
           <source src="/landing/casa-hero.mp4" type="video/mp4" />
         </video>
       </div>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-b from-transparent via-ln-warm/30 to-ln-warm" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[3] h-28 bg-gradient-to-b from-transparent via-ln-warm/30 to-ln-warm" />
+
+      <div className="absolute bottom-6 left-5 z-[4] hidden items-center gap-2.5 text-[10px] uppercase tracking-[0.22em] text-ln-ink/55 sm:left-10 md:flex lg:left-14">
+        <ArrowDown className="h-[13px] w-[13px]" />
+        {t("landing.hero.scroll")}
+      </div>
     </section>
   );
 }
@@ -176,7 +194,7 @@ function TwoOfUs() {
   return (
     <section id="about" className="scroll-mt-10 bg-ln-canvas">
       <div className="grid lg:grid-cols-2">
-        <div className="flex flex-col justify-center px-5 py-16 sm:px-10 lg:px-14 lg:py-28">
+        <div data-reveal="up" data-drift="44" className="flex flex-col justify-center px-5 py-16 sm:px-10 lg:px-14 lg:py-28">
           <Eyebrow>{t("landing.two.eyebrow")}</Eyebrow>
           <div className="mt-7">
             <SplitTitle a={t("landing.two.titleA")} italic={t("landing.two.titleItalic")} />
@@ -201,17 +219,19 @@ function TwoOfUs() {
             ))}
           </ol>
         </div>
-        <div className="relative min-h-[420px] bg-ln-tint lg:min-h-[720px]">
-          {/* eslint-disable-next-line @next/next/no-img-element -- the page
-              uses plain <img> throughout: `sharp` is not installed, so
-              next/image would optimise nothing and only add a dependency. */}
-          <img
-            src="/landing/natalia-robbie.jpg"
-            alt={LANDING.advisors || ""}
-            loading="lazy"
-            decoding="async"
-            className="absolute inset-0 h-full w-full object-cover"
-          />
+        <div data-reveal="clip" className="relative min-h-[420px] overflow-hidden bg-ln-tint lg:min-h-[720px]">
+          <div data-parallax="0.14" className="absolute inset-0">
+            {/* eslint-disable-next-line @next/next/no-img-element -- the page
+                uses plain <img> throughout: `sharp` is not installed, so
+                next/image would optimise nothing and only add a dependency. */}
+            <img
+              src="/landing/natalia-robbie.jpg"
+              alt={LANDING.advisors || ""}
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          </div>
         </div>
       </div>
     </section>
@@ -229,7 +249,7 @@ function HowWeWork() {
   return (
     <section id="how" className="scroll-mt-10 bg-ln-stone">
       <div className="px-5 py-16 sm:px-10 lg:px-14 lg:py-28">
-        <div className="mb-14 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between lg:gap-16">
+        <div data-reveal="up" data-drift="34" className="mb-14 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between lg:gap-16">
           <div>
             <Eyebrow>{t("landing.how.eyebrow")}</Eyebrow>
             <div className="mt-6">
@@ -242,7 +262,7 @@ function HowWeWork() {
         </div>
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-11">
           {cards.map(({ Icon, title, body }) => (
-            <article key={title} className="border-t border-ln-line-strong pt-6">
+            <article key={title} data-reveal="up" className="border-t border-ln-line-strong pt-6">
               <Icon className="h-[22px] w-[22px] text-ln-gold" strokeWidth={1} />
               <h3 className="mb-3 mt-6 font-ln-serif text-[26px] leading-[1.2] text-ln-ink">
                 {title}
@@ -265,16 +285,34 @@ function Markets() {
   ];
   return (
     <section id="markets" className="scroll-mt-10 bg-ln-canvas">
-      <div className="px-5 py-16 sm:px-10 lg:px-14 lg:py-28">
-        <div className="mb-12">
-          <Eyebrow>{t("landing.markets.eyebrow")}</Eyebrow>
-          <div className="mt-6">
-            <SplitTitle a={t("landing.markets.titleA")} italic={t("landing.markets.titleItalic")} />
+      <div className="pt-16 lg:pt-28">
+        <div
+          data-reveal="up"
+          data-drift="34"
+          className="mb-12 flex items-end justify-between gap-8 px-5 sm:px-10 lg:px-14"
+        >
+          <div>
+            <Eyebrow>{t("landing.markets.eyebrow")}</Eyebrow>
+            <div className="mt-6">
+              <SplitTitle a={t("landing.markets.titleA")} italic={t("landing.markets.titleItalic")} />
+            </div>
+          </div>
+          <div className="hidden items-center gap-4 text-ln-muted md:flex">
+            <span className="whitespace-nowrap text-[10px] uppercase tracking-[0.22em]">
+              {t("landing.markets.drag")}
+            </span>
+            <ArrowRight className="h-4 w-4" />
           </div>
         </div>
-        <div className="grid gap-10 sm:grid-cols-3 sm:gap-5">
+        {/* The design's rail: horizontal, draggable (the engine wires the
+            grab), scrollbar hidden in globals.css. On a phone the native
+            swipe IS the rail. */}
+        <div
+          data-rail="1"
+          className="flex gap-5 overflow-x-auto overflow-y-hidden px-5 pb-16 sm:px-10 lg:px-14 lg:pb-28"
+        >
           {markets.map(({ key, src }, i) => (
-            <article key={key}>
+            <article key={key} data-reveal="up" className="w-[290px] flex-none sm:w-[400px]">
               <div className="overflow-hidden bg-ln-tint">
                 {/* eslint-disable-next-line @next/next/no-img-element -- see
                     the portrait note. The aspect-* class reserves the box, so
@@ -285,7 +323,7 @@ function Markets() {
                   alt=""
                   loading={i === 0 ? "eager" : "lazy"}
                   decoding="async"
-                  className="aspect-[3/4] w-full object-cover sm:aspect-[4/5]"
+                  className="aspect-[4/5] w-full object-cover"
                 />
               </div>
               <div className="mt-4 flex items-baseline justify-between gap-5 border-t border-ln-hair pt-4">
@@ -303,6 +341,11 @@ function Markets() {
               </div>
             </article>
           ))}
+          <div className="flex h-[363px] w-[150px] flex-none items-center justify-center border border-ln-hair sm:h-[500px]">
+            <span className="text-[10px] uppercase tracking-[0.22em] text-ln-faint">
+              {t("landing.markets.more")}
+            </span>
+          </div>
         </div>
       </div>
     </section>
@@ -313,16 +356,18 @@ function Consult() {
   const { t } = useI18n();
   return (
     <section id="consult" className="relative scroll-mt-10 overflow-hidden bg-ln-dark">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/landing/cta-bg.jpg"
-        alt=""
-        loading="lazy"
-        decoding="async"
-        className="absolute inset-0 h-full w-full object-cover"
-      />
+      <div data-parallax="0.24" className="absolute inset-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/landing/cta-bg.jpg"
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      </div>
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(20,18,14,0.88)_0%,rgba(20,18,14,0.76)_46%,rgba(20,18,14,0.6)_100%)]" />
-      <div className="relative grid items-center gap-14 px-5 py-20 sm:px-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:gap-24 lg:px-14 lg:py-32">
+      <div data-reveal="up" data-drift="30" className="relative grid items-center gap-14 px-5 py-20 sm:px-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:gap-24 lg:px-14 lg:py-32">
         <div>
           <h2 className="font-ln-serif text-[44px] font-light leading-none tracking-[-0.02em] text-ln-cream sm:text-[60px] lg:text-[76px]">
             {t("landing.consult.titleA")}
@@ -381,6 +426,7 @@ export function Landing() {
     // background: the app shell is dark, and without it the overscroll gutter
     // bounces black behind a cream page.
     <div className="eko-landing relative min-h-screen bg-ln-canvas font-ln-sans text-ln-ink antialiased">
+      <LandingEffects />
       <LandingNav />
       <main>
         <Hero />

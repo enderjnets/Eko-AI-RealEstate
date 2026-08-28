@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.64.0";
+export const CURRENT_VERSION = "0.64.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.64.1",
+    date: "2026-08-28",
+    title: {
+      en: "The landing moves",
+      es: "La landing se mueve",
+    },
+    changes: [
+      {
+        en: "The public page gained the design's scroll choreography: the house rises and its film scrubs as you scroll, sections reveal as they enter, and the three markets became a draggable rail.",
+        es: "La p\u00e1gina p\u00fablica gan\u00f3 la coreograf\u00eda del dise\u00f1o: la casa sube y su v\u00eddeo avanza con el scroll, las secciones aparecen al entrar, y los tres mercados son un carril arrastrable.",
+      },
+    ],
+  },
   {
     version: "0.64.0",
     date: "2026-08-28",
