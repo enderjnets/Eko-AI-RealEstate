@@ -399,9 +399,15 @@ async def handle_tool_call(
                     "office reach out to you directly."
                 )
 
+            # The name the caller gave, computed BEFORE the booking because the
+            # calendar needs it too: fixing only `visit.title` left our Calendar
+            # tab right and Cal.com's own confirmation and reminders — the ones
+            # the CALLER receives — still going out under the stale name.
+            stated_name = storable_text(caller_name, "name")
+
             booking = await create_booking(
                 start_time=when,
-                attendee_name=lead.name or "Caller",
+                attendee_name=stated_name or lead.name or "Caller",
                 attendee_email=attendee_email,
                 attendee_phone=attendee_phone,
                 notes=note,
@@ -415,7 +421,7 @@ async def handle_tool_call(
             # nothing here can see.
             booking = await ensure_recordable(booking)
 
-            # The name the caller gave, on the appointment — not on the lead.
+            # Kept on the appointment, never on the lead.
             #
             # A lead is keyed by phone number and keeps the first name anyone
             # ever gave for it (`_resolve_or_create_lead`, and the same rule in
@@ -429,7 +435,6 @@ async def handle_tool_call(
             # costs one appointment instead of corrupting an identity. The
             # calendar already prefers it: `_visit_item` renders
             # `v.title or lead_name or "Visit"`.
-            stated_name = storable_text(caller_name, "name")
             visit = Visit(
                 lead_id=lead.id,
                 title=stated_name if stated_name and stated_name != lead.name else None,

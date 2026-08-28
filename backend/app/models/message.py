@@ -191,3 +191,22 @@ class Message(Base):
 
         return clip_identifier(value) if isinstance(value, str) else value
 
+def chronological():
+    """The one true reading order for a conversation, exported so the endpoints
+    cannot drift apart.
+
+    `created_at` alone is not an order. A voice call writes its whole transcript
+    when the caller hangs up, so every turn shares one timestamp to the
+    microsecond — a real call left 27 rows on 2 distinct values — and Postgres
+    is then free to return them however the plan happens to produce them. The
+    realtor opened the file and read the answer above the question.
+
+    Exported for the same reason `inbox.reached_somebody()` is: two endpoints
+    render the same thread and one of them had been updated and the other not.
+    One expression, imported by both, and a single place to put this comment.
+
+    Deliberately a function, not a module-level tuple: SQLAlchemy order
+    criteria are reusable, but a mutable module global that several queries
+    append to is a trap, and a fresh tuple per call costs nothing.
+    """
+    return (Message.created_at.asc(), Message.id.asc())

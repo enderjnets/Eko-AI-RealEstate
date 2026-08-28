@@ -57,10 +57,12 @@ async def test_a_call_written_all_at_once_still_reads_in_order(
 ) -> None:
     """The turns share one timestamp, exactly as the voice ingest writes them.
 
-    Insert order is deliberately NOT the reading order here: rows go in with
-    ids ascending, and the assertion is that the endpoint returns them that way
-    rather than however the database felt like. Without the tie-break this
-    passes or fails at random, which is worse than failing.
+    A SMOKE TEST, and honest about it: whether the bug is observable at runtime
+    depends on the plan Postgres picks, and on a large table an index scan hands
+    back insertion order anyway — measured green with the tie-break removed at
+    60k rows. The guard that actually holds is
+    `test_the_reading_order_is_tie_broken` below; this one checks the endpoint
+    is wired to it and returns something sane.
     """
     await _cleanup()
     stamp = datetime.now(UTC) - timedelta(minutes=5)
@@ -102,9 +104,20 @@ async def test_a_call_written_all_at_once_still_reads_in_order(
         # writes a new version at the end of the heap, and every outbound
         # message gets exactly one update when its delivery status resolves.
         # After this, the second turn is physically last.
+        # 'delivered', NOT 'sent', and the difference is the whole test.
+        #
+        # Writing back the value the INSERT already set makes Postgres resolve
+        # it as a HOT update: the tuple moves in the heap but NO index entry is
+        # written. On an empty table the planner seq-scans and the mutation goes
+        # red — but at 60k rows it switches to `ix_messages_conversation_id`,
+        # which still points at the original insertion order, and the test goes
+        # GREEN with the bug in place. Measured: empty 5/5 red, 60k rows 10/10
+        # green. Changing the value breaks HOT, writes an index entry at the new
+        # tid, and the test stays red at 60k. A test that expires the first time
+        # the table has real data in it is worse than no test.
         await db.execute(
             text(
-                "UPDATE messages SET delivery_status = 'sent' "
+                "UPDATE messages SET delivery_status = 'delivered' "
                 "WHERE conversation_id = :c AND content = :b"
             ),
             {"c": conv.id, "b": turns[1]},
@@ -149,6 +162,8 @@ async def test_the_visit_carries_the_name_the_caller_gave(database_url: str) -> 
         hour=20, minute=0, second=0, microsecond=0
     )
 
+    booked_as: dict = {}
+
     class _Booking:
         external_booking_id = "voice-name-probe"
         scheduled_at = when
@@ -173,7 +188,11 @@ async def test_the_visit_carries_the_name_the_caller_gave(database_url: str) -> 
                     AsyncMock(return_value=[type("S", (), {"start": when})()]),
                 ), patch(
                     "app.services.calendar_cal.create_booking",
-                    AsyncMock(return_value=_Booking()),
+                    AsyncMock(
+                        side_effect=lambda **kw: (
+                            booked_as.update(kw) or _Booking()
+                        )
+                    ),
                 ), patch(
                     "app.services.calendar_cal.ensure_recordable",
                     AsyncMock(side_effect=lambda b: b),
@@ -206,9 +225,58 @@ async def test_the_visit_carries_the_name_the_caller_gave(database_url: str) -> 
             "the calendar renders `title or lead_name`, so without this the "
             "booking shows the stale name"
         )
+        assert booked_as.get("attendee_name") == "Ender Ocando", (
+            "the calendar booking went out under the stale name, so Cal.com's "
+            "own confirmation and reminders — the ones the CALLER reads — still "
+            "address somebody else"
+        )
         assert lead.name == "Margie Quintero", (
             "the lead's own name must survive: a realtor may have typed it, and "
             "voice transcription is not good enough to overwrite it"
         )
     finally:
         await _cleanup()
+
+
+def test_the_reading_order_is_tie_broken() -> None:
+    """The guard, and it is deterministic — unlike anything that asks Postgres
+    to misbehave on demand.
+
+    Whether a missing tie-break SHOWS is up to the planner: on an empty table a
+    seq scan exposes it, at 60k rows an index scan hides it. So the invariant is
+    asserted where it lives instead of hoping a query plan reveals it. Removing
+    `Message.id` from `chronological()` turns this red at any table size, and
+    both endpoints import it, so neither can drift from the other again.
+    """
+    from app.models.message import chronological
+
+    order = chronological()
+    assert len(order) == 2, (
+        "`created_at` alone is not an order: a voice call writes every turn with "
+        "one timestamp, and the second criterion is the only thing deciding what "
+        "the realtor reads"
+    )
+    first, second = order
+    # Compared by column name: `.element` unwraps to the Column, not to the ORM
+    # attribute, so an identity check against `Message.id` never holds.
+    assert (first.element.table.name, first.element.name) == ("messages", "created_at")
+    assert (second.element.table.name, second.element.name) == ("messages", "id")
+    assert second.modifier.__name__ == "asc_op", "the tie-break must ascend too"
+
+
+def test_both_thread_endpoints_use_the_same_order() -> None:
+    """One expression, imported by both — the drift is what caused this.
+
+    `get_conversation_for_lead` and the thread endpoint render the same
+    conversation. One had been given the tie-break and the other had not, and
+    nothing said they had to agree."""
+    import inspect
+
+    import app.api.v1.conversations as mod
+
+    src = inspect.getsource(mod)
+    assert src.count("chronological()") == 2, src.count("chronological()")
+    assert "Message.created_at.asc()" not in src, (
+        "an endpoint went back to spelling the order out by hand, which is how "
+        "the two drifted apart in the first place"
+    )

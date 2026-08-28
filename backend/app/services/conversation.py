@@ -394,7 +394,12 @@ async def generate_reply_suggestions(
         # quote back, so both history builders filter it out — this one and the
         # reply lane's at the "Build history for LLM" step.
         .where(Message.conversation_id == conv.id, Message.internal.is_(False))
-        .order_by(Message.created_at.desc())
+        # Tie-broken by id, and with a LIMIT on top it is not cosmetic: a voice
+        # call writes its whole transcript at hang-up, so its turns share one
+        # timestamp. Measured on 27 tied rows, `created_at DESC LIMIT 20`
+        # returned the twenty OLDEST — the last seven turns of the call, where
+        # the booking is agreed, were dropped before the model ever saw them.
+        .order_by(Message.created_at.desc(), Message.id.desc())
         .limit(MAX_HISTORY_TURNS)
     )
     history = list(reversed(hist_row.scalars().all()))

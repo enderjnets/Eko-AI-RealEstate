@@ -26,6 +26,7 @@ from app.models import (
     MessageSender,
     MessageStatus,
 )
+from app.models.message import chronological
 
 router = APIRouter()
 
@@ -124,14 +125,7 @@ async def get_conversation_for_lead(
         await db.execute(
             select(Message)
             .where(Message.conversation_id == conv.id)
-            # Tie-broken by id, like the thread endpoint below, and for a
-            # reason that is not hypothetical: a voice call writes its WHOLE
-            # transcript at hang-up, so its turns share one `created_at` to the
-            # microsecond. One real call left 27 rows on 2 timestamps and
-            # Postgres returned them in whatever order it liked — the realtor
-            # opened the file and read the conversation scrambled, with the
-            # answer above the question.
-            .order_by(Message.created_at.asc(), Message.id.asc())
+            .order_by(*chronological())
         )
     ).scalars().all()
 
@@ -167,7 +161,7 @@ async def get_timeline_for_lead(
             # Message.conversation is lazy="joined"; suppress the eager join — we
             # already have the channel from the explicit JOIN above.
             .options(lazyload(Message.conversation))
-            .order_by(Message.created_at.asc(), Message.id.asc())
+            .order_by(*chronological())
         )
     ).all()
     messages = [_message_out(m, channel) for (m, channel) in rows]

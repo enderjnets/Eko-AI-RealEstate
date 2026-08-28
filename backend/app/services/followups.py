@@ -179,7 +179,11 @@ async def _lead_language(lead: Lead, db: AsyncSession) -> str:
             select(Message.content)
             .join(Conversation, Message.conversation_id == Conversation.id)
             .where(Conversation.lead_id == lead.id, Message.direction == MessageDirection.INBOUND)
-            .order_by(Message.created_at.desc())
+            # `LIMIT 1` over turns that share a timestamp picks an arbitrary one,
+            # and this decides the language of the appointment invitation AND of
+            # the cancellation notice. Newest by id breaks the tie the same way
+            # everywhere else does.
+            .order_by(Message.created_at.desc(), Message.id.desc())
             .limit(1)
         )
     ).scalar_one_or_none()
