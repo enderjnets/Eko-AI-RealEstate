@@ -204,6 +204,36 @@ así que `host..` se colaba igual. Ambos corregidos con test propio.
   configurado. Y la guarda deja de comprobar las URLs: `hostOf("") === ""`, así
   que esas cláusulas eran código muerto con forma de comprobación.
 
+## ✅ FASE CERRADA — El orden del expediente y el nombre de la cita · `cc7e842`
+
+Rama `feat/orden-y-nombre-de-la-cita`.
+
+| # | Punto | Resultado real |
+|---|---|---|
+| 1 | Tests | **1178 backend**, 0 fallos, **0 saltados**, base recreada (+2) · frontend **153/153** |
+| 2 | Lint / typecheck | `ruff` **All checks passed** · `tsc --noEmit` limpio |
+| 3 | Build | `docker build -f backend/Dockerfile` → `sha256:eb4d6…` |
+| 4 | Cobertura del código nuevo | Mismo límite ya documentado: `--cov` no atribuye lo ejecutado dentro del ASGI. Sustituido por **mutación**, que sí prueba ejecución |
+| 5 | Secretos en el diff | 0 |
+| 6 | Depuración / validación | 0 `print`/`console.log`; el nombre dictado pasa por `storable_text` |
+
+**Mutaciones: 3/3 rojas.** Quitar el desempate por `id`; quitar `title=`;
+cambiar `elif name and not lead.name` por `elif name` (que pisaría la ficha).
+
+**El test del orden necesitó arreglarse a sí mismo**, y es la lección de la
+fase: pasaba **también sin el desempate**, porque con cuatro filas recién
+insertadas un *seq scan* las devuelve por casualidad en orden de inserción —
+un test que solo sabía estar de acuerdo con el bug. Ahora un `UPDATE` mueve una
+fila al final del montón (lo que ocurre de verdad: cada saliente se actualiza al
+resolverse su entrega) y sin el desempate se pone rojo.
+
+**Decisión mantenida:** `lead.name` **no** se toca. El nombre dicho va a
+`visit.title`, donde una mala transcripción cuesta una cita en vez de corromper
+una identidad; el calendario ya prefiere `title` sobre el nombre del lead.
+
+**Siguiente paso concreto:** Fase 3 — desplegar (v0.62.0) con autorización, y
+sólo entonces cancelar la visita 257 por el camino arreglado.
+
 ## ✅ FASE CERRADA — Cancelar una cita ahora avisa · commit `a728e05`
 
 Rama `feat/cancelacion-comunicada`. Lo destapó la primera llamada real del
