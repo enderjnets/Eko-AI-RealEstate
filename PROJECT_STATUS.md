@@ -15,6 +15,54 @@ de casa (ROG) al VPS, donde ya viven Zorros y Black Volt.
 
 ## 🟢 EN CURSO — «Mi disponibilidad» · rama `feat/disponibilidad-por-agente`
 
+### ✅ Fase 3 — el horario decide las horas que se ofrecen · commit `9d46557` · **v0.63.0**
+
+La fase que hace que las dos anteriores sirvan de algo: hasta aquí la sección
+era un formulario que no cambiaba nada de lo que se le dice a un lead.
+
+**Los DOS carriles, no uno.** Voz y texto son caminos distintos que responden a
+la misma pregunta. Convertir solo el primero —lo que proponía el borrador del
+plan— habría dejado al teléfono ofreciendo las horas reales del agente y al chat
+las de la agencia: dos respuestas a «¿cuándo puedo ir?», sin nada que revelase
+la contradicción. Convertidos los **cinco** puntos: `check_availability`, la
+comprobación previa a reservar, la reserva por voz, el carril de texto
+(`_real_slots_note`) y la ruta del panel.
+
+⚠️ **Cómo se integró, porque hacerlo mal reabre una guarda de cuatro
+auditorías:** `resolve_calendar_identity()` **no se toca** y la credencial sigue
+saliendo de ella — existe para impedir que una organización reserve en la cuenta
+del operador. Lo único que se sobreescribe es el `eventTypeId`. Sin fila se cae
+al global, que es el comportamiento de siempre.
+
+| Checklist | Resultado real |
+|---|---|
+| Suite backend, base recreada | **1211 pasan, 0 fallan, 0 saltados** |
+| Frontend | `tsc` limpio · `next lint` sin avisos · **153** vitest |
+| Lint backend | *All checks passed* |
+| Build | imagen `a75c92d7…` |
+| Secretos / depuración | 0 y 0 |
+| Mutaciones | **4**, todas rojas |
+| Bump | v0.63.0 en los cuatro sitios |
+
+**Nota de método:** la primera mutación de la voz **no se aplicó** — mi patrón no
+coincidía con el fichero — y el verde no probaba nada. Repetida contra la línea
+correcta (`voice.py:473`), sí cae. Una mutación que no se aplica es un verde
+falso disfrazado de comprobación.
+
+**Decisiones:**
+- **Un vendedor reserva una valoración**, no una visita de comprador.
+  `activity_for_lead` es el único sitio donde se decide. Caso borde escrito: un
+  lead creado en la propia llamada, aún sin intención clasificada, cae a visita.
+- **`pick_agent` no es un TODO.** Con dos agentes elige al de menos citas
+  **futuras** —las pasadas no cuentan, o el veterano se queda sin trabajo— y
+  desempata por correo para que las horas ofrecidas y la reserva coincidan. Hoy
+  hay una sola fila en producción: el camino está **dormido, no ausente**.
+
+**Siguiente paso concreto:** esperar la auditoría de esta fase; después,
+preparar el despliegue (checklist, reversión, migración 045, variables) y las
+dos verificaciones que solo el mundo real puede dar — que Natalia comparta su
+calendario, y comprobar que una hora ocupada suya **deja de ofrecerse**.
+
 ### ✅ Fase 2 — «Mi disponibilidad» · commits `adaa9c7` + `6d40afc`
 
 Cada agente entra con su Google y declara cuándo se le puede reservar, por tipo
