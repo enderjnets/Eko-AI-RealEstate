@@ -2,6 +2,14 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.64.2] — 2026-08-28
+
+### Corregido
+
+- El zoom del parallax (1,154×) más el recorte centrado de `object-cover` se
+  comían ~17 % de la parte alta del retrato del equipo — la frente de Robbie.
+  El encuadre ancla ahora en `50% 12%` y el parallax baja a 0,10.
+
 ## [0.64.1] — 2026-08-28
 
 ### Añadido — el motor de efectos del diseño v4

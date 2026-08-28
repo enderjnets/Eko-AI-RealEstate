@@ -220,7 +220,12 @@ function TwoOfUs() {
           </ol>
         </div>
         <div data-reveal="clip" className="relative min-h-[420px] overflow-hidden bg-ln-tint lg:min-h-[720px]">
-          <div data-parallax="0.14" className="absolute inset-0">
+          {/* 0.10, not the design's 0.14: the engine zooms by 1+amt*1.1 to
+              cover its own translate, and at 0.14 that zoom plus the cover
+              crop ate the top of the photo — Robbie's forehead, specifically.
+              The object-position anchors the crop near the top of the frame
+              for the same reason. */}
+          <div data-parallax="0.10" className="absolute inset-0">
             {/* eslint-disable-next-line @next/next/no-img-element -- the page
                 uses plain <img> throughout: `sharp` is not installed, so
                 next/image would optimise nothing and only add a dependency. */}
@@ -229,7 +234,7 @@ function TwoOfUs() {
               alt={LANDING.advisors || ""}
               loading="lazy"
               decoding="async"
-              className="absolute inset-0 h-full w-full object-cover"
+              className="absolute inset-0 h-full w-full object-cover [object-position:50%_12%]"
             />
           </div>
         </div>

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.64.1";
+export const CURRENT_VERSION = "0.64.2";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.64.2",
+    date: "2026-08-28",
+    title: {
+      en: "The portrait, properly framed",
+      es: "El retrato, bien encuadrado",
+    },
+    changes: [
+      {
+        en: "The parallax zoom was cropping the top of the team portrait; the crop now anchors near the top of the frame and the zoom is gentler.",
+        es: "El zoom del parallax recortaba la parte alta del retrato del equipo; el encuadre ancla ahora cerca del borde superior y el zoom es m\u00e1s suave.",
+      },
+    ],
+  },
   {
     version: "0.64.1",
     date: "2026-08-28",
