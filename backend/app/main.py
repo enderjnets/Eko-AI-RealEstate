@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from app.api.v1 import (
     analytics,
     auth,
+    availability,
     console,
     content,
     conversations,
@@ -395,6 +396,9 @@ app.include_router(platform_api.router, prefix="/api/v1/platform", tags=["platfo
 app.include_router(properties.router, prefix="/api/v1/properties", tags=["properties"], dependencies=_auth)
 app.include_router(properties.lead_matches_router, prefix="/api/v1", tags=["properties"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"], dependencies=_auth)
+# Under `_auth`, not `_admin`: /me is what every member uses. The team view
+# inside it carries its own require_admin.
+app.include_router(availability.router, prefix="/api/v1/availability", tags=["availability"], dependencies=_auth)
 app.include_router(console.router, prefix="/api/v1/console", tags=["console"], dependencies=_auth)
 app.include_router(content.router, prefix="/api/v1/content", tags=["content"], dependencies=_auth)
 app.include_router(discovery.router, prefix="/api/v1/discovery", tags=["discovery"], dependencies=_auth)

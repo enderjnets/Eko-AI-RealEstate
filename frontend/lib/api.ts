@@ -665,6 +665,62 @@ export interface AgencySettingsPatch {
   business_hours?: Record<string, { open: string; close: string } | null>;
 }
 
+// ── Agent availability ───────────────────────────────────────────────────────
+// There is no `email` anywhere in these types on purpose. The backend takes it
+// from the session token, so a client cannot address another agent's schedule —
+// not because a check rejects it, but because no field carries a victim.
+
+export type AppointmentActivity = "showing" | "valuation" | "call" | "open_house";
+
+export interface AvailabilityWindow {
+  /** 0 = Monday, matching the backend and `Date.getDay()` shifted by one. */
+  days: number[];
+  /** "HH:MM", 24-hour, in the agency's timezone. */
+  start: string;
+  end: string;
+}
+
+export interface ActivityAvailability {
+  activity: AppointmentActivity;
+  label: string;
+  duration_minutes: number;
+  active: boolean;
+  /** False while Cal.com is still being provisioned: an empty week then means
+      "not set up yet", not "never available". */
+  configured: boolean;
+  windows: AvailabilityWindow[];
+}
+
+export interface MyAvailability {
+  email: string;
+  timezone: string;
+  /** Non-null means nothing here can work yet, and says why in plain words. */
+  unavailable_reason: string | null;
+  activities: ActivityAvailability[];
+}
+
+export interface TeamAvailability {
+  email: string;
+  activities: ActivityAvailability[];
+}
+
+export const availabilityApi = {
+  mine: () => api<MyAvailability>(`/v1/availability/me`),
+  setActivity: (
+    activity: AppointmentActivity,
+    body: {
+      windows: AvailabilityWindow[];
+      duration_minutes?: number;
+      active?: boolean;
+    },
+  ) =>
+    api<ActivityAvailability>(`/v1/availability/me/${activity}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  team: () => api<TeamAvailability[]>(`/v1/availability`),
+};
+
 export const settingsApi = {
   get: () => api<AgencySettings>(`/v1/settings`),
   update: (body: AgencySettingsPatch) =>

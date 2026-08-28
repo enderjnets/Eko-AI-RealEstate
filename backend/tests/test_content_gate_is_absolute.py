@@ -378,6 +378,13 @@ def test_every_wire_touching_function_is_declared_or_exempt() -> None:
             "cancels that same booking",
         "app/services/llm.py::_ollama_generate":
             "POSTs a prompt to a local model",
+        "app/services/agent_calendar.py::_call":
+            "the single request function for Cal.com's schedules and event"
+            " types. It provisions and edits an AGENT's own working hours —"
+            " days and times — and never carries a content piece, a lead's"
+            " words, or anything with an audience. It is one function on"
+            " purpose: a second wire-touching path in that module would have to"
+            " be declared here too, which is the point of this sweep",
         "app/services/ops_alert.py::send_operator_alert":
             "emails the platform operator that the machinery broke; the body is"
             " a status word and a remedy, never a content piece, and it is"

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
+  CalendarClock,
   CalendarDays,
   Clapperboard,
   Eye,
@@ -141,6 +142,9 @@ export function Nav() {
     { href: "/console", label: t("console.title"), Icon: PhoneCall },
     { href: "/properties", label: t("nav.properties"), Icon: Home },
     { href: "/analytics", label: t("nav.analytics"), Icon: BarChart3 },
+    // On the phone by necessity, like the clip upload above: an agent adjusts
+    // her hours between showings, from the car, not at a desk.
+    { href: "/availability", label: t("nav.availability"), Icon: CalendarClock },
   ];
 
   return (
@@ -361,6 +365,10 @@ export function Nav() {
                   : []),
                 { href: "/properties", label: t("nav.properties"), Icon: Home },
                 { href: "/analytics", label: t("nav.analytics"), Icon: BarChart3 },
+                // Every member, not just admins: this is a person's own working
+                // hours, and gating it on `isAdmin` would mean the agent whose
+                // time it is could not set it.
+                { href: "/availability", label: t("nav.availability"), Icon: CalendarClock },
                 ...(isAdmin
                   ? [{ href: "/settings", label: t("nav.settings"), Icon: Settings }]
                   : []),
