@@ -13,7 +13,35 @@ de casa (ROG) al VPS, donde ya viven Zorros y Black Volt.
 
 ---
 
-## 🟢 EN CURSO — «Mi disponibilidad» · rama `feat/disponibilidad-por-agente`
+## ✅ DESPLEGADO — v0.63.0 en producción (28-ago-2026, ~00:15 MDT)
+
+Autorización condicionada del dueño («deploy si se pasan todas las pruebas y
+auditorías») — **cumplida y ejecutada**. Bundle → VPS, build, **migración 045
+con la imagen nueva y antes del up**, `up -d`.
+
+| Verificación | Resultado |
+|---|---|
+| `/api/v1/health` por el dominio público | `0.63.0` · `llm_fallback:"ok"` · `captcha:"on"` |
+| Migración 045 en producción | aplicada sobre un `visits` **no vacío**: filas existentes → `purpose='showing'`, sin asignar (la verdad); `agent_calendars` con 0 filas |
+| Webhook de voz sin firma | **403** (sigue armado) |
+| `GET /availability/me` sin sesión | **401** |
+| Marca en la landing | «Engel & Völkers» ya vivo (el *build arg* esperaba esta reconstrucción); los «Aspen» restantes son texto geográfico, no la identificación legal |
+| `zorros-*` / `blackvolt-*` | todos **Up**, intactos |
+| Reversión disponible | rama `deploy-v062` en el VPS + `alembic downgrade 044_message_internal` (probada en ambos sentidos) |
+
+**Nota del checkout en el VPS:** chocó con los dos scripts (`set-cloudflare-token.sh`,
+`set-calcom-key.sh`) copiados por scp antes de commitearse. **Verificado por
+hash que eran idénticos byte a byte** a los del branch antes de descartar la
+copia local — un checkout que repone lo mismo no pierde nada, y se comprobó, no
+se supuso.
+
+**Pendiente que NO va en este despliegue:**
+- 🔴 `CALENDAR_SIMULATED` sigue `true` — se apaga cuando Natalia comparta su
+  calendario y la prueba real (una hora ocupada suya deja de ofrecerse) pase.
+- 🔴 Nameservers: **luz verde medida a las 23:03 (0/20 en los tres resolutores)**
+  y comunicada; a las ~00:10 los NS seguían en GoDaddy — acción del dueño.
+
+## 🟢 CERRADO — «Mi disponibilidad» · rama `feat/disponibilidad-por-agente`
 
 ### ✅ Fase 3 — el horario decide las horas que se ofrecen · commit `9d46557` · **v0.63.0**
 
