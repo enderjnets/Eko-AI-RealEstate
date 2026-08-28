@@ -168,6 +168,83 @@ async def test_the_same_person_cannot_get_two_calendars_for_one_activity() -> No
 
 
 @pytest.mark.asyncio
+async def test_two_agencies_can_hold_the_same_person() -> None:
+    """The `org_id` leg of the UNIQUE, which nothing else exercises.
+
+    An independent audit removed it — `UNIQUE (email, activity)` — and all 1188
+    tests stayed green while the schema had a cross-tenant collision in it: the
+    second agency's INSERT fails against a row it is not even allowed to see, so
+    provisioning breaks *and* the error reveals that another agency already has
+    that person. A realtor working for two agencies is ordinary; the leak is not.
+    """
+    await _seed(EMAIL_A, ORG_A, AppointmentActivity.SHOWING)
+    await _seed(EMAIL_A, ORG_B, AppointmentActivity.SHOWING)
+    try:
+        async with get_bypass_session_factory()() as db:
+            rows = (
+                await db.execute(
+                    select(AgentCalendar).where(AgentCalendar.email == EMAIL_A)
+                )
+            ).scalars().all()
+        assert {r.org_id for r in rows} == {ORG_A, ORG_B}, (
+            "the same person cannot exist in two agencies — the UNIQUE is "
+            "missing its org_id leg and collides across the tenant boundary"
+        )
+    finally:
+        await _cleanup(EMAIL_A)
+
+
+@pytest.mark.asyncio
+async def test_a_row_that_predates_the_column_still_says_what_kind_it_is() -> None:
+    """The server default, which the ORM default hides from every other test.
+
+    `Visit(...)` sends `purpose` in the INSERT because the model carries a
+    Python default, so the *server* default is never exercised — an audit
+    dropped it (`ALTER COLUMN purpose DROP DEFAULT`) and all 1188 tests stayed
+    green. That default is the only reason `ADD COLUMN ... NOT NULL` survives a
+    non-empty `visits`, and every test and CI database migrates an empty one.
+    Measured: with one row present, the same statement without a default fails
+    with `column "purpose" ... contains null values`.
+
+    So this inserts the way a pre-migration row effectively arrives — through
+    SQL that never mentions the column — and asserts the database fills it.
+    """
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text(
+                "INSERT INTO visits (org_id, external_booking_id, status, "
+                "scheduled_at, duration_minutes, timezone, calendar_provider) "
+                "VALUES (:o, :e, 'scheduled', now(), 30, 'UTC', 'calcom')"
+            ),
+            {"o": ORG_A, "e": "schema-probe-default"},
+        )
+        await db.commit()
+    try:
+        async with get_bypass_session_factory()() as db:
+            row = (
+                await db.execute(
+                    text(
+                        "SELECT purpose, assigned_email FROM visits "
+                        "WHERE external_booking_id = :e"
+                    ),
+                    {"e": "schema-probe-default"},
+                )
+            ).one()
+        assert row.purpose == "showing", (
+            "a row inserted without `purpose` did not get the server default — "
+            "migrating a non-empty visits table would fail on NOT NULL"
+        )
+        assert row.assigned_email is None
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM visits WHERE external_booking_id = :e"),
+                {"e": "schema-probe-default"},
+            )
+            await db.commit()
+
+
+@pytest.mark.asyncio
 async def test_the_same_person_can_hold_one_calendar_per_activity() -> None:
     """The other half of the constraint: four kinds of appointment, one person."""
     try:

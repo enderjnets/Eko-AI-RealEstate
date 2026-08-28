@@ -47,10 +47,31 @@ filtra**, que es además el bug que de verdad ocurre.
   que un fallo ruidoso dejaría una cita viva sin fila local. El truncado es
   inalcanzable — origen y destino acotados a los mismos 254.
 
+### Auditoría de cierre de la Fase 1 — commit `6e7529f`
+
+**Sin bloqueantes.** Esquema, RLS y migración correctos, verificados por el
+auditor con su propia base. Pero encontró **dos tests que no podían fallar**, y
+eso no fue al backlog: un test que certifica nada es peor que no tenerlo.
+
+| Hallazgo | Evidencia del auditor | Estado |
+|---|---|---|
+| El `server_default` de `visits.purpose` **no lo cubría nada** | mutación `ALTER COLUMN purpose DROP DEFAULT` → **1188 verdes**. El `default=` de Python mete el valor en el INSERT, así que el default del servidor no se ejercía jamás. Y es lo único que hace que `ADD COLUMN NOT NULL` sobreviva a un `visits` **no vacío** — con 1 fila: `contains null values` | ✅ **corregido**: test que inserta por SQL crudo sin nombrar la columna. Mutación reverificada → **rojo** |
+| La pata `org_id` del UNIQUE **no la cubría nada** | mutación a `UNIQUE (email, activity)` → **1188 verdes**, con colisión que cruza el límite de tenant: la org 2 choca contra una fila que no puede ni ver | ✅ **corregido**: test que siembra el mismo correo en dos orgs. Mutación → **2 rojos** |
+| Deriva modelo ↔ migración (índice de `email`) | `alembic check`: índice declarado en el modelo, nunca creado | ✅ corregido, y de paso fuera el índice `(org_id, email)` redundante con el UNIQUE |
+
+**Al backlog, con evidencia:** el comentario dice que una fila «no puede
+pertenecer a quien no puede entrar» y **nada lo impone** — sin FK, sin CHECK. Hoy
+es inalcanzable (0 consumidores de `AgentCalendar` fuera de los modelos), pero
+**el servicio de la Fase 2 se escribirá confiando en esa frase**: la validación
+contra `allowed_users` va ahí, no aquí.
+
+**Tras los arreglos: 1190 verdes** (10 en el fichero nuevo), ruff limpio, ida y
+vuelta de la migración otra vez limpia.
+
 **Siguiente paso concreto:** Fase 2 — `services/agent_calendar.py` (el único
 módulo que habla con `/v2/schedules` y `/v2/event-types`), el router
-`api/v1/availability.py` con el correo tomado del **token** y nunca del cuerpo,
-y la página «Mi disponibilidad» en el panel.
+`api/v1/availability.py` con el correo tomado del **token** y nunca del cuerpo
+—**y comprobado contra `allowed_users`**—, y la página «Mi disponibilidad».
 
 ---
 

@@ -85,7 +85,11 @@ class AgentCalendar(Base):
         index=True,
     )
 
-    email: Mapped[str] = mapped_column(String(254), nullable=False, index=True)
+    # No `index=True`: the UNIQUE constraint below is a btree on
+    # (org_id, email, activity) and its prefixes already serve every lookup
+    # this table gets. Declaring one here created drift — the model asked
+    # for an index the migration never built.
+    email: Mapped[str] = mapped_column(String(254), nullable=False)
     activity: Mapped[AppointmentActivity] = mapped_column(
         pg_enum(AppointmentActivity, name="appointment_activity"), nullable=False
     )

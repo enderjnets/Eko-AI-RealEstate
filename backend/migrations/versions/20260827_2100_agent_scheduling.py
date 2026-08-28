@@ -127,10 +127,11 @@ def upgrade() -> None:
         # second schedule for the same pair, it collides here.
         sa.UniqueConstraint("org_id", "email", "activity", name="uq_agent_calendar"),
     )
+    # Only the org index. `uq_agent_calendar` is itself a btree on
+    # (org_id, email, activity), so a separate (org_id, email) index would be a
+    # fourth tree to maintain on every write for lookups its prefix already
+    # answers.
     op.create_index("ix_agent_calendars_org_id", "agent_calendars", ["org_id"])
-    op.create_index(
-        "ix_agent_calendars_org_email", "agent_calendars", ["org_id", "email"]
-    )
     _isolate("agent_calendars")
 
     # No RLS policy and no GRANT for these two, for the reason checked in 043
@@ -148,7 +149,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_column("visits", "assigned_email")
     op.drop_column("visits", "purpose")
-    op.drop_index("ix_agent_calendars_org_email", table_name="agent_calendars")
     op.drop_index("ix_agent_calendars_org_id", table_name="agent_calendars")
     op.drop_table("agent_calendars")
     # Dropped last: both users of the type are gone by now.
