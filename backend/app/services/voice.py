@@ -328,11 +328,11 @@ async def handle_tool_call(
     # Interim funnel: appointments are arranged personally. The assistant's
     # booking tools are also removed in the VAPI console, but that is external
     # configuration a redeploy could silently restore — this gate is the copy
-    # of the rule the codebase itself enforces. Both tools this dispatcher
-    # knows are scheduling tools, so one early return covers them.
+    # of the rule the codebase itself enforces. Named tools only: a future
+    # non-scheduling tool must not inherit a scheduling excuse.
     from app.config import get_settings
 
-    if get_settings().BOOKING_OFFERS_PAUSED:
+    if name in ("check_availability", "book_visit") and get_settings().BOOKING_OFFERS_PAUSED:
         return (
             "We're arranging appointment times personally right now. "
             "I'll pass your details along, and one of our agents will give "

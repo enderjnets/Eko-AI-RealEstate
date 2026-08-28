@@ -277,13 +277,12 @@ function Markets() {
             <article key={key}>
               <div className="overflow-hidden bg-ln-tint">
                 {/* eslint-disable-next-line @next/next/no-img-element -- see
-                    the portrait note. Sized 3:2 to match the downscaled files
-                    exactly, so nothing reflows as they load. */}
+                    the portrait note. The aspect-* class reserves the box, so
+                    nothing reflows while the landscape files load and
+                    object-cover crops them to the design's portrait cards. */}
                 <img
                   src={src}
                   alt=""
-                  width={1200}
-                  height={800}
                   loading={i === 0 ? "eager" : "lazy"}
                   decoding="async"
                   className="aspect-[3/4] w-full object-cover sm:aspect-[4/5]"

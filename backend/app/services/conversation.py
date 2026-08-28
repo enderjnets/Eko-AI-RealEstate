@@ -801,24 +801,28 @@ async def _real_slots_note(
     used for listings: the model never guesses, it picks from what is true.
     Booking still happens from the dashboard or by phone.
     """
-    text = (message or "").lower()
-    if not _SCHEDULING_RE.search(text) and not any(
-        phrase in text for phrase in _SCHEDULING_PHRASES
-    ):
-        return ""
     from app.config import get_settings
 
     # Interim funnel: appointments are arranged personally, so the model must
-    # not quote times. Returning "" here would be worse than this note — the
-    # docstring above records why: left without instructions, the model INVENTS
-    # plausible hours. The instruction replaces the slots, it doesn't just
-    # withhold them.
+    # not quote times. The instruction rides EVERY turn while the flag is on —
+    # deliberately in front of the keyword gate below, because the gate is a
+    # heuristic and an audit measured five ordinary ways of asking for a time
+    # that slip past it ("can I come by tomorrow at 3pm?", "nos vemos el
+    # martes a las 5?"...). Missing the gate used to cost a reply with no
+    # hours in it; while paused it would cost invented ones — the docstring
+    # above records that a model left without instructions INVENTS plausible
+    # hours. One temporary paragraph in the prompt is the cheaper failure.
     if get_settings().BOOKING_OFFERS_PAUSED:
         return (
             "\n\nCITAS EN PAUSA: no ofrezcas, confirmes ni inventes horas "
             "concretas. Si el lead pide cita, dile que un agente le llamará "
             "en las próximas horas para cuadrar la hora."
         )
+    text = (message or "").lower()
+    if not _SCHEDULING_RE.search(text) and not any(
+        phrase in text for phrase in _SCHEDULING_PHRASES
+    ):
+        return ""
     from datetime import timedelta
 
     from app.api.v1.visits import _busy_starts

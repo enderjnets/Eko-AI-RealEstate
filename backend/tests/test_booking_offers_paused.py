@@ -60,12 +60,17 @@ async def test_paused_chat_replaces_slots_with_a_callback_instruction(
 
 
 @pytest.mark.asyncio
-async def test_paused_chat_stays_quiet_when_nobody_asked_for_a_time(
-    database_url: str,
-) -> None:
-    """The pause note rides the same trigger as the slots did: a message with
-    no scheduling talk gets no scheduling instruction — the prompt does not
-    grow a permanent paragraph about appointments."""
+async def test_the_pause_note_rides_every_turn(database_url: str) -> None:
+    """While paused, the instruction does NOT depend on the keyword gate.
+
+    The first version put it behind `_SCHEDULING_RE`, and an audit measured
+    five ordinary ways of asking for a time that slip past that heuristic
+    ("can I come by tomorrow at 3pm?", "nos vemos el martes a las 5?"...).
+    Missing the gate used to cost a reply with no hours; while paused it would
+    cost INVENTED ones. So the note is unconditional — one temporary prompt
+    paragraph is the cheaper failure. This test pins exactly the phrasing the
+    old gate let through.
+    """
     from app.db.base import get_session_factory
     from app.models.agent_settings import AgentSettings
     from app.services.conversation import _real_slots_note
@@ -75,10 +80,13 @@ async def test_paused_chat_stays_quiet_when_nobody_asked_for_a_time(
         with org_scope(ORG):
             async with get_session_factory()() as db:
                 cfg = AgentSettings(org_id=ORG, timezone="America/Denver")
-                note = await _real_slots_note(
-                    cfg, "what neighborhoods do you cover?", db, None
-                )
-    assert note == ""
+                for msg in (
+                    "can I come by tomorrow at 3pm?",
+                    "nos vemos el martes a las 5?",
+                    "what neighborhoods do you cover?",
+                ):
+                    note = await _real_slots_note(cfg, msg, db, None)
+                    assert "CITAS EN PAUSA" in note, msg
 
 
 @pytest.mark.asyncio

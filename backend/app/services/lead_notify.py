@@ -24,6 +24,7 @@ Modelled on `visit_invite.py`, which already solved the hard parts:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from sqlalchemy import select
@@ -120,9 +121,22 @@ async def _send_and_record(lead_id: int, message_id: int | None) -> None:
         external_id: str | None = None
         failure: str | None = None
         try:
-            result = await send_email(to=to, subject=subject, body_text=body)
+            # Hard budget. This runs inside the public form's POST — the
+            # funnel's only conversion point — and the mail client waits up to
+            # 20 s on its own. A hung provider must cost the notice, never
+            # twenty seconds of "Sending…" in front of the visitor.
+            result = await asyncio.wait_for(
+                send_email(to=to, subject=subject, body_text=body), timeout=8.0
+            )
             external_id = (result or {}).get("id")
-            log.info("Lead %d: new-lead notice sent to the agency", lead.id)
+            if external_id:
+                log.info("Lead %d: new-lead notice sent to the agency", lead.id)
+            else:
+                failure = "the provider accepted the send but returned no id"
+                log.error("Lead %d: %s", lead.id, failure)
+        except TimeoutError:
+            failure = "the email provider did not answer within 8s (the send may still complete)"
+            log.error("Lead %d: %s", lead.id, failure)
         except Exception as exc:  # noqa: BLE001
             failure = str(exc)[:500]
             log.error("Lead %d: new-lead notice failed to send: %s", lead.id, exc)
