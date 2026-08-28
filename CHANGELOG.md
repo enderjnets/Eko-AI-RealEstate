@@ -2,6 +2,31 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.62.0] — 2026-08-27
+
+### Corregido — la cancelación no salía de nuestra base de datos
+
+- **`cancel_visit` no avisaba a nadie.** `send_visit_invitation(cancelled=True)`
+  y el `METHOD:CANCEL` de `icalendar.py` estaban escritos, comentados y **sin
+  llamador**: los dos únicos usos eran reservas. La cita seguía en pie en el
+  calendario del cliente y en el del agente.
+- Y el flag **no estaba completo por dentro**: solo llegaba al `.ics` y al
+  `method=` del MIME, así que el correo habría dicho *«Your visit is
+  confirmed»* con un adjunto que la cancela. Textos de cancelación EN/ES.
+- **`SEQUENCE`**: `build_visit_ics` lo aceptaba y nadie lo pasaba. Un CANCEL con
+  `SEQUENCE:0` **puede ignorarse** (RFC 5546) y Outlook lo ignora.
+- El aviso sale **después** del commit y su fallo **no** revierte la
+  cancelación. `local_only` también avisa: significa «no llames al proveedor»,
+  que es cuando más importa que lo sepa una persona.
+
+### Corregido — el expediente de una llamada y el nombre de la cita
+
+- `get_conversation_for_lead` no desempataba por `id`. Una llamada escribe su
+  transcripción entera al colgar: **27 filas sobre 2 marcas de tiempo**, y
+  Postgres las devolvía en cualquier orden.
+- La cita lleva ya el nombre que dijo quien llamó (`visit.title`). `lead.name`
+  **no** se toca: un nombre corregido a mano no lo pisa una transcripción.
+
 ## [0.61.0] — 2026-08-27
 
 ### Cambiado — la plataforma deja de asomar por las superficies del cliente

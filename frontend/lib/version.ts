@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.61.0";
+export const CURRENT_VERSION = "0.62.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.62.0",
+    date: "2026-08-27",
+    title: {
+      en: "Cancelling an appointment now tells the people",
+      es: "Cancelar una cita ahora avisa a las personas",
+    },
+    changes: [
+      {
+        en: "Cancelling a visit now emails the client and you, with a calendar file that REMOVES the appointment from your calendar instead of leaving it standing. Until now the cancellation was recorded here and nobody was told \u2014 both of you would still have shown up.",
+        es: "Cancelar una visita env\u00eda ya un correo al cliente y a usted, con un fichero de calendario que RETIRA la cita de su calendario en vez de dejarla en pie. Hasta ahora la cancelaci\u00f3n se anotaba aqu\u00ed y no se enteraba nadie \u2014 los dos se habr\u00edan presentado.",
+      },
+      {
+        en: "A phone call now reads in the order it happened. The whole transcript is written when the caller hangs up, so every turn shared one timestamp and the file could show the answer above the question.",
+        es: "Una llamada se lee ya en el orden en que ocurri\u00f3. La transcripci\u00f3n entera se escribe al colgar, as\u00ed que todos los turnos compart\u00edan una marca de tiempo y el expediente pod\u00eda mostrar la respuesta encima de la pregunta.",
+      },
+      {
+        en: "An appointment booked by phone now carries the name the caller gave for it, so the calendar stops showing an older name kept on that phone number. Their file is left as it is: a name you corrected by hand is not overwritten by a transcription.",
+        es: "Una cita reservada por tel\u00e9fono lleva ya el nombre que dio quien llam\u00f3, as\u00ed que el calendario deja de mostrar un nombre antiguo guardado para ese tel\u00e9fono. Su ficha se respeta: un nombre que usted corrigi\u00f3 a mano no lo pisa una transcripci\u00f3n.",
+      },
+    ],
+  },
   {
     version: "0.61.0",
     date: "2026-08-27",
