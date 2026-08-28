@@ -498,6 +498,34 @@ async def pick_agent(db: AsyncSession, activity: AppointmentActivity) -> Booking
     return BookingTarget(chosen.email, chosen.calcom_event_type_id)
 
 
+async def pick_agent_safely(activity: AppointmentActivity) -> BookingTarget:
+    """`pick_agent` on a throwaway session, so a failure cannot poison anyone.
+
+    The obvious pattern — call `pick_agent(db, ...)` with the request's session
+    inside try/except — existed in three copies and an audit proved all three
+    broke their own promise. A failed statement aborts the shared transaction:
+    the except returns the fallback, and the very NEXT statement on that session
+    dies with `InFailedSQLTransactionError`. On the panel that was a 500, on the
+    phone the call dropped, in chat the lead got no reply — precisely in the
+    deploy-before-migrate window where the fallback matters most. A plain
+    rollback was no fix either: the voice lane has a freshly flushed,
+    uncommitted lead at that point, and rollback would erase it.
+
+    A private session makes the failure mode local. The org travels with it:
+    tenant identity is a ContextVar read at transaction begin, so a session
+    opened here inherits the caller's scope (same mechanism the whole RLS
+    layer rests on).
+    """
+    from app.db.base import get_session_factory
+
+    try:
+        async with get_session_factory()() as own:
+            return await pick_agent(own, activity)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("could not resolve the agent for %s: %s", activity.value, exc)
+        return BookingTarget()
+
+
 def activity_for_lead(lead) -> AppointmentActivity:
     """What kind of appointment this person is actually asking for.
 

@@ -61,13 +61,19 @@ async def _calendar(
         await db.commit()
 
 
-async def _visit(email: str, *, days_ahead: int, marker: str) -> None:
+async def _visit(
+    email: str,
+    *,
+    days_ahead: int,
+    marker: str,
+    status: VisitStatus = VisitStatus.SCHEDULED,
+) -> None:
     async with get_bypass_session_factory()() as db:
         db.add(
             Visit(
                 org_id=ORG,
                 external_booking_id=marker,
-                status=VisitStatus.SCHEDULED,
+                status=status,
                 scheduled_at=datetime.now(UTC) + timedelta(days=days_ahead),
                 assigned_email=email,
             )
@@ -182,6 +188,75 @@ async def test_a_past_appointment_does_not_count_against_an_agent() -> None:
         )
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_visit_is_not_load() -> None:
+    """Pins the status filter in the load count — an audit removed
+    `Visit.status.in_((SCHEDULED, CONFIRMED))` and every test here stayed
+    green. Without it, cancelling an agent's afternoon still counts against
+    them: the agent whose diary just EMPTIED goes on being skipped, which is
+    the exact opposite of what the cancellation means."""
+    await _cleanup()
+    try:
+        await _calendar(NATALIA, AppointmentActivity.SHOWING, "et-natalia")
+        await _calendar(ROBBIE, AppointmentActivity.SHOWING, "et-robbie")
+        # Natalia's future diary is all cancellations; Robbie has one real one.
+        await _visit(NATALIA, days_ahead=2, marker="hours-probe-c1",
+                     status=VisitStatus.CANCELLED)
+        await _visit(NATALIA, days_ahead=3, marker="hours-probe-c2",
+                     status=VisitStatus.CANCELLED)
+        await _visit(ROBBIE, days_ahead=2, marker="hours-probe-c3")
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                target = await pick_agent(db, AppointmentActivity.SHOWING)
+        assert target.agent_email == NATALIA, (
+            "cancelled visits counted as load — the agent whose diary emptied "
+            "was skipped"
+        )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_pick_does_not_poison_the_callers_session() -> None:
+    """Reproduces an auditor's probe, on the fixed code.
+
+    The old pattern ran `pick_agent` on the caller's session under a bare
+    except. A failed statement — their probe used a missing table, the
+    deploy-before-migrate window — aborted that shared transaction: the
+    fallback "returned", and the caller's NEXT statement died with
+    InFailedSQLTransactionError. Panel 500, dropped call, lead without a reply.
+
+    `pick_agent_safely` fails on a session of its own. What this asserts is the
+    caller's side of that promise: after a pick whose SQL blows up, the same
+    session the caller was using still answers queries.
+    """
+    from unittest.mock import patch
+
+    from sqlalchemy import text as sql_text
+
+    from app.services.agent_calendar import pick_agent_safely
+
+    async def _explodes(db, activity):
+        # A real failed statement on whatever session it is handed — the same
+        # shape as the auditor's missing-table probe.
+        await db.execute(sql_text("SELECT * FROM this_table_does_not_exist"))
+
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            # The caller's session does some work first, like every real lane.
+            before = (await db.execute(sql_text("SELECT 1"))).scalar_one()
+            assert before == 1
+            with patch(
+                "app.services.agent_calendar.pick_agent", side_effect=_explodes
+            ):
+                target = await pick_agent_safely(AppointmentActivity.SHOWING)
+            assert target == BookingTarget(), "the fallback did not hold"
+            # The promise: the caller's session is still usable. On the old
+            # code this line raised InFailedSQLTransactionError.
+            after = (await db.execute(sql_text("SELECT 1"))).scalar_one()
+            assert after == 1, "the caller's transaction was aborted"
 
 
 @pytest.mark.asyncio

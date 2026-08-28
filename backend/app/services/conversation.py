@@ -822,18 +822,15 @@ async def _real_slots_note(
         log.warning("could not read booked visits for the reply: %s", exc)
         busy = set()
 
-    try:
-        from app.services.agent_calendar import activity_for_lead, pick_agent
+    from app.services.agent_calendar import activity_for_lead, pick_agent_safely
 
-        target = await pick_agent(db, activity_for_lead(lead))
-    except Exception as exc:  # noqa: BLE001
-        # Never let agent scheduling cost a reply. With no target the query
-        # falls back to the agency-wide event type, which is what this lane did
-        # before the feature existed.
-        log.warning("could not resolve the agent for this reply: %s", exc)
-        from app.services.agent_calendar import BookingTarget
-
-        target = BookingTarget()
+    # Never lets agent scheduling cost a reply — and now for real. The first
+    # version ran `pick_agent` on this session inside a bare except: a failed
+    # lookup aborted the shared transaction, the fallback "returned", and the
+    # message writes further down died with InFailedSQLTransactionError — the
+    # lead got no reply at all, precisely in the deploy-before-migrate window
+    # the fallback exists for. `pick_agent_safely` fails on its own session.
+    target = await pick_agent_safely(activity_for_lead(lead))
     try:
         # Hard budget. This runs inline in the webhook, ahead of a 30s LLM call,
         # and Cal.com's own client waits 15s — enough on its own to push an SMS

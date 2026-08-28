@@ -228,7 +228,7 @@ async def _get_lead_or_404(lead_id: int, db: AsyncSession) -> Lead:
     return lead
 
 
-async def _booking_target(db: AsyncSession, lead) -> tuple:
+async def _booking_target(lead) -> tuple:
     """Which agent's hours this lead is being offered, and what kind of visit.
 
     Never fails the request: this route already existed and worked before agent
@@ -237,17 +237,15 @@ async def _booking_target(db: AsyncSession, lead) -> tuple:
     """
     from app.services.agent_calendar import (
         AppointmentActivity,
-        BookingTarget,
         activity_for_lead,
-        pick_agent,
+        pick_agent_safely,
     )
 
-    try:
-        activity = activity_for_lead(lead) if lead is not None else AppointmentActivity.SHOWING
-        return activity, await pick_agent(db, activity)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("could not resolve the agent for this booking: %s", exc)
-        return AppointmentActivity.SHOWING, BookingTarget()
+    # `pick_agent_safely` runs on its own session. With the request's session an
+    # audit showed the fallback broke its promise: a failed lookup aborted the
+    # shared transaction and the NEXT statement 500'd anyway.
+    activity = activity_for_lead(lead) if lead is not None else AppointmentActivity.SHOWING
+    return activity, await pick_agent_safely(activity)
 
 
 async def _office_tz(db: AsyncSession) -> str:
@@ -429,7 +427,7 @@ async def list_slots(
     start = now.replace(minute=0, second=0, microsecond=0)
     end = start + timedelta(days=days)
     busy = await _busy_starts(db, since=start, until=end)
-    _, target = await _booking_target(db, lead)
+    _, target = await _booking_target(lead)
     try:
         slots = await list_available_slots(
             start=start,
@@ -479,7 +477,7 @@ async def book_slot(
     attendee_email = lead.email or (lead.phone if "@" in (lead.phone or "") else None)
     attendee_phone = lead.phone if "@" not in lead.phone else None
     attendee_name = lead.name or "Cliente"
-    activity, target = await _booking_target(db, lead)
+    activity, target = await _booking_target(lead)
 
     try:
         booking = await create_booking(

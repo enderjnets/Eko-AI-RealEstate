@@ -237,8 +237,9 @@ async def _target_for_caller(db: AsyncSession, phone: str | None):
     from app.models import Lead
     from app.services.agent_calendar import (
         AppointmentActivity,
+        BookingTarget,
         activity_for_lead,
-        pick_agent,
+        pick_agent_safely,
     )
 
     try:
@@ -248,12 +249,12 @@ async def _target_for_caller(db: AsyncSession, phone: str | None):
                 await db.execute(select(Lead).where(Lead.phone == phone))
             ).scalar_one_or_none()
         activity = activity_for_lead(lead) if lead else AppointmentActivity.SHOWING
-        return await pick_agent(db, activity)
     except Exception as exc:  # noqa: BLE001
-        log.warning("could not resolve the agent for this call: %s", exc)
-        from app.services.agent_calendar import BookingTarget as _BT
-
-        return _BT()
+        # Only the lead lookup touches the caller's session; `pick_agent_safely`
+        # below carries its own, so a failure there cannot abort this one.
+        log.warning("could not read the caller's lead: %s", exc)
+        return BookingTarget()
+    return await pick_agent_safely(activity)
 
 
 async def _office_tz_name(db: AsyncSession) -> str:
@@ -368,16 +369,16 @@ async def handle_tool_call(
 
             # After `_resolve_or_create_lead`, because it needs the lead's
             # intent: a seller books a valuation, not a buyer's showing.
-            from app.services.agent_calendar import activity_for_lead, pick_agent
+            from app.services.agent_calendar import activity_for_lead, pick_agent_safely
 
             activity = activity_for_lead(lead)
-            try:
-                target = await pick_agent(db, activity)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("could not resolve the agent for this booking: %s", exc)
-                from app.services.agent_calendar import BookingTarget
-
-                target = BookingTarget()
+            # Own session inside: right here the caller's session holds a
+            # freshly flushed, UNCOMMITTED lead. The old pattern — pick_agent on
+            # this session under a bare except — aborted the shared transaction
+            # on failure, so the fallback "succeeded" and the very next
+            # statement killed the call anyway; and a rollback that repaired the
+            # session would have erased that lead.
+            target = await pick_agent_safely(activity)
 
             provided = (arguments.get("phone") or "").strip()
             note = "Booked during a voice call"
