@@ -335,6 +335,11 @@ async def test_cancelling_survives_a_calendar_that_is_not_configured() -> None:
         calendar_provider="calcom",
         external_booking_id="cal-1",
         notes=None,
+        # A manual calendar event has no lead, and cancelling now sends a notice
+        # that reads this. `None` is the real shape of that case, and it keeps
+        # the point of this test intact: even with the notice unable to go out
+        # against these stubs, the cancellation still stands.
+        lead=None,
     )
 
     class _Result:
@@ -467,6 +472,9 @@ async def test_a_visit_is_never_stuck_uncancellable() -> None:
         calendar_provider="calcom",
         external_booking_id="cal-1",
         notes=None,
+        # See the sibling stub above: cancelling now sends a notice that reads
+        # `visit.lead`, and `None` is the real shape of a manual event.
+        lead=None,
     )
 
     class _Result:

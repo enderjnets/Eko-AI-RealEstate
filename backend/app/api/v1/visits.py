@@ -600,6 +600,33 @@ async def cancel_visit(
         visit.notes = f"Cancelled: {reason}"
     await db.commit()
     await db.refresh(visit)
+
+    # Tell the people, not just the calendar provider.
+    #
+    # Until this existed, `send_visit_invitation` was called from exactly two
+    # places and both were bookings: the `cancelled=True` path and the
+    # METHOD:CANCEL builder were written, commented, and unreachable. Cancelling
+    # from the dashboard marked the row and left the appointment standing in the
+    # lead's calendar and in the agent's — both would show up.
+    #
+    # AFTER the commit, and failure never rolls it back: a cancellation that was
+    # recorded but could not be announced is still cancelled, and undoing it
+    # would put back an appointment the agent already considers dead. The send
+    # is best-effort by design and `send_visit_invitation` never raises.
+    #
+    # `local_only` still notifies. That flag means "do not call the calendar
+    # provider", which is exactly the case where the provider is untrustworthy
+    # and a human being told matters most.
+    from app.services.followups import _lead_language  # single source of truth
+    from app.services.visit_invite import send_visit_invitation
+
+    lead = visit.lead  # lazy="joined"; None for a manual calendar event
+    try:
+        language = await _lead_language(lead, db) if lead is not None else "en"
+    except Exception:  # noqa: BLE001 — a language guess must not cost the notice
+        language = "en"
+    await send_visit_invitation(db, visit, lead, language=language, cancelled=True)
+
     return VisitOut.model_validate(visit)
 
 

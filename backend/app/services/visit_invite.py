@@ -59,6 +59,24 @@ _TEXT = {
         # out who they are about to meet or how to reach them if they are late.
         "who": "Who: {name}\nPhone: {phone}\nEmail: {email}\n{notes}",
         "notes": "What they asked for: {notes}\n",
+        # Cancellation copy. Without it, `cancelled=True` reached the .ics and
+        # the MIME method and left the words alone — the recipient got "Your
+        # visit is confirmed" carrying an attachment that cancels it.
+        "cancel_subject": "Your visit has been cancelled — {when}",
+        "cancel_body": (
+            "Your visit for {when} has been cancelled.\n\n"
+            "{where}"
+            "The attachment removes it from your calendar — open it so the slot "
+            "does not stay booked.\n\n"
+            "If you would like another time, just reply to this message.\n\n"
+            "{agency}"
+        ),
+        "agent_cancel_subject": "Visit cancelled — {when}",
+        "agent_cancel_body": (
+            "The visit for {when} has been cancelled.\n\n"
+            "{who}{where}"
+            "The attachment removes it from your calendar.\n"
+        ),
     },
     "es": {
         "subject": "Tu visita está agendada — {when}",
@@ -81,6 +99,21 @@ _TEXT = {
         ),
         "who": "Quién: {name}\nTeléfono: {phone}\nCorreo: {email}\n{notes}",
         "notes": "Qué pidió: {notes}\n",
+        "cancel_subject": "Tu visita ha sido cancelada — {when}",
+        "cancel_body": (
+            "Tu visita del {when} ha sido cancelada.\n\n"
+            "{where}"
+            "El adjunto la retira de tu calendario — ábrelo para que la hora no "
+            "quede ocupada.\n\n"
+            "Si quieres otra hora, responde a este mensaje.\n\n"
+            "{agency}"
+        ),
+        "agent_cancel_subject": "Visita cancelada — {when}",
+        "agent_cancel_body": (
+            "La visita del {when} ha sido cancelada.\n\n"
+            "{who}{where}"
+            "El adjunto la retira de tu calendario.\n"
+        ),
     },
 }
 
@@ -140,6 +173,11 @@ async def send_visit_invitation(
 
         ics = build_visit_ics(
             uid=_uid(visit),
+            # RFC 5546: a CANCEL whose SEQUENCE does not exceed the one the
+            # client already accepted may be ignored outright, and Outlook does
+            # ignore it. Same UID identifies the event; a higher sequence is
+            # what makes this supersede the invitation instead of racing it.
+            sequence=1 if cancelled else 0,
             starts_at=visit.scheduled_at,
             duration_minutes=visit.duration_minutes,
             summary=t["summary"].format(agency=agency),
@@ -158,11 +196,17 @@ async def send_visit_invitation(
             content_type=f"text/calendar; charset=utf-8; method={'CANCEL' if cancelled else 'REQUEST'}",
         )
 
+        # One place decides which set of words this send uses, so the subject,
+        # the body and the .ics METHOD can never disagree about whether the
+        # visit is on or off.
+        def key(base: str) -> str:
+            return f"cancel_{base}" if cancelled else base
+
         if lead_email:
             await _send_one(
                 to=lead_email,
-                subject=t["subject"].format(when=when),
-                body=t["body"].format(when=when, where=where, agency=agency),
+                subject=t[key("subject")].format(when=when),
+                body=t[key("body")].format(when=when, where=where, agency=agency),
                 attachment=attachment,
                 visit_id=visit.id,
                 who="lead",
@@ -187,8 +231,8 @@ async def send_visit_invitation(
         if agent_email:
             await _send_one(
                 to=agent_email,
-                subject=t["agent_subject"].format(when=when),
-                body=t["agent_body"].format(
+                subject=t["agent_cancel_subject" if cancelled else "agent_subject"].format(when=when),
+                body=t["agent_cancel_body" if cancelled else "agent_body"].format(
                     when=when,
                     who=t["who"].format(
                         # "—" rather than an empty line, so a missing field
