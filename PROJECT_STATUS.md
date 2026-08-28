@@ -212,16 +212,35 @@ diría a nadie**.
 
 | # | Punto | Resultado real |
 |---|---|---|
-| 1 | Tests | **1172 backend**, 0 fallos, **0 saltados**, desde base recreada (+8 nuevos). Frontend intacto: **153/153** |
+| 1 | Tests | **1176 backend**, 0 fallos, **0 saltados**, desde base recreada (+11 nuevos). Frontend intacto: **153/153** |
 | 2 | Lint / typecheck | `ruff check app tests` → **All checks passed**; `tsc --noEmit` limpio |
 | 3 | Build | `docker build -f backend/Dockerfile` → imagen `sha256:85068…` |
 | 4 | Cobertura del código nuevo | `visit_invite.py` **2/2**. ⚠️ En `visits.py` **no se puede medir**: `--cov` no atribuye lo ejecutado dentro del ASGI (comprobado: el test que SÍ ejecuta `cancel_visit` reporta esas líneas como no cubiertas). Sustituido por mutación, que es prueba de ejecución |
 | 5 | Secretos en el diff | 0 |
 | 6 | Depuración / errores | 0 `print`/`console.log`; el aviso no puede tumbar la cancelación |
 
-**Mutaciones: 5/5 rojas, restaurado verde.** Quitar la llamada de
+**Mutaciones: 8/8 rojas, restaurado verde.** Quitar la llamada de
 `cancel_visit`; `SEQUENCE` siempre 0; usar los textos de reserva; dejar la fila
-reenviable (`send_attempts=0`); quitar el `try/except` del idioma.
+reenviable (`send_attempts=0`); quitar el `try/except` del idioma; borrar una
+clave del bloque español; usar la etiqueta de reserva para el motivo; y
+`if not local_only` alrededor del aviso.
+
+### Auditoría independiente (`a728e05`) — 0 bloqueantes, 2 importantes corregidos
+
+Corrió con **rol NOBYPASSRLS propio y base propia**, así que su verificación de
+aislamiento vale: org A cancelando la visita de org B → **404, 0 correos**.
+
+Los dos importantes se arreglaron **en la fase** (`7e6699b`) en vez de ir al
+backlog, y uno merece explicación: **el bloque español no tenía prueba, y su
+fallo es invisible** — un `KeyError` cae en el `except` general y lo medido son
+**0 envíos**. Una errata ahí no da un correo raro: da una cancelación que nadie
+llega a saber, con toda la suite en inglés en verde. El otro: `local_only` no
+estaba cubierto pese a que el commit prometía que también avisa.
+
+**Al backlog, con evidencia:** quitar `ORGANIZER` del `.ics` no pone rojo nada,
+y el `ATTENDEE` de un CANCEL conserva `PARTSTAT=NEEDS-ACTION;RSVP=TRUE`, o sea
+que pide aceptar o rechazar un evento ya retirado. Tocan `icalendar.py`, que
+comparten reserva y cancelación, así que van con su propia tanda.
 
 **Lo que el plan no vio y apareció al ejecutar:** `cancelled=True` **no estaba
 completo por dentro**. Solo llegaba al `.ics` y al `method=` del MIME; el asunto
