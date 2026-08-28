@@ -15,6 +15,61 @@ de casa (ROG) al VPS, donde ya viven Zorros y Black Volt.
 
 ## 🟢 EN CURSO — «Mi disponibilidad» · rama `feat/disponibilidad-por-agente`
 
+### ✅ Fase 2 — «Mi disponibilidad» · commits `adaa9c7` + `6d40afc`
+
+Cada agente entra con su Google y declara cuándo se le puede reservar, por tipo
+de cita (visita, valoración, llamada, puertas abiertas).
+
+**El modelo de autorización es una frase:** el correo sale del token de sesión y
+de ningún otro sitio. No hay parámetro `email` en la ruta ni campo `email` en
+ningún cuerpo, y todos los esquemas son `extra="forbid"`. Un agente no puede
+tocar la agenda de otro **no porque una comprobación lo rechace, sino porque no
+hay forma de nombrar a la víctima**.
+
+| Checklist | Resultado real |
+|---|---|
+| Suite backend, base recreada | **1203 pasan, 0 fallan, 0 saltados** |
+| Frontend | `tsc` limpio · `next lint` sin avisos · **153** vitest |
+| Lint backend | `ruff check app tests` → *All checks passed* |
+| Build | imagen `2783f6a8…` |
+| Secretos / depuración | 0 y 0 |
+| Mutaciones | **8**, todas rojas (5 de la fase + 3 de los arreglos de auditoría) |
+
+⚠️ **Cobertura: no se puede medir aquí, y lo digo en vez de dar un número.**
+`pytest-cov` reporta 55 %/71 % en los ficheros nuevos, pero **no atribuye lo que
+se ejecuta dentro de la app ASGI** — las líneas del 403 que las mutaciones ponen
+en rojo salen como «no cubiertas». La prueba de que ese código corre son las
+mutaciones, no el porcentaje.
+
+### Auditoría de cierre de la Fase 2 — corregida en `6d40afc`
+
+**Un bloqueante y cinco importantes.** Tres de los importantes eran roturas
+visibles de la función recién construida, así que no fueron al backlog.
+
+| Hallazgo | Qué rompía | Estado |
+|---|---|---|
+| 🔴 **BLOQUEANTE**: el centinela `""` | se escribía el id vacío **antes** de lanzar el error, y el `commit` deliberado lo hacía permanente. La guarda leía `is None`, que `""` no es → `int("")` → `ValueError` no capturado → **500 para siempre**, recuperable solo con un `UPDATE` a mano. La variante del event type era peor: **200 silencioso** y la agente dejaba de ser reservable | ✅ arreglado en dos mitades independientes |
+| Un **timeout** no era `CalComScheduleError` | escapaba de todos los `except` y huerfanizaba en Cal.com el objeto recién creado; el reintento creaba otro | ✅ |
+| La página **no tenía enlace a ≥1536 px** | su única entrada de escritorio era el menú `2xl:hidden`: en el monitor de la oficina no existía | ✅ |
+| Cambiar de pestaña **descartaba las ediciones** | el comentario decía que no lo haría y el código lo hacía | ✅ borrador por actividad + aviso de sin guardar |
+| La **contraseña de oficina** llegaba a la vista de equipo | emite token admin sin correo, y el endpoint publica el padrón del personal | ✅ ahora exige identidad |
+| `_slug` **no era inyectivo** | dos compañeras con el mismo nombre de usuario colisionaban → 502 permanente para la segunda | ✅ digest del correo completo |
+
+**Nota de método, y me corrige a mí:** mi primera mutación del bloqueante
+**no puso el test en rojo**. Mutar una sola mitad del arreglo no basta, porque
+cada mitad protege por sí sola. La mutación válida es el código original entero
+— y entonces sí reproduce el `ValueError: invalid literal for int() with base
+10: ''` exacto del auditor.
+
+**Aviso del propio auditor, que reporto porque él lo reportó:** una de sus
+sondas hizo **una petición real a `api.cal.com`** sin sustituir `_call`. Devolvió
+401, no se enviaron datos y no hubo escrituras.
+
+**Siguiente paso concreto:** Fase 3 — que la disponibilidad decida las horas que
+se ofrecen. `list_available_slots` y `create_booking` ganan `activity` y
+`agent_email`; **los DOS** sitios que listan huecos (`voice.py` y
+`conversation.py:812`); `LeadIntent.VALUATION` → cita de valoración.
+
 ### ✅ Fase 1 — esquema y dueño del trabajo · commit `b0c3d71`
 
 | Checklist de «terminado» | Resultado real |
