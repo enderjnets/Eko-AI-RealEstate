@@ -58,10 +58,34 @@ falso disfrazado de comprobación.
   desempata por correo para que las horas ofrecidas y la reserva coincidan. Hoy
   hay una sola fila en producción: el camino está **dormido, no ausente**.
 
-**Siguiente paso concreto:** esperar la auditoría de esta fase; después,
-preparar el despliegue (checklist, reversión, migración 045, variables) y las
-dos verificaciones que solo el mundo real puede dar — que Natalia comparta su
-calendario, y comprobar que una hora ocupada suya **deja de ofrecerse**.
+### Auditoría de cierre de la Fase 3 — corregida en `24bdb2b`
+
+**La primera auditoría falló por forma, no por fondo**: salida corrupta dos
+veces, y sus «146 fallos» eran de su propio entorno (146+1065 = 1211, mi mismo
+total con una variable de entorno de menos). Peor: **dejó una mutación sin
+restaurar en `visits.py`** —las dos líneas `event_type_id` del panel, quitadas—
+y dos bases sin borrar. Restaurado a HEAD tras leer el diff, bases borradas.
+**Lección: el árbol se verifica después de que el último agente muere, no
+después de su primer informe.** La re-auditoría (instrucciones estrictas de
+forma) entregó limpia: **sin bloqueantes, 3 importantes, 1 menor**.
+
+| Hallazgo | Evidencia del auditor | Estado |
+|---|---|---|
+| **La transacción abortada** | sonda real: con `agent_calendars` ausente, el `except` devolvía el fallback y la **siguiente** sentencia de la misma sesión moría con `InFailedSQLTransactionError` — panel 500, llamada caída, lead sin respuesta. Y rollback no valía: la voz tiene un lead flusheado sin commitear en ese punto | ✅ `pick_agent_safely` en **sesión desechable propia** (la org viaja: es un ContextVar leído al abrir transacción); sustituye las 3 copias. Test que reproduce la sonda → mutación roja |
+| **Hueco de mutación en el conteo de carga** | quitar `status.in_((SCHEDULED, CONFIRMED))` dejaba los 8 tests verdes: una tarde **cancelada** seguiría contando contra la agente | ✅ test que lo fija; la mutación exacta del auditor ahora es roja |
+| Panel: ofrecer y reservar en dos requests | la carga o la intención pueden cambiar el agente entre medias; en real Cal.com lo rechaza (503 visible), en simulado se graba en silencio | 📋 **backlog** |
+| `_busy_starts` resta las visitas de TODA la agencia de los huecos de UN agente | con dos agentes, la cita de B oculta la hora libre de A. Dormido hoy | 📋 **backlog** |
+
+**Tras los arreglos: 1213 verdes** desde base recreada, ruff limpio, imagen
+`826e5b6e…`. Verificado también por el auditor: multi-tenant de `pick_agent`
+sano con sonda real de dos orgs bajo `eko_app`, `CancelledError` no se traga, la
+voz es coherente ofrecer↔reservar dentro de una llamada, y cero regresiones del
+cambio de firma.
+
+**Siguiente paso concreto:** desplegar v0.63.0 (autorización condicionada del
+dueño: cumplida — pruebas y auditorías en verde) y las dos verificaciones que
+solo el mundo real puede dar — que Natalia comparta su calendario, y comprobar
+que una hora ocupada suya **deja de ofrecerse**.
 
 ### ✅ Fase 2 — «Mi disponibilidad» · commits `adaa9c7` + `6d40afc`
 
