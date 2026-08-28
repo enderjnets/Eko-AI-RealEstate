@@ -52,6 +52,11 @@ HANDLED = {
     # `logged_by` is not advisor input: it is the signed-in email the route
     # reads from the session (`leads.py`, `current_email(request)`).
     "call_logs": (OURS, "logged_by is the session's email, not user input"),
+    # `email` is the session's JWT claim, never a request field; `activity` is a
+    # pg enum; the two Cal.com ids are short numeric handles that provider
+    # returns. Nothing a customer types reaches this table, and no write here
+    # shares a transaction with a customer's message.
+    "agent_calendars": (OURS, "session email, a pg enum, and Cal.com's own ids"),
     # The hook comes from a language model, which does not count characters.
     # Losing the tail of a draft beats losing the draft, and a person reads
     # every one of these before it can go anywhere.
@@ -357,6 +362,17 @@ class TestEveryUniqueStringKeyHasBeenThoughtAbout:
         # the entire feed until a human intervenes. The record is skipped at
         # the parser now, with a loud log line.
         ("properties", "external_id"): "feed id; over-long records skipped at the parser",
+        # Part of `uq_agent_calendar`. A database enum: the value set is closed
+        # by the type, so there is no length to exceed and no input path that
+        # could widen it — same reasoning as content_publications.platform.
+        ("agent_calendars", "activity"): "pg enum — closed value set",
+        # Never read from a request body: the route takes it from the session
+        # token (`services/auth.py::token_email`), which is a claim we minted
+        # from a Google-verified address. That is the whole authorisation model
+        # of agent scheduling — if this value could come from input, one agent
+        # could rewrite another's working hours. Bounded identically to
+        # `allowed_users.email`, so it fits by construction.
+        ("agent_calendars", "email"): "our own string — the session's JWT claim",
     }
 
     def test_the_inventory_is_complete(self) -> None:

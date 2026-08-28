@@ -3,6 +3,11 @@
 Order matters for cascades: parents before children.
 """
 from app.models.account import Account
+from app.models.agent_calendar import (
+    DEFAULT_DURATION_MINUTES,
+    AgentCalendar,
+    AppointmentActivity,
+)
 from app.models.agent_settings import AgentSettings
 from app.models.allowed_user import AllowedUser
 from app.models.call_log import CallLog, CallOutcome
@@ -45,6 +50,9 @@ __all__: list[str] = [
     "normalize_destination",
     "Account",
     "AgentSettings",
+    "AgentCalendar",
+    "AppointmentActivity",
+    "DEFAULT_DURATION_MINUTES",
     "AllowedUser",
     "CallLog",
     "ContentKind",

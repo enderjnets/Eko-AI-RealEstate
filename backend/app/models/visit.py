@@ -16,6 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, pg_enum
 from app.db.text_limits import clip_string_columns
+from app.models.agent_calendar import AppointmentActivity
 
 if TYPE_CHECKING:
     from app.models.lead import Lead
@@ -69,6 +70,21 @@ class Visit(Base):
         index=True,
     )
 
+    # What kind of appointment this is. A showing and a seller's valuation are
+    # not the same meeting — different length, different windows, different
+    # person's time — and before this column every booking was recorded as if it
+    # were a buyer's showing.
+    purpose: Mapped[AppointmentActivity] = mapped_column(
+        pg_enum(AppointmentActivity, name="appointment_activity"),
+        default=AppointmentActivity.SHOWING,
+        nullable=False,
+    )
+    # Whose appointment this is, by login email (see `AgentCalendar.email`).
+    # Nullable because unassigned is a real state, not a defect: a manual
+    # calendar block has no owner, and so does every visit booked before agent
+    # scheduling existed.
+    assigned_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+
     scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     duration_minutes: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     timezone: Mapped[str] = mapped_column(String(50), default="UTC", nullable=False)
@@ -113,5 +129,12 @@ class Visit(Base):
         "timezone",
         "property_address",
         "meeting_url",
+        # Bounded at 254 on both sides — it is copied from a session's JWT email
+        # or from `agent_calendars.email`, both String(254) — so a slice is
+        # unreachable in practice. It is in the list rather than EXEMPT because
+        # of what this table does: the row is written AFTER Cal.com already
+        # holds the booking, so a loud failure here strands a live appointment
+        # on somebody's calendar with nothing local pointing at it.
+        "assigned_email",
     )
 
