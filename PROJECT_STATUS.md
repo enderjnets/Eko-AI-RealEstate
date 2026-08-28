@@ -13,6 +13,49 @@ de casa (ROG) al VPS, donde ya viven Zorros y Black Volt.
 
 ---
 
+## 📌 PENDIENTES — esta noche y mañana (28-ago-2026)
+
+**ESTA NOCHE, a partir de las 23:05 MDT — dueño.** Cambiar los nameservers de
+`denverhomestory.com` a `arely.ns.cloudflare.com` / `damian.ns.cloudflare.com`
+en GoDaddy. La hora no es orientativa: el DS del padre se borró a las 17:05 y su
+TTL de 6 h vence a las 23:05; antes de eso, los nodos de Google que aún lo
+retienen dejarían el dominio en SERVFAIL. Si GoDaddy rechaza el cambio, apagar
+«Domain Lock», cambiarlo y volver a encenderlo. **Avisar al terminar** →
+verifico propagación, zona en Active, SPF/DMARC vivos y **cero SERVFAIL**; si
+aparece uno, reversión inmediata a GoDaddy.
+
+### MAÑANA
+
+1. 🔴 **Esperar la respuesta de Natalia.** El dueño le envió el correo la noche
+   del 27-ago pidiéndole que comparta su calendario de Google con
+   `denverhomestory@gmail.com` en modo **«ver solo libre/ocupado»**. Es de
+   Gmail, no de Workspace, así que **no hay administrador que pueda bloquearlo**.
+   Cuando conteste:
+   - Activar ese calendario en Cal.com como fuente de conflictos.
+   - **Verificarlo de verdad**: pedir los huecos de un día en el que ella tenga
+     algo puesto y comprobar que **esa hora ya no se ofrece**. Que el calendario
+     aparezca en la lista **no prueba nada**.
+   - Solo entonces `CALENDAR_SIMULATED=false` + reinicio del backend.
+2. **Antes de ese interruptor, una versión con tres cosas** (código; pedir
+   autorización de despliegue aparte):
+   - Quitar el `"language": "es"` cableado en el `attendee` de
+     `create_booking` — Cal.com le escribiría en español a clientes que van en
+     inglés por norma del dueño.
+   - **Exigir email en el formulario público** mientras el SMS esté aparcado: un
+     lead que solo deja teléfono no es alcanzable, y además haría que Cal.com
+     reservase con **Natalia como asistente** (cae a `booking_contact_email`).
+   - Poner `agency_phone = +17208249313` en Ajustes: el número existe, contesta
+     y **nadie lo tiene**.
+3. **Después: la landing en `denverhomestory.com`** (túnel + `CNAME` + el diseño
+   a `Landing.tsx`, conservando el formulario con su honeypot, captcha y
+   consentimiento TCPA). La reconstrucción del frontend activa de paso
+   `NEXT_PUBLIC_LANDING_BROKERAGE=Engel & Völkers`, que hoy está escrita pero
+   **no viva** por ser *build arg*.
+4. Luego `hello@denverhomestory.com` (Resend + Email Routing), **en ese orden**:
+   SPF y DKIM primero, relajar el `p=reject` después.
+
+---
+
 ## 🔴 EN CURSO — Dominio y teléfono (27-ago-2026) · rama `feat/dominio-y-telefono`
 
 **No toca código.** No hay tests, lint, build ni cobertura que enseñar: el
