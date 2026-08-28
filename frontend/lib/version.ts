@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.62.0";
+export const CURRENT_VERSION = "0.63.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,32 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.63.0",
+    date: "2026-08-28",
+    title: {
+      en: "Your own hours decide what clients are offered",
+      es: "Tu horario decide lo que se ofrece a los clientes",
+    },
+    changes: [
+      {
+        en: "New page, Availability: each of you sets when you can be booked, day by day, for each kind of appointment \u2014 property showing, home valuation, consultation call, open house. It is yours: nobody else can change your hours, and the page never asks who you are because it takes that from your sign-in.",
+        es: "Nueva p\u00e1gina, Disponibilidad: cada uno fija cu\u00e1ndo se le puede reservar, d\u00eda a d\u00eda, para cada tipo de cita \u2014 visita a propiedad, valoraci\u00f3n de vivienda, llamada de consulta y jornada de puertas abiertas. Es tuya: nadie m\u00e1s puede cambiar tus horas, y la p\u00e1gina no te pregunta qui\u00e9n eres porque lo toma de tu sesi\u00f3n.",
+      },
+      {
+        en: "The assistant now quotes those hours, by phone and by message alike, instead of a single agency-wide timetable. Before this, the hours it offered came from a fixed list that nobody had chosen.",
+        es: "El asistente cita ya ese horario, tanto por tel\u00e9fono como por mensaje, en vez de un \u00fanico horario para toda la agencia. Antes, las horas que ofrec\u00eda sal\u00edan de una lista fija que nadie hab\u00eda elegido.",
+      },
+      {
+        en: "Someone asking what their house is worth now books a home valuation, not a buyer\u2019s showing. It is a different meeting, of a different length, and until now it went into the diary as the wrong one.",
+        es: "Quien pregunta cu\u00e1nto vale su casa reserva ya una valoraci\u00f3n, no una visita de comprador. Es otra reuni\u00f3n, de otra duraci\u00f3n, y hasta ahora entraba en la agenda como la equivocada.",
+      },
+      {
+        en: "Each appointment now records what kind it is and whose it is. With one agent working that changes nothing you can see; it is what lets a second agent join without the two of you being offered each other\u2019s hours.",
+        es: "Cada cita registra ya de qu\u00e9 tipo es y de qui\u00e9n es. Con un solo agente no se nota; es lo que permite que entre un segundo sin que se os ofrezcan las horas del otro.",
+      },
+    ],
+  },
   {
     version: "0.62.0",
     date: "2026-08-27",

@@ -791,7 +791,7 @@ _SLOTS_BUDGET_SECONDS = 4.0
 
 
 async def _real_slots_note(
-    agent_cfg: AgentSettings, message: str | None, db: AsyncSession
+    agent_cfg: AgentSettings, message: str | None, db: AsyncSession, lead: Lead | None = None
 ) -> str:
     """The agency's actual next openings, when the lead is asking for a time.
 
@@ -821,6 +821,19 @@ async def _real_slots_note(
     except Exception as exc:  # noqa: BLE001
         log.warning("could not read booked visits for the reply: %s", exc)
         busy = set()
+
+    try:
+        from app.services.agent_calendar import activity_for_lead, pick_agent
+
+        target = await pick_agent(db, activity_for_lead(lead))
+    except Exception as exc:  # noqa: BLE001
+        # Never let agent scheduling cost a reply. With no target the query
+        # falls back to the agency-wide event type, which is what this lane did
+        # before the feature existed.
+        log.warning("could not resolve the agent for this reply: %s", exc)
+        from app.services.agent_calendar import BookingTarget
+
+        target = BookingTarget()
     try:
         # Hard budget. This runs inline in the webhook, ahead of a 30s LLM call,
         # and Cal.com's own client waits 15s — enough on its own to push an SMS
@@ -832,6 +845,12 @@ async def _real_slots_note(
                 end=now + timedelta(days=7),
                 timezone_name=agent_cfg.timezone or "UTC",
                 busy_starts=busy,
+                # The hours this agent declared for THIS kind of appointment.
+                # This lane was the one the first draft of the plan forgot: with
+                # only the voice lane converted, the chat would have gone on
+                # offering the agency-wide default while the phone offered the
+                # agent's real hours — two answers to the same question.
+                event_type_id=target.event_type_id,
             ),
             timeout=_SLOTS_BUDGET_SECONDS,
         )
@@ -1462,7 +1481,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     system_prompt += _office_hours_note(agent_cfg)
     if is_new_lead:
         system_prompt += _greeting_note(agent_cfg)
-    system_prompt += await _real_slots_note(agent_cfg, inbound.content, db)
+    system_prompt += await _real_slots_note(agent_cfg, inbound.content, db, lead)
 
     # Phase 10: if the lead is property-shopping and we know the zone, give the
     # LLM the REAL matching listings so it can offer them (and never invent any).

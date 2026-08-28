@@ -221,6 +221,41 @@ def _parse_dt(value: Any, tz: ZoneInfo) -> datetime | None:
     return resolved
 
 
+async def _target_for_caller(db: AsyncSession, phone: str | None):
+    """Which agent's hours to quote to this caller, and on which event type.
+
+    Resolved from the lead we already have, if any: a known seller gets the
+    valuation calendar, everybody else the showing one. An unknown caller gets
+    the showing target, which is what the product offered before agent
+    scheduling existed.
+
+    Never fails the call. Availability is what the caller phoned about; a
+    scheduling lookup that throws must cost the agent's own hours, not the
+    conversation — falling back to `BookingTarget()` puts the query on the
+    agency-wide event type, exactly as before.
+    """
+    from app.models import Lead
+    from app.services.agent_calendar import (
+        AppointmentActivity,
+        activity_for_lead,
+        pick_agent,
+    )
+
+    try:
+        lead = None
+        if phone:
+            lead = (
+                await db.execute(select(Lead).where(Lead.phone == phone))
+            ).scalar_one_or_none()
+        activity = activity_for_lead(lead) if lead else AppointmentActivity.SHOWING
+        return await pick_agent(db, activity)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("could not resolve the agent for this call: %s", exc)
+        from app.services.agent_calendar import BookingTarget as _BT
+
+        return _BT()
+
+
 async def _office_tz_name(db: AsyncSession) -> str:
     from app.models import AgentSettings
 
@@ -294,8 +329,15 @@ async def handle_tool_call(
             days = int(arguments.get("days") or 7)
             days = max(1, min(days, 30))
             now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+            # Looked up, never created: someone asking what times exist has not
+            # agreed to anything yet, and a lead row written here would put a
+            # caller who hung up into the funnel.
+            target = await _target_for_caller(db, customer_number)
             slots = await list_available_slots(
-                start=now, end=now + timedelta(days=days), timezone_name=tz_name
+                start=now,
+                end=now + timedelta(days=days),
+                timezone_name=tz_name,
+                event_type_id=target.event_type_id,
             )
             if not slots:
                 return "I don't see any open visit times in that window right now."
@@ -324,6 +366,19 @@ async def handle_tool_call(
             lead = await _resolve_or_create_lead(phone, caller_name, db)
             property_address = (arguments.get("property_address") or arguments.get("property") or None)
 
+            # After `_resolve_or_create_lead`, because it needs the lead's
+            # intent: a seller books a valuation, not a buyer's showing.
+            from app.services.agent_calendar import activity_for_lead, pick_agent
+
+            activity = activity_for_lead(lead)
+            try:
+                target = await pick_agent(db, activity)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("could not resolve the agent for this booking: %s", exc)
+                from app.services.agent_calendar import BookingTarget
+
+                target = BookingTarget()
+
             provided = (arguments.get("phone") or "").strip()
             note = "Booked during a voice call"
             if provided and provided != phone:
@@ -346,6 +401,9 @@ async def handle_tool_call(
                 start=when - timedelta(minutes=1),
                 end=when + timedelta(days=1),
                 timezone_name=tz_name,
+                # The same event type the booking will use. Checking one and
+                # booking another would confirm an hour the agent never offered.
+                event_type_id=target.event_type_id,
                 busy_starts=await _busy_starts(
                     db, since=when - timedelta(days=1), until=when + timedelta(days=2)
                 ),
@@ -412,6 +470,7 @@ async def handle_tool_call(
                 attendee_phone=attendee_phone,
                 notes=note,
                 timezone_name=tz_name,
+                event_type_id=target.event_type_id,
             )
             # Same rule as the HTTP route, from the same place. The reference
             # the calendar returns is the only handle that can cancel this
@@ -447,6 +506,11 @@ async def handle_tool_call(
                 property_address=property_address,
                 meeting_url=booking.meeting_url,
                 notes=note,
+                # What kind of appointment it is, and whose. Without these the
+                # per-agent hours are unverifiable against reality: nothing
+                # records who the hour was taken from.
+                purpose=activity,
+                assigned_email=target.agent_email,
             )
             db.add(visit)
             await db.commit()

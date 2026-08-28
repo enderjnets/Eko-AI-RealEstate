@@ -228,6 +228,28 @@ async def _get_lead_or_404(lead_id: int, db: AsyncSession) -> Lead:
     return lead
 
 
+async def _booking_target(db: AsyncSession, lead) -> tuple:
+    """Which agent's hours this lead is being offered, and what kind of visit.
+
+    Never fails the request: this route already existed and worked before agent
+    scheduling, and a lookup that throws must fall back to the agency-wide event
+    type rather than deny a realtor the booking screen.
+    """
+    from app.services.agent_calendar import (
+        AppointmentActivity,
+        BookingTarget,
+        activity_for_lead,
+        pick_agent,
+    )
+
+    try:
+        activity = activity_for_lead(lead) if lead is not None else AppointmentActivity.SHOWING
+        return activity, await pick_agent(db, activity)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("could not resolve the agent for this booking: %s", exc)
+        return AppointmentActivity.SHOWING, BookingTarget()
+
+
 async def _office_tz(db: AsyncSession) -> str:
     """The office IANA timezone from AgentSettings (singleton), default UTC."""
     cfg = (await db.execute(select(AgentSettings).where(AgentSettings.org_id == _acting_org()))).scalar_one_or_none()
@@ -402,13 +424,20 @@ async def list_slots(
         tz = _valid_timezone(tz) or "UTC"  # type: ignore[assignment]
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await _get_lead_or_404(lead_id, db)
+    lead = await _get_lead_or_404(lead_id, db)
     now = datetime.now(UTC)
     start = now.replace(minute=0, second=0, microsecond=0)
     end = start + timedelta(days=days)
     busy = await _busy_starts(db, since=start, until=end)
+    _, target = await _booking_target(db, lead)
     try:
-        slots = await list_available_slots(start=start, end=end, timezone_name=tz, busy_starts=busy)
+        slots = await list_available_slots(
+            start=start,
+            end=end,
+            timezone_name=tz,
+            busy_starts=busy,
+            event_type_id=target.event_type_id,
+        )
     except CalComError as exc:
         raise HTTPException(status_code=503, detail=f"Cal.com unavailable: {exc}") from exc
     return SlotsResponse(
@@ -450,6 +479,7 @@ async def book_slot(
     attendee_email = lead.email or (lead.phone if "@" in (lead.phone or "") else None)
     attendee_phone = lead.phone if "@" not in lead.phone else None
     attendee_name = lead.name or "Cliente"
+    activity, target = await _booking_target(db, lead)
 
     try:
         booking = await create_booking(
@@ -461,6 +491,7 @@ async def book_slot(
             notes=body.notes,
             timezone_name=tz,
             duration_minutes=body.duration_minutes,
+            event_type_id=target.event_type_id,
         )
     except CalComError as exc:
         raise HTTPException(status_code=503, detail=f"Cal.com booking failed: {exc}") from exc
@@ -499,6 +530,8 @@ async def book_slot(
         property_id=property_id,
         meeting_url=booking.meeting_url,
         notes=body.notes,
+        purpose=activity,
+        assigned_email=target.agent_email,
     )
     db.add(visit)
     await db.commit()

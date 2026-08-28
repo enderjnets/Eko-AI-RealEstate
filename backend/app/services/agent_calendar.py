@@ -32,9 +32,10 @@ import hashlib
 import logging
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -426,3 +427,95 @@ async def set_windows(
         json={"timeZone": timezone_name, "availability": _from_windows(windows)},
     )
     return _to_windows(data.get("availability") or [])
+
+
+# ── Who takes this kind of appointment ───────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class BookingTarget:
+    """Whose appointment this is, and which Cal.com event type owns the hours.
+
+    Both None means "nobody has declared this activity yet", and the caller
+    falls back to the global `CALCOM_EVENT_TYPE_ID` — the behaviour before agent
+    scheduling existed. That fallback is deliberate: turning this feature on
+    must not stop bookings for an agency that has not filled it in.
+    """
+
+    agent_email: str | None = None
+    event_type_id: str | None = None
+
+
+async def pick_agent(db: AsyncSession, activity: AppointmentActivity) -> BookingTarget:
+    """The agent who takes this activity, and their event type.
+
+    Today one person is bookable, which makes the rule look like an accident
+    waiting to be written. It is not deferred: with two or more configured
+    agents this picks the one carrying the fewest upcoming appointments, and a
+    test fixes that behaviour so enabling the second agent is a data change, not
+    a code change. The owner asked for exactly that — "por ahora solo Natalia,
+    pero el sistema debe ser escalable".
+
+    Only rows that are `active` and actually provisioned count: a row whose
+    Cal.com event type is missing cannot be booked on, and offering hours
+    against it would promise a slot nothing can take.
+    """
+    from app.models import Visit, VisitStatus
+
+    rows = (
+        await db.execute(
+            select(AgentCalendar).where(
+                AgentCalendar.activity == activity,
+                AgentCalendar.active.is_(True),
+                AgentCalendar.calcom_event_type_id.isnot(None),
+            )
+        )
+    ).scalars().all()
+    rows = [r for r in rows if r.calcom_event_type_id]
+    if not rows:
+        return BookingTarget()
+    if len(rows) == 1:
+        return BookingTarget(rows[0].email, rows[0].calcom_event_type_id)
+
+    now = datetime.now(UTC)
+    counts = dict(
+        (
+            await db.execute(
+                select(Visit.assigned_email, func.count())
+                .where(
+                    Visit.assigned_email.in_([r.email for r in rows]),
+                    Visit.scheduled_at >= now,
+                    Visit.status.in_((VisitStatus.SCHEDULED, VisitStatus.CONFIRMED)),
+                )
+                .group_by(Visit.assigned_email)
+            )
+        ).all()
+    )
+    # `email` as the tiebreak, not insertion order: two agents with the same
+    # load must resolve the same way on every call, or the same lead gets a
+    # different agent for the slots they were offered and the one they book.
+    chosen = min(rows, key=lambda r: (counts.get(r.email, 0), r.email))
+    return BookingTarget(chosen.email, chosen.calcom_event_type_id)
+
+
+def activity_for_lead(lead) -> AppointmentActivity:
+    """What kind of appointment this person is actually asking for.
+
+    A seller and a buyer do not want the same meeting. `LeadIntent.VALUATION` is
+    somebody asking what their house is worth, and until now the system booked
+    them a buyer's showing — the wrong length, the wrong hours, and a calendar
+    entry that told the agent the wrong thing to prepare. This mapping is the
+    single place that decision is made.
+
+    Anything else, including a lead created moments ago whose intent has not
+    been classified yet, is a showing. Written down rather than left implicit:
+    a caller who turns out to be a seller keeps the showing that was already
+    booked, and correcting the kind of an existing appointment is another
+    round's work.
+    """
+    from app.models.lead import LeadIntent
+
+    intent = getattr(lead, "intent", None)
+    if intent == LeadIntent.VALUATION:
+        return AppointmentActivity.VALUATION
+    return AppointmentActivity.SHOWING

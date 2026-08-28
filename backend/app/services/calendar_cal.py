@@ -146,6 +146,7 @@ async def list_available_slots(
     end: datetime,
     timezone_name: str = "UTC",
     busy_starts: set[datetime] | None = None,
+    event_type_id: str | None = None,
 ) -> list[Slot]:
     """Return slots between [start, end). In SIMULATED mode, generated locally;
     otherwise hits Cal.com v2 `/slots/available`.
@@ -185,7 +186,13 @@ async def list_available_slots(
         resp = await client.get(
             f"{s.CALCOM_BASE_URL}/v2/slots/available",
             params={
-                "eventTypeId": identity.destination,
+                # An agent's own event type when the caller resolved one,
+                # otherwise the agency-wide default. ONLY the event type is
+                # overridden: `identity.credential` still comes from
+                # `resolve_calendar_identity`, whose whole purpose is refusing
+                # an organization that would otherwise book on the operator's
+                # Cal.com account. Replacing the identity here would reopen it.
+                "eventTypeId": event_type_id or identity.destination,
                 "startTime": start.isoformat(),
                 "endTime": end.isoformat(),
                 "timeZone": timezone_name,
@@ -266,6 +273,7 @@ async def create_booking(
     notes: str | None = None,
     timezone_name: str = "UTC",
     duration_minutes: int = SIMULATED_DURATION_MIN,
+    event_type_id: str | None = None,
 ) -> BookingResult:
     """Create a booking. In SIMULATED mode returns a fake id; otherwise hits
     Cal.com v2 `/bookings`.
@@ -317,7 +325,10 @@ async def create_booking(
         )
 
     body: dict[str, Any] = {
-        "eventTypeId": int(identity.destination),
+        # Same rule as the slot query, and it has to be the same: offering hours
+        # from one event type and booking onto another would hand the caller a
+        # time that agent never declared.
+        "eventTypeId": int(event_type_id or identity.destination),
         "start": start_time.isoformat(),
         "attendee": {
             "name": attendee_name,

@@ -2,6 +2,37 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.63.0] — 2026-08-28
+
+### Añadido — «Mi disponibilidad»: cada agente declara su horario
+
+Hasta ahora el producto **no tenía forma de decir cuándo puede trabajar una
+persona**, y no era una función que faltara sino un sustantivo: nada en el
+esquema pertenecía a un agente, así que «la disponibilidad de Natalia» no se
+podía ni escribir. Las horas que el asistente ofrecía salían de una lista fija
+—10, 11, 14, 15 y 16— que nadie había elegido.
+
+- **Página nueva, Disponibilidad.** Cada usuario entra con su Google y fija sus
+  franjas por día y por **tipo de cita**: visita a propiedad, valoración de
+  vivienda, llamada de consulta y jornada de puertas abiertas, cada uno con su
+  duración y su margen de desplazamiento.
+- **El asistente cita ese horario en los DOS carriles**, voz y mensaje. Convertir
+  solo uno habría dejado al teléfono ofreciendo las horas reales del agente y al
+  chat las de la agencia — dos respuestas distintas a la misma pregunta.
+- **Quien quiere vender reserva una valoración**, no una visita de comprador.
+- Cada cita registra **de qué tipo es y de quién es**, que es lo que permitirá
+  que entre un segundo agente sin que se ofrezcan las horas del otro.
+
+**Seguridad:** el correo del agente sale del token de sesión y de ningún otro
+sitio — no hay parámetro ni campo donde nombrar a otra persona. La contraseña
+compartida de oficina, que da acceso sin identidad, queda fuera de estas
+páginas.
+
+**Límite conocido, dicho en voz alta:** con una sola cuenta de Cal.com los
+conflictos se leen de los calendarios conectados a esa cuenta. Mientras reserve
+un solo agente no se nota; el día que reserve un segundo hará falta Cal.com de
+pago.
+
 ## [0.62.0] — 2026-08-27
 
 ### Corregido — la cancelación no salía de nuestra base de datos
