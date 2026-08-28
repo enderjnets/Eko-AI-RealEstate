@@ -169,6 +169,14 @@ SEND_EXEMPT = {
     "app/services/whatsapp.py::send_text_message",
     "app/services/sms.py::send_sms",
     "app/services/email.py::send_email",
+    # Emails the AGENCY about a lead who just submitted the public form,
+    # addressed to `booking_contact_email` from Settings and never to the lead.
+    # The exemption runs both ways and both matter: a lead's earlier STOP must
+    # not hide their own fresh form submission from the agent (the submission
+    # IS inbound contact), and this notice must never be dispatched to the
+    # lead — its thread record is `internal=True`, which the delivery sweep
+    # skips by construction.
+    "app/services/lead_notify.py::_send_and_record",
 }
 
 APP = pathlib.Path(__file__).resolve().parents[1] / "app"

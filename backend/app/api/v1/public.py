@@ -30,6 +30,7 @@ from app.services.capture import (
     capture_lead,
     validate_submission,
 )
+from app.services.lead_notify import send_new_lead_notice
 from app.services.tenant_context import set_org_id
 from app.services.tenant_resolver import WebhookOrgUnresolved, webhook_org_or_refuse
 
@@ -303,7 +304,7 @@ async def capture(
     set_org_id(org_id)
 
     try:
-        await capture_lead(submission, db)
+        captured = await capture_lead(submission, db)
     except CaptureRejected as exc:
         await db.rollback()
         raise HTTPException(status_code=422, detail=exc.code) from exc
@@ -313,6 +314,13 @@ async def capture(
         raise HTTPException(status_code=500, detail="capture_failed") from None
 
     await db.commit()
+
+    # After the commit, on purpose: the lead must be durable before anyone is
+    # told about it, and a notification failure must cost the notification,
+    # never the capture. Duplicates are already filtered — a double-submit
+    # returns status "duplicate" above and must not email the agency twice.
+    if captured.get("status") == "ok":
+        await send_new_lead_notice(captured["lead_id"], captured.get("message_id"))
     # Deliberately says nothing about whether the lead was new, merged or
     # duplicate: that is a membership oracle for anyone who wants to test
     # whether an address is in an agency's book.

@@ -143,6 +143,16 @@ class Settings(BaseSettings):
     # goes back to false without a deploy.
     CAPTURE_REQUIRE_EMAIL: bool = True
 
+    # Interim funnel (28-ago-2026): appointments are arranged PERSONALLY — the
+    # form notifies the agent and she calls back — because Cal.com's conflict
+    # source is still only the brand calendar, so an automated booking can
+    # double-book the agent. With this on, the automated lanes stop offering
+    # or taking appointment times (they promise a call-back instead); booking
+    # from the dashboard, by a human, is untouched. Flip back to false when the
+    # agent's own calendar is connected and PROVEN (a busy hour of hers stops
+    # being offered) — that flip is the reactivation, no deploy needed.
+    BOOKING_OFFERS_PAUSED: bool = False
+
     SMS_SIMULATED: bool = True
     TWILIO_ACCOUNT_SID: str = ""
     # Two jobs used to ride on this one value: authenticating what we SEND, and

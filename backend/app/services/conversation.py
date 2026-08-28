@@ -806,6 +806,19 @@ async def _real_slots_note(
         phrase in text for phrase in _SCHEDULING_PHRASES
     ):
         return ""
+    from app.config import get_settings
+
+    # Interim funnel: appointments are arranged personally, so the model must
+    # not quote times. Returning "" here would be worse than this note — the
+    # docstring above records why: left without instructions, the model INVENTS
+    # plausible hours. The instruction replaces the slots, it doesn't just
+    # withhold them.
+    if get_settings().BOOKING_OFFERS_PAUSED:
+        return (
+            "\n\nCITAS EN PAUSA: no ofrezcas, confirmes ni inventes horas "
+            "concretas. Si el lead pide cita, dile que un agente le llamará "
+            "en las próximas horas para cuadrar la hora."
+        )
     from datetime import timedelta
 
     from app.api.v1.visits import _busy_starts
