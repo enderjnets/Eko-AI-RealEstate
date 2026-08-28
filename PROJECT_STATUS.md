@@ -122,6 +122,47 @@ Fotografía DNS completa guardada como línea base para el cotejo posterior.
    antes que de él. **El de GoDaddy no lo recomiendo**: no puede
    hacer lo único que hace falta, y tras el cambio GoDaddy solo es registrador.
 
+### ✅ Zona de Cloudflare CONFIGURADA (27-ago, 19:50-20:00)
+
+**El token entró al tercer intento**, con la comprobación arreglada:
+`success — el token LEE la zona denverhomestory.com`, estado **`pending`**.
+Guardado en `~/.eko-cloudflare.env` (600) junto al `CLOUDFLARE_ZONE_ID`.
+
+🔴 **Su ámbito es MAYOR del que pedí, y hay que decirlo.** El dueño confirmó que
+es un token de cuenta completa. Medido: alcanza **4 zonas** — `bittraderbot.com`,
+**`blackvoltmobility.com`**, **`ekoaiautomation.com`** (que sirve el panel de Eko
+AI Realtors, Zorros y Black Volt) y `denverhomestory.com`. Es decir, **tres
+productos vivos de clientes al alcance de un error mío en un solo comando**.
+Disciplina auto-impuesta mientras exista: **todo write va contra
+`$CLOUDFLARE_ZONE_ID`**, nunca contra un nombre resuelto al vuelo, y cada script
+lleva una **guarda dura** que aborta si ese id no responde `denverhomestory.com`.
+Recomendación al dueño: rodarlo a un token acotado a esa zona cuando cerremos el
+correo.
+
+**Escrito en la zona (y por qué antes del corte, no después):** publicarlo ahora
+hace que entre en vigor **en el instante** del cambio de NS, sin la ventana de
+suplantación que dejaría hacerlo media hora más tarde.
+
+| Registro | Valor | Motivo |
+|---|---|---|
+| `TXT @` | `v=spf1 -all` | el dominio no envía correo; la postura honesta es la estricta |
+| `TXT _dmarc` | `v=DMARC1; p=reject; rua=…` | sustituye al `p=quarantine` que Cloudflare copió de GoDaddy, cuyo `rua` informaba **a GoDaddy** |
+| `A @` ×2, `CNAME www`, `CNAME _domainconnect` | **proxy OFF** (nube gris) | estaban en naranja: Cloudflare habría intentado hablar con el aparcamiento de GoDaddy, que no lo espera → **522/526**, y el cambio de NS se habría visto como una caída. En gris el corte es **invisible** |
+
+⚠️ **Deshacer en orden inverso al armar `hello@denverhomestory.com`**: primero
+SPF+DKIM de Resend, y **solo entonces** relajar el `p=reject`.
+
+**Verificado contra los autoritativos, con control negativo.** `A @` y
+`CNAME www` responden **idéntico** en GoDaddy y en Cloudflare; el SPF sale ✗ en
+el cotejo **a propósito** (existe solo en Cloudflare) — es la prueba de que el
+instrumento puede fallar. Antes de eso escribí un cotejo que comparaba **dos
+respuestas vacías y decía «IDÉNTICO»**: zsh no parte las palabras como bash y
+`dig` recibía el nombre vacío. Lo cazó exigir respuesta no vacía, no la vista.
+
+⚠️ **La medición del DS es RUIDOSA: 3/20 a las 19:39 y 9/20 a las 19:58.** No
+es que empeorara — Google es anycast y cada muestra cae en nodos distintos. **La
+puerta es el reloj, no la muestra**: TTL cumplido a las **23:05 MDT**.
+
 ### Bloqueo, diagnóstico y las dos salidas
 
 **Diagnóstico:** la fase no se puede cerrar porque sus dos acciones restantes
