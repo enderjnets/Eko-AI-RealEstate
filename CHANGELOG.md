@@ -2,6 +2,24 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.64.0] — 2026-08-28
+
+### Añadido — la landing de Denver Home Story
+
+- La página pública pasa al diseño v4: héroe cinematográfico con vídeo/poster,
+  sección «nosotros dos» con retrato, «cómo trabajamos», tres mercados y el
+  formulario de consulta sobre panel oscuro. Cormorant Garamond auto-hospedada.
+- **El formulario avisa a la agencia**: cada captura real manda un correo a
+  `booking_contact_email` con nombre, teléfono, email, mensaje y atribución,
+  registrado en el hilo como nota interna. Un duplicado no avisa dos veces y
+  un fallo del aviso jamás rompe la captura.
+- **Pausa de citas automáticas** (`BOOKING_OFFERS_PAUSED`): mientras las citas
+  se cuadran en persona, el chat no ofrece huecos (instrucción de callback en
+  su lugar) y las herramientas de voz prometen la llamada. El panel manual no
+  cambia. Tres mutaciones verificadas en rojo.
+- El formulario exige email también en el navegador y el 422 `email_required`
+  tiene mensaje propio; el subtexto promete lo que el embudo cumple.
+
 ## [0.63.1] — 2026-08-28
 
 ### Corregido — antes de encender el calendario real

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.63.1";
+export const CURRENT_VERSION = "0.64.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.64.0",
+    date: "2026-08-28",
+    title: {
+      en: "The Denver Home Story landing",
+      es: "La landing de Denver Home Story",
+    },
+    changes: [
+      {
+        en: "The public page moved to its final design: cinematic hero, the two of you, how we work, three markets, and the consult form on a dark panel.",
+        es: "La p\u00e1gina p\u00fablica pasa a su dise\u00f1o final: h\u00e9roe cinematogr\u00e1fico, nosotros dos, c\u00f3mo trabajamos, tres mercados y el formulario en panel oscuro.",
+      },
+      {
+        en: "Every form submission now emails the booking contact with the lead's details, so the call-back promise has somebody behind it.",
+        es: "Cada env\u00edo del formulario manda un correo al contacto de reservas con los datos del lead: la promesa de llamada tiene ya a alguien detr\u00e1s.",
+      },
+      {
+        en: "While appointments are arranged personally, the assistant no longer offers times by chat or phone — it promises a call back within a few hours instead.",
+        es: "Mientras las citas se cuadran en persona, la asistente ya no ofrece horas por chat ni por tel\u00e9fono: promete una llamada en las pr\u00f3ximas horas.",
+      },
+    ],
+  },
   {
     version: "0.63.1",
     date: "2026-08-28",
