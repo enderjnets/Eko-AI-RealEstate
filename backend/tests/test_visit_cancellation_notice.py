@@ -137,6 +137,19 @@ async def _notify(lead_id: int, visit_id: int, sender: AsyncMock, *, cancelled: 
                 await send_visit_invitation(db, visit, lead, language="en", cancelled=cancelled)
 
 
+async def _notify_lang(
+    lead_id: int, visit_id: int, sender: AsyncMock, *, language: str
+) -> None:
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            lead = (await db.execute(select(Lead).where(Lead.id == lead_id))).scalar_one()
+            visit = (await db.execute(select(Visit).where(Visit.id == visit_id))).scalar_one()
+            with patch("app.services.visit_invite.send_email", sender):
+                await send_visit_invitation(
+                    db, visit, lead, language=language, cancelled=True
+                )
+
+
 def _ics_of(call) -> str:
     """The .ics text of one recorded send_email call."""
     attachments = call.kwargs["attachments"]
@@ -399,5 +412,82 @@ async def test_a_broken_language_guess_still_sends_the_notice(database_url: str)
         assert r.status_code == 200, r.text
         assert sender.await_count == 2, "the notice was lost to a language lookup"
         assert "cancel" in sender.await_args_list[0].kwargs["subject"].lower()
+    finally:
+        await _cleanup()
+
+
+# ── Los huecos que encontró la auditoría ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_spanish_cancellations_are_not_silent(database_url: str) -> None:
+    """The Spanish copy needs its own test because its failure is INVISIBLE.
+
+    A missing key raises `KeyError` inside `send_visit_invitation`, whose broad
+    `except` logs and returns — measured: **zero** emails go out. So a typo in
+    the `es` block does not produce a wrong email, it produces a cancellation
+    nobody is ever told about, and every English test stays green while it
+    happens. Asserting the count first is the point; the words are secondary.
+    """
+    lead_id, visit_id = await _seed()
+    try:
+        sender = _sender("re_es_lead", "re_es_agency")
+        await _notify_lang(lead_id, visit_id, sender, language="es")
+        assert sender.await_count == 2, (
+            "the Spanish cancellation went out to nobody — a missing key in "
+            "_TEXT['es'] is swallowed and looks like silence, not an error"
+        )
+        for call in sender.await_args_list:
+            assert "cancel" in call.kwargs["subject"].lower()
+            assert "confirmada" not in call.kwargs["body_text"].lower()
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_reason_is_not_labelled_as_a_request(database_url: str) -> None:
+    """`visit.notes` becomes "Cancelled: <reason>" when the row is cancelled, so
+    the booking label turned the agent's mail into "What they asked for:
+    Cancelled: Cancelled from dashboard"."""
+    lead_id, visit_id = await _seed()
+    async with get_bypass_session_factory()() as db:
+        visit = (await db.execute(select(Visit).where(Visit.id == visit_id))).scalar_one()
+        visit.calendar_provider = "manual"
+        await db.commit()
+    try:
+        sender = _sender("re_rsn_lead", "re_rsn_agency")
+        with patch("app.services.visit_invite.send_email", sender):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                r = await client.post(f"/api/v1/visits/{visit_id}/cancel")
+        assert r.status_code == 200, r.text
+        agency = [c for c in sender.await_args_list if c.kwargs["to"] == AGENCY_EMAIL][0]
+        body = agency.kwargs["body_text"]
+        assert "What they asked for" not in body, body
+        assert "Reason:" in body, body
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_local_only_still_tells_the_people(database_url: str) -> None:
+    """`local_only` means "do not call the calendar provider", never "say
+    nothing". It is used when the provider is unreachable or already cancelled
+    there — precisely the cases where a human being told is the only thing that
+    still works. Untested, wrapping the notice in `if not local_only` left the
+    suite green."""
+    lead_id, visit_id = await _seed()
+    try:
+        sender = _sender("re_lo_lead", "re_lo_agency")
+        with patch("app.services.visit_invite.send_email", sender):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                r = await client.post(
+                    f"/api/v1/visits/{visit_id}/cancel?local_only=true"
+                )
+        assert r.status_code == 200, r.text
+        assert sender.await_count == 2, "cancelled locally and told nobody"
     finally:
         await _cleanup()

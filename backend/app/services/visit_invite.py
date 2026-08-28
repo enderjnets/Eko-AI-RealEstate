@@ -71,6 +71,10 @@ _TEXT = {
             "If you would like another time, just reply to this message.\n\n"
             "{agency}"
         ),
+        # `visit.notes` becomes "Cancelled: <reason>" the moment the row is
+        # cancelled, so reusing the booking label printed "What they asked for:
+        # Cancelled: Cancelled from dashboard" in the agent's mail.
+        "cancel_notes": "Reason: {notes}\n",
         "agent_cancel_subject": "Visit cancelled — {when}",
         "agent_cancel_body": (
             "The visit for {when} has been cancelled.\n\n"
@@ -108,6 +112,7 @@ _TEXT = {
             "Si quieres otra hora, responde a este mensaje.\n\n"
             "{agency}"
         ),
+        "cancel_notes": "Motivo: {notes}\n",
         "agent_cancel_subject": "Visita cancelada — {when}",
         "agent_cancel_body": (
             "La visita del {when} ha sido cancelada.\n\n"
@@ -241,7 +246,11 @@ async def send_visit_invitation(
                         name=lead_name or "—",
                         phone=(lead.phone if lead else None) or "—",
                         email=lead_email or "—",
-                        notes=t["notes"].format(notes=visit.notes) if visit.notes else "",
+                        notes=(
+                            t[key("notes")].format(notes=visit.notes)
+                            if visit.notes
+                            else ""
+                        ),
                     ),
                     where=where,
                 ),
