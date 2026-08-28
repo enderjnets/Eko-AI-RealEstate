@@ -110,11 +110,13 @@ function ContactForm() {
     setError(
       outcome.reason === "contact"
         ? t("contact.errorContact")
-        : outcome.reason === "rate"
-          ? t("contact.errorRate")
-          : outcome.reason === "captcha"
-            ? t("contact.errorCaptcha")
-            : t("contact.errorGeneric"),
+        : outcome.reason === "email"
+          ? t("contact.errorEmail")
+          : outcome.reason === "rate"
+            ? t("contact.errorRate")
+            : outcome.reason === "captcha"
+              ? t("contact.errorCaptcha")
+              : t("contact.errorGeneric"),
     );
   }
 

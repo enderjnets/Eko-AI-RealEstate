@@ -1095,7 +1095,7 @@ export const discoveryApi = {
 // a form quietly stops converting.
 export type CaptureOutcome =
   | { ok: true }
-  | { ok: false; reason: "contact" | "rate" | "captcha" | "generic" };
+  | { ok: false; reason: "contact" | "email" | "rate" | "captcha" | "generic" };
 
 export interface CapturePayload {
   form?: string;
@@ -1126,10 +1126,13 @@ export async function submitPublicLead(payload: CapturePayload): Promise<Capture
   if (res.status === 429) return { ok: false, reason: "rate" };
   if (res.status === 400) return { ok: false, reason: "captcha" };
   if (res.status === 422) {
-    // 422 is either our own `contact_required` / `consent_text_required` or a
-    // pydantic body rejection. Only the first is worth a specific message —
-    // the others mean the page sent something the form should not have built.
+    // 422 is one of our own refusals (`contact_required`, `email_required`,
+    // `consent_text_required`) or a pydantic body rejection. The first two are
+    // things the visitor can fix and deserve their own words — `email_required`
+    // used to fall through to "something went wrong", which told a phone-only
+    // submitter nothing while the fix was one field away.
     const detail = await errorDetail(res);
+    if (detail.includes("email_required")) return { ok: false, reason: "email" };
     return { ok: false, reason: detail.includes("contact_required") ? "contact" : "generic" };
   }
   return { ok: false, reason: "generic" };

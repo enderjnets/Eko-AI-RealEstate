@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Instrument_Sans, Instrument_Serif } from "next/font/google";
+import { Cormorant_Garamond, Instrument_Sans } from "next/font/google";
 import "./globals.css";
 import { LanguageProvider } from "@/lib/i18n";
 import { AuthGuard } from "@/components/ui/AuthGuard";
@@ -13,9 +13,12 @@ const lnSans = Instrument_Sans({
   variable: "--font-ln-sans",
 });
 
-const lnSerif = Instrument_Serif({
+// The v4 design's display face. Light (300) for headlines, regular for card
+// titles, plus the italic that carries the design's signature emphasis.
+const lnSerif = Cormorant_Garamond({
   subsets: ["latin"],
-  weight: "400",
+  weight: ["300", "400"],
+  style: ["normal", "italic"],
   display: "swap",
   variable: "--font-ln-serif",
 });

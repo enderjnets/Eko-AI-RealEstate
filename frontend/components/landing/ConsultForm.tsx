@@ -19,6 +19,7 @@ import { useSearchParams } from "next/navigation";
 import { submitPublicLead, type CaptureOutcome } from "@/lib/api";
 import { collectAttribution } from "@/lib/capture";
 import { useI18n } from "@/lib/i18n";
+import { ArrowRight } from "lucide-react";
 import { Turnstile, TURNSTILE_SITE_KEY } from "@/components/ui/Turnstile";
 
 const FORM_KEY = process.env.NEXT_PUBLIC_CAPTURE_FORM_KEY || undefined;
@@ -123,41 +124,48 @@ function ConsultFormInner() {
     setError(
       outcome.reason === "contact"
         ? t("contact.errorContact")
-        : outcome.reason === "rate"
-          ? t("contact.errorRate")
-          : outcome.reason === "captcha"
-            ? t("contact.errorCaptcha")
-            : t("contact.errorGeneric"),
+        : outcome.reason === "email"
+          ? t("contact.errorEmail")
+          : outcome.reason === "rate"
+            ? t("contact.errorRate")
+            : outcome.reason === "captcha"
+              ? t("contact.errorCaptcha")
+              : t("contact.errorGeneric"),
     );
   }
 
   if (done) {
     return (
-      <div className="border border-ln-line bg-ln-paper p-8 text-center sm:p-10">
-        <h3 className="font-ln-serif text-2xl text-ln-ink">{t("landing.form.thanksTitle")}</h3>
-        <p className="mt-3 text-sm leading-relaxed text-ln-body">{t("landing.form.thanksBody")}</p>
+      <div className="border border-ln-cream/25 bg-ln-dark/40 p-8 text-center backdrop-blur sm:p-10">
+        <h3 className="font-ln-serif text-2xl text-ln-cream">{t("landing.form.thanksTitle")}</h3>
+        <p className="mt-3 text-sm leading-relaxed text-ln-canvas/70">{t("landing.form.thanksBody")}</p>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="border border-ln-line bg-ln-paper p-6 sm:p-8">
+    <form onSubmit={handleSubmit}>
       <div className="space-y-4">
-        <LandingField
-          id="ln-name"
-          label={t("landing.form.name")}
-          value={f.name}
-          onChange={set("name")}
-          autoComplete="given-name"
-        />
-        <LandingField
-          id="ln-phone"
-          label={t("landing.form.phone")}
-          type="tel"
-          value={f.phone}
-          onChange={set("phone")}
-          autoComplete="tel"
-        />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <LandingField
+            id="ln-name"
+            label={t("landing.form.name")}
+            value={f.name}
+            onChange={set("name")}
+            autoComplete="given-name"
+          />
+          <LandingField
+            id="ln-phone"
+            label={t("landing.form.phone")}
+            type="tel"
+            value={f.phone}
+            onChange={set("phone")}
+            autoComplete="tel"
+          />
+        </div>
+        {/* Required in the markup too: the backend refuses a lead without an
+            address while SMS is parked (CAPTURE_REQUIRE_EMAIL), and the
+            browser saying so first beats a round-trip to learn the same. */}
         <LandingField
           id="ln-email"
           label={t("landing.form.email")}
@@ -165,10 +173,11 @@ function ConsultFormInner() {
           value={f.email}
           onChange={set("email")}
           autoComplete="email"
+          required
         />
 
         <fieldset>
-          <legend className="text-[11px] uppercase tracking-[0.14em] text-ln-body">
+          <legend className="text-[11px] uppercase tracking-[0.14em] text-ln-canvas/55">
             {t("landing.form.goal")}
           </legend>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -182,10 +191,10 @@ function ConsultFormInner() {
                   onClick={() => setGoal(active ? null : g.id)}
                   // 44px floor: below it a thumb misses on a phone, and a
                   // phone is where this page is read.
-                  className={`min-h-[44px] px-4 text-[11px] uppercase tracking-[0.08em] transition-colors ${
+                  className={`min-h-[44px] px-[18px] text-[10px] uppercase tracking-[0.14em] transition-colors ${
                     active
-                      ? "bg-ln-ink text-ln-paper"
-                      : "border border-ln-line-strong text-ln-body hover:border-ln-bronze hover:text-ln-bronze"
+                      ? "bg-ln-canvas text-ln-ink"
+                      : "border border-ln-cream/35 text-ln-canvas/80 hover:border-ln-cream/70 hover:text-ln-cream"
                   }`}
                 >
                   {g.label}
@@ -209,16 +218,16 @@ function ConsultFormInner() {
           />
         </div>
 
-        <label className="flex items-start gap-3 pt-1 text-sm text-ln-body">
+        <label className="flex items-start gap-3 pt-1 text-sm text-ln-canvas/70">
           <input
             type="checkbox"
             checked={consent}
             onChange={(e) => setConsent(e.target.checked)}
-            className="mt-1 h-4 w-4 flex-none border-ln-line-strong accent-ln-bronze"
+            className="mt-1 h-4 w-4 flex-none border-ln-cream/40 accent-ln-gold"
           />
           <span className="leading-relaxed">{consentWording}</span>
         </label>
-        <p className="text-xs text-ln-body">{t("contact.consentHint")}</p>
+        <p className="text-xs text-ln-canvas/50">{t("contact.consentHint")}</p>
 
         <Turnstile
           onToken={setCaptchaToken}
@@ -228,7 +237,7 @@ function ConsultFormInner() {
         {/* role=alert so a screen reader hears the refusal; without it the
             form appears to have done nothing at all. */}
         {error && (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="text-sm text-red-300">
             {error}
           </p>
         )}
@@ -236,11 +245,12 @@ function ConsultFormInner() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-ln-bronze px-6 py-4 text-[12px] uppercase tracking-[0.10em] text-ln-paper transition-opacity hover:opacity-90 disabled:opacity-60"
+          className="flex w-full items-center justify-center gap-3 bg-ln-gold px-6 py-5 text-[11px] font-medium uppercase tracking-[0.16em] text-ln-cream transition-opacity hover:opacity-90 disabled:opacity-60"
         >
           {loading ? t("landing.form.sending") : t("landing.form.submit")}
+          <ArrowRight className="h-[15px] w-[15px]" />
         </button>
-        <p className="text-center text-[11px] tracking-[0.04em] text-ln-body">
+        <p className="text-center text-[11px] tracking-[0.06em] text-ln-canvas/55">
           {t("landing.form.reassure")}
         </p>
       </div>
@@ -255,6 +265,7 @@ function LandingField({
   onChange,
   type = "text",
   autoComplete,
+  required,
 }: {
   id: string;
   label: string;
@@ -262,13 +273,13 @@ function LandingField({
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   type?: string;
   autoComplete?: string;
+  required?: boolean;
 }) {
+  // The design draws inputs as underlined rules on the dark panel; the label
+  // rides inside as a placeholder would, but stays a real <label> for a11y.
   return (
     <div>
-      <label
-        htmlFor={id}
-        className="block text-[11px] uppercase tracking-[0.14em] text-ln-body"
-      >
+      <label htmlFor={id} className="sr-only">
         {label}
       </label>
       <input
@@ -277,7 +288,9 @@ function LandingField({
         value={value}
         onChange={onChange}
         autoComplete={autoComplete}
-        className="mt-2 h-12 w-full border border-ln-line-strong bg-transparent px-3 text-ln-ink outline-none focus:border-ln-bronze"
+        required={required}
+        placeholder={label}
+        className="h-12 w-full border-b border-ln-cream/35 bg-transparent text-[14px] text-ln-cream outline-none placeholder:text-ln-canvas/55 focus:border-ln-cream/80"
       />
     </div>
   );
@@ -287,7 +300,7 @@ export function ConsultForm() {
   // useSearchParams needs a Suspense boundary or the whole route opts out of
   // static rendering.
   return (
-    <Suspense fallback={<div className="h-96 border border-ln-line bg-ln-paper" />}>
+    <Suspense fallback={<div className="h-96 border border-ln-cream/20" />}>
       <ConsultFormInner />
     </Suspense>
   );

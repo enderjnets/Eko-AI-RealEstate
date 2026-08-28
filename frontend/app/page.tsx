@@ -11,7 +11,7 @@ import { Landing } from "@/components/landing/Landing";
 const who = [LANDING.advisors, LANDING.brokerage].filter(Boolean).join(" · ");
 
 const DESCRIPTION =
-  "Advisors for buyers and sellers across Colorado — mountain-town luxury and the Denver metro. Book a 15-minute consult.";
+  "Real estate advisors buying and selling across Colorado — Aspen, the Roaring Fork Valley, and the Denver metro. Book a 15-minute consult.";
 
 export const metadata: Metadata = {
   title: who ? `${who} — Colorado real estate` : "Colorado real estate",

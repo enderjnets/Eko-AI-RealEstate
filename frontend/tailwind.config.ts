@@ -26,6 +26,13 @@ const config: Config = {
         "ln-line-strong": "#C9C0AF",
         "ln-line": "#DAD3C6",
         "ln-tint": "#E8E4DC",
+        // v4 additions: the tinted section grounds and the dark consult panel.
+        "ln-stone": "#DCD7CE",
+        "ln-warm": "#E4D4BC",
+        "ln-dark": "#2A2723",
+        "ln-cream": "#F7F4ED",
+        "ln-gold": "#8A7A5E",
+        "ln-hair": "#DCD5C6",
       },
       fontFamily: {
         display: ["Inter", "system-ui", "sans-serif"],
