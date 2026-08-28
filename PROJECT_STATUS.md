@@ -4,6 +4,46 @@ Estado de ejecución del plan `~/.claude/plans/si-haz-el-plan-jazzy-sifakis.md`
 (**el embudo Denver Home Story**). Es un estado, no un diario: el historial de
 v0.56.0 y anteriores vive en git y en el plan.
 
+---
+
+## ✅ v0.64.0 — LA LANDING VIVE EN `www.denverhomestory.com` (28-ago-2026)
+
+Rama `feat/landing-denver-home-story` (`78d32a5`→`f3b0f0c`), 4 fases + auditoría
+(0 bloqueantes; I-1/I-2 corregidos en fase), desplegada y **verificada contra el
+mundo**:
+
+| Qué | Medida |
+|---|---|
+| `www.denverhomestory.com` | **200**, landing v4, cert válido (Universal SSL — arregló de paso el cert roto del aparcamiento), canónica correcta, `index,follow` |
+| Ápex | **301 → www** (Redirect Rule) |
+| Enrutado por host | brand`/leads` → 308 panel · panel`/` → 307 `/leads` · `/login` 200 · `/contact` 200 |
+| health público | `0.64.0`, `llm_fallback: ok`; `BOOKING_OFFERS_PAUSED=true` dentro del contenedor |
+| **Aviso a Natalia E2E REAL** | captura en producción → fila interna `sent` con id de Resend → **correo llegó al Gmail** (verificado en el buzón); duplicados no reenvían; lead de prueba borrado y buzón restaurado |
+| Clara (VAPI) | guion interino vivo: toma datos, **no ofrece horas**, «Natalia will call you in the next few hours»; herramientas de reserva **quitadas** (backup en `~/eko-vapi-backup-20260828.json` para reactivar) |
+| Turnstile | 🔴→✅ la site key solo permitía `inmo-demo`; **añadido `denverhomestory.com`** por API. El widget bloquea navegadores automatizados (correcto); falta UNA pasada humana del dueño |
+| Vecinos | zorros 302 · blackvolt 200 (intactos tras reiniciar solo nuestro túnel) |
+
+**Infra**: túnel `eko-realtors` con 3 hostnames; DNS: CNAMEs proxiados al túnel
+(aparcamiento borrado — reversión: `A @` 13.248.243.5 + 76.223.105.230,
+`CNAME www`→apex, todo gris); `.env` respaldado en `.env.bak.20260828-landing`;
+`agency_phone=+17208249313` en Ajustes.
+
+**🔴 Para el dueño**: (1) una pasada humana del formulario en el dominio nuevo
+(el captcha bloquea mi navegador automatizado, como debe); (2) decisión sobre la
+foto de fondo del panel de consulta: lleva marca de agua **«©2026 Property of
+Aspen/Glenwood MLS»** — una foto de MLS licenciada para fichas, usada en
+marketing; recomendación: sustituirla.
+
+**Backlog**: M-2 de la auditoría (`required` del email cableado en el frontend,
+desincronizable de `CAPTURE_REQUIRE_EMAIL`); claves i18n huérfanas (reach/voices).
+
+**Siguiente — reactivación de citas** (decidido por el dueño 28-ago): editor
+maestro de disponibilidad (admin edita a cada agente); horas de Natalia
+(9:00–21:00 ×7, llamadas) bajo SU usuario y apagar el calendario de prueba del
+dueño; activar su calendario compartido como fuente de conflictos en Cal.com;
+**prueba real** (hora ocupada suya deja de ofrecerse) → quitar la pausa y
+restaurar las herramientas de Clara automáticamente.
+
 ## Contexto en una línea
 
 El embudo es: vídeos → redes de @denverhomestory → `www.denverhomestory.com` →
