@@ -251,26 +251,56 @@ Rama `feat/orden-y-nombre-de-la-cita`.
 
 | # | Punto | Resultado real |
 |---|---|---|
-| 1 | Tests | **1178 backend**, 0 fallos, **0 saltados**, base recreada (+2) · frontend **153/153** |
+| 1 | Tests | **1180 backend**, 0 fallos, **0 saltados**, base recreada (+4) · frontend **153/153** |
 | 2 | Lint / typecheck | `ruff` **All checks passed** · `tsc --noEmit` limpio |
 | 3 | Build | `docker build -f backend/Dockerfile` → `sha256:eb4d6…` |
 | 4 | Cobertura del código nuevo | Mismo límite ya documentado: `--cov` no atribuye lo ejecutado dentro del ASGI. Sustituido por **mutación**, que sí prueba ejecución |
 | 5 | Secretos en el diff | 0 |
 | 6 | Depuración / validación | 0 `print`/`console.log`; el nombre dictado pasa por `storable_text` |
 
-**Mutaciones: 3/3 rojas.** Quitar el desempate por `id`; quitar `title=`;
-cambiar `elif name and not lead.name` por `elif name` (que pisaría la ficha).
+**Mutaciones: 5/5 rojas**, y las del orden **verificadas con 60.004 filas**, no
+en vacío. Quitar el desempate de `chronological()`; sacar un endpoint del común;
+quitar `title=`; `elif name and not lead.name` → `elif name` (que pisaría la
+ficha); y el nombre de la reserva.
 
-**El test del orden necesitó arreglarse a sí mismo**, y es la lección de la
-fase: pasaba **también sin el desempate**, porque con cuatro filas recién
-insertadas un *seq scan* las devuelve por casualidad en orden de inserción —
-un test que solo sabía estar de acuerdo con el bug. Ahora un `UPDATE` mueve una
-fila al final del montón (lo que ocurre de verdad: cada saliente se actualiza al
-resolverse su entrega) y sin el desempate se pone rojo.
+**El test del orden hubo que rehacerlo dos veces**, y es la lección de la fase:
+primero pasaba sin el desempate en vacío, y el segundo intento pasaba con la
+tabla llena. Ver el bloqueante más abajo.
 
 **Decisión mantenida:** `lead.name` **no** se toca. El nombre dicho va a
 `visit.title`, donde una mala transcripción cuesta una cita en vez de corromper
 una identidad; el calendario ya prefiere `title` sobre el nombre del lead.
+
+### 🔴 Bloqueante de la auditoría, corregido en la fase (`ad868b4`)
+
+**Mi test del orden se ponía verde con el bug en cuanto la tabla crecía.**
+Medido: vacía → rojo; **60.000 filas → verde**. En vacío el plan es Seq Scan y
+el desorden se ve; con datos pasa a Index Scan y el índice devuelve el orden de
+inserción, que casualmente es el bueno. Intenté romper el HOT update para que
+tocara el índice y **seguía verde**: la conclusión honesta es que no se puede
+obligar a Postgres a equivocarse a demanda, así que un test que depende del
+plan es una lotería, no un guard.
+
+**La invariante se afirma ahora donde vive**: `chronological()` en
+`models/message.py` es la única fuente del orden de lectura y los dos endpoints
+la importan — el precedente que este repo ya tiene con `inbox.reached_somebody()`
+y por el mismo motivo. Quitar el desempate pone rojo **a cualquier tamaño**, y
+sacar un endpoint del común, también.
+
+**Dos importantes más, corregidos porque tocaban lo recién entregado:**
+`generate_reply_suggestions` ordenaba `created_at DESC LIMIT 20` sobre turnos
+empatados y devolvía **los 20 MÁS ANTIGUOS**, tirando los 7 últimos —donde se
+acuerda la cita—: al LLM le llegaba la historia mutilada. Y `_lead_language`
+elegía un turno arbitrario para decidir el idioma del `.ics` **y del aviso de
+cancelación**. Además, el nombre dicho no llegaba a Cal.com: arreglé
+`visit.title` y dejé `attendee_name` con el viejo, así que la confirmación que
+recibe **quien llamó** seguía con el nombre de otro.
+
+**Al backlog (menores, con evidencia):** `stated_name != lead.name` es asimétrica
+porque `_resolve_or_create_lead` guarda el nombre crudo sin `strip()`;
+`caller_name` no se valida, así que «um my name is» ganaría en el calendario; el
+docstring de `models/visit.py:53` ya es falso; e `inbox.py:198` tampoco desempata
+(sin impacto: `_busy_starts` corta el caso).
 
 **Siguiente paso concreto:** Fase 3 — desplegar (v0.62.0) con autorización, y
 sólo entonces cancelar la visita 257 por el camino arreglado.
