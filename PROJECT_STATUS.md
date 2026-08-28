@@ -264,14 +264,23 @@ módulo que habla con `/v2/schedules` y `/v2/event-types`), el router
 
 ## 📌 PENDIENTES — esta noche y mañana (28-ago-2026)
 
-**ESTA NOCHE, a partir de las 23:05 MDT — dueño.** Cambiar los nameservers de
-`denverhomestory.com` a `arely.ns.cloudflare.com` / `damian.ns.cloudflare.com`
-en GoDaddy. La hora no es orientativa: el DS del padre se borró a las 17:05 y su
-TTL de 6 h vence a las 23:05; antes de eso, los nodos de Google que aún lo
-retienen dejarían el dominio en SERVFAIL. Si GoDaddy rechaza el cambio, apagar
-«Domain Lock», cambiarlo y volver a encenderlo. **Avisar al terminar** →
-verifico propagación, zona en Active, SPF/DMARC vivos y **cero SERVFAIL**; si
-aparece uno, reversión inmediata a GoDaddy.
+**✅ HECHO — nameservers movidos a Cloudflare (28-ago-2026, mañana).** El dueño
+hizo el cambio en GoDaddy y todo se verificó medido, no supuesto:
+
+| Qué | Medida |
+|---|---|
+| DS ausente antes del cambio | re-verificado 0/3 resolutores el 28 por la mañana |
+| Delegación en el padre (`a.gtld-servers.net`) | `arely` + `damian.ns.cloudflare.com` |
+| Resolutores | 8.8.8.8 y 1.1.1.1 ya con NS nuevos; 9.9.9.9 caché vieja (expira sola). **NOERROR en los tres, cero SERVFAIL** |
+| Zona en Cloudflare | `pending` → `activation_check` → **`active` en 60 s** |
+| SPF/DMARC | `v=spf1 -all` y `p=reject` **vivos** (pre-cargados en la zona) — Quad9 aún sirve el `_dmarc` viejo de GoDaddy unas horas |
+| Web | ápex HTTP 200 (aparcamiento, como se esperaba) |
+
+Hallazgo no-bloqueante: `https://www` da error de certificado — el cert del
+aparcamiento (`CN=denverhomestory.com`) no cubre `www`. **Preexistente por
+construcción** (mismas IPs, registros en gris → ruta de servido idéntica a la
+de antes del cambio); la Fase B lo sustituye por el túnel de todas formas.
+Queda también el `CNAME _domainconnect` → GoDaddy, reliquia inerte.
 
 ### MAÑANA
 
