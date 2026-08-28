@@ -36,6 +36,7 @@ para no declarar verde nada por inspección.
 | VAPI | `+17208249313` **activo**, asistente «Eko AI Realtors» `5d975722` |
 | `/api/v1/webhooks/voice` | JSON de VAPI, **no TwiML** → Twilio no puede apuntar ahí |
 | ¿El número está publicado? | `agency_phone` vacío, sin `NEXT_PUBLIC_PHONE` → **nadie lo tiene hoy** |
+| Línea de brokerage | **cambiada a «Engel & Völkers»** (27-ago) por decisión del dueño, con la norma delante: **Colorado Rule C-18** exige el nombre licenciado o un *trade name* registrado en la Comisión y en el Secretario de Estado. No pude confirmar cuál es el de su firma empleadora; el dueño decidió el genérico asumiendo el riesgo. El expuesto ante C-18 es el broker con licencia. La variable de la landing también está cambiada pero es *build arg*: **no está viva hasta reconstruir el frontend** |
 | ¿Mi clave de Twilio puede escribir? | ✅ **sí** — escritura idempotente, HTTP 200, **0 diferencias en 34 campos** |
 | ¿La API de GoDaddy apaga DNSSEC? | 🔴 **no existe**: 0 coincidencias de «dnssec» en su OpenAPI v3 (148 KB) |
 | ¿Los TwiML Bins tienen API? | 🔴 **no**: solo consola (documentación de Twilio) |
@@ -162,6 +163,48 @@ respuestas vacías y decía «IDÉNTICO»**: zsh no parte las palabras como bash
 ⚠️ **La medición del DS es RUIDOSA: 3/20 a las 19:39 y 9/20 a las 19:58.** No
 es que empeorara — Google es anycast y cada muestra cae en nodos distintos. **La
 puerta es el reloj, no la muestra**: TTL cumplido a las **23:05 MDT**.
+
+### 🟡 Cal.com ARMADO, pero NO encendido (27-ago, 20:00-20:20)
+
+Decisión del dueño: citas reales. Clave entregada y guardada por
+`deploy/set-calcom-key.sh` en el `.env` (600, respaldo previo).
+
+**Hecho y verificado contra la API:**
+
+| Qué | Estado |
+|---|---|
+| `CALCOM_API_KEY` | guardada; verificada **listando event types**, no preguntando si existe |
+| Event type **«Property showing»** | creado: **id `6849070`**, 45 min, **30 min de margen** después, **aviso mínimo 4 h**, ubicación **en la propiedad** y **sin enlace de vídeo** |
+| `CALCOM_EVENT_TYPE_ID=6849070` | escrito en el `.env` |
+| Disponibilidad real | ✅ la API devuelve huecos de 45 min a las 09:00 / 09:45 / 10:30 |
+| `CALENDAR_SIMULATED` | **sigue ausente → `true`**. NO se ha encendido |
+
+⚠️ **Lección de método, otra vez la misma:** el primer POST de creación no
+imprimió nada por una comilla rota **y aun así creó el evento**. El segundo
+intento lo destapó con «User already has an event type with this slug». *Sin
+salida ≠ no pasó nada*: se comprueba leyendo el recurso, no el eco del comando.
+
+🔴 **Lo que este armado NO resuelve, dicho antes de encenderlo.** La cuenta de
+Cal.com es **`denverhomestory@gmail.com`** y el **único** calendario que mira
+para detectar conflictos es ese mismo. El calendario de Natalia en Engel &
+Völkers **no es visible**. Encenderlo hoy sustituye «horas inventadas» por
+«horas reales de un calendario vacío»: mejor (márgenes, aviso, sin vídeo falso,
+reserva registrada) pero **la doble reserva de Natalia sigue viva**.
+**Decisión del dueño:** que Natalia comparta su calendario de E&V con
+`denverhomestory@gmail.com` (basta libre/ocupado) y yo lo activo en Cal.com.
+Riesgo anotado: su Workspace de E&V puede bloquear el compartir externo.
+
+🔴 **DOS defectos de código que hay que arreglar ANTES de apagar el simulado**,
+los dos encontrados leyendo `create_booking`, no en ejecución:
+
+1. **`"language": "es"` está cableado** en el `attendee`
+   (`calendar_cal.py`). Cal.com le escribiría **en español** a un cliente, contra
+   la norma del dueño de que clientes y usuarios van en inglés.
+2. **Un lead sin email acaba reservando a nombre de Natalia.** Cal.com exige
+   email; el código cae a `booking_contact_email`, que **hoy es la dirección de
+   Natalia**. Un lead que solo deja teléfono —el caso real del dueño— generaría
+   una reserva con ella como asistente y sin nada para el cliente. Refuerza el
+   paso de **exigir email en el formulario**.
 
 ### Bloqueo, diagnóstico y las dos salidas
 
