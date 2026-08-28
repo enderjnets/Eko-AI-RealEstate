@@ -34,7 +34,25 @@ export function MyAvailability() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [current, setCurrent] = useState<AppointmentActivity>("showing");
-  const [draft, setDraft] = useState<AvailabilityWindow[]>([]);
+  // One draft per activity, not one shared draft. With a single draft,
+  // switching tabs overwrote it from the server copy and unsaved edits vanished
+  // with no warning — the comment on `load` claimed tab switching would not do
+  // that, and `selectActivity` did exactly it. An audit caught the gap between
+  // the comment and the code.
+  const [drafts, setDrafts] = useState<Partial<Record<AppointmentActivity, AvailabilityWindow[]>>>({});
+  const draft = drafts[current] ?? [];
+  const setDraft = useCallback(
+    (next: AvailabilityWindow[] | ((prev: AvailabilityWindow[]) => AvailabilityWindow[])) => {
+      setDrafts((prev) => {
+        const previous = prev[current] ?? [];
+        return {
+          ...prev,
+          [current]: typeof next === "function" ? next(previous) : next,
+        };
+      });
+    },
+    [current],
+  );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -44,16 +62,17 @@ export function MyAvailability() {
     try {
       const body = await availabilityApi.mine();
       setData(body);
-      const first = body.activities.find((a) => a.activity === current);
-      setDraft(first ? first.windows.map((w) => ({ ...w, days: [...w.days] })) : []);
+      // Seed every activity at once, so switching tabs never needs the server.
+      const seeded: Partial<Record<AppointmentActivity, AvailabilityWindow[]>> = {};
+      for (const a of body.activities) {
+        seeded[a.activity] = a.windows.map((w) => ({ ...w, days: [...w.days] }));
+      }
+      setDrafts(seeded);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-    // `current` deliberately excluded: switching tabs must not refetch and
-    // silently discard unsaved edits. `selectActivity` handles the swap.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -61,11 +80,21 @@ export function MyAvailability() {
   }, [load]);
 
   function selectActivity(activity: AppointmentActivity) {
-    const found = data?.activities.find((a) => a.activity === activity);
+    // Only the selection changes. The other tabs' drafts stay exactly as the
+    // person left them, which is what "switching tabs must not discard unsaved
+    // edits" actually requires.
     setCurrent(activity);
-    setDraft(found ? found.windows.map((w) => ({ ...w, days: [...w.days] })) : []);
     setSaved(false);
     setError(null);
+  }
+
+  /** Has this tab been edited since the last load or save? Drives the marker
+      that tells somebody they have something unsaved before they walk away. */
+  function isDirty(activity: AppointmentActivity): boolean {
+    const server = data?.activities.find((a) => a.activity === activity)?.windows ?? [];
+    const local = drafts[activity];
+    if (!local) return false;
+    return JSON.stringify(local) !== JSON.stringify(server);
   }
 
   function toggleDay(index: number, day: number) {
@@ -135,6 +164,10 @@ export function MyAvailability() {
   const activity: ActivityAvailability | undefined = data?.activities.find(
     (a) => a.activity === current,
   );
+  // Nothing here can be saved while the calendar is inert: the PUT answers 409.
+  // Leaving Add/Save enabled turned the amber notice into a dead end — press
+  // Save, get a raw error. The notice explains; the controls must agree with it.
+  const inert = Boolean(data?.unavailable_reason);
 
   return (
     <div className="space-y-6">
@@ -164,6 +197,12 @@ export function MyAvailability() {
             }`}
           >
             {a.label}
+            {isDirty(a.activity) && (
+              <span
+                className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle"
+                aria-label={t("availability.unsaved")}
+              />
+            )}
           </button>
         ))}
       </div>
@@ -236,14 +275,15 @@ export function MyAvailability() {
             setDraft((prev) => [...prev, emptyWindow()]);
             setSaved(false);
           }}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm bg-white/5 text-gray-300 hover:bg-white/10"
+          disabled={inert}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm bg-white/5 text-gray-300 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Plus className="w-4 h-4" />
           {t("availability.addWindow")}
         </button>
         <button
           onClick={save}
-          disabled={saving}
+          disabled={saving || inert}
           className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm bg-eko-violet text-white hover:opacity-90 disabled:opacity-50"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}

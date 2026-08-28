@@ -28,6 +28,7 @@ clear "not configured" rather than somebody else's calendar.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from dataclasses import dataclass
@@ -111,9 +112,18 @@ class Window:
     end: str  # "HH:MM"
 
 
-def _minutes(hhmm: str) -> int:
+def _minutes(hhmm: str, *, as_end: bool = False) -> int:
+    """Minutes past midnight. As an END, "00:00" means the end of the day.
+
+    Cal.com writes a shift that runs to midnight as `endTime "00:00:00"`, so
+    reading one back and saving it unchanged used to fail our own validation
+    with "ends before it starts" — the agent could not re-save hours they had
+    not touched. And an evening shift simply could not be expressed except as
+    23:59.
+    """
     hours, minutes = hhmm.split(":")
-    return int(hours) * 60 + int(minutes)
+    total = int(hours) * 60 + int(minutes)
+    return 24 * 60 if (as_end and total == 0) else total
 
 
 def validate_windows(windows: list[Window]) -> None:
@@ -139,10 +149,15 @@ def validate_windows(windows: list[Window]) -> None:
         for value in (w.start, w.end):
             if not _TIME.match(value):
                 raise ValueError(f"time must be HH:MM in 24-hour form, got {value!r}")
-        if _minutes(w.start) >= _minutes(w.end):
+        if _minutes(w.start) >= _minutes(w.end, as_end=True):
             raise ValueError(f"window ends before it starts: {w.start}-{w.end}")
-        for day in w.days:
-            per_day.setdefault(day, []).append((_minutes(w.start), _minutes(w.end)))
+        # `set`: the schema allows [1, 1], and counting Tuesday twice reported
+        # a window as overlapping itself — a true statement about a list and a
+        # useless message to the person who typed one day.
+        for day in set(w.days):
+            per_day.setdefault(day, []).append(
+                (_minutes(w.start), _minutes(w.end, as_end=True))
+            )
 
     for day, spans in per_day.items():
         spans.sort()
@@ -187,23 +202,34 @@ async def _call(
     """One request to Cal.com, with the version header this path needs."""
     s = get_settings()
     token = await _credential()
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        resp = await client.request(
-            method,
-            f"{s.CALCOM_BASE_URL}{path}",
-            json=json,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-                "cal-api-version": api_version,
-            },
-        )
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.request(
+                method,
+                f"{s.CALCOM_BASE_URL}{path}",
+                json=json,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "cal-api-version": api_version,
+                },
+            )
+    except httpx.HTTPError as exc:
+        # A timeout is an expected outcome, not an exception nobody thought
+        # about: this client sets one. Left as httpx it escaped every caller's
+        # `except CalComScheduleError`, so the request 500'd and — worse — the
+        # Cal.com object it had just created was orphaned while its row rolled
+        # back, so the retry made another one.
+        raise CalComScheduleError(f"Cal.com {method} {path} did not answer: {exc}") from exc
     if resp.status_code >= 400:
         # `resp.text` can carry the request echo; truncate rather than log a
         # body that might contain the key.
         log.error("Cal.com %s %s failed: %d %s", method, path, resp.status_code, resp.text[:300])
         raise CalComScheduleError(f"Cal.com {method} {path} → HTTP {resp.status_code}")
-    payload = resp.json()
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        raise CalComScheduleError(f"Cal.com {method} {path} → not JSON") from exc
     if payload.get("status") != "success":
         raise CalComScheduleError(f"Cal.com {method} {path} → {str(payload)[:200]}")
     return payload.get("data") or {}
@@ -213,15 +239,35 @@ async def _call(
 
 
 def _schedule_name(email: str, activity: AppointmentActivity) -> str:
-    """Derived, never random: a retry after a partial failure has to be able to
-    recognise what it already created."""
+    """Derived rather than random, so a human reading the Cal.com account can
+    tell whose schedule this is.
+
+    An earlier version of this docstring claimed the name let "a retry after a
+    partial failure recognise what it already created". That was false — nothing
+    ever lists schedules by name — and an audit caught it. What actually makes a
+    retry safe is the id stored on the row; what remains unhandled is an object
+    created in Cal.com whose row never committed. Those are orphans, they are
+    inert (nothing books against a schedule no row names), and cleaning them up
+    is a manual job in the Cal.com UI. Said plainly rather than implied away.
+    """
     return f"{email} — {ACTIVITY_LABELS[activity]}"
 
 
 def _slug(email: str, activity: AppointmentActivity) -> str:
+    """Readable, and unique per full address.
+
+    The local part alone is not injective, and an audit proved the collision:
+    `natalia@gmail.com` and `natalia@remaxdenver.com` both produced
+    `natalia-showing`, as did `Natalia.Perez@x` and `natalia-perez@y`. Two
+    colleagues of the same agency would then fight over one Cal.com slug — and
+    since a rejected `POST /v2/event-types` leaves the row with no event type
+    id, every retry would fail the same way: a permanent 502 for the second
+    person. The digest is short, stable, and derived from the WHOLE address.
+    """
     local = email.split("@", 1)[0]
     safe = re.sub(r"[^a-z0-9]+", "-", local.lower()).strip("-") or "agent"
-    return f"{safe}-{activity.value.replace('_', '-')}"
+    digest = hashlib.sha256(email.strip().lower().encode()).hexdigest()[:6]
+    return f"{safe}-{digest}-{activity.value.replace('_', '-')}"
 
 
 async def ensure_calendar(
@@ -257,7 +303,8 @@ async def ensure_calendar(
         db.add(row)
         await db.flush()
 
-    if row.calcom_schedule_id is None:
+    # `not`, not `is None`: an empty string must also mean "not done yet".
+    if not row.calcom_schedule_id:
         data = await _call(
             "POST",
             "/v2/schedules",
@@ -272,11 +319,18 @@ async def ensure_calendar(
                 "availability": [],
             },
         )
-        row.calcom_schedule_id = str(data.get("id") or "")
-        if not row.calcom_schedule_id:
+        schedule_id = str(data.get("id") or "")
+        if not schedule_id:
+            # Never write the empty string. `read_my_availability` commits on
+            # this error on purpose, to keep partial provisioning — so a "" here
+            # would be persisted, and the resume guard below (`if not ...`) once
+            # read `is None`, which "" is not. The row was then skipped forever:
+            # `int("")` raised ValueError, which is not CalComScheduleError, and
+            # every later request 500'd with no way back but a manual UPDATE.
             raise CalComScheduleError("Cal.com created a schedule with no id")
+        row.calcom_schedule_id = schedule_id
 
-    if row.calcom_event_type_id is None:
+    if not row.calcom_event_type_id:
         data = await _call(
             "POST",
             "/v2/event-types",
@@ -303,9 +357,10 @@ async def ensure_calendar(
                 ),
             },
         )
-        row.calcom_event_type_id = str(data.get("id") or "")
-        if not row.calcom_event_type_id:
+        event_type_id = str(data.get("id") or "")
+        if not event_type_id:
             raise CalComScheduleError("Cal.com created an event type with no id")
+        row.calcom_event_type_id = event_type_id
 
     return row
 
@@ -317,6 +372,12 @@ def _to_windows(availability: list[dict]) -> list[Window]:
     out: list[Window] = []
     for entry in availability or []:
         names = entry.get("days") or []
+        unknown = [n for n in names if n not in WEEKDAYS]
+        if unknown:
+            # Silence here loses hours twice over: the window is not shown, and
+            # the next save — which REPLACES the whole schedule — deletes it
+            # from Cal.com. At least leave a trace.
+            log.warning("Cal.com returned day names we do not know: %s", unknown)
         days = tuple(WEEKDAYS.index(n) for n in names if n in WEEKDAYS)
         start, end = entry.get("startTime"), entry.get("endTime")
         if days and isinstance(start, str) and isinstance(end, str):

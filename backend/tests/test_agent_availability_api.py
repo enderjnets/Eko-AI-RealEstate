@@ -332,12 +332,122 @@ async def test_the_team_view_is_admin_only_and_never_provisions() -> None:
                 )
         assert denied.status_code == 403, denied.text
         assert allowed.status_code == 200, allowed.text
+        # The shared office password mints an admin token with NO email. It must
+        # not reach the roster: an audit found it did, while the module
+        # docstring said otherwise.
+        with _auth_on(), patch("app.services.agent_calendar._call", _fake_call()):
+            async with await _client() as c:
+                anonymous_admin = await c.get(
+                    "/api/v1/availability",
+                    cookies={COOKIE_NAME: make_token(role="admin", org_id=ORG)},
+                )
+        assert anonymous_admin.status_code == 403, anonymous_admin.text
         assert any(m["email"] == NATALIA for m in allowed.json())
         assert spy.await_count == 0, (
             "the team view called Cal.com — reading a page must not provision"
         )
     finally:
         await _cleanup(NATALIA, ROBBIE)
+
+
+@pytest.mark.asyncio
+async def test_a_reply_with_no_id_does_not_poison_the_row_forever() -> None:
+    """The blocker an audit found, reproduced.
+
+    `read_my_availability` commits on a Cal.com error on purpose, to keep
+    partial provisioning. So anything written before the error is permanent —
+    and the code used to write `str(data.get("id") or "")`, i.e. the empty
+    string, before raising. The resume guard then read `is None`, which `""` is
+    not, so the next attempt skipped creation and ran `int("")` → ValueError,
+    which no caller catches. That agent's page 500'd forever, recoverable only
+    by a manual UPDATE.
+
+    The fix is to never write the sentinel. What this asserts is the behaviour
+    that matters: after the failure the row is still *resumable*, and a healthy
+    retry finishes the job.
+    """
+    await _allow(NATALIA)
+    try:
+        broken = AsyncMock(
+            side_effect=lambda method, path, *, api_version, json=None: (
+                {} if path == "/v2/schedules" else {"id": 1}
+            )
+        )
+        with _auth_on(), patch("app.services.agent_calendar._call", broken):
+            async with await _client() as c:
+                first = await c.get("/api/v1/availability/me", cookies=_cookies(NATALIA))
+        assert first.status_code == 502, first.text
+
+        async with get_bypass_session_factory()() as db:
+            rows = (
+                await db.execute(
+                    select(AgentCalendar).where(AgentCalendar.email == NATALIA)
+                )
+            ).scalars().all()
+        assert all(not r.calcom_schedule_id for r in rows), (
+            "a row was committed with an empty schedule id — the resume guard "
+            "will skip it and int('') will raise on every later request"
+        )
+
+        # Cal.com healthy again: the same agent must recover with no manual fix.
+        with _auth_on(), patch("app.services.agent_calendar._call", _fake_call()):
+            async with await _client() as c:
+                again = await c.get("/api/v1/availability/me", cookies=_cookies(NATALIA))
+        assert again.status_code == 200, again.text
+        assert all(a["configured"] for a in again.json()["activities"])
+    finally:
+        await _cleanup(NATALIA)
+
+
+@pytest.mark.asyncio
+async def test_a_timeout_is_reported_not_raised_through() -> None:
+    """`_call` sets a 20s timeout, so `httpx.ReadTimeout` is an expected result,
+    not an exception nobody considered. Left as httpx it escaped every caller's
+    `except CalComScheduleError` and became an uncaught 500."""
+    import httpx as _httpx
+
+    await _allow(NATALIA)
+    try:
+        timing_out = AsyncMock(side_effect=_httpx.ReadTimeout("too slow"))
+        with _auth_on(), patch(
+            "app.services.agent_calendar.httpx.AsyncClient"
+        ) as client_cls:
+            client_cls.return_value.__aenter__.return_value.request = timing_out
+            async with await _client() as c:
+                r = await c.get("/api/v1/availability/me", cookies=_cookies(NATALIA))
+        assert r.status_code == 502, r.text
+        assert "did not answer" in r.text
+    finally:
+        await _cleanup(NATALIA)
+
+
+def test_two_colleagues_do_not_share_a_calcom_slug() -> None:
+    """Proved by an audit: the local part alone collides. Same first name at two
+    domains, or dotted vs dashed, produced one slug — and a rejected event-type
+    creation leaves the row with no id, so every retry fails identically."""
+    from app.services.agent_calendar import _slug
+
+    a = _slug("natalia@gmail.com", AppointmentActivity.SHOWING)
+    b = _slug("natalia@remaxdenver.com", AppointmentActivity.SHOWING)
+    c = _slug("Natalia.Perez@x.com", AppointmentActivity.CALL)
+    d = _slug("natalia-perez@y.com", AppointmentActivity.CALL)
+    assert a != b and c != d
+    # Still readable, and stable across calls — a random suffix would create a
+    # second Cal.com object on every retry.
+    assert a.startswith("natalia-") and a.endswith("-showing")
+    assert _slug("natalia@gmail.com", AppointmentActivity.SHOWING) == a
+
+
+def test_an_evening_shift_can_end_at_midnight() -> None:
+    """Cal.com writes end-of-day as "00:00", so reading a schedule back and
+    saving it untouched used to fail our own validation. An agent also simply
+    could not say "18:00 until midnight" except as 23:59."""
+    validate_windows([Window(days=(1,), start="18:00", end="00:00")])
+    # And it is still a real end: 18:00–17:00 is not.
+    with pytest.raises(ValueError, match="ends before it starts"):
+        validate_windows([Window(days=(1,), start="18:00", end="17:00")])
+    # A repeated day is one day, not a window overlapping itself.
+    validate_windows([Window(days=(1, 1), start="10:00", end="12:00")])
 
 
 def test_the_validator_rejects_what_calcom_would_accept() -> None:

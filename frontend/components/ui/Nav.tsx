@@ -217,6 +217,17 @@ export function Nav() {
               <Clapperboard className="w-3.5 h-3.5" />
               {t("nav.content")}
             </Link>
+            {/* The twin of the OverflowMenu entry below, and it is not optional:
+                that menu is `2xl:hidden`, so without this link the page had NO
+                entry point at 1536px and up — the office desktop. Every other
+                item in that menu has this pair; this one was missing it. */}
+            <Link
+              href="/availability"
+              className="hidden 2xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
+            >
+              <CalendarClock className="w-3.5 h-3.5" />
+              {t("nav.availability")}
+            </Link>
 
             {/* Inbox — button opens a dropdown with quick access to new/pending comms. */}
             <div className="relative" ref={menuRef}>

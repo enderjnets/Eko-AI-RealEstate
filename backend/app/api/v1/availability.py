@@ -236,14 +236,24 @@ async def set_my_availability(
 
 @router.get("", response_model=list[TeamMemberOut], dependencies=[Depends(require_admin)])
 async def read_team_availability(
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> list[TeamMemberOut]:
-    """Who can be booked when, across the agency. Admin only.
+    """Who can be booked when, across the agency. Admin **and** identified.
+
+    `require_admin` alone was not enough, and an audit demonstrated it: the
+    shared office password mints an admin token with no email
+    (`auth.py`), so whoever answers the phone could read the whole team's
+    working hours — and this endpoint publishes the staff roster of addresses.
+    With AUTH_ENABLED off it answered anonymously. The module docstring already
+    claimed these routes refuse an identity-less session; that claim was true of
+    `/me` and false here, so the code now matches it.
 
     Reads what is stored and does not provision: a listing page must not create
     Cal.com objects for four activities times every team member as a side effect
     of somebody opening it.
     """
+    await _signed_in_agent(request, db)
     rows = (
         await db.execute(select(AgentCalendar).order_by(AgentCalendar.email))
     ).scalars().all()
