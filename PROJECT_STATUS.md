@@ -6,6 +6,29 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## ✅ v0.64.1 — LA LANDING SE MUEVE (28-ago-2026, tarde)
+
+El dueño cotejó la página viva contra el lienzo v4: faltaba toda la
+coreografía de scroll. Portado el **motor de `deploy-v4`** de Claude Design
+(carpeta descargada por el dueño) a `LandingEffects.tsx` — literal función a
+función, cotejado numéricamente por el auditor. **Decisión del dueño: portar
+el motor, NO el reemplazo literal** que proponía Claude Design (su index.html
+apuntaba el CTA al teléfono: habría desmontado el formulario real).
+
+Medido EN EL DOMINIO VIVO: placa 0.86→1.0401 con el scroll, vídeo del héroe
+(4,8 MB, keyframes densos) frotándose y corriendo libre, carril de mercados en
+`grab`, wiggle horizontal 0. Auditoría: 0 bloqueantes; 3 importantes corregidos
+en fase (guard de overflow-x que el original traía, pop de hidratación de la
+placa —ahora nace autorada a 0.86—, vídeo aparcado bajo reduced-motion) + rail
+con `pointercancel`. NO portado a propósito: el escalado de mesas de trabajo
+fijas, su navegación de anclas y el Lucide por CDN. Health `0.64.1`.
+
+⚠️ La marca de agua MLS aparece también en las tarjetas de Aspen y Valley del
+carril, no solo en el fondo del panel — la decisión del dueño sobre las fotos
+cubre las cuatro.
+
+---
+
 ## ✅ v0.64.0 — LA LANDING VIVE EN `www.denverhomestory.com` (28-ago-2026)
 
 Rama `feat/landing-denver-home-story` (`78d32a5`→`f3b0f0c`), 4 fases + auditoría
