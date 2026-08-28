@@ -13,6 +13,47 @@ de casa (ROG) al VPS, donde ya viven Zorros y Black Volt.
 
 ---
 
+## 🟢 EN CURSO — «Mi disponibilidad» · rama `feat/disponibilidad-por-agente`
+
+### ✅ Fase 1 — esquema y dueño del trabajo · commit `b0c3d71`
+
+| Checklist de «terminado» | Resultado real |
+|---|---|
+| Suite backend, base recreada | **1188 pasan, 0 fallan, 0 saltados** (antes: 1180) |
+| Frontend | `tsc` sin errores · **153 vitest** verdes |
+| Lint | `ruff check app tests` → *All checks passed* |
+| Build | `docker build -f backend/Dockerfile` → imagen `9a053f8d…` |
+| Cobertura del código nuevo | `app/models/agent_calendar.py` **100 %**; la única línea sin cubrir de `visit.py` (116) es un `__repr__` preexistente que mi diff no toca |
+| Secretos / depuración en el diff | 0 y 0 (barrido por patrón sobre `git diff`) |
+| Migración | probada en **los dos sentidos**: 045 → 044 → 045 |
+| **Mutación** | política RLS permisiva `USING(true)` → **3 tests rojos**: lectura cruzada, default-deny y escritura cruzada |
+
+**Nota de método que casi me engaña:** *borrar* la política no sirve como
+mutación. Con `FORCE` la ausencia de política niega todo, así que el test falla
+porque desaparece **mi propia** fila, no porque se filtre la ajena — una señal
+correcta por el motivo equivocado. La mutación real es una política que **no
+filtra**, que es además el bug que de verdad ocurre.
+
+**Decisiones tomadas:**
+- `agent_calendars` **no guarda horarios**, solo el vínculo persona ↔ tipo de
+  cita ↔ objetos de Cal.com. Guardarlos aquí crearía la **cuarta** fuente de
+  verdad sobre disponibilidad (ya hay tres: `business_hours`, que solo alimenta
+  el prompt del LLM; `SIMULATED_HOURS_OF_DAY`; y la agenda de Cal.com).
+- Indexada por **email de login**, no por id de cuenta, y **sin FK** a
+  `allowed_users`: revocar el acceso de alguien no debe borrar la agenda contra
+  la que se reservaron sus visitas.
+- `visits.assigned_email` va a la **lista de recorte**, no a `EXEMPT`: en esta
+  tabla la fila se escribe **después** de que Cal.com ya tiene la reserva, así
+  que un fallo ruidoso dejaría una cita viva sin fila local. El truncado es
+  inalcanzable — origen y destino acotados a los mismos 254.
+
+**Siguiente paso concreto:** Fase 2 — `services/agent_calendar.py` (el único
+módulo que habla con `/v2/schedules` y `/v2/event-types`), el router
+`api/v1/availability.py` con el correo tomado del **token** y nunca del cuerpo,
+y la página «Mi disponibilidad» en el panel.
+
+---
+
 ## 📌 PENDIENTES — esta noche y mañana (28-ago-2026)
 
 **ESTA NOCHE, a partir de las 23:05 MDT — dueño.** Cambiar los nameservers de
