@@ -153,7 +153,7 @@ function Hero() {
           Poster-first: without the mp4 or with JS off, the plate IS the hero. */}
       <div
         data-rise="0.86,1.22,-200"
-        className="absolute inset-x-0 bottom-[-40px] z-[2] h-[400px] origin-bottom overflow-hidden [mask-image:radial-gradient(135%_108%_at_50%_100%,#000_70%,transparent_99%)] md:bottom-[max(-4.2vw,-60px)] md:h-[min(54.2vw,780px)]"
+        className="absolute inset-x-0 bottom-[-40px] z-[2] h-[400px] origin-bottom overflow-hidden [mask-image:radial-gradient(135%_108%_at_50%_100%,#000_70%,transparent_99%)] [transform:scale(0.86)] md:bottom-[max(-4.2vw,-60px)] md:h-[min(54.2vw,780px)]"
       >
         <video
           data-hero-video="1"

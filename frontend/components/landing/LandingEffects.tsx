@@ -26,8 +26,9 @@
  * genuinely responsive), its transform-aware anchor navigation (ours is
  * native + CSS smooth), and its CDN Lucide painter (we use lucide-react).
  *
- * prefers-reduced-motion: reveals are marked done (the page renders as
- * authored, static), and the scrub/parallax handlers never fire.
+ * prefers-reduced-motion: reveals are marked done, rise/fade/drift/parallax
+ * never move, and the hero video is parked on its poster frame — the page is
+ * the design's at-top composition, static.
  */
 
 import { useEffect } from "react";
@@ -182,6 +183,12 @@ export function LandingEffects() {
       // Hero video scrubs with scroll over the first 30% of the hero span,
       // then free-runs in loop.
       document.querySelectorAll<Vid>("video[data-hero-video]").forEach((v) => {
+        // reduced-motion: the markup's autoPlay may have started it before
+        // this ran — park it on its poster frame and leave it parked.
+        if (reduce) {
+          if (!v.paused) v.pause();
+          return;
+        }
         if (!v.duration || isNaN(v.duration)) return;
         const host =
           (v.closest("[data-rise-host]") as HTMLElement | null) || v.parentElement!;
@@ -279,11 +286,16 @@ export function LandingEffects() {
       rail.addEventListener("pointermove", onMove);
       rail.addEventListener("pointerup", up);
       rail.addEventListener("pointerleave", up);
+      // Not in the original, and its absence bites hybrid devices: a touch
+      // scroll cancels mid-gesture, `down` stays true, and the next mouse
+      // hover drags the rail with no button held.
+      rail.addEventListener("pointercancel", up);
       railCleanups.push(() => {
         rail.removeEventListener("pointerdown", onDown);
         rail.removeEventListener("pointermove", onMove);
         rail.removeEventListener("pointerup", up);
         rail.removeEventListener("pointerleave", up);
+        rail.removeEventListener("pointercancel", up);
       });
     });
 

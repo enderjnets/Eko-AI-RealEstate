@@ -23,6 +23,11 @@ body:has(.eko-landing) :focus-visible { outline-color: #7A5C34; }
 .eko-landing [data-rail] { scrollbar-width: none; -ms-overflow-style: none; }
 .eko-landing [data-rail]::-webkit-scrollbar { display: none; }
 html:has(.eko-landing) { scroll-behavior: smooth; }
+/* The original engine ships body{overflow-x:hidden} for a reason: an armed
+   clip-reveal is scale(1.14) until it fires, and a scaled full-width element
+   widens the body's scrollable area — horizontal wiggle on a phone. Scoped to
+   the landing; the dashboard keeps its own overflow behavior. */
+html:has(.eko-landing), body:has(.eko-landing) { overflow-x: hidden; }
 
 /* Accessible keyboard focus + a dark scrollbar that matches the noir console. */
 :focus-visible { outline: 2px solid rgba(124, 58, 237, 0.6); outline-offset: 2px; border-radius: 6px; }
