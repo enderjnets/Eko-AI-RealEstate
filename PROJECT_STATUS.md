@@ -204,6 +204,40 @@ así que `host..` se colaba igual. Ambos corregidos con test propio.
   configurado. Y la guarda deja de comprobar las URLs: `hostOf("") === ""`, así
   que esas cláusulas eran código muerto con forma de comprobación.
 
+## ✅ FASE CERRADA — Cancelar una cita ahora avisa · commit `a728e05`
+
+Rama `feat/cancelacion-comunicada`. Lo destapó la primera llamada real del
+dueño: al querer limpiar la cita de prueba resultó que **cancelarla no se lo
+diría a nadie**.
+
+| # | Punto | Resultado real |
+|---|---|---|
+| 1 | Tests | **1172 backend**, 0 fallos, **0 saltados**, desde base recreada (+8 nuevos). Frontend intacto: **153/153** |
+| 2 | Lint / typecheck | `ruff check app tests` → **All checks passed**; `tsc --noEmit` limpio |
+| 3 | Build | `docker build -f backend/Dockerfile` → imagen `sha256:85068…` |
+| 4 | Cobertura del código nuevo | `visit_invite.py` **2/2**. ⚠️ En `visits.py` **no se puede medir**: `--cov` no atribuye lo ejecutado dentro del ASGI (comprobado: el test que SÍ ejecuta `cancel_visit` reporta esas líneas como no cubiertas). Sustituido por mutación, que es prueba de ejecución |
+| 5 | Secretos en el diff | 0 |
+| 6 | Depuración / errores | 0 `print`/`console.log`; el aviso no puede tumbar la cancelación |
+
+**Mutaciones: 5/5 rojas, restaurado verde.** Quitar la llamada de
+`cancel_visit`; `SEQUENCE` siempre 0; usar los textos de reserva; dejar la fila
+reenviable (`send_attempts=0`); quitar el `try/except` del idioma.
+
+**Lo que el plan no vio y apareció al ejecutar:** `cancelled=True` **no estaba
+completo por dentro**. Solo llegaba al `.ics` y al `method=` del MIME; el asunto
+y el cuerpo seguían saliendo de la copia de reserva, así que el correo habría
+dicho *«Your visit is confirmed»* con un adjunto que la cancela. Y
+`build_visit_ics` aceptaba `sequence` que nadie pasaba: un CANCEL habría salido
+con `SEQUENCE:0` y **Outlook puede ignorarlo** (RFC 5546).
+
+**Decisiones:** el aviso sale **después** del commit y su fallo **no** revierte
+la cancelación — deshacerla devolvería una cita a la que el agente ya no va a
+ir. `local_only` **también** avisa: ese flag significa «no llames al proveedor»,
+que es justo cuando más importa que lo sepa una persona.
+
+**Siguiente paso concreto:** Fase 2 del plan — el desempate por `id` en
+`conversations.py:127` y el nombre dicho en `visit.title`.
+
 ## ✅ v0.61.0 EN PRODUCCIÓN — desplegada y verificada (27-ago-2026)
 
 Autorizada por el dueño y desplegada desde `fbd2bea`. **Sin migraciones**
