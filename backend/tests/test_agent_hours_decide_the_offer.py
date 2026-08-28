@@ -191,6 +191,103 @@ async def test_a_past_appointment_does_not_count_against_an_agent() -> None:
 
 
 @pytest.mark.asyncio
+async def test_calcom_speaks_english_to_the_client() -> None:
+    """The attendee language Cal.com uses for confirmations and reminders.
+
+    It was hardcoded "es" — every client would have received their booking
+    email in Spanish, against the owner's standing rule that clients are in
+    English. Asserted on the REAL request body (httpx patched at the boundary),
+    not by reading the source: a source-reading test is beaten by a comment.
+    """
+    from datetime import timedelta as _td
+    from unittest.mock import MagicMock
+
+    from app.config import get_settings
+    from app.services import calendar_cal
+
+    sent = {}
+
+    class _Resp:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"data": {"id": "real-booking-1"}}
+
+    client = MagicMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+
+    async def _post(url, *, json=None, headers=None):
+        sent.update(json or {})
+        return _Resp()
+
+    client.post = _post
+
+    identity = MagicMock(credential="cal_test_x", destination="6849070")
+    with org_scope(ORG):
+        with (
+            patch.object(get_settings(), "CALENDAR_SIMULATED", False),
+            patch.object(
+                calendar_cal,
+                "resolve_calendar_identity",
+                AsyncMock(return_value=identity),
+            ),
+            patch.object(calendar_cal.httpx, "AsyncClient", return_value=client),
+        ):
+            await calendar_cal.create_booking(
+                start_time=datetime.now(UTC) + _td(days=2),
+                attendee_name="Probe Client",
+                attendee_email="probe@example.com",
+                timezone_name="America/Denver",
+            )
+    assert sent["attendee"]["language"] == "en", (
+        "Cal.com would write to the client in Spanish"
+    )
+
+
+@pytest.mark.asyncio
+async def test_opening_the_page_does_not_hand_callers_an_empty_calendar() -> None:
+    """The trap found while turning real mode on, before it fired.
+
+    Provisioning happens on page LOAD and creates a deliberately empty
+    schedule. If those rows were born active, `pick_agent` would prefer the
+    empty calendar over the agency default the moment somebody merely opened
+    «My availability» — and the assistant would offer callers NO hours at all.
+    So rows provision inactive, and saving real hours is what activates them.
+    """
+    from unittest.mock import AsyncMock
+
+    from app.services.agent_calendar import ensure_calendar
+
+    await _cleanup()
+    try:
+        fake = AsyncMock(
+            side_effect=lambda method, path, *, api_version, json=None: (
+                {"id": 910001} if path == "/v2/schedules" else {"id": 710001}
+            )
+        )
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                with patch("app.services.agent_calendar._call", fake):
+                    row = await ensure_calendar(
+                        db, NATALIA, AppointmentActivity.SHOWING, timezone_name="UTC"
+                    )
+                    assert row.active is False, (
+                        "a freshly provisioned (empty) calendar is active — "
+                        "opening the page would silently blank the offer"
+                    )
+                    await db.commit()
+                # And pick_agent must ignore it exactly because it is off.
+                target = await pick_agent(db, AppointmentActivity.SHOWING)
+        assert target == BookingTarget(), (
+            "an empty, never-saved calendar was offered to callers"
+        )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
 async def test_a_cancelled_visit_is_not_load() -> None:
     """Pins the status filter in the load count — an audit removed
     `Visit.status.in_((SCHEDULED, CONFIRMED))` and every test here stayed

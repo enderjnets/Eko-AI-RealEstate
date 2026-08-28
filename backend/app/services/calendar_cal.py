@@ -334,7 +334,11 @@ async def create_booking(
             "name": attendee_name,
             "email": attendee_email,
             "timeZone": timezone_name,
-            "language": "es",
+            # English, the owner's standing rule for clients ("los usuarios de
+            # este sistema y los clientes seran en ingles"). This was "es" —
+            # Cal.com would have sent every confirmation and reminder to a
+            # client in Spanish.
+            "language": "en",
         },
     }
     if notes:

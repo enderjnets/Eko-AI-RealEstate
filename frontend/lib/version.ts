@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.63.0";
+export const CURRENT_VERSION = "0.63.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.63.1",
+    date: "2026-08-28",
+    title: {
+      en: "Real calendar mode, safely",
+      es: "Calendario real, sin minas",
+    },
+    changes: [
+      {
+        en: "Booking confirmations from the calendar now reach clients in English. They were set to Spanish.",
+        es: "Las confirmaciones del calendario llegan ya al cliente en ingl\u00e9s. Estaban en espa\u00f1ol.",
+      },
+      {
+        en: "Opening My availability no longer affects what callers are offered: a calendar only starts deciding hours after you actually save some. Clearing all your hours turns it back off.",
+        es: "Abrir Mi disponibilidad ya no afecta a lo que se ofrece: un calendario solo decide horas despu\u00e9s de que guardes alguna. Vaciar todas tus horas lo apaga de nuevo.",
+      },
+    ],
+  },
   {
     version: "0.63.0",
     date: "2026-08-28",

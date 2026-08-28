@@ -2,6 +2,19 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.63.1] — 2026-08-28
+
+### Corregido — antes de encender el calendario real
+
+- **El idioma del asistente de Cal.com**: las confirmaciones y recordatorios al
+  cliente iban cableados en español, contra la norma de que los clientes van en
+  inglés.
+- **Abrir la página ya no puede vaciar la oferta**: aprovisionar crea una agenda
+  deliberadamente vacía, y una fila activa desde el nacimiento haría que el
+  asistente prefiriera ese calendario vacío al de la agencia — cero horas
+  ofrecidas porque alguien miró una página. Las filas nacen apagadas; **guardar
+  horas es el interruptor**, y vaciarlas todas lo apaga.
+
 ## [0.63.0] — 2026-08-28
 
 ### Añadido — «Mi disponibilidad»: cada agente declara su horario

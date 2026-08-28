@@ -450,6 +450,36 @@ def test_an_evening_shift_can_end_at_midnight() -> None:
     validate_windows([Window(days=(1, 1), start="10:00", end="12:00")])
 
 
+@pytest.mark.asyncio
+async def test_saving_hours_activates_and_clearing_them_deactivates() -> None:
+    """Saving IS the switch. Rows provision inactive (an empty schedule must
+    never beat the agency default), so the natural flow — type hours, press
+    Save — has to turn the calendar on without a second control, and clearing
+    every window has to turn it off again."""
+    await _allow(NATALIA)
+    try:
+        with _auth_on(), patch("app.services.agent_calendar._call", _fake_call()):
+            async with await _client() as c:
+                saved = await c.put(
+                    "/api/v1/availability/me/showing",
+                    json={"windows": [{"days": [1], "start": "10:00", "end": "12:00"}]},
+                    cookies=_cookies(NATALIA),
+                )
+                assert saved.status_code == 200, saved.text
+                assert saved.json()["active"] is True, "saving hours did not activate"
+                cleared = await c.put(
+                    "/api/v1/availability/me/showing",
+                    json={"windows": []},
+                    cookies=_cookies(NATALIA),
+                )
+                assert cleared.status_code == 200, cleared.text
+        assert cleared.json()["active"] is False, (
+            "an agent who removed all their hours is still marked bookable"
+        )
+    finally:
+        await _cleanup(NATALIA)
+
+
 def test_the_validator_rejects_what_calcom_would_accept() -> None:
     """Cal.com takes a backwards window and stores availability nobody can
     explain. These are the shapes refused at our door instead."""

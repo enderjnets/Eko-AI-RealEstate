@@ -300,6 +300,12 @@ async def ensure_calendar(
             email=email,
             activity=activity,
             duration_minutes=DEFAULT_DURATION_MINUTES[activity],
+            # Off until the person saves real hours. Provisioning happens on
+            # page LOAD, and a freshly provisioned schedule is deliberately
+            # empty — so an active row here would make `pick_agent` prefer an
+            # empty calendar over the agency default, and the assistant would
+            # offer NO hours to callers because somebody merely opened a page.
+            active=False,
         )
         db.add(row)
         await db.flush()

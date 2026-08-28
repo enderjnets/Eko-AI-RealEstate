@@ -219,9 +219,16 @@ async def set_my_availability(
         row = await ensure_calendar(db, email, activity, timezone_name=tz)
         if body.duration_minutes is not None:
             row.duration_minutes = body.duration_minutes
+        stored = await set_windows(row, windows, timezone_name=tz)
         if body.active is not None:
             row.active = body.active
-        stored = await set_windows(row, windows, timezone_name=tz)
+        else:
+            # Saving hours IS the activation. Rows provision inactive (an empty
+            # schedule must never win over the agency default), so the natural
+            # flow — declare hours, press Save — turns the calendar on, and
+            # clearing every window turns it back off, no separate switch to
+            # forget.
+            row.active = bool(stored)
         await db.commit()
     except MissingChannelCredential as exc:
         await db.rollback()
