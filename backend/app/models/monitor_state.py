@@ -62,6 +62,15 @@ class MonitorState(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # When the watched thing last said it was alive. Only meaningful for a
+    # subject that runs somewhere this process cannot observe — today the
+    # render worker, on the machine with the media stack. NULL means it has
+    # never checked in, which is not the same as "it is down": a worker that
+    # was never installed has also never checked in.
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

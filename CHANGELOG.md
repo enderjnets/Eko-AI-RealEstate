@@ -2,6 +2,47 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.66.0] — 2026-08-30
+
+### Añadido — el obrero de render y los subtítulos
+
+- Migración **046** `render_jobs` (RLS default-deny) y **047**
+  `monitor_state.last_heartbeat_at`. El carril A deja de renderizar en el
+  contenedor de la API y **encola** el trabajo para la máquina que tiene el
+  equipo de vídeo; el camino local se conserva como respaldo
+  (`RENDER_WORKER_ENABLED=false`), no es código muerto.
+- `worker/`: paquete propio, sin importar nada de `backend/`. **Tira, nadie le
+  empuja** — ningún puerto se abre en la máquina de render. Subtítulos con
+  faster-whisper en **CPU** (la GPU de esa máquina es de otro proyecto),
+  ensamblado 9:16 sin recorte, marca arriba a la derecha, brokerage y dominio
+  quemados al final, y **verificación mirando un fotograma**: el vídeo se
+  correlaciona contra la marca que debía llevar, porque en el proyecto vecino
+  salió uno con la marca de otra empresa pasando todas las puertas.
+- Router `/api/v1/internal/render-jobs` con token propio. **Token vacío = 503**,
+  nunca abierto. El guard va en el constructor del router: FastAPI copia esa
+  lista al registrar cada ruta, así que asignarla después no protege nada.
+- Vigía del obrero: avisa **por cambio** y solo cuando hay trabajo esperando —
+  un obrero ocioso con la cola vacía no es una avería.
+
+### Corregido — hallazgos de la auditoría de v0.65.0
+
+- 🔴 **Una pausa por cuota dejaba plataformas sin publicar para siempre.** El
+  conjunto de «ya hechas» incluía las filas `PENDING`, así que la plataforma que
+  un 429 liberaba se saltaba en cada tick siguiente y la pieza se quedaba en
+  `PUBLISHING` sin nadie que la rescatara. Ahora `PENDING` es trabajo pendiente
+  y su fila se reutiliza.
+- **Una pieza fallada y vuelta a aprobar no podía publicarse nunca.** La
+  segunda aprobación de una persona tiene que significar algo: las filas
+  `FAILED` del intento anterior se liberan al empezar un episodio nuevo.
+- 🔴 **Cualquier organización publicaba en los canales de la primera.**
+  `BUFFER_CHANNEL_*` es un solo juego de ids para toda la instalación y el
+  barrido corre para TODAS las organizaciones — y producción tiene dos (la real
+  y una «Demo» en trial). Sin esto, una pieza aprobada en la demo se publicaba
+  en los canales de Denver Home Story. `CONTENT_PUBLISH_ORG_ID` dice de quién
+  son; sin él, con más de una organización, no se publica nada.
+- El test de la pausa por cuota **no podía fallar**: comprobaba el estado
+  intermedio y nunca el siguiente tick.
+
 ## [0.65.0] — 2026-08-30
 
 ### Añadido — la publicación a los canales (Buffer)

@@ -23,6 +23,7 @@ from app.api.v1 import (
     leads,
     properties,
     public,
+    render_jobs,
     team,
     visits,
 )
@@ -223,6 +224,11 @@ _STREAM_PATHS: dict[str, int] = {
     # lowered this cap claiming the route would be the one to answer. It is not,
     # for any real client — hence `limit_mb` in the 413 below.
     "/api/v1/content/upload": settings.CONTENT_UPLOAD_MAX_MB * 1024 * 1024,
+    # The finished video coming back from the render machine. The job id is a
+    # QUERY parameter and not part of the path precisely because this table is
+    # matched exactly: a parametric path would never match, and the whole video
+    # would be buffered in memory before the route saw a byte.
+    "/api/v1/internal/render-jobs/result": settings.CONTENT_UPLOAD_MAX_MB * 1024 * 1024,
 }
 DEFAULT_MAX_BODY_BYTES = 256 * 1024
 
@@ -408,6 +414,10 @@ app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytic
 app.include_router(availability.router, prefix="/api/v1/availability", tags=["availability"], dependencies=_auth)
 app.include_router(console.router, prefix="/api/v1/console", tags=["console"], dependencies=_auth)
 app.include_router(content.router, prefix="/api/v1/content", tags=["content"], dependencies=_auth)
+# No session dependency: the caller is a process on the render machine, not a
+# person. Its guard is `require_worker_token`, attached inside the module, and
+# an unset token closes the queue with 503 rather than opening it.
+app.include_router(render_jobs.router, prefix="/api/v1/internal/render-jobs", tags=["render"])
 app.include_router(discovery.router, prefix="/api/v1/discovery", tags=["discovery"], dependencies=_auth)
 
 
@@ -461,12 +471,14 @@ async def _llm_monitor_loop() -> None:
     """
     from app.services.fair_housing_watch import run_fair_housing_tick
     from app.services.llm_monitor import run_monitor_tick
+    from app.services.render_watch import run_render_watch_tick
 
     interval = max(60, settings.LLM_MONITOR_INTERVAL_SECONDS)
     while True:
         try:
             await asyncio.sleep(interval)
             app.state.llm_fallback = await run_monitor_tick()
+            await run_render_watch_tick()
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 — a watchdog that dies is worse than none

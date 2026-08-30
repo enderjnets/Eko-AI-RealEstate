@@ -1,0 +1,10 @@
+# Deliberately small. Everything heavy that could be a subprocess is one:
+# ffmpeg and ffprobe are invoked, not wrapped.
+httpx==0.27.2
+# Transcription. `small.en` on CPU with int8 — the GPU on the render machine is
+# shared with another project and has under 4 GB free.
+faster-whisper==1.0.3
+# Spelling numbers out for the narrator. Without it "$450,000" is read as
+# digits, which is exactly how a published short ended up saying "one zero
+# three four zero".
+num2words==0.5.13

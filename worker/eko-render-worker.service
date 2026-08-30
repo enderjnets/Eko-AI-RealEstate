@@ -1,0 +1,22 @@
+[Unit]
+Description=Eko AI Realtors — render worker (Denver Home Story)
+After=network-online.target
+
+[Service]
+Type=simple
+# No OnCalendar and no timer. The allowed hours are checked on every tick
+# inside the process instead: a timer with Persistent=true fires a missed run
+# late, and after a power cut that is a render starting inside somebody else's
+# window on a machine three projects share.
+ExecStart=%h/.venvs/eko-render/bin/python -m worker.main
+WorkingDirectory=%h/eko-render/app
+EnvironmentFile=%h/.eko-render.env
+Restart=always
+RestartSec=30
+# One render at a time is the design; this is the belt to that suspenders.
+CPUQuota=400%
+StandardOutput=append:%h/eko-render/worker.log
+StandardError=append:%h/eko-render/worker.log
+
+[Install]
+WantedBy=default.target

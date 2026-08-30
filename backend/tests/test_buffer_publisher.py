@@ -75,6 +75,11 @@ def _publishing_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         s, "CONTENT_PUBLIC_BASE_URL", "https://panel.example.com", raising=False
     )
+    # This installation really does carry a second organization — the "Demo"
+    # row migration 015 creates, which is `trial` and therefore part of every
+    # sweep. Naming whose channels these are is not test scaffolding: it is
+    # what production has to set too, and the guard refuses without it.
+    monkeypatch.setattr(s, "CONTENT_PUBLISH_ORG_ID", ORG, raising=False)
 
 
 async def _cleanup() -> None:
@@ -309,14 +314,22 @@ async def test_without_a_brokerage_line_nothing_publishes(
 
 
 @pytest.mark.asyncio
-async def test_a_quota_pause_marks_nothing_failed(
+async def test_a_quota_pause_is_resumed_on_the_next_tick(
     database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A 429 is Buffer's calendar, not a verdict on the video. The untouched
-    platforms are claimed on the next tick and the piece stays PUBLISHING."""
+    """A 429 is Buffer's calendar, not a verdict on the video.
+
+    The second tick is the whole test. An earlier version stopped after
+    asserting the intermediate state — tiktok PENDING, piece PUBLISHING — and
+    passed just as happily when the released platform was never picked up
+    again: the `already` set was built from every row regardless of status, so
+    a PENDING platform was skipped forever and the piece stayed in PUBLISHING
+    with no reaper anywhere. A video half-published, permanently. An audit
+    found it; this test is what would have.
+    """
     await _brokerage()
-    recorder = _Recorder({TT: QuotaReached("429")})
-    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    paused = _Recorder({TT: QuotaReached("429")})
+    monkeypatch.setattr(buffer_publisher, "_graphql", paused)
     try:
         piece_id = await _approved_piece()
         with org_scope(ORG):
@@ -330,6 +343,113 @@ async def test_a_quota_pause_marks_nothing_failed(
         assert rows["tiktok"][1] == "pending"
         assert "instagram" not in rows
         assert await _status(piece_id) == "publishing"
+
+        # Buffer recovers. Everything still owed goes out and the piece closes.
+        healthy = _Recorder()
+        monkeypatch.setattr(buffer_publisher, "_graphql", healthy)
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                await publish_piece(db, piece_id)
+
+        rows = await _rows(piece_id)
+        assert {p: r[1] for p, r in rows.items()} == {
+            "youtube": "published",
+            "tiktok": "published",
+            "instagram": "published",
+        }
+        assert await _status(piece_id) == "published"
+        # And the platform that already went out was not posted a second time.
+        assert {s["channelId"] for s in healthy.sent} == {TT, IG}
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_re_approved_piece_can_be_published_again(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A person's second approval has to mean something.
+
+    After a total failure the declared way back is FAILED -> DRAFT ->
+    NEEDS_APPROVAL -> APPROVED. If the previous attempt's rows still counted as
+    "already attempted", every platform would be skipped and the piece would
+    flip straight back to FAILED without a single call — a video somebody
+    deliberately re-approved, permanently unpublishable.
+    """
+    await _brokerage()
+    refusal = {
+        "data": {"createPost": {"__typename": "UnexpectedError", "message": "nope"}}
+    }
+    monkeypatch.setattr(
+        buffer_publisher, "_graphql", _Recorder({YT: refusal, TT: refusal, IG: refusal})
+    )
+    try:
+        piece_id = await _approved_piece()
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                await publish_piece(db, piece_id)
+        assert await _status(piece_id) == "failed"
+
+        # The operator walks it back through the queue.
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE content_pieces SET status='approved' WHERE id=:p"),
+                {"p": piece_id},
+            )
+            await db.commit()
+
+        healthy = _Recorder()
+        monkeypatch.setattr(buffer_publisher, "_graphql", healthy)
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                await publish_piece(db, piece_id)
+
+        assert len(healthy.sent) == 3
+        assert await _status(piece_id) == "published"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_second_agency_cannot_publish_to_the_first_ones_channels(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BUFFER_CHANNEL_* is one set of ids for the whole installation.
+
+    The publish sweep runs for EVERY organization, so without this guard the
+    day a second agency uses the content rail their approved video is posted to
+    the first agency's YouTube, TikTok and Instagram — which cannot be taken
+    back. Refusing is the only safe answer until somebody says whose channels
+    these are.
+    """
+    await _brokerage()
+    recorder = _Recorder()
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+
+    async def _two_agencies(acting):
+        return True
+
+    monkeypatch.setattr(buffer_publisher, "_other_orgs_exist", _two_agencies)
+    # Nobody has said whose channels these are — which is the state a fresh
+    # install is in, and the state this guard exists for.
+    monkeypatch.setattr(get_settings(), "CONTENT_PUBLISH_ORG_ID", 0, raising=False)
+    try:
+        await _approved_piece()
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                assert await publish_approved(db) == 0
+        assert recorder.sent == []
+
+        # Named explicitly, it publishes again — for that org and no other.
+        monkeypatch.setattr(
+            get_settings(), "CONTENT_PUBLISH_ORG_ID", ORG, raising=False
+        )
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                assert await publish_approved(db) == 1
+        with org_scope(ORG + 1):
+            async with get_session_factory()() as db:
+                assert await publish_approved(db) == 0
     finally:
         await _cleanup()
 

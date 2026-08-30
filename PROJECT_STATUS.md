@@ -6,6 +6,63 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## 🟡 v0.66.0 — EL OBRERO DE RENDER Y LOS SUBTÍTULOS (30-ago-2026) · construido, NO instalado
+
+Fase 2. El carril A deja de renderizar dentro de la API y **encola** para la
+máquina que tiene el equipo de vídeo, que además pone los **subtítulos** — la
+mitad de un short que casi todo el mundo ve en silencio.
+
+**Forma**: el obrero **tira, nadie le empuja** (ningún puerto se abre en el
+ROG); Whisper en **CPU** a propósito (la GPU de esa máquina es de otro
+proyecto, y la sesión vecina midió que la VRAM libre oscila entre 3,4 y 6,0 GB
+en horas: cualquier número caduca); **unidad systemd de usuario, nunca cron**
+(el crontab del ROG lo reescribe entero un self-heal cada 15 min); ventana
+horaria **comprobada en cada tick**, no declarada a un timer, porque
+`OnCalendar` con `Persistent=true` dispara tarde tras un corte de luz. Horas
+acordadas con la sesión BitTrader: 13, 15, 16, 17, 21, 23, 1, 2 MDT.
+
+**Lo que se verifica de un resultado**: el panel **no se fía del obrero** —
+re-sondea el fichero (1080×1920, audio, duración) porque un obrero mal
+configurado o a medio actualizar produce vídeo legible del tamaño equivocado. Y
+el obrero **mira un fotograma**: correlaciona la esquina donde compositó la
+marca contra la marca que debía llevar. Es la lección del vídeo que salió con
+la marca de otra empresa pasando todas las puertas.
+
+**Auditoría de la fase anterior — tres hallazgos reales, los tres corregidos:**
+
+1. 🔴 **Una pausa por cuota dejaba plataformas sin publicar para siempre.** El
+   conjunto de «ya hechas» incluía las filas `PENDING`, así que la plataforma
+   que un 429 liberaba se saltaba en cada tick siguiente. Pieza clavada en
+   `PUBLISHING`, vídeo medio publicado, sin nadie que lo rescatara.
+2. **Una pieza fallada y re-aprobada no podía publicarse nunca.**
+3. 🔴 **Cualquier organización publicaba en los canales de la primera.**
+   Producción tiene **dos** organizaciones (la real y una «Demo» en trial, que
+   el barrido incluye). `CONTENT_PUBLISH_ORG_ID` dice de quién son los canales;
+   sin él, con más de una organización, no se publica nada. ⚠️ **Al desplegar
+   hay que poner `CONTENT_PUBLISH_ORG_ID=1` en el `.env` del VPS** o la
+   publicación se negará — correctamente.
+
+Y el test de la pausa por cuota **no podía fallar**: comprobaba el estado
+intermedio y nunca el tick siguiente. Sustituido.
+
+**Cierre**: 1276+14 backend · 153 frontend · 20 del obrero (con un render real
+de ffmpeg) verdes; ruff y tsc limpios; la imagen compila. **Cuatro mutaciones
+verificadas en rojo**, y una quinta que **NO se puso roja a la primera**: quitar
+la verificación del resultado dejaba la suite verde porque el test mandaba
+basura, que ya rechaza `ffprobe`. El test que faltaba manda un vídeo válido de
+1920×1080 y ahora la mutación muerde.
+
+🔴 **Pendiente y NO hecho**: instalar la unidad en el ROG. Es Fase 4 y **exige
+el «adelante» del dueño**. El ROG estuvo caído esta tarde y volvió; su
+`ollama-bridge` (el del puente de Docker, nuestro) está en bucle de reinicio
+desde el arranque porque intenta atarse a `172.20.0.1`, que no existe hasta que
+Docker crea la red. **No afecta a producción**: medido en el dominio,
+`llm_fallback: "ok"` — el VPS alcanza Ollama por la tailnet y ese puente sí
+está activo. El de Docker quedó obsoleto con la mudanza al VPS; **no lo he
+tocado**, decisión del dueño si se apaga.
+
+---
+
 ## 🟡 v0.65.0 — LA PUBLICACIÓN EXISTE (30-ago-2026) · construida, NO encendida
 
 Fase 1 de la máquina de vídeo de Denver Home Story. Rama

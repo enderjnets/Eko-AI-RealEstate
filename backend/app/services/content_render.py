@@ -141,6 +141,35 @@ def check_input(probe: Probe) -> None:
         raise RenderRefused("the video stream reports no dimensions")
 
 
+def check_output(result: Probe, *, source: Probe | None = None) -> None:
+    """What a finished video has to be, before anyone is offered it.
+
+    A function rather than an inline block since v0.66, because there are now
+    two producers: this module, and the worker on the render machine. A worker
+    on another host is not a trusted source of 1080x1920 — it can be
+    misconfigured or half-updated — and the point of the queue is that this
+    side does not have to take its word for the result.
+
+    `source` is the input's probe when there is one. Without it (a video
+    generated from a script had no input) only the checks that stand on their
+    own are applied.
+    """
+    problems = []
+    if (result.width, result.height) != (OUT_W, OUT_H):
+        problems.append(f"output is {result.width}x{result.height}")
+    if result.duration <= 0:
+        problems.append("the output has no duration")
+    if source is not None:
+        if source.has_audio and not result.has_audio:
+            problems.append("the source had audio and the output does not")
+        if abs(result.duration - source.duration) > 2.0:
+            problems.append(
+                f"duration drifted {source.duration:.1f}s -> {result.duration:.1f}s"
+            )
+    if problems:
+        raise RenderRefused("render verification failed: " + "; ".join(problems))
+
+
 # drawtext's `text=` is a micro-language wrapped in another micro-language: the
 # filtergraph parser (which splits on , ; [ ] and handles quotes) runs first,
 # then drawtext's own option parser (which splits on :). Escaping operator
@@ -267,18 +296,11 @@ async def render_clip(
     # The render's own promises, checked against the file that exists rather
     # than the command that ran. "It returned 0" is not verification.
     result = await probe_media(destination)
-    problems = []
-    if (result.width, result.height) != (OUT_W, OUT_H):
-        problems.append(f"output is {result.width}x{result.height}")
-    if probe.has_audio and not result.has_audio:
-        problems.append("the source had audio and the output does not")
-    if abs(result.duration - probe.duration) > 2.0:
-        problems.append(
-            f"duration drifted {probe.duration:.1f}s -> {result.duration:.1f}s"
-        )
-    if problems:
+    try:
+        check_output(result, source=probe)
+    except RenderRefused:
         await asyncio.to_thread(destination.unlink, missing_ok=True)
-        raise RenderRefused("render verification failed: " + "; ".join(problems))
+        raise
     return result
 
 
@@ -336,6 +358,16 @@ async def render_pending(db: AsyncSession) -> int:
         await db.commit()
         return 0
 
+    if get_settings().RENDER_WORKER_ENABLED:
+        # The work goes to the machine with the media stack. This path adds
+        # subtitles, which is why it exists: transcription needs a speech model
+        # that has no business living in the API container.
+        #
+        # The local path below is NOT deleted and is not dead code — it is the
+        # fallback for an install with no worker, and the thing to switch back
+        # to when the render machine is down.
+        return await _enqueue_pending(db, rows)
+
     media_root = Path(get_settings().CONTENT_MEDIA_DIR)
     done = 0
     for piece in rows:
@@ -379,3 +411,45 @@ _NO_BROKERAGE_NOTE = (
     "waiting: no brokerage line on record — set it in Settings and the clip "
     "renders on the next pass"
 )
+
+
+async def _enqueue_pending(db: AsyncSession, pieces: list[ContentPiece]) -> int:
+    """Hand these clips to the render worker instead of rendering them here.
+
+    Idempotent by constraint, not by care: `uq_render_job` on
+    `(piece_id, kind)` means a second tick over the same clip collides rather
+    than queueing it twice, so a restart between the query and the commit
+    cannot double the work.
+
+    `rendered_at` is deliberately NOT stamped. It means "this clip has been
+    dealt with", and a queued job has not been — stamping it here would hide
+    the clip from this sweep forever if the worker never came back.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models import RenderJob, RenderJobKind
+
+    queued = 0
+    for piece in pieces:
+        existing = (
+            await db.execute(
+                select(RenderJob).where(
+                    RenderJob.piece_id == piece.id,
+                    RenderJob.kind == RenderJobKind.SUBTITLE_A,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            continue
+        db.add(RenderJob(piece_id=piece.id, kind=RenderJobKind.SUBTITLE_A))
+        try:
+            await db.commit()
+        except IntegrityError:
+            # Another tick got there first. Not an error, and not a reason to
+            # abandon the rest of the batch.
+            await db.rollback()
+            continue
+        queued += 1
+    if queued:
+        log.info("Queued %d clip(s) for the render worker", queued)
+    return queued

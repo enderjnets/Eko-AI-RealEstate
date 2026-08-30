@@ -57,6 +57,12 @@ HANDLED = {
     # returns. Nothing a customer types reaches this table, and no write here
     # shares a transaction with a customer's message.
     "agent_calendars": (OURS, "session email, a pg enum, and Cal.com's own ids"),
+    # `worker` is the render machine's own name for itself, from its
+    # environment file, and `last_error` is Text with no bound. A worker is
+    # not a customer and nothing a lead types reaches this table; the route
+    # slices `error` to 2000 before it is stored, so an over-long report is
+    # shortened rather than losing the job it explains.
+    "render_jobs": (OURS, "the worker's own name, and an error the route bounds"),
     # The hook comes from a language model, which does not count characters.
     # Losing the tail of a draft beats losing the draft, and a person reads
     # every one of these before it can go anywhere.
@@ -342,6 +348,9 @@ class TestEveryUniqueStringKeyHasBeenThoughtAbout:
         ("properties", "source"): "literal: reso | idx | mls | manual",
         ("sync_state", "source"): "literal, one per feed",
         ("monitor_state", "key"): "module constant, one per watched subject",
+        # A database enum: the value set is closed by the type, so there is no
+        # length to exceed and no input path that could widen it.
+        ("render_jobs", "kind"): "pg enum — closed value set",
         # Admin configuration through an authenticated form. Failing loudly is
         # right here: silently storing a different email than the one typed
         # would lock somebody out of an account they think they created.

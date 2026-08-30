@@ -288,6 +288,29 @@ async def _send(
     return parse_create_post(await _graphql(_CREATE_POST, {"input": payload_in}))
 
 
+async def _other_orgs_exist(acting: int | None) -> bool:
+    """Is this installation serving more than this one organization?
+
+    Read on the bypass engine, because the question is about the installation
+    rather than about any tenant, and under RLS a tenant cannot see that there
+    are others.
+    """
+    from sqlalchemy import func as sa_func
+
+    from app.db.base import get_bypass_session_factory
+    from app.models.organization import STATUS_SUSPENDED, Organization
+
+    async with get_bypass_session_factory()() as meta:
+        return (
+            await meta.execute(
+                select(sa_func.count()).select_from(Organization).where(
+                    Organization.status != STATUS_SUSPENDED,
+                    Organization.id != (acting or -1),
+                )
+            )
+        ).scalar_one() > 0
+
+
 async def _claimed_today(db: AsyncSession) -> int:
     """Pieces claimed today, not posts.
 
@@ -328,6 +351,10 @@ async def _close_piece(db: AsyncSession, piece: ContentPiece) -> None:
         if row.status in (PublicationStatus.PUBLISHED, PublicationStatus.FAILED)
     }
     if not wanted <= set(terminal):
+        # Something is still owed. A PUBLISHING row means a person has to look;
+        # a PENDING one means a quota pause released it and the next tick will
+        # pick it up. Closing over either would erase a question nobody
+        # answered.
         return
 
     published = any(s is PublicationStatus.PUBLISHED for s in terminal.values())
@@ -349,14 +376,19 @@ async def publish_piece(db: AsyncSession, piece_id: int) -> None:
     """
     piece = await ensure_publishable(db, piece_id, resuming=True)
 
-    if piece.status is ContentStatus.APPROVED:
+    # Whether this is a new attempt or the continuation of one. It decides
+    # whether a previous episode's failures are released for another try, and
+    # it has to be read BEFORE the status is advanced.
+    fresh = piece.status is ContentStatus.APPROVED
+
+    if fresh:
         advance(piece, ContentStatus.PUBLISHING)
         # Committed before any outbound call: the claim has to survive a crash,
         # or a restart would find an APPROVED piece and post it again.
         await db.commit()
 
-    already = {
-        row.platform
+    rows = {
+        row.platform: row
         for row in (
             (
                 await db.execute(
@@ -370,17 +402,48 @@ async def publish_piece(db: AsyncSession, piece_id: int) -> None:
         )
     }
 
+    # A fresh episode — the piece was APPROVED when this run started, which
+    # after a total failure means a person put it back through the queue and
+    # approved it again. Their re-approval has to mean something: the rows
+    # from the previous attempt are released so those platforms are tried
+    # again. Without this a piece that failed everywhere could never be
+    # published, because every platform would be "already attempted" forever.
+    if fresh:
+        for row in rows.values():
+            if row.status is PublicationStatus.FAILED:
+                row.status = PublicationStatus.PENDING
+                row.last_error = None
+        if rows:
+            await db.commit()
+
     for platform, channel_id in configured_channels().items():
-        if platform in already:
+        existing = rows.get(platform)
+        # PUBLISHED is done. PUBLISHING is either in flight or a crash a person
+        # has to look at — retrying it blind is how the same video is posted
+        # twice. FAILED was attempted in THIS episode and its reason is on the
+        # row. Everything else is work still owed.
+        if existing is not None and existing.status in (
+            PublicationStatus.PUBLISHED,
+            PublicationStatus.PUBLISHING,
+            PublicationStatus.FAILED,
+        ):
             continue
 
-        row = ContentPublication(
-            org_id=piece.org_id,
-            piece_id=piece.id,
-            platform=platform,
-            status=PublicationStatus.PUBLISHING,
-        )
-        db.add(row)
+        if existing is not None:
+            # Reuse the row rather than insert: `uq_content_publication` makes a
+            # second insert for the same pair impossible, and a PENDING row is
+            # exactly the claim a quota pause released for this tick to pick up.
+            row = existing
+            row.status = PublicationStatus.PUBLISHING
+            row.last_error = None
+        else:
+            row = ContentPublication(
+                org_id=piece.org_id,
+                piece_id=piece.id,
+                platform=platform,
+                status=PublicationStatus.PUBLISHING,
+            )
+            db.add(row)
         # The claim, committed before the call. The UNIQUE constraint makes it
         # exclusive; this commit makes it durable.
         await db.commit()
@@ -428,6 +491,31 @@ async def publish_approved(db: AsyncSession) -> int:
     if reason is not None:
         log.warning("Publishing is configured but unusable: %s", reason)
         return 0
+
+    # WHOSE channels are these? `BUFFER_CHANNEL_*` is one set of ids for the
+    # whole installation, so publishing is an operator capability and not a
+    # per-tenant one — there is no per-organization Buffer target the way
+    # `channel_routes` gives each agency its own phone number and mailbox.
+    # This sweep runs for EVERY organization, so without this guard the day a
+    # second agency uses the content rail, their approved video is posted to
+    # the first agency's YouTube, TikTok and Instagram. Refuse instead, loudly.
+    acting = get_org_id()
+    allowed = get_settings().CONTENT_PUBLISH_ORG_ID
+    if allowed:
+        if acting != allowed:
+            return 0
+    else:
+        others = await _other_orgs_exist(acting)
+        if others:
+            log.error(
+                "Publishing is enabled, this installation has more than one "
+                "organization, and CONTENT_PUBLISH_ORG_ID says whose channels "
+                "BUFFER_CHANNEL_* are. Nothing will be published until it is "
+                "set — posting org %s's video to another agency's channels is "
+                "not a recoverable mistake.",
+                acting,
+            )
+            return 0
 
     claimed = await _claimed_today(db)
     if claimed >= settings.CONTENT_PUBLISH_MAX_PER_DAY:

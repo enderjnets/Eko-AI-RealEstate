@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.65.0";
+export const CURRENT_VERSION = "0.66.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.66.0",
+    date: "2026-08-30",
+    title: {
+      en: "Clips come back with subtitles",
+      es: "Los clips vuelven con subt\u00edtulos",
+    },
+    changes: [
+      {
+        en: "A clip you upload is now rendered on the machine with the video stack: captions timed to the voice, the brand mark, and the brokerage line burned into the last seconds. It comes back into the approval queue, where you still decide.",
+        es: "Un clip que subes se procesa ahora en la m\u00e1quina que tiene el equipo de v\u00eddeo: subt\u00edtulos sincronizados con la voz, la marca, y la l\u00ednea de brokerage quemada en los \u00faltimos segundos. Vuelve a la cola de aprobaci\u00f3n, donde sigues decidiendo t\u00fa.",
+      },
+      {
+        en: "If that machine stops answering while clips are waiting, we are told. A queue nobody is working looks exactly like a quiet queue, which is why it used to go unnoticed.",
+        es: "Si esa m\u00e1quina deja de responder mientras hay clips esperando, nos avisa. Una cola que nadie trabaja se ve igual que una cola tranquila, y por eso antes pasaba desapercibido.",
+      },
+    ],
+  },
   {
     version: "0.65.0",
     date: "2026-08-30",
