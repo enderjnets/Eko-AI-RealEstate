@@ -379,3 +379,40 @@ def test_no_music_directory_is_not_an_error(monkeypatch: pytest.MonkeyPatch, tmp
     """An agency that has not chosen music gets a video without music."""
     monkeypatch.setattr("worker.main.MUSIC_DIR", tmp_path / "nope")
     assert pick_music() is None
+
+
+# ── The shipped brand asset ──────────────────────────────────────────────
+
+
+def test_the_brand_mark_ships_and_is_usable() -> None:
+    """The asset itself, not a synthetic stand-in.
+
+    Everything above proves the machinery composites *a* mark. This proves the
+    one that will actually be on a client's video exists, has a transparent
+    ground (a navy rectangle pasted over somebody's living room is not a
+    watermark), and carries enough variation to be recognised — a flat image
+    cannot be correlated with anything and `verify` says so by name.
+
+    It carries no text on purpose: the emblem only. The wordmark in the source
+    logo has a superscript R, and there is no USPTO registration behind it —
+    using that symbol without one is a false marking, so the part of the logo
+    that claims it never reaches a video.
+    """
+    from worker.main import MARK
+
+    assert MARK.is_file(), f"the brand mark is missing from {MARK}"
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    mark = Image.open(MARK).convert("RGBA")
+    assert mark.width >= 380, "too small to scale down to 190px cleanly"
+
+    pixels = list(mark.getdata())
+    transparent = sum(1 for p in pixels if p[3] == 0)
+    assert transparent > len(pixels) * 0.2, "the mark has no transparent ground"
+
+    grey = [(p[0] + p[1] + p[2]) / 3 for p in pixels if p[3] > 200]
+    assert grey, "the mark is entirely transparent"
+    mean = sum(grey) / len(grey)
+    variance = sum((g - mean) ** 2 for g in grey) / len(grey)
+    assert variance > 100, "the mark is a flat colour and cannot be recognised"

@@ -62,6 +62,21 @@ Going over that cap does not degrade our video — it stops somebody else's
 publishing. The ledger lives in `RENDER_CACHE_DIR` and the cache key is the
 prompt itself, checked before the request rather than after it.
 
+## `assets/`
+
+`dhs-mark.png` — the Denver Home Story emblem on a transparent ground, 600px
+wide, derived from `Denver Home Story Logo Elegant.png`. **The emblem only, no
+wordmark**: the logo's text carries a superscript ® and there is no USPTO
+registration behind it, so the part that makes that claim never reaches a
+video.
+
+There is no end-card image. The identification at the end of a video is drawn
+by ffmpeg from `brokerage.txt` and `domain.txt` — text a person can change in
+Settings without anybody re-exporting a graphic.
+
+`bgm/` — optional music, `.mp3`/`.m4a`/`.wav`, each with its licence file
+beside it. Absent, videos are made without music rather than not made.
+
 ## Requirements on the machine
 
 `ffmpeg` and `ffprobe` on PATH. Whisper runs on the **CPU** deliberately. The
