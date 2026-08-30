@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.66.0";
+export const CURRENT_VERSION = "0.67.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.67.0",
+    date: "2026-08-30",
+    title: {
+      en: "Videos the system writes and narrates",
+      es: "V\u00eddeos que el sistema escribe y narra",
+    },
+    changes: [
+      {
+        en: "A generated draft now comes with a shot list and a narration, and the video is built BEFORE it reaches you \u2014 so what you approve is the video itself, not a description of one.",
+        es: "Un borrador generado trae ahora una lista de planos y una narraci\u00f3n, y el v\u00eddeo se construye ANTES de llegarte \u2014 as\u00ed lo que apruebas es el v\u00eddeo, no una descripci\u00f3n de uno.",
+      },
+      {
+        en: "Fair Housing now applies to the pictures as well as the words: a prompt that would draw people is refused and the draft waits for an edit.",
+        es: "Fair Housing se aplica ahora a las im\u00e1genes adem\u00e1s de a las palabras: una instrucci\u00f3n que dibujar\u00eda personas se rechaza y el borrador espera una correcci\u00f3n.",
+      },
+      {
+        en: "Prices are spoken as words rather than spelled out digit by digit, and captions for a generated video are timed to the voice.",
+        es: "Los precios se leen en palabras en vez de deletrearse cifra a cifra, y los subt\u00edtulos de un v\u00eddeo generado van sincronizados con la voz.",
+      },
+    ],
+  },
   {
     version: "0.66.0",
     date: "2026-08-30",

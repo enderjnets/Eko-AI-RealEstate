@@ -2,6 +2,58 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.67.0] — 2026-08-30
+
+### Añadido — el carril B: guion → vídeo narrado
+
+- El borrador generado gana `scenes` (4-6 planos con `visual_prompt` y
+  `on_screen_text`) y `narration` — migración **048**. **El vídeo se construye
+  ANTES de la aprobación**: lo que una persona aprueba es el vídeo, no una
+  descripción de él.
+- **Fair Housing se aplica también a la imagen**: cada `visual_prompt` pasa el
+  filtro de frases Y una denylist de descriptores de personas
+  (`fair_housing.picture_violations`). Un fotograma lleno de un solo tipo de
+  hogar dice quién es bienvenido sin una sola frase que nadie pueda editar.
+- `services/lang_guard.py`: guarda de idioma **sobre el texto NARRADO**, no
+  sobre el titular, y caza también la MEZCLA — que es lo que un modelo produce
+  de verdad cuando sus instrucciones y su contexto no coinciden.
+- Obrero: narración por MiniMax T2A (edge-tts de respaldo), imágenes por Kling
+  → Pexels → tarjeta de marca, planos **cortados a la voz** con los tiempos de
+  Whisper, y `worker/spoken.py` que convierte cifras en palabras («$450,000» →
+  «four hundred and fifty thousand dollars»). Caché de imagen **en el punto de
+  pago** y tope diario propio: ese paquete de Kling es un saldo compartido con
+  otros dos proyectos.
+- La declaración «Contains AI-generated visuals» va en el caption de las piezas
+  generadas y **solo** en ellas: un clip que alguien filmó no es generado.
+
+### Corregido — hallazgos de la auditoría de v0.66.0
+
+- 🔴 **La música cortaba la narración por la mitad.** El comando emitía un
+  SEGUNDO `-filter_complex`; ffmpeg se queda con el último, así que el grafo de
+  vídeo desaparecía y `[0:a]` se consumía dos veces. Medido: vídeo de 6 s con
+  audio de 2,5 / 3,5 / 3,0 s en ejecuciones sucesivas del mismo comando, con
+  código de salida 0. Ahora es un solo grafo con `asplit`. El test que existía
+  comprobaba una subcadena y no podía verlo; el nuevo renderiza y mide.
+- 🔴 **Un obrero rezagado podía pisar un vídeo ya publicado** y borrar el
+  fichero aprobado. `/result` y `/fail` exigen ahora que el trabajo esté
+  reclamado y la pieza siga esperando vídeo — y se comprueba ANTES de gastar la
+  subida.
+- Un resultado ya no mete en la cola de aprobación una pieza con hallazgos
+  pendientes (era una segunda puerta que se saltaba el filtro de la primera).
+- Modelo de voz **por idioma**: `small.en` era inglés puro en un producto
+  bilingüe.
+- Los errores de ffmpeg llegaban VACÍOS a la persona: se leía `stdout` con los
+  errores en `stderr`.
+- Un trabajo FALLIDO ya no es una condena perpetua para el clip: se reintenta
+  pasadas 24 h, así que un disco lleno una tarde no lo mata para siempre.
+- Nada queda en el volumen cuando la entrega se rechaza.
+- **Los tests del obrero no corrían en CI** — `testpaths` apuntaba solo a
+  `backend/tests`.
+- 🔴 **`violations=None` se guardaba como JSON `null`, no como SQL NULL**, así
+  que `IS NULL` no casaba nunca y el barrido del carril B no encontraba trabajo.
+  `message.py` ya llevaba `none_as_null=True`; el modelo de contenido no lo
+  había heredado. La 048 normaliza las filas existentes.
+
 ## [0.66.0] — 2026-08-30
 
 ### Añadido — el obrero de render y los subtítulos

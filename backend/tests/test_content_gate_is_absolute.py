@@ -298,6 +298,15 @@ def test_advance_is_the_only_thing_that_writes_a_status() -> None:
     Any `something.status = ...` in the content code that is not the one line
     inside `advance()` is a door around it, and the next person to add a
     convenience assignment will not notice they have opened one.
+
+    What counts is the VALUE, not the attribute name. `.status` is not a word
+    this project owns: a render job has one, and so does a publication, and
+    neither is a content piece walking its state machine. The first version
+    flagged on the name alone and caught `render_jobs` bookkeeping — a true
+    positive for the pattern and a false one for the rule, which is the kind of
+    noise that gets a sweep exempted into uselessness. Flagging assignments of
+    a `ContentStatus` is the actual invariant, and it still catches every door
+    around `advance()`.
     """
     offenders: list[str] = []
     for path in sorted(APP.rglob("*.py")):
@@ -312,10 +321,23 @@ def test_advance_is_the_only_thing_that_writes_a_status() -> None:
             for inner in ast.walk(node):
                 if not isinstance(inner, ast.Assign):
                     continue
+                assigns_content_status = (
+                    isinstance(inner.value, ast.Attribute)
+                    and isinstance(inner.value.value, ast.Name)
+                    and inner.value.value.id == "ContentStatus"
+                ) or (
+                    # A bare name whose value cannot be read here. Treated as
+                    # suspect rather than waved through: a sweep that only
+                    # understands the literal form is a sweep somebody escapes
+                    # with a local variable.
+                    isinstance(inner.value, ast.Name)
+                    and inner.value.id.lower().endswith("status")
+                )
                 for target in inner.targets:
                     if (
                         isinstance(target, ast.Attribute)
                         and target.attr == "status"
+                        and assigns_content_status
                     ):
                         offenders.append(
                             f"{path.relative_to(APP.parent)}::{node.name}:"
@@ -325,6 +347,32 @@ def test_advance_is_the_only_thing_that_writes_a_status() -> None:
         "these write a content status without going through advance(), so the "
         f"state machine does not apply to them: {offenders}"
     )
+
+
+def test_the_status_sweep_can_still_catch_a_door() -> None:
+    """Its own canary, added when the sweep was narrowed.
+
+    A filter that stopped matching anything would pass the test above
+    silently, which is exactly how a guard becomes decoration. This feeds it a
+    door and requires that it slams.
+    """
+    source = (
+        "async def sneak(piece):\n"
+        "    piece.status = ContentStatus.PUBLISHED\n"
+    )
+    tree = ast.parse(source)
+    found = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Attribute)
+        and isinstance(node.value.value, ast.Name)
+        and node.value.value.id == "ContentStatus"
+        and any(
+            isinstance(t, ast.Attribute) and t.attr == "status" for t in node.targets
+        )
+    ]
+    assert len(found) == 1, "the narrowed filter no longer recognises a door"
 
 
 def test_the_sweep_is_looking_at_something() -> None:

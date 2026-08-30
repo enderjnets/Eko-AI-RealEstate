@@ -22,7 +22,17 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-MODEL = "small.en"
+# English-only where we can, multilingual where we must. `small.en` is faster
+# and more accurate on English, which is what this channel speaks — but the
+# product is bilingual, and handing a Spanish clip to an English-only model
+# produces either garbled English-shaped captions burned into a client-facing
+# video, or none at all. Neither is an acceptable answer for half the market.
+MODELS = {"en": "small.en"}
+DEFAULT_MODEL = "small"
+
+
+def model_for(language: str) -> str:
+    return MODELS.get((language or "en").lower(), DEFAULT_MODEL)
 
 # Bottom third, above the platform's own furniture. TikTok and Reels put a
 # caption and a button stack over the lower ~18% of the frame, so text placed
@@ -53,7 +63,7 @@ def transcribe(audio_or_video: Path, language: str = "en") -> list[Word]:
         return []
 
     try:
-        model = WhisperModel(MODEL, device="cpu", compute_type="int8")
+        model = WhisperModel(model_for(language), device="cpu", compute_type="int8")
         segments, _info = model.transcribe(
             str(audio_or_video), language=language, word_timestamps=True
         )

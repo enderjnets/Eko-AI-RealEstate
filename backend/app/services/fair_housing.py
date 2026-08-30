@@ -172,3 +172,60 @@ def find_violations(text: str, language: object = None) -> list[dict[str, str]]:
             if f" {_normalise(phrase)} " in haystack:
                 found.append({"phrase": phrase, "category": category})
     return found
+
+
+# ── What a picture may not be of ─────────────────────────────────────────
+# Housing advertising is regulated in images as much as in words. A video whose
+# every frame shows one kind of household says something about who is welcome,
+# and it says it without a single sentence anybody could edit in review.
+#
+# So the prompts that go to an image model are checked too — and against a
+# WIDER list than the text, because the failure mode is different. In a script,
+# "family" appears in sentences that are perfectly fine ("family room", "the
+# family that owns it"). In an image prompt it is an instruction: draw one.
+# A prompt is a short, purpose-built string that we ask for and can regenerate
+# for free, so a false positive here costs one retry and a false negative costs
+# a Fair Housing exposure on the broker's licence.
+#
+# This is a floor, not a ceiling. It catches the words a model reaches for by
+# default; it cannot catch a paraphrase, and the human approval gate is still
+# what stands behind it.
+PEOPLE_IN_PICTURES = (
+    "family", "families", "familia", "familias",
+    "couple", "couples", "pareja", "parejas",
+    "kid", "kids", "child", "children", "niño", "niños", "niña", "niñas",
+    "baby", "babies", "toddler", "bebé", "bebe",
+    "mom", "mother", "dad", "father", "parents", "madre", "padre", "padres",
+    "professional", "professionals", "profesional", "profesionales",
+    "retiree", "retirees", "senior", "seniors", "elderly", "jubilado",
+    "jubilados", "anciano", "ancianos",
+    "young man", "young woman", "young people", "joven", "jóvenes",
+    "student", "students", "estudiante", "estudiantes",
+    "man", "woman", "men", "women", "hombre", "mujer", "hombres", "mujeres",
+    "person", "people", "persona", "personas", "gente",
+    "portrait", "portraits", "retrato", "faces", "face", "cara", "rostro",
+    "smiling", "sonriente", "sonriendo",
+    "neighbors", "neighbours", "vecinos",
+    "church", "churchgoers", "iglesia", "temple", "synagogue", "mosque",
+    "school", "schools", "escuela", "escuelas", "colegio",
+)
+
+
+def picture_violations(prompt: str) -> list[dict[str, str]]:
+    """Words that must not steer what an image model draws.
+
+    Whole words, unlike `find_violations`, which matches phrases: "manor" must
+    not trip on "man", and a substring check here would reject most of the
+    English language. Runs IN ADDITION to `find_violations`, never instead of
+    it — the phrase list still applies to a prompt.
+    """
+    if not prompt:
+        return []
+    words = set(_normalise(prompt).split())
+    found = [
+        {"phrase": term, "category": "people_in_pictures"}
+        for term in PEOPLE_IN_PICTURES
+        if _normalise(term) in words
+        or (" " in term and f" {_normalise(term)} " in f" {_normalise(prompt)} ")
+    ]
+    return found

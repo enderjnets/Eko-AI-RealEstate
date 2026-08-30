@@ -523,7 +523,7 @@ async def _content_render_loop() -> None:
     """Background worker: lane A renders (v0.54). One clip at a time — ffmpeg
     saturates the cores it gets, so parallel renders are one render at half
     speed twice."""
-    from app.services.content_render import render_pending
+    from app.services.content_render import enqueue_generated, render_pending
     from app.services.tenant_context import run_for_every_org
 
     interval = max(60, settings.CONTENT_RENDER_INTERVAL_SECONDS)
@@ -531,6 +531,10 @@ async def _content_render_loop() -> None:
         try:
             await asyncio.sleep(interval)
             await run_for_every_org(render_pending)
+            # Lane B: a written script becomes a video BEFORE a person
+            # approves, so what they approve is the video itself. Inert unless
+            # the worker is enabled — there is nothing here that can build one.
+            await run_for_every_org(enqueue_generated)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001

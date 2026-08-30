@@ -78,6 +78,14 @@ jobs:
         working-directory: backend
         run: pytest -v
 
+      # The worker is a separate program in `worker/`, with `testpaths` in
+      # backend/pyproject.toml pointing only at `backend/tests` — so without
+      # this step its suite is collected nowhere and a regression in it cannot
+      # turn CI red. The ffmpeg-backed tests skip themselves when ffmpeg is
+      # absent; everything else runs anywhere.
+      - name: Tests (render worker)
+        run: pytest worker/tests -v
+
   frontend:
     name: Frontend (tsc + test + lint)
     runs-on: ubuntu-latest

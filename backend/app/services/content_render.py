@@ -30,14 +30,14 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import AgentSettings, ContentKind, ContentPiece
+from app.models import AgentSettings, ContentKind, ContentPiece, ContentStatus
 
 log = logging.getLogger(__name__)
 
@@ -413,6 +413,44 @@ _NO_BROKERAGE_NOTE = (
 )
 
 
+async def enqueue_generated(db: AsyncSession) -> int:
+    """Queue lane B for every generated piece that has a plan and no video.
+
+    The order here is the product decision, not an implementation detail: the
+    video is built BEFORE a person approves, so what they approve is the video
+    and not a description of one. Approving text and publishing whatever came
+    out of it would put the human gate in front of the wrong artefact.
+
+    A generated piece that is clean already sits in NEEDS_APPROVAL; the render
+    attaches its file and leaves the status alone. One that carries violations
+    stays a DRAFT and is skipped — there is no point spending a narration and
+    six images on text a person still has to rewrite.
+    """
+    from app.models import RenderJobKind
+
+    if not get_settings().RENDER_WORKER_ENABLED:
+        return 0
+
+    rows = (
+        (
+            await db.execute(
+                select(ContentPiece).where(
+                    ContentPiece.kind == ContentKind.GENERATED,
+                    ContentPiece.scenes.is_not(None),
+                    ContentPiece.media_path.is_(None),
+                    ContentPiece.violations.is_(None),
+                    ContentPiece.status.in_(
+                        (ContentStatus.DRAFT, ContentStatus.NEEDS_APPROVAL)
+                    ),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return await _enqueue(db, rows, RenderJobKind.PRODUCE_B) if rows else 0
+
+
 async def _enqueue_pending(db: AsyncSession, pieces: list[ContentPiece]) -> int:
     """Hand these clips to the render worker instead of rendering them here.
 
@@ -425,23 +463,56 @@ async def _enqueue_pending(db: AsyncSession, pieces: list[ContentPiece]) -> int:
     dealt with", and a queued job has not been — stamping it here would hide
     the clip from this sweep forever if the worker never came back.
     """
+    from app.models import RenderJobKind
+
+    return await _enqueue(db, pieces, RenderJobKind.SUBTITLE_A)
+
+
+# How long a job that gave up waits before anybody tries again. A worker with
+# a full disk burns three attempts in the minutes it takes to poll three times,
+# and without this the clip could NEVER be rendered again — not after the disk
+# was cleared, not ever — because nothing re-queues a FAILED row and the only
+# recovery was to upload the same clip a second time, which nothing told the
+# operator. A day, so a permanent fault retries once a day instead of forever.
+FAILED_JOB_COOLDOWN = timedelta(hours=24)
+
+
+async def _enqueue(db: AsyncSession, pieces: list, kind) -> int:
+    """One job per piece, at most once at a time.
+
+    Idempotent by CONSTRAINT and not by care: `uq_render_job` on
+    `(piece_id, kind)` means a second tick collides instead of queueing twice,
+    so a restart between the query and the commit cannot double the work — or
+    the money, for a lane that pays per image.
+    """
     from sqlalchemy.exc import IntegrityError
 
-    from app.models import RenderJob, RenderJobKind
+    from app.models import RenderJob, RenderJobStatus
 
     queued = 0
     for piece in pieces:
         existing = (
             await db.execute(
                 select(RenderJob).where(
-                    RenderJob.piece_id == piece.id,
-                    RenderJob.kind == RenderJobKind.SUBTITLE_A,
+                    RenderJob.piece_id == piece.id, RenderJob.kind == kind
                 )
             )
         ).scalar_one_or_none()
         if existing is not None:
+            stale_failure = (
+                existing.status is RenderJobStatus.FAILED
+                and existing.updated_at is not None
+                and datetime.now(UTC) - existing.updated_at > FAILED_JOB_COOLDOWN
+            )
+            if stale_failure:
+                existing.status = RenderJobStatus.QUEUED
+                existing.attempts = 0
+                existing.worker = None
+                existing.claimed_at = None
+                await db.commit()
+                queued += 1
             continue
-        db.add(RenderJob(piece_id=piece.id, kind=RenderJobKind.SUBTITLE_A))
+        db.add(RenderJob(piece_id=piece.id, kind=kind))
         try:
             await db.commit()
         except IntegrityError:
@@ -451,5 +522,5 @@ async def _enqueue_pending(db: AsyncSession, pieces: list[ContentPiece]) -> int:
             continue
         queued += 1
     if queued:
-        log.info("Queued %d clip(s) for the render worker", queued)
+        log.info("Queued %d %s job(s) for the render worker", queued, kind.value)
     return queued

@@ -21,6 +21,7 @@ import os
 import shutil
 import subprocess
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -177,6 +178,29 @@ async def test_every_route_carries_the_guard(
                 )
 
 
+@pytest.mark.asyncio
+async def test_an_anonymous_body_never_reaches_the_media_volume(
+    database_url: str, worker_token: str, media_dir
+) -> None:
+    """The most dangerous shape in this batch, pinned.
+
+    `/api/v1/internal/render-jobs/result` is in `_STREAM_PATHS`, so the body
+    size middleware hands it through UNBUFFERED — and middleware runs before
+    any dependency. The reason that is still safe is narrow and worth holding:
+    the route takes no body parameter, so nothing is read until its own code
+    runs, and its own code runs only after the router's token dependency has
+    passed. Add a body model to that route, or move the guard, and a stranger
+    could make the server write megabytes onto the media volume.
+    """
+    async with _client(token=None) as client:
+        resp = await client.put(
+            "/api/v1/internal/render-jobs/result?job_id=1",
+            content=b"A" * (2 * 1024 * 1024),
+        )
+    assert resp.status_code == 401
+    assert list(media_dir.iterdir()) == []
+
+
 # ── The queue ────────────────────────────────────────────────────────────
 
 
@@ -249,10 +273,19 @@ async def test_a_job_that_beat_three_workers_stops_and_says_why(
         piece_id, job_id = await _piece_with_job()
         async with _client() as client:
             for _ in range(3):
-                await client.post(
+                # Claimed first, every time. A worker that has not taken a job
+                # cannot fail it, and asserting on a sequence that never
+                # happens proves nothing about the one that does — this test
+                # passed for a while while every `fail` was being refused.
+                claimed = await client.post(
+                    "/api/v1/internal/render-jobs/claim?worker=w"
+                )
+                assert claimed.json() is not None, "the job was not handed out"
+                failed = await client.post(
                     f"/api/v1/internal/render-jobs/{job_id}/fail",
                     json={"error": "ffmpeg said no"},
                 )
+                assert failed.status_code == 200, failed.text
         async with get_bypass_session_factory()() as db:
             status, attempts = (
                 await db.execute(
@@ -279,6 +312,7 @@ async def test_a_transient_failure_is_retried_not_buried(
     try:
         _piece_id, job_id = await _piece_with_job()
         async with _client() as client:
+            await client.post("/api/v1/internal/render-jobs/claim?worker=w")
             resp = await client.post(
                 f"/api/v1/internal/render-jobs/{job_id}/fail",
                 json={"error": "image provider timed out"},
@@ -296,6 +330,7 @@ async def test_a_result_that_is_not_a_video_is_refused(
     try:
         piece_id, job_id = await _piece_with_job()
         async with _client() as client:
+            await client.post("/api/v1/internal/render-jobs/claim?worker=w")
             resp = await client.put(
                 f"/api/v1/internal/render-jobs/result?job_id={job_id}",
                 content=b"this is not an mp4",
@@ -317,6 +352,33 @@ async def test_a_result_that_is_not_a_video_is_refused(
 HAS_FFMPEG = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
 
+def _landscape_clip(directory: Path) -> Path:
+    """A real, readable video of the WRONG shape.
+
+    Outside the async test on purpose: a blocking subprocess on the event loop
+    is exactly what the async lint rule is there to stop.
+    """
+    return _clip(directory / "landscape.mp4", "1920x1080")
+
+
+def _vertical_clip(directory: Path) -> Path:
+    """A real, readable video of the RIGHT shape."""
+    return _clip(directory / "vertical.mp4", "1080x1920")
+
+
+def _clip(path: Path, size: str) -> Path:
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-v", "error",
+            "-f", "lavfi", "-i", f"testsrc=size={size}:rate=25:duration=1",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", str(path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return path
+
+
 @pytest.mark.asyncio
 @pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg/ffprobe not on PATH")
 async def test_a_perfectly_valid_video_of_the_wrong_shape_is_refused(
@@ -332,19 +394,11 @@ async def test_a_perfectly_valid_video_of_the_wrong_shape_is_refused(
     what has to be refused here, because the panel does not take the worker's
     word for the result.
     """
-    landscape = media_dir / "landscape.mp4"
-    subprocess.run(
-        [
-            "ffmpeg", "-y", "-v", "error",
-            "-f", "lavfi", "-i", "testsrc=size=1920x1080:rate=25:duration=1",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", str(landscape),
-        ],
-        check=True,
-        capture_output=True,
-    )
+    landscape = _landscape_clip(media_dir)
     try:
         piece_id, job_id = await _piece_with_job()
         async with _client() as client:
+            await client.post("/api/v1/internal/render-jobs/claim?worker=w")
             resp = await client.put(
                 f"/api/v1/internal/render-jobs/result?job_id={job_id}",
                 content=landscape.read_bytes(),
@@ -375,12 +429,144 @@ async def test_an_empty_result_is_refused(
     try:
         _piece_id, job_id = await _piece_with_job()
         async with _client() as client:
+            await client.post("/api/v1/internal/render-jobs/claim?worker=w")
             resp = await client.put(
                 f"/api/v1/internal/render-jobs/result?job_id={job_id}", content=b""
             )
         assert resp.status_code == 400
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg/ffprobe not on PATH")
+async def test_a_late_worker_cannot_overwrite_an_approved_video(
+    database_url: str, worker_token: str, media_dir
+) -> None:
+    """The one that could have replaced a published video.
+
+    A worker whose claim went stale two hours ago, whose job a second worker
+    finished, whose piece a person then approved and published, arriving late
+    with a file. Without this check it answered 200, replaced `media_path` and
+    DELETED the approved file from disk.
+    """
+    good = _landscape_clip(media_dir)  # any real video; the shape is not the point
+    try:
+        piece_id, job_id = await _piece_with_job()
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE render_jobs SET status='done' WHERE id=:i"), {"i": job_id}
+            )
+            await db.execute(
+                text(
+                    "UPDATE content_pieces SET status='published', "
+                    "media_path='cccccccccccccccccccccccccccccccc.mp4' WHERE id=:i"
+                ),
+                {"i": piece_id},
+            )
+            await db.commit()
+
+        async with _client() as client:
+            resp = await client.put(
+                f"/api/v1/internal/render-jobs/result?job_id={job_id}",
+                content=good.read_bytes(),
+            )
+        assert resp.status_code == 409
+        async with get_bypass_session_factory()() as db:
+            media = (
+                await db.execute(
+                    text("SELECT media_path FROM content_pieces WHERE id=:i"),
+                    {"i": piece_id},
+                )
+            ).scalar_one()
+        assert media == "c" * 32 + ".mp4"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_finished_job_cannot_be_failed_back_into_the_queue(
+    database_url: str, worker_token: str
+) -> None:
+    """It answered 200 and re-queued a DONE job for a second render."""
+    try:
+        _piece_id, job_id = await _piece_with_job()
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE render_jobs SET status='done' WHERE id=:i"), {"i": job_id}
+            )
+            await db.commit()
+        async with _client() as client:
+            resp = await client.post(
+                f"/api/v1/internal/render-jobs/{job_id}/fail",
+                json={"error": "late"},
+            )
+        assert resp.status_code == 409
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg/ffprobe not on PATH")
+async def test_a_piece_with_findings_gets_its_video_but_not_the_queue(
+    database_url: str, worker_token: str, media_dir
+) -> None:
+    """The render is not wasted; the approval queue is not entered either.
+
+    `submit_for_approval` refuses while violations stand, and the status enum
+    says a DRAFT never reaches NEEDS_APPROVAL on its own. Advancing here would
+    be a second door into the queue that skips the filter the first one exists
+    to enforce.
+    """
+    vertical = _vertical_clip(media_dir)
+    try:
+        piece_id, job_id = await _piece_with_job()
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text(
+                    "UPDATE content_pieces SET violations = "
+                    "'[{\"phrase\": \"good schools\", \"category\": \"steering\"}]'::jsonb "
+                    "WHERE id=:i"
+                ),
+                {"i": piece_id},
+            )
+            await db.execute(
+                text("UPDATE render_jobs SET status='claimed' WHERE id=:i"), {"i": job_id}
+            )
+            await db.commit()
+
+        async with _client() as client:
+            resp = await client.put(
+                f"/api/v1/internal/render-jobs/result?job_id={job_id}",
+                content=vertical.read_bytes(),
+            )
+        assert resp.status_code == 200
+        async with get_bypass_session_factory()() as db:
+            status, media = (
+                await db.execute(
+                    text("SELECT status, media_path FROM content_pieces WHERE id=:i"),
+                    {"i": piece_id},
+                )
+            ).one()
+        assert status == "draft"
+        assert media is not None
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_refused_delivery_leaves_nothing_on_the_volume(
+    database_url: str, worker_token: str, media_dir
+) -> None:
+    """A job id that does not exist. The bytes were already streamed to disk by
+    the time the row was looked up, and nothing ever sweeps that volume."""
+    async with _client() as client:
+        resp = await client.put(
+            "/api/v1/internal/render-jobs/result?job_id=999999",
+            content=b"\x00\x00\x00\x18ftypmp42" + b"x" * 4096,
+        )
+    assert resp.status_code == 404
+    assert list(media_dir.iterdir()) == []
 
 
 # ── Enqueueing ───────────────────────────────────────────────────────────

@@ -6,6 +6,64 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## 🟡 v0.67.0 — EL CARRIL B: GUION → VÍDEO NARRADO (30-ago-2026) · construido, NO encendido
+
+Fase 3. Un borrador generado ya no es solo texto: trae una **lista de planos**
+y una **narración**, y el vídeo se construye **antes** de que llegue a una
+persona. Esa es la decisión de producto que sostiene todo lo demás — lo que se
+aprueba es el vídeo, no una descripción de él.
+
+**Fair Housing se aplica también a la imagen.** Cada `visual_prompt` pasa el
+filtro de frases Y una denylist de descriptores de personas. Un fotograma lleno
+de un solo tipo de hogar dice quién es bienvenido sin una sola frase que nadie
+pueda editar en revisión. Medido: bloquea «a young family on the porch», «una
+pareja joven», «a smiling couple»; deja pasar «the manor house» (sin tropezar
+con «man»), «keys on a kitchen counter», «the Front Range at sunrise».
+
+**Guarda de idioma sobre el texto NARRADO**, no sobre el titular — el fallo que
+costó días de publicación en el idioma equivocado en el proyecto vecino — y
+caza la MEZCLA, que es lo que un modelo produce de verdad.
+
+**Voz**: MiniMax T2A con edge-tts de respaldo, sobre un guion normalizado
+(«$450,000» → «four hundred and fifty thousand dollars»). **Imágenes**: Kling →
+Pexels → tarjeta de marca; caché **en el punto de pago** y tope diario propio,
+porque ese paquete de Kling es un saldo compartido con otros dos proyectos.
+Planos **cortados a la voz** con los tiempos de Whisper.
+
+**Auditoría de la fase anterior — dos bloqueantes reales, reproducidos:**
+
+1. 🔴 **La música cortaba la narración por la mitad.** Un segundo
+   `-filter_complex` (ffmpeg se queda con el último) más `[0:a]` consumido dos
+   veces. Medido antes: vídeo 6 s / audio **2,5 – 3,5 s, distinto en cada
+   ejecución**, con código de salida 0. Medido después: 6,01 s, idéntico en tres
+   ejecuciones. El test que existía comprobaba una subcadena y no podía verlo.
+2. 🔴 **Un obrero rezagado podía pisar un vídeo ya publicado** y borrar el
+   fichero aprobado. Ahora `/result` y `/fail` exigen trabajo reclamado y pieza
+   aún en revisión, y se comprueba **antes** de gastar la subida.
+
+Y cinco importantes más, todos corregidos: modelo de voz por idioma (era inglés
+puro en un producto bilingüe), errores de ffmpeg que llegaban **vacíos** a la
+persona (se leía `stdout` con los errores en `stderr`), un trabajo fallido que
+condenaba el clip para siempre, ficheros huérfanos en el volumen, y **los tests
+del obrero que no corrían en CI**.
+
+**Un defecto propio que encontró un test, no la inspección:** `violations=None`
+se guardaba como JSON `null` y no como SQL NULL, así que `IS NULL` no casaba
+nunca y el barrido del carril B no encontraba trabajo jamás. `message.py` ya
+llevaba `none_as_null=True` desde una lección anterior; el modelo de contenido
+no la había heredado. La migración 048 normaliza lo existente.
+
+**Cierre**: 1306 backend · 153 frontend · 40 del obrero verdes; ruff y tsc
+limpios. **Cinco mutaciones verificadas en rojo** — y la quinta solo después de
+escribir el test que faltaba: quitar el arreglo del audio dejaba todo verde
+porque ningún test renderizaba con música de verdad.
+
+🔴 **Sigue sin encenderse.** `CONTENT_STUDIO_ENABLED=false`,
+`RENDER_WORKER_ENABLED=false`, `BUFFER_SIMULATED=true`, y la unidad del ROG sin
+instalar. Todo eso es la Fase 4 y **exige el «adelante» del dueño**.
+
+---
+
 ## 🟡 v0.66.0 — EL OBRERO DE RENDER Y LOS SUBTÍTULOS (30-ago-2026) · construido, NO instalado
 
 Fase 2. El carril A deja de renderizar dentro de la API y **encola** para la

@@ -38,10 +38,26 @@ from app.models import (
 )
 from app.services.content_studio import advance
 from app.services.content_topics import Topic, next_topic
-from app.services.fair_housing import find_violations
+from app.services.fair_housing import find_violations, picture_violations
+from app.services.lang_guard import wrong_language
 from app.services.llm import generate_reply
 
 log = logging.getLogger(__name__)
+
+
+class Scene(BaseModel):
+    """One shot: what is on screen, and the few words over it.
+
+    `visual_prompt` is what an image model is asked for, so it goes through the
+    same Fair Housing filter as the script AND through a denylist of person
+    descriptors. Housing advertising is regulated in pictures as much as in
+    words: a video whose every frame shows one kind of household says something
+    about who is welcome, and it says it without a single sentence anybody
+    could edit.
+    """
+
+    visual_prompt: str = Field(min_length=1, max_length=200)
+    on_screen_text: str = Field(min_length=1, max_length=60)
 
 
 class DraftPayload(BaseModel):
@@ -50,6 +66,16 @@ class DraftPayload(BaseModel):
     hook: str = Field(min_length=1, max_length=300)
     script: str = Field(min_length=1, max_length=4000)
     caption: str = Field(min_length=1, max_length=1500)
+    # Optional so a model that answers with the older shape still produces a
+    # usable draft: the piece simply has no lane B plan and stays a clip
+    # somebody films. Requiring them would turn a prompt drift into zero
+    # content.
+    scenes: list[Scene] = Field(default_factory=list, max_length=8)
+    # The script as it will be READ ALOUD. Separate from `script` because the
+    # two are not the same text: one is edited by a person in the console, the
+    # other is what the narrator says, and a number written "$450,000" has to
+    # become words before it reaches a voice.
+    narration: str | None = Field(default=None, max_length=4000)
 
 
 _SYSTEM = {
@@ -64,7 +90,13 @@ _SYSTEM = {
         "about people. Reply ONLY with JSON: "
         '{"hook": "...", "script": "...", "caption": "..."} — hook under 300 '
         "characters, script 60-120 words, caption 1-2 sentences with no "
-        "hashtags."
+        "hashtags, plus \"narration\" (the script exactly as it should be read "
+        "aloud) and \"scenes\": 4 to 6 objects with \"visual_prompt\" and "
+        "\"on_screen_text\". A visual_prompt describes a PLACE or an OBJECT — "
+        "a house, a street, the Front Range, keys, a document, a for-sale sign. "
+        "NEVER describe people in it: no families, couples, children, "
+        "professionals, retirees, or anyone's appearance or background. Never "
+        "write a web address or a phone number in any field."
     ),
     ContentLanguage.ES: (
         "Escribes guiones de vídeo corto (30-45 segundos) para dos agentes "
@@ -77,7 +109,14 @@ _SYSTEM = {
         "Habla del proceso y de la mecánica del mercado, no de personas. "
         'Responde SOLO con JSON: {"hook": "...", "script": "...", '
         '"caption": "..."} — hook de menos de 300 caracteres, guion de 60-120 '
-        "palabras, caption de 1-2 frases sin hashtags."
+        "palabras, caption de 1-2 frases sin hashtags, más \"narration\" (el "
+        "guion tal como debe leerse en voz alta) y \"scenes\": de 4 a 6 objetos "
+        "con \"visual_prompt\" y \"on_screen_text\". Un visual_prompt describe un "
+        "LUGAR o un OBJETO — una casa, una calle, las montañas, unas llaves, un "
+        "documento, un cartel de se vende. NUNCA describas personas: ni "
+        "familias, ni parejas, ni niños, ni profesionales, ni jubilados, ni el "
+        "aspecto ni el origen de nadie. Nunca escribas una dirección web ni un "
+        "teléfono en ningún campo."
     ),
 }
 
@@ -124,6 +163,15 @@ _CTA = {
     ContentLanguage.ES: "¿Estás pensando en vender en Denver? Empieza aquí: {url}",
 }
 
+# Said in the caption of every generated piece, because it is true and because
+# saying it is cheaper than being asked. TikTok has a field for this and it is
+# set separately; YouTube and Instagram do not expose one through Buffer, so
+# the caption is where a viewer can actually read it.
+_AI_DISCLOSURE = {
+    ContentLanguage.EN: "Contains AI-generated visuals.",
+    ContentLanguage.ES: "Contiene imágenes generadas con IA.",
+}
+
 
 def _with_cta(draft: DraftPayload | None, language: ContentLanguage) -> DraftPayload | None:
     """Append the call to action to the caption.
@@ -140,12 +188,76 @@ def _with_cta(draft: DraftPayload | None, language: ContentLanguage) -> DraftPay
     """
     if draft is None:
         return None
+    caption = draft.caption.rstrip()
+
     url = (get_settings().CONTENT_CTA_URL or "").strip()
-    if not url or url in draft.caption:
+    if url and url not in caption:
+        caption = f"{caption}\n\n{_CTA[language].format(url=url)}"
+
+    # Only when there is a plan to generate pictures from. A clip somebody
+    # filmed is not AI-generated, and saying it is would be a false statement
+    # on the agency's own channel.
+    disclosure = _AI_DISCLOSURE[language]
+    if draft.scenes and disclosure not in caption:
+        caption = f"{caption}\n{disclosure}"
+
+    if caption == draft.caption:
         return draft
-    return draft.model_copy(
-        update={"caption": f"{draft.caption.rstrip()}\n\n{_CTA[language].format(url=url)}"}
+    return draft.model_copy(update={"caption": caption})
+
+
+def _all_violations(
+    draft: DraftPayload, language: ContentLanguage
+) -> list[dict[str, str]]:
+    """Everything wrong with this draft, in one list.
+
+    Three checks and not one, because they fail in different places and a
+    piece that passes two of them is still not publishable:
+
+    * The Fair Housing phrase filter, over the words a person will read.
+    * The same filter plus a person-descriptor denylist over every image
+      prompt — housing advertising is regulated in pictures too, and a frame
+      full of one kind of household says who is welcome with no sentence
+      anybody could edit.
+    * The language of the NARRATION, because the text that will be spoken is
+      the one the audience hears, and a correct hook over a script in another
+      language is exactly the bug this guard was written for.
+    """
+    found = find_violations(
+        f"{draft.hook} {draft.script} {draft.caption}", language
     )
+    for index, scene in enumerate(draft.scenes):
+        for hit in find_violations(scene.visual_prompt, language) + picture_violations(
+            scene.visual_prompt
+        ):
+            found.append({**hit, "where": f"scene {index + 1}"})
+
+    spoken = draft.narration or draft.script
+    reason = wrong_language(spoken, language.value)
+    if reason is not None:
+        found.append({"phrase": reason, "category": "language"})
+    return found
+
+
+def _scene_plan(draft: DraftPayload) -> dict[str, object] | None:
+    """The shot list, as plain JSON for the column. None when there is none.
+
+    A dict with named keys rather than a bare list, because the narration is
+    not a scene and appending it to the list would make every reader special-
+    case the last element.
+    """
+    if not draft.scenes:
+        return None
+    return {
+        "narration": draft.narration or draft.script,
+        "scenes": [
+            {
+                "visual_prompt": scene.visual_prompt,
+                "on_screen_text": scene.on_screen_text,
+            }
+            for scene in draft.scenes
+        ],
+    }
 
 
 async def _generated_today(db: AsyncSession) -> int:
@@ -200,9 +312,7 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
     if draft is None:
         return None
 
-    violations = find_violations(
-        f"{draft.hook} {draft.script} {draft.caption}", language
-    )
+    violations = _all_violations(draft, language)
     if violations:
         # One rewrite, with the phrases named. Not a loop: a model that failed
         # twice with the phrases in front of it is not going to converge, and
@@ -223,9 +333,7 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
         )
         if rewritten is not None:
             draft = rewritten
-            violations = find_violations(
-                f"{draft.hook} {draft.script} {draft.caption}", language
-            )
+            violations = _all_violations(draft, language)
 
     piece = ContentPiece(
         kind=ContentKind.GENERATED,
@@ -234,6 +342,7 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
         hook=draft.hook,
         script=draft.script,
         caption=draft.caption,
+        scenes=_scene_plan(draft),
         violations=violations or None,
         publications=[],
     )

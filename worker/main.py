@@ -28,7 +28,7 @@ from pathlib import Path
 
 import httpx
 
-from worker import assemble, config, subtitles, verify
+from worker import assemble, config, produce, subtitles, tts, verify
 
 logging.basicConfig(
     level=logging.INFO,
@@ -188,6 +188,28 @@ def do_subtitle_job(cfg: config.Config, panel: Panel, job: dict, spec: dict) -> 
     return destination
 
 
+def do_produce_job(cfg: config.Config, job: dict, spec: dict) -> Path:
+    """Lane B: a written script becomes a video with a voice."""
+    workdir = cfg.workdir / f"job-{job['id']}"
+    workdir.mkdir(parents=True, exist_ok=True)
+
+    video = produce.produce(
+        spec,
+        workdir,
+        font=font(),
+        mark=MARK if MARK.is_file() else None,
+        music=pick_music(),
+    )
+    # Narration is the point of this lane, so its absence is a failure and not
+    # a quieter video: a short built for a voice, delivered mute, is a
+    # different and worse video than the one that was approved.
+    verify.check(video, expect_audio=True)
+    if MARK.is_file():
+        correlation = verify.brand_is_present(video, MARK, workdir)
+        log.info("job %s: brand mark present (correlation %.3f)", job["id"], correlation)
+    return video
+
+
 def handle(cfg: config.Config, panel: Panel, job: dict) -> None:
     workdir = cfg.workdir / f"job-{job['id']}"
     try:
@@ -200,8 +222,10 @@ def handle(cfg: config.Config, panel: Panel, job: dict) -> None:
 
         if job["kind"] == "subtitle_a":
             video = do_subtitle_job(cfg, panel, job, spec)
+        elif job["kind"] == "produce_b":
+            video = do_produce_job(cfg, job, spec)
         else:
-            panel.failed(job["id"], f"this worker cannot do {job['kind']} yet")
+            panel.failed(job["id"], f"this worker cannot do {job['kind']}")
             return
 
         panel.deliver(job["id"], video)

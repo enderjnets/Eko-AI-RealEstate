@@ -100,28 +100,42 @@ def build_command(
         f":enable='gte(t,{start:.2f})'[out]"
     )
 
-    argv = ["ffmpeg", "-y", "-v", "error", *inputs]
     music_index = None
     if music is not None and has_audio:
         music_index = len(inputs) // 2
-        argv += ["-i", str(music)]
+        inputs += ["-i", str(music)]
 
+    # ONE filter_complex, video and audio in the same graph. Emitting a second
+    # one is not "adding the audio chain": ffmpeg keeps the LAST occurrence of
+    # the option, so the video graph is silently dropped and the labels stop
+    # meaning what they say. That version returned 0 and produced a six-second
+    # video whose audio was two and a half seconds — a different length on
+    # every run, because `[0:a]` was also consumed twice and the two consumers
+    # raced. Narration cut off mid-sentence, all the way to a person's screen.
+    if has_audio and music_index is not None:
+        # Music under the voice, not over it: `sidechaincompress` ducks the bed
+        # whenever somebody is speaking, where a fixed low volume either buries
+        # the voice or is inaudible.
+        #
+        # `asplit` because a stream may be consumed ONCE. The voice is needed
+        # twice — as the sidechain key and as the thing being mixed — and
+        # naming `[0:a]` in both places is the race above.
+        #
+        # The voice goes FIRST into amix with `duration=first`, so the result
+        # is as long as the narration: the bed is minutes long and would
+        # otherwise pad the video out to its own length.
+        graph += (
+            f";[0:a]asplit=2[voice][key]"
+            f";[{music_index}:a]volume=0.12[bed]"
+            f";[bed][key]sidechaincompress=threshold=0.05:ratio=6[ducked]"
+            f";[voice][ducked]amix=inputs=2:duration=first:dropout_transition=0[aout]"
+        )
+
+    argv = ["ffmpeg", "-y", "-v", "error", *inputs]
     argv += ["-filter_complex", graph, "-map", "[out]"]
 
     if has_audio:
-        if music_index is not None:
-            # Music under the voice, not over it. `sidechaincompress` ducks the
-            # bed whenever somebody is speaking; a fixed low volume either
-            # buries the voice in the quiet parts or is inaudible in the rest.
-            argv += [
-                "-filter_complex",
-                f"[{music_index}:a]volume=0.12[bed];"
-                f"[bed][0:a]sidechaincompress=threshold=0.05:ratio=6[ducked];"
-                f"[ducked][0:a]amix=inputs=2:duration=first:dropout_transition=0[aout]",
-                "-map", "[aout]",
-            ]
-        else:
-            argv += ["-map", "0:a"]
+        argv += ["-map", "[aout]" if music_index is not None else "0:a"]
         argv += ["-c:a", "aac", "-b:a", "128k"]
     else:
         argv += ["-an"]
@@ -138,8 +152,18 @@ def build_command(
 
 
 def run(argv: list[str], timeout: int = 1800) -> None:
-    """Run it, or raise with ffmpeg's own last words."""
-    result = subprocess.run(argv, capture_output=True, timeout=timeout)
+    """Run it, or raise with ffmpeg's own last words.
+
+    stderr merged into stdout, because that is where ffmpeg writes them. The
+    first version read `result.stdout` alone with `-v error` set, so every
+    failure reported itself as `ffmpeg failed (1): ` — an empty reason, which
+    is what a realtor eventually read on the piece after three attempts.
+    """
+    result = subprocess.run(
+        argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout
+    )
     if result.returncode != 0:
-        tail = result.stdout[-600:].decode(errors="replace")
-        raise RuntimeError(f"ffmpeg failed ({result.returncode}): {tail}")
+        tail = result.stdout[-600:].decode(errors="replace").strip()
+        raise RuntimeError(
+            f"ffmpeg failed ({result.returncode}): {tail or 'no output'}"
+        )

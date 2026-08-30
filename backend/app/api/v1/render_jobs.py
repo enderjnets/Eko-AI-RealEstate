@@ -110,9 +110,13 @@ class JobInput(BaseModel):
     brokerage_line: str
     # Lane A only: the clip is fetched separately as bytes.
     has_media: bool
-    # Lane B only.
+    # Lane B only. `scenes` is `{"narration": ..., "scenes": [...]}` — every
+    # visual_prompt in it already passed the Fair Housing filter and the
+    # person-descriptor denylist when the draft was written. The worker draws
+    # what it is given and re-decides nothing.
     hook: str | None = None
     script: str | None = None
+    scenes: dict | None = None
 
 
 class FailIn(BaseModel):
@@ -233,6 +237,7 @@ async def job_input(job_id: int) -> JobInput:
             has_media=bool(piece.media_path),
             hook=piece.hook,
             script=piece.script,
+            scenes=piece.scenes,
         )
 
 
@@ -256,6 +261,37 @@ async def job_media(job_id: int):
     return FileResponse(path, media_type="video/mp4")
 
 
+async def _refuse_unless_awaited(
+    db: AsyncSession, job_id: int
+) -> tuple[RenderJob, ContentPiece]:
+    """The job is claimed and its piece is still waiting for a video. Or 409.
+
+    One function because the same three questions are asked twice — once
+    before the upload to save it, once inside the committing transaction where
+    the answer is authoritative — and two copies of a rule are two rules.
+    """
+    job = await _load(db, job_id)
+    if job.status is not RenderJobStatus.CLAIMED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"job {job_id} is {job.status.value}; it is not waiting for a result",
+        )
+    piece = (
+        await db.execute(select(ContentPiece).where(ContentPiece.id == job.piece_id))
+    ).scalar_one_or_none()
+    if piece is None:
+        raise HTTPException(status_code=404, detail="no such piece")
+    if piece.status not in (ContentStatus.DRAFT, ContentStatus.NEEDS_APPROVAL):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"piece {piece.id} is {piece.status.value}; a video a person has "
+                "already acted on is not replaced by a late render"
+            ),
+        )
+    return job, piece
+
+
 @router.put("/result")
 async def job_result(request: Request, job_id: int = Query()) -> dict[str, str]:
     """The finished video, streamed in.
@@ -270,6 +306,15 @@ async def job_result(request: Request, job_id: int = Query()) -> dict[str, str]:
     1080x1920: it may have been misconfigured, or half-updated, and the point
     of the queue is that this side does not have to trust it.
     """
+    # Asked BEFORE a byte is read. A job that already finished, or a piece a
+    # person has approved, is not owed a result — and finding that out after
+    # streaming 20 MB to disk means writing a file only to delete it, and
+    # answering "your video is the wrong shape" to a worker whose real problem
+    # is that it is two hours late. The state is re-checked after the upload
+    # too: this is the cheap answer, not the authoritative one.
+    async with get_bypass_session_factory()() as db:
+        await _refuse_unless_awaited(db, job_id)
+
     media_root = Path(get_settings().CONTENT_MEDIA_DIR)
     # In a thread: this is a blocking filesystem call on the event loop that
     # every other request shares. In production the volume is already there and
@@ -308,16 +353,17 @@ async def job_result(request: Request, job_id: int = Query()) -> dict[str, str]:
         destination.unlink(missing_ok=True)
         raise
 
+    # Everything from here to the commit either lands the file or removes it.
+    # The earlier version unlinked in the branches somebody thought of, so a
+    # 404 from a deleted job — or any commit failure — left a video on the
+    # media volume that nothing ever sweeps.
+    delivered = False
     async with get_bypass_session_factory()() as db:
-        job = await _load(db, job_id)
-        piece = (
-            await db.execute(
-                select(ContentPiece).where(ContentPiece.id == job.piece_id)
-            )
-        ).scalar_one_or_none()
-        if piece is None:
+        try:
+            job, piece = await _refuse_unless_awaited(db, job_id)
+        except HTTPException:
             destination.unlink(missing_ok=True)
-            raise HTTPException(status_code=404, detail="no such piece")
+            raise
 
         previous = piece.media_path
         piece.media_path = destination.name
@@ -325,11 +371,22 @@ async def job_result(request: Request, job_id: int = Query()) -> dict[str, str]:
         piece.render_error = None
         # Straight into the approval queue. The worker produced a video; a
         # person still decides whether it goes anywhere.
-        if piece.status is ContentStatus.DRAFT:
+        #
+        # Unless the text has findings against it. `submit_for_approval`
+        # refuses in that state and the status enum says a DRAFT "never reaches
+        # NEEDS_APPROVAL on its own"; advancing here would be a second door
+        # into the queue that skips the filter the first one exists to enforce.
+        # The file is still attached — the render was not wasted — the piece
+        # simply stays where the violations put it.
+        if piece.status is ContentStatus.DRAFT and not piece.violations:
             advance(piece, ContentStatus.NEEDS_APPROVAL)
         job.status = RenderJobStatus.DONE
         job.last_error = None
         await db.commit()
+        delivered = True
+
+    if not delivered:  # pragma: no cover — belt to the suspenders above
+        destination.unlink(missing_ok=True)
 
     # The source clip, only once the new one is committed. Deleting first would
     # trade a wasted file for a lost original if the commit failed.
@@ -348,6 +405,13 @@ async def job_failed(job_id: int, payload: FailIn) -> dict[str, str]:
     """
     async with get_bypass_session_factory()() as db:
         job = await _load(db, job_id)
+        if job.status is not RenderJobStatus.CLAIMED:
+            # Same reason as `/result`: a job nobody is holding cannot fail,
+            # and accepting it here re-queued a DONE job for a second render.
+            raise HTTPException(
+                status_code=409,
+                detail=f"job {job_id} is {job.status.value}; nobody is working it",
+            )
         job.attempts += 1
         job.last_error = payload.error[:2000]
         if job.attempts >= MAX_ATTEMPTS:

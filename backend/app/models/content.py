@@ -113,7 +113,25 @@ class ContentPiece(Base):
 
     # What the Fair Housing filter found, kept on the row so the person editing
     # sees the reason rather than a bare refusal.
-    violations: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    #
+    # `none_as_null` is load-bearing and was missing here. Without it a Python
+    # `None` is stored as the JSON value `null`, which is NOT SQL NULL: reading
+    # the row back gives None either way, so nothing looks wrong until a query
+    # asks `violations IS NULL` and matches zero rows — which is exactly how
+    # the lane B sweep silently found no work to do. `message.py` already
+    # carries this flag on `fair_housing_flags`; this model did not inherit the
+    # lesson.
+    violations: Mapped[list | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+
+    # Lane B only: `{"narration": "...", "scenes": [{visual_prompt,
+    # on_screen_text}, ...]}`. NULL for a clip somebody filmed, which needs no
+    # plan. Every visual_prompt in here has been through the Fair Housing
+    # filter and the person-descriptor denylist before the row was written.
+    scenes: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
 
     # Identity of the person who approved, not a boolean. "Somebody approved it"
     # is not an answer anyone can act on when a broker asks who did.

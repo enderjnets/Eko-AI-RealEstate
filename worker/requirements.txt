@@ -8,3 +8,9 @@ faster-whisper==1.0.3
 # digits, which is exactly how a published short ended up saying "one zero
 # three four zero".
 num2words==0.5.13
+# Kling signs its requests with a short-lived JWT from an access/secret pair.
+PyJWT==2.9.0
+# The watermark check renders a frame and compares it against the mark. Without
+# Pillow that check REFUSES rather than passing quietly — a verification that
+# silently returns "fine" when it could not run is worse than none.
+Pillow==10.4.0

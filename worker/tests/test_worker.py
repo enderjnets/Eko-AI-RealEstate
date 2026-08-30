@@ -300,6 +300,81 @@ def test_a_blank_corner_is_named_as_such(tmp_path: Path) -> None:
         verify.brand_is_present(plain, mark, tmp_path)
 
 
+@pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg/ffprobe not on PATH")
+def test_music_does_not_cut_the_narration_short(tmp_path: Path) -> None:
+    """The test that was missing, and the bug it would have caught.
+
+    The earlier command emitted a SECOND `-filter_complex` for the audio.
+    ffmpeg keeps the last occurrence, so the video graph was silently dropped
+    and `[0:a]` was consumed twice by a chain that then raced with itself:
+    returncode 0, a six-second video, and audio of 2.5 / 3.5 / 3.0 seconds on
+    successive runs of the same command. Narration cut off mid-sentence, in
+    front of a person, with every gate green.
+
+    Asserting on the substring "sidechaincompress" — which is what the only
+    music test did — cannot see any of that. This renders the thing and
+    measures the file.
+    """
+    source = tmp_path / "in.mp4"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-v", "error",
+            "-f", "lavfi", "-i", "testsrc=size=1080x1920:rate=25:duration=6",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=6",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+            "-shortest", str(source),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    # A bed far longer than the voice, which is what a real music track is.
+    music = tmp_path / "bed.mp3"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-v", "error",
+            "-f", "lavfi", "-i", "sine=frequency=200:duration=25", str(music),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+    brokerage = tmp_path / "b.txt"
+    brokerage.write_text("Engel & Völkers Aspen", encoding="utf-8")
+    domain = tmp_path / "d.txt"
+    domain.write_text("denverhomestory.com", encoding="utf-8")
+    out = tmp_path / "out.mp4"
+
+    argv = assemble.build_command(
+        source, out,
+        duration=6.0,
+        has_audio=True,
+        brokerage_file=brokerage,
+        domain_file=domain,
+        font=None,
+        music=music,
+    )
+    # One graph. Two is not "adding the audio chain", it is replacing the
+    # video one.
+    assert argv.count("-filter_complex") == 1
+    assemble.run(argv)
+
+    probe = verify.probe(out)
+    assert (probe.width, probe.height) == (1080, 1920)
+    assert probe.has_audio
+    # The audio lasts as long as the video, not a third of it — and the bed
+    # does not stretch the video out to its own twenty-five seconds either.
+    assert abs(probe.duration - 6.0) < 0.5, f"video is {probe.duration:.2f}s"
+    audio = subprocess.run(
+        [
+            "ffprobe", "-v", "error", "-select_streams", "a:0",
+            "-show_entries", "stream=duration", "-of", "csv=p=0", str(out),
+        ],
+        capture_output=True,
+        check=True,
+    ).stdout.decode().strip()
+    assert abs(float(audio) - 6.0) < 0.5, f"narration is {audio}s of a 6s video"
+
+
 def test_no_music_directory_is_not_an_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """An agency that has not chosen music gets a video without music."""
     monkeypatch.setattr("worker.main.MUSIC_DIR", tmp_path / "nope")

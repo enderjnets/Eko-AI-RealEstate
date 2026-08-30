@@ -45,11 +45,27 @@ every tick rather than declared to systemd. `OnCalendar=` with `Persistent=true`
 fires a missed run late — after a power cut, that is a render starting in the
 middle of somebody else's window.
 
-Lane B adds `KLING_ACCESS_KEY`, `KLING_SECRET_KEY`, `MINIMAX_API_KEY`,
-`MINIMAX_GROUP_ID`, `PEXELS_API_KEY` and `RENDER_TTS_VOICE_ID`.
+Lane B adds:
+
+```
+MINIMAX_API_KEY=…               # the narrator
+MINIMAX_GROUP_ID=…
+RENDER_TTS_VOICE_ID=…           # pick one from three sampled voices
+KLING_ACCESS_KEY=…              # images only — the video package of that
+KLING_SECRET_KEY=…              # account is reserved for another project
+PEXELS_API_KEY=…                # the free fallback
+RENDER_KLING_IMAGES_PER_DAY=8   # real money, and the balance is SHARED with
+                                # two other projects on this machine
+```
+
+Going over that cap does not degrade our video — it stops somebody else's
+publishing. The ledger lives in `RENDER_CACHE_DIR` and the cache key is the
+prompt itself, checked before the request rather than after it.
 
 ## Requirements on the machine
 
-`ffmpeg` and `ffprobe` on PATH. Whisper runs on the **CPU** deliberately: the
-GPU there is shared with another project's model server and has under 4 GB
-free.
+`ffmpeg` and `ffprobe` on PATH. Whisper runs on the **CPU** deliberately. The
+GPU on that machine is shared with two other projects, and the free VRAM was
+measured at 3.4 GB one afternoon and 6.0 GB the next — it depends on what a
+model server happens to be holding. Any number written here would be wrong by
+the time somebody read it, which is the argument for not needing one.
