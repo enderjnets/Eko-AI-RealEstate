@@ -58,9 +58,25 @@ limpios. **Cinco mutaciones verificadas en rojo** — y la quinta solo después 
 escribir el test que faltaba: quitar el arreglo del audio dejaba todo verde
 porque ningún test renderizaba con música de verdad.
 
-🔴 **Sigue sin encenderse.** `CONTENT_STUDIO_ENABLED=false`,
-`RENDER_WORKER_ENABLED=false`, `BUFFER_SIMULATED=true`, y la unidad del ROG sin
-instalar. Todo eso es la Fase 4 y **exige el «adelante» del dueño**.
+### ✅ Desplegado INERTE y verificado contra el mundo (30-ago)
+
+| Qué | Medida |
+|---|---|
+| `/api/v1/health` por el dominio público | **`0.67.0`**, `llm_fallback: "ok"` |
+| Migraciones 046, 047, 048 | aplicadas; `render_jobs` existe con **0 filas**, `content_pieces.scenes` presente |
+| La cola del obrero | **503** desde fuera — cerrada, porque `RENDER_WORKER_TOKEN` está vacío. No 401: no está configurada |
+| La ruta pública de media | **404** para una pieza inexistente |
+| Publicación | `BUFFER_SIMULATED=true`, `CONTENT_PUBLISH_ENABLED=false`; los 3 ids de canal leídos desde el contenedor coinciden con la organización real |
+| `CONTENT_PUBLISH_ORG_ID=1` | puesto: sin él el publicador se negaría, y con razón — hay dos organizaciones |
+| Panel y landing | `/login` 200 · `www.denverhomestory.com` 200 |
+| Vecinos | `zorros` 302 · `app.ekoaiautomation.com` 200 · `ekoaiautomation.com` 200; sus contenedores llevan 4-7 semanas arriba, sin tocar |
+
+Respaldo del `.env`: `.env.bak.20260830-video`.
+
+🔴 **Nada está encendido.** `CONTENT_STUDIO_ENABLED=false`,
+`CONTENT_RENDER_ENABLED=false`, `RENDER_WORKER_ENABLED=false`,
+`BUFFER_SIMULATED=true`, y la unidad del ROG sin instalar. Todo eso es la
+Fase 4 y **exige el «adelante» del dueño**, con él delante para mirar las apps.
 
 ---
 
