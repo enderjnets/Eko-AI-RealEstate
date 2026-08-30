@@ -255,7 +255,7 @@ function StudioDiagnosis({
           ))}
         </ul>
       )}
-      {!compact && !studio.publishing_available && (
+      {!compact && !studio.publishing_ready && (
         <p className="mt-2 text-gray-500">{t("content.why.publishing")}</p>
       )}
     </div>

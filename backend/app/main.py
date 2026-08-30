@@ -326,7 +326,14 @@ class BodySizeLimit:
             if pending is not None:
                 return pending
             if replayed:
-                return {"type": "http.disconnect"}
+                # Delegate, do not invent a disconnect. Whatever asks after the
+                # body was handed over is a disconnect listener, and Starlette
+                # runs one alongside every StreamingResponse: answering it with
+                # `http.disconnect` immediately cancels the body generator, so
+                # the client gets correct headers and ZERO bytes. That is how
+                # the public media route came back 206 with an empty body. The
+                # server knows when the client actually left; this does not.
+                return await receive()
             replayed = True
             return {"type": "http.request", "body": body, "more_body": False}
 
@@ -418,6 +425,7 @@ _followups_task: asyncio.Task | None = None
 _enrichment_task: asyncio.Task | None = None
 _content_studio_task: asyncio.Task | None = None
 _content_render_task: asyncio.Task | None = None
+_content_publish_task: asyncio.Task | None = None
 _delivery_retry_task: asyncio.Task | None = None
 _listings_sync_task: asyncio.Task | None = None
 _llm_monitor_task: asyncio.Task | None = None
@@ -515,6 +523,27 @@ async def _content_render_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.error("Content render tick failed: %s", exc)
+
+
+async def _content_publish_loop() -> None:
+    """Background worker: approved pieces go to the channels (v0.65).
+
+    Every piece it touches was approved by a person, and `publish_piece`
+    re-checks that under a lock before anything leaves — the loop's job is
+    timing, never permission.
+    """
+    from app.services.buffer_publisher import publish_approved
+    from app.services.tenant_context import run_for_every_org
+
+    interval = max(60, settings.CONTENT_PUBLISH_INTERVAL_SECONDS)
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await run_for_every_org(publish_approved)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Content publish tick failed: %s", exc)
 
 
 async def _enrichment_loop() -> None:
@@ -1194,6 +1223,25 @@ async def _startup() -> None:
             settings.CONTENT_RENDER_INTERVAL_SECONDS,
         )
 
+    if settings.CONTENT_PUBLISH_ENABLED:
+        global _content_publish_task
+        _content_publish_task = asyncio.create_task(_content_publish_loop())
+        from app.services.buffer_publisher import undeliverable_reason
+
+        blocked = undeliverable_reason()
+        if blocked:
+            # Loud, because the alternative is a worker that ticks forever and
+            # publishes nothing while the console shows approved pieces waiting.
+            logger.error(
+                "Publishing is enabled but nothing can go out: %s", blocked
+            )
+        logger.info(
+            "Content publish worker started (every %ds, cap %d pieces/day, simulated=%s)",
+            settings.CONTENT_PUBLISH_INTERVAL_SECONDS,
+            settings.CONTENT_PUBLISH_MAX_PER_DAY,
+            settings.BUFFER_SIMULATED,
+        )
+
     if settings.DELIVERY_RETRY_ENABLED:
         global _delivery_retry_task
         _delivery_retry_task = asyncio.create_task(_delivery_retry_loop())
@@ -1212,7 +1260,7 @@ async def _startup() -> None:
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task, _content_studio_task, _content_render_task, _llm_monitor_task):
+    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task, _content_studio_task, _content_render_task, _content_publish_task, _llm_monitor_task):
         if task is not None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

@@ -15,6 +15,7 @@ from collections import deque
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +32,7 @@ from app.services.capture import (
     validate_submission,
 )
 from app.services.lead_notify import send_new_lead_notice
+from app.services.media_public import parse_range, read_range, resolve_public_media
 from app.services.tenant_context import set_org_id
 from app.services.tenant_resolver import WebhookOrgUnresolved, webhook_org_or_refuse
 
@@ -325,3 +327,52 @@ async def capture(
     # duplicate: that is a membership oracle for anyone who wants to test
     # whether an address is in an agency's book.
     return {"ok": True}
+
+
+@router.get("/content/{piece_id}/media")
+async def public_media(request: Request, piece_id: int):
+    """The video, for the platform that is about to post it.
+
+    Unauthenticated because Buffer has no session and cannot get one: it takes
+    a URL and downloads from it when the post goes out. The gate is the piece's
+    status, not the address — see `services/media_public.py` for why the signed
+    link this repo would otherwise reach for cannot work here.
+
+    Range requests are answered here rather than left to `FileResponse`, which
+    in this Starlette version ignores them and returns the whole file with a
+    200. Media fetchers ask for ranges, and a client that insists would see a
+    broken video hours after the post was created.
+    """
+    path = await resolve_public_media(piece_id)
+    if path is None:
+        # The same answer for "no such piece", "not approved" and "file gone".
+        raise HTTPException(status_code=404, detail="Not found")
+
+    size = path.stat().st_size
+    # Nothing in between may keep a copy: an edit revokes the piece's approval,
+    # and a cached body would outlive that decision.
+    headers = {"Cache-Control": "no-store", "Accept-Ranges": "bytes"}
+
+    try:
+        span = parse_range(request.headers.get("range"), size)
+    except ValueError:
+        # Saying so, rather than sending bytes nobody asked for and letting the
+        # client believe it got what it wanted.
+        return Response(
+            status_code=416, headers={**headers, "Content-Range": f"bytes */{size}"}
+        )
+
+    if span is None:
+        return FileResponse(path, media_type="video/mp4", headers=headers)
+
+    first, last = span
+    return StreamingResponse(
+        read_range(path, first, last),
+        status_code=206,
+        media_type="video/mp4",
+        headers={
+            **headers,
+            "Content-Range": f"bytes {first}-{last}/{size}",
+            "Content-Length": str(last - first + 1),
+        },
+    )

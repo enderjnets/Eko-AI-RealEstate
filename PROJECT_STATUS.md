@@ -6,6 +6,61 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## 🟡 v0.65.0 — LA PUBLICACIÓN EXISTE (30-ago-2026) · construida, NO encendida
+
+Fase 1 de la máquina de vídeo de Denver Home Story. Rama
+`feat/maquina-de-video-dhs` desde `feat/landing-denver-home-story`.
+
+**Qué se construyó**: `services/buffer_publisher.py` publica una pieza
+APROBADA en YouTube, TikTok e Instagram por Buffer (GraphQL `createPost`,
+`shareNow`, **nunca `thumbnailUrl`**, `isAiGenerated` solo a TikTok y derivado
+de `ContentKind`). **Reclamar-luego-registrar por publicación**: la fila se
+confirma ANTES de la llamada, así que una caída no puede volverse un segundo
+post; una fila atascada en `PUBLISHING` no se reintenta sola. **Guarda de
+organización**: pregunta a Buffer los canales de `BUFFER_ORG_ID` y se niega si
+los ids configurados no son suyos. Ruta pública
+`GET /api/v1/public/content/{id}/media` con dirección **estable** (Buffer
+descarga al publicar y rechaza URLs firmadas) cuya puerta es el **estado** de
+la pieza; borrador, rechazada e inexistente dan el **mismo** 404.
+
+**Medido, no supuesto** (Buffer, con nuestra clave, 30-ago): los 3 canales
+conectados (ni `isDisconnected`, ni `isLocked`, ni cola pausada), IG con
+`instagram_business_content_publish`, YT con `youtube.upload`, TT con
+`video.publish`; cuota **250/día y 3000/30 días, 10 usadas** → la cuota es por
+clave/organización y **no compartimos** el cupo de BitTrader (su bloqueo vence
+el 21-sep). Canal de YouTube `UC9wpgdqHHpGRTqF5pSR7wgA`: **0 vídeos, 1
+suscriptor, descripción vacía** — falta perfil.
+
+**Dos defectos reales que encontraron los tests nuevos, no la inspección:**
+
+1. 🔴 **`BodySizeLimit` cancelaba toda respuesta en streaming de la app.** Su
+   `replay()` devolvía `http.disconnect` a la segunda lectura, y Starlette
+   escucha ahí la desconexión de cada `StreamingResponse`: cabeceras correctas
+   y **cero bytes**. Ahora delega en el servidor, que es quien sabe si el
+   cliente se fue. Afectaba a cualquier streaming futuro, no solo a esta ruta.
+2. **Una pausa por cuota dejaba la pieza clavada para siempre**:
+   `ensure_publishable` exigía `APPROVED` y el reanudado llega en `PUBLISHING`.
+   Ahora acepta `resuming=True` — la pieza llegó a ese estado pasando por esta
+   misma puerta, y la brokerage y Fair Housing se revalidan igual.
+
+**Cierre**: 1254 backend + 153 frontend verdes desde base recreada, ruff y tsc
+limpios, imagen del backend compila. **Tres mutaciones verificadas en rojo**:
+saltarse `ensure_publishable` (3 rojos), quitar el filtro de estado de la ruta
+pública (5 rojos), quitar la guarda de organización (2 rojos). El barrido de
+opt-out exigió declarar el módulo nuevo: **exento con motivo escrito** — un
+vídeo en un canal público es difusión, no un mensaje, y no hay destinatario
+cuyo consentimiento comprobar. Se cumplió por fin la promesa que
+`test_content_gate_is_absolute.py` llevaba escrita desde v0.52 (`_reaching`):
+por AST, `publish_piece` consulta la puerta **antes** del cable, y nadie fuera
+del módulo puede llamar a sus funciones de red.
+
+🔴 **NO está encendido y no debe encenderse todavía**: `BUFFER_SIMULATED=true`,
+`CONTENT_PUBLISH_ENABLED=false`, sin canales configurados en el `.env`. El
+encendido real es la Fase 4 del plan y **exige el «adelante» del dueño**, con
+él delante para mirar las apps.
+
+---
+
 ## ✅ v0.64.1 — LA LANDING SE MUEVE (28-ago-2026, tarde)
 
 El dueño cotejó la página viva contra el lienzo v4: faltaba toda la

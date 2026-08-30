@@ -423,6 +423,7 @@ async def test_status_answers_with_the_whole_contract(database_url: str) -> None
         "render_enabled",
         "brokerage_line_set",
         "publishing_available",
+        "publishing_ready",
         "upload_max_mb",
         "counts",
     }
@@ -498,19 +499,27 @@ async def test_publishing_is_reported_as_unavailable_while_it_is(
     database_url: str,
 ) -> None:
     """An empty `publications` list cannot distinguish "not published yet"
-    from "no publisher exists". Today the second is the true answer.
+    from "nothing here can publish". Both answers still exist, and since v0.65
+    they are different fields.
 
-    Asserted as a literal `False`, not against `PUBLISHING_AVAILABLE`: the
-    first version compared the endpoint's output to the very constant the
-    endpoint reads, so flipping that constant to True left the test green. It
-    proved the two agreed, which they cannot help doing. This fails on the day
-    someone flips it — which is the day the console's wording, the release
-    notes and this test all need revisiting together, and the failure is how
-    that gets noticed.
+    This test used to assert `publishing_available is False` as a literal, on
+    purpose, so that flipping the constant would fail it — the day that
+    happened being the day the console's wording, the release notes and this
+    test all needed revisiting together. That day was v0.65 and this is the
+    revisit: the publisher exists, so the machinery question is answered True,
+    and the question a reader of the console actually has moved to
+    `publishing_ready` — is it switched on and configured HERE.
+
+    Both are literals rather than comparisons against the code they describe:
+    an assertion that reads the same constant the endpoint reads proves only
+    that the two agree, which they cannot help doing.
     """
     async with _client() as client:
         body = (await client.get("/api/v1/content/status")).json()
-    assert body["publishing_available"] is False
+    assert body["publishing_available"] is True
+    # False in the test environment: no channels are configured, which is
+    # exactly the state the console has to be able to explain.
+    assert body["publishing_ready"] is False
 
 
 @pytest.mark.asyncio

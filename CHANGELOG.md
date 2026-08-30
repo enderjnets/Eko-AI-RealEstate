@@ -2,6 +2,39 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.65.0] — 2026-08-30
+
+### Añadido — la publicación a los canales (Buffer)
+
+- `services/buffer_publisher.py`: una pieza APROBADA se publica en YouTube,
+  TikTok e Instagram por Buffer. **Reclamar-luego-registrar por PUBLICACIÓN**:
+  la fila de `content_publications` se escribe y se confirma ANTES de la
+  llamada, así que una caída no puede confundirse con «nunca se intentó» y
+  convertirse en un segundo post público. Una fila atascada en `PUBLISHING` no
+  se reintenta sola: aflora en la consola para una persona.
+- **La puerta se consulta al publicar, no al aprobar**: `ensure_publishable`
+  relee la pieza bajo bloqueo (estado, línea de brokerage, filtro Fair Housing).
+  `test_content_gate_is_absolute.py` ahora lo verifica por AST — la promesa que
+  ese fichero llevaba escrita desde v0.52 y no podía cumplir sin un publicador.
+- **Guarda de organización**: antes de publicar nada, el sistema pregunta a
+  Buffer qué canales tiene la organización configurada y se niega si los ids no
+  son suyos. Es el fallo exacto que publicó un vídeo en el canal de otra marca
+  en el proyecto vecino.
+- Ruta pública `GET /api/v1/public/content/{id}/media`: dirección **estable**
+  (Buffer descarga al publicar y rechaza URLs firmadas o caducables) cuya puerta
+  es el **estado** de la pieza. Un borrador, una pieza rechazada y una
+  inexistente devuelven el mismo 404. Responde peticiones `Range`.
+- `_content_publish_loop` + ajustes `BUFFER_*` y `CONTENT_PUBLISH_*`, todos
+  apagados y simulados por defecto. `scripts/buffer_channels.py` lista los ids
+  de canal sin imprimir el token.
+
+### Corregido
+
+- `BodySizeLimit` respondía `http.disconnect` a la segunda lectura del cuerpo, y
+  Starlette escucha ahí la desconexión de **toda** respuesta en streaming: el
+  resultado eran cabeceras correctas con **cero bytes**. Ahora delega en el
+  servidor, que es quien sabe si el cliente se fue.
+
 ## [0.64.2] — 2026-08-28
 
 ### Corregido

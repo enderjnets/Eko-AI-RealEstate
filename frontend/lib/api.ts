@@ -469,6 +469,8 @@ export interface StudioStatus {
   render_enabled: boolean;
   brokerage_line_set: boolean;
   publishing_available: boolean;
+  /** Whether this install can actually post right now (switch on, nothing missing). */
+  publishing_ready: boolean;
   /** Megabytes. Compared against `file.size` before the upload is opened. */
   upload_max_mb: number;
   counts: Record<string, number>;

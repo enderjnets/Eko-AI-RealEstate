@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.64.2"
+    APP_VERSION: str = "0.65.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -295,6 +295,36 @@ class Settings(BaseSettings):
     # ever turning the writer on.
     CONTENT_RENDER_ENABLED: bool = False
     CONTENT_RENDER_INTERVAL_SECONDS: int = 900
+
+    # ─── Publishing to the channels, through Buffer (v0.65) ─────────────
+    # One integrator for YouTube, TikTok and Instagram. Simulated by default
+    # like every other adapter here: turning it off is a deliberate act with an
+    # audience attached.
+    BUFFER_SIMULATED: bool = True
+    BUFFER_ACCESS_TOKEN: str = ""
+    # Which Buffer organization the token is expected to belong to. Not
+    # decoration: the publisher asks Buffer for that org's channels and refuses
+    # to post unless the configured ids are exactly what came back. The
+    # pipeline next door published a video on the wrong channel because a
+    # credential path was hard-coded and nothing compared the result against
+    # what the profile declared.
+    BUFFER_ORG_ID: str = ""
+    BUFFER_CHANNEL_YOUTUBE: str = ""
+    BUFFER_CHANNEL_TIKTOK: str = ""
+    BUFFER_CHANNEL_INSTAGRAM: str = ""
+    CONTENT_PUBLISH_ENABLED: bool = False
+    CONTENT_PUBLISH_INTERVAL_SECONDS: int = 900
+    # PIECES per day, not posts: one piece is three platforms, and counting
+    # posts would let a single video eat three days of budget.
+    CONTENT_PUBLISH_MAX_PER_DAY: int = 4
+    # Where Buffer fetches the video from. Buffer downloads WHEN THE POST GOES
+    # OUT — hours or days later for a queued post — and its documentation says
+    # not to use signed or expiring URLs, so this address is stable and the
+    # gate is the piece's STATUS instead.
+    CONTENT_PUBLIC_BASE_URL: str = ""
+    # A short. Conservative on purpose and measured against the platforms on
+    # the first real post rather than remembered from a table.
+    CONTENT_PUBLISH_MAX_SECONDS: int = 90
 
     # ─── Dashboard auth (Phase 11) ──────────────────────────────────────
     # One deploy = one office → a single shared dashboard password. When

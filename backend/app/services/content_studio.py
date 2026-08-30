@@ -33,11 +33,16 @@ from app.services.fair_housing import find_violations
 
 log = logging.getLogger(__name__)
 
-# The functions that actually hand a video to a platform. Empty until the
-# publisher exists. `test_content_gate_is_absolute.py` compares this against
-# what an AST sweep finds, so a publisher that arrives without being declared
-# fails the suite rather than shipping unguarded.
-PUBLISH_PRIMITIVES: set[str] = set()
+# The functions that actually hand a video to a platform.
+# `test_content_gate_is_absolute.py` compares this against what an AST sweep
+# finds, so a publisher that arrives without being declared fails the suite
+# rather than shipping unguarded, and a name declared here that no longer
+# touches the wire fails it too.
+#
+# `_graphql` is the single request function in `services/buffer_publisher.py`.
+# One function on purpose: a second wire-touching path in that module would
+# have to be declared here as well, which is the point.
+PUBLISH_PRIMITIVES: set[str] = {"_graphql"}
 
 
 class IllegalTransition(Exception):
@@ -86,13 +91,16 @@ _ALLOWED: dict[ContentStatus, set[ContentStatus]] = {
 
 
 # Whether anything in this installation can actually publish to a platform.
-# False until the publishers land (v0.56): the tables and the API field for
-# publications exist since v0.52, which makes an empty `publications` list
-# ambiguous — "nothing published yet" and "publishing does not exist" look
-# identical to a reader, and the second one is the true answer today. One
-# constant so the interface cannot drift from the code: flipping it is part of
-# shipping a publisher, not a separate thing to remember.
-PUBLISHING_AVAILABLE = False
+# True since v0.65, when `services/buffer_publisher.py` landed. It stayed False
+# for three versions because the tables and the API field for publications
+# existed since v0.52, which made an empty `publications` list ambiguous —
+# "nothing published yet" and "publishing does not exist" look identical to a
+# reader. One constant so the interface cannot drift from the code.
+#
+# It says the machinery exists, not that it is switched on: whether a given
+# install actually posts is `CONTENT_PUBLISH_ENABLED` plus a configured
+# channel, and `buffer_publisher.undeliverable_reason()` is what answers that.
+PUBLISHING_AVAILABLE = True
 
 
 def advance(piece: ContentPiece, to: ContentStatus) -> None:
@@ -110,13 +118,23 @@ def advance(piece: ContentPiece, to: ContentStatus) -> None:
     piece.status = to
 
 
-async def ensure_publishable(db: AsyncSession, piece_id: int) -> ContentPiece:
+async def ensure_publishable(
+    db: AsyncSession, piece_id: int, *, resuming: bool = False
+) -> ContentPiece:
     """Re-read the piece under a lock and re-check everything. Or raise.
 
     Called at the point of publishing. Checking at approval time instead would
     be checking a piece that no longer exists: the text can change afterwards,
     the brokerage line can be cleared, and the row can be racing another
     publisher.
+
+    `resuming` additionally accepts a piece already in PUBLISHING, and it is
+    not a loosening of the gate: a piece reaches that state only by passing
+    this function, and a publish run that stops halfway — a quota pause leaves
+    exactly that — has platforms with no post yet. Without it those platforms
+    would never be reached and the piece would sit in PUBLISHING forever. The
+    brokerage line and the Fair Housing filter are re-checked either way, which
+    is what actually protects the text.
     """
     piece = (
         await db.execute(
@@ -129,7 +147,10 @@ async def ensure_publishable(db: AsyncSession, piece_id: int) -> ContentPiece:
     # Not "has been approved at some point" — IS approved, now. A piece edited
     # after approval is back in NEEDS_APPROVAL and fails here, which is the
     # entire point of that edge existing.
-    if piece.status is not ContentStatus.APPROVED:
+    allowed = {ContentStatus.APPROVED}
+    if resuming:
+        allowed.add(ContentStatus.PUBLISHING)
+    if piece.status not in allowed:
         raise NotPublishable(
             f"piece {piece_id} is {piece.status.value}, and only a piece a "
             "person has approved may be published"

@@ -474,6 +474,16 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
             " PLATFORM_ADMIN_EMAILS and never to a lead. The exemption runs both"
             " ways and both matter: a lead's STOP must not silence an outage"
             " report, and an outage report must never land in a lead's inbox",
+        "app/services/buffer_publisher.py::_graphql":
+            "posts a video to the agency's OWN social channels through Buffer."
+            " Nobody is addressed: a marketing video on a public channel is"
+            " broadcast, not a message, and there is no recipient whose consent"
+            " could be checked. Applying opt-out here would be nonsense in both"
+            " directions — a single lead's STOP cannot take the agency's"
+            " channels offline, and publishing a video is not a way to reach"
+            " somebody who asked not to be contacted. Its own gate is"
+            " `content_studio.ensure_publishable` (a person approved this"
+            " text), enforced by test_content_gate_is_absolute.py",
     }
     undeclared: list[str] = []
     walked = 0

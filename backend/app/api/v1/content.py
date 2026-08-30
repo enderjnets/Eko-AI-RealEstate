@@ -13,7 +13,13 @@ Two decisions worth their comments:
   approval of text that no longer exists — is how something no person read gets
   published under a person's name.
 * **Media is served by a route, not by static files.** The files are client
-  agencies' unpublished footage; an unlisted URL is not access control.
+  agencies' unpublished footage; an unlisted URL is not access control. Since
+  v0.65 there is a second, unauthenticated route in `api/v1/public.py`, and it
+  does not contradict this: it exists because Buffer downloads the video by URL
+  when the post goes out and rejects signed links, and it serves **only** a
+  piece a person approved — the gate moved from the session to the status, it
+  did not disappear. Unapproved footage answers 404 there exactly as it does to
+  a stranger here. See `services/media_public.py`.
 """
 
 from __future__ import annotations
@@ -41,6 +47,7 @@ from app.models import (
     ContentPiece,
     ContentStatus,
 )
+from app.services.buffer_publisher import undeliverable_reason
 from app.services.content_studio import (
     PUBLISHING_AVAILABLE,
     IllegalTransition,
@@ -168,6 +175,11 @@ class StudioStatus(BaseModel):
     render_enabled: bool
     brokerage_line_set: bool
     publishing_available: bool
+    # Whether THIS install can actually post: the switch is on and nothing is
+    # missing. A boolean, not the reason — the reason names environment
+    # variables and this response is read by anyone with a session. The reason
+    # is logged at startup, where an operator can act on it.
+    publishing_ready: bool
     # Megabytes. Named in the unit rather than bytes because it is shown to a
     # person, and the client compares it against `file.size` before opening the
     # request — see `UploadClip.tsx`.
@@ -225,6 +237,9 @@ async def studio_status(db: AsyncSession = Depends(get_db)) -> StudioStatus:
         # value is "set" to a naive check and "unset" to everything that matters.
         brokerage_line_set=bool((row.brokerage_line or "").strip() if row else ""),
         publishing_available=PUBLISHING_AVAILABLE,
+        publishing_ready=bool(
+            s.CONTENT_PUBLISH_ENABLED and undeliverable_reason() is None
+        ),
         upload_max_mb=s.CONTENT_UPLOAD_MAX_MB,
         counts=counts,
     )

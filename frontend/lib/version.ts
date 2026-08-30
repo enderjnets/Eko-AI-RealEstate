@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.64.2";
+export const CURRENT_VERSION = "0.65.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.65.0",
+    date: "2026-08-30",
+    title: {
+      en: "Approved videos can reach the channels",
+      es: "Los v\u00eddeos aprobados ya pueden llegar a los canales",
+    },
+    changes: [
+      {
+        en: "A piece you approve can now be posted to YouTube, TikTok and Instagram through Buffer \u2014 one post per platform, recorded with the platform's own id so nothing is ever posted twice.",
+        es: "Una pieza que apruebes ya puede publicarse en YouTube, TikTok e Instagram v\u00eda Buffer \u2014 una publicaci\u00f3n por plataforma, registrada con el id de la propia plataforma para que nada se publique dos veces.",
+      },
+      {
+        en: "Approval is re-checked at the moment of publishing, never at the moment of approving: a piece edited afterwards goes back to the queue instead of going out.",
+        es: "La aprobaci\u00f3n se vuelve a comprobar en el momento de publicar, nunca en el de aprobar: una pieza editada despu\u00e9s vuelve a la cola en vez de salir.",
+      },
+      {
+        en: "The console now says whether publishing is switched on for this installation, instead of saying it does not exist.",
+        es: "La consola ahora dice si la publicaci\u00f3n est\u00e1 activada en esta instalaci\u00f3n, en vez de decir que no existe.",
+      },
+    ],
+  },
   {
     version: "0.64.2",
     date: "2026-08-28",

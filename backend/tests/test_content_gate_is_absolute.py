@@ -434,3 +434,113 @@ def test_every_wire_touching_function_is_declared_or_exempt() -> None:
         f"declared publishers not found in the tree: "
         f"{PUBLISH_PRIMITIVES - set(flagged.values())}"
     )
+
+
+def _calls_in(node: ast.AST) -> list[str]:
+    """Every function name called in `node`, in source order.
+
+    Both `f()` and `x.f()`, because a publisher reached through a module alias
+    is still a publisher.
+    """
+    names: list[str] = []
+    for inner in ast.walk(node):
+        if not isinstance(inner, ast.Call):
+            continue
+        if isinstance(inner.func, ast.Name):
+            names.append(inner.func.id)
+        elif isinstance(inner.func, ast.Attribute):
+            names.append(inner.func.attr)
+    return names
+
+
+def _functions(tree: ast.AST) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    return {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+
+
+def _reaching(module: pathlib.Path, targets: set[str]) -> set[str]:
+    """Functions in `module` that reach `targets`, directly or through others.
+
+    Transitive on purpose: the publisher does not call the wire itself, it
+    calls a helper that does, and a guard that only inspected direct calls
+    would be satisfied by one level of indirection.
+    """
+    functions = _functions(ast.parse(module.read_text(encoding="utf-8")))
+    edges = {name: set(_calls_in(node)) for name, node in functions.items()}
+
+    reaching = set(targets)
+    changed = True
+    while changed:
+        changed = False
+        for name, called in edges.items():
+            if name not in reaching and called & reaching:
+                reaching.add(name)
+                changed = True
+    return reaching - targets
+
+
+PUBLISHER = APP / "services" / "buffer_publisher.py"
+
+
+def test_the_gate_is_consulted_before_the_wire() -> None:
+    """The promise this file made when `PUBLISH_PRIMITIVES` was still empty.
+
+    A publisher that skips `ensure_publishable` publishes text that no person
+    approved — the piece may have been edited after the button was pressed, or
+    the brokerage line cleared, or the Fair Housing filter may now object. The
+    check cannot live at approval time, so it has to live here, and "here" has
+    to be verifiable rather than remembered.
+    """
+    assert PUBLISHER.exists(), "the publisher moved; this test has to move with it"
+    reaching = _reaching(PUBLISHER, PUBLISH_PRIMITIVES)
+
+    # Canary: an analysis that found nothing would pass every assertion below
+    # while proving nothing at all.
+    assert "_send" in reaching, (
+        f"the reachability analysis did not find the sender: {sorted(reaching)}"
+    )
+    assert "publish_piece" in reaching, (
+        "publish_piece no longer reaches the wire — either the publisher was "
+        "restructured or this test is now inspecting the wrong function"
+    )
+
+    entry = _functions(ast.parse(PUBLISHER.read_text(encoding="utf-8")))["publish_piece"]
+    calls = _calls_in(entry)
+    assert "ensure_publishable" in calls, (
+        "publish_piece does not consult the approval gate — anything it posts "
+        "was approved by nobody"
+    )
+    first_gate = calls.index("ensure_publishable")
+    wire = [i for i, name in enumerate(calls) if name in reaching or name in PUBLISH_PRIMITIVES]
+    assert wire, "publish_piece reaches the wire but the call could not be located"
+    assert first_gate < min(wire), (
+        "publish_piece touches the wire before asking the gate; the order is "
+        "the whole guarantee"
+    )
+
+
+def test_only_the_guarded_entry_point_reaches_the_wire() -> None:
+    """Nothing outside the publisher may call its wire-touching helpers.
+
+    Without this, the gate is one import away from being bypassed: a route or
+    a worker calling `_send` directly would post an unapproved video and every
+    test above would still be green.
+    """
+    private = {"_send", "_graphql"}
+    offenders: list[str] = []
+    for path in sorted(APP.rglob("*.py")):
+        if path == PUBLISHER:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                for called in _calls_in(node):
+                    if called in private:
+                        offenders.append(f"{path.relative_to(APP.parent)}::{node.name} -> {called}")
+    assert offenders == [], (
+        "these call the publisher's wire helpers from outside it, skipping the "
+        f"approval gate: {offenders}"
+    )
