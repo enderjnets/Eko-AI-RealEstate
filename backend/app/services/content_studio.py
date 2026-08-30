@@ -103,6 +103,59 @@ _ALLOWED: dict[ContentStatus, set[ContentStatus]] = {
 PUBLISHING_AVAILABLE = True
 
 
+def text_violations(
+    *,
+    hook: str | None,
+    script: str | None,
+    caption: str | None,
+    scenes: dict | None,
+    language: object = None,
+) -> list[dict[str, str]]:
+    """Everything a Fair Housing filter objects to, across ALL of a piece.
+
+    One function, called from every place that forms an opinion about a piece:
+    the writer, the console's edit and submit routes, and the publish gate.
+    Three copies of "which fields count" is how a field gets added to the
+    product and forgotten by the filter — which is exactly what happened here.
+    `narration` and `on_screen_text` arrived in v0.67 and neither was read by
+    anything, so a script could say "great schools" and "perfect for families"
+    out loud, in a video, with the row recording zero findings.
+
+    `narration` is the text a NARRATOR SPEAKS. If only one field could be
+    checked it would be that one: the audience hears it whether or not they
+    read the caption, and nobody edits a sentence they cannot see.
+
+    `visual_prompt` gets the phrase filter AND the person-descriptor denylist,
+    because housing advertising is regulated in pictures too.
+    """
+    from app.services.fair_housing import picture_violations
+
+    found = find_violations(
+        " ".join(part for part in (hook, script, caption) if part), language
+    )
+
+    plan = scenes or {}
+    narration = plan.get("narration")
+    if narration:
+        for hit in find_violations(str(narration), language):
+            found.append({**hit, "where": "narration"})
+
+    for index, scene in enumerate(plan.get("scenes") or []):
+        if not isinstance(scene, dict):
+            continue
+        where = f"scene {index + 1}"
+        prompt = str(scene.get("visual_prompt") or "")
+        for hit in find_violations(prompt, language) + picture_violations(prompt):
+            found.append({**hit, "where": where})
+        # Burned into the frame when a scene falls back to a branded card, and
+        # read by every viewer either way.
+        on_screen = str(scene.get("on_screen_text") or "")
+        for hit in find_violations(on_screen, language):
+            found.append({**hit, "where": f"{where} caption"})
+
+    return found
+
+
 def advance(piece: ContentPiece, to: ContentStatus) -> None:
     """Move a piece to `to`, or raise.
 
@@ -171,9 +224,12 @@ async def ensure_publishable(
     # Again, not once. The filter ran when the draft was written; the text has
     # had a human edit since, and a person fixing a hook is not thinking about
     # familial status.
-    violations = find_violations(
-        " ".join(p for p in (piece.hook, piece.script, piece.caption) if p),
-        piece.language,
+    violations = text_violations(
+        hook=piece.hook,
+        script=piece.script,
+        caption=piece.caption,
+        scenes=piece.scenes,
+        language=piece.language,
     )
     if violations:
         raise NotPublishable(

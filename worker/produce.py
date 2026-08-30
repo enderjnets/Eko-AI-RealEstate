@@ -60,6 +60,18 @@ def plan_shots(
         share = total / count
         return [(i * share, (i + 1) * share) for i in range(count)]
 
+    # More scenes than words is a real case — a six-scene plan over a very
+    # short narration — and it has to produce spans somebody can see. The
+    # earlier version handed the leftovers `(total, total)`: zero-length shots
+    # that `Shot.seconds` padded to a floor and `-shortest` then cut off
+    # entirely, so their images had already been fetched and PAID FOR and never
+    # appeared on screen. Falling back to an even split keeps every scene in
+    # the video; the word-boundary cut is an improvement on the even split, not
+    # a replacement for having one.
+    if len(words) < count:
+        share = total / count
+        return [(i * share, (i + 1) * share) for i in range(count)]
+
     per_scene = max(1, len(words) // count)
     spans: list[tuple[float, float]] = []
     for index in range(count):
@@ -67,11 +79,6 @@ def plan_shots(
         last = len(words) - 1 if index == count - 1 else min(
             len(words) - 1, (index + 1) * per_scene - 1
         )
-        if first >= len(words):
-            # More scenes than words. The leftovers share the tail rather than
-            # collapsing to zero-length shots nobody sees.
-            spans.append((total, total))
-            continue
         spans.append((words[first].start, words[last].end))
     # The last scene runs to the end of the audio, so the end card is not cut
     # off by a word that finished early.

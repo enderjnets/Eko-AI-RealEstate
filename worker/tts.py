@@ -26,6 +26,19 @@ _MINIMAX_URL = "https://api.minimax.io/v1/t2a_v2"
 _MODEL = "speech-02-turbo"
 _TIMEOUT = 120.0
 
+# The channel's voice, chosen by the owner on 30-Aug from four variants of the
+# same reading. `English_CalmWoman` at 1.06 with the "happy" emotion: warm
+# without sounding like an advertisement, which matters because the landing
+# page promises "fifteen minutes, no pitch" and a salesman's delivery would
+# contradict the product in the first three seconds.
+#
+# The speed is not decoration. Emotion alone stretched the same script from
+# 15.5s to 17.9s — nearly three extra seconds in a format where people leave —
+# and 1.06 gives the whole thing back while keeping the expression.
+DEFAULT_VOICE = "English_CalmWoman"
+DEFAULT_SPEED = 1.06
+DEFAULT_EMOTION = "happy"
+
 
 class NoVoice(Exception):
     """Nothing could narrate this. The job fails rather than shipping silence:
@@ -33,18 +46,40 @@ class NoVoice(Exception):
     missing feature — it is a different, worse video nobody asked for."""
 
 
+def _voice_setting(voice: str) -> dict[str, object]:
+    """How the channel sounds. Overridable, so a second agency is not stuck
+    with this one's choice."""
+    setting: dict[str, object] = {
+        "voice_id": voice,
+        "speed": float(os.environ.get("RENDER_TTS_SPEED", DEFAULT_SPEED)),
+        "vol": 1.0,
+    }
+    emotion = os.environ.get("RENDER_TTS_EMOTION", DEFAULT_EMOTION).strip()
+    if emotion:
+        setting["emotion"] = emotion
+    return setting
+
+
 def _minimax(text: str, destination: Path) -> bool:
     key = os.environ.get("MINIMAX_API_KEY", "").strip()
-    group = os.environ.get("MINIMAX_GROUP_ID", "").strip()
-    voice = os.environ.get("RENDER_TTS_VOICE_ID", "").strip()
-    if not key or not group or not voice:
+    voice = os.environ.get("RENDER_TTS_VOICE_ID", "").strip() or DEFAULT_VOICE
+    if not key:
         log.info("MiniMax narration is not configured; falling back")
         return False
+
+    # `GroupId` was mandatory on the older keys and is not on the current ones,
+    # which authenticate on the bearer token alone — measured against the live
+    # API with this account's key, which has no group. Requiring it made the
+    # narrator refuse before it ever tried, and the video would have fallen
+    # through to the free fallback voice with nothing in the log but "not
+    # configured". Sent when it is set, omitted when it is not.
+    group = os.environ.get("MINIMAX_GROUP_ID", "").strip()
+    params = {"GroupId": group} if group else None
 
     try:
         resp = httpx.post(
             _MINIMAX_URL,
-            params={"GroupId": group},
+            params=params,
             headers={
                 "Authorization": f"Bearer {key}",
                 "Content-Type": "application/json",
@@ -53,7 +88,7 @@ def _minimax(text: str, destination: Path) -> bool:
                 "model": _MODEL,
                 "text": text,
                 "stream": False,
-                "voice_setting": {"voice_id": voice, "speed": 1.0, "vol": 1.0},
+                "voice_setting": _voice_setting(voice),
                 # 44.1k mono: it is a voice over music, not music.
                 "audio_setting": {
                     "sample_rate": 44100,

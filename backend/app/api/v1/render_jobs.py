@@ -313,7 +313,8 @@ async def job_result(request: Request, job_id: int = Query()) -> dict[str, str]:
     # is that it is two hours late. The state is re-checked after the upload
     # too: this is the cheap answer, not the authoritative one.
     async with get_bypass_session_factory()() as db:
-        await _refuse_unless_awaited(db, job_id)
+        job, _piece = await _refuse_unless_awaited(db, job_id)
+        job_kind = job.kind
 
     media_root = Path(get_settings().CONTENT_MEDIA_DIR)
     # In a thread: this is a blocking filesystem call on the event loop that
@@ -336,7 +337,12 @@ async def job_result(request: Request, job_id: int = Query()) -> dict[str, str]:
             raise HTTPException(status_code=400, detail="empty body")
 
         probe = await probe_media(destination)
-        check_output(probe)
+        # Lane B exists to produce a narrated video; the worker itself fails
+        # rather than ship silence. Requiring it HERE too is the point of the
+        # queue: a half-updated worker is exactly the thing this side does not
+        # take at its word, and a mute short reaching the approval queue is a
+        # different video from the one that was planned.
+        check_output(probe, expect_audio=job_kind is RenderJobKind.PRODUCE_B)
     except HTTPException:
         destination.unlink(missing_ok=True)
         raise

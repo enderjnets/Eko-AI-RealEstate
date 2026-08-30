@@ -36,9 +36,8 @@ from app.models import (
     ContentPiece,
     ContentStatus,
 )
-from app.services.content_studio import advance
+from app.services.content_studio import advance, text_violations
 from app.services.content_topics import Topic, next_topic
-from app.services.fair_housing import find_violations, picture_violations
 from app.services.lang_guard import wrong_language
 from app.services.llm import generate_reply
 
@@ -211,26 +210,23 @@ def _all_violations(
 ) -> list[dict[str, str]]:
     """Everything wrong with this draft, in one list.
 
-    Three checks and not one, because they fail in different places and a
-    piece that passes two of them is still not publishable:
+    The Fair Housing checks come from `content_studio.text_violations`, which
+    is the SAME function the console and the publish gate use — three copies of
+    "which fields count" is how a field gets added to the product and forgotten
+    by the filter.
 
-    * The Fair Housing phrase filter, over the words a person will read.
-    * The same filter plus a person-descriptor denylist over every image
-      prompt — housing advertising is regulated in pictures too, and a frame
-      full of one kind of household says who is welcome with no sentence
-      anybody could edit.
-    * The language of the NARRATION, because the text that will be spoken is
-      the one the audience hears, and a correct hook over a script in another
-      language is exactly the bug this guard was written for.
+    The language check lives here because it is about a draft rather than about
+    a stored piece: it reads the NARRATION, because the text that will be
+    spoken is the one the audience hears, and a correct hook over a script in
+    another language is exactly the bug this guard was written for.
     """
-    found = find_violations(
-        f"{draft.hook} {draft.script} {draft.caption}", language
+    found = text_violations(
+        hook=draft.hook,
+        script=draft.script,
+        caption=draft.caption,
+        scenes=_scene_plan(draft),
+        language=language,
     )
-    for index, scene in enumerate(draft.scenes):
-        for hit in find_violations(scene.visual_prompt, language) + picture_violations(
-            scene.visual_prompt
-        ):
-            found.append({**hit, "where": f"scene {index + 1}"})
 
     spoken = draft.narration or draft.script
     reason = wrong_language(spoken, language.value)

@@ -117,6 +117,89 @@ def test_the_scene_that_offends_is_named(database_url: str) -> None:
     assert any(v.get("where") == "scene 2" for v in found), found
 
 
+def test_the_narration_goes_through_the_filter(database_url: str) -> None:
+    """The field the audience HEARS, and the one nobody can edit on screen.
+
+    `narration` and `on_screen_text` arrived with lane B and neither was read
+    by the Fair Housing filter, so a script could say "great schools" and
+    "perfect for families" out loud, in a published video, with the row
+    recording zero findings. Third time this repo has shipped a filter that
+    did not cover the live lane.
+    """
+    draft = _draft(
+        narration=(
+            "Homes here sit near great schools and a safe neighborhood, "
+            "perfect for families who want space and quiet on a wide street."
+        )
+    )
+    found = _all_violations(draft, ContentLanguage.EN)
+    phrases = {v["phrase"] for v in found}
+    assert {"great schools", "safe neighborhood", "perfect for families"} <= phrases
+    assert all(v.get("where") == "narration" for v in found if v["category"] != "language")
+
+
+def test_the_words_burned_on_screen_go_through_it_too() -> None:
+    draft = _draft(
+        scenes=[
+            Scene(visual_prompt="the Front Range at sunrise", on_screen_text="GREAT SCHOOLS")
+        ]
+    )
+    found = _all_violations(draft, ContentLanguage.EN)
+    assert any(v.get("where") == "scene 1 caption" for v in found), found
+
+
+@pytest.mark.asyncio
+async def test_editing_a_piece_cannot_launder_a_scene_finding(
+    database_url: str,
+) -> None:
+    """The recovery path that became a laundering path.
+
+    A person cannot edit scenes — the edit schema has only hook, script and
+    caption — so the only thing they can do with a piece held for a bad image
+    prompt is change some text or press Submit. Recomputing the findings from
+    those three fields WIPED the scene finding, submitted the piece, and the
+    worker was then paid to draw the exact prompt the gate had refused.
+    """
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    try:
+        piece_id = await _generated(
+            ContentStatus.DRAFT,
+            scenes={
+                "narration": ENGLISH,
+                "scenes": [
+                    {"visual_prompt": "a smiling family in the doorway", "on_screen_text": "x"}
+                ],
+            },
+            violations=[
+                {"phrase": "family", "category": "people_in_pictures", "where": "scene 1"}
+            ],
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            edited = await client.patch(
+                f"/api/v1/content/{piece_id}", json={"caption": "A different caption."}
+            )
+            assert edited.status_code == 200, edited.text
+            assert edited.json()["violations"], "the scene finding was wiped by an edit"
+
+            submitted = await client.post(f"/api/v1/content/{piece_id}/submit")
+        assert submitted.status_code == 422, submitted.text
+
+        async with get_bypass_session_factory()() as db:
+            status = (
+                await db.execute(
+                    text("SELECT status FROM content_pieces WHERE id=:p"), {"p": piece_id}
+                )
+            ).scalar_one()
+        assert status == "draft"
+    finally:
+        await _cleanup()
+
+
 # ── Language ─────────────────────────────────────────────────────────────
 
 
@@ -208,6 +291,23 @@ async def _generated(status: ContentStatus, **kwargs) -> int:
         return piece.id
 
 
+async def _brokerage(value: str = "Engel & Völkers Aspen") -> None:
+    async with get_bypass_session_factory()() as db:
+        row = (
+            await db.execute(text("SELECT id FROM agent_settings WHERE org_id=1"))
+        ).first()
+        if row is None:
+            from app.models import AgentSettings
+
+            db.add(AgentSettings(org_id=ORG, brokerage_line=value))
+        else:
+            await db.execute(
+                text("UPDATE agent_settings SET brokerage_line=:v WHERE org_id=1"),
+                {"v": value},
+            )
+        await db.commit()
+
+
 async def _cleanup() -> None:
     async with get_bypass_session_factory()() as db:
         await db.execute(text("DELETE FROM render_jobs"))
@@ -227,6 +327,7 @@ async def test_the_video_is_built_before_a_person_approves(
     from app.services.content_render import enqueue_generated
 
     monkeypatch.setattr(get_settings(), "RENDER_WORKER_ENABLED", True, raising=False)
+    await _brokerage()
     try:
         piece_id = await _generated(ContentStatus.NEEDS_APPROVAL)
         with org_scope(ORG):
@@ -255,6 +356,7 @@ async def test_a_draft_with_violations_costs_nothing(
     from app.services.content_render import enqueue_generated
 
     monkeypatch.setattr(get_settings(), "RENDER_WORKER_ENABLED", True, raising=False)
+    await _brokerage()
     try:
         await _generated(
             ContentStatus.DRAFT,
@@ -264,6 +366,42 @@ async def test_a_draft_with_violations_costs_nothing(
             async with get_session_factory()() as db:
                 assert await enqueue_generated(db) == 0
     finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_queued_without_a_brokerage_line(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A narration and six paid images, every 24 hours, forever.
+
+    The worker fails a job with no brokerage line, three failures mark it
+    FAILED, and the cooldown re-queues it — so without this check the loop
+    never ends and every lap costs money for a video that cannot legally carry
+    its identification anyway.
+    """
+    from app.services.content_render import enqueue_generated
+
+    monkeypatch.setattr(get_settings(), "RENDER_WORKER_ENABLED", True, raising=False)
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text("UPDATE agent_settings SET brokerage_line = '' WHERE org_id = 1")
+        )
+        await db.commit()
+    try:
+        await _generated(ContentStatus.NEEDS_APPROVAL)
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                assert await enqueue_generated(db) == 0
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text(
+                    "UPDATE agent_settings SET brokerage_line = "
+                    "'Engel & Völkers Aspen' WHERE org_id = 1"
+                )
+            )
+            await db.commit()
         await _cleanup()
 
 

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.67.0";
+export const CURRENT_VERSION = "0.67.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.67.1",
+    date: "2026-08-30",
+    title: {
+      en: "The filter reads what the video says out loud",
+      es: "El filtro lee lo que el v\u00eddeo dice en voz alta",
+    },
+    changes: [
+      {
+        en: "Fair Housing now covers the narration and the words burned on screen, not just the written text \u2014 and a finding against an image can no longer be cleared by editing a caption.",
+        es: "Fair Housing cubre ahora la narraci\u00f3n y los r\u00f3tulos del v\u00eddeo, no solo el texto escrito \u2014 y un hallazgo contra una imagen ya no se borra editando un pie de foto.",
+      },
+      {
+        en: "Prices written as \u201c$1.2 million\u201d are spoken correctly; before, they came out as \u201cone point two dollars million\u201d.",
+        es: "Los precios escritos como \u00ab$1.2 million\u00bb se leen bien; antes sal\u00edan como \u00abone point two dollars million\u00bb.",
+      },
+    ],
+  },
   {
     version: "0.67.0",
     date: "2026-08-30",

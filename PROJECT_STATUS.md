@@ -6,6 +6,51 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## 🟡 v0.67.1 — LA VOZ ELEGIDA, Y EL FILTRO QUE NO OÍA (30-ago-2026)
+
+**La voz del canal: `English_CalmWoman` a 1,06 con emoción**, elegida por el
+dueño entre cuatro variantes del mismo guion. Cálida sin sonar a anuncio — que
+importa, porque la landing promete «quince minutos, sin discurso de venta» y una
+locución comercial contradiría el producto en tres segundos. La velocidad no es
+adorno: la emoción sola estiraba el guion de 15,5 s a 17,9 s, y en vídeo corto
+esos tres segundos son gente que se va.
+
+Generar las muestras destapó de paso que **mi cliente exigía un `GroupId` que
+esta cuenta no usa** — medido contra su API, autentica solo con la clave. El
+locutor se habría negado en silencio y los vídeos habrían salido con la voz
+gratuita de respaldo.
+
+### Auditoría del carril B — dos bloqueantes, los dos reproducidos
+
+1. 🔴 **El filtro Fair Housing no leía la narración ni los rótulos.** Los dos
+   campos que estrenó la v0.67 eran justo los dos que ninguna puerta miraba.
+   Medido: un guion con «great schools», «safe neighborhood» y «perfect for
+   families» en la narración devolvía **cero hallazgos** y se auto-avanzaba a la
+   cola de aprobación. Es la **tercera** vez que este repo envía un filtro que
+   no cubre el carril vivo. El arreglo no es añadir dos comprobaciones: es que
+   ahora hay **una sola** función (`content_studio.text_violations`) que el
+   escritor, la consola y la puerta de publicación comparten.
+2. 🔴 **Editar una pieza borraba el hallazgo contra una imagen.** Nadie puede
+   editar las escenas desde la consola, así que la única salida para una pieza
+   retenida por un prompt rechazado era tocar un texto o pulsar Enviar — y eso
+   recalculaba los hallazgos desde tres campos y los limpiaba. El obrero acababa
+   **pagando por dibujar el prompt que la puerta había rechazado**.
+
+Y cinco más: «$1.2 million» se leía «one point two **dollars** million»; un
+vídeo del carril B sin voz se aceptaba; la denylist tenía huecos de
+singular/plural entre sus propias palabras; el carril B se encolaba sin línea de
+brokerage y quedaba en bucle de 24 h gastando dinero cada vuelta; y las escenas
+sobrantes se pagaban y nunca aparecían.
+
+**Dos tests que no podían fallar**, señalados por el auditor y sustituidos: el
+del cargo a Kling llamaba al contador a mano, y el de precios solo probaba
+«$1.2M» — la forma que funcionaba.
+
+**Cierre**: 1310 backend · 153 frontend · 50 del obrero verdes; ruff y tsc
+limpios; las dos mutaciones de los bloqueantes verificadas en rojo.
+
+---
+
 ## 🟡 v0.67.0 — EL CARRIL B: GUION → VÍDEO NARRADO (30-ago-2026) · construido, NO encendido
 
 Fase 3. Un borrador generado ya no es solo texto: trae una **lista de planos**

@@ -2,6 +2,43 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.67.1] — 2026-08-30
+
+### Corregido — hallazgos de la auditoría del carril B
+
+- 🔴 **El filtro Fair Housing no leía la narración ni los rótulos.** Los dos
+  campos que estrenó la v0.67 eran justo los dos que ninguna puerta miraba: un
+  guion podía decir «great schools» y «perfect for families» **en voz alta, en
+  un vídeo publicado**, con la fila registrando cero hallazgos. Tercera vez que
+  este repo envía un filtro que no cubre el carril vivo. Ahora hay **una sola**
+  función, `content_studio.text_violations`, que el escritor, la consola y la
+  puerta de publicación comparten — tres copias de «qué campos cuentan» es
+  exactamente cómo se añade un campo al producto y se olvida al filtro.
+- 🔴 **Editar una pieza borraba el hallazgo contra una imagen.** Nadie puede
+  editar las escenas desde la consola, así que la única salida para una pieza
+  retenida por un prompt rechazado era tocar un texto o pulsar Enviar — y eso
+  recalculaba los hallazgos desde tres campos, los limpiaba, y el obrero
+  acababa **pagando por dibujar el prompt que la puerta había rechazado**.
+- «$1.2 million» se leía «one point two **dollars** million». Ahora las escalas
+  escritas con palabra (million, billion, thousand) valen igual que la letra.
+- Un vídeo del carril B **sin voz** ya no se acepta: el panel exige pista de
+  audio para ese tipo de trabajo, en vez de fiarse de que el obrero la ponga.
+- La denylist de personas tenía huecos de singular/plural entre sus propias
+  palabras («neighbors» sí, «neighbor» no; «toddler» sí, «toddlers» no).
+- El carril B ya no se encola sin línea de brokerage: el obrero fallaba, el
+  enfriamiento de 24 h lo reencolaba, y cada vuelta costaba una narración y
+  seis imágenes de pago.
+- Las escenas sobrantes cuando hay más planos que palabras ya ocupan tiempo
+  real; antes se pagaba su imagen y nunca aparecía en pantalla.
+- Dos tests que no podían fallar: el del cargo al saldo de Kling (llamaba al
+  contador a mano) y el de los precios (solo probaba «$1.2M»).
+
+### Añadido
+
+- **La voz del canal, elegida por el dueño**: `English_CalmWoman` a velocidad
+  1,06 con emoción — cálida sin sonar a anuncio. La velocidad no es adorno: la
+  emoción sola estiraba el mismo guion de 15,5 s a 17,9 s.
+
 ## [0.67.0] — 2026-08-30
 
 ### Añadido — el carril B: guion → vídeo narrado

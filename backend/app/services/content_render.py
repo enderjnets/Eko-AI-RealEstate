@@ -141,7 +141,9 @@ def check_input(probe: Probe) -> None:
         raise RenderRefused("the video stream reports no dimensions")
 
 
-def check_output(result: Probe, *, source: Probe | None = None) -> None:
+def check_output(
+    result: Probe, *, source: Probe | None = None, expect_audio: bool = False
+) -> None:
     """What a finished video has to be, before anyone is offered it.
 
     A function rather than an inline block since v0.66, because there are now
@@ -159,6 +161,8 @@ def check_output(result: Probe, *, source: Probe | None = None) -> None:
         problems.append(f"output is {result.width}x{result.height}")
     if result.duration <= 0:
         problems.append("the output has no duration")
+    if expect_audio and not result.has_audio:
+        problems.append("the output has no audio track")
     if source is not None:
         if source.has_audio and not result.has_audio:
             problems.append("the source had audio and the output does not")
@@ -429,6 +433,15 @@ async def enqueue_generated(db: AsyncSession) -> int:
     from app.models import RenderJobKind
 
     if not get_settings().RENDER_WORKER_ENABLED:
+        return 0
+
+    settings_row = (await db.execute(select(AgentSettings))).scalars().first()
+    if not ((settings_row.brokerage_line or "").strip() if settings_row else ""):
+        # Same refusal lane A makes, and for a stronger reason: the worker
+        # fails a job with no brokerage line, three failures mark it FAILED,
+        # and the 24h cooldown then re-queues it — forever, spending a
+        # narration and six paid images on every lap. Nothing legal can be
+        # burned into the frame, so nothing is worth building yet.
         return 0
 
     rows = (

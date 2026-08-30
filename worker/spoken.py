@@ -34,17 +34,25 @@ def _spell(number: float) -> str:
     return f"{num2words(int(whole))} point {digits}"
 
 
+# Written after a figure, and meaning the same thing whether it is a letter or
+# a word. "$1.2M" was handled and "$1.2 million" was not, so the most common
+# written form of a seven-figure price came out as "one point two DOLLARS
+# million" — the exact shape of the bug recorded next door, where "$70B"
+# became "seventy thousand million dollars".
+_SCALES = {
+    "k": 1_000, "thousand": 1_000,
+    "m": 1_000_000, "mm": 1_000_000, "million": 1_000_000,
+    "b": 1_000_000_000, "bn": 1_000_000_000, "billion": 1_000_000_000,
+}
+
+
 def _money(match: re.Match[str]) -> str:
     raw = match.group(1).replace(",", "")
     try:
         value = float(raw)
     except ValueError:
         return match.group(0)
-    suffix = (match.group(2) or "").lower()
-    if suffix.startswith("k"):
-        value *= 1_000
-    elif suffix.startswith("m"):
-        value *= 1_000_000
+    value *= _SCALES.get((match.group(2) or "").lower(), 1)
     # "dollars" AFTER the number, because that is how it is said: the symbol
     # comes first in writing and last in speech.
     unit = "dollar" if value == 1 else "dollars"
@@ -92,7 +100,12 @@ def for_the_voice(text: str) -> str:
     # The `\s*` lives INSIDE the optional group: outside it, a number with no
     # suffix ate the space after itself and "$450,000 and" came out as
     # "four hundred and fifty thousand dollarsand".
-    out = re.sub(r"\$\s*([\d,]+(?:\.\d+)?)(?:\s*([kKmM])\b)?", _money, text)
+    out = re.sub(
+        r"\$\s*([\d,]+(?:\.\d+)?)(?:\s*(k|m|mm|b|bn|thousand|million|billion)\b)?",
+        _money,
+        text,
+        flags=re.IGNORECASE,
+    )
     out = re.sub(r"([\d,]+(?:\.\d+)?)\s*%", _percent, out)
     for written, spoken in _ORDINALS.items():
         out = re.sub(rf"\b{written}\b", spoken, out, flags=re.IGNORECASE)

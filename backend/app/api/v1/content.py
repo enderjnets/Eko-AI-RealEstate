@@ -52,8 +52,8 @@ from app.services.content_studio import (
     PUBLISHING_AVAILABLE,
     IllegalTransition,
     advance,
+    text_violations,
 )
-from app.services.fair_housing import find_violations
 from app.services.tenant_context import get_org_id
 
 router = APIRouter()
@@ -144,11 +144,21 @@ def _refresh_violations(piece: ContentPiece) -> None:
     Stored, not recomputed by readers, so the console can show WHY a draft is
     stuck without running the filter per row per page load.
     """
-    found = find_violations(
-        " ".join(p for p in (piece.hook, piece.script, piece.caption) if p),
-        piece.language,
+    # Every field, through the one function that knows which fields there are.
+    # Recomputing from hook/script/caption alone WIPED the findings against a
+    # scene: a person who edited any text — or simply pressed Submit — laundered
+    # a refused image prompt into the approval queue, and the render was then
+    # paid for.
+    piece.violations = (
+        text_violations(
+            hook=piece.hook,
+            script=piece.script,
+            caption=piece.caption,
+            scenes=piece.scenes,
+            language=piece.language,
+        )
+        or None
     )
-    piece.violations = found or None
 
 
 class StudioStatus(BaseModel):

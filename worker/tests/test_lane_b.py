@@ -31,6 +31,15 @@ from worker import pictures, produce, spoken, subtitles
         ("Listing at $450,000 today.", "four hundred and fifty thousand dollars"),
         ("Rates moved 3.5% last month.", "three point five percent"),
         ("A $1.2M listing.", "one million"),
+        # The WORD, not just the letter. "$1.2 million" is the commonest
+        # written form of a seven-figure price and it came out as "one point
+        # two DOLLARS million" — the same shape as the "$70B" -> "seventy
+        # thousand million" bug recorded next door. Testing only "$1.2M"
+        # blessed the broken form.
+        ("The median hit $1.2 million.", "one million, two hundred thousand dollars"),
+        ("$5 million homes are rare.", "five million dollars"),
+        ("A $1.5 Million listing.", "one million, five hundred thousand dollars"),
+        ("Rare above $1 billion.", "one billion dollars"),
         ("Offers from $300k.", "three hundred thousand dollars"),
         ("It sold for $1 over asking.", "one dollar"),
         ("The 2nd offer was better.", "second"),
@@ -64,7 +73,7 @@ def test_a_web_address_is_not_read_aloud() -> None:
 # ── Paying once ──────────────────────────────────────────────────────────
 
 
-def test_the_cache_key_is_the_prompt_itself(monkeypatch, tmp_path: Path) -> None:
+def test_the_cache_key_is_the_prompt_itself() -> None:
     """Same picture asked for twice is the same key, whatever the casing."""
     assert pictures.cache_key("A Brick Bungalow ") == pictures.cache_key("a brick bungalow")
     assert pictures.cache_key("a brick bungalow") != pictures.cache_key("a stone cottage")
@@ -113,14 +122,54 @@ def test_the_daily_cap_stops_spending_and_still_returns_a_video(
     assert pictures.fetch("a house", tmp_path / "o.jpg") == "none"
 
 
-def test_the_ledger_charges_before_the_image_exists(
+def test_the_ledger_charges_a_request_that_then_fails(
     monkeypatch, tmp_path: Path
 ) -> None:
     """A ledger that only counts finished images under-counts exactly the
-    spend nobody wanted: a request that was billed and then failed."""
+    spend nobody wanted: a request that was billed and then failed.
+
+    The earlier version of this test called `_charge()` by hand and asserted
+    the counter, so moving the charge to after a successful download — which
+    re-creates the under-count it names — left it green. It has to go through
+    the real path: a task Kling accepted and then never delivered.
+    """
     monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
-    pictures._charge()
+    monkeypatch.setenv("KLING_ACCESS_KEY", "ak")
+    monkeypatch.setenv("KLING_SECRET_KEY", "sk")
+    pytest.importorskip("jwt")
+
+    class _Created:
+        def json(self):
+            return {"code": 0, "data": {"task_id": "t-1"}}
+
+    class _Polled:
+        def json(self):
+            return {"data": {"task_status": "failed", "task_status_msg": "nope"}}
+
+    monkeypatch.setattr(pictures.httpx, "post", lambda *a, **k: _Created())
+    monkeypatch.setattr(pictures.httpx, "get", lambda *a, **k: _Polled())
+    monkeypatch.setattr(pictures.time, "sleep", lambda _s: None)
+
+    assert pictures._kling_image("a house", tmp_path / "o.jpg") is False
+    # Accepted, billed, and no image. The money left the account either way.
     assert pictures._spent_today() == 1
+
+
+def test_a_refusal_is_not_charged(monkeypatch, tmp_path: Path) -> None:
+    """The other side of the same line: a request Kling never accepted costs
+    nothing, and counting it would make the cap stop work that was free."""
+    monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("KLING_ACCESS_KEY", "ak")
+    monkeypatch.setenv("KLING_SECRET_KEY", "sk")
+    pytest.importorskip("jwt")
+
+    class _Refused:
+        def json(self):
+            return {"code": 1200, "message": "bad prompt"}
+
+    monkeypatch.setattr(pictures.httpx, "post", lambda *a, **k: _Refused())
+    assert pictures._kling_image("a house", tmp_path / "o.jpg") is False
+    assert pictures._spent_today() == 0
 
 
 def test_stock_photos_are_not_cached(monkeypatch, tmp_path: Path) -> None:
@@ -137,6 +186,84 @@ def test_stock_photos_are_not_cached(monkeypatch, tmp_path: Path) -> None:
     out = tmp_path / "o.jpg"
     assert pictures.fetch("a house", out) == "pexels"
     assert not (tmp_path / f"{pictures.cache_key('a house')}.jpg").exists()
+
+
+# ── The narrator ─────────────────────────────────────────────────────────
+
+
+def test_a_key_without_a_group_still_narrates(monkeypatch, tmp_path) -> None:
+    """Measured against the live API, not assumed: the current MiniMax keys
+    authenticate on the bearer token alone.
+
+    Requiring `MINIMAX_GROUP_ID` made the narrator refuse before it ever tried,
+    and the video fell through to the free fallback voice with nothing in the
+    log but "not configured" — a silent downgrade of the thing the audience
+    hears most.
+    """
+    from worker import tts
+
+    monkeypatch.setenv("MINIMAX_API_KEY", "sk-test")
+    monkeypatch.setenv("RENDER_TTS_VOICE_ID", "English_CalmWoman")
+    monkeypatch.delenv("MINIMAX_GROUP_ID", raising=False)
+
+    seen: dict = {}
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"base_resp": {"status_code": 0}, "data": {"audio": "00ff"}}
+
+    def _post(url, **kwargs):
+        seen.update(kwargs)
+        return _Resp()
+
+    monkeypatch.setattr(tts.httpx, "post", _post)
+    assert tts._minimax("hello", tmp_path / "v.mp3") is True
+    # And no empty GroupId is sent along, which their API rejects.
+    assert seen["params"] is None
+
+
+def test_a_key_with_a_group_still_sends_it(monkeypatch, tmp_path) -> None:
+    """An older account that does need one is not broken by the fix."""
+    from worker import tts
+
+    monkeypatch.setenv("MINIMAX_API_KEY", "sk-test")
+    monkeypatch.setenv("RENDER_TTS_VOICE_ID", "English_CalmWoman")
+    monkeypatch.setenv("MINIMAX_GROUP_ID", "12345")
+
+    seen: dict = {}
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"base_resp": {"status_code": 0}, "data": {"audio": "00ff"}}
+
+    monkeypatch.setattr(tts.httpx, "post", lambda url, **kw: (seen.update(kw), _Resp())[1])
+    assert tts._minimax("hello", tmp_path / "v.mp3") is True
+    assert seen["params"] == {"GroupId": "12345"}
+
+
+def test_a_200_with_a_failure_inside_is_not_audio(monkeypatch, tmp_path) -> None:
+    """Their API answers 200 and puts the refusal in the body, like most of
+    the ones this project talks to."""
+    from worker import tts
+
+    monkeypatch.setenv("MINIMAX_API_KEY", "sk-test")
+    monkeypatch.setenv("RENDER_TTS_VOICE_ID", "English_CalmWoman")
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"base_resp": {"status_code": 1004, "status_msg": "bad voice"}}
+
+    monkeypatch.setattr(tts.httpx, "post", lambda url, **kw: _Resp())
+    assert tts._minimax("hello", tmp_path / "v.mp3") is False
 
 
 # ── Timing ───────────────────────────────────────────────────────────────
@@ -165,6 +292,20 @@ def test_without_a_transcript_the_scenes_share_the_time_evenly() -> None:
     """A fallback, not a failure: no words means no boundaries to cut on."""
     spans = produce.plan_shots([{}, {}, {}], [], total=9.0)
     assert spans == [(0.0, 3.0), (3.0, 6.0), (6.0, 9.0)]
+
+
+def test_more_scenes_than_words_still_shows_every_scene() -> None:
+    """The leftovers used to get a zero-length span at the very end.
+
+    `Shot.seconds` padded those to a floor, and `-shortest` then cut them off
+    when the audio ran out — so their images had already been fetched and PAID
+    FOR and never appeared on screen. Every scene has to occupy real time.
+    """
+    words = [subtitles.Word(0.0, 0.4, "one"), subtitles.Word(0.4, 0.8, "two")]
+    spans = produce.plan_shots([{}, {}, {}, {}], words, total=8.0)
+    assert len(spans) == 4
+    assert all(end > start for start, end in spans), spans
+    assert spans[0][0] == 0.0 and spans[-1][1] == 8.0
 
 
 def test_a_piece_with_no_plan_is_refused_rather_than_improvised(

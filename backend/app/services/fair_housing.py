@@ -211,6 +211,29 @@ PEOPLE_IN_PICTURES = (
 )
 
 
+def _forms(word: str) -> set[str]:
+    """The word and its plausible singular/plural partners, for matching only.
+
+    Not linguistics — a matching aid. The list below was written by hand and
+    therefore has the holes hand-written lists have: it named "neighbors" and
+    not "neighbor", "toddler" and not "toddlers", "bebé" and not "bebés". Every
+    one of those gaps is a prompt that draws people and is waved through, and
+    the fix cannot be "remember to write each word twice".
+
+    A SET rather than one canonical stem, because stemming both sides
+    disagrees on short words: "bebe" is four letters and keeps its ending while
+    "bebes" loses two, so the two forms never meet in the middle. Generating
+    both directions and intersecting has no middle to miss.
+    """
+    forms = {word}
+    for suffix in ("es", "s"):
+        if len(word) > 3 and word.endswith(suffix):
+            forms.add(word[: -len(suffix)])
+    forms.add(word + "s")
+    forms.add(word + "es")
+    return forms
+
+
 def picture_violations(prompt: str) -> list[dict[str, str]]:
     """Words that must not steer what an image model draws.
 
@@ -218,14 +241,23 @@ def picture_violations(prompt: str) -> list[dict[str, str]]:
     not trip on "man", and a substring check here would reject most of the
     English language. Runs IN ADDITION to `find_violations`, never instead of
     it — the phrase list still applies to a prompt.
+
+    Singular and plural are folded together, so a term listed in one form
+    catches the other.
     """
     if not prompt:
         return []
-    words = set(_normalise(prompt).split())
+    normalised = _normalise(prompt)
+    present: set[str] = set()
+    for word in normalised.split():
+        present |= _forms(word)
     found = [
         {"phrase": term, "category": "people_in_pictures"}
         for term in PEOPLE_IN_PICTURES
-        if _normalise(term) in words
-        or (" " in term and f" {_normalise(term)} " in f" {_normalise(prompt)} ")
+        if (
+            bool(_forms(_normalise(term)) & present)
+            if " " not in term
+            else f" {_normalise(term)} " in f" {normalised} "
+        )
     ]
     return found
