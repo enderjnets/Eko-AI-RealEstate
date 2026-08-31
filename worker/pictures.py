@@ -23,6 +23,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 from datetime import date
 from pathlib import Path
@@ -174,18 +175,66 @@ def _kling_image(prompt: str, destination: Path) -> bool:
     return False
 
 
-def _pexels(prompt: str, destination: Path) -> bool:
+# Words that carry no subject. A stock search takes a SUBJECT, not a sentence —
+# but the first version took the first three words of the prompt, and a prompt
+# written in English starts with articles: "A set of residential house keys"
+# was searched as "A set of", and the picture that came back was a stranger's
+# branded cutlery box on a tablecloth, in a real estate video. Recognisable
+# third-party trademarks are also the one thing the stock licences all refuse
+# for commercial use, so an off-topic result is not merely ugly.
+_NOISE = frozenset(
+    """a an the and or of in on at to for with from by into over under
+    this that these those is are was were be being been it its their
+    some any new set piece kind sort""".split()
+)
+
+
+def search_terms(prompt: str, limit: int = 4) -> str:
+    """The subject of a prompt, for a stock search.
+
+    Content words in the order they were written, so "Denver" and "keys" reach
+    the search and "a set of" does not. Falls back to the raw prompt when a
+    sentence is nothing but noise, because a bad search still beats none.
+    """
+    words = [
+        w
+        for w in re.findall(r"[A-Za-z][A-Za-z'-]*", prompt)
+        if w.lower() not in _NOISE
+    ]
+    return " ".join(words[:limit]) if words else prompt
+
+
+def shows_people(description: str, people_words: list[str]) -> bool:
+    """Does this photo's own description say there is a person in it?
+
+    Whole words against the list the panel ships with every job — the same one
+    that screens the prompts, so there is one vocabulary and not two drifting
+    copies. Imperfect by construction: a library's alt text is written to sell
+    the photo, not to answer this question, and a picture of somebody with no
+    description at all sails through. It is a filter on the way to the human
+    who approves every piece, not a replacement for them.
+    """
+    if not description or not people_words:
+        return False
+    words = {w.lower() for w in re.findall(r"[A-Za-z][A-Za-z'-]*", description)}
+    return any(
+        term.lower() in words if " " not in term else term.lower() in description.lower()
+        for term in people_words
+    )
+
+
+def _pexels(prompt: str, destination: Path, people_words: list[str] | None = None) -> bool:
     key = os.environ.get("PEXELS_API_KEY", "").strip()
     if not key:
         return False
-    # Two or three words: a stock search takes a subject, not a sentence, and
-    # sending the whole prompt reliably returns nothing.
-    query = " ".join(prompt.split()[:3])
+    query = search_terms(prompt)
     try:
         resp = httpx.get(
             "https://api.pexels.com/v1/search",
             headers={"Authorization": key},
-            params={"query": query, "orientation": "portrait", "per_page": 1},
+            # Several, so a photo full of people can be skipped for the next
+            # one instead of losing the scene to a branded card.
+            params={"query": query, "orientation": "portrait", "per_page": 8},
             timeout=_TIMEOUT,
         )
         resp.raise_for_status()
@@ -193,9 +242,20 @@ def _pexels(prompt: str, destination: Path) -> bool:
     except (httpx.HTTPError, json.JSONDecodeError) as exc:
         log.warning("Pexels did not answer (%s)", exc)
         return False
-    if not photos:
+
+    photo = next(
+        (p for p in photos if not shows_people(p.get("alt") or "", people_words or [])),
+        None,
+    )
+    if photo is None:
+        if photos:
+            log.info(
+                "Pexels returned %d photos for %r and every one of them "
+                "describes people; using a branded card instead",
+                len(photos),
+                query,
+            )
         return False
-    photo = photos[0]
     # The photographer, for the log. Pexels does not require attribution in the
     # video, and a credit burned into a short is a credit nobody can read; the
     # record belongs somewhere a person can find it.
@@ -212,7 +272,7 @@ def _pexels(prompt: str, destination: Path) -> bool:
         return False
 
 
-def fetch(prompt: str, destination: Path) -> str:
+def fetch(prompt: str, destination: Path, people_words: list[str] | None = None) -> str:
     """An image for this prompt. Returns which provider gave it.
 
     `"none"` means neither did, and the caller draws a branded card instead —
@@ -235,7 +295,7 @@ def fetch(prompt: str, destination: Path) -> str:
             daily_cap(),
         )
 
-    if _pexels(prompt, destination):
+    if _pexels(prompt, destination, people_words):
         # Not cached: stock results are free and change, and caching them would
         # freeze one photo onto a phrase for every future video.
         return "pexels"

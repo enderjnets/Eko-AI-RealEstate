@@ -53,6 +53,7 @@ from app.models import (
 )
 from app.services.content_render import RenderRefused, check_output, probe_media
 from app.services.content_studio import advance
+from app.services.fair_housing import PEOPLE_IN_PICTURES
 
 log = logging.getLogger(__name__)
 
@@ -117,6 +118,13 @@ class JobInput(BaseModel):
     hook: str | None = None
     script: str | None = None
     scenes: dict | None = None
+    # The person-descriptor vocabulary, shipped rather than duplicated. The
+    # worker searches a stock library, and a library answers a clean prompt
+    # with whatever it has — "residential house keys" came back as "woman real
+    # estate agent placing a sign". Housing advertising is regulated in
+    # pictures, so the RESULT has to be screened too, and the only list that
+    # may do the screening is the one the rest of the system already uses.
+    people_words: list[str] = []
 
 
 class FailIn(BaseModel):
@@ -238,6 +246,7 @@ async def job_input(job_id: int) -> JobInput:
             hook=piece.hook,
             script=piece.script,
             scenes=piece.scenes,
+            people_words=list(PEOPLE_IN_PICTURES),
         )
 
 

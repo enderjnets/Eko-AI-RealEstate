@@ -117,7 +117,7 @@ def test_the_daily_cap_stops_spending_and_still_returns_a_video(
         raise AssertionError("spent past the daily cap")
 
     monkeypatch.setattr(pictures, "_kling_image", _must_not_be_called)
-    monkeypatch.setattr(pictures, "_pexels", lambda p, d: False)
+    monkeypatch.setattr(pictures, "_pexels", lambda p, d, w=None: False)
     # No paid image, no stock image — and still an answer the caller can use.
     assert pictures.fetch("a house", tmp_path / "o.jpg") == "none"
 
@@ -178,7 +178,7 @@ def test_stock_photos_are_not_cached(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
     monkeypatch.setattr(pictures, "_kling_image", lambda p, d: False)
 
-    def _stock(prompt: str, destination: Path) -> bool:
+    def _stock(prompt: str, destination: Path, people_words=None) -> bool:
         destination.write_bytes(b"stock")
         return True
 
@@ -266,6 +266,48 @@ def test_a_200_with_a_failure_inside_is_not_audio(monkeypatch, tmp_path) -> None
     assert tts._minimax("hello", tmp_path / "v.mp3") is False
 
 
+# ── Lo que devuelve el banco de fotos ────────────────────────────────────
+
+
+def test_the_search_uses_the_subject_not_the_first_three_words() -> None:
+    """"A set of residential house keys" was searched as "A set of".
+
+    English sentences start with articles, so taking the first three words
+    searched for nothing at all — and the picture that came back was a
+    stranger's branded cutlery box, in a real estate video. Recognisable
+    third-party trademarks are also the one thing every stock licence refuses
+    for commercial use, so an off-topic result is not merely ugly.
+    """
+    assert pictures.search_terms("A set of residential house keys") == (
+        "residential house keys"
+    )
+    assert pictures.search_terms("A for-sale sign in a front yard") == (
+        "for-sale sign front yard"
+    )
+
+
+def test_a_prompt_of_pure_noise_still_searches_for_something() -> None:
+    """A bad search beats no search: the alternative is a branded card."""
+    assert pictures.search_terms("a set of the") == "a set of the"
+
+
+def test_a_photo_that_describes_people_is_skipped() -> None:
+    """The filter screens the PROMPT; the library answers with whatever it
+    has. "residential house keys" came back as "woman real estate agent
+    placing a sign" — clean prompt, regulated picture."""
+    words = ["woman", "family", "couple", "children"]
+    assert pictures.shows_people("Woman real estate agent placing a sign", words)
+    assert pictures.shows_people("A young family moving into their new home", words)
+    assert not pictures.shows_people("Close-up of house keys on a table", words)
+    assert not pictures.shows_people("Rocky Mountains with dramatic clouds", words)
+
+
+def test_no_vocabulary_screens_nothing_rather_than_everything() -> None:
+    """An older panel that does not ship the list must not silently reject
+    every photograph — the human gate is still behind this."""
+    assert not pictures.shows_people("Woman real estate agent", [])
+
+
 # ── Timing ───────────────────────────────────────────────────────────────
 
 
@@ -318,7 +360,7 @@ def test_a_video_with_no_pictures_at_all_is_refused(monkeypatch, tmp_path: Path)
     """
     from worker import tts
 
-    monkeypatch.setattr(pictures, "fetch", lambda p, d: "none")
+    monkeypatch.setattr(pictures, "fetch", lambda p, d, w=None: "none")
     monkeypatch.setattr(tts, "narrate", lambda t, d: (d.write_bytes(b"x"), d)[1])
     monkeypatch.setattr(subtitles, "transcribe", lambda a, language="en": [])
     spec = {

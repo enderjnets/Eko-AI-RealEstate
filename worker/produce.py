@@ -194,7 +194,9 @@ def produce(
     for index, (scene, (start, end)) in enumerate(zip(scenes, spans, strict=True)):
         image: Path | None = workdir / f"pic-{index}.jpg"
         try:
-            provider = pictures.fetch(scene["visual_prompt"], image)
+            provider = pictures.fetch(
+                scene["visual_prompt"], image, spec.get("people_words")
+            )
         except pictures.NoBalance as exc:
             if not reported_no_balance:
                 # Once. Kling is asked per scene, so an empty account would
