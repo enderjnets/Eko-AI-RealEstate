@@ -70,10 +70,13 @@ class DraftPayload(BaseModel):
     # somebody films. Requiring them would turn a prompt drift into zero
     # content.
     scenes: list[Scene] = Field(default_factory=list, max_length=8)
-    # The script as it will be READ ALOUD. Separate from `script` because the
-    # two are not the same text: one is edited by a person in the console, the
-    # other is what the narrator says, and a number written "$450,000" has to
-    # become words before it reaches a voice.
+    # What the narrator says, WHEN it differs from the written script. The
+    # prompt no longer asks for it: a model given both writes the same words
+    # twice, which doubled the longest field in every response and truncated
+    # the first real generation into an unparseable draft. Kept in the schema
+    # because a model that volunteers one costs nothing, and because the
+    # difference that mattered — "$450,000" becoming words — is done
+    # deterministically by `worker/spoken.py`, not by asking nicely.
     narration: str | None = Field(default=None, max_length=4000)
 
 
@@ -89,8 +92,7 @@ _SYSTEM = {
         "about people. Reply ONLY with JSON: "
         '{"hook": "...", "script": "...", "caption": "..."} — hook under 300 '
         "characters, script 60-120 words, caption 1-2 sentences with no "
-        "hashtags, plus \"narration\" (the script exactly as it should be read "
-        "aloud) and \"scenes\": 4 to 6 objects with \"visual_prompt\" and "
+        "hashtags, plus \"scenes\": 4 to 6 objects with \"visual_prompt\" and "
         "\"on_screen_text\". A visual_prompt describes a PLACE or an OBJECT — "
         "a house, a street, the Front Range, keys, a document, a for-sale sign. "
         "NEVER describe people in it: no families, couples, children, "
@@ -108,8 +110,7 @@ _SYSTEM = {
         "Habla del proceso y de la mecánica del mercado, no de personas. "
         'Responde SOLO con JSON: {"hook": "...", "script": "...", '
         '"caption": "..."} — hook de menos de 300 caracteres, guion de 60-120 '
-        "palabras, caption de 1-2 frases sin hashtags, más \"narration\" (el "
-        "guion tal como debe leerse en voz alta) y \"scenes\": de 4 a 6 objetos "
+        "palabras, caption de 1-2 frases sin hashtags, más \"scenes\": de 4 a 6 objetos "
         "con \"visual_prompt\" y \"on_screen_text\". Un visual_prompt describe un "
         "LUGAR o un OBJETO — una casa, una calle, las montañas, unas llaves, un "
         "documento, un cartel de se vende. NUNCA describas personas: ni "
@@ -145,7 +146,13 @@ async def _ask(topic: Topic, language: ContentLanguage,
             system=_SYSTEM[language],
             json_mode=True,
             temperature=0.6,
-            max_tokens=900,
+            # 900 was the cap when a draft was three short strings. Lane B
+            # added a scene plan, and the first real generation came back
+            # TRUNCATED mid-sentence and was dropped as malformed — a whole
+            # generation billed for nothing, with the reason visible only in a
+            # log line. Sized for the shape actually asked for, with room for a
+            # model that formats its JSON generously.
+            max_tokens=2000,
         )
     except Exception:  # noqa: BLE001 — the loop must survive a provider outage
         log.exception("Content writer: both providers failed for topic %s",
