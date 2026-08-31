@@ -19,6 +19,7 @@ import {
   Loader2,
   Pencil,
   RefreshCw,
+  RotateCcw,
   ShieldAlert,
   X,
 } from "lucide-react";
@@ -167,6 +168,7 @@ export function ContentQueue() {
                 act(piece.id, () => contentApi.reject(piece.id, reason))
               }
               onSubmit={() => act(piece.id, () => contentApi.submit(piece.id))}
+              onRetry={() => act(piece.id, () => contentApi.retry(piece.id))}
               onEdit={(body) => act(piece.id, () => contentApi.edit(piece.id, body))}
             />
           ))}
@@ -270,6 +272,7 @@ function PieceCard({
   onApprove,
   onReject,
   onSubmit,
+  onRetry,
   onEdit,
 }: {
   piece: ContentPiece;
@@ -278,6 +281,7 @@ function PieceCard({
   onApprove: () => void;
   onReject: (reason: string) => void;
   onSubmit: () => void;
+  onRetry: () => void;
   onEdit: (body: { hook?: string; script?: string; caption?: string }) => void;
 }) {
   const { t } = useI18n();
@@ -457,6 +461,14 @@ function PieceCard({
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-eko-green text-eko-noir text-sm font-semibold hover:brightness-110"
                 >
                   <Check className="w-4 h-4" /> {t("content.approve")}
+                </button>
+              )}
+              {piece.status === "failed" && (
+                <button
+                  onClick={onRetry}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-eko-violet text-white text-sm font-semibold hover:bg-eko-violet-dark"
+                >
+                  <RotateCcw className="w-4 h-4" /> {t("content.retry")}
                 </button>
               )}
               {piece.status === "draft" && (

@@ -181,13 +181,21 @@ _CTA = {
     ContentLanguage.ES: "¿Estás pensando en vender en Denver? Empieza aquí: {url}",
 }
 
-# Said in the caption of every generated piece, because it is true and because
-# saying it is cheaper than being asked. TikTok has a field for this and it is
-# set separately; YouTube and Instagram do not expose one through Buffer, so
-# the caption is where a viewer can actually read it.
+# Said in the caption of every generated piece, because saying it is cheaper
+# than being asked. All three platforms take `isAiGenerated` through Buffer as
+# well, and it is sent; the caption is where a viewer can actually read it.
+#
+# **It names the voice, not the pictures, because that is what is true.** This
+# read "Contains AI-generated visuals" until a published caption was checked
+# against the video it described: every picture in it is a licensed photograph
+# from Pexels, and nothing in the frame was generated. The narration is
+# synthetic in every piece this lane makes, whatever draws the pictures. A
+# disclosure that overstates is still a false statement on the channel of two
+# licensed agents — and this one was about to go out three times.
+# If Kling ever draws the scenes, the visuals belong back in this sentence.
 _AI_DISCLOSURE = {
-    ContentLanguage.EN: "Contains AI-generated visuals.",
-    ContentLanguage.ES: "Contiene imágenes generadas con IA.",
+    ContentLanguage.EN: "Narrated with a synthetic voice.",
+    ContentLanguage.ES: "Narrado con una voz sintética.",
 }
 
 

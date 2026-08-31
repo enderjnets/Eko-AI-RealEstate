@@ -420,6 +420,40 @@ async def reject_piece(
     return PieceOut.model_validate(piece)
 
 
+@router.post("/{piece_id}/retry", response_model=PieceOut)
+async def retry_piece(piece_id: int, db: AsyncSession = Depends(get_db)) -> PieceOut:
+    """Put a piece that failed to publish back in front of a person.
+
+    FAILED is where a piece lands when every platform refused it, and until now
+    it was a dead end: the only way out of it was an UPDATE by hand on the
+    production database. That is the wrong shape for the commonest cause, which
+    is not the video — it is a bug or an outage on the way out. The first real
+    publish of this installation failed on all three platforms for three
+    reasons, all of them ours or Buffer's, and none of them anything a realtor
+    could have seen in the piece.
+
+    It goes back to NEEDS_APPROVAL rather than straight to APPROVED **on
+    purpose**. Nothing about the artefact changed, so a person clicking approve
+    again costs one click — and the invariant that a human approved the exact
+    thing that went out is worth more than the click. The failed publication
+    rows are left alone: they are the record of what happened, and the
+    publisher resets them itself when the piece is approved afresh.
+    """
+    piece = await db.get(ContentPiece, piece_id)
+    if piece is None:
+        raise HTTPException(status_code=404, detail="No such piece")
+    try:
+        advance(piece, ContentStatus.DRAFT)
+        advance(piece, ContentStatus.NEEDS_APPROVAL)
+    except IllegalTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    piece.approved_by = None
+    piece.approved_at = None
+    await db.commit()
+    await db.refresh(piece)
+    return PieceOut.model_validate(piece)
+
+
 @router.post("/upload", response_model=PieceOut, status_code=201)
 async def upload_clip(
     request: Request,

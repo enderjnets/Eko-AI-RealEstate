@@ -329,7 +329,7 @@ async def capture(
     return {"ok": True}
 
 
-@router.get("/content/{piece_id}/media")
+@router.api_route("/content/{piece_id}/media", methods=["GET", "HEAD"])
 async def public_media(request: Request, piece_id: int):
     """The video, for the platform that is about to post it.
 
@@ -342,6 +342,14 @@ async def public_media(request: Request, piece_id: int):
     in this Starlette version ignores them and returns the whole file with a
     200. Media fetchers ask for ranges, and a client that insists would see a
     broken video hours after the post was created.
+
+    **HEAD as well as GET, and that is not tidiness.** Starlette's own `Route`
+    adds HEAD to anything that answers GET; FastAPI's `APIRoute` does not, so
+    `@router.get` alone returns 405 to a HEAD. Buffer asks HEAD first to see
+    whether the media is really there, and on the 405 gave up with "Video could
+    not be read from its URL" — a message that points at the file, the URL and
+    the tunnel, none of which were the problem. Measured on the first real
+    publish attempt: `HEAD /api/v1/public/content/3/media 405`.
     """
     path = await resolve_public_media(piece_id)
     if path is None:
@@ -352,6 +360,15 @@ async def public_media(request: Request, piece_id: int):
     # Nothing in between may keep a copy: an edit revokes the piece's approval,
     # and a cached body would outlive that decision.
     headers = {"Cache-Control": "no-store", "Accept-Ranges": "bytes"}
+
+    if request.method == "HEAD":
+        # The headers a fetcher is asking for, and no body — the point of the
+        # request is to learn the size and type before spending the download.
+        return Response(
+            status_code=200,
+            media_type="video/mp4",
+            headers={**headers, "Content-Length": str(size)},
+        )
 
     try:
         span = parse_range(request.headers.get("range"), size)

@@ -144,12 +144,31 @@ def public_media_url(piece_id: int) -> str:
     return f"{base}/api/v1/public/content/{piece_id}/media"
 
 
+# YouTube will not take a video without a category. 26 is "Howto & Style",
+# which is what a channel that explains how pricing and selling work actually
+# is; the alternative default, 22 "People & Blogs", says nothing and is the
+# reason so much of that category is never recommended to anybody.
+YOUTUBE_CATEGORY_ID = "26"
+# YouTube truncates past 100 characters and TikTok past 90. The hook is written
+# to be read in a second, so this cuts almost nothing — but it cuts it here
+# rather than letting a platform do it mid-word.
+_TITLE_MAX = {PublicationPlatform.YOUTUBE: 100, PublicationPlatform.TIKTOK: 90}
+
+
+def _title_for(platform: PublicationPlatform, title: str, text: str) -> str:
+    """A headline for the platforms that demand one."""
+    chosen = (title or text.split("\n", 1)[0]).strip()
+    limit = _TITLE_MAX[platform]
+    return chosen if len(chosen) <= limit else chosen[: limit - 1].rstrip() + "…"
+
+
 def build_post_input(
     channel_id: str,
     platform: PublicationPlatform,
     text: str,
     video_url: str,
     ai_generated: bool,
+    title: str = "",
 ) -> dict[str, Any]:
     """The `CreatePostInput` for one platform.
 
@@ -158,11 +177,18 @@ def build_post_input(
     keeps the video Buffer downloads and the video a person approved the same
     video.
 
-    `isAiGenerated` goes only to TikTok, and only because TikTok's own field is
-    what it is. Sending platform-specific metadata to a platform that did not
-    ask for it is an unverified shape, and the value is derived from what the
-    piece actually is rather than hard-coded: a clip Natalia filmed is not
-    AI-generated and saying so would be a false declaration.
+    **Every platform here has required metadata, and the first real attempt is
+    what said so.** A version of this function sent metadata to TikTok only,
+    reasoning that anything else was an unverified shape. That was the right
+    instinct and the wrong conclusion: Buffer refused all three posts, and its
+    refusals named exactly what was missing — YouTube "require a title… require
+    a category", Instagram "require a type (post, story, or reel)". The field
+    names and the enum values below were then read out of Buffer's own schema
+    by introspection, not guessed.
+
+    `isAiGenerated` is derived from what the piece is, never hard-coded: a clip
+    Natalia filmed in front of a house is not AI-generated, and declaring it so
+    would be a false statement on the agency's own channel.
     """
     inp: dict[str, Any] = {
         "channelId": channel_id,
@@ -172,8 +198,33 @@ def build_post_input(
         # No thumbnailUrl. Buffer rejects the whole post if one is present.
         "assets": [{"video": {"url": video_url}}],
     }
+    ai = bool(ai_generated)
     if platform is PublicationPlatform.TIKTOK:
-        inp["metadata"] = {"tiktok": {"isAiGenerated": bool(ai_generated)}}
+        inp["metadata"] = {
+            "tiktok": {
+                "isAiGenerated": ai,
+                "title": _title_for(platform, title, text),
+            }
+        }
+    elif platform is PublicationPlatform.YOUTUBE:
+        inp["metadata"] = {
+            "youtube": {
+                "title": _title_for(platform, title, text),
+                "categoryId": YOUTUBE_CATEGORY_ID,
+                "isAiGenerated": ai,
+            }
+        }
+    elif platform is PublicationPlatform.INSTAGRAM:
+        # A vertical video under 90 seconds is a reel; posting it as a feed
+        # post would put a portrait video in a square frame. `shouldShareToFeed`
+        # is required by the schema and true is the point of publishing at all.
+        inp["metadata"] = {
+            "instagram": {
+                "type": "reel",
+                "shouldShareToFeed": True,
+                "isAiGenerated": ai,
+            }
+        }
     return inp
 
 
@@ -277,6 +328,7 @@ async def _send(
         text=text,
         video_url=video_url,
         ai_generated=piece.kind is ContentKind.GENERATED,
+        title=(piece.hook or "").strip(),
     )
 
     if get_settings().BUFFER_SIMULATED:

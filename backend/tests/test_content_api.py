@@ -664,3 +664,60 @@ async def test_an_unsent_field_is_left_alone(database_url: str) -> None:
     finally:
         await _cleanup()
 
+
+
+async def _seeded(status: ContentStatus) -> int:
+    """A piece sitting in `status`, for the tests that start from one."""
+    async with get_bypass_session_factory()() as db:
+        from app.models import ContentKind, ContentLanguage, ContentPiece
+
+        piece = ContentPiece(
+            org_id=1,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=status,
+            hook=CLEAN["hook"],
+            approved_by="someone@example.com",
+        )
+        db.add(piece)
+        await db.commit()
+        return piece.id
+
+
+@pytest.mark.asyncio
+async def test_a_piece_that_failed_to_publish_can_be_tried_again(
+    database_url: str,
+) -> None:
+    """FAILED was a dead end, and the commonest cause of it is not the video.
+
+    The first real publish of this installation failed on all three platforms
+    for three reasons — a 405 on our own media route, and two pieces of
+    metadata Buffer requires — none of which a realtor could have seen in the
+    piece. Without this the only way out was an UPDATE by hand on production.
+    """
+    try:
+        piece_id = await _seeded(ContentStatus.FAILED)
+        async with _client() as client:
+            resp = await client.post(f"/api/v1/content/{piece_id}/retry")
+        assert resp.status_code == 200
+        # Back in front of a person, not straight out the door: nothing about
+        # the artefact changed, so approving again costs one click and keeps
+        # the invariant that a human approved what actually went out.
+        assert resp.json()["status"] == "needs_approval"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_retry_is_refused_on_a_piece_that_did_publish(
+    database_url: str,
+) -> None:
+    """PUBLISHED is a statement about the outside world, and nothing in here
+    can un-post a video."""
+    try:
+        piece_id = await _seeded(ContentStatus.PUBLISHED)
+        async with _client() as client:
+            resp = await client.post(f"/api/v1/content/{piece_id}/retry")
+        assert resp.status_code == 409
+    finally:
+        await _cleanup()

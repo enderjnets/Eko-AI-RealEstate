@@ -2,6 +2,22 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.67.4] — 2026-08-31
+
+### Fixed
+- **`HEAD` on the public media route.** Starlette's `Route` adds HEAD to
+  anything answering GET; FastAPI's `APIRoute` does not, so `@router.get`
+  returned 405. Buffer probes with HEAD before downloading and refused the post
+  with "Video could not be read from its URL" — a message pointing at the file,
+  the URL and the tunnel, none of which were the problem.
+- **Required post metadata per platform**, read out of Buffer's schema by
+  introspection after the first real attempt was refused three times: YouTube
+  needs `title` + `categoryId`, Instagram needs `type` + `shouldShareToFeed`.
+  `isAiGenerated` now goes to all three — every one of them exposes it.
+- The caption's AI disclosure said "Contains AI-generated visuals" on videos
+  whose every picture is a licensed Pexels photograph. It names the synthetic
+  narration instead, which is what is actually true of every generated piece.
+
 ## [0.67.3] — 2026-08-30
 
 ### Fixed

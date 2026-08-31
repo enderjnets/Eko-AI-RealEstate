@@ -210,13 +210,52 @@ def test_the_post_never_carries_a_thumbnail_url() -> None:
     assert built["assets"][0]["video"] == {"url": "https://x/v.mp4"}
 
 
-def test_ai_disclosure_goes_only_to_tiktok_and_tells_the_truth() -> None:
-    tiktok = build_post_input(TT, PublicationPlatform.TIKTOK, "t", "u", False)
-    youtube = build_post_input(YT, PublicationPlatform.YOUTUBE, "t", "u", True)
-    # A clip Natalia filmed is not AI-generated, and declaring it as one would
-    # be a false statement on the platform's own field.
-    assert tiktok["metadata"]["tiktok"]["isAiGenerated"] is False
-    assert "metadata" not in youtube
+def test_ai_is_declared_on_every_platform_and_tells_the_truth() -> None:
+    """All three take the field; a clip Natalia filmed is not AI-generated, and
+    declaring it as one would be a false statement on the agency's channel."""
+    filmed = build_post_input(TT, PublicationPlatform.TIKTOK, "t", "u", False)
+    assert filmed["metadata"]["tiktok"]["isAiGenerated"] is False
+    for channel, platform, key in (
+        (TT, PublicationPlatform.TIKTOK, "tiktok"),
+        (YT, PublicationPlatform.YOUTUBE, "youtube"),
+        (IG, PublicationPlatform.INSTAGRAM, "instagram"),
+    ):
+        built = build_post_input(channel, platform, "t", "u", True)
+        assert built["metadata"][key]["isAiGenerated"] is True
+
+
+def test_every_platform_gets_the_metadata_it_refuses_a_post_without() -> None:
+    """Measured, not guessed. The first real publish attempt was rejected three
+    times over: YouTube "require a title... require a category", Instagram
+    "require a type (post, story, or reel)". The names below were then read out
+    of Buffer's schema by introspection.
+    """
+    youtube = build_post_input(
+        YT, PublicationPlatform.YOUTUBE, "body", "u", True, title="A headline"
+    )
+    assert youtube["metadata"]["youtube"]["title"] == "A headline"
+    assert youtube["metadata"]["youtube"]["categoryId"]
+
+    instagram = build_post_input(IG, PublicationPlatform.INSTAGRAM, "b", "u", True)
+    # A portrait video posted to the feed would be shown in a square frame.
+    assert instagram["metadata"]["instagram"]["type"] == "reel"
+    assert instagram["metadata"]["instagram"]["shouldShareToFeed"] is True
+
+
+def test_a_title_too_long_is_cut_here_rather_than_by_the_platform() -> None:
+    """YouTube truncates past 100 characters, and it does it mid-word."""
+    built = build_post_input(
+        YT, PublicationPlatform.YOUTUBE, "b", "u", True, title="x" * 180
+    )
+    assert len(built["metadata"]["youtube"]["title"]) == 100
+
+
+def test_with_no_hook_the_title_falls_back_to_the_first_line() -> None:
+    """A platform that requires a title must never receive an empty one."""
+    built = build_post_input(
+        YT, PublicationPlatform.YOUTUBE, "First line\nsecond", "u", True, title=""
+    )
+    assert built["metadata"]["youtube"]["title"] == "First line"
 
 
 def test_nothing_is_scheduled_for_later() -> None:

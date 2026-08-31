@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.67.3";
+export const CURRENT_VERSION = "0.67.4";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.67.4",
+    date: "2026-08-31",
+    title: {
+      en: "What the first real post taught us",
+      es: "Lo que ense\u00f1\u00f3 la primera publicaci\u00f3n real",
+    },
+    changes: [
+      {
+        en: "The video link now answers a HEAD request. Buffer checks the media that way before downloading it, got a 405, and refused the post saying the video could not be read \u2014 pointing at everything except the cause.",
+        es: "El enlace del v\u00eddeo ya responde a una petici\u00f3n HEAD. Buffer comprueba as\u00ed el medio antes de descargarlo, recib\u00eda un 405 y rechazaba el post diciendo que no pod\u00eda leer el v\u00eddeo \u2014 se\u00f1alando a todo menos a la causa.",
+      },
+      {
+        en: "YouTube posts carry a title and a category, and Instagram posts are published as reels. Both platforms refuse a post without them.",
+        es: "Los posts de YouTube llevan t\u00edtulo y categor\u00eda, y los de Instagram se publican como reels. Las dos plataformas rechazan un post sin eso.",
+      },
+      {
+        en: "The AI disclosure in the caption names the synthetic narration instead of claiming AI-generated visuals \u2014 every picture in these videos is a licensed photograph.",
+        es: "El aviso de IA en el pie nombra la narraci\u00f3n sint\u00e9tica en vez de afirmar que hay im\u00e1genes generadas \u2014 cada foto de estos v\u00eddeos es una fotograf\u00eda con licencia.",
+      },
+    ],
+  },
   {
     version: "0.67.3",
     date: "2026-08-30",

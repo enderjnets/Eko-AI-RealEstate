@@ -167,3 +167,44 @@ async def test_the_route_answers_range_requests(
         assert resp.content == BYTES[:10]
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_head_request_is_answered_not_refused(
+    database_url: str, media_dir: Path
+) -> None:
+    """The bug that stopped the first real publish.
+
+    Starlette's own Route adds HEAD to anything answering GET; FastAPI's
+    APIRoute does not, so `@router.get` alone returned 405. Buffer asks HEAD
+    first to check the media is really there, and on the 405 refused the post
+    with "Video could not be read from its URL" — a message pointing at the
+    file, the URL and the tunnel, none of which were the problem.
+    """
+    try:
+        piece_id = await _piece(ContentStatus.APPROVED)
+        async with _client() as client:
+            resp = await client.head(f"/api/v1/public/content/{piece_id}/media")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "video/mp4"
+        assert resp.headers["content-length"] == str(len(BYTES))
+        assert resp.headers["accept-ranges"] == "bytes"
+        # Headers only: the point of the request is to learn the size before
+        # spending the download.
+        assert resp.content == b""
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_head_obeys_the_same_gate_as_get(
+    database_url: str, media_dir: Path
+) -> None:
+    """Answering HEAD must not become a way to learn that a draft exists."""
+    try:
+        piece_id = await _piece(ContentStatus.DRAFT)
+        async with _client() as client:
+            resp = await client.head(f"/api/v1/public/content/{piece_id}/media")
+        assert resp.status_code == 404
+    finally:
+        await _cleanup()

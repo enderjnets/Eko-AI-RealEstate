@@ -540,6 +540,9 @@ export const contentApi = {
     api<ContentPiece>(`/v1/content/${id}/submit`, { method: "POST" }),
   approve: (id: number) =>
     api<ContentPiece>(`/v1/content/${id}/approve`, { method: "POST" }),
+  /** A piece that failed to publish, back in front of a person. */
+  retry: (id: number) =>
+    api<ContentPiece>(`/v1/content/${id}/retry`, { method: "POST" }),
   reject: (id: number, reason: string) =>
     api<ContentPiece>(`/v1/content/${id}/reject`, {
       method: "POST",
