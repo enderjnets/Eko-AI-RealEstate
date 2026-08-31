@@ -34,7 +34,7 @@ from app.models import (
     PublicationPlatform,
     PublicationStatus,
 )
-from app.services import buffer_publisher
+from app.services import buffer_publisher, content_studio
 from app.services.buffer_publisher import (
     BufferRefused,
     QuotaReached,
@@ -79,7 +79,7 @@ def _publishing_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     # row migration 015 creates, which is `trial` and therefore part of every
     # sweep. Naming whose channels these are is not test scaffolding: it is
     # what production has to set too, and the guard refuses without it.
-    monkeypatch.setattr(s, "CONTENT_PUBLISH_ORG_ID", ORG, raising=False)
+    monkeypatch.setattr(s, "CONTENT_ORG_ID", ORG, raising=False)
 
 
 async def _cleanup() -> None:
@@ -429,10 +429,10 @@ async def test_a_second_agency_cannot_publish_to_the_first_ones_channels(
     async def _two_agencies(acting):
         return True
 
-    monkeypatch.setattr(buffer_publisher, "_other_orgs_exist", _two_agencies)
+    monkeypatch.setattr(content_studio, "other_orgs_exist", _two_agencies)
     # Nobody has said whose channels these are — which is the state a fresh
     # install is in, and the state this guard exists for.
-    monkeypatch.setattr(get_settings(), "CONTENT_PUBLISH_ORG_ID", 0, raising=False)
+    monkeypatch.setattr(get_settings(), "CONTENT_ORG_ID", 0, raising=False)
     try:
         await _approved_piece()
         with org_scope(ORG):
@@ -441,9 +441,7 @@ async def test_a_second_agency_cannot_publish_to_the_first_ones_channels(
         assert recorder.sent == []
 
         # Named explicitly, it publishes again — for that org and no other.
-        monkeypatch.setattr(
-            get_settings(), "CONTENT_PUBLISH_ORG_ID", ORG, raising=False
-        )
+        monkeypatch.setattr(get_settings(), "CONTENT_ORG_ID", ORG, raising=False)
         with org_scope(ORG):
             async with get_session_factory()() as db:
                 assert await publish_approved(db) == 1

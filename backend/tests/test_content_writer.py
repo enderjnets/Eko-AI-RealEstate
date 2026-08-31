@@ -22,6 +22,20 @@ from app.services.content_writer import generate_draft
 from app.services.llm import LLMResult
 from app.services.tenant_context import org_scope
 
+
+@pytest.fixture(autouse=True)
+def _this_is_our_rail(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Name whose content rail this is, exactly as production has to.
+
+    Every worker on the rail refuses to act for an organization that is not
+    the one named — the demo org migration 015 creates is a real tenant in
+    every sweep, and it was quietly getting its own daily draft. A test that
+    exercises the rail has to say whose it is, like the install does.
+    """
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "CONTENT_ORG_ID", 1, raising=False)
+
 ORG = 1
 
 

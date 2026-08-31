@@ -329,6 +329,11 @@ async def render_pending(db: AsyncSession) -> int:
     worker here. One at a time — ffmpeg saturates the cores it gets, and two
     renders in parallel on this box is one render at half speed twice.
     """
+    from app.services.content_studio import not_our_rail
+
+    if await not_our_rail() is not None:
+        return 0
+
     settings_row = (
         await db.execute(select(AgentSettings))
     ).scalars().first()
@@ -431,8 +436,11 @@ async def enqueue_generated(db: AsyncSession) -> int:
     six images on text a person still has to rewrite.
     """
     from app.models import RenderJobKind
+    from app.services.content_studio import not_our_rail
 
     if not get_settings().RENDER_WORKER_ENABLED:
+        return 0
+    if await not_our_rail() is not None:
         return 0
 
     settings_row = (await db.execute(select(AgentSettings))).scalars().first()

@@ -62,6 +62,7 @@ from app.services.content_studio import (
     NotPublishable,
     advance,
     ensure_publishable,
+    not_our_rail,
 )
 from app.services.tenant_context import get_org_id
 
@@ -288,29 +289,6 @@ async def _send(
     return parse_create_post(await _graphql(_CREATE_POST, {"input": payload_in}))
 
 
-async def _other_orgs_exist(acting: int | None) -> bool:
-    """Is this installation serving more than this one organization?
-
-    Read on the bypass engine, because the question is about the installation
-    rather than about any tenant, and under RLS a tenant cannot see that there
-    are others.
-    """
-    from sqlalchemy import func as sa_func
-
-    from app.db.base import get_bypass_session_factory
-    from app.models.organization import STATUS_SUSPENDED, Organization
-
-    async with get_bypass_session_factory()() as meta:
-        return (
-            await meta.execute(
-                select(sa_func.count()).select_from(Organization).where(
-                    Organization.status != STATUS_SUSPENDED,
-                    Organization.id != (acting or -1),
-                )
-            )
-        ).scalar_one() > 0
-
-
 async def _claimed_today(db: AsyncSession) -> int:
     """Pieces claimed today, not posts.
 
@@ -492,30 +470,13 @@ async def publish_approved(db: AsyncSession) -> int:
         log.warning("Publishing is configured but unusable: %s", reason)
         return 0
 
-    # WHOSE channels are these? `BUFFER_CHANNEL_*` is one set of ids for the
-    # whole installation, so publishing is an operator capability and not a
-    # per-tenant one — there is no per-organization Buffer target the way
-    # `channel_routes` gives each agency its own phone number and mailbox.
-    # This sweep runs for EVERY organization, so without this guard the day a
-    # second agency uses the content rail, their approved video is posted to
-    # the first agency's YouTube, TikTok and Instagram. Refuse instead, loudly.
-    acting = get_org_id()
-    allowed = get_settings().CONTENT_PUBLISH_ORG_ID
-    if allowed:
-        if acting != allowed:
-            return 0
-    else:
-        others = await _other_orgs_exist(acting)
-        if others:
-            log.error(
-                "Publishing is enabled, this installation has more than one "
-                "organization, and CONTENT_PUBLISH_ORG_ID says whose channels "
-                "BUFFER_CHANNEL_* are. Nothing will be published until it is "
-                "set — posting org %s's video to another agency's channels is "
-                "not a recoverable mistake.",
-                acting,
-            )
-            return 0
+    # Whose rail is this. The same question the writer and the render queue
+    # ask, answered in one place — three copies of it is how they drift apart,
+    # and the drift here would post one agency's video to another's channels.
+    blocked = await not_our_rail()
+    if blocked is not None:
+        log.warning("Not publishing: %s", blocked)
+        return 0
 
     claimed = await _claimed_today(db)
     if claimed >= settings.CONTENT_PUBLISH_MAX_PER_DAY:

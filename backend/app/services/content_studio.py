@@ -103,6 +103,54 @@ _ALLOWED: dict[ContentStatus, set[ContentStatus]] = {
 PUBLISHING_AVAILABLE = True
 
 
+async def other_orgs_exist(acting: int | None) -> bool:
+    """Is this installation serving more than this one organization?
+
+    Read on the bypass engine: the question is about the installation rather
+    than about any tenant, and under RLS a tenant cannot see that there are
+    others.
+    """
+    from sqlalchemy import func as sa_func
+
+    from app.db.base import get_bypass_session_factory
+    from app.models.organization import STATUS_SUSPENDED, Organization
+
+    async with get_bypass_session_factory()() as meta:
+        return (
+            await meta.execute(
+                select(sa_func.count())
+                .select_from(Organization)
+                .where(
+                    Organization.status != STATUS_SUSPENDED,
+                    Organization.id != (acting or -1),
+                )
+            )
+        ).scalar_one() > 0
+
+
+async def not_our_rail() -> str | None:
+    """Why the content rail must not run for the acting organization, or None.
+
+    Every worker on this rail calls it — the writer, the lane B queue and the
+    publisher — because they all answer the same question and three copies of
+    an answer is how they drift apart. `run_for_every_org` visits every tenant
+    by design; the rail belongs to exactly one.
+    """
+    from app.config import get_settings
+    from app.services.tenant_context import get_org_id
+
+    acting = get_org_id()
+    allowed = get_settings().CONTENT_ORG_ID
+    if allowed:
+        return None if acting == allowed else f"the content rail belongs to org {allowed}"
+    if await other_orgs_exist(acting):
+        return (
+            "this installation has more than one organization and "
+            "CONTENT_ORG_ID does not say whose content rail this is"
+        )
+    return None
+
+
 def text_violations(
     *,
     hook: str | None,

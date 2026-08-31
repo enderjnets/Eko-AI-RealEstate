@@ -45,6 +45,16 @@ ENGLISH = (
 )
 
 
+@pytest.fixture(autouse=True)
+def _this_is_our_rail(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Name whose rail this is, exactly as production has to.
+
+    This installation really does carry a second organization — the "Demo" row
+    migration 015 creates, which is `trial` and therefore part of every sweep.
+    """
+    monkeypatch.setattr(get_settings(), "CONTENT_ORG_ID", ORG, raising=False)
+
+
 @pytest.fixture
 def database_url() -> str:
     url = os.environ.get("DATABASE_URL", "")
@@ -445,6 +455,50 @@ async def test_nothing_is_queued_without_a_brokerage_line(
                 )
             )
             await db.commit()
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_demo_organization_gets_no_content_of_its_own(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Found in production on the first day of generation.
+
+    `run_for_every_org` visits every tenant by design, so the writer produced a
+    second draft every day for the demo organization migration 015 creates —
+    a second LLM bill, and a second image bill once Kling has a key, for
+    content nobody would ever look at and that the publisher would refuse
+    anyway. The rail belongs to one agency; every worker on it asks the same
+    question in the same place.
+    """
+    from app.services.content_render import enqueue_generated
+    from app.services.content_writer import generate_draft
+
+    monkeypatch.setattr(get_settings(), "RENDER_WORKER_ENABLED", True, raising=False)
+    monkeypatch.setattr(get_settings(), "CONTENT_STUDIO_ENABLED", True, raising=False)
+    await _brokerage()
+    try:
+        # A piece that WOULD qualify, but belongs to somebody else.
+        async with get_bypass_session_factory()() as db:
+            piece = ContentPiece(
+                org_id=ORG + 1,
+                kind=ContentKind.GENERATED,
+                language=ContentLanguage.EN,
+                status=ContentStatus.NEEDS_APPROVAL,
+                hook="h",
+                script=ENGLISH,
+                caption="c",
+                scenes={"narration": ENGLISH, "scenes": [{"visual_prompt": "a street", "on_screen_text": "x"}]},
+            )
+            db.add(piece)
+            await db.commit()
+
+        with org_scope(ORG + 1):
+            async with get_session_factory()() as db:
+                # Nothing generated for them, and nothing rendered for them.
+                assert await generate_draft(db) is None
+                assert await enqueue_generated(db) == 0
+    finally:
         await _cleanup()
 
 

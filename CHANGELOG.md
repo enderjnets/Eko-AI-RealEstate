@@ -2,6 +2,32 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.67.2] — 2026-08-30
+
+### Corregido — lo que destapó encender la generación de verdad
+
+- 🔴 **«single-family home» retenía borradores.** Es como el sector inmobiliario
+  estadounidense llama a una vivienda unifamiliar, y la denylist veía «family»
+  como palabra suelta. Cazado en la primerísima generación real. La exención
+  quita el compuesto ANTES de comparar, así que «a family standing outside a
+  single-family home» sigue cayendo por el primer «family».
+- 🔴 **La organización «Demo» generaba su propio contenido cada día.**
+  `run_for_every_org` visita todos los inquilinos por diseño y nada le decía de
+  quién es este carril: dos facturas de LLM al día —y dos de imágenes en cuanto
+  Kling tenga clave— para contenido que nadie miraría y que el publicador
+  habría rechazado igual. `CONTENT_PUBLISH_ORG_ID` pasa a llamarse
+  **`CONTENT_ORG_ID`** y lo consultan **todos** los trabajadores del carril: el
+  escritor, las dos colas de render y el publicador. Es una sola pregunta.
+- El primer guion volvió **truncado** y se tiró a la basura: `max_tokens=900`
+  era el tope de cuando un borrador eran tres cadenas cortas. Sube a 2000, y el
+  prompt deja de pedir `narration`, que duplicaba `script` casi palabra por
+  palabra.
+- Un borrador envuelto en ```` ```json ```` se descartaba como malformado. Una
+  generación pagada perdida por tres comillas invertidas.
+- Los subtítulos partían un precio en dos líneas y ponían un espacio antes de
+  la coma: se conserva el espaciado que Whisper indica y un fragmento que
+  continúa una palabra nunca abre línea.
+
 ## [0.67.1] — 2026-08-30
 
 ### Corregido — hallazgos de la auditoría del carril B

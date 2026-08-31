@@ -37,7 +37,7 @@ from app.models import (
     ContentPiece,
     ContentStatus,
 )
-from app.services.content_studio import advance, text_violations
+from app.services.content_studio import advance, not_our_rail, text_violations
 from app.services.content_topics import Topic, next_topic
 from app.services.lang_guard import wrong_language
 from app.services.llm import generate_reply
@@ -312,6 +312,14 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
     """One draft, gated, or None with the reason in the log."""
     settings = get_settings()
     if not settings.CONTENT_STUDIO_ENABLED:
+        return None
+
+    # Whose rail is this. `run_for_every_org` visits every tenant by design,
+    # and without this the demo organization got its own draft every day — a
+    # second LLM bill for content nobody would ever look at, and which the
+    # publisher would refuse anyway.
+    blocked = await not_our_rail()
+    if blocked is not None:
         return None
 
     made_today = await _generated_today(db)

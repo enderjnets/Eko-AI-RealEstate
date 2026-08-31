@@ -125,8 +125,20 @@ def test_music_is_skipped_on_a_silent_clip(tmp_path: Path) -> None:
 # ── Captions ─────────────────────────────────────────────────────────────
 
 
+# Whisper's tokens carry their OWN leading space — " Homes", " $612" — while a
+# fragment that continues the previous word carries none, like ",000" or
+# "-minute". The grouper reads exactly that to decide where a line may break,
+# so a fixture built from bare strings would be testing a shape that never
+# arrives.
+def _spoken(*texts: str, step: float = 0.4) -> list[subtitles.Word]:
+    return [
+        subtitles.Word(i * step, i * step + step * 0.75, t)
+        for i, t in enumerate(texts)
+    ]
+
+
 def test_words_are_grouped_into_readable_lines() -> None:
-    words = [subtitles.Word(i * 0.4, i * 0.4 + 0.3, f"w{i}") for i in range(9)]
+    words = _spoken(*[f" w{i}" for i in range(9)])
     lines = subtitles.group(words, per_line=4)
     assert [len(line.text.split()) for line in lines] == [4, 4, 1]
 
@@ -134,12 +146,26 @@ def test_words_are_grouped_into_readable_lines() -> None:
 def test_a_pause_starts_a_new_line() -> None:
     """A caption that runs across a silence is out of sync with the speaker."""
     words = [
-        subtitles.Word(0.0, 0.3, "one"),
-        subtitles.Word(0.3, 0.6, "two"),
-        subtitles.Word(5.0, 5.3, "later"),
+        subtitles.Word(0.0, 0.3, " one"),
+        subtitles.Word(0.3, 0.6, " two"),
+        subtitles.Word(5.0, 5.3, " later"),
     ]
     lines = subtitles.group(words, per_line=4, max_gap=0.8)
     assert [line.text for line in lines] == ["one two", "later"]
+
+
+def test_a_price_is_never_split_across_two_captions() -> None:
+    """The bug this shape exists for, held as a test.
+
+    Whisper hands back "$680" and ",000" as separate tokens, and the second
+    carries no leading space because it continues the first. Breaking there
+    put "not the $680" on one caption and ",000 people were asking" on the
+    next — on a channel whose entire subject is the price.
+    """
+    words = _spoken(" not", " the", " $680", ",000", " people", " were")
+    lines = subtitles.group(words, per_line=4)
+    assert all("$680,000" in line.text or "$680" not in line.text for line in lines)
+    assert any("$680,000" in line.text for line in lines), [line.text for line in lines]
 
 
 def test_captions_sit_above_the_platform_furniture() -> None:

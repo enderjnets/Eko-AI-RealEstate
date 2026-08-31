@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.67.1";
+export const CURRENT_VERSION = "0.67.2";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.67.2",
+    date: "2026-08-30",
+    title: {
+      en: "The first real script, and what it found",
+      es: "El primer guion real, y lo que destap\u00f3",
+    },
+    changes: [
+      {
+        en: "\u201cSingle-family home\u201d is a kind of house, not a description of people \u2014 the Fair Housing filter was holding drafts over the industry's own word for a detached home.",
+        es: "\u00abSingle-family home\u00bb es un tipo de casa, no una descripci\u00f3n de personas \u2014 el filtro reten\u00eda borradores por la palabra que el sector usa para una vivienda unifamiliar.",
+      },
+      {
+        en: "Content is made for your agency only. A second, unused organization on the installation was quietly getting a draft of its own every day.",
+        es: "El contenido se hace solo para tu agencia. Una segunda organizaci\u00f3n sin uso estaba recibiendo su propio borrador cada d\u00eda.",
+      },
+    ],
+  },
   {
     version: "0.67.1",
     date: "2026-08-30",
