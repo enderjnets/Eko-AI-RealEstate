@@ -6,6 +6,82 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## 🔴 PENDIENTES ANTES DE ENCENDER LA PRODUCCIÓN DE VÍDEOS (30-ago-2026)
+
+Nada de esto se enciende hasta que las cuatro estén hechas. Orden por lo que
+desbloquea, no por esfuerzo.
+
+| # | Qué | De quién | Estado |
+|---|---|---|---|
+| 1 | Línea de brokerage en Ajustes | dueño | ✅ **hecho** — `Engel & Völkers Aspen`, verificado en la base de producción |
+| 2 | La voz del canal | dueño | ✅ **hecho** — `English_CalmWoman` a 1,06 con emoción, elegida entre cuatro variantes |
+| 3 | Música de fondo | dueño | ✅ **hecho** — 4 pistas de Pixabay, licencia verificada, instaladas y recomprimidas |
+| 4 | **Completar los perfiles de los tres canales** | dueño | 🔴 **PENDIENTE — bloquea el encendido** |
+| 5 | Instalar el obrero en el ROG | yo | 🔴 **bloqueado**: la máquina está encendida pero no da shell (ver abajo) |
+
+### 4 · Los perfiles de los canales — por qué bloquea
+
+Decisión del dueño (30-ago): **no se enciende la producción hasta que los tres
+perfiles estén completos.** Y es la decisión correcta: los vídeos existen para
+llevar tráfico a `denverhomestory.com`, y hoy **el canal de YouTube no tiene ni
+descripción, ni país, ni enlace**. Publicar en un perfil vacío es gastar
+producción en un embudo que no recoge — la misma regla de orden del 27-ago que
+dice que no se manda tráfico a una puerta que no atiende nadie.
+
+**No lo puedo hacer yo, y la razón es distinta en cada plataforma:**
+
+- **TikTok e Instagram no tienen API para editar la biografía.** No falta una
+  credencial: el endpoint no existe. Publicar, leer métricas y responder
+  comentarios sí; el perfil se edita a mano por diseño de las dos plataformas.
+- **YouTube sí tiene** `channels.update` para descripción y país, pero exige un
+  OAuth propio con proyecto de Google Cloud en modo *Production* — justo el
+  trámite que este proyecto evitó usando Buffer. Montarlo para cambiar dos
+  campos una vez cuesta más que pegarlos.
+- **La vía del navegador se intentó y falló**: la extensión de Chrome no crea
+  el grupo de pestañas (tres intentos). Si el dueño la reinicia, se retoma.
+
+Textos listos para copiar, con enlaces directos y el porqué de cada línea:
+`~/Downloads/dhs-perfiles.md`. Los tres pasan el filtro Fair Housing
+(comprobado) e identifican la brokerage, porque una descripción de canal es
+publicidad permanente y Colorado la regula igual que a un anuncio.
+
+Lo que más rinde no es la descripción: son el **país** (YouTube lo usa para
+decidir a quién recomendar el canal; vacío, compite contra el planeta) y el
+**enlace** sobre el banner.
+
+---
+
+## 🔴 EL ROG NO DA SHELL — Y SE LLEVÓ POR DELANTE EL TERCER RESPALDO DE LLM
+
+Medido el 30-ago, y el diagnóstico cambió a mitad de camino:
+
+| Prueba | Resultado | Qué significa |
+|---|---|---|
+| `ping 10.0.0.240` | **0 % de pérdida** | la máquina está en la red |
+| TCP al puerto 22 | **acepta** | el kernel vive y `sshd` escucha |
+| `ssh` | «timed out during **banner exchange**» | conectó y `sshd` nunca envió su saludo |
+| Puerto 7777 (Coqui) | abierto | otro servicio sigue vivo |
+| Puertos 11434 (ollama) y 8188 (ComfyUI) | **sin respuesta** | esos sí están caídos |
+| Latencia del ping en LAN | min 11 ms, media 31, máx 66 | **altísima para una LAN** (lo normal es <2 ms) |
+
+**No está apagada: está asfixiada.** Una máquina apagada no completa el TCP ni
+llega a «banner exchange» — ese mensaje solo aparece cuando la conexión SE
+ESTABLECIÓ y el servidor no consiguió avanzar. Con procesos caídos, latencia de
+LAN por las nubes y `sshd` aceptando sin poder continuar, el cuadro es falta de
+recursos. Sospecha principal, por historial de esa máquina: **el disco**. Ya
+estuvo al 91 % y al 99 %, y esa vez corrompió objetos de git.
+
+🔴 **Consecuencia en producción, ahora mismo:** `/api/v1/health` por el dominio
+dice **`llm_fallback: "unreachable"`**. El VPS alcanza Ollama por la tailnet y
+la tailnet está muerta, así que **el tercer respaldo de LLM no existe**. Kimi y
+MiniMax siguen sirviendo, pero el 1-jun-2026 fallaron los dos a la vez y Ollama
+atendió a 10 leads reales. Hoy no podría: recibirían la línea enlatada.
+
+**Acción del dueño, y no es «encenderla»**: mirar la máquina en consola física
+y comprobar el disco antes que nada.
+
+---
+
 ## 🟡 v0.67.1 — LA VOZ ELEGIDA, Y EL FILTRO QUE NO OÍA (30-ago-2026)
 
 **La voz del canal: `English_CalmWoman` a 1,06 con emoción**, elegida por el

@@ -26,8 +26,16 @@ if ! ssh -o ConnectTimeout=20 "$ROG" true 2>/dev/null; then
     echo "El ROG no responde por '$ROG'. Probando la tailnet…"
     ROG="${ROG}-ts"
     ssh -o ConnectTimeout=20 "$ROG" true || {
-        echo "Tampoco por la tailnet. La máquina no está en la red: apagada," \
-             "suspendida o sin enlace. No se instala nada a ciegas."
+        echo "Tampoco por la tailnet. No se instala nada a ciegas."
+        echo
+        echo "Para saber QUÉ pasa, y son diagnósticos distintos:"
+        echo "  ping 10.0.0.240          # ¿está en la red?"
+        echo "  nc -z -v -w 6 10.0.0.240 22   # ¿acepta el TCP?"
+        echo
+        echo "Si el ping va y el TCP acepta pero ssh dice \"banner exchange\","
+        echo "la máquina NO está apagada: está asfixiada — sshd acepta y no"
+        echo "puede avanzar. Mirar el disco antes que nada; esta máquina ya"
+        echo "estuvo al 99% y corrompió objetos de git."
         exit 1
     }
 fi
