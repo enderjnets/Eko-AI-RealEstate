@@ -1,0 +1,18 @@
+Piano Background Music
+ARPMedia
+
+Fuente:   Pixabay — https://pixabay.com/music/
+Id:       577850
+Fichero original: arpmedia-piano-background-music-577850.mp3
+Descargada por el dueño el 30-ago-2026.
+
+Licencia: Pixabay Content License (verificada en
+          https://pixabay.com/service/license-summary/ el 30-ago-2026).
+          Uso comercial permitido. Atribución NO obligatoria.
+          Prohibido revender o redistribuir la pista por separado — que es
+          justo lo que no hacemos: va de fondo, atenuada, bajo una locución.
+
+Uso aquí: cama musical de los vídeos de Denver Home Story, mezclada por debajo
+          de la narración con compresión lateral. Recortada a 100 s y
+          recomprimida a 128 kbps: el vídeo más largo son 90 s y la cama se
+          corta con la voz, así que el resto era peso de despliegue inaudible.

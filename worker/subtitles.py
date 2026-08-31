@@ -70,8 +70,14 @@ def transcribe(audio_or_video: Path, language: str = "en") -> list[Word]:
         words: list[Word] = []
         for segment in segments:
             for word in segment.words or []:
-                text = (word.word or "").strip()
-                if text:
+                # Whisper's tokens carry their OWN leading space — " Homes",
+                # " $612", but ",000" and "." with none, because that is how
+                # the text reads. Stripping them and rejoining with spaces put
+                # a gap before every comma and full stop: a caption saying
+                # "$612 ,000" on a video whose whole subject is a price. Kept
+                # verbatim and joined with nothing instead.
+                text = word.word or ""
+                if text.strip():
                     words.append(Word(float(word.start), float(word.end), text))
         return words
     except Exception:  # noqa: BLE001 — a caption failure must not lose the video
@@ -105,12 +111,21 @@ def group(words: list[Word], per_line: int = 4, max_gap: float = 0.8) -> list[Wo
     def flush() -> None:
         if buffer:
             lines.append(
-                Word(buffer[0].start, buffer[-1].end, " ".join(w.text for w in buffer))
+                Word(
+                    buffer[0].start,
+                    buffer[-1].end,
+                    "".join(w.text for w in buffer).strip(),
+                )
             )
             buffer.clear()
 
     for word in words:
-        if buffer and (
+        # A token with no leading space CONTINUES the previous one — ",000"
+        # after "$680", "-minute" after "15". Breaking there splits a price
+        # across two captions on a video whose entire subject is that price,
+        # so a continuation never starts a line however full the buffer is.
+        continues = bool(buffer) and not word.text[:1].isspace()
+        if buffer and not continues and (
             len(buffer) >= per_line or word.start - buffer[-1].end > max_gap
         ):
             flush()
