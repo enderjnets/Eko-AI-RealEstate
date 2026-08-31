@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.67.2";
+export const CURRENT_VERSION = "0.67.3";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.67.3",
+    date: "2026-08-30",
+    title: {
+      en: "Captions that read, and an ending that arrives",
+      es: "Subt\u00edtulos que se leen, y un final que llega",
+    },
+    changes: [
+      {
+        en: "Captions are yellow with a heavy outline, and the word being spoken grows as it is said \u2014 white text disappears over a bright photograph, which is most of them.",
+        es: "Los subt\u00edtulos van en amarillo con borde grueso, y la palabra que se pronuncia crece al decirse \u2014 el texto blanco desaparece sobre una foto clara, que son casi todas.",
+      },
+      {
+        en: "Generated videos no longer stop before the script does. The pauses between scenes belonged to no scene, so the picture track came out shorter than the voice and the ending was cut off mid-sentence.",
+        es: "Los v\u00eddeos generados ya no se paran antes que el guion. Las pausas entre escenas no pertenec\u00edan a ninguna, as\u00ed que la imagen sal\u00eda m\u00e1s corta que la voz y el final se cortaba a mitad de frase.",
+      },
+      {
+        en: "A render whose picture track is shorter than its narration now fails with the reason, instead of shipping a video with the last words missing.",
+        es: "Un montaje cuya imagen dure menos que la narraci\u00f3n ahora falla diciendo por qu\u00e9, en vez de entregar un v\u00eddeo sin las \u00faltimas palabras.",
+      },
+    ],
+  },
   {
     version: "0.67.2",
     date: "2026-08-30",

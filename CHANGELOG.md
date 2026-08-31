@@ -2,6 +2,23 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.67.3] — 2026-08-30
+
+### Fixed
+- **Generated videos ended four words early.** Scene spans ran from the first
+  word of a group to the last, so every pause BETWEEN groups belonged to no
+  scene. The picture track came out shorter than the voice by the sum of those
+  pauses and `-shortest` took the difference off the end — exit code 0, nothing
+  in the log. Spans now tile the audio; `apad` plus an explicit length replaces
+  `-shortest`; and the result is measured against the last word before the
+  render continues.
+- The end card is timed against the video's measured length, not the planned
+  one, so the brokerage identification cannot be squeezed off the end.
+
+### Changed
+- Captions are yellow (#FFFF00) on a heavy black outline, and the spoken word is
+  drawn at 126% as it is said.
+
 ## [0.67.2] — 2026-08-30
 
 ### Corregido — lo que destapó encender la generación de verdad

@@ -330,6 +330,41 @@ def test_the_last_scene_runs_to_the_end_of_the_audio() -> None:
     assert spans[-1][1] == 9.0
 
 
+def test_the_scenes_cover_the_whole_narration_with_no_gaps() -> None:
+    """The bug that cut four words off the end of a piece a person was shown.
+
+    Each scene used to end on the last word of its group and the next began on
+    the first word of the next group, so every PAUSE between them belonged to
+    no scene. The picture track came out shorter than the voice by the sum of
+    those pauses and `-shortest` took the difference off the end — silently,
+    exit code 0. The spans must tile the audio: no gap, no overlap.
+    """
+    words = [
+        subtitles.Word(0.0, 0.8, "one"),
+        subtitles.Word(0.8, 1.6, "two"),
+        # A breath. This is the time that used to disappear.
+        subtitles.Word(3.0, 3.8, "three"),
+        subtitles.Word(3.8, 4.6, "four"),
+        subtitles.Word(6.0, 6.8, "five"),
+        subtitles.Word(6.8, 7.6, "six"),
+    ]
+    spans = produce.plan_shots([{}, {}, {}], words, total=9.0)
+    assert spans[0][0] == 0.0
+    assert spans[-1][1] == 9.0
+    for (_, earlier_end), (later_start, _) in zip(spans, spans[1:], strict=False):
+        assert earlier_end == later_start, spans
+    covered = sum(end - start for start, end in spans)
+    assert covered == pytest.approx(9.0), spans
+
+
+def test_a_shot_lasts_exactly_its_span() -> None:
+    """A floor on the length is a desynchroniser, not a safety net: the shots
+    are concatenated, so padding one pushes every later shot off the words it
+    belongs to and makes the picture track longer than the voice."""
+    shot = produce.Shot(image=None, text="", start=2.0, end=2.4)
+    assert shot.seconds == pytest.approx(0.4)
+
+
 def test_without_a_transcript_the_scenes_share_the_time_evenly() -> None:
     """A fallback, not a failure: no words means no boundaries to cut on."""
     spans = produce.plan_shots([{}, {}, {}], [], total=9.0)

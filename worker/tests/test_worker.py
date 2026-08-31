@@ -171,13 +171,55 @@ def test_a_price_is_never_split_across_two_captions() -> None:
 def test_captions_sit_above_the_platform_furniture() -> None:
     """TikTok and Reels put their own caption and buttons over the bottom of
     the frame; text placed there is text nobody reads."""
-    ass = subtitles.build_ass([subtitles.Word(0.0, 1.0, "hello")])
+    ass = subtitles.build_ass([subtitles.Line([subtitles.Word(0.0, 1.0, "hello")])])
     assert f",{subtitles._MARGIN_V},1" in ass
 
 
 def test_braces_in_a_caption_cannot_become_ass_markup() -> None:
-    ass = subtitles.build_ass([subtitles.Word(0.0, 1.0, "{\\an8}not an override")])
+    ass = subtitles.build_ass(
+        [subtitles.Line([subtitles.Word(0.0, 1.0, "{\\an8}not an override")])]
+    )
     assert "{\\an8}" not in ass
+
+
+def test_the_captions_are_yellow_and_not_white() -> None:
+    """White captions vanish over a bright photograph, which is most of them.
+
+    The style row is checked rather than the look, because the look is checked
+    by a person; this holds the value so a later edit cannot quietly return it
+    to the default.
+    """
+    ass = subtitles.build_ass([subtitles.Line(_spoken(" one", " two"))])
+    style = next(row for row in ass.splitlines() if row.startswith("Style: Caption"))
+    assert subtitles._YELLOW in style
+    assert "&H00FFFFFF" not in style
+
+
+def test_the_spoken_word_is_the_one_that_grows() -> None:
+    """The effect, held as a fact: at any instant exactly one word is enlarged,
+    and it is the word whose turn it is to be said."""
+    words = _spoken(" alpha", " bravo", " charlie")
+    ass = subtitles.build_ass([subtitles.Line(words)])
+    rows = [r for r in ass.splitlines() if r.startswith("Dialogue:")]
+    assert len(rows) == 3, rows
+    for index, row in enumerate(rows):
+        assert row.count(f"\\fscx{subtitles._HIGHLIGHT}") == 1, row
+        # The enlarged run opens immediately before the word of that turn.
+        _, _, tail = row.partition(f"\\fscx{subtitles._HIGHLIGHT}")
+        assert tail.split("}", 1)[1].startswith(words[index].text.strip()), row
+
+
+def test_a_caption_does_not_blink_out_between_two_words() -> None:
+    """Each word is held until the next one starts. Ending on the word's own
+    end leaves a hole for every pause inside a phrase, which reads as a
+    stutter rather than as speech."""
+    words = [
+        subtitles.Word(0.0, 0.3, " one"),
+        subtitles.Word(0.7, 1.0, " two"),
+    ]
+    ass = subtitles.build_ass([subtitles.Line(words)])
+    first = next(r for r in ass.splitlines() if r.startswith("Dialogue:"))
+    assert "0:00:00.00,0:00:00.70" in first, first
 
 
 def test_no_speech_means_no_subtitle_file(tmp_path: Path) -> None:
@@ -442,3 +484,21 @@ def test_the_brand_mark_ships_and_is_usable() -> None:
     mean = sum(grey) / len(grey)
     variance = sum((g - mean) ** 2 for g in grey) / len(grey)
     assert variance > 100, "the mark is a flat colour and cannot be recognised"
+
+
+def test_a_long_line_is_broken_before_it_runs_off_the_frame() -> None:
+    """Four words is not a width.
+
+    "certain features, certain neighborhoods." is four words and, measured on
+    the render machine's own font at this size, rendered 1080 px wide inside a
+    1080 px frame — a word hanging off each edge. Word count says where a line
+    MAY break; the character budget says where it must.
+    """
+    words = _spoken(" certain", " features", ",", " certain", " neighborhoods", ".")
+    lines = subtitles.group(words, per_line=4)
+    assert len(lines) > 1, [line.text for line in lines]
+    assert all(len(line.text) <= subtitles._MAX_CHARS + 6 for line in lines), [
+        line.text for line in lines
+    ]
+    # And the rule that outranks it survives: a continuation never starts a line.
+    assert not any(line.text.startswith((",", ".")) for line in lines)

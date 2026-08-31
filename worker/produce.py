@@ -23,13 +23,35 @@ from worker import assemble, pictures, spoken, subtitles, tts
 
 log = logging.getLogger(__name__)
 
+
+def _seconds(media: Path) -> float:
+    """How long a media file actually is. Zero when it cannot be read.
+
+    `verify.probe` is not usable here: it demands a video stream, and the first
+    thing measured is the narration mp3.
+    """
+    out = subprocess.run(
+        [
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=nw=1:nk=1", str(media),
+        ],
+        capture_output=True,
+        timeout=120,
+    )
+    try:
+        return float(out.stdout.decode().strip())
+    except ValueError:
+        return 0.0
+
 OUT_W, OUT_H = 1080, 1920
 # Denver Home Story's own colours, from the logo: a navy ground with a cream
 # title. Used for the card a scene falls back to, so a missing photo still
 # looks like this channel rather than like an error.
 BRAND_BG = "0x0B1B33"
 BRAND_FG = "0xF5E6C8"
-MIN_SCENE_SECONDS = 1.5
+# A held frame after the last word, so the video ends instead of stopping. It
+# is also what gives the brokerage line time to be read.
+TAIL_SECONDS = 1.2
 
 
 @dataclass(frozen=True)
@@ -41,7 +63,14 @@ class Shot:
 
     @property
     def seconds(self) -> float:
-        return max(MIN_SCENE_SECONDS, self.end - self.start)
+        """Exactly its span — no floor.
+
+        A floor here is not a safety net, it is a desynchroniser: the shots are
+        concatenated in order, so padding one to a minimum pushes every later
+        shot away from the words it belongs to, and makes the picture track a
+        different length from the voice.
+        """
+        return self.end - self.start
 
 
 def plan_shots(
@@ -52,6 +81,15 @@ def plan_shots(
     Split at word boundaries rather than by dividing the duration: an even
     split puts a cut in the middle of a sentence, and the eye notices that far
     more than an uneven scene length.
+
+    **The spans tile the whole audio — no gaps.** An earlier version ended each
+    scene on the last word of its group and started the next on the first word
+    of the next group, which drops every PAUSE between them. The picture track
+    then came out shorter than the voice by the sum of those pauses, `-shortest`
+    cut the difference off the end, and the video stopped four words before the
+    script did — mid-sentence, on a piece a person had already been shown.
+    A scene boundary is therefore the moment the next scene's first word
+    STARTS, which is still a real word boundary and loses no time.
     """
     if not scenes:
         return []
@@ -74,16 +112,23 @@ def plan_shots(
 
     per_scene = max(1, len(words) // count)
     spans: list[tuple[float, float]] = []
+    cursor = 0.0
     for index in range(count):
-        first = index * per_scene
-        last = len(words) - 1 if index == count - 1 else min(
-            len(words) - 1, (index + 1) * per_scene - 1
-        )
-        spans.append((words[first].start, words[last].end))
-    # The last scene runs to the end of the audio, so the end card is not cut
-    # off by a word that finished early.
-    if spans:
-        spans[-1] = (spans[-1][0], total)
+        if index == count - 1:
+            # The last scene runs to the end of the audio, so the end card is
+            # not cut off by a word that finished early.
+            end = total
+        else:
+            end = words[min(len(words) - 1, (index + 1) * per_scene)].start
+        spans.append((cursor, end))
+        cursor = end
+
+    # A degenerate transcript — two group boundaries on the same timestamp —
+    # would give a zero-length scene, and ffmpeg cannot render `-t 0`. An even
+    # split is a worse cut and a real video; refusing here would be neither.
+    if any(end <= start for start, end in spans):
+        share = total / count
+        return [(i * share, (i + 1) * share) for i in range(count)]
     return spans
 
 
@@ -184,7 +229,12 @@ def produce(
     voice = tts.narrate(narration, workdir / "voice.mp3")
 
     words = subtitles.transcribe(voice, language=spec.get("language", "en"))
-    total = words[-1].end if words else 30.0
+    # Every later length is derived from this one. The last WORD rather than the
+    # file, because MiniMax leaves a little silence at the end and the tail is
+    # measured from where the voice stops, not where the file does — but never
+    # shorter than the file, or the mix would cut audio that is still playing.
+    spoken_until = words[-1].end if words else _seconds(voice)
+    total = max(spoken_until + TAIL_SECONDS, _seconds(voice))
 
     # 2. A picture per scene. A prompt that nothing can draw becomes a branded
     # card, never a failed job.
@@ -235,12 +285,30 @@ def produce(
             "-i", str(scene_video), "-i", str(voice),
             "-map", "0:v", "-map", "1:a",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
-            "-shortest", str(with_voice),
+            # `apad` + an explicit length instead of `-shortest`. `-shortest`
+            # answers "how long is this video?" with whichever track came out
+            # shorter — so any arithmetic slip upstream leaves the tail of the
+            # NARRATION on the floor, exit code 0, nothing in the log. Silence
+            # is padded on; speech never is.
+            "-af", "apad",
+            "-t", f"{total:.2f}",
+            str(with_voice),
         ],
         check=True,
         capture_output=True,
         timeout=600,
     )
+
+    # And then it is measured, because the paragraph above is an intention. The
+    # video a person watches has to contain the last word of the script; a
+    # render that quietly drops it is worse than one that fails here, where the
+    # reason lands in the console.
+    made = _seconds(with_voice)
+    if made + 0.15 < spoken_until:
+        raise RuntimeError(
+            f"the picture track is {made:.2f}s but the narration runs to "
+            f"{spoken_until:.2f}s: the video would end mid-sentence"
+        )
 
     ass_path = subtitles.write_ass(subtitles.group(words), workdir / "captions.ass")
     brokerage_file = workdir / "brokerage.txt"
@@ -253,7 +321,11 @@ def produce(
         assemble.build_command(
             with_voice,
             destination,
-            duration=total,
+            # The MEASURED length, not the planned one. The end card is drawn
+            # over the last three seconds counted from here, so feeding it an
+            # intention rather than a fact is how the brokerage identification
+            # ends up on screen for a fraction of a second — or not at all.
+            duration=made,
             has_audio=True,
             brokerage_file=brokerage_file,
             domain_file=domain_file,
