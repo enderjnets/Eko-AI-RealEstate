@@ -6,6 +6,58 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## ✅ v0.67.3 — LOS SUBTÍTULOS Y EL FINAL QUE FALTABA (31-ago-2026)
+
+El dueño pidió dos cosas mirando el vídeo generado: subtítulos amarillos con la
+palabra creciendo al pronunciarse, «como en The Power Unleashed», y que **«al
+final sale cortado, no termina»**. La segunda resultó ser un fallo serio.
+
+### El corte: cada pausa entre escenas no pertenecía a ninguna escena
+
+`plan_shots` daba a cada escena el tramo de la primera a la última palabra de su
+grupo. El silencio ENTRE grupos no lo cubría nadie, así que la pista de imagen
+salía más corta que la voz por la suma de esas pausas y `-shortest` se llevaba
+la diferencia del final. **Exit 0, sin log, sin error.** Medido: el guion de la
+pieza 3 termina en «...the specifics of your situation.» y el vídeo entregado se
+paraba en «the» — cuatro palabras menos, en una pieza que ya se le había
+enseñado a una persona.
+
+- Las escenas **teselan** el audio: el corte cae donde EMPIEZA la primera
+  palabra de la siguiente, que sigue siendo frontera de palabra y no pierde
+  tiempo.
+- `-shortest` fuera: `apad` + `-t` explícito. Un desajuste de longitud ahora
+  añade silencio, nunca quita voz.
+- Y **se mide**: si la imagen dura menos que la última palabra, el montaje falla
+  con el motivo en la consola en vez de entregar un vídeo sin final.
+- El end-card se temporiza contra la duración **medida**, no la planificada — si
+  no, la identificación de la brokerage se queda fuera del cuadro.
+
+### Los subtítulos: amarillos, y la palabra hablada crece
+
+`#FFFF00` con borde negro grueso, palabra activa al 126%, un evento ASS por
+palabra. Forma leída de `~/BitTrader/agents/karaoke_subs.py` (solo lectura).
+
+### Y lo que destapó: cuatro palabras no son una anchura
+
+Medido en el ROG **con su tipografía**, no con la del Mac: la línea
+«certain features, certain neighborhoods.» del guion real renderizaba **1080 px
+justos en un cuadro de 1080** — una palabra colgando por cada lado, y eso ya
+pasaba con los subtítulos blancos. Bajar la fuente no era la palanca (41 px para
+que cupieran esos 40 caracteres). Las líneas cortan ahora también por
+presupuesto de caracteres (26, medido a 34 px/carácter). La línea más ancha del
+guion real: de 1080 px a **757, con 160 px de margen a cada lado**.
+
+### Verificado en el vídeo, no en el código
+
+62 tests verdes, dos mutaciones comprobadas (reponer los huecos → rojo; blanco
+en vez de amarillo → rojo). Reconstruida la pieza 3: **30,97 s** frente a 29,40;
+fotograma en 29,75 s con «situation.» en pantalla; en 8,6 s crece «Reality,» y
+en 8,9 s crece «the». **El montaje se corrió una vez fuera de la ventana
+horaria** del ROG (00:0x MDT, load 0.03, solo CPU, ninguna de las horas cargadas
+del otro proyecto) — el servicio sigue respetándola.
+
+---
+
 ## 🔴 PENDIENTES ANTES DE ENCENDER LA PRODUCCIÓN DE VÍDEOS (30-ago-2026)
 
 Nada de esto se enciende hasta que las cuatro estén hechas. Orden por lo que
