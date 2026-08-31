@@ -105,6 +105,49 @@ def test_a_prompt_of_a_place_or_a_thing_is_allowed(prompt: str) -> None:
     assert picture_violations(prompt) == [], f"{prompt!r} was wrongly refused"
 
 
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "a well-maintained single-family home with a small yard",
+        "a multi-family building on a corner lot",
+        "a two-family duplex with separate entrances",
+        "the family room after a remodel",
+    ],
+)
+def test_a_property_type_is_not_a_description_of_people(prompt: str) -> None:
+    """Caught in production on the very first real generation.
+
+    "single-family home" is how the American real estate industry names a
+    detached house. It says nothing about who lives in it, and a filter that
+    refuses it refuses a large fraction of every legitimate listing prompt ever
+    written — the draft sat in DRAFT waiting for an edit nobody could make,
+    because scenes are not editable from the console.
+    """
+    assert picture_violations(prompt) == [], f"{prompt!r} was wrongly refused"
+
+
+def test_a_property_type_does_not_launder_a_person() -> None:
+    """The exemption removes exactly the compound, nothing more."""
+    found = picture_violations("a family standing outside a single-family home")
+    assert [v["phrase"] for v in found] == ["family"]
+
+
+def test_a_draft_wrapped_in_a_code_fence_is_still_a_draft() -> None:
+    """Asked for JSON, a model returns JSON — sometimes inside a markdown
+    block, because that is how it has seen JSON written a million times. The
+    first real rewrite in production was discarded over three backticks."""
+    from app.services.content_writer import _parse
+
+    raw = (
+        '```json\n{"hook": "h", "script": "s", "caption": "c", '
+        '"scenes": [{"visual_prompt": "a street", "on_screen_text": "x"}]}\n```'
+    )
+    draft = _parse(raw)
+    assert draft is not None, "a fenced draft was dropped"
+    assert draft.hook == "h"
+    assert len(draft.scenes) == 1
+
+
 def test_the_scene_that_offends_is_named(database_url: str) -> None:
     """A person has to be able to fix it, which means knowing which shot."""
     draft = _draft(

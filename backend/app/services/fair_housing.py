@@ -234,6 +234,23 @@ def _forms(word: str) -> set[str]:
     return forms
 
 
+# Property TYPES, not descriptions of people. "single-family home" is how the
+# American real estate industry names a detached house — it says nothing about
+# who lives in it, and a filter that refuses it refuses a large fraction of
+# every legitimate listing prompt ever written. Caught in production on the
+# first real generation: a model wrote "a well-maintained single-family home
+# with a small yard" and the gate held the draft.
+#
+# Removed BEFORE matching rather than added to an allow-list, so the exemption
+# is exactly these phrases: "a family standing outside a single-family home"
+# still trips on the first "family", because only the compound disappears.
+_PROPERTY_TYPES = re.compile(
+    r"\b(?:single|multi|two|three|four|2|3|4)[\s-]?family\b"
+    r"|\bfamily (?:home|house|residence|dwelling|unit|room)s?\b",
+    re.IGNORECASE,
+)
+
+
 def picture_violations(prompt: str) -> list[dict[str, str]]:
     """Words that must not steer what an image model draws.
 
@@ -247,7 +264,7 @@ def picture_violations(prompt: str) -> list[dict[str, str]]:
     """
     if not prompt:
         return []
-    normalised = _normalise(prompt)
+    normalised = _normalise(_PROPERTY_TYPES.sub(" ", prompt))
     present: set[str] = set()
     for word in normalised.split():
         present |= _forms(word)

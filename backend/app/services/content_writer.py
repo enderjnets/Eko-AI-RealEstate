@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import UTC, datetime, time
 from typing import Any
 
@@ -121,10 +122,21 @@ _SYSTEM = {
 }
 
 
+_FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE)
+
+
 def _parse(raw: str) -> DraftPayload | None:
-    """The model's text, or None. Never an exception."""
+    """The model's text, or None. Never an exception.
+
+    The fence is stripped first. Asked for JSON, a model returns JSON — and
+    sometimes returns it wrapped in a markdown code block, because that is how
+    it has seen JSON written a million times. `json.loads` cannot read that,
+    and the first real rewrite in production was discarded over three
+    backticks: a generation billed, a draft lost, and a log line nobody was
+    watching as the only trace.
+    """
     try:
-        return DraftPayload.model_validate(json.loads(raw))
+        return DraftPayload.model_validate(json.loads(_FENCE.sub("", raw)))
     except (json.JSONDecodeError, ValidationError):
         log.warning("Content writer: model returned something that is not a "
                     "draft; dropping it. Raw (truncated): %.200s", raw)
