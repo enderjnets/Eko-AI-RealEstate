@@ -77,8 +77,24 @@ la tailnet está muerta, así que **el tercer respaldo de LLM no existe**. Kimi 
 MiniMax siguen sirviendo, pero el 1-jun-2026 fallaron los dos a la vez y Ollama
 atendió a 10 leads reales. Hoy no podría: recibirían la línea enlatada.
 
-**Acción del dueño, y no es «encenderla»**: mirar la máquina en consola física
-y comprobar el disco antes que nada.
+### Qué murió es la pista, y apunta a MEMORIA antes que a disco
+
+Coqui (`:7777`) sigue vivo; ollama (`:11434`) y ComfyUI (`:8188`) no responden.
+Los dos caídos son justo los que sostienen gigas en RAM; el superviviente es el
+ligero. Eso es el patrón de un OOM killer llevándose a los pesados, o de una
+espiral de swap — no de un disco lleno, que mataría por igual. El disco sigue en
+la lista (esa máquina ya estuvo al 99 % y corrompió objetos de git), pero la
+memoria va primero.
+
+### ⏳ La evidencia CADUCA en el reinicio
+
+Un reinicio a lo bruto arregla el síntoma y borra la causa: el rastro del OOM
+killer vive en el diario del arranque, no en un fichero. **Capturar ANTES de
+reiniciar**, o después mirar el arranque anterior con `journalctl -b -1`. Sin
+eso, dentro de una semana volvemos a estar aquí sin saber por qué.
+
+**Acción del dueño, y no es «encenderla»**: mirar la máquina en consola física,
+capturar el estado, y solo entonces reiniciar.
 
 ---
 
