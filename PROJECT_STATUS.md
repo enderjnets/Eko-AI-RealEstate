@@ -51,6 +51,54 @@ decidir a quién recomendar el canal; vacío, compite contra el planeta) y el
 
 ---
 
+## ✅ EL OBRERO ESTÁ INSTALADO Y FUNCIONA (30-ago-2026, 21:39 MDT)
+
+Primer vídeo hecho por la máquina, de punta a punta y contra producción:
+
+```
+21:39:18  el obrero reclama el trabajo 1
+21:39:35  faster-whisper transcribe 11,98 s de audio
+21:39:45  marca comprobada EN EL FOTOGRAMA: correlación 0,927
+21:39:46  entregado
+```
+
+Y del otro lado: la pieza pasó de `draft` a **`needs_approval`** con un fichero
+nuevo de **1080×1920, 12 s, con audio**. La persona sigue en medio; el obrero
+no aprueba nada.
+
+### Lo que hubo que arreglar para instalarlo
+
+**Los pines de `requirements.txt` estaban calibrados para una máquina que no
+existe.** El ROG corre **Python 3.14 con ffmpeg 8**, y las versiones fijadas de
+PyAV y Pillow no tienen rueda para ninguno de los dos: pip intentó COMPILARLAS
+y murió contra una API de ffmpeg tres versiones mayores más nueva de la que esas
+releases conocían. Sin fijar, las cinco entran con rueda precompilada (av 18.1,
+Pillow 12.3, faster-whisper 1.2.1). El fichero ahora declara **mínimos, no
+pines**: fijar es el instinto correcto para las dependencias de un producto, y
+aquí fijaba el obrero a un intérprete imaginario.
+
+De paso quedaron instaladas las cabeceras de ffmpeg (`libav*-dev`) — aditivas y
+reversibles, aunque al final no hicieron falta.
+
+### Configuración viva
+
+| Qué | Valor |
+|---|---|
+| Servicio | `eko-render-worker` · unidad de **usuario**, `enabled`, con `linger` |
+| Ventana horaria | 13, 15, 16, 17, 21, 23, 1, 2 MDT — comprobada en cada tick |
+| Voz | `English_CalmWoman` · 1,06 · emoción |
+| Whisper | `small.en` en **CPU** |
+| Kling / Pexels | **sin clave a propósito** — el carril generado cae a tarjetas de marca |
+| Panel | `RENDER_WORKER_ENABLED=true`, `CONTENT_RENDER_ENABLED=true` |
+
+### Lo que sigue apagado
+
+`CONTENT_STUDIO_ENABLED=false` (no se generan guiones) y `BUFFER_SIMULATED=true`
+con `CONTENT_PUBLISH_ENABLED=false` (no se publica nada). **Encender eso sigue
+bloqueado por los perfiles de los canales**, que es decisión del dueño.
+
+---
+
 ## ✅ EL ROG: DIAGNOSTICADO, ARREGLADO LO NUESTRO (30-ago-2026)
 
 Volvió tras el reinicio del dueño, y el diario **sí** persistía (478 MB), así
