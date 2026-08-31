@@ -51,50 +51,61 @@ decidir a quién recomendar el canal; vacío, compite contra el planeta) y el
 
 ---
 
-## 🔴 EL ROG NO DA SHELL — Y SE LLEVÓ POR DELANTE EL TERCER RESPALDO DE LLM
+## ✅ EL ROG: DIAGNOSTICADO, ARREGLADO LO NUESTRO (30-ago-2026)
 
-Medido el 30-ago, y el diagnóstico cambió a mitad de camino:
+Volvió tras el reinicio del dueño, y el diario **sí** persistía (478 MB), así
+que la causa quedó registrada.
 
-| Prueba | Resultado | Qué significa |
-|---|---|---|
-| `ping 10.0.0.240` | **0 % de pérdida** | la máquina está en la red |
-| TCP al puerto 22 | **acepta** | el kernel vive y `sshd` escucha |
-| `ssh` | «timed out during **banner exchange**» | conectó y `sshd` nunca envió su saludo |
-| Puerto 7777 (Coqui) | abierto | otro servicio sigue vivo |
-| Puertos 11434 (ollama) y 8188 (ComfyUI) | **sin respuesta** | esos sí están caídos |
-| Latencia del ping en LAN | min 11 ms, media 31, máx 66 | **altísima para una LAN** (lo normal es <2 ms) |
+### Fue memoria, y el disco queda descartado con número
 
-**No está apagada: está asfixiada.** Una máquina apagada no completa el TCP ni
-llega a «banner exchange» — ese mensaje solo aparece cuando la conexión SE
-ESTABLECIÓ y el servidor no consiguió avanzar. Con procesos caídos, latencia de
-LAN por las nubes y `sshd` aceptando sin poder continuar, el cuadro es falta de
-recursos. Sospecha principal, por historial de esa máquina: **el disco**. Ya
-estuvo al 91 % y al 99 %, y esa vez corrompió objetos de git.
+```
+Aug 30 14:24:56 … systemd-journald: Under memory pressure, flushing caches.
+   … repetido sin parar hasta las 14:52:51, y a las 14:54:10 dejó de escribir
+```
 
-🔴 **Consecuencia en producción, ahora mismo:** `/api/v1/health` por el dominio
-dice **`llm_fallback: "unreachable"`**. El VPS alcanza Ollama por la tailnet y
-la tailnet está muerta, así que **el tercer respaldo de LLM no existe**. Kimi y
-MiniMax siguen sirviendo, pero el 1-jun-2026 fallaron los dos a la vez y Ollama
-atendió a 10 leads reales. Hoy no podría: recibirían la línea enlatada.
+Disco: **49 % usado, 455 GB libres.** La hipótesis del disco —razonable por el
+historial de esta máquina— está muerta con la medida delante.
 
-### Qué murió es la pista, y apunta a MEMORIA antes que a disco
+Por qué el `grep "oom-kill"` del dueño no devolvió nada: **el OOM killer nunca
+llegó a actuar.** La máquina se ahogó en presión de memoria antes de que el
+kernel matara a nadie; `sshd` aceptaba el TCP y no conseguía avanzar, que es
+justo lo que veíamos desde fuera.
 
-Coqui (`:7777`) sigue vivo; ollama (`:11434`) y ComfyUI (`:8188`) no responden.
-Los dos caídos son justo los que sostienen gigas en RAM; el superviviente es el
-ligero. Eso es el patrón de un OOM killer llevándose a los pesados, o de una
-espiral de swap — no de un disco lleno, que mataría por igual. El disco sigue en
-la lista (esa máquina ya estuvo al 99 % y corrompió objetos de git), pero la
-memoria va primero.
+### Lo que encontramos de paso: casi 3.800 reinicios fallidos por arranque
 
-### ⏳ La evidencia CADUCA en el reinicio
+| Servicio | Reinicios en el arranque que murió | De quién | Por qué falla |
+|---|---|---|---|
+| `ekoo-chromium` | **1281** | otro proyecto | falta el binario de Playwright |
+| `resend-proxy` | **1267** | otro proyecto | busca `/tmp/resend_proxy.py`, y `/tmp` se vacía en cada reinicio |
+| `ollama-bridge` | **1266** | 🔴 **NUESTRO** | se ata a `172.20.0.1`, la puerta de una red de Docker que **ya no existe** |
+| `ollama-bridge-tailnet` | 161 | 🔴 **NUESTRO** | arranca antes de que la tailnet tenga dirección |
 
-Un reinicio a lo bruto arregla el síntoma y borra la causa: el rastro del OOM
-killer vive en el diario del arranque, no en un fichero. **Capturar ANTES de
-reiniciar**, o después mirar el arranque anterior con `journalctl -b -1`. Sin
-eso, dentro de una semana volvemos a estar aquí sin saber por qué.
+No está probado que estos bucles causaran el ahogo —Ollama solo ocupa 5,6 GB de
+los 15— y decirlo sería inventar una causalidad. Lo que sí es cierto: son
+desperdicio puro, llevaban así desde siempre, y dos eran nuestros.
 
-**Acción del dueño, y no es «encenderla»**: mirar la máquina en consola física,
-capturar el estado, y solo entonces reiniciar.
+### Arreglado (lo nuestro, y solo lo nuestro)
+
+- **`ollama-bridge` deshabilitado.** Se creó cuando el backend corría en el ROG;
+  desde la mudanza al VPS en agosto no queda ni un contenedor nuestro en esa
+  máquina, y `172.20.0.1` no existe. Verificado antes de tocarlo: la dirección
+  no está en ninguna interfaz y no hay contenedores `eko-realestate-*` allí — un
+  servicio que **no consigue arrancar no puede tener consumidores**, así que
+  apagarlo no puede romper a nadie. Reversible con `systemctl enable`.
+- **`ollama-bridge-tailnet` espera ahora a tener dirección.** `After=tailscaled`
+  no bastaba: que el demonio arranque no significa que la IP exista. Espera
+  acotada a 60 s y falla ruidosamente si no aparece, en vez de girar en
+  silencio.
+
+Verificado después de cada cambio: `/api/v1/health` por el dominio sigue en
+`llm_fallback: "ok"` y el puente sigue escuchando en `100.88.47.99:11434`.
+
+### 🔴 Lo que NO toqué, y el dueño debería mirar
+
+`ekoo-chromium` y `resend-proxy` son de otro proyecto y siguen reiniciándose
+cada ~20 segundos, para siempre. Los dos fallan por cosas triviales, y el
+segundo **no puede funcionar nunca** tal como está: su script vive en `/tmp`, y
+`/tmp` se borra en cada arranque.
 
 ---
 
