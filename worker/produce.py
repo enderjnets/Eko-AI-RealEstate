@@ -210,6 +210,20 @@ def produce(
             Shot(image=image, text=scene.get("on_screen_text", ""), start=start, end=end)
         )
 
+    # A card standing in for ONE scene is a fallback. A card standing in for
+    # EVERY scene is not a video: it is half a minute of a flat colour with a
+    # word on it, and the only thing left to do with it is reject it — which is
+    # exactly what happened to the first generated piece, after a person sat
+    # through it to find out. Fail here instead, with the reason where the
+    # console shows it, so nobody has to watch to learn that no image provider
+    # is configured.
+    if all(shot.image is None for shot in shots):
+        raise ValueError(
+            "no image provider produced a single picture: the video would be "
+            "text on a plain background. Set PEXELS_API_KEY (free) or the "
+            "Kling keys on the render machine."
+        )
+
     # 3. The picture track, then the words, then the identification.
     scene_video = build_scene_video(shots, workdir, font)
     with_voice = workdir / "voiced.mp4"

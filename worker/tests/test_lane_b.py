@@ -308,6 +308,27 @@ def test_more_scenes_than_words_still_shows_every_scene() -> None:
     assert spans[0][0] == 0.0 and spans[-1][1] == 8.0
 
 
+def test_a_video_with_no_pictures_at_all_is_refused(monkeypatch, tmp_path: Path) -> None:
+    """One card is a fallback. Every card is not a video.
+
+    The first generated piece shipped as half a minute of flat navy with a
+    word on it, because neither image provider had a key — and the only thing
+    left to do with it was reject it, which a person did after watching the
+    whole thing. Failing here puts the reason in the console instead.
+    """
+    from worker import tts
+
+    monkeypatch.setattr(pictures, "fetch", lambda p, d: "none")
+    monkeypatch.setattr(tts, "narrate", lambda t, d: (d.write_bytes(b"x"), d)[1])
+    monkeypatch.setattr(subtitles, "transcribe", lambda a, language="en": [])
+    spec = {
+        "brokerage_line": "Engel & Völkers Aspen",
+        "scenes": {"narration": "words", "scenes": [{"visual_prompt": "a street", "on_screen_text": "x"}]},
+    }
+    with pytest.raises(ValueError, match="no image provider"):
+        produce.produce(spec, tmp_path, font=None, mark=None, music=None)
+
+
 def test_a_piece_with_no_plan_is_refused_rather_than_improvised(
     tmp_path: Path,
 ) -> None:
