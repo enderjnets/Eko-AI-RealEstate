@@ -6,6 +6,58 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## 🔴 v0.67.5 + v0.67.6 — LO QUE APARECIÓ AL MIRAR LAS OTRAS PIEZAS (2-sep-2026)
+
+### El post que espera en la cola de otro no está publicado (v0.67.5)
+
+`CreatePostInput.needsApproval` es **non-null** en el esquema de Buffer y no lo
+mandábamos: funcionaba por su defecto. Si ese defecto fuera `true`, el post se
+quedaría en la cola de aprobación **de Buffer** mientras `createPost` nos
+devuelve un id, y habríamos registrado PUBLISHED para algo que nadie publicó.
+Va explícito en `false`.
+
+De paso: `test_the_voice_lane_books_a_seller_on_the_valuation_calendar` reservaba
+«dentro de 3 días» y la oficina abre de lunes a viernes — pasaba o fallaba según
+el día de la semana en que se corriera la suite. Desde un lunes caía en jueves;
+hoy, miércoles, cayó en **sábado**, la reserva se rechazó correctamente y el
+fallo decía «the booking never reached Cal.com», que suena a carril roto y era
+un fin de semana. Ahora aterriza siempre en laborable.
+
+### No se puede aprobar un vídeo que no existe (v0.67.6) — avería REAL en producción
+
+**La pieza 5 está `approved` sin vídeo, y lo estará para siempre.** El dueño la
+aprobó el 1-sep a las 01:59, cuando la pieza llevaba en `needs_approval` desde
+que su texto pasó el filtro pero el montaje seguía corriendo. Al entregar el
+fichero, `_refuse_unless_awaited` devolvió **409** —correctamente: ya no esperaba
+render— tres veces, y el job 6 murió. No se publicó **solo** porque el publicador
+exige `media_path`: suerte, no diseño.
+
+Dos guardas correctas por separado se comieron el caso de en medio. Ahora la API
+rechaza aprobar sin `media_path` diciendo por qué, y la cola muestra «el vídeo se
+está haciendo» donde estaba el botón.
+
+### 🟢 ESTADO DE LAS PIEZAS (2-sep, medido)
+
+| Pieza | Estado | Vídeo | Qué hacer |
+|---|---|---|---|
+| 3 | `failed` | sí | **Reintentar** + **Aprobar** (dos clics) — o dejarla |
+| 5 | `approved` | **no** | 🔴 **rechazarla**: no tiene arreglo, su job murió con 3 intentos |
+| **6** | `needs_approval` | **sí** | 🟢 **el camino limpio: un solo clic en Aprobar** y sale a los tres canales |
+
+La 6 se montó hoy, ya con los subtítulos amarillos y el final completo. Es la
+candidata al primer post real.
+
+### 🔴 SIGO BLOQUEADO EN LO MISMO, Y ES DE DISEÑO
+
+Aprobar exige sesión (`AUTH_ENABLED=true`) y **no me fabrico una**: esa puerta es
+la que hace que un humano con licencia responda de lo que se publica. El
+clasificador también bloquea escribir el estado a mano en la base de producción,
+y hace bien.
+
+`CONTENT_PUBLISH_INTERVAL_SECONDS` sigue **temporalmente en 60** (era 900).
+
+---
+
 ## 🔴 v0.67.4 — LA PRIMERA PUBLICACIÓN REAL: TRES RECHAZOS (31-ago-2026)
 
 El dueño aprobó la pieza 3 y preguntó por qué no salía en ningún lado. No salía
