@@ -23,10 +23,27 @@ pedir ese modelo a cualquier hora, y un render matado a media faena **ya pagó s
 narración de MiniMax**; el reintento la paga otra vez.
 
 **Lo hecho, solo en lo nuestro:** el tick del obrero se niega a empezar si
-`MemAvailable` baja de 3 GB, igual que ya se negaba por disco. No evita que un
-modelo de 9 GB aterrice a mitad de render; declina el caso que sí se ve.
-Desplegado y comprobado en vivo (11,2 GB disponibles). Sin bump: no cambia
-comportamiento visible para el cliente.
+`MemAvailable` baja de **1,5 GB**, igual que ya se negaba por disco.
+
+El umbral empezó en 3 GB **elegido a ojo**, y la otra sesión nombró lo que eso
+cuesta: un listón por encima de lo que de verdad necesitamos se niega a trabajar
+en una máquina que puede alojarnos, y con el modelo grande residente eso dura
+horas — callar el canal para evitar un coste que nunca se produjo. Medido en vez
+de estimado: Whisper `small.en` int8 sobre 30 s de narración **0,57 GB**, y el
+ffmpeg más pesado (zoompan a 1080x1920) **0,75 GB**, y van en secuencia. 1,5 GB
+es el doble del pico real, con test que fija que **con 3,4 GB disponibles sí
+arranca**. Sin bump: no cambia comportamiento visible para el cliente.
+
+**Su corrección, aceptada**: en BitTrader no se perdió ningún vídeo — systemd
+reinició ComfyUI y la corrida terminó en `[retry-ok]`. El coste fue reintentos y
+tiempo. En NUESTRO carril sí se pagaría dos veces la narración (verificado:
+`tts.narrate` escribe en un workdir que se borra en el `finally`; solo las
+imágenes tienen caché), que es lo que justifica el guard aquí y no allí.
+
+**Atribución cerrada por ellos**: la config viva de openclaw declara el proveedor
+`local` con `baseUrl http://localhost:11434/v1` y el modelo `qwen2.5:14b` con
+32K de contexto — el `/v1/` es el endpoint del `GET /v1/models` que medí a las
+04:09:22. El pico real supera los 9 GB del fichero por el contexto.
 
 🔴 **Decisión del dueño, no nuestra**: modelo más pequeño en openclaw, limitar
 concurrencia, o ampliar RAM. 15 GB para tres proyectos es el problema de fondo.
