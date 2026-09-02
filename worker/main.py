@@ -80,6 +80,42 @@ def enough_disk(path: Path, min_free_gb: float) -> bool:
     return free / (1024**3) >= min_free_gb
 
 
+def available_memory_gb() -> float | None:
+    """What the kernel says is actually available, or None where it cannot say.
+
+    `MemAvailable`, not `MemFree`: most of this machine's memory is page cache
+    that the kernel will hand back on demand, and reading `MemFree` would refuse
+    to work on a perfectly healthy box. None on any platform without
+    `/proc/meminfo` — the check then passes, because a worker that refuses to
+    run when it cannot measure is a worker that never runs.
+    """
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) / (1024**2)
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def enough_memory(min_free_gb: float) -> bool:
+    """Whether there is room to start a render at all.
+
+    This machine has 15 GB and three projects. On 2026-09-02 a local client
+    asked Ollama for a 9 GB model and the OOM killer took the neighbouring
+    project's renderer three times in eight minutes. Our own footprint is
+    small — Whisper in int8 and ffmpeg — but being small is no protection: a
+    job killed halfway has already PAID for its narration, and the retry pays
+    again. Starting into a squeeze is the part we can decline.
+
+    It cannot prevent a 9 GB model landing mid-render. It declines the case we
+    can see, which is the machine already being full when we ask.
+    """
+    available = available_memory_gb()
+    return True if available is None else available >= min_free_gb
+
+
 def pick_music() -> Path | None:
     """A bed track, or none.
 
@@ -271,6 +307,15 @@ def main() -> int:
             if not enough_disk(cfg.workdir, cfg.min_free_gb):
                 log.error(
                     "less than %.0f GB free — not starting a render", cfg.min_free_gb
+                )
+                time.sleep(cfg.poll_seconds)
+                continue
+            if not enough_memory(cfg.min_memory_gb):
+                log.warning(
+                    "only %.1f GB of memory available, need %.1f — waiting rather "
+                    "than starting a render that would be killed halfway",
+                    available_memory_gb() or 0.0,
+                    cfg.min_memory_gb,
                 )
                 time.sleep(cfg.poll_seconds)
                 continue

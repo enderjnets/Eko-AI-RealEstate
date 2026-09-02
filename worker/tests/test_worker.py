@@ -502,3 +502,28 @@ def test_a_long_line_is_broken_before_it_runs_off_the_frame() -> None:
     ]
     # And the rule that outranks it survives: a continuation never starts a line.
     assert not any(line.text.startswith((",", ".")) for line in lines)
+
+
+# ── Room to work ─────────────────────────────────────────────────────────
+
+
+def test_a_squeezed_machine_does_not_get_a_render(monkeypatch) -> None:
+    """15 GB, three projects. On 2026-09-02 a local client asked Ollama for a
+    9 GB model and the OOM killer took the neighbouring project's renderer
+    three times in eight minutes. A job killed halfway has already paid for its
+    narration, and the retry pays again."""
+    from worker import main as worker_main
+
+    monkeypatch.setattr(worker_main, "available_memory_gb", lambda: 1.2)
+    assert not worker_main.enough_memory(3.0)
+    monkeypatch.setattr(worker_main, "available_memory_gb", lambda: 11.8)
+    assert worker_main.enough_memory(3.0)
+
+
+def test_a_machine_that_cannot_be_measured_still_renders(monkeypatch) -> None:
+    """No /proc/meminfo — a Mac, a container without it. A worker that refuses
+    to run when it cannot measure is a worker that never runs."""
+    from worker import main as worker_main
+
+    monkeypatch.setattr(worker_main, "available_memory_gb", lambda: None)
+    assert worker_main.enough_memory(99.0)
