@@ -47,6 +47,21 @@ CLEAN = {
 }
 
 
+async def _attach_video(piece_id: int) -> None:
+    """What the render does before a person is asked to approve anything.
+
+    Approval now requires a video, because a piece approved without one can
+    never receive it: the worker is refused with a 409 and the piece is stuck
+    approved and empty. These tests walk the same road production walks.
+    """
+    async with get_bypass_session_factory()() as db:
+        from app.models import ContentPiece as _Piece
+
+        piece = await db.get(_Piece, piece_id)
+        piece.media_path = "0123456789abcdef0123456789abcdef.mp4"
+        await db.commit()
+
+
 @pytest.mark.asyncio
 async def test_a_clean_draft_walks_to_approved(database_url: str) -> None:
     try:
@@ -63,6 +78,7 @@ async def test_a_clean_draft_walks_to_approved(database_url: str) -> None:
             assert submitted.status_code == 200, submitted.text
             assert submitted.json()["status"] == "needs_approval"
 
+            await _attach_video(piece["id"])
             approved = await client.post(
                 f"/api/v1/content/{piece['id']}/approve"
             )
@@ -146,6 +162,7 @@ async def test_an_edit_that_changes_nothing_keeps_the_approval(
             created = await client.post("/api/v1/content", json=CLEAN)
             piece_id = created.json()["id"]
             await client.post(f"/api/v1/content/{piece_id}/submit")
+            await _attach_video(piece_id)
             await client.post(f"/api/v1/content/{piece_id}/approve")
 
             same = await client.patch(
@@ -719,5 +736,26 @@ async def test_retry_is_refused_on_a_piece_that_did_publish(
         async with _client() as client:
             resp = await client.post(f"/api/v1/content/{piece_id}/retry")
         assert resp.status_code == 409
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_piece_with_no_video_cannot_be_approved(database_url: str) -> None:
+    """The trap this closes was sprung in production on 2026-09-01.
+
+    A generated piece reaches NEEDS_APPROVAL as soon as its text is clean,
+    while the render is still running — so the console showed an Approve
+    button beside a script with no video, and it was pressed. The worker
+    finished, was refused with a 409 because the piece was no longer awaiting
+    a render, retried twice more and died. The piece is approved, empty and
+    unpublishable to this day, and nothing said a word.
+    """
+    try:
+        piece_id = await _seeded(ContentStatus.NEEDS_APPROVAL)
+        async with _client() as client:
+            resp = await client.post(f"/api/v1/content/{piece_id}/approve")
+        assert resp.status_code == 409
+        assert "no video yet" in resp.json()["detail"]
     finally:
         await _cleanup()

@@ -455,7 +455,17 @@ function PieceCard({
             <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
           ) : (
             <>
-              {piece.status === "needs_approval" && (
+              {piece.status === "needs_approval" && !piece.media_path && (
+                // No button at all, and a reason. Approving a piece before its
+                // video exists leaves it approved and empty forever: the render
+                // is refused with a 409 once the piece is no longer awaiting
+                // one. That happened here on 2026-09-01.
+                <span className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-gray-400">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {t("content.awaitingVideo")}
+                </span>
+              )}
+              {piece.status === "needs_approval" && piece.media_path && (
                 <button
                   onClick={onApprove}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-eko-green text-eko-noir text-sm font-semibold hover:brightness-110"

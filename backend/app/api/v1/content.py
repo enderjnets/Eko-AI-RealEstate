@@ -386,6 +386,25 @@ async def approve_piece(
     piece = await db.get(ContentPiece, piece_id)
     if piece is None:
         raise HTTPException(status_code=404, detail="No such piece")
+    if not (piece.media_path or "").strip():
+        # You cannot approve a video you cannot watch, and this is not a
+        # formality — it is the whole point of the gate. A generated piece
+        # reaches NEEDS_APPROVAL as soon as its text is clean, while the render
+        # is still running, so the console offered an Approve button next to a
+        # script. Someone pressed it. The worker then finished and was refused
+        # with a 409 by `_refuse_unless_awaited` — correctly, the piece was no
+        # longer awaiting a render — three times, and the job died. The piece
+        # is still sitting there today: approved, empty, and unpublishable
+        # forever, because the publisher requires `media_path`. Nothing said a
+        # word.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "this piece has no video yet — it is still being made. "
+                "Approving it now would leave it approved and empty: the render "
+                "can no longer attach a file to an approved piece."
+            ),
+        )
     try:
         advance(piece, ContentStatus.APPROVED)
     except IllegalTransition as exc:

@@ -2,6 +2,18 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.67.6] — 2026-09-02
+
+### Fixed
+- **A piece with no video can no longer be approved.** A generated piece reaches
+  NEEDS_APPROVAL as soon as its text is clean, while the render is still
+  running, so the console offered an Approve button beside a script. It was
+  pressed on 2026-09-01: the worker finished, `_refuse_unless_awaited` returned
+  409 because the piece was no longer awaiting a render, three attempts, job
+  dead. The piece is approved, empty and unpublishable — the publisher requires
+  `media_path` — and nothing said a word. The API refuses with the reason and
+  the console shows "the video is still being made" instead of the button.
+
 ## [0.67.5] — 2026-09-02
 
 ### Fixed

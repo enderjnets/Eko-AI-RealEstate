@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.67.5";
+export const CURRENT_VERSION = "0.67.6";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.67.6",
+    date: "2026-09-02",
+    title: {
+      en: "You cannot approve a video that does not exist yet",
+      es: "No se puede aprobar un v\u00eddeo que a\u00fan no existe",
+    },
+    changes: [
+      {
+        en: "A generated piece appeared in the queue as soon as its text was clean \u2014 with an Approve button beside a script whose video was still rendering. Approving there left the piece approved and permanently empty: the render could no longer attach the file. The queue now says the video is still being made, and offers the button when there is something to watch.",
+        es: "Una pieza generada aparec\u00eda en la cola en cuanto su texto estaba limpio \u2014 con el bot\u00f3n de aprobar al lado de un guion cuyo v\u00eddeo a\u00fan se montaba. Aprobar ah\u00ed dejaba la pieza aprobada y vac\u00eda para siempre: el montaje ya no pod\u00eda adjuntar el fichero. Ahora la cola avisa de que el v\u00eddeo se est\u00e1 haciendo y ofrece el bot\u00f3n cuando hay algo que ver.",
+      },
+    ],
+  },
   {
     version: "0.67.5",
     date: "2026-09-02",
