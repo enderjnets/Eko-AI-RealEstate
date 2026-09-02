@@ -195,6 +195,12 @@ def build_post_input(
         "text": text,
         "schedulingType": "automatic",
         "mode": "shareNow",
+        # Explicit, though Buffer defaults it: the schema marks `needsApproval`
+        # non-null, and if that default were ever `true` the post would sit in
+        # Buffer's own approval queue while `createPost` still handed us an id.
+        # We would record PUBLISHED for something nobody had published. The
+        # approval gate that matters already happened in this system.
+        "needsApproval": False,
         # No thumbnailUrl. Buffer rejects the whole post if one is present.
         "assets": [{"video": {"url": video_url}}],
     }

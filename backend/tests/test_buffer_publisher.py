@@ -731,3 +731,13 @@ async def test_simulation_needs_no_token(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(s, "BUFFER_ACCESS_TOKEN", "", raising=False)
     monkeypatch.setattr(s, "BUFFER_ORG_ID", "", raising=False)
     assert buffer_publisher.undeliverable_reason() is None
+
+
+def test_the_post_does_not_wait_in_buffers_own_approval_queue() -> None:
+    """`needsApproval` is non-null in Buffer's schema and we were not sending
+    it. If its default were ever `true`, the post would sit in Buffer waiting
+    for someone there while `createPost` still returned an id — and this system
+    would record PUBLISHED for something nobody published. The approval that
+    matters already happened here."""
+    built = build_post_input(TT, PublicationPlatform.TIKTOK, "t", "u", True)
+    assert built["needsApproval"] is False

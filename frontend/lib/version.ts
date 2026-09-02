@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.67.4";
+export const CURRENT_VERSION = "0.67.5";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.67.5",
+    date: "2026-09-02",
+    title: {
+      en: "A post that waits in someone else's queue is not published",
+      es: "Un post esperando en la cola de otro no est\u00e1 publicado",
+    },
+    changes: [
+      {
+        en: "Posts now state explicitly that they need no approval inside Buffer. The field is required by Buffer's schema and we were relying on its default \u2014 had that default been \"yes\", a post would have sat in Buffer's own queue while this system recorded it as published.",
+        es: "Los posts declaran expl\u00edcitamente que no necesitan aprobaci\u00f3n dentro de Buffer. El campo es obligatorio en su esquema y depend\u00edamos de su valor por defecto \u2014 si ese defecto hubiera sido \u00absí\u00bb, el post se habr\u00eda quedado en la cola de Buffer mientras este sistema lo daba por publicado.",
+      },
+    ],
+  },
   {
     version: "0.67.4",
     date: "2026-08-31",

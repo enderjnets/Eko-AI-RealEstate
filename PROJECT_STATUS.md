@@ -6,6 +6,69 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## 🔴 v0.67.4 — LA PRIMERA PUBLICACIÓN REAL: TRES RECHAZOS (31-ago-2026)
+
+El dueño aprobó la pieza 3 y preguntó por qué no salía en ningún lado. No salía
+porque la publicación estaba apagada a propósito (`CONTENT_PUBLISH_ENABLED=false`,
+`BUFFER_SIMULATED=true`). Encendida —**con los tres canales a la vez, decisión
+del dueño frente a mi recomendación de ir uno a uno**— Buffer rechazó los tres,
+cada uno por un motivo distinto.
+
+| Canal | Lo que dijo Buffer | De quién era |
+|---|---|---|
+| TikTok | «Video could not be read from its URL» | **nuestro**: `HEAD` a la ruta pública → **405** |
+| YouTube | «require a title… require a category» | nuestro: no mandábamos ninguno |
+| Instagram | «require a type (post, story, or reel)» | nuestro: faltaba declararlo reel |
+
+**Nada se publicó**: los tres sin `external_id`, rechazados al crear el post.
+
+### El 405, que es el interesante
+
+Starlette añade `HEAD` a toda ruta que responda `GET`; **el `APIRoute` de
+FastAPI no**. Buffer sondea con `HEAD` antes de descargar, recibía 405 y
+concluía «no pude leer el vídeo» — un mensaje que apunta al fichero, a la URL y
+al túnel, y ninguno era el problema. La ruta ya responde `GET` y `HEAD`, con la
+misma puerta de estado (medido: con la pieza en `failed`, `HEAD` da **404**, no
+405 — el método se acepta, lo que rechaza es el estado).
+
+### Los metadatos, leídos del esquema y no adivinados
+
+Introspección de `YoutubePostMetadataInput`, `InstagramPostMetadataInput` y
+`TikTokPostMetadataInput`: `categoryId` (no «category»), `type: "reel"`,
+`shouldShareToFeed`. Los tres exponen `isAiGenerated`, así que se declara en los
+tres. Y `CreatePostInput.needsApproval` es **non-null y no lo mandábamos**: si su
+defecto fuera `true`, el post se quedaría en la cola de aprobación **de Buffer**
+mientras `createPost` nos devuelve un id igual — habríamos registrado PUBLISHED
+para algo que nadie publicó. Ahora va explícito en `false`.
+
+### El aviso de IA era falso
+
+El pie decía «Contains AI-generated visuals» sobre un vídeo donde **cada imagen
+es una fotografía con licencia de Pexels**. Lo sintético es la voz. Sobre-declarar
+sigue siendo una afirmación falsa en publicidad de dos agentes con licencia.
+Ahora: «Narrated with a synthetic voice.» — cierto en toda pieza de este carril.
+La pieza 3 conserva el texto viejo a propósito: cambiarlo publicaría algo que el
+dueño no aprobó.
+
+### `failed` era un callejón sin salida
+
+La única salida era un `UPDATE` a mano en producción. Hay endpoint
+`POST /content/{id}/retry` y botón en la consola; devuelve a **NEEDS_APPROVAL**,
+no a APPROVED — aprobar otra vez cuesta un clic y conserva la invariante de que
+un humano aprobó exactamente lo que salió.
+
+### 🔴 BLOQUEADO, y es de diseño
+
+La pieza sigue en `failed`. Reintentarla exige los dos clics del dueño: la API
+está tras `AUTH_ENABLED=true` y **no me fabrico una sesión** — esa puerta es la
+que protege el carril. El clasificador también bloquea escribir el estado a mano
+en la base de producción, y es correcto que lo haga.
+
+`CONTENT_PUBLISH_INTERVAL_SECONDS` está **temporalmente en 60** (era 900) para
+que el reintento no tarde quince minutos. Devolver a 900 tras el primer post.
+
+---
+
 ## ✅ v0.67.3 — LOS SUBTÍTULOS Y EL FINAL QUE FALTABA (31-ago-2026)
 
 El dueño pidió dos cosas mirando el vídeo generado: subtítulos amarillos con la

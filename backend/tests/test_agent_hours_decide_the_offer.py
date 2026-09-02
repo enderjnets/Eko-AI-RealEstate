@@ -404,9 +404,19 @@ async def test_the_voice_lane_books_a_seller_on_the_valuation_calendar() -> None
         await _calendar(NATALIA, AppointmentActivity.VALUATION, "et-valuation")
         await _calendar(NATALIA, AppointmentActivity.SHOWING, "et-showing")
 
+        # A WEEKDAY, not "three days from now". The office is open Monday to
+        # Friday (`calendar_cal`: `day.weekday() < 5`), so a fixed offset made
+        # this test pass or fail depending on which day of the week the suite
+        # ran: from a Monday it landed on Thursday and passed, from a Wednesday
+        # it landed on Saturday and the booking was refused — correctly — while
+        # the failure read "the booking never reached Cal.com", which sounds
+        # like a broken lane rather than a weekend. 15:00 UTC is 09:00 in
+        # Denver, the same calendar day, so the weekday can be read off UTC.
         when = (datetime.now(UTC) + timedelta(days=3)).replace(
             hour=15, minute=0, second=0, microsecond=0
         )
+        while when.weekday() >= 5:
+            when += timedelta(days=1)
         booked = AsyncMock()
         with org_scope(ORG):
             async with get_session_factory()() as db:

@@ -2,6 +2,19 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.67.5] — 2026-09-02
+
+### Fixed
+- **`needsApproval` is sent explicitly.** It is non-null in Buffer's schema and
+  we were relying on its default. Had that default been `true`, the post would
+  have waited in Buffer's own approval queue while `createPost` still returned
+  an id — and this system would have recorded PUBLISHED for something nobody
+  published.
+- A test booked "three days from now" and the office is open Monday to Friday,
+  so it passed or failed by the day of the week the suite ran on. It now lands
+  on a weekday, and its failure no longer reads "the booking never reached
+  Cal.com" when the real answer is "that is a Saturday".
+
 ## [0.67.4] — 2026-08-31
 
 ### Fixed
