@@ -45,8 +45,9 @@ class Config:
     # Refuse to start a job below this, in gigabytes. A render that fills the
     # disk on a machine three projects share does not fail politely.
     min_free_gb: float = field(default=15.0)
-    # Room to work in, on a 15 GB machine three projects share.
-    min_memory_gb: float = field(default=3.0)
+    # Twice the measured peak of the heaviest step, on a 15 GB machine three
+    # projects share. See `enough_memory` for the measurements.
+    min_memory_gb: float = field(default=1.5)
 
     @property
     def configured(self) -> str | None:
@@ -69,5 +70,5 @@ def load() -> Config:
         ),
         poll_seconds=int(os.environ.get("RENDER_WORKER_POLL_SECONDS", "60")),
         min_free_gb=float(os.environ.get("RENDER_WORKER_MIN_FREE_GB", "15")),
-        min_memory_gb=float(os.environ.get("RENDER_WORKER_MIN_MEMORY_GB", "3")),
+        min_memory_gb=float(os.environ.get("RENDER_WORKER_MIN_MEMORY_GB", "1.5")),
     )

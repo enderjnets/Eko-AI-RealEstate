@@ -105,9 +105,19 @@ def enough_memory(min_free_gb: float) -> bool:
     This machine has 15 GB and three projects. On 2026-09-02 a local client
     asked Ollama for a 9 GB model and the OOM killer took the neighbouring
     project's renderer three times in eight minutes. Our own footprint is
-    small — Whisper in int8 and ffmpeg — but being small is no protection: a
-    job killed halfway has already PAID for its narration, and the retry pays
-    again. Starting into a squeeze is the part we can decline.
+    small, but being small is no protection: a job killed halfway has already
+    PAID for its narration — `tts.narrate` writes into a workdir that is
+    deleted in a `finally`, and only the PICTURES are cached — so the retry
+    pays MiniMax again. Starting into a squeeze is the part we can decline.
+
+    **The floor is measured, not chosen.** The first version used 3 GB, picked
+    because it sounded safe, and the neighbouring session pointed out what that
+    costs: a threshold above what we actually need refuses to work on a machine
+    that could host us perfectly well, and with the big model resident that can
+    last hours — silencing the channel to avoid a cost that was never incurred.
+    Measured instead: Whisper `small.en` int8 over a 30 s narration peaks at
+    0.57 GB, and the heaviest ffmpeg step (zoompan to 1080x1920) at 0.75 GB.
+    They run in sequence, not together. 1.5 GB is twice the real peak.
 
     It cannot prevent a 9 GB model landing mid-render. It declines the case we
     can see, which is the machine already being full when we ask.

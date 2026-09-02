@@ -514,10 +514,14 @@ def test_a_squeezed_machine_does_not_get_a_render(monkeypatch) -> None:
     narration, and the retry pays again."""
     from worker import main as worker_main
 
-    monkeypatch.setattr(worker_main, "available_memory_gb", lambda: 1.2)
-    assert not worker_main.enough_memory(3.0)
+    monkeypatch.setattr(worker_main, "available_memory_gb", lambda: 0.9)
+    assert not worker_main.enough_memory(1.5)
     monkeypatch.setattr(worker_main, "available_memory_gb", lambda: 11.8)
-    assert worker_main.enough_memory(3.0)
+    assert worker_main.enough_memory(1.5)
+    # And the floor is not so high that a machine which could host us is
+    # refused: with the 9 GB model resident there is still room to work.
+    monkeypatch.setattr(worker_main, "available_memory_gb", lambda: 3.4)
+    assert worker_main.enough_memory(1.5)
 
 
 def test_a_machine_that_cannot_be_measured_still_renders(monkeypatch) -> None:
