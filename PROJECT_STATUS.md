@@ -6,6 +6,33 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## 🟡 EL ROG SE QUEDA SIN MEMORIA, Y NO ES NUESTRO (2-sep-2026)
+
+Aviso de la sesión «Bittrader Youtube», **verificado aquí en el journal** y no
+aceptado de palabra: ComfyUI murió por OOM tres veces esta madrugada (04:11,
+04:15, 04:19), con `Failed with result 'oom-kill'` y 7,5 GB residentes en el
+proceso matado. La secuencia encaja con su reconstrucción: 04:09:22 un
+`GET /v1/models` desde **127.0.0.1** (endpoint compatible OpenAI) y 04:09:31 un
+runner de Ollama cargando un modelo qwen2 — el tag de 9,0 GB, no el de 3,3 que
+usa nuestro fallback. Ellos lo trazan a la config viva de openclaw; **eso no lo
+he verificado y no abro esa config**, no es nuestra.
+
+**Nuestra exposición, medida:** el obrero no estaba corriendo (las 04 no están en
+su ventana) y su pico es modesto — Whisper int8 y ffmpeg. Pero openclaw puede
+pedir ese modelo a cualquier hora, y un render matado a media faena **ya pagó su
+narración de MiniMax**; el reintento la paga otra vez.
+
+**Lo hecho, solo en lo nuestro:** el tick del obrero se niega a empezar si
+`MemAvailable` baja de 3 GB, igual que ya se negaba por disco. No evita que un
+modelo de 9 GB aterrice a mitad de render; declina el caso que sí se ve.
+Desplegado y comprobado en vivo (11,2 GB disponibles). Sin bump: no cambia
+comportamiento visible para el cliente.
+
+🔴 **Decisión del dueño, no nuestra**: modelo más pequeño en openclaw, limitar
+concurrencia, o ampliar RAM. 15 GB para tres proyectos es el problema de fondo.
+
+---
+
 ## 🔴 v0.67.5 + v0.67.6 — LO QUE APARECIÓ AL MIRAR LAS OTRAS PIEZAS (2-sep-2026)
 
 ### El post que espera en la cola de otro no está publicado (v0.67.5)
