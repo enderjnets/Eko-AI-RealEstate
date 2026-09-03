@@ -88,6 +88,15 @@ class PieceOut(BaseModel):
     # waiting on a missing brokerage line saw it sit there with no reason.
     render_error: str | None = None
     violations: list | None = None
+    # What the render is doing, so the queue can stop saying "still being made"
+    # over a job nothing has picked up. None when there is no job at all.
+    render_state: str | None = None
+    render_stage: str | None = None
+    render_progress: int | None = None
+    # False when the render machine is outside its agreed hours: the wait is
+    # real and has an end, and hiding it behind a spinner is what sent the
+    # owner looking for a fault that did not exist.
+    render_machine_working: bool | None = None
     approved_by: str | None = None
     approved_at: datetime | None = None
     rejected_reason: str | None = None
@@ -269,7 +278,55 @@ async def list_pieces(
     if status is not None:
         stmt = stmt.where(ContentPiece.status == status)
     rows = (await db.execute(stmt)).scalars().unique().all()
-    return [PieceOut.model_validate(row) for row in rows]
+    return await _with_render_state(db, rows)
+
+
+async def _with_render_state(
+    db: AsyncSession, rows: list[ContentPiece]
+) -> list[PieceOut]:
+    """The pieces, plus what their render is actually doing.
+
+    Read here rather than stored on the piece: a render job is a fact about
+    work, not about content, and copying its state onto the piece would give
+    two rows that must agree and eventually will not.
+
+    One query for the jobs and one for the worker, not one per piece.
+    """
+    from app.models import MonitorState, RenderJob
+
+    out = [PieceOut.model_validate(row) for row in rows]
+    if not out:
+        return out
+
+    jobs = {
+        job.piece_id: job
+        for job in (
+            await db.execute(
+                select(RenderJob).where(
+                    RenderJob.piece_id.in_([piece.id for piece in out])
+                )
+            )
+        ).scalars()
+    }
+    working: bool | None = None
+    monitor = (
+        await db.execute(
+            select(MonitorState).where(MonitorState.key == "render_worker")
+        )
+    ).scalar_one_or_none()
+    if monitor is not None and isinstance(monitor.detail, dict):
+        value = monitor.detail.get("within_hours")
+        working = value if isinstance(value, bool) else None
+
+    for piece in out:
+        job = jobs.get(piece.id)
+        if job is None:
+            continue
+        piece.render_state = job.status.value
+        piece.render_stage = job.stage
+        piece.render_progress = job.progress
+        piece.render_machine_working = working
+    return out
 
 
 @router.post("", response_model=PieceOut, status_code=201)

@@ -444,6 +444,19 @@ class HeartbeatIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     worker: str = Field(max_length=64)
+    # Whether THIS tick fell inside the machine's agreed hours, and which hours
+    # those are. Optional so an older worker keeps working. Without it the
+    # console cannot tell "nothing is being made" from "nothing will be made
+    # for another hour", and it showed a spinner for both.
+    within_hours: bool | None = None
+    hours: list[int] | None = None
+
+
+class ProgressIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stage: str = Field(max_length=40)
+    percent: int = Field(ge=0, le=100)
 
 
 @router.post("/heartbeat")
@@ -452,6 +465,35 @@ async def heartbeat(payload: HeartbeatIn) -> dict[str, str]:
     dead worker — a process cannot report its own death."""
     from app.services.render_watch import record_heartbeat
 
-    await record_heartbeat(payload.worker)
+    await record_heartbeat(
+        payload.worker,
+        detail=(
+            None
+            if payload.within_hours is None
+            else {"within_hours": payload.within_hours, "hours": payload.hours or []}
+        ),
+    )
+    return {"status": "ok"}
+
+
+@router.post("/{job_id}/progress")
+async def job_progress(job_id: int, payload: ProgressIn) -> dict[str, str]:
+    """How far along this job is, in its own words.
+
+    Advisory only: it never changes the job's status, so a lost or late report
+    cannot strand a render. The console reads it to say what is happening
+    instead of spinning.
+    """
+    from app.db.base import get_bypass_session_factory
+
+    async with get_bypass_session_factory()() as db:
+        job = (
+            await db.execute(select(RenderJob).where(RenderJob.id == job_id))
+        ).scalar_one_or_none()
+        if job is None:
+            raise HTTPException(status_code=404, detail="no such job")
+        job.stage = payload.stage
+        job.progress = payload.percent
+        await db.commit()
     return {"status": "ok"}
 

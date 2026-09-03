@@ -289,17 +289,29 @@ def produce(
     mark: Path | None,
     music: Path | None,
     domain: str = "denverhomestory.com",
+    report=None,
 ) -> Path:
-    """Script in, finished video out."""
+    """Script in, finished video out.
+
+    `report(stage, percent)` is optional and advisory — the console uses it to
+    say what is happening instead of spinning. A render must never fail because
+    nobody was watching, so every call is wrapped by the caller.
+    """
+    def say(stage: str, percent: int) -> None:
+        if report is not None:
+            report(stage, percent)
+
     plan = spec.get("scenes") or {}
     scenes = plan.get("scenes") or []
     if not scenes:
         raise ValueError("this piece has no scene plan; nothing to build")
 
     # 1. The voice, first, because everything is cut to it.
+    say("narrating", 10)
     narration = spoken.for_the_voice(plan.get("narration") or spec.get("script") or "")
     voice = tts.narrate(narration, workdir / "voice.mp3")
 
+    say("transcribing", 25)
     words = subtitles.transcribe(voice, language=spec.get("language", "en"))
     # Every later length is derived from this one. The last WORD rather than the
     # file, because MiniMax leaves a little silence at the end and the tail is
@@ -313,6 +325,7 @@ def produce(
     reported_no_balance = False
     shots: list[Shot] = []
     spans = plan_shots(scenes, words, total)
+    say("pictures", 35)
     for index, (scene, (start, end)) in enumerate(zip(scenes, spans, strict=True)):
         image: Path | None = workdir / f"pic-{index}.jpg"
         try:
@@ -333,6 +346,7 @@ def produce(
         shots.append(
             Shot(image=image, text=scene.get("on_screen_text", ""), start=start, end=end)
         )
+        say("pictures", 35 + int(30 * (index + 1) / max(1, len(scenes))))
 
     # A card standing in for ONE scene is a fallback. A card standing in for
     # EVERY scene is not a video: it is half a minute of a flat colour with a
@@ -349,6 +363,7 @@ def produce(
         )
 
     # 3. The picture track, then the words, then the identification.
+    say("assembling", 70)
     scene_video = build_scene_video(shots, workdir, font)
     with_voice = workdir / "voiced.mp4"
     subprocess.run(
@@ -388,6 +403,7 @@ def produce(
     domain_file = workdir / "domain.txt"
     domain_file.write_text(domain, encoding="utf-8")
 
+    say("finishing", 88)
     destination = workdir / "out.mp4"
     assemble.run(
         assemble.build_command(

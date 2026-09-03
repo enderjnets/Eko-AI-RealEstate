@@ -182,9 +182,29 @@ class Panel:
         except Exception:  # noqa: BLE001 — reporting a failure must not raise
             log.exception("could not report the failure of job %s", job_id)
 
-    def heartbeat(self) -> None:
+    def progress(self, job_id: int, stage: str, percent: int) -> None:
+        """How far along, for the console. Advisory: it never raises.
+
+        Losing a video because its progress report failed would be a
+        spectacular way to pay for a cosmetic feature.
+        """
         try:
-            self.http.post("/heartbeat", json={"worker": self.cfg.name})
+            self.http.post(
+                f"/{job_id}/progress", json={"stage": stage, "percent": percent}
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.debug("progress report failed (%s); the render continues", exc)
+
+    def heartbeat(self, *, within_hours: bool | None = None) -> None:
+        body: dict[str, object] = {"worker": self.cfg.name}
+        if within_hours is not None:
+            # So the console can tell "nothing is being made" from "nothing
+            # will be made for another hour". Both looked identical, and the
+            # owner went looking for a fault that was a schedule.
+            body["within_hours"] = within_hours
+            body["hours"] = sorted(self.cfg.hours)
+        try:
+            self.http.post("/heartbeat", json=body)
         except Exception as exc:  # noqa: BLE001
             log.warning("heartbeat failed: %s", exc)
 
@@ -234,7 +254,9 @@ def do_subtitle_job(cfg: config.Config, panel: Panel, job: dict, spec: dict) -> 
     return destination
 
 
-def do_produce_job(cfg: config.Config, job: dict, spec: dict) -> Path:
+def do_produce_job(
+    cfg: config.Config, job: dict, spec: dict, panel: "Panel | None" = None
+) -> Path:
     """Lane B: a written script becomes a video with a voice."""
     workdir = cfg.workdir / f"job-{job['id']}"
     workdir.mkdir(parents=True, exist_ok=True)
@@ -245,6 +267,11 @@ def do_produce_job(cfg: config.Config, job: dict, spec: dict) -> Path:
         font=font(),
         mark=MARK if MARK.is_file() else None,
         music=pick_music(),
+        report=(
+            (lambda stage, pct: panel.progress(job["id"], stage, pct))
+            if panel is not None
+            else None
+        ),
     )
     # Narration is the point of this lane, so its absence is a failure and not
     # a quieter video: a short built for a voice, delivered mute, is a
@@ -269,7 +296,7 @@ def handle(cfg: config.Config, panel: Panel, job: dict) -> None:
         if job["kind"] == "subtitle_a":
             video = do_subtitle_job(cfg, panel, job, spec)
         elif job["kind"] == "produce_b":
-            video = do_produce_job(cfg, job, spec)
+            video = do_produce_job(cfg, job, spec, panel)
         else:
             panel.failed(job["id"], f"this worker cannot do {job['kind']}")
             return
@@ -309,9 +336,10 @@ def main() -> int:
             # The heartbeat goes out on every tick, in or out of hours: it says
             # "this process is alive", and a worker that only reported inside
             # its window would look dead for twenty hours a day.
-            panel.heartbeat()
+            inside = within_hours(cfg.hours)
+            panel.heartbeat(within_hours=inside)
 
-            if not within_hours(cfg.hours):
+            if not inside:
                 time.sleep(cfg.poll_seconds)
                 continue
             if not enough_disk(cfg.workdir, cfg.min_free_gb):

@@ -447,6 +447,10 @@ export interface ContentPiece {
   media_path: string | null;
   /** Why the clip is not rendered, in the render's own words. */
   render_error: string | null;
+  render_state?: string | null;
+  render_stage?: string | null;
+  render_progress?: number | null;
+  render_machine_working?: boolean | null;
   violations: { phrase: string; category: string }[] | null;
   approved_by: string | null;
   approved_at: string | null;

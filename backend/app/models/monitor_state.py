@@ -20,6 +20,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import DateTime, Integer, String, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -70,6 +71,11 @@ class MonitorState(Base):
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # What the process says about itself, beyond alive/dead. The render worker
+    # writes whether this tick fell inside its agreed hours and which hours
+    # those are, so the console can name the wait instead of showing a spinner
+    # over a queue that nothing is working on.
+    detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

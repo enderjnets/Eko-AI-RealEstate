@@ -15,7 +15,16 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, pg_enum
@@ -69,6 +78,10 @@ class RenderJob(Base):
         DateTime(timezone=True), nullable=True
     )
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # What the worker is doing right now, and roughly how far along. Written
+    # by the worker as it goes; NULL on any row that never reported one.
+    stage: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    progress: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(

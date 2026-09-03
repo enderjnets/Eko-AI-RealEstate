@@ -2,6 +2,20 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.67.8] — 2026-09-03
+
+### Added
+- **The content queue says what the render is actually doing.** "The video is
+  still being made" was shown for three different situations — queued, being
+  worked on, and waiting for the render machine's agreed hours — behind one
+  spinner. The owner watched it for an hour looking for a fault that was a
+  schedule. `render_jobs` gained `stage`/`progress`, which the worker fills in
+  as it narrates, transcribes, fetches pictures and assembles; `monitor_state`
+  gained `detail`, where the worker's heartbeat records whether this tick fell
+  inside its hours. The bar is never invented on the client: with no report it
+  is indeterminate rather than a number that moves on its own.
+- Migration `049_render_progress`.
+
 ## [0.67.7] — 2026-09-03
 
 ### Added

@@ -52,11 +52,20 @@ async def _row(db) -> MonitorState:
     return row
 
 
-async def record_heartbeat(worker: str) -> None:
-    """The worker says it is alive. Stored, not judged."""
+async def record_heartbeat(worker: str, detail: dict | None = None) -> None:
+    """The worker says it is alive, and what it is doing. Stored, not judged.
+
+    `detail` carries whether this tick fell inside the machine's agreed hours.
+    Kept out of the alerting logic on purpose: being outside its window is the
+    worker behaving correctly, not a fault. It exists so the console can say
+    "queued, the render machine is outside its hours" instead of showing the
+    same spinner it shows for work in progress.
+    """
     async with get_bypass_session_factory()() as db:
         row = await _row(db)
         row.last_heartbeat_at = datetime.now(UTC)
+        if detail is not None:
+            row.detail = detail
         await db.commit()
     log.debug("Render worker %s checked in", worker)
 

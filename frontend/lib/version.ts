@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.67.7";
+export const CURRENT_VERSION = "0.67.8";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.67.8",
+    date: "2026-09-03",
+    title: {
+      en: "The queue says what is actually happening",
+      es: "La cola dice lo que est\u00e1 pasando de verdad",
+    },
+    changes: [
+      {
+        en: "\u201cThe video is still being made\u201d was shown whether the job was queued, being worked on, or waiting for the render machine's working hours \u2014 three different situations behind one spinner. The queue now names which one it is, with a progress bar the worker actually fills in as it narrates, finds pictures and assembles.",
+        es: "\u00abEl v\u00eddeo se est\u00e1 haciendo\u00bb sal\u00eda igual si el trabajo estaba en cola, en marcha, o esperando al horario de la m\u00e1quina de montaje \u2014 tres situaciones distintas tras el mismo giro. Ahora la cola dice cu\u00e1l es, con una barra que el obrero rellena de verdad mientras narra, busca im\u00e1genes y monta.",
+      },
+    ],
+  },
   {
     version: "0.67.7",
     date: "2026-09-03",

@@ -18,6 +18,7 @@ import {
   Info,
   Loader2,
   Pencil,
+  Clock,
   RefreshCw,
   RotateCcw,
   ShieldAlert,
@@ -266,6 +267,52 @@ function StudioDiagnosis({
 }
 
 
+/**
+ * What the render is actually doing.
+ *
+ * This used to be one line — "the video is still being made" — shown with a
+ * spinner whether the job was queued, being worked on, or waiting for the
+ * render machine's agreed hours. The owner watched it for an hour and went
+ * looking for a fault; there was none, the machine simply does not work at
+ * 22:00. A spinner that means three different things is worse than no spinner.
+ */
+function RenderProgress({ piece }: { piece: ContentPiece }) {
+  const { t } = useI18n();
+  const state = piece.render_state;
+  const idle = piece.render_machine_working === false;
+
+  if (state === "queued" || state == null) {
+    return (
+      <span className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-400">
+        <Clock className="w-4 h-4" />
+        {idle ? t("content.renderQueuedIdle") : t("content.renderQueued")}
+      </span>
+    );
+  }
+
+  // A percentage the worker reported, or an honest indeterminate bar. Never a
+  // number invented on this side: a bar that moves on its own is a lie with an
+  // animation.
+  const pct = typeof piece.render_progress === "number" ? piece.render_progress : null;
+  const stage = piece.render_stage ? t(`content.stage.${piece.render_stage}`) : null;
+  return (
+    <span className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-300 min-w-[240px]">
+      <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+      <span className="flex-1">
+        <span className="block">{stage ?? t("content.awaitingVideo")}</span>
+        <span className="mt-1 block h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+          <span
+            className="block h-full rounded-full bg-eko-violet transition-[width] duration-700"
+            style={{ width: pct == null ? "35%" : `${Math.max(4, pct)}%` }}
+          />
+        </span>
+      </span>
+      {pct != null && <span className="tabular-nums text-gray-500">{pct}%</span>}
+    </span>
+  );
+}
+
+
 function PieceCard({
   piece,
   busy,
@@ -463,10 +510,7 @@ function PieceCard({
                 // video exists leaves it approved and empty forever: the render
                 // is refused with a 409 once the piece is no longer awaiting
                 // one. That happened here on 2026-09-01.
-                <span className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-gray-400">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {t("content.awaitingVideo")}
-                </span>
+                <RenderProgress piece={piece} />
               )}
               {piece.status === "needs_approval" && piece.media_path && (
                 <button
