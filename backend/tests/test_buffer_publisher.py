@@ -161,6 +161,9 @@ class _Recorder:
         self.reads: dict[str, Any] = {}
         #: Extra top-level keys to put beside "data" — `errors`, mostly.
         self.envelope: dict[str, Any] = {}
+        #: Buffer nulls `data` for the whole batch when any field errors —
+        #: measured against the live API, not assumed.
+        self.null_data = False
         self.answers = answers or {}
 
     async def __call__(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
@@ -188,7 +191,10 @@ class _Recorder:
             answered = {
                 alias: self.reads.get(post_id) for alias, post_id in variables.items()
             }
-            return {"data": answered, **self.envelope}
+            return {
+                "data": None if self.null_data else answered,
+                **self.envelope,
+            }
         payload = variables["input"]
         self.sent.append(payload)
         answer = self.answers.get(payload["channelId"])
@@ -896,8 +902,6 @@ async def test_a_post_already_out_today_spends_todays_slot(
         f"YouTube already published today; the queue booked it again on "
         f"{rows['youtube'][1]}"
     )
-    # The other two channels are untouched by that row and keep today.
-    assert _local_day(rows["tiktok"][1]) != today.isoformat() or True
 
 
 async def test_the_lead_time_pushes_a_slot_that_is_too_close(
@@ -1242,24 +1246,51 @@ async def test_a_post_deleted_in_buffer_lets_the_piece_close(
     ):
         await _scheduled_row(piece, platform, ext, due_minutes=-5)
 
+    # Buffer's real shape for a deleted post, measured against the live API:
+    # an `errors` entry with `code: NOT_FOUND` naming the alias in its `path`,
+    # and `data` nulled for the WHOLE batch. Not a clean null for that alias —
+    # the branch this used to assert was unreachable in production.
     recorder = _Recorder()
-    recorder.reads = {
-        "yt-1": {"status": "sent", "sentAt": "2026-09-04T02:30:00Z",
-                 "externalLink": "https://youtube.com/shorts/abc", "error": None},
-        "tt-1": None,  # somebody deleted it in Buffer's own interface
-        "ig-1": {"status": "sent", "sentAt": "2026-09-04T14:30:00Z",
-                 "externalLink": "https://instagram.com/reel/xyz", "error": None},
+    recorder.reads = {}
+    recorder.envelope = {
+        "errors": [
+            {
+                "message": "Post not found for id: tt-1",
+                "path": ["p1"],
+                "extensions": {"code": "NOT_FOUND"},
+            }
+        ]
     }
+    recorder.null_data = True
     monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
     with org_scope(ORG):
         async with get_session_factory()() as db:
-            assert await buffer_publisher.reconcile_scheduled(db) == 3
+            # Only the one Buffer answered about. The other two were not
+            # answered at all — `data` came back null — and silence is not a
+            # verdict; they are asked again on the next tick.
+            assert await buffer_publisher.reconcile_scheduled(db) == 1
 
     rows = await _sched(piece)
     assert rows["tiktok"][0] == "failed"
     assert "no longer exists" in rows["tiktok"][3]
-    # Two of three went out, so the piece is published — the same rule the
-    # immediate path uses.
+    assert rows["youtube"][0] == "scheduled"
+    assert rows["instagram"][0] == "scheduled"
+    assert await _status(piece) == "publishing"
+
+    # Next tick: the deleted one is out of the batch, so the clean rows finally
+    # get their answer and the piece closes. This is the half that a blanket
+    # "errors means give up" would have blocked for ever.
+    second = _Recorder()
+    second.reads = {
+        "yt-1": {"status": "sent", "sentAt": "2026-09-04T02:30:00Z",
+                 "externalLink": "https://youtube.com/shorts/abc", "error": None},
+        "ig-1": {"status": "sent", "sentAt": "2026-09-04T14:30:00Z",
+                 "externalLink": "https://instagram.com/reel/xyz", "error": None},
+    }
+    monkeypatch.setattr(buffer_publisher, "_graphql", second)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            assert await buffer_publisher.reconcile_scheduled(db) == 2
     assert await _status(piece) == "published"
 
 
@@ -1352,8 +1383,15 @@ async def test_graphql_errors_never_retire_a_live_post(
                     "externalLink": "https://instagram.com/reel/b", "error": None},
     }
     recorder.envelope = {
-        "errors": [{"message": "Rate limit exceeded for post lookup", "path": ["p1"]}]
+        "errors": [
+            {
+                "message": "Rate limit exceeded for post lookup",
+                "path": ["p1"],
+                "extensions": {"code": "RATE_LIMITED"},
+            }
+        ]
     }
+    recorder.null_data = True
     monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
 
     with org_scope(ORG):

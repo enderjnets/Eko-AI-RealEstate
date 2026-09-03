@@ -817,27 +817,41 @@ async def reconcile_scheduled(db: AsyncSession) -> int:
         log.warning("Could not reconcile %s scheduled posts: %s", len(due), exc)
         return 0
 
-    # A 200 carrying `errors` is a failed read, not a verdict. GraphQL answers
-    # 200 and puts application errors in the body — the same thing
-    # `parse_create_post` already knows about writes — and it can return
-    # `data: {p0: {...}, p1: null}` where the null means "this field errored",
-    # not "this post is gone". Without this check a rate-limited lookup marked
-    # a LIVE post "no longer exists", the piece closed FAILED, and a person
-    # pressing Retry then re-approved it into a SECOND public post of the same
-    # video. That chain is why this is a refusal and not a log line.
-    errors = payload.get("errors")
-    if errors:
-        log.warning(
-            "Buffer returned errors while reconciling %s scheduled posts; "
-            "nothing recorded: %s",
-            len(due), str(errors)[:300],
-        )
-        return 0
+    # A 200 carrying `errors` is not a verdict on every post in it. GraphQL
+    # answers 200 and puts application errors in the body — the same thing
+    # `parse_create_post` already knows about writes — and each entry names the
+    # alias it belongs to in its `path`. Read as a blanket failure it marked a
+    # LIVE post "no longer exists", the piece closed FAILED, FAILED is the one
+    # status that offers a person Retry, and a re-approved piece re-sends its
+    # failed rows: a transient read error ended in a second public post.
+    #
+    # **Measured against the real API, because the shape decides the code.**
+    # Asking for one real id and one well-formed id that does not exist:
+    #
+    #   {"errors":[{"message":"Post not found for id: 0000…",
+    #               "path":["p1"],"extensions":{"code":"NOT_FOUND"}}],
+    #    "data":null}
+    #
+    # Two things follow, and both contradict what this was first written to do.
+    # Buffer does NOT return a clean `null` for a post somebody deleted — it
+    # returns an error — so the "alias is null means gone" branch was
+    # unreachable. And one bad id nulls `data` for the WHOLE batch, so a single
+    # deleted post would have stalled every other row on every tick for ever.
+    #
+    # So: errors are matched to their alias by `path`. NOT_FOUND is a real
+    # answer about that one post; anything else is a read that failed. The rows
+    # we could not read keep their status and come back on the next tick — by
+    # which time the NOT_FOUND ones are recorded and out of the batch.
+    by_alias: dict[str, dict[str, Any]] = {}
+    for err in payload.get("errors") or []:
+        path = err.get("path") or []
+        if path and isinstance(path[0], str):
+            by_alias[path[0]] = err
 
     data = payload.get("data") or {}
-    if not data:
-        # A 200 with no data at all is a question we did not get an answer to,
-        # not an answer of "none of these exist".
+    if not data and not by_alias:
+        # No answers and nothing to explain why: a question we did not get an
+        # answer to, not an answer of "none of these exist".
         log.warning(
             "Buffer answered with no data for %s scheduled posts: %s",
             len(due), str(payload)[:300],
@@ -846,16 +860,31 @@ async def reconcile_scheduled(db: AsyncSession) -> int:
 
     resolved = 0
     unknown: list[tuple[int, str, str]] = []
+    unread: list[str] = []
     for alias, row in aliases.items():
+        err = by_alias.get(alias)
+        if err is not None:
+            code = str((err.get("extensions") or {}).get("code") or "").upper()
+            message = str(err.get("message") or "")
+            if code == "NOT_FOUND" or "not found" in message.lower():
+                # Somebody deleted it in Buffer's own interface, which is
+                # today's only way to cancel a queued post. Recording that
+                # honestly is what lets the piece close instead of waiting for
+                # an hour that will never come.
+                row.status = PublicationStatus.FAILED
+                row.last_error = "post no longer exists in Buffer"
+                resolved += 1
+            else:
+                # Rate limits, timeouts, anything else: a question we could not
+                # ask about THIS post. It keeps its status and is asked again.
+                unread.append(f"{alias}={code or message[:60]}")
+            continue
+
         post = data.get(alias)
         if post is None:
-            # Somebody deleted it in Buffer's own interface, which is today's
-            # only way to cancel a queued post. Recording that honestly is what
-            # lets the piece close instead of waiting for an hour that will
-            # never come.
-            row.status = PublicationStatus.FAILED
-            row.last_error = "post no longer exists in Buffer"
-            resolved += 1
+            # No answer and no error naming it — `data` was nulled wholesale by
+            # a sibling's error. Silence is not a verdict.
+            unread.append(f"{alias}=no answer")
             continue
 
         status = (post.get("status") or "").lower()
@@ -882,6 +911,13 @@ async def reconcile_scheduled(db: AsyncSession) -> int:
             # piece stuck in PUBLISHING for ever while every tick asks again
             # and nobody is told.
             unknown.append((row.piece_id, row.platform.value, status))
+
+    if unread:
+        log.warning(
+            "Buffer could not answer for %s scheduled post(s) this tick; they "
+            "keep their status and are asked again: %s",
+            len(unread), unread[:10],
+        )
 
     if unknown:
         log.error(

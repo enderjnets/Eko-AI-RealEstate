@@ -12,6 +12,7 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 | # | Motivo | Decisión |
 |---|---|---|
+| 2 | Cierre final: coherencia entre fases y riesgos de despliegue | Señaló que B1 y la rama «post borrado» estaban en tensión y que **nadie había medido** cómo responde Buffer a un id inexistente. Medido: devuelve `errors` con `code: NOT_FOUND` y **`data: null` para el lote entero** — así que mi arreglo B1 habría parado la reconciliación completa para siempre tras un solo post borrado, y la rama «alias null = borrado» era **inalcanzable en producción**. Reescrito para casar errores con su alias por `path`. También: cobertura contra la base medida (faltaba), aserción muerta borrada, y el estrangulamiento del tope diario al backlog. |
 | 1 | Arranque: validar lectura del plan, orden, dependencias, riesgos | Lectura correcta. **Rama** `feat/fase0-tachar-token` desde `e321f95` (el plan citaba `feat/cierre-dominio-primero`, que ya no es HEAD); el deploy de 0.67.11 **arrastra `e321f95`** (hero 1080p, sin desplegar) y eso va escrito en el pre-deploy. **La Fase 0 NO despliega**: su verificación en `docker logs` pasa al checklist post-deploy. **Cobertura contra `e321f95`**, no contra `main` (que es un señuelo sin la pila). Riesgos aceptados: (a) `httpx` deja la URL en `record.args`, así que el filtro debe pasar por `getMessage()` o el test es verde falso; (b) el barrido AST puede morder a `reconcile_scheduled`; (c) el «día tomado» se calcula en zona local, nunca +24 h en UTC. |
 
 ### ✅ Fase 0 — v0.67.11: el token deja de escribirse (3-sep-2026)
@@ -183,6 +184,29 @@ día; dos piezas del mismo tick sí se ven entre sí.
 | Suite frontend | **160 passed** |
 | `ruff` / `tsc` | limpios |
 | Mutaciones | 8 de la fase (7 rojas, 1 sin efecto observable y documentada) + **6 de los arreglos, todas rojas** |
+
+### 🔴 Lo que Buffer hace de verdad con un post borrado (medido, refuta el plan)
+
+El plan decía «post inexistente (`null`) → FAILED». **Falso.** Consulta real
+con un id bien formado que no existe:
+
+```
+{"errors":[{"message":"Post not found for id: 0000…","path":["p1"],
+            "extensions":{"code":"NOT_FOUND"}}],"data":null}
+```
+
+Dos consecuencias, las dos contra lo que estaba escrito: Buffer **no** devuelve
+un `null` limpio para un post borrado —devuelve un error—, así que esa rama era
+inalcanzable; y **un solo id malo anula `data` del lote entero**, de modo que un
+post borrado habría dejado todas las demás filas sin reconciliar en cada tick,
+para siempre y en silencio. El reconciliador casa ahora cada error con su alias
+por `path`: `NOT_FOUND` es un veredicto sobre ESE post, cualquier otro código es
+una lectura que falló y la fila se pregunta otra vez. Cuatro mutaciones sobre
+esta lógica, las cuatro rojas.
+
+**Cobertura contra la base `e321f95`** (el checklist la exigía y faltaba):
+`buffer_publisher.py` **84% → 87%** con 128 sentencias más, `content.py`
+56% → 56%, total 67% → 72%. No baja.
 
 ### 🔴 La verificación de la Fase 1 hay que rehacerla (medido 3-sep)
 
