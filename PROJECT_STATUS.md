@@ -6,6 +6,78 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## ✅ v0.67.9 y v0.67.10 — LA VOZ INVITA A LA WEB, Y HAY TIMBRE (3-sep-2026)
+
+### v0.67.9 — el cierre hablado
+
+El vídeo ya **enseñaba** el dominio 3 s; ahora el locutor lo **dice** en el mismo
+instante. Escrito fonéticamente —`Denver Home Story dot com`— porque
+`worker/spoken.py:116` borra cualquier URL antes de que el locutor la vea, y esa
+regla es correcta: leída en alto, una URL es «denverhomestory punto com» en el
+mejor caso. Como palabras no hay nada que borrar, la regla **no se toca**, y el
+cierre llega gratis a los subtítulos amarillos porque se transcriben del audio.
+
+**Tres líneas rotando**, escritas a mano: una fija se oye 30 veces al mes, y una
+que escriba el modelo cada día acaba prometiendo de más. Se descartó la variante
+del dueño «le responderán todas sus preguntas» — el embudo real es que Natalia
+devuelve la llamada.
+
+🔴 **Riesgo que el advisor cazó y la base confirmó**: el modelo **nunca** devuelve
+`narration` — en las cuatro piezas de producción `length(narration)` es
+**exactamente** `length(script)`. Añadir el cierre al campo crudo habría dado una
+narración compuesta **solo por el cierre**: un vídeo de 4 s. Se materializa desde
+`script`.
+
+**Corrección a mi propio plan, y al advisor**: dijimos que añadirlo en
+`_scene_plan` esquivaría el filtro. **Falso** — `_all_violations` llama a
+`_scene_plan` él mismo. El sitio sigue siendo `_with_cta` por otras razones
+(acceso al índice y al setting, y `_scene_plan` es un serializador puro), pero la
+mutación planeada no habría enrojecido. La usada: cegar el filtro a la narración.
+
+### v0.67.10 — el timbre en Telegram
+
+Se avisa en cuanto un vídeo puede aprobarse. **Reutiliza el bot de EkoRog** por
+decisión del dueño, como función extra y **sin tocar nada suyo**: enviamos con su
+identidad a la API de Telegram; su código, su unidad y su comportamiento quedan
+igual. Comprobado de paso: `eko-rog-bot` está **desactivado** ahora mismo y **da
+lo mismo** — el aviso no pasa por su proceso.
+
+⚠️ **Reserva registrada**: ese bot lo administra otro proyecto. Si rotan el token
+enmudecemos y el síntoma será «no me llegó el aviso». Está escrito en el módulo.
+
+- Dispara sobre el **estado resultante**, no sobre la transición: una pieza
+  generada limpia **ya** está en `NEEDS_APPROVAL` cuando llega el render — la
+  forma del incidente de la pieza 5 — así que un timbre atado al `advance`
+  callaría en el camino más común. **Mutación verificada**: al atarlo a la
+  transición, el caso `needs_approval` se pone rojo.
+- **Enlace, nunca el guion.** Un mensaje con el texto invita a aprobar desde el
+  móvil sin ver el vídeo, que es lo único que la puerta existe para impedir.
+- El **barrido de bajas cazó el módulo solo** antes de que yo lo declarara —
+  segunda vez hoy que un guardián de este repo hace su trabajo.
+
+### Estado y lo que falta
+- **1343 backend + 153 frontend** verdes, `ruff` y `tsc` limpios. Desplegado y
+  verificado por el dominio: `0.67.10`.
+- Desplegado **inerte**, confirmado en producción: `undeliverable_reason()` →
+  `TELEGRAM_BOT_TOKEN is unset`; el enlace ya resuelve a
+  `https://inmo-demo.ekoaiautomation.com/content`.
+- 🔴 **Faltan dos valores del dueño**: `TELEGRAM_BOT_TOKEN` (el de EkoRog) y
+  `TELEGRAM_CHAT_ID`. Van al `.env` del VPS tecleados o por tubería; el agente no
+  los ve.
+- 🔴 **Las piezas 6 y 7 NO tendrán cierre hablado, ni rehaciéndolas**: el cierre
+  se añade al ESCRIBIR el guion y ellas ya tienen su `scenes.narration` guardada.
+  El primer vídeo con voz invitando es el de esta tarde (~18:05 MDT), o se fuerza
+  hoy subiendo `CONTENT_MAX_DRAFTS_PER_DAY` a 2 — cuesta un guion y una
+  narración; **decisión del dueño**.
+
+### Advisor
+- **Arranque** → validó las dos fases e independientes; cazó los tres riesgos
+  (narración None, condición del timbre, early-return de `_with_cta`) y corrigió
+  la verificación de mi plan. Los tres verificados por mí antes de aplicarlos; el
+  primero confirmado con datos de producción.
+
+---
+
 ## ✅ REHACER UN VÍDEO, Y UNA COLA QUE NO MIENTE (3-sep-2026) · v0.67.7 y v0.67.8
 
 El dueño rehizo las dos piezas a las 22:48 y vio «El vídeo se está haciendo»
