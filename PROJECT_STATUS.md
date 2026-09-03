@@ -35,16 +35,30 @@ trámite ilegible.
 - `ruff check ../worker` → los **3 hallazgos previos**, ninguno nuevo (un import
   sin usar y dos órdenes de import en ficheros de test; `worker/` nunca estuvo
   en la puerta del protocolo, que es `ruff check app tests`).
-- Fotograma renderizado en el ROG y **mirado**, sobre fondo claro con textura.
+- Fotograma renderizado en el ROG y **mirado**, sobre fondo claro **plano** —
+  que es el peor caso para el crema y por eso refuerza el cambio a blanco.
+- `test_a_real_render_is_vertical_and_carries_the_mark` corre el `build_command`
+  completo sobre fondo con textura y **afirma la correlación de la marca ≥ 0,15**
+  (`test_worker.py:325`): la tarjeta NUEVA pasa la comprobación de marca.
 - Sin secretos en el diff; sin prints de depuración.
-- Cobertura: el código nuevo entra con dos tests propios; no baja nada.
+- Cobertura: **no medida**. El diff es solo del obrero y entra con dos tests
+  propios que cubren las líneas nuevas, pero no he corrido `pytest-cov` contra
+  la línea principal para compararla — lo digo en vez de afirmarlo.
 
 ### Advisor
+- **Cierre** → fase correcta y cerrable; pidió comprobar el job 8 tras mis
+  reinicios (resultado: `done`, attempts=2, se auto-recuperó y la pieza 7 tiene
+  vídeo), cerrar el punto 4 con el test de render real, y corregir dos
+  imprecisiones de este mismo documento. Aplicado todo.
 - **Arranque** → plan validado, una sola fase, sin dependencias. Riesgos que
   nombró: (1) el desplazamiento vertical viejo no libra la caja nueva → derivado;
   (2) el test no puede leer los textos porque van por fichero → identifica cada
   cláusula por `d.txt`/`b.txt`; (3) no perder `[out]` ni los dos `enable=` →
   comprobado por test. Corrigió además mi cuenta de tests (68, no 64).
+
+- **Auditoría de subagente: NO lanzada** en esta micro-fase (diff de ~40
+  líneas). En su lugar: mutación verificada, fotograma mirado y tres
+  mediciones. Si el dueño la quiere igualmente, se lanza.
 
 ### 🔴 Hallazgo abierto, con evidencia — NO es de esta fase
 `verify.brand_is_present` **da un falso negativo sobre un fotograma pálido y
@@ -58,7 +72,13 @@ sobre el fondo local**, o correlacionar solo los píxeles opacos de la marca.
 
 ### Siguiente paso
 Rama `feat/cierre-dominio-primero` **sin fusionar y sin PR** (norma del dueño).
-La pieza 6 y la 7 llevan la tarjeta **vieja**: se hicieron antes de este cambio.
+**Verificado mirando el fotograma**: la pieza 6 y la 7 llevan la tarjeta
+**vieja** (brokerage grande en caja, dominio pequeño debajo). Se montaron antes
+de este cambio. Decisión del dueño: aprobarlas así o reconstruirlas, y cada
+reconstrucción cuesta una narración de MiniMax.
+
+⚠️ El ROG corre ahora el código de esta rama. Si la rama se descarta, hay que
+redesplegar el obrero desde la línea principal.
 
 ---
 
