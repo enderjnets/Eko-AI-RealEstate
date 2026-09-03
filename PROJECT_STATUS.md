@@ -6,6 +6,62 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## ✅ EL CIERRE INVERTIDO: EL DOMINIO MANDA (2-sep-2026) · rama `feat/cierre-dominio-primero`
+
+El dueño miró el último fotograma y vio lo contrario de lo que quiere: la línea
+legal en caja negra a 48 px, y `denverhomestory.com` en crema a 40 px **sin
+caja**, lavándose contra una foto clara. Los vídeos existen para llevar tráfico
+a esa dirección.
+
+**Ahora**: dominio en blanco a 64 px **en la caja**, arriba. Brokerage a 34 px
+con **borde** en vez de una segunda caja — dos cajas apiladas pesan más que la
+imagen que etiquetan. Tarjeta final en 3 s, sin tocar; los dos `enable=` y la
+etiqueta `[out]` intactos.
+
+**Blanco y no el crema de marca, y eso se midió**: sobre un fotograma claro el
+crema dejó **cero** píxeles de relleno — las letras se leían como contornos
+huecos, porque `#F5E6C8` y una foto pálida son el mismo color. En blanco, 3.984
+px de cuerpo. La separación bajo la caja se **deriva** del cuerpo y del relleno
+de la caja, no se elige. Medido en el ROG: caja 857 px de 1080, brokerage 433.
+
+**Colorado exige IDENTIFICAR la brokerage, no que domine.** Un test fija el
+suelo en 32 px para que un recorte futuro no convierta la identificación en un
+trámite ilegible.
+
+### Terminado (verificado, no por inspección)
+- `pytest worker/tests` → **70 pasan**, código de salida 0. Mutación: intercambiar
+  los dos cuerpos → `test_the_domain_leads_and_the_brokerage_follows` en rojo,
+  restaurado en verde.
+- `ruff check ../worker` → los **3 hallazgos previos**, ninguno nuevo (un import
+  sin usar y dos órdenes de import en ficheros de test; `worker/` nunca estuvo
+  en la puerta del protocolo, que es `ruff check app tests`).
+- Fotograma renderizado en el ROG y **mirado**, sobre fondo claro con textura.
+- Sin secretos en el diff; sin prints de depuración.
+- Cobertura: el código nuevo entra con dos tests propios; no baja nada.
+
+### Advisor
+- **Arranque** → plan validado, una sola fase, sin dependencias. Riesgos que
+  nombró: (1) el desplazamiento vertical viejo no libra la caja nueva → derivado;
+  (2) el test no puede leer los textos porque van por fichero → identifica cada
+  cláusula por `d.txt`/`b.txt`; (3) no perder `[out]` ni los dos `enable=` →
+  comprobado por test. Corrigió además mi cuenta de tests (68, no 64).
+
+### 🔴 Hallazgo abierto, con evidencia — NO es de esta fase
+`verify.brand_is_present` **da un falso negativo sobre un fotograma pálido y
+plano**. Aislado sin una sola línea de texto: fondo claro plano → **0,090**
+(umbral 0,15, rechaza); fondo oscuro plano → 0,994; fondo con textura → 0,551.
+Muestrea en **t=1,0 s**, o sea la PRIMERA escena: si esa foto es pálida y de poca
+textura, el trabajo entero se rechaza tras haber pagado la narración. Los
+renders reales dieron 0,416 y 0,927, así que no está demostrado con una foto de
+verdad — pero el mecanismo sí. Dirección: comparar contra la marca **compuesta
+sobre el fondo local**, o correlacionar solo los píxeles opacos de la marca.
+
+### Siguiente paso
+Rama `feat/cierre-dominio-primero` **sin fusionar y sin PR** (norma del dueño).
+La pieza 6 y la 7 llevan la tarjeta **vieja**: se hicieron antes de este cambio.
+
+---
+
 ## ✅ EL TITULAR DE CADA ESCENA, YA DIBUJADO (2-sep-2026)
 
 Decisión del dueño: **dibujarlo sobre cada foto**. Hasta ahora el modelo lo
