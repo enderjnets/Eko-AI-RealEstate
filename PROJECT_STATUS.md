@@ -6,6 +6,42 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## ✅ REHACER UN VÍDEO, Y UNA COLA QUE NO MIENTE (3-sep-2026) · v0.67.7 y v0.67.8
+
+El dueño rehizo las dos piezas a las 22:48 y vio «El vídeo se está haciendo»
+durante una hora sin que pasara nada. **No estaba roto: en el ROG eran las 22 y
+esa hora no está en su ventana** (13, 15, 16, 17, 21, 23, 1, 2). Verificado con
+hecho, no con explicación: el obrero reclamó el primer trabajo a las
+**23:00:44**, 44 segundos después de abrirse la ventana.
+
+- **v0.67.7 — `POST /content/{id}/rebuild`.** Una pieza renderizada era
+  definitiva: la única forma de tener un vídeo con un cambio del montador era
+  esperar al guion de mañana, cosa rara que decirle a quien acaba de cambiar el
+  montador porque no le gustó el vídeo. Se rehace desde las `scenes` de la
+  propia fila. Cuesta una narración; las imágenes vuelven de la caché.
+  **Un clip GRABADO se rechaza**: no tiene plan del que rehacerse y su
+  `media_path` es la única copia de lo que se filmó. Mutación verificada.
+- **v0.67.8 — la cola dice lo que pasa.** El mismo giro servía para tres
+  situaciones distintas. `render_jobs` gana `stage`/`progress` (el obrero los
+  rellena mientras narra, transcribe, busca imágenes y monta) y `monitor_state`
+  gana `detail`, donde el latido registra si el tick cayó dentro de su horario
+  — **fuera de la lógica de alarmas a propósito**: estar fuera de ventana es el
+  obrero portándose bien, no una avería. La barra **nunca** se inventa en el
+  cliente: sin informe es indeterminada, porque una barra que avanza sola es una
+  mentira con animación. Migración `049_render_progress`.
+
+### Verificado contra el sistema vivo
+- Reclamo a las 23:00:44 UTC-6, medido en `render_jobs.claimed_at`.
+- Progreso real leído en la base durante el montaje: `finishing`, **88%**.
+- `monitor_state.detail` → `{"hours": [1,2,13,15,16,17,21,23], "within_hours": true}`.
+- **Pieza 6 rehecha y su fotograma MIRADO**: cierre nuevo, `denverhomestory.com`
+  grande en la caja y la brokerage pequeña debajo, sobre foto real.
+- 1329 backend + 153 frontend en verde, `ruff` y `tsc` limpios. Un test nuevo
+  afirma que el listado **devuelve** `render_state`/`stage`/`progress` — sin él,
+  arreglar el giro no valdría nada si el campo no llega al navegador.
+
+---
+
 ## ✅ EL CIERRE INVERTIDO: EL DOMINIO MANDA (2-sep-2026) · rama `feat/cierre-dominio-primero`
 
 El dueño miró el último fotograma y vio lo contrario de lo que quiere: la línea

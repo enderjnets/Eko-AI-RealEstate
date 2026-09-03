@@ -820,3 +820,51 @@ async def test_a_published_piece_is_never_rebuilt(database_url: str) -> None:
         assert resp.status_code == 409
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_queue_reports_what_the_render_is_doing(database_url: str) -> None:
+    """The console cannot say "queued" instead of "being made" unless the list
+    actually carries the job's state. Written because the fix for a spinner
+    that lied would be worth nothing if the field never reached the browser."""
+    from app.models import MonitorState, RenderJob, RenderJobKind, RenderJobStatus
+
+    try:
+        piece_id = await _seeded(ContentStatus.NEEDS_APPROVAL, scenes=True)
+        async with get_bypass_session_factory()() as db:
+            db.add(
+                RenderJob(
+                    org_id=1,
+                    piece_id=piece_id,
+                    kind=RenderJobKind.PRODUCE_B,
+                    status=RenderJobStatus.CLAIMED,
+                    stage="pictures",
+                    progress=45,
+                )
+            )
+            db.add(
+                MonitorState(
+                    key="render_worker",
+                    state="ok",
+                    detail={"within_hours": False, "hours": [21, 23]},
+                )
+            )
+            await db.commit()
+
+        async with _client() as client:
+            listed = await client.get("/api/v1/content")
+        assert listed.status_code == 200
+        mine = next(p for p in listed.json() if p["id"] == piece_id)
+        assert mine["render_state"] == "claimed"
+        assert mine["render_stage"] == "pictures"
+        assert mine["render_progress"] == 45
+        # And the case that started all this: the machine is outside its hours.
+        assert mine["render_machine_working"] is False
+    finally:
+        async with get_bypass_session_factory()() as db:
+            from sqlalchemy import delete
+
+            await db.execute(delete(RenderJob))
+            await db.execute(delete(MonitorState).where(MonitorState.key == "render_worker"))
+            await db.commit()
+        await _cleanup()
