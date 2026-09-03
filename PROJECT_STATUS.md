@@ -252,7 +252,7 @@ desbloquea, no por esfuerzo.
 | 1 | Línea de brokerage en Ajustes | dueño | ✅ **hecho** — `Engel & Völkers Aspen`, verificado en la base de producción |
 | 2 | La voz del canal | dueño | ✅ **hecho** — `English_CalmWoman` a 1,06 con emoción, elegida entre cuatro variantes |
 | 3 | Música de fondo | dueño | ✅ **hecho** — 4 pistas de Pixabay, licencia verificada, instaladas y recomprimidas |
-| 4 | **Completar los perfiles de los tres canales** | dueño | 🔴 **PENDIENTE — bloquea el encendido** |
+| 4 | **Completar los perfiles de los tres canales** | dueño | ✅ **hecho** (2-sep). Verificado por mí: descripción de YouTube con el dominio, y la cuenta de IG con el nombre visible puesto. Las **bios** de IG y TikTok van por palabra del dueño: IG no las expone y TikTok da la misma respuesta a un handle real y a uno inventado |
 | 5 | Instalar el obrero en el ROG | yo | 🔴 **bloqueado**: la máquina está encendida pero no da shell (ver abajo) |
 
 ### 4 · Los perfiles de los canales — por qué bloquea

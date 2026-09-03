@@ -36,4 +36,8 @@ names = ";".join(
 print(f"{len(models)}|{names or '"'"'none'"'"'}")
 ' 2>/dev/null || echo "0|no-answer")
 
-printf '%s,%s,%s\n' "$(date -Iseconds)" "$avail" "$detail" >> "$OUT"
+# `detail` already carries "<count>|<models>", so it fills the last TWO header
+# columns once the pipe is turned into a comma. Writing it as one field is what
+# made the first reading of this file wrong: an `awk` on column 3 compared
+# "0|none" against "0" and reported a loaded model in 11 of 12 samples.
+printf '%s,%s,%s\n' "$(date -Iseconds)" "$avail" "${detail/|/,}" >> "$OUT"
