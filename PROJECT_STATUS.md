@@ -15,7 +15,40 @@ v0.56.0 y anteriores vive en git y en el plan.
 | 2 | Cierre final: coherencia entre fases y riesgos de despliegue | Señaló que B1 y la rama «post borrado» estaban en tensión y que **nadie había medido** cómo responde Buffer a un id inexistente. Medido: devuelve `errors` con `code: NOT_FOUND` y **`data: null` para el lote entero** — así que mi arreglo B1 habría parado la reconciliación completa para siempre tras un solo post borrado, y la rama «alias null = borrado» era **inalcanzable en producción**. Reescrito para casar errores con su alias por `path`. También: cobertura contra la base medida (faltaba), aserción muerta borrada, y el estrangulamiento del tope diario al backlog. |
 | 1 | Arranque: validar lectura del plan, orden, dependencias, riesgos | Lectura correcta. **Rama** `feat/fase0-tachar-token` desde `e321f95` (el plan citaba `feat/cierre-dominio-primero`, que ya no es HEAD); el deploy de 0.67.11 **arrastra `e321f95`** (hero 1080p, sin desplegar) y eso va escrito en el pre-deploy. **La Fase 0 NO despliega**: su verificación en `docker logs` pasa al checklist post-deploy. **Cobertura contra `e321f95`**, no contra `main` (que es un señuelo sin la pila). Riesgos aceptados: (a) `httpx` deja la URL en `record.args`, así que el filtro debe pasar por `getMessage()` o el test es verde falso; (b) el barrido AST puede morder a `reconcile_scheduled`; (c) el «día tomado» se calcula en zona local, nunca +24 h en UTC. |
 
-### 🚦 DESPLIEGUE PREPARADO — NO EJECUTADO (falta autorización del dueño)
+### ✅ DESPLEGADO — 3-sep-2026, autorizado por el dueño en mensaje aparte
+
+Los dos despliegues ejecutados en orden, por bundle incremental sobre
+`42ae7440` (lo que corría, v0.67.10), fast-forward en los dos saltos.
+
+| Paso | Resultado real |
+|---|---|
+| Deploy 1 → `15d62f8` | `/api/v1/health` por el dominio → **`0.67.11`**. Arrastró `e321f95` (hero 1080p), que nunca se había desplegado |
+| Filtro en el proceso vivo | `httpx: True`, handler del root `True` — probado dentro del contenedor de producción, no por inspección del código |
+| Deploy 2 → `8d0a47a` | build **antes** de migrar · `049_render_progress → 050_publication_schedule` · `up -d` · health → **`0.68.0`** |
+| Esquema migrado | `content_publications.scheduled_at` y `.external_url` presentes; `publication_status` = pending, publishing, published, failed, **scheduled** |
+| Config efectiva | `CONTENT_SCHEDULE_ENABLED=True`, huecos 20:30 / 18:30 / 08:30, lead 20 min, `BUFFER_SIMULATED=False`, tope 4/día |
+| Bucle | `Content publish worker started (every 900s, cap 4 pieces/day, simulated=False)` |
+| Estado de la cola | 5 piezas, las 5 `published`; **cero filas por programar**, así que el despliegue no disparó ninguna publicación |
+| Vecinos | `zorros-*` y `blackvolt-*` intactos; el obrero del ROG sigue reclamando trabajos con 200 |
+
+🔴 **NO verificado, y es el paso que faltaba del runbook**: la línea ya
+renderizada en `docker logs` diciendo `/bot<redacted>/`. El clasificador bloqueó
+las dos formas de provocarla —mandar el aviso real y emitir un registro
+sintético por el logger `httpx`—. Lo que sí está probado es que el filtro está
+**instalado en el proceso vivo**; lo que falta es ver su salida. Lo cierra el
+dueño con un comando en su terminal, o el primer render que toque el timbre.
+
+**El día local ya está gastado en los tres canales.** Las 15 filas publicadas
+caen entre las 23:28 del 2-sep y la 01:34 del 3-sep en hora de Denver, así que
+la primera pieza que se apruebe hoy debe irse a **mañana** en los tres canales —
+es el test 2 («`published_at` de hoy toma el día») ejecutándose en producción.
+
+**Reversión vigente**: `CONTENT_SCHEDULE_ENABLED=false` + restart. **Nunca**
+volver el código atrás una vez exista una fila `scheduled`.
+
+---
+
+### 🚦 Runbook tal como se preparó (queda como registro)
 
 **Dos despliegues, en este orden.** No se juntan: mientras 0.67.11 no esté, cada
 aviso vuelve a escribir el token en el log.
