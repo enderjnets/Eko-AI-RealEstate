@@ -2,6 +2,25 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.67.9] — 2026-09-03
+
+### Added
+- **A spoken sign-off inviting the viewer to the site**, said as the address
+  appears on screen. Written phonetically — "Denver Home Story dot com" — because
+  `worker/spoken.py` deletes anything shaped like a URL before the narrator sees
+  it, and rightly: read aloud, a URL is "denverhomestory dot com" at best. As
+  words there is nothing to strip, and it reaches the captions for free, since
+  those are transcribed from the audio.
+- Three sign-offs rotate, written by hand rather than by the model: one fixed
+  line is heard thirty times a month, and a line invented daily is one that
+  eventually promises more than the funnel delivers.
+
+### Fixed
+- The sign-off is materialised from `script`, not appended to `narration`. The
+  model never returns that field — measured on every generated piece in
+  production, `length(narration)` equals `length(script)` exactly — so appending
+  to it would have produced a narration consisting of the sign-off ALONE.
+
 ## [0.67.8] — 2026-09-03
 
 ### Added

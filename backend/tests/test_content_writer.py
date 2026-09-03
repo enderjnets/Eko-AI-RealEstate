@@ -238,3 +238,127 @@ async def test_languages_alternate_and_topics_rotate(database_url: str) -> None:
         assert briefs[0] != briefs[1], "the topic did not rotate"
     finally:
         await _cleanup()
+
+
+# ── The spoken sign-off ──────────────────────────────────────────────────
+
+
+def _drafted(**over):
+    from app.services.content_writer import DraftPayload, Scene
+
+    body = {
+        "hook": "What your budget gets you.",
+        "script": "Denver moves fast and the numbers move with it.",
+        "caption": "The mechanics, in a minute.",
+        "scenes": [Scene(visual_prompt="a brick house", on_screen_text="Reality")],
+    }
+    body.update(over)
+    return DraftPayload(**body)
+
+
+def test_the_sign_off_is_built_from_the_script_not_from_an_empty_field(
+    monkeypatch,
+) -> None:
+    """The trap this closes, measured in production: the model never returns a
+    `narration` field — on every generated piece `length(narration)` equals
+    `length(script)` exactly, because `_scene_plan` falls back. Appending the
+    sign-off to the raw None would have produced a narration consisting of the
+    sign-off ALONE: a four-second video saying nothing but "Buying or selling
+    in Denver?".
+    """
+    from app.config import get_settings
+    from app.services import content_writer as cw
+
+    monkeypatch.setenv("CONTENT_CTA_URL", "https://www.denverhomestory.com")
+    get_settings.cache_clear()
+    try:
+        out = cw._with_cta(_drafted(), ContentLanguage.EN, 0)
+        assert out.narration is not None
+        assert out.narration.startswith("Denver moves fast")
+        assert "Denver Home Story dot com" in out.narration
+    finally:
+        get_settings.cache_clear()
+
+
+def test_the_filter_reads_the_spoken_sign_off(monkeypatch) -> None:
+    """The test that matters. Everything else here is hygiene.
+
+    The sign-off is appended in `_with_cta` precisely because the caller runs
+    the Fair Housing filter on what comes back. Move the append anywhere later
+    — into `_scene_plan`, or into the worker — and the words a person hears are
+    words no filter ever read. This repo has shipped that defect twice.
+    """
+    from app.config import get_settings
+    from app.services import content_writer as cw
+
+    monkeypatch.setenv("CONTENT_CTA_URL", "https://www.denverhomestory.com")
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        cw,
+        "_SPOKEN_CTA",
+        {ContentLanguage.EN: ("Perfect for families. Visit {domain}.",),
+         ContentLanguage.ES: ("Perfecto para familias. Visita {domain}.",)},
+    )
+    try:
+        draft = cw._with_cta(_drafted(), ContentLanguage.EN, 0)
+        found = cw._all_violations(draft, ContentLanguage.EN)
+        assert any("famil" in v["phrase"].lower() for v in found), found
+    finally:
+        get_settings.cache_clear()
+
+
+def test_the_sign_off_rotates(monkeypatch) -> None:
+    """One line heard thirty times a month is a line people stop hearing."""
+    from app.config import get_settings
+    from app.services import content_writer as cw
+
+    monkeypatch.setenv("CONTENT_CTA_URL", "https://www.denverhomestory.com")
+    get_settings.cache_clear()
+    try:
+        said = [
+            cw._with_cta(_drafted(), ContentLanguage.EN, i).narration
+            for i in range(4)
+        ]
+        assert said[0] != said[1] != said[2]
+        # And it comes back round rather than running out.
+        assert said[3] == said[0]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_no_site_configured_means_no_spoken_sign_off(monkeypatch) -> None:
+    """A site that does not resolve is not advertised — the same gate the
+    written CTA already uses, so one switch governs both."""
+    from app.config import get_settings
+    from app.services import content_writer as cw
+
+    monkeypatch.setenv("CONTENT_CTA_URL", "")
+    get_settings.cache_clear()
+    try:
+        assert cw._with_cta(_drafted(), ContentLanguage.EN, 0).narration is None
+    finally:
+        get_settings.cache_clear()
+
+
+def test_a_filmed_clip_gets_no_spoken_sign_off(monkeypatch) -> None:
+    """No scene plan, no generated narration to sign off."""
+    from app.config import get_settings
+    from app.services import content_writer as cw
+
+    monkeypatch.setenv("CONTENT_CTA_URL", "https://www.denverhomestory.com")
+    get_settings.cache_clear()
+    try:
+        assert cw._with_cta(_drafted(scenes=[]), ContentLanguage.EN, 0).narration is None
+    finally:
+        get_settings.cache_clear()
+
+
+def test_the_spoken_domain_cannot_drift_from_the_real_one() -> None:
+    """Written as words so nothing strips it — which also means nothing checks
+    it. If the domain ever changes and the spoken form does not, this is what
+    notices."""
+    from app.services import content_writer as cw
+
+    for language, spoken in cw._SPOKEN_DOMAIN.items():
+        said = spoken.lower().replace(" dot ", ".").replace(" punto ", ".")
+        assert said.replace(" ", "") == "denverhomestory.com", (language, spoken)

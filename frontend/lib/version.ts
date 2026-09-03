@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.67.8";
+export const CURRENT_VERSION = "0.67.9";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.67.9",
+    date: "2026-09-03",
+    title: {
+      en: "The video invites you to the site out loud",
+      es: "El v\u00eddeo invita a la web en voz alta",
+    },
+    changes: [
+      {
+        en: "Generated videos now end with the narrator inviting the viewer to the site, at the same moment the address appears on screen. Three sign-offs rotate so the channel does not end identically every day, and they are written by hand rather than by the model \u2014 a closing line invented daily is one that eventually promises more than we deliver.",
+        es: "Los v\u00eddeos generados terminan ahora con el locutor invitando a visitar la web, en el mismo momento en que la direcci\u00f3n aparece en pantalla. Rotan tres cierres para que el canal no acabe igual todos los d\u00edas, y est\u00e1n escritos a mano y no por el modelo \u2014 un cierre inventado cada d\u00eda acaba prometiendo m\u00e1s de lo que cumplimos.",
+      },
+    ],
+  },
   {
     version: "0.67.8",
     date: "2026-09-03",

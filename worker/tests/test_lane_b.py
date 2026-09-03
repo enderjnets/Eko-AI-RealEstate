@@ -440,3 +440,21 @@ def test_a_headline_longer_than_two_lines_is_cut_not_squeezed() -> None:
 def test_no_headline_is_not_an_empty_one() -> None:
     assert produce.wrap_headline("") == []
     assert produce.wrap_headline("   ") == []
+
+
+def test_the_spoken_domain_survives_the_url_stripper() -> None:
+    """Two rules that must coexist, held together here.
+
+    `for_the_voice` deletes anything shaped like a web address, and rightly:
+    read aloud, a URL is "denverhomestory dot com" at best. The sign-off is
+    written as WORDS for exactly that reason, so there is nothing to strip. If
+    the stripper ever widens, this is what notices — and the symptom without it
+    would be a video whose last sentence is "Buying or selling in Denver? Visit
+    ." with the address silently gone.
+    """
+    said = spoken.for_the_voice(
+        "Denver moves fast. Buying or selling in Denver? Visit Denver Home Story dot com."
+    )
+    assert "Denver Home Story dot com" in said
+    # And the rule it has to coexist with is still doing its job.
+    assert "denverhomestory" not in spoken.for_the_voice("Go to denverhomestory.com now.")

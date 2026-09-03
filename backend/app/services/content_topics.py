@@ -238,13 +238,22 @@ TOPICS: tuple[Topic, ...] = (
 )
 
 
-async def next_topic(db: AsyncSession) -> Topic:
-    """The topic after the last one this organisation generated."""
-    generated_so_far = (
+async def rotation_index(db: AsyncSession) -> int:
+    """How many generated pieces this organisation already has.
+
+    The number every rotation in this product turns on — the topic, and since
+    v0.67.9 the spoken sign-off. Extracted so the second one reuses the count
+    rather than issuing the same query again under a different name.
+    """
+    return (
         await db.execute(
             select(func.count())
             .select_from(ContentPiece)
             .where(ContentPiece.kind == ContentKind.GENERATED)
         )
     ).scalar_one()
-    return TOPICS[generated_so_far % len(TOPICS)]
+
+
+async def next_topic(db: AsyncSession) -> Topic:
+    """The topic after the last one this organisation generated."""
+    return TOPICS[await rotation_index(db) % len(TOPICS)]

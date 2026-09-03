@@ -38,7 +38,7 @@ from app.models import (
     ContentStatus,
 )
 from app.services.content_studio import advance, not_our_rail, text_violations
-from app.services.content_topics import Topic, next_topic
+from app.services.content_topics import Topic, next_topic, rotation_index
 from app.services.lang_guard import wrong_language
 from app.services.llm import generate_reply
 
@@ -144,7 +144,8 @@ def _parse(raw: str) -> DraftPayload | None:
 
 
 async def _ask(topic: Topic, language: ContentLanguage,
-               feedback: str | None = None) -> DraftPayload | None:
+               feedback: str | None = None,
+               cta_index: int = 0) -> DraftPayload | None:
     brief = topic.brief_en if language is ContentLanguage.EN else topic.brief_es
     messages: list[dict[str, Any]] = [{"role": "user", "content": brief}]
     if feedback:
@@ -170,7 +171,7 @@ async def _ask(topic: Topic, language: ContentLanguage,
         log.exception("Content writer: both providers failed for topic %s",
                       topic.key)
         return None
-    return _with_cta(_parse(result.text), language)
+    return _with_cta(_parse(result.text), language, cta_index)
 
 
 # The sentence that turns a view into a visit. Kept OUT of the model's hands on
@@ -179,6 +180,36 @@ async def _ask(topic: Topic, language: ContentLanguage,
 _CTA = {
     ContentLanguage.EN: "Thinking about selling in Denver? Start here: {url}",
     ContentLanguage.ES: "¿Estás pensando en vender en Denver? Empieza aquí: {url}",
+}
+
+# The domain AS IT IS SPOKEN, and that is the whole trick. `worker/spoken.py`
+# strips anything shaped like a web address before the narrator sees it —
+# rightly: read aloud, a URL is "denverhomestory dot com" at best. Written as
+# words there is nothing to strip, the narrator says it naturally, and it
+# reaches the yellow captions for free because those are transcribed from the
+# audio rather than from the script.
+_SPOKEN_DOMAIN = {
+    ContentLanguage.EN: "Denver Home Story dot com",
+    ContentLanguage.ES: "Denver Home Story punto com",
+}
+
+# Three sign-offs, rotated. One fixed line would be heard thirty times a month
+# by anyone who follows the channel; a line the model invents each day is a
+# line that one day promises more than the funnel delivers. Written by hand,
+# and deliberately promising nothing beyond the site existing: the owner's own
+# draft said "they will answer all your questions", and what actually happens
+# is that Natalia calls back within a few hours.
+_SPOKEN_CTA = {
+    ContentLanguage.EN: (
+        "Buying or selling in Denver? Visit {domain}.",
+        "If you want to know what your home is worth today, start at {domain}.",
+        "Let's talk about your numbers. {domain}.",
+    ),
+    ContentLanguage.ES: (
+        "¿Compras o vendes en Denver? Visita {domain}.",
+        "Si quieres saber cuánto vale tu casa hoy, empieza en {domain}.",
+        "Hablemos de tus números. {domain}.",
+    ),
 }
 
 # Said in the caption of every generated piece, because saying it is cheaper
@@ -199,7 +230,11 @@ _AI_DISCLOSURE = {
 }
 
 
-def _with_cta(draft: DraftPayload | None, language: ContentLanguage) -> DraftPayload | None:
+def _with_cta(
+    draft: DraftPayload | None,
+    language: ContentLanguage,
+    cta_index: int = 0,
+) -> DraftPayload | None:
     """Append the call to action to the caption.
 
     Applied HERE, before the caller runs `find_violations`, so the filter sees
@@ -227,9 +262,31 @@ def _with_cta(draft: DraftPayload | None, language: ContentLanguage) -> DraftPay
     if draft.scenes and disclosure not in caption:
         caption = f"{caption}\n{disclosure}"
 
-    if caption == draft.caption:
+    # The spoken sign-off, appended to the narration for the same reason and in
+    # the same place as the caption's: the caller runs the Fair Housing filter
+    # on what comes back, and `_all_violations` reads this narration through
+    # `_scene_plan`. Appended anywhere later — in `_scene_plan`, or in the
+    # worker — and the words a person hears would be words no filter read.
+    #
+    # **Materialised from `script`, not appended to `narration`.** The model
+    # does not return a `narration` field at all: measured on every generated
+    # piece in production, `length(narration) == length(script)` exactly,
+    # because `_scene_plan` falls back. Appending to the raw None would have
+    # produced a narration consisting of the sign-off ALONE — a four-second
+    # video that says nothing but "Buying or selling in Denver?".
+    narration = draft.narration
+    if draft.scenes and url:
+        lines = _SPOKEN_CTA[language]
+        sign_off = lines[cta_index % len(lines)].format(
+            domain=_SPOKEN_DOMAIN[language]
+        )
+        spoken = (draft.narration or draft.script or "").rstrip()
+        if sign_off not in spoken:
+            narration = f"{spoken} {sign_off}".strip()
+
+    if caption == draft.caption and narration == draft.narration:
         return draft
-    return draft.model_copy(update={"caption": caption})
+    return draft.model_copy(update={"caption": caption, "narration": narration})
 
 
 def _all_violations(
@@ -338,8 +395,12 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
 
     topic = await next_topic(db)
     language = await _language_for(db)
+    # Read once and passed to BOTH calls below. The rewrite path replaces the
+    # draft wholesale, so a sign-off chosen inside only the first call would be
+    # lost on exactly the drafts that needed a second look.
+    cta_index = await rotation_index(db)
 
-    draft = await _ask(topic, language)
+    draft = await _ask(topic, language, cta_index=cta_index)
     if draft is None:
         return None
 
@@ -354,6 +415,7 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
         rewritten = await _ask(
             topic,
             language,
+            cta_index=cta_index,
             feedback=(
                 "Your draft contained phrasing that cannot appear in housing "
                 f"advertising: {phrases}. Rewrite the whole draft without "
