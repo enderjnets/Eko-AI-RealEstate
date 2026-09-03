@@ -29,8 +29,25 @@ from pathlib import Path
 
 OUT_W, OUT_H = 1080, 1920
 END_CARD_SECONDS = 3.0
-_FONT_SIZE_BROKERAGE = 48
-_FONT_SIZE_DOMAIN = 40
+# The domain LEADS and the brokerage follows. It was the other way round, and
+# that was an accident rather than a decision: the legal line sat in a black box
+# at 48 while the address people are supposed to visit was cream at 40 with no
+# box at all, washing out against any bright photograph. These videos exist to
+# send traffic to the site, so the one element that says where to go cannot be
+# the least legible thing in the frame.
+#
+# The brokerage stays burned in and stays legible. Colorado requires advertising
+# to IDENTIFY the brokerage; it does not require it to dominate. 34 is small,
+# not illegible — below about 32 that stops being true.
+_FONT_SIZE_DOMAIN = 64
+_FONT_SIZE_BROKERAGE = 34
+_BOX_PAD = 26
+# Derived, not chosen: the box wraps the domain with `_BOX_PAD` above and below,
+# so the line underneath has to clear the BOX, not the text. A number picked by
+# eye here is the same mistake as a hand-written constant that must track
+# another one — it stops being true the moment the type size changes.
+_LINE_GAP = 24
+_DOMAIN_TO_BROKERAGE = _FONT_SIZE_DOMAIN + _BOX_PAD + _LINE_GAP
 _MARK_WIDTH = 190
 _MARK_MARGIN = 44
 
@@ -87,16 +104,26 @@ def build_command(
         )
         last = "marked"
 
-    # The identification, on screen for the last seconds.
+    # The identification, on screen for the last seconds. The domain first,
+    # because a frame is read top to bottom and the first thing should be where
+    # to go. One box, not two: stacked boxes weigh more than the picture they
+    # label, so the brokerage keeps its legibility with an outline instead —
+    # the same device the captions and the scene headline already use.
     graph += (
-        f";[{last}]drawtext=textfile='{escape_path(str(brokerage_file))}'"
-        f"{font_clause}:fontcolor=white:fontsize={_FONT_SIZE_BROKERAGE}"
-        f":box=1:boxcolor=black@0.55:boxborderw=26"
+        f";[{last}]drawtext=textfile='{escape_path(str(domain_file))}'"
+        f"{font_clause}:fontcolor=white:fontsize={_FONT_SIZE_DOMAIN}"
+        f":box=1:boxcolor=black@0.6:boxborderw={_BOX_PAD}"
         f":x=(w-text_w)/2:y=h*0.60"
-        f":enable='gte(t,{start:.2f})'[brokered]"
-        f";[brokered]drawtext=textfile='{escape_path(str(domain_file))}'"
-        f"{font_clause}:fontcolor=0xF5E6C8:fontsize={_FONT_SIZE_DOMAIN}"
-        f":x=(w-text_w)/2:y=h*0.60+90"
+        f":enable='gte(t,{start:.2f})'[domained]"
+        f";[domained]drawtext=textfile='{escape_path(str(brokerage_file))}'"
+        # White, not the brand cream. Measured on a light frame — the kind of
+        # photograph this channel actually uses — cream left ZERO pixels of
+        # fill: the glyphs read as hollow outlines because #F5E6C8 and a pale
+        # photo are the same colour. White gives the letters a body and the
+        # outline still carries them over anything dark.
+        f"{font_clause}:fontcolor=white:fontsize={_FONT_SIZE_BROKERAGE}"
+        f":borderw=4:bordercolor=black@0.9"
+        f":x=(w-text_w)/2:y=h*0.60+{_DOMAIN_TO_BROKERAGE}"
         f":enable='gte(t,{start:.2f})'[out]"
     )
 

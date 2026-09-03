@@ -98,6 +98,43 @@ def test_the_identification_is_on_screen_at_the_end(tmp_path: Path) -> None:
     assert "denverhomestory.com" not in graph  # it too comes from a file
 
 
+def test_the_domain_leads_and_the_brokerage_follows(tmp_path: Path) -> None:
+    """The address people are meant to visit is the loudest thing in the frame.
+
+    It was the other way round: the legal line sat in a black box at 48 while
+    the domain was cream at 40 with no box, washing out over any bright
+    photograph. These videos exist to send traffic to the site.
+
+    The clauses are found by the name of the FILE each one reads, because the
+    text itself is deliberately not in the graph — see the test above. The
+    sizes are read from the module so this fixes the ordering, not a number.
+    """
+    graph = " ".join(_command(tmp_path))
+    clauses = graph.split("drawtext=")
+    domain = next(c for c in clauses if "d.txt" in c)
+    brokerage = next(c for c in clauses if "b.txt" in c)
+
+    assert assemble._FONT_SIZE_DOMAIN > assemble._FONT_SIZE_BROKERAGE
+    assert f"fontsize={assemble._FONT_SIZE_DOMAIN}" in domain
+    assert f"fontsize={assemble._FONT_SIZE_BROKERAGE}" in brokerage
+    # One box, on the domain. Two stacked boxes weigh more than the picture.
+    assert "box=1" in domain
+    assert "box=1" not in brokerage
+    # The brokerage keeps its legibility with an outline instead.
+    assert "borderw=" in brokerage
+    # Both still appear only over the end card, and the chain still ends where
+    # the encoder is told to look.
+    assert graph.count("enable='gte(t,") == 2
+    assert "[out]" in graph
+
+
+def test_the_brokerage_stays_legible_however_small_it_gets(tmp_path: Path) -> None:
+    """Colorado requires advertising to IDENTIFY the brokerage. It does not
+    require it to dominate — but below about 32px on a 1080-wide frame that
+    stops being identification and becomes a formality nobody can read."""
+    assert assemble._FONT_SIZE_BROKERAGE >= 32
+
+
 def test_a_silent_clip_produces_no_audio_track(tmp_path: Path) -> None:
     argv = _command(tmp_path, has_audio=False)
     assert "-an" in argv
