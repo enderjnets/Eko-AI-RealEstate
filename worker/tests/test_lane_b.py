@@ -412,3 +412,31 @@ def test_a_piece_with_no_plan_is_refused_rather_than_improvised(
     """Lane B has no clip to fall back on. Inventing one is not an option."""
     with pytest.raises(ValueError, match="no scene plan"):
         produce.produce({"scenes": None}, tmp_path, font=None, mark=None, music=None)
+
+
+# ── The headline over each photograph ────────────────────────────────────
+
+
+def test_a_long_headline_is_broken_before_it_runs_off_the_frame() -> None:
+    """drawtext does not wrap: it draws one long line and lets it run off both
+    edges. Measured on the render machine's own font, 35 characters is what
+    fits at this size in the 960 px of usable width."""
+    lines = produce.wrap_headline("What your budget actually gets you in Denver today")
+    assert len(lines) == 2, lines
+    assert all(len(line) <= produce.HEADLINE_CHARS for line in lines), lines
+    # Words stay whole: a hyphen invented by a renderer reads as a typo.
+    assert "budget" in " ".join(lines)
+
+
+def test_a_short_headline_is_left_on_one_line() -> None:
+    assert produce.wrap_headline("Reality") == ["Reality"]
+
+
+def test_a_headline_longer_than_two_lines_is_cut_not_squeezed() -> None:
+    """Better a headline that says less than one that covers the photograph."""
+    assert len(produce.wrap_headline(" ".join(["word"] * 40))) == produce.HEADLINE_LINES
+
+
+def test_no_headline_is_not_an_empty_one() -> None:
+    assert produce.wrap_headline("") == []
+    assert produce.wrap_headline("   ") == []

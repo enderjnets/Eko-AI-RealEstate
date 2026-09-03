@@ -1,0 +1,6 @@
+[Unit]
+Description=Denver Home Story — sample what holds memory on the shared machine (temporary diagnostic)
+
+[Service]
+Type=oneshot
+ExecStart=%h/eko-render/app/worker/ops/rog-memwatch.sh

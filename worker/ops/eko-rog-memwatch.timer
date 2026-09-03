@@ -1,0 +1,12 @@
+[Unit]
+Description=Sample memory every two minutes while the owner decides about RAM
+
+[Timer]
+# Two minutes: the model load that killed the neighbouring renderer took two
+# minutes to do it, so anything slower could miss the whole episode.
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

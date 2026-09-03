@@ -132,6 +132,58 @@ def plan_shots(
     return spans
 
 
+# The headline over each photograph, MEASURED — and measured twice, because the
+# first measurement was wrong in a way worth recording. It used drawtext's
+# DEFAULT font and gave 27.3 px per character; the worker actually passes
+# `DejaVuSans-Bold`, which is wider. Rendered, the real headline "Mid-Range:
+# Single-Family Homes" came out 1029 px inside a 1080 px frame — 25 px of
+# margin — and at 34 characters it hit 1080 px exactly, which is to say clipped.
+# Right machine, wrong font: the lesson from the captions, learned again.
+#
+# With the font it really uses: 29.5 px per character at this size, so 30
+# characters is 885 px inside 960 px of usable width. Two lines of 30 is 60,
+# which is exactly the cap `content_writer` puts on `on_screen_text` — every
+# headline the writer can produce fits, and none is cut.
+HEADLINE_SIZE = 48
+HEADLINE_CHARS = 30
+HEADLINE_LINES = 2
+# Below the brand mark, which sits top-right down to about y=150.
+HEADLINE_Y = 230
+# Line height: the type size plus the leading the design uses elsewhere.
+HEADLINE_STEP = HEADLINE_SIZE + 14
+
+
+def wrap_headline(text: str, width: int = HEADLINE_CHARS) -> list[str]:
+    """The scene's headline, broken into lines that fit the frame.
+
+    drawtext does not wrap: it draws one long line and lets it run off both
+    edges, which is what the captions did until it was measured. Words are kept
+    whole; a single word longer than the line is left alone rather than cut,
+    because a hyphen invented by a renderer reads as a typo.
+
+    A LIST, and each line is drawn by its own filter. Putting a newline in one
+    drawtext looked right and was not: this ffmpeg breaks the line AND draws the
+    newline as a missing-glyph box at the end of it — visible in the frame,
+    invisible in every measurement, because the box falls inside the bounding
+    box the width check reads. Two filters have no newline to mishandle.
+    """
+    words = (text or "").split()
+    if not words:
+        return []
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if current and len(candidate) > width:
+            lines.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    return lines[:HEADLINE_LINES]
+
+
 def _card(text: str, destination: Path, font: str | None) -> None:
     """A branded frame with the line on it. What a scene falls back to."""
     font_clause = f":fontfile='{assemble.escape_path(font)}'" if font else ""
@@ -170,6 +222,26 @@ def build_scene_video(shots: list[Shot], workdir: Path, font: str | None) -> Pat
             image = workdir / f"card-{index}.png"
             _card(shot.text, image, font)
         frames = max(1, int(shot.seconds * 30))
+        # The headline, but only over a PHOTOGRAPH. A fallback card already has
+        # this same text as its whole content, and drawing it again would print
+        # it twice on top of itself.
+        headline_lines: list[str] = []
+        if shot.image is not None:
+            headline_lines = wrap_headline(shot.text)
+        headline_clause = ""
+        font_clause = f":fontfile='{assemble.escape_path(font)}'" if font else ""
+        for row, line in enumerate(headline_lines):
+            line_file = workdir / f"headline-{index}-{row}.txt"
+            line_file.write_text(line, encoding="utf-8")
+            # An outline rather than a box: a filled bar across the top of every
+            # photograph is heavier than the thing it is labelling. Same reason
+            # the captions carry an outline.
+            headline_clause += (
+                f",drawtext=textfile='{assemble.escape_path(str(line_file))}'"
+                f"{font_clause}:fontcolor=white:fontsize={HEADLINE_SIZE}"
+                f":borderw=5:bordercolor=black@0.9"
+                f":x=(w-text_w)/2:y={HEADLINE_Y + row * HEADLINE_STEP}"
+            )
         subprocess.run(
             [
                 "ffmpeg", "-y", "-v", "error",
@@ -179,7 +251,7 @@ def build_scene_video(shots: list[Shot], workdir: Path, font: str | None) -> Pat
                 f"zoompan=z='min(zoom+0.0009,1.12)':d={frames}"
                 f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
                 f":s={OUT_W}x{OUT_H}:fps=30,"
-                f"setsar=1",
+                f"setsar=1{headline_clause}",
                 "-t", f"{shot.seconds:.2f}",
                 "-c:v", "libx264", "-pix_fmt", "yuv420p",
                 str(clip),

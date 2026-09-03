@@ -6,6 +6,31 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## ✅ EL TITULAR DE CADA ESCENA, YA DIBUJADO (2-sep-2026)
+
+Decisión del dueño: **dibujarlo sobre cada foto**. Hasta ahora el modelo lo
+escribía, el filtro Fair Housing lo revisaba y **nadie lo pintaba** salvo en la
+tarjeta de respaldo, que ya no se usa.
+
+Geometría **medida dos veces**, y la primera estaba mal de una forma que merece
+quedar escrita: medí con la fuente **por defecto** de drawtext (27,3 px por
+carácter) y el obrero pasa `DejaVuSans-Bold`, más ancha. Renderizado de verdad,
+«Mid-Range: Single-Family Homes» ocupó **1029 px de 1080** — 25 px de margen — y
+a 34 caracteres llegaba a 1080 exactos, o sea recortado. Máquina correcta,
+fuente equivocada. Con la fuente real: **48 px y 30 caracteres por línea**, dos
+líneas = 60, que es justo el tope que `content_writer` pone a `on_screen_text`.
+
+Y un defecto que **solo se veía mirando el fotograma**: con un `\n` dentro de un
+solo `drawtext`, este ffmpeg parte la línea **y además dibuja el salto como una
+caja de glifo ausente** al final. Invisible en toda medición, porque la caja cae
+dentro de la caja envolvente que mide el ancho. Ahora va **un `drawtext` por
+línea**, cada uno centrado por su cuenta.
+
+**Decisión del dueño sobre la brokerage**: se queda **solo quemada en el vídeo**,
+no va al pie del post. No se toca `_with_cta`.
+
+---
+
 ## 🟡 EL ROG SE QUEDA SIN MEMORIA, Y NO ES NUESTRO (2-sep-2026)
 
 Aviso de la sesión «Bittrader Youtube», **verificado aquí en el journal** y no
