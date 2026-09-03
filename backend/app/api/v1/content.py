@@ -595,6 +595,23 @@ async def rebuild_piece(piece_id: int, db: AsyncSession = Depends(get_db)) -> Pi
         raise HTTPException(
             status_code=409, detail="this piece is published; nothing here can un-post it"
         )
+    if piece.status is ContentStatus.PUBLISHING:
+        # Buffer is holding this video for a future hour, and rebuilding clears
+        # `media_path` — so the public route would answer 404 when Buffer came
+        # to fetch it, the post would fail with a message about the URL, and
+        # the piece would be stranded in PUBLISHING because `publish_approved`
+        # only looks at rows that HAVE a file.
+        #
+        # This guard is new because the state is new: before the queue,
+        # PUBLISHING lasted seconds and the button was never offered during it.
+        # Now it lasts days, and the console shows the button for all of them.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "this piece is queued for publishing; rebuilding would remove "
+                "the video the platform is waiting to fetch"
+            ),
+        )
 
     # An approval is a decision about a video. Take the video away and the
     # decision no longer refers to anything — and since v0.67.6 a piece with no

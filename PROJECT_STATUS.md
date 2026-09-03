@@ -125,6 +125,65 @@ emparejamiento erróneo de alias; el emparejamiento erróneo era el sobre GraphQ
 (defecto 2). Se queda por la norma de la casa —todo `ORDER BY` se desempata con
 `id`— y **el comentario que afirmaba lo contrario está corregido en el código**.
 
+### Auditoría de la Fase 1 — 2 bloqueantes, los dos corregidos en fase
+
+**B1 · Un 200 con `errors` de GraphQL retiraba un post VIVO.** El reconciliador
+leía `data` y **nunca miraba `payload["errors"]`** — al contrario que
+`parse_create_post`, que sí los trata como fallo. Un `post` limitado por cuota
+vuelve como `data:{p0:{…},p1:null,p2:{…}}` **más** un array `errors`, y ese
+`null` significa «este campo falló», no «este post ya no existe».
+
+**B2 · Y ese FALLIDO falso publicaba el vídeo dos veces.** Cadena medida por el
+auditor de punta a punta: fallo espurio → `_close_piece` cierra la pieza en
+`FAILED` → `FAILED` es justo el estado que ofrece **Reintentar** → al
+re-aprobar, la rama `fresh` libera las filas `FAILED` y las **reenvía**. Un
+error transitorio de lectura terminaba en un segundo post público del mismo
+vídeo. El comportamiento de re-aprobación es correcto y se queda; la defensa es
+que un `FAILED` nunca se escriba desde una lectura fallida.
+
+**Importantes corregidos también (todos con mutación roja):**
+
+- **Inyección GraphQL + parada permanente.** `external_id` se interpolaba en la
+  cadena de la query. Una comilla invalidaba el lote entero, Buffer devolvía
+  400 y **todas** las demás filas quedaban sin reconciliar en cada tick, en
+  silencio; y un id con forma `") { id } evil: organization(…` añadía un campo
+  a nuestra propia query. Los ids viajan ya como **variables GraphQL**.
+- **«Rehacer» vaciaba una pieza que Buffer sostiene.** `rebuild_piece`
+  rechazaba `PUBLISHED` pero no `PUBLISHING`; borraba `media_path`, la ruta
+  pública devolvía 404 a la hora del hueco y la pieza quedaba colgada para
+  siempre. La guarda es nueva porque el estado es nuevo: antes `PUBLISHING`
+  duraba segundos.
+- **Un estado que Buffer añada dejaba la pieza colgada en silencio.** Sigue sin
+  inventarse un veredicto, pero ahora se grita: `log.error` nombrando las filas.
+  Y un `sending` con un objeto `error` transitorio ya no se retira.
+- **Cinco invariantes solo cubiertas en el modo apagado.** Los 25 tests previos
+  se fijaron a `CONTENT_SCHEDULE_ENABLED=False`, y eso dejó pausa de cuota,
+  re-aprobación, tope diario y fallo parcial sin gemelo en modo cola — que es
+  el de producción. **La re-aprobación es el paso 4 de B2 y no la miraba nada.**
+  Cuatro gemelos añadidos.
+- 🔴 **Un test mío no podía ver el fallo que nombraba.**
+  `test_a_denver_evening_is_the_next_utc_day` corría sobre tabla vacía, así que
+  `_day_is_taken` nunca se consultaba y la mutación que su propio docstring
+  describe lo dejaba **verde**. Ahora siembra la fila reservada, y enrojece.
+
+**Al backlog, con evidencia:** dos ejecuciones solapadas comparten día (la fila
+reclamada aún no tiene `scheduled_at`); hoy no ocurre —un worker, una réplica,
+bucle secuencial— pero la regla depende de un supuesto de despliegue y no de la
+base. `_claimed_today` no cuenta piezas reanudadas. Una hora de hueco dentro del
+salto DST se resuelve en silencio.
+
+**Confirmado sano por medición, no por razonamiento:** DST en las dos
+transiciones de Denver sin día saltado ni repetido; RLS aísla los huecos entre
+agencias (la agencia A no pierde ni ve los de B); una pausa de cuota no gasta
+día; dos piezas del mismo tick sí se ven entre sí.
+
+| Criterio final | Resultado |
+|---|---|
+| Suite backend, base recreada | **1374 passed**, 0 saltados |
+| Suite frontend | **160 passed** |
+| `ruff` / `tsc` | limpios |
+| Mutaciones | 8 de la fase (7 rojas, 1 sin efecto observable y documentada) + **6 de los arreglos, todas rojas** |
+
 ### 🔴 La verificación de la Fase 1 hay que rehacerla (medido 3-sep)
 
 El plan dice «aprobar la pieza 3 con v0.68.0 desplegada» y «3 y 5 esperan a la

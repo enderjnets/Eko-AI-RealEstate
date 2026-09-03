@@ -101,6 +101,9 @@ _POST_STATE = """{ status sentAt externalLink error { message } }"""
 # scheduled post spends minutes in `sending` on its way out.
 _BUFFER_SENT = "sent"
 _BUFFER_ERROR = "error"
+#: Still on its way. A post genuinely sits in `sending` for minutes, and a
+#: transient `error` object attached to one of these is not a verdict.
+_BUFFER_IN_FLIGHT = frozenset({"draft", "needs_approval", "scheduled", "sending"})
 
 _CHANNELS = """
 query Channels($input: ChannelsInput!) {
@@ -779,11 +782,27 @@ async def reconcile_scheduled(db: AsyncSession) -> int:
         await _close_touched(db, due)
         return len(due)
 
+    # Ids travel as GraphQL VARIABLES, never interpolated into the query. Two
+    # reasons, both measured rather than imagined. A quote in one id used to
+    # invalidate the whole batch string, Buffer answered 400, and every other
+    # row in that batch went unreconciled on every tick from then on — a
+    # permanent, silent stall behind one bad value. And an id carrying
+    # `") { id } evil: organization(input: { id: "` appended a second field to
+    # our own query. These ids come from Buffer's own answers, so the attacker
+    # would have to be Buffer or somebody between us — but a parameterised
+    # query costs nothing and closes both.
     aliases = {f"p{i}": row for i, row in enumerate(due)}
-    query = "query {\n" + "\n".join(
-        f'  {alias}: post(input: {{id: "{row.external_id}"}}) {_POST_STATE}'
-        for alias, row in aliases.items()
-    ) + "\n}"
+    query = (
+        "query ("
+        + ", ".join(f"${alias}: PostId!" for alias in aliases)
+        + ") {\n"
+        + "\n".join(
+            f"  {alias}: post(input: {{id: ${alias}}}) {_POST_STATE}"
+            for alias in aliases
+        )
+        + "\n}"
+    )
+    variables = {alias: row.external_id for alias, row in aliases.items()}
 
     try:
         # `_graphql` returns the whole GraphQL envelope, so the aliases live one
@@ -791,11 +810,28 @@ async def reconcile_scheduled(db: AsyncSession) -> int:
         # for every alias and marked all three posts "no longer exists" —
         # retiring live posts on a successful read. The test that caught it
         # asserts the three labels separately, which is why it could.
-        payload = await _graphql(query, {})
+        payload = await _graphql(query, variables)
     except (BufferRefused, httpx.HTTPError) as exc:
         # Nothing is written. A question we could not ask is not an answer, and
         # marking these FAILED would retire posts that are very likely live.
         log.warning("Could not reconcile %s scheduled posts: %s", len(due), exc)
+        return 0
+
+    # A 200 carrying `errors` is a failed read, not a verdict. GraphQL answers
+    # 200 and puts application errors in the body — the same thing
+    # `parse_create_post` already knows about writes — and it can return
+    # `data: {p0: {...}, p1: null}` where the null means "this field errored",
+    # not "this post is gone". Without this check a rate-limited lookup marked
+    # a LIVE post "no longer exists", the piece closed FAILED, and a person
+    # pressing Retry then re-approved it into a SECOND public post of the same
+    # video. That chain is why this is a refusal and not a log line.
+    errors = payload.get("errors")
+    if errors:
+        log.warning(
+            "Buffer returned errors while reconciling %s scheduled posts; "
+            "nothing recorded: %s",
+            len(due), str(errors)[:300],
+        )
         return 0
 
     data = payload.get("data") or {}
@@ -809,6 +845,7 @@ async def reconcile_scheduled(db: AsyncSession) -> int:
         return 0
 
     resolved = 0
+    unknown: list[tuple[int, str, str]] = []
     for alias, row in aliases.items():
         post = data.get(alias)
         if post is None:
@@ -829,12 +866,29 @@ async def reconcile_scheduled(db: AsyncSession) -> int:
             # console a person can actually click.
             row.external_url = post.get("externalLink") or None
             resolved += 1
-        elif status == _BUFFER_ERROR or post.get("error"):
+        elif status == _BUFFER_ERROR or (
+            post.get("error") and status not in _BUFFER_IN_FLIGHT
+        ):
             row.status = PublicationStatus.FAILED
             row.last_error = (
                 (post.get("error") or {}).get("message") or f"Buffer status {status!r}"
             )[:2000]
             resolved += 1
+        elif status not in _BUFFER_IN_FLIGHT:
+            # Not `sent`, not `error`, and not one of the states we know mean
+            # "still on its way". Nothing is written — inventing a verdict from
+            # a label we do not understand is how a live post gets retired —
+            # but it is said out loud, because the silent alternative is a
+            # piece stuck in PUBLISHING for ever while every tick asks again
+            # and nobody is told.
+            unknown.append((row.piece_id, row.platform.value, status))
+
+    if unknown:
+        log.error(
+            "Buffer reported %s scheduled post(s) in a state this code does "
+            "not know, so they cannot be closed: %s. Somebody has to look.",
+            len(unknown), unknown[:10],
+        )
 
     if resolved:
         await db.commit()

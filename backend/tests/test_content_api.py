@@ -983,3 +983,49 @@ async def test_the_listing_accepts_several_statuses(database_url: str) -> None:
             assert len(everything.json()) == 3
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_queued_piece_cannot_be_rebuilt(database_url: str) -> None:
+    """Rebuilding clears `media_path`, and Buffer is waiting to fetch it.
+
+    The public media route answers 404 without a file, so at the scheduled hour
+    the post fails with a message about the URL — and the piece is then
+    stranded in PUBLISHING for ever, because `publish_approved` only looks at
+    rows that HAVE a file.
+
+    The guard is new because the state is: before the queue, PUBLISHING lasted
+    seconds and nobody could press the button during it. Now it lasts days and
+    the console offers it the whole time.
+    """
+    async with get_bypass_session_factory()() as db:
+        from app.models import ContentKind, ContentLanguage, ContentPiece
+
+        piece = ContentPiece(
+            org_id=1,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHING,
+            hook=CLEAN["hook"],
+            scenes=[{"visual_prompt": "a house", "on_screen_text": "hi"}],
+            media_path="c" * 32 + ".mp4",
+        )
+        db.add(piece)
+        await db.commit()
+        piece_id = piece.id
+    try:
+        async with _client() as client:
+            r = await client.post(f"/api/v1/content/{piece_id}/rebuild")
+            assert r.status_code == 409, r.text
+
+        async with get_bypass_session_factory()() as db:
+            row = (
+                await db.execute(
+                    text("SELECT status, media_path FROM content_pieces WHERE id=:i"),
+                    {"i": piece_id},
+                )
+            ).one()
+        assert row[0] == "publishing"
+        assert row[1] is not None, "the video Buffer is waiting for was removed"
+    finally:
+        await _cleanup()

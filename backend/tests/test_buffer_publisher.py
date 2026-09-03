@@ -17,7 +17,6 @@ The invariants these hold, in the order they matter:
 from __future__ import annotations
 
 import os
-import re
 from datetime import UTC, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -160,6 +159,8 @@ class _Recorder:
         self.sent: list[dict[str, Any]] = []
         self.queries: list[str] = []
         self.reads: dict[str, Any] = {}
+        #: Extra top-level keys to put beside "data" — `errors`, mostly.
+        self.envelope: dict[str, Any] = {}
         self.answers = answers or {}
 
     async def __call__(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
@@ -180,12 +181,14 @@ class _Recorder:
             # that assumed `p0` was always the first row would hide the exact
             # defect a missing ORDER BY causes.
             self.queries.append(query)
-            answered: dict[str, Any] = {}
-            for alias, post_id in re.findall(
-                r'(\w+): post\(input: \{id: "([^"]+)"\}\)', query
-            ):
-                answered[alias] = self.reads.get(post_id)
-            return {"data": answered}
+            # Ids arrive as GraphQL variables, one per alias — the query itself
+            # carries only `$p0`. Answers are keyed by the post id, never by
+            # alias position, so a test cannot accidentally depend on the order
+            # rows came back from the database.
+            answered = {
+                alias: self.reads.get(post_id) for alias, post_id in variables.items()
+            }
+            return {"data": answered, **self.envelope}
         payload = variables["input"]
         self.sent.append(payload)
         answer = self.answers.get(payload["channelId"])
@@ -945,14 +948,39 @@ async def test_a_denver_evening_is_the_next_utc_day(
     zone = ZoneInfo(DENVER)
     day = datetime(2026, 9, 10).date()
 
+    # The row that makes this test able to fail. Written against UTC dates,
+    # `_day_is_taken` files this 20:30-local post under the NEXT UTC day, finds
+    # `day` empty, and books that same evening a second time. Without a row in
+    # the table the function under suspicion is never consulted at all and the
+    # test passes on arithmetic that has nothing to do with the bug — measured:
+    # it survived the mutation its own docstring describes.
+    taken = await _approved_piece()
+    async with get_bypass_session_factory()() as db:
+        db.add(
+            ContentPublication(
+                org_id=ORG,
+                piece_id=taken,
+                platform=PublicationPlatform.YOUTUBE,
+                status=PublicationStatus.SCHEDULED,
+                external_id="already-booked",
+                scheduled_at=datetime.combine(
+                    day, time(20, 30), tzinfo=zone
+                ).astimezone(UTC),
+            )
+        )
+        await db.commit()
+
     with org_scope(ORG):
         async with get_session_factory()() as db:
             noon = datetime.combine(day, time(12, 0), tzinfo=zone).astimezone(UTC)
             slot = await buffer_publisher.next_free_slot(
                 db, PublicationPlatform.YOUTUBE, zone, noon
             )
-    assert _local_day(slot) == day.isoformat()
-    assert slot.date().isoformat() == (day + timedelta(days=1)).isoformat(), slot
+
+    # That evening is spent, so the answer must be the NEXT local day — and a
+    # UTC-day reading of the booked row would have said this evening was free.
+    assert _local_day(slot) == (day + timedelta(days=1)).isoformat(), slot
+    assert slot.date().isoformat() == (day + timedelta(days=2)).isoformat(), slot
     assert slot.astimezone(zone).time() == time(20, 30)
 
 
@@ -1276,3 +1304,304 @@ async def test_a_slot_that_has_not_arrived_is_not_asked_about(
         async with get_session_factory()() as db:
             assert await buffer_publisher.reconcile_scheduled(db) == 0
     assert recorder.queries == []
+
+
+async def test_graphql_errors_never_retire_a_live_post(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 200 carrying `errors` is a failed read, not a verdict. BLOCKING.
+
+    GraphQL answers 200 and puts application errors in the body — the same
+    thing `parse_create_post` already knows about writes. A rate-limited lookup
+    comes back as `data: {p0: {...}, p1: null}` plus an `errors` array, where
+    that null means "this field errored", NOT "this post is gone".
+
+    Read as a verdict it retired a LIVE post as "no longer exists", which is
+    bad on its own. What makes it blocking is the second half, asserted below:
+    the piece then closes FAILED, and FAILED is the one status a person can
+    Retry — and a re-approved piece has its FAILED rows released and sent
+    again. A transient error on a read therefore ended in a SECOND public post
+    of a video that had already gone out.
+    """
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    piece = await _approved_piece()
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text("UPDATE content_pieces SET status='publishing' WHERE id=:i"),
+            {"i": piece},
+        )
+        await db.commit()
+    for platform, ext in (
+        (PublicationPlatform.YOUTUBE, "yt-live"),
+        (PublicationPlatform.TIKTOK, "tt-live"),
+        (PublicationPlatform.INSTAGRAM, "ig-live"),
+    ):
+        await _scheduled_row(piece, platform, ext, due_minutes=-5)
+
+    recorder = _Recorder()
+    # Every post is alive; Buffer just could not answer for one of them.
+    recorder.reads = {
+        "yt-live": {"status": "sent", "sentAt": "2026-09-04T02:30:00Z",
+                    "externalLink": "https://youtube.com/shorts/a", "error": None},
+        "tt-live": None,
+        "ig-live": {"status": "sent", "sentAt": "2026-09-04T14:30:00Z",
+                    "externalLink": "https://instagram.com/reel/b", "error": None},
+    }
+    recorder.envelope = {
+        "errors": [{"message": "Rate limit exceeded for post lookup", "path": ["p1"]}]
+    }
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            assert await buffer_publisher.reconcile_scheduled(db) == 0
+
+    rows = await _sched(piece)
+    assert all(r[0] == "scheduled" for r in rows.values()), (
+        f"a failed read was treated as an answer and wrote verdicts: {rows}"
+    )
+    # And therefore the piece cannot reach FAILED, which is the status that
+    # would have offered a person the Retry that publishes it all over again.
+    assert await _status(piece) == "publishing"
+    assert recorder.sent == []
+
+
+async def test_an_id_with_a_quote_cannot_break_or_extend_the_query(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ids travel as variables, so no value can reach the query text.
+
+    Two failures at once before this. A quote in one id invalidated the whole
+    batch string, Buffer answered 400, and every OTHER row in that batch went
+    unreconciled on every tick from then on — a permanent silent stall behind
+    one bad value. And an id shaped like `") { id } evil: organization(...` had
+    a second field appended to our own query.
+    """
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    hostile = '") { id } evil: organization(input: {id: "1"}) { name'
+    piece = await _approved_piece()
+    await _scheduled_row(piece, PublicationPlatform.YOUTUBE, hostile, due_minutes=-5)
+    await _scheduled_row(piece, PublicationPlatform.TIKTOK, "tt-clean", due_minutes=-5)
+
+    recorder = _Recorder()
+    recorder.reads = {
+        "tt-clean": {"status": "sent", "sentAt": "2026-09-04T14:30:00Z",
+                     "externalLink": "https://tiktok.com/@x/video/1", "error": None},
+    }
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            await buffer_publisher.reconcile_scheduled(db)
+
+    sent_query = recorder.queries[0]
+    assert hostile not in sent_query, "the value reached the query text"
+    assert "evil:" not in sent_query and "organization(" not in sent_query
+    # And the clean row in the same batch is still answered, rather than being
+    # dragged down by its neighbour.
+    assert (await _sched(piece))["tiktok"][0] == "published"
+
+
+async def test_a_state_we_do_not_recognise_is_said_out_loud(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Not inventing a verdict is right; doing it in silence is not.
+
+    An unknown label leaves the row SCHEDULED and the piece PUBLISHING for
+    ever, asked about on every tick, with nobody told. Nothing is written —
+    guessing from a label we do not understand is how a live post gets retired
+    — but it is logged as an error naming the rows.
+    """
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    piece = await _approved_piece()
+    await _scheduled_row(piece, PublicationPlatform.YOUTUBE, "yt-1", due_minutes=-5)
+
+    recorder = _Recorder()
+    recorder.reads = {
+        "yt-1": {"status": "quarantined_by_platform", "sentAt": None,
+                 "externalLink": None, "error": None},
+    }
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with caplog.at_level("ERROR", logger="app.services.buffer_publisher"):
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                assert await buffer_publisher.reconcile_scheduled(db) == 0
+
+    assert (await _sched(piece))["youtube"][0] == "scheduled"
+    shouted = "\n".join(r.getMessage() for r in caplog.records)
+    assert "quarantined_by_platform" in shouted, shouted
+
+
+async def test_an_in_flight_post_with_an_error_object_is_not_retired(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`sending` with a transient error attached is still on its way out."""
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    piece = await _approved_piece()
+    await _scheduled_row(piece, PublicationPlatform.YOUTUBE, "yt-1", due_minutes=-5)
+
+    recorder = _Recorder()
+    recorder.reads = {
+        "yt-1": {"status": "sending", "sentAt": None, "externalLink": None,
+                 "error": {"message": "temporary upstream hiccup"}},
+    }
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            assert await buffer_publisher.reconcile_scheduled(db) == 0
+    assert (await _sched(piece))["youtube"][0] == "scheduled"
+
+
+# ── The same mechanics, in the mode production actually runs ─────────────
+#
+# The tests at the top of this file are pinned to the immediate path. That is
+# right for what they assert, but it left the four mechanics below covered only
+# in a mode `CONTENT_SCHEDULE_ENABLED` turns OFF. Re-approval especially: it is
+# the step that turns a wrong FAILED into a second public post, and in queue
+# mode nothing looked at it until now.
+
+
+async def test_a_quota_pause_in_queue_mode_marks_nothing_failed(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A quota pause is not a content failure, whichever mode we are in."""
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    piece = await _approved_piece()
+
+    recorder = _Recorder({TT: QuotaReached("Buffer quota reached")})
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            with pytest.raises(QuotaReached):
+                await publish_piece(db, piece)
+
+    rows = await _sched(piece)
+    assert "failed" not in {r[0] for r in rows.values()}, rows
+    # The paused platform is released for the next tick, not stranded.
+    assert rows["tiktok"][0] == "pending"
+    assert rows["tiktok"][1] is None
+
+    # Next tick: it gets a slot, and not one already spent by its own siblings.
+    monkeypatch.setattr(buffer_publisher, "_graphql", _Recorder())
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            await publish_piece(db, piece)
+    rows = await _sched(piece)
+    assert all(r[0] == "scheduled" for r in rows.values()), rows
+
+
+async def test_re_approval_in_queue_mode_retries_only_what_failed(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A re-approved piece re-sends its FAILED platforms and nothing else.
+
+    This is step four of the blocking chain: a wrong FAILED plus this
+    behaviour equals a second public post. The behaviour itself is correct and
+    has to stay — a person who put a piece back through the queue meant it —
+    so the defence is that FAILED must never be written from a failed read.
+    That is asserted in `test_graphql_errors_never_retire_a_live_post`; this
+    pins the other half, that a SCHEDULED sibling is not dragged along.
+    """
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    piece = await _approved_piece()
+
+    recorder = _Recorder({TT: BufferRefused("the channel refused it")})
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            await publish_piece(db, piece)
+
+    rows = await _sched(piece)
+    assert rows["tiktok"][0] == "failed"
+    assert rows["youtube"][0] == "scheduled"
+    scheduled_before = rows["youtube"][1]
+
+    # A person puts it back through the queue and approves it again.
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text("UPDATE content_pieces SET status='approved' WHERE id=:i"),
+            {"i": piece},
+        )
+        await db.commit()
+
+    second = _Recorder()
+    monkeypatch.setattr(buffer_publisher, "_graphql", second)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            await publish_piece(db, piece)
+
+    assert len(second.sent) == 1, (
+        f"only the failed platform should be re-sent, got {len(second.sent)}"
+    )
+    assert second.sent[0]["channelId"] == TT
+    rows = await _sched(piece)
+    assert rows["tiktok"][0] == "scheduled"
+    # The one that was already queued keeps the exact slot Buffer holds it for.
+    assert rows["youtube"][1] == scheduled_before
+
+
+async def test_the_daily_cap_still_counts_pieces_in_queue_mode(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One video is three posts; the budget is spent in videos."""
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    monkeypatch.setattr(get_settings(), "CONTENT_PUBLISH_MAX_PER_DAY", 2, raising=False)
+    for _ in range(3):
+        await _approved_piece()
+
+    monkeypatch.setattr(buffer_publisher, "_graphql", _Recorder())
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            await publish_approved(db)
+
+    async with get_bypass_session_factory()() as db:
+        touched = (
+            await db.execute(
+                text("SELECT count(DISTINCT piece_id) FROM content_publications")
+            )
+        ).scalar_one()
+    assert touched == 2, f"the cap let {touched} pieces through with a limit of 2"
+
+
+async def test_one_platform_failing_in_queue_mode_does_not_stop_the_others(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refusal is about one channel, and the other two still get their date."""
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    piece = await _approved_piece()
+
+    recorder = _Recorder({IG: BufferRefused("instagram said no")})
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            await publish_piece(db, piece)
+
+    rows = await _sched(piece)
+    assert rows["instagram"][0] == "failed"
+    assert "instagram said no" in rows["instagram"][3]
+    assert rows["youtube"][0] == "scheduled" and rows["youtube"][1] is not None
+    assert rows["tiktok"][0] == "scheduled" and rows["tiktok"][1] is not None
