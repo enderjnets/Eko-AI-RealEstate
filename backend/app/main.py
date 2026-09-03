@@ -35,6 +35,7 @@ from app.api.v1.webhooks import sms as sms_webhook
 from app.api.v1.webhooks import voice as voice_webhook
 from app.api.v1.webhooks import whatsapp as whatsapp_webhook
 from app.config import Settings, get_settings
+from app.logging_redact import install as install_log_redaction
 
 settings = get_settings()
 
@@ -42,6 +43,11 @@ logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+# Immediately after basicConfig, so no request can be logged before the guard is
+# up: `httpx` writes the full request URL at INFO, and Telegram carries the bot
+# token in the path. The doorbell of v0.67.10 leaked the live token into
+# `docker logs` on its first send.
+install_log_redaction()
 logger = logging.getLogger(__name__)
 
 

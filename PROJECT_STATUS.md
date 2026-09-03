@@ -6,6 +6,94 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## 🔵 EN CURSO — v0.67.11 (tachar el token) + v0.68.0 (la cola con fecha)
+
+### Consultas al advisor (Fable 5.1, autor del plan)
+
+| # | Motivo | Decisión |
+|---|---|---|
+| 1 | Arranque: validar lectura del plan, orden, dependencias, riesgos | Lectura correcta. **Rama** `feat/fase0-tachar-token` desde `e321f95` (el plan citaba `feat/cierre-dominio-primero`, que ya no es HEAD); el deploy de 0.67.11 **arrastra `e321f95`** (hero 1080p, sin desplegar) y eso va escrito en el pre-deploy. **La Fase 0 NO despliega**: su verificación en `docker logs` pasa al checklist post-deploy. **Cobertura contra `e321f95`**, no contra `main` (que es un señuelo sin la pila). Riesgos aceptados: (a) `httpx` deja la URL en `record.args`, así que el filtro debe pasar por `getMessage()` o el test es verde falso; (b) el barrido AST puede morder a `reconcile_scheduled`; (c) el «día tomado» se calcula en zona local, nunca +24 h en UTC. |
+
+### ✅ Fase 0 — v0.67.11: el token deja de escribirse (3-sep-2026)
+
+Fuga **mía**: `httpx` registra la URL completa de cada petición a INFO y Telegram
+lleva el token en la ruta, así que el timbre de v0.67.10 escribió la credencial
+viva en `docker logs` la primera vez que funcionó (07:04:34 UTC). Se arregla con
+`backend/app/logging_redact.py`: un `logging.Filter` que **tacha, no silencia**
+— la línea `HTTP Request … 200 OK` es la única prueba de que un aviso salió.
+
+**Lo que la auditoría destapó y por qué la fase creció:** el docstring que
+escribí afirmaba que Telegram era el único que mete una credencial en una URL.
+Era falso. `services/discovery.py:295` manda `SERPAPI_API_KEY` como parámetro
+`api_key`, y en producción **la clave está puesta y `DISCOVERY_SIMULATED=false`**
+— fuga viva, no hipotética. Se añadió tachado de credenciales en query string
+**por nombre de parámetro** (un secreto no tiene forma: `api_key=1` es tan
+secreto como 64 hex) y la instalación se extendió a los loggers de uvicorn, que
+tienen handlers propios con `propagate: false` y registran la query de cada
+petición **entrante** (`hub.verify_token` de Meta viaja ahí).
+
+🔴 **Acción del dueño**: rotar `SERPAPI_API_KEY` en serpapi.com. Un comando mío
+de verificación imprimió el valor por una máscara mal escrita — error propio,
+segunda credencial expuesta en esta tanda. También sigue pendiente revocar el
+token de Telegram en @BotFather y volver a poner el nuevo con `~/set-telegram.sh`.
+
+| Criterio | Resultado real |
+|---|---|
+| Suite backend, base recreada | **1350 passed**, 0 saltados |
+| Suite frontend | **153 passed** |
+| `ruff check app tests` | `All checks passed!` |
+| `tsc --noEmit` / `vitest` | limpio / 153 |
+| `docker build -f backend/Dockerfile` | compila |
+| Cobertura `logging_redact.py` | **100%** (31/31); no existía en la base |
+| Secretos en el diff | ninguno (el token del test es una cadena falsa etiquetada) |
+| Sobre-tachado | **0** sobre los 32 literales de URL de `backend/app` |
+
+**Mutaciones — 11, todas rojas.** Dos verdes falsos corregidos por el camino:
+
+- `test_importing_the_app_installs_the_filter` **no podía fallar**: los tests
+  anteriores del fichero ya llamaban a `install()`, así que el filtro estaba en
+  el logger `httpx` pasara lo que pasara en `main.py`. Comentar la instalación
+  dejaba la suite verde. Ahora corre en un intérprete nuevo por subproceso.
+- **F4 del auditor**: la mitad de `install()` que recorre los handlers del root
+  no tenía ningún test — borrarla dejaba 5 verdes mientras `httpcore`, `urllib3`
+  y nuestros propios módulos volvían a gotear. No es redundancia: es lo único
+  que cubre a todo logger que no hayamos nombrado. Test nuevo sobre la SALIDA de
+  un logger deliberadamente no nombrado.
+
+**Al backlog, con evidencia:** el filtro **no ve un traceback** — `exc_info` lo
+renderiza el Formatter, que corre después de todo filtro, y
+`httpx.HTTPStatusError` lleva la URL en su mensaje; `render_jobs.py:456` es un
+`log.exception` alrededor del timbre, así que un `raise_for_status()` en
+`telegram_notify` reabriría la fuga sin que nada se ponga rojo. Escrito en el
+docstring del módulo, no solo aquí. Menores: tachado parcial con caracteres
+fuera de `[A-Za-z0-9_-]`, `%3A` no casa, token sin prefijo `/bot` no se tacha
+(ninguno alcanzable hoy — no hay volcado de settings).
+
+### 🔴 La verificación de la Fase 1 hay que rehacerla (medido 3-sep)
+
+El plan dice «aprobar la pieza 3 con v0.68.0 desplegada» y «3 y 5 esperan a la
+cola». **Caducó**: las cinco piezas (3, 5, 6, 7, 8) están `published` con sus 15
+filas en `published` — el dueño las aprobó y el `shareNow` de hoy las sacó.
+`PUBLISHED` es terminal: **no queda pieza con la que probar la cola**. El
+sustituto natural es el borrador que el estudio genera tras la medianoche UTC
+(`CONTENT_MAX_DRAFTS_PER_DAY=2`), y de regalo cae en el caso que más importa:
+hoy los tres canales ya publicaron, así que el primer hueco libre es **mañana**.
+No es avería: el tope diario aguantó (la pieza 3 no gastó presupuesto porque sus
+filas eran del 31-ago, pieza reanudada). Y la pieza 8 publicada **cierra la
+verificación de v0.67.9**.
+
+### Mediciones para la Fase 1, ya hechas
+
+| Qué | Medido | Consecuencia |
+|---|---|---|
+| `PostStatus` de Buffer | `draft · error · needs_approval · scheduled · sending · sent` | el estado de fallo **es `error`** — el plan lo daba por no verificado |
+| `PostPublishingError` | `message · rawError · supportUrl` | `last_error` sale de `message` |
+| `pg_enum` (`db/base.py:32`) | usa `values_callable` con `.value` | `ADD VALUE 'scheduled'` casa con `SCHEDULED = "scheduled"` |
+| Barrido AST vs `reconcile_scheduled` | `test_only_the_guarded_entry_point_reaches_the_wire` excluye `buffer_publisher.py`; el test de orden solo inspecciona `publish_piece` | **sin exención nueva** si vive en el publicador y lo llama `publish_approved` |
+| El agujero de `edit_piece` | `content.py:386-396` confirmado | 409 en `PUBLISHING` (1e) |
+
+---
+
 ## ✅ v0.67.9 y v0.67.10 — LA VOZ INVITA A LA WEB, Y HAY TIMBRE (3-sep-2026)
 
 ### v0.67.9 — el cierre hablado

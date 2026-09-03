@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.67.10";
+export const CURRENT_VERSION = "0.67.11";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.67.11",
+    date: "2026-09-03",
+    title: {
+      en: "The bot token stops reaching the log",
+      es: "El token del bot deja de llegar al registro",
+    },
+    changes: [
+      {
+        en: "The HTTP client writes the full request URL for every call it makes, and Telegram carries the bot token inside that URL, so the notice added in the previous version wrote the live credential into the server log the first time it worked. Those lines are now redacted as they are written \u2014 and auditing that fix turned up a second key travelling the same way, in the query string of the lead-discovery search, which was live. Both are covered. They are redacted, not dropped: the request line is how we know a request actually went out.",
+        es: "El cliente HTTP escribe la URL completa de cada petici\u00f3n que hace, y Telegram lleva el token del bot dentro de esa URL, as\u00ed que el aviso de la versi\u00f3n anterior escribi\u00f3 la credencial viva en el registro del servidor la primera vez que funcion\u00f3. Esas l\u00edneas salen ya tachadas \u2014 y al auditar ese arreglo apareci\u00f3 una segunda clave viajando igual, en la query de la b\u00fasqueda de captaci\u00f3n, y estaba viva. Las dos quedan cubiertas. Tachadas, no borradas: la l\u00ednea de la petici\u00f3n es c\u00f3mo sabemos que una petici\u00f3n sali\u00f3 de verdad.",
+      },
+    ],
+  },
   {
     version: "0.67.10",
     date: "2026-09-03",

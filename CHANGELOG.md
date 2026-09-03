@@ -2,6 +2,42 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.67.11] — 2026-09-03
+
+### Fixed
+- **The Telegram bot token no longer reaches the log.** `httpx` logs the full
+  request URL at INFO for every call, and Telegram's API carries the token in
+  the path, so the doorbell added in 0.67.10 wrote the live credential into
+  `docker logs` the first time it succeeded. A logging filter redacts
+  `/bot<token>` as the record is written.
+- It **redacts, it does not silence**: the `HTTP Request: ... 200 OK` line stays,
+  because that line is the only evidence a notice actually went out.
+- The filter renders the record through `getMessage()` rather than reading
+  `record.msg`: `httpx` passes the URL in `record.args`, so a filter that only
+  looked at the format string would find nothing to redact and keep leaking.
+- Installed on the `httpx` logger **and** on every root handler — a filter on a
+  logger never sees records that propagated up from its children. The root half
+  is not redundancy: it is the only thing covering `httpcore`, `urllib3` and
+  every other logger nobody thought to name.
+- **A second credential was found while auditing the first, and it was live.**
+  `services/discovery.py` sends `SERPAPI_API_KEY` as an `api_key` query
+  parameter, with the key set and `DISCOVERY_SIMULATED=false` in production, so
+  it was being written to the container log on every search. Credentials passed
+  in a query string are now redacted too, matched by parameter **name** —
+  `api_key`, `access_token`, `hub.verify_token`, `secret`, `signature` and
+  friends — because a secret has no shape worth matching. The surrounding
+  parameters survive: a log line still has to say which request was made.
+- Also installed on uvicorn's own loggers. `uvicorn.config.LOGGING_CONFIG` gives
+  them private handlers with `propagate: false`, so they never reach a root
+  handler — and `uvicorn.access` logs the full inbound request line, query
+  string included (Meta's webhook verification sends `hub.verify_token` there).
+
+### Known limit
+- The filter **cannot see a traceback**. `record.exc_info` is rendered by the
+  Formatter, which runs after every filter, and `httpx.HTTPStatusError` carries
+  the full URL in its message. Adding `raise_for_status()` to a caller that puts
+  a credential in its URL would leak again with nothing going red.
+
 ## [0.67.10] — 2026-09-03
 
 ### Added
