@@ -69,6 +69,12 @@ class PublicationOut(BaseModel):
     status: str
     external_id: str | None = None
     published_at: datetime | None = None
+    # When the platform will publish it. This is the field the console counts
+    # down to, and the reason the queue exists at all.
+    scheduled_at: datetime | None = None
+    # The post's real address on the platform, harvested once it has gone out.
+    # Without it a published piece leaves the console with nowhere to click.
+    external_url: str | None = None
     last_error: str | None = None
 
 
@@ -203,6 +209,14 @@ class StudioStatus(BaseModel):
     # person, and the client compares it against `file.size` before opening the
     # request — see `UploadClip.tsx`.
     upload_max_mb: int
+    # The agency's own IANA timezone. The second deliberate amendment to
+    # "booleans and counts only", on the same reasoning as `upload_max_mb`: a
+    # scheduled post has a date, and a date rendered in the reader's browser
+    # zone instead of the agency's is a date that is simply wrong — 20:30 in
+    # Denver shown as 03:30 to somebody in Madrid. It is not configuration an
+    # attacker can use; it is already visible on the Settings page to anyone
+    # with a session, and the same people read both.
+    timezone: str
     counts: dict[str, int]
 
 
@@ -260,23 +274,36 @@ async def studio_status(db: AsyncSession = Depends(get_db)) -> StudioStatus:
             s.CONTENT_PUBLISH_ENABLED and undeliverable_reason() is None
         ),
         upload_max_mb=s.CONTENT_UPLOAD_MAX_MB,
+        # Falls back to the deployment default rather than to a guess: a
+        # settings row can be absent on a fresh install, and an empty
+        # string would make every date render in the reader's own zone
+        # while looking exactly as authoritative.
+        timezone=(row.timezone if row else None) or s.DEFAULT_TIMEZONE,
         counts=counts,
     )
 
 
 @router.get("", response_model=list[PieceOut])
 async def list_pieces(
-    status: ContentStatus | None = Query(default=None),
+    status: list[ContentStatus] = Query(default=[]),
     limit: int = Query(default=50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ) -> list[PieceOut]:
+    """Pieces in any of the given statuses; all of them when none is given.
+
+    A list rather than one value because a console tab is not a status: the
+    "Approved" tab has to hold APPROVED *and* PUBLISHING, since a piece that
+    has been handed to the queue is still waiting to go out and is exactly the
+    one whose date a person wants to see. Passing a single `?status=` still
+    behaves as it always did, so the old contract is intact.
+    """
     stmt = (
         select(ContentPiece)
         .order_by(ContentPiece.created_at.desc(), ContentPiece.id.desc())
         .limit(limit)
     )
-    if status is not None:
-        stmt = stmt.where(ContentPiece.status == status)
+    if status:
+        stmt = stmt.where(ContentPiece.status.in_(status))
     rows = (await db.execute(stmt)).scalars().unique().all()
     return await _with_render_state(db, rows)
 

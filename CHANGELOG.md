@@ -2,6 +2,39 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.68.0] — 2026-09-03
+
+### Added
+- **A publishing queue: one slot a day per channel.** Approved pieces used to
+  go out with `shareNow` on the next tick — six posts in 107 seconds — so
+  "when will this publish?" had no answer to give. Each piece is now handed to
+  Buffer with a `dueAt`, at that channel's own local hour, so two videos never
+  share a channel's day and the same video goes out at three different times.
+- Buffer has **no mutation for a channel's posting schedule** (measured: 14
+  mutations, none of them schedule), so the rule lives in code where a test can
+  hold it to account. `CONTENT_SCHEDULE_ENABLED=false` restores the old
+  behaviour without a redeploy.
+- Migration `050_publication_schedule`: `content_publications.scheduled_at`,
+  `.external_url`, and a `scheduled` publication status. SCHEDULED is
+  deliberately **not** terminal — the piece stays PUBLISHING, which is what
+  keeps its media URL serving and its text un-editable while Buffer holds a
+  copy.
+- A reconciler asks Buffer, in one aliased query per tick, what happened to the
+  posts whose hour has come. `sent` publishes and harvests the real platform
+  link; `error` fails with Buffer's own message; a post deleted in Buffer's
+  interface is recorded as gone so the piece can close. The status labels were
+  read out of Buffer's schema by introspection, not guessed.
+- The console's Approved tab covers `approved` **and** `publishing`, shows the
+  date per channel in the agency's timezone with a countdown that actually
+  moves, and a new **Published** tab carries the link to the real post — until
+  now a video left the console the moment it succeeded.
+- Pieces are queued in the order they were **approved**, not by id. With one
+  slot a day the difference between the two is days of waiting.
+
+### Fixed
+- A queued piece cannot be edited or rejected. Both refusals already existed;
+  they are now pinned by tests, because days-long PUBLISHING is new.
+
 ## [0.67.11] — 2026-09-03
 
 ### Fixed

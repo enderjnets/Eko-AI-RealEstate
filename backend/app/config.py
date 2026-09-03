@@ -1,6 +1,7 @@
 """Settings — read from env vars. Never put secrets in code."""
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,7 +13,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.67.11"
+    APP_VERSION: str = "0.68.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -456,8 +457,57 @@ class Settings(BaseSettings):
     ENRICHMENT_ENABLED: bool = True
     ENRICHMENT_INTERVAL_SECONDS: int = 120
 
+    # ─── The publishing queue ───────────────────────────────────────────
+    # Approved videos used to leave with `shareNow` on the next tick, so six
+    # posts went out in 107 seconds and "when will this publish?" had no answer
+    # to give. With the queue on, each video is handed to Buffer with a due
+    # date, ONE PER DAY PER CHANNEL — the owner's rule, in his words: "se
+    # publican 1 por bloque de mejor horario, nunca dos a la vez".
+    #
+    # Buffer has no mutation for a channel's own posting schedule (measured:
+    # 14 mutations, none of them schedule), so the rule has to live here, where
+    # it can be tested. Turning this off restores the old behaviour without a
+    # redeploy, which is the way back if the queue ever misbehaves.
+    CONTENT_SCHEDULE_ENABLED: bool = True
+    # Local time at the agency, `HH:MM`. One slot a day per channel, at an hour
+    # that suits that channel: Buffer's own computed slots for these three sit
+    # in the evening for YouTube and Instagram and in the morning for TikTok,
+    # so the same video goes out at three different times of day — "never two
+    # at once" holds across channels too, not just within one.
+    CONTENT_SLOT_YOUTUBE: str = "20:30"
+    CONTENT_SLOT_INSTAGRAM: str = "18:30"
+    CONTENT_SLOT_TIKTOK: str = "08:30"
+    # How much warning Buffer needs. A slot closer than this is not used today;
+    # the piece goes to tomorrow's. Buffer fetches the video when the post goes
+    # out, and a fetch that starts after the hour has passed is a post that
+    # misses it.
+    CONTENT_SCHEDULE_LEAD_MINUTES: int = 20
+
     # ─── CORS ───────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3004"
+
+    @field_validator(
+        "CONTENT_SLOT_YOUTUBE", "CONTENT_SLOT_INSTAGRAM", "CONTENT_SLOT_TIKTOK"
+    )
+    @classmethod
+    def _valid_clock_time(cls, v: str) -> str:
+        """A mistyped slot must fail at startup, not at the first post.
+
+        Without this, `CONTENT_SLOT_YOUTUBE="8:30pm"` boots a healthy-looking
+        container and the fault surfaces days later as "the video never got a
+        date", inside a background loop nobody is watching.
+        """
+        try:
+            hour, minute = v.split(":")
+            if not (0 <= int(hour) <= 23 and 0 <= int(minute) <= 59):
+                raise ValueError
+            if len(hour) != 2 or len(minute) != 2:
+                raise ValueError
+        except (ValueError, AttributeError):
+            raise ValueError(
+                f"expected a 24-hour local time as HH:MM, got {v!r}"
+            ) from None
+        return v
 
     @property
     def cors_origins_list(self) -> list[str]:

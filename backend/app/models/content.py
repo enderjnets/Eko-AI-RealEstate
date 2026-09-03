@@ -76,6 +76,11 @@ class PublicationStatus(str, enum.Enum):
     # Claimed before the outbound call, so a crash cannot be mistaken for
     # "never attempted" and retried into a double post.
     PUBLISHING = "publishing"
+    # Accepted by Buffer and held for a future time. Deliberately NOT terminal:
+    # the piece stays in PUBLISHING until the post actually goes out, which is
+    # what keeps its media URL served and its text un-editable while somebody
+    # else is holding a copy of it.
+    SCHEDULED = "scheduled"
     PUBLISHED = "published"
     FAILED = "failed"
 
@@ -214,6 +219,15 @@ class ContentPublication(Base):
         DateTime(timezone=True), nullable=True
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # When the platform will publish it. Written when Buffer accepts a
+    # custom-scheduled post, and it is what the console counts down to.
+    scheduled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # The post's real address on the platform, harvested from Buffer once it
+    # has gone out. Text for the same reason `external_id` is.
+    external_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

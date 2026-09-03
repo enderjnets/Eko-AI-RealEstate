@@ -433,6 +433,10 @@ export interface ContentPublication {
   status: string;
   external_id: string | null;
   published_at: string | null;
+  /** When the platform will publish it. What the console counts down to. */
+  scheduled_at: string | null;
+  /** The post's real address on the platform, once it has gone out. */
+  external_url: string | null;
   last_error: string | null;
 }
 
@@ -477,6 +481,12 @@ export interface StudioStatus {
   publishing_ready: boolean;
   /** Megabytes. Compared against `file.size` before the upload is opened. */
   upload_max_mb: number;
+  /**
+   * The agency's IANA zone. Scheduled dates are rendered in it, never in the
+   * reader's: 20:30 in Denver would otherwise read as 03:30 in Madrid with
+   * nothing on screen to say so.
+   */
+  timezone: string;
   counts: Record<string, number>;
 }
 
@@ -531,10 +541,20 @@ const uploadFailure = (kind: UploadFailure, detail?: string) =>
 
 export const contentApi = {
   status: () => api<StudioStatus>(`/v1/content/status`),
-  list: (status?: ContentStatus) =>
-    api<ContentPiece[]>(
-      status ? `/v1/content?status=${status}` : `/v1/content`,
-    ),
+  /**
+   * Pieces in any of the given statuses; all of them when none is given.
+   *
+   * A list, because a console tab is not a status: "Approved" holds both
+   * `approved` and `publishing`, since a piece already handed to the queue is
+   * still waiting to go out and is exactly the one whose date somebody opened
+   * the console to see. Repeated `?status=` params, which is what FastAPI
+   * reads into a list.
+   */
+  list: (status?: ContentStatus | ContentStatus[]) => {
+    const wanted = status === undefined ? [] : ([] as ContentStatus[]).concat(status);
+    const q = wanted.map((s) => `status=${encodeURIComponent(s)}`).join("&");
+    return api<ContentPiece[]>(q ? `/v1/content?${q}` : `/v1/content`);
+  },
   edit: (id: number, body: { hook?: string; script?: string; caption?: string }) =>
     api<ContentPiece>(`/v1/content/${id}`, {
       method: "PATCH",

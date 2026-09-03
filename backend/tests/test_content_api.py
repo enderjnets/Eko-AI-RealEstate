@@ -442,6 +442,7 @@ async def test_status_answers_with_the_whole_contract(database_url: str) -> None
         "publishing_available",
         "publishing_ready",
         "upload_max_mb",
+        "timezone",
         "counts",
     }
     # The value, not just the key. The browser refuses a file by comparing
@@ -451,6 +452,15 @@ async def test_status_answers_with_the_whole_contract(database_url: str) -> None
     from app.config import get_settings
 
     assert body["upload_max_mb"] == get_settings().CONTENT_UPLOAD_MAX_MB
+    # Same reasoning for the zone, and it matters more than it looks: the
+    # console renders a scheduled post's date in it, and a date shown in the
+    # reader's own zone is simply the wrong time — 20:30 in Denver reads as
+    # 03:30 in Madrid, with nothing on screen to say so. It must never be
+    # empty, because an empty string silently falls back to the browser's.
+    assert body["timezone"]
+    from zoneinfo import ZoneInfo
+
+    ZoneInfo(body["timezone"])  # raises if it is not a zone anyone can use
     assert body["upload_max_mb"] > 0
 
 
@@ -867,4 +877,109 @@ async def test_the_queue_reports_what_the_render_is_doing(database_url: str) -> 
             await db.execute(delete(RenderJob))
             await db.execute(delete(MonitorState).where(MonitorState.key == "render_worker"))
             await db.commit()
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_queued_piece_cannot_be_edited_or_rejected(database_url: str) -> None:
+    """PUBLISHING means somebody else is holding a copy of this text.
+
+    With the queue, PUBLISHING stops being a state that lasts seconds: a
+    scheduled post sits there for days while Buffer holds it, and the piece is
+    kept there on purpose, because that is what protects it. Editing in that
+    window would leave the database and the post disagreeing about what was
+    published; rejecting would retire a piece that is about to appear in
+    public.
+
+    Both refusals already existed — `edit_piece` checks the status directly and
+    `reject_piece` inherits it from the state machine, which has no edge from
+    PUBLISHING to REJECTED. They are pinned here because days-long PUBLISHING
+    is new, and an untested guard is a guard somebody simplifies away.
+    """
+    async with get_bypass_session_factory()() as db:
+        from app.models import ContentKind, ContentLanguage, ContentPiece
+
+        piece = ContentPiece(
+            org_id=1,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHING,
+            hook=CLEAN["hook"],
+            caption="Three numbers decide the price.",
+        )
+        db.add(piece)
+        await db.commit()
+        piece_id = piece.id
+    try:
+        async with _client() as client:
+            edited = await client.patch(
+                f"/api/v1/content/{piece_id}", json={"caption": "different"}
+            )
+            assert edited.status_code == 409, edited.text
+
+            rejected = await client.post(
+                f"/api/v1/content/{piece_id}/reject",
+                json={"reason": "changed my mind"},
+            )
+            assert rejected.status_code == 409, rejected.text
+
+        async with get_bypass_session_factory()() as db:
+            row = (
+                await db.execute(
+                    text(
+                        "SELECT status, caption FROM content_pieces WHERE id=:i"
+                    ),
+                    {"i": piece_id},
+                )
+            ).one()
+        assert row[0] == "publishing"
+        assert row[1] == "Three numbers decide the price."
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_listing_accepts_several_statuses(database_url: str) -> None:
+    """One tab is not one status.
+
+    "Approved" has to hold APPROVED *and* PUBLISHING — a piece handed to the
+    queue is still waiting to go out, and it is precisely the one whose date a
+    person opened the console to see. Before this, a piece left APPROVED and
+    appeared in no tab at all, which is how pieces 6 and 7 became invisible
+    the moment they published.
+    """
+    async with get_bypass_session_factory()() as db:
+        from app.models import ContentKind, ContentLanguage, ContentPiece
+
+        for status in (
+            ContentStatus.APPROVED,
+            ContentStatus.PUBLISHING,
+            ContentStatus.REJECTED,
+        ):
+            db.add(
+                ContentPiece(
+                    org_id=1,
+                    kind=ContentKind.GENERATED,
+                    language=ContentLanguage.EN,
+                    status=status,
+                    hook=CLEAN["hook"],
+                )
+            )
+        await db.commit()
+    try:
+        async with _client() as client:
+            both = await client.get(
+                "/api/v1/content?status=approved&status=publishing"
+            )
+            assert both.status_code == 200, both.text
+            assert {p["status"] for p in both.json()} == {"approved", "publishing"}
+
+            # The single-value contract still behaves exactly as it did.
+            one = await client.get("/api/v1/content?status=rejected")
+            assert {p["status"] for p in one.json()} == {"rejected"}
+
+            # No filter still means everything.
+            everything = await client.get("/api/v1/content")
+            assert len(everything.json()) == 3
+    finally:
         await _cleanup()

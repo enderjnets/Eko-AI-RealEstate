@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.67.11";
+export const CURRENT_VERSION = "0.68.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.68.0",
+    date: "2026-09-03",
+    title: {
+      en: "Every approved video now has a date",
+      es: "Cada v\u00eddeo aprobado tiene ya una fecha",
+    },
+    changes: [
+      {
+        en: "Approved videos used to leave in the next few minutes, all at once \u2014 six posts went out in under two minutes. Now each one is handed to the platforms with a date: ONE PER DAY PER CHANNEL, at that channel's own best hour, so two videos never land on the same channel on the same day and the same video goes out at three different times of day. The Approved tab shows the date and a live countdown for each channel, in the agency's own timezone.",
+        es: "Los v\u00eddeos aprobados sal\u00edan en los minutos siguientes, todos a la vez \u2014 seis publicaciones en menos de dos minutos. Ahora cada uno se entrega con fecha: UNO AL D\u00cdA POR CANAL, a la mejor hora de ese canal, as\u00ed que nunca caen dos v\u00eddeos el mismo d\u00eda en un canal y el mismo v\u00eddeo sale a tres horas distintas. La pesta\u00f1a de Aprobados ense\u00f1a la fecha y una cuenta atr\u00e1s por canal, en la zona horaria de la agencia.",
+      },
+      {
+        en: "A new Published tab, with a link that opens the real post on YouTube, TikTok or Instagram. Until now a video vanished from the console the moment it succeeded, which is what happened to the first two that went live.",
+        es: "Una pesta\u00f1a nueva, Publicados, con un enlace que abre la publicaci\u00f3n real en YouTube, TikTok o Instagram. Hasta ahora un v\u00eddeo desaparec\u00eda de la consola justo al publicarse, que es lo que pas\u00f3 con los dos primeros.",
+      },
+      {
+        en: "A video waiting in the queue can no longer be edited or rejected: the platform is already holding a copy, and changing the text here would only make this screen disagree with what people will see.",
+        es: "Un v\u00eddeo que espera en la cola ya no se puede editar ni rechazar: la plataforma tiene una copia, y cambiar el texto aqu\u00ed solo har\u00eda que esta pantalla dijera algo distinto de lo que la gente va a ver.",
+      },
+    ],
+  },
   {
     version: "0.67.11",
     date: "2026-09-03",

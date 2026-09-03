@@ -69,6 +69,62 @@ docstring del módulo, no solo aquí. Menores: tachado parcial con caracteres
 fuera de `[A-Za-z0-9_-]`, `%3A` no casa, token sin prefijo `/bot` no se tacha
 (ninguno alcanzable hoy — no hay volcado de settings).
 
+### ✅ Fase 1 — v0.68.0: la cola con fecha y cuenta atrás (3-sep-2026)
+
+Lo que el dueño pidió: *«un contador y fecha de cuándo cada vídeo será
+publicado, en la sección de approved»*. No se podía enseñar porque no existía —
+un aprobado salía con `shareNow` en el siguiente tick y el 3-sep salieron seis
+posts en 107 s. La fecha solo existe si hay cola.
+
+**La regla, en sus palabras**: «se publican 1 por bloque de mejor horario, nunca
+dos a la vez». Un hueco al día por canal, a la hora local de ese canal, así que
+el mismo vídeo sale a tres horas distintas: «nunca dos a la vez» vale también
+entre canales.
+
+| Pieza | Dónde |
+|---|---|
+| Migración `050_publication_schedule` | `scheduled_at`, `external_url`, estado `scheduled` |
+| Planificador | `next_free_slot` / `_day_is_taken` / `agency_zone` en `buffer_publisher.py` |
+| Reconciliador | `reconcile_scheduled`, una query con alias al principio de cada tick |
+| API | `PublicationOut` +2 campos · `list_pieces` acepta varios estados · `StudioStatus` +`timezone` |
+| Consola | pestaña `approved` = `approved`+`publishing`, pestaña **Publicados** nueva, `PublishSchedule`, `timeUntil`, `useNow(30 s)` |
+
+**Tres defectos propios, cazados por sus tests y no por lectura:**
+
+1. 🔴 **Doble publicación.** `publish_piece` salta las filas ya atendidas, y
+   dejé `SCHEDULED` fuera de esa lista. Una pieza encolada sigue en
+   `PUBLISHING` durante días, así que `publish_approved` la recoge **cada 15
+   minutos** — habría vuelto a postear el mismo vídeo en cada tick.
+2. 🔴 **El reconciliador retiraba posts vivos.** `_graphql` devuelve el sobre
+   GraphQL entero y yo leía los alias del nivel de fuera: `data.get("p0")`
+   daba `None` para todos y los tres se marcaban «no longer exists». Una
+   lectura correcta habría marcado FALLIDOS todos los posts programados.
+3. **Un test inestable mío**: `timeUntil` lee el reloj al ejecutarse, así que
+   entre construir la fecha y leerla el límite se cruzaba. Congelado con
+   `vi.setSystemTime`; verde tres corridas seguidas.
+
+**Y una corrección a mi propio informe anterior:** dije que `edit_piece` tenía
+un agujero en `PUBLISHING`. **Falso** — la guarda estaba ya puesta justo tras el
+404; leí el cuerpo del bucle y no la cabecera. `reject_piece` lo hereda de la
+máquina de estados. Los dos quedan fijados por un test, porque un `PUBLISHING`
+que dura días es nuevo.
+
+| Criterio | Resultado real |
+|---|---|
+| Suite backend, base recreada | **1365 passed**, 0 saltados |
+| Suite frontend | **160 passed**, estable en 3 corridas |
+| `ruff` / `tsc` | limpios |
+| `docker build` | compila |
+| GRANT de `eko_app` sobre las columnas nuevas | INSERT y UPDATE reales verificados con `scheduled` |
+| Guardianes AST | verdes **sin exención nueva** — `reconcile_scheduled` vive en el publicador, que el barrido excluye |
+
+**Mutaciones: 8 lanzadas, 7 rojas.** La octava sobrevivió y la respuesta es
+honesta, no un test de relleno: quitar el `ORDER BY` del reconciliador **no
+cambia ningún comportamiento observable**. Lo añadí creyendo que arreglaba un
+emparejamiento erróneo de alias; el emparejamiento erróneo era el sobre GraphQL
+(defecto 2). Se queda por la norma de la casa —todo `ORDER BY` se desempata con
+`id`— y **el comentario que afirmaba lo contrario está corregido en el código**.
+
 ### 🔴 La verificación de la Fase 1 hay que rehacerla (medido 3-sep)
 
 El plan dice «aprobar la pieza 3 con v0.68.0 desplegada» y «3 y 5 esperan a la

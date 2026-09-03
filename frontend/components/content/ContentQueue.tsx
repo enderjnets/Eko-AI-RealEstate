@@ -31,17 +31,35 @@ import {
   contentApi,
 } from "@/lib/api";
 import type { Lang } from "@/lib/i18n";
-import { relativeTime } from "@/lib/format";
+import { exactTime, relativeTime, timeUntil } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { latestWins } from "@/lib/latestWins";
 import { useSettingsAccess, useViewer } from "@/lib/useViewer";
 import { UploadClip } from "@/components/content/UploadClip";
 
-const TABS: ContentStatus[] = ["needs_approval", "draft", "approved", "rejected"];
+/**
+ * A tab is not a status.
+ *
+ * "Approved" covers `approved` *and* `publishing`, because a piece handed to
+ * the queue is still waiting to go out and is exactly the one whose date
+ * somebody opened this screen to see. And `published` gets a tab of its own:
+ * without it a piece leaves the console the moment it succeeds, which is how
+ * pieces 6 and 7 went live and then appeared nowhere at all.
+ */
+const TABS = {
+  needs_approval: ["needs_approval"],
+  draft: ["draft"],
+  approved: ["approved", "publishing"],
+  published: ["published"],
+  rejected: ["rejected"],
+} as const satisfies Record<string, readonly ContentStatus[]>;
+
+type TabKey = keyof typeof TABS;
+const TAB_KEYS = Object.keys(TABS) as TabKey[];
 
 export function ContentQueue() {
   const { t, lang } = useI18n();
-  const [tab, setTab] = useState<ContentStatus>("needs_approval");
+  const [tab, setTab] = useState<TabKey>("needs_approval");
   const [pieces, setPieces] = useState<ContentPiece[] | null>(null);
   const [studio, setStudio] = useState<StudioStatus | null>(null);
   // Write controls hide themselves for viewers everywhere else in this app
@@ -63,7 +81,7 @@ export function ContentQueue() {
       // In parallel, and the status is not allowed to break the list: if it
       // fails the queue still renders, just without the explanation.
       const [list, status] = await Promise.all([
-        contentApi.list(tab),
+        contentApi.list([...TABS[tab]]),
         contentApi.status().catch(() => null),
       ]);
       if (!mine()) return;
@@ -121,19 +139,19 @@ export function ContentQueue() {
       </div>
 
       <div className="mt-3 flex gap-2 flex-wrap" role="tablist">
-        {TABS.map((status) => (
+        {TAB_KEYS.map((key) => (
           <button
-            key={status}
+            key={key}
             role="tab"
-            aria-selected={tab === status}
-            onClick={() => setTab(status)}
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
             className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
-              tab === status
+              tab === key
                 ? "bg-eko-violet/15 text-eko-violet border-eko-violet/40"
                 : "bg-white/[0.03] text-gray-400 border-white/10 hover:border-white/20"
             }`}
           >
-            {t(`content.tab.${status}`)}
+            {t(`content.tab.${key}`)}
           </button>
         ))}
       </div>
@@ -160,6 +178,7 @@ export function ContentQueue() {
         <ul className="mt-4 space-y-4">
           {pieces.map((piece) => (
             <PieceCard
+              studio={studio}
               key={piece.id}
               piece={piece}
               busy={busyId === piece.id}
@@ -202,7 +221,7 @@ function StudioDiagnosis({
   compact = false,
 }: {
   studio: StudioStatus | null;
-  tab: ContentStatus;
+  tab: TabKey;
   compact?: boolean;
 }) {
   const { t } = useI18n();
@@ -210,7 +229,11 @@ function StudioDiagnosis({
   if (!studio) return null;
 
   const total = Object.values(studio.counts).reduce((a, b) => a + b, 0);
-  const elsewhere = total - (studio.counts[tab] ?? 0);
+  // Summed over the statuses this tab covers, not read from one key: with
+  // "Approved" holding both `approved` and `publishing`, a single lookup would
+  // report pieces as being "somewhere else" while they sat on this very screen.
+  const here = TABS[tab].reduce((n, s) => n + (studio.counts[s] ?? 0), 0);
+  const elsewhere = total - here;
 
   // Only what someone can act on. "Publishing is not built yet" is true
   // forever until v0.56, so putting it in the list would pin a permanent
@@ -276,6 +299,124 @@ function StudioDiagnosis({
  * looking for a fault; there was none, the machine simply does not work at
  * 22:00. A spinner that means three different things is worse than no spinner.
  */
+
+/**
+ * A clock that ticks, so a countdown is not a screenshot.
+ *
+ * `timeUntil` reads `Date.now()` when it runs, and React has no reason to run
+ * it again on its own — the piece has not changed. Without this the number a
+ * person sees is however long it was until the moment the page rendered, which
+ * is worse than showing nothing because it looks live.
+ *
+ * Thirty seconds: the finest unit the text ever shows is a minute.
+ */
+function useNow(everyMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), everyMs);
+    return () => clearInterval(id);
+  }, [everyMs]);
+  return now;
+}
+
+const PLATFORM_LABEL: Record<string, string> = {
+  youtube: "YouTube",
+  tiktok: "TikTok",
+  instagram: "Instagram",
+};
+
+/**
+ * When each platform gets this video, and where to watch it once it has.
+ *
+ * This replaced a row of `platform · status` chips, which answered a question
+ * nobody was asking. The owner's was "cuándo se publica", and until the queue
+ * existed there was no honest answer to give.
+ */
+function PublishSchedule({
+  piece,
+  studio,
+}: {
+  piece: ContentPiece;
+  studio: StudioStatus | null;
+}) {
+  const { t, lang } = useI18n();
+  // Subscribed unconditionally: hooks cannot be called behind a condition, and
+  // the early return below would otherwise change the hook order between
+  // renders of the same card.
+  useNow(30_000);
+
+  if (piece.publications.length === 0) {
+    // Approved and not yet picked up. The next tick of the publish loop is
+    // minutes away, so say that rather than spin: a spinner with no end is the
+    // fault this console already shipped once with the render queue.
+    if (piece.status === "approved") {
+      return (
+        <p className="mt-3 text-sm text-gray-400">{t("content.publishSoon")}</p>
+      );
+    }
+    return null;
+  }
+
+  return (
+    <div className="mt-3 space-y-1.5">
+      {piece.publications.map((pub) => {
+        const name = PLATFORM_LABEL[pub.platform] ?? pub.platform;
+
+        if (pub.status === "scheduled" && pub.scheduled_at) {
+          return (
+            <p key={pub.id} className="text-sm text-gray-300">
+              <span className="text-gray-500">{name}</span>{" "}
+              {exactTime(pub.scheduled_at, lang, studio?.timezone)}{" "}
+              <span className="text-eko-violet">
+                · {timeUntil(pub.scheduled_at, lang)}
+              </span>
+            </p>
+          );
+        }
+
+        if (pub.status === "published") {
+          return (
+            <p key={pub.id} className="text-sm text-gray-300">
+              <span className="text-gray-500">{name}</span>{" "}
+              {t("content.publishedLabel")}
+              {pub.external_url && (
+                <>
+                  {" · "}
+                  <a
+                    href={pub.external_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-eko-violet hover:underline"
+                  >
+                    {t("content.watchOn", { platform: name })}
+                  </a>
+                </>
+              )}
+            </p>
+          );
+        }
+
+        if (pub.status === "failed") {
+          return (
+            <p key={pub.id} className="text-sm text-red-300">
+              <span className="text-gray-500">{name}</span>{" "}
+              {pub.last_error || t("content.publishFailed")}
+            </p>
+          );
+        }
+
+        // pending / publishing: in flight, and the honest word for it.
+        return (
+          <p key={pub.id} className="text-sm text-gray-400">
+            <span className="text-gray-500">{name}</span>{" "}
+            {t("content.publishInFlight")}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 function RenderProgress({ piece }: { piece: ContentPiece }) {
   const { t } = useI18n();
   const state = piece.render_state;
@@ -315,6 +456,7 @@ function RenderProgress({ piece }: { piece: ContentPiece }) {
 
 function PieceCard({
   piece,
+  studio,
   busy,
   lang,
   onApprove,
@@ -325,6 +467,8 @@ function PieceCard({
   onEdit,
 }: {
   piece: ContentPiece;
+  /** Carries the agency timezone, so a scheduled date is shown in ITS hours. */
+  studio: StudioStatus | null;
   busy: boolean;
   lang: Lang;
   onApprove: () => void;
@@ -451,19 +595,7 @@ function PieceCard({
         </p>
       )}
 
-      {piece.publications.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {piece.publications.map((pub) => (
-            <span
-              key={pub.id}
-              className="px-2 py-0.5 rounded-full text-[11px] border border-white/10 text-gray-300"
-              title={pub.last_error ?? undefined}
-            >
-              {pub.platform} · {pub.status}
-            </span>
-          ))}
-        </div>
-      )}
+      <PublishSchedule piece={piece} studio={studio} />
 
       {piece.rejected_reason && piece.status === "rejected" && (
         <p className="mt-2 text-sm text-red-300">

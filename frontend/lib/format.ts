@@ -31,6 +31,34 @@ export function relativeTime(isoString: string | null, lang: Lang = "en"): strin
   return d.toLocaleDateString(loc(lang), { day: "2-digit", month: "short" });
 }
 
+/**
+ * How long until `isoString`, in words. The future-tense twin of
+ * `relativeTime`, which only ever looks backwards.
+ *
+ * Coarse on purpose: a queued post is days away, and a countdown ticking down
+ * the seconds to something two days out is noise pretending to be precision.
+ * Anything already past reads as "now" rather than going negative — the
+ * reconciler has not caught up yet, and a negative number would look broken.
+ */
+export function timeUntil(isoString: string | null, lang: Lang = "en"): string {
+  if (!isoString) return "—";
+  const seconds = Math.floor((new Date(isoString).getTime() - Date.now()) / 1000);
+  const es = lang === "es";
+  if (seconds < 60) return es ? "ahora" : "now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return es ? `en ${minutes} min` : `in ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    const rest = minutes % 60;
+    const head = es ? `en ${hours} h` : `in ${hours} h`;
+    return rest ? `${head} ${rest} min` : head;
+  }
+  const days = Math.floor(hours / 24);
+  const rest = hours % 24;
+  const head = es ? `en ${days} d` : `in ${days} d`;
+  return rest ? `${head} ${rest} h` : head;
+}
+
 export function exactTime(isoString: string, lang: Lang = "en", timezone?: string): string {
   return new Date(isoString).toLocaleString(loc(lang), {
     day: "2-digit",
