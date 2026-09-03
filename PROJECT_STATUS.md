@@ -15,6 +15,74 @@ v0.56.0 y anteriores vive en git y en el plan.
 | 2 | Cierre final: coherencia entre fases y riesgos de despliegue | Señaló que B1 y la rama «post borrado» estaban en tensión y que **nadie había medido** cómo responde Buffer a un id inexistente. Medido: devuelve `errors` con `code: NOT_FOUND` y **`data: null` para el lote entero** — así que mi arreglo B1 habría parado la reconciliación completa para siempre tras un solo post borrado, y la rama «alias null = borrado» era **inalcanzable en producción**. Reescrito para casar errores con su alias por `path`. También: cobertura contra la base medida (faltaba), aserción muerta borrada, y el estrangulamiento del tope diario al backlog. |
 | 1 | Arranque: validar lectura del plan, orden, dependencias, riesgos | Lectura correcta. **Rama** `feat/fase0-tachar-token` desde `e321f95` (el plan citaba `feat/cierre-dominio-primero`, que ya no es HEAD); el deploy de 0.67.11 **arrastra `e321f95`** (hero 1080p, sin desplegar) y eso va escrito en el pre-deploy. **La Fase 0 NO despliega**: su verificación en `docker logs` pasa al checklist post-deploy. **Cobertura contra `e321f95`**, no contra `main` (que es un señuelo sin la pila). Riesgos aceptados: (a) `httpx` deja la URL en `record.args`, así que el filtro debe pasar por `getMessage()` o el test es verde falso; (b) el barrido AST puede morder a `reconcile_scheduled`; (c) el «día tomado» se calcula en zona local, nunca +24 h en UTC. |
 
+### 🚦 DESPLIEGUE PREPARADO — NO EJECUTADO (falta autorización del dueño)
+
+**Dos despliegues, en este orden.** No se juntan: mientras 0.67.11 no esté, cada
+aviso vuelve a escribir el token en el log.
+
+**Comprobado antes de nada:** `agent_settings` org 1 → `timezone='America/Denver'`
+(válida) y `brokerage_line` presente. Si la zona no fuera usable, nada se
+programaría y la consola diría «recibe su hueco en unos minutos» para siempre.
+
+#### Deploy 1 — v0.67.11 (`15d62f8`, rama `feat/fase0-tachar-token`)
+- **Sin migración.** ⚠️ Arrastra `e321f95` (hero 1080p), que nunca se desplegó.
+- Bundle → `scp ender-vps` → `git fetch` + `merge --ff-only` →
+  `docker compose build backend frontend` → `up -d`.
+- Verificar: `/api/v1/health` por el dominio → `0.67.11`.
+- **Prueba real**: forzar un aviso de Telegram y
+  `docker logs eko-realestate-backend --since 2m | grep api.telegram.org` →
+  la línea existe y dice `/bot<redacted>/`.
+- **Después, el dueño**: revoca el token en @BotFather y repone con
+  `~/set-telegram.sh`; y **rota `SERPAPI_API_KEY`**.
+- **Rollback**: `git checkout` del commit anterior + rebuild. Sin estado nuevo.
+
+#### Deploy 2 — v0.68.0 (`21ab43e`, rama `feat/fase1-cola-con-fecha`)
+- **CON migración 050.** Orden obligatorio: build **antes** de migrar, migrar
+  con la imagen nueva, luego `up -d`.
+- Variables nuevas: ninguna obligatoria — los cinco settings tienen defaults en
+  `config.py`, `.env.example` y `docker-compose.yml`. Se tocan solo para cambiar
+  las horas de los huecos.
+- Verificar: `/api/v1/health` → `0.68.0`.
+- 🔴 **ROLLBACK: el flag, NUNCA el código.** El camino diseñado es
+  `CONTENT_SCHEDULE_ENABLED=false` + restart, sin redeploy; el código sigue
+  reconciliando lo que Buffer ya tenga. **Volver al código anterior no es
+  seguro** en cuanto exista una fila `scheduled`: el enum de Python viejo no
+  conoce esa etiqueta y `publish_approved` revienta al leerla, y el `downgrade`
+  no puede quitar un valor de un tipo enum de Postgres.
+
+#### Verificación real de la cola (la primera pieza es la prueba)
+1. El borrador de tras la medianoche UTC → el dueño lo aprueba.
+2. En ≤15 min, tres filas `scheduled`. `scheduled_at` debe caer **mañana** en
+   hora Denver, porque hoy los tres canales ya publicaron — es el test 2 en
+   vivo: `SELECT platform, status, scheduled_at AT TIME ZONE 'America/Denver'
+   FROM content_publications WHERE piece_id=<n>`.
+3. En la interfaz de Buffer, el post aparece **programado a esa hora**. Es la
+   primera verificación de `customScheduled` + `dueAt` contra Buffer real; si lo
+   rechaza, la fila queda `failed` con su mensaje a la vista y el camino de
+   vuelta es el flag.
+4. La consola: fecha en hora de Denver y una cuenta atrás que **cambia** al
+   mirarla dos veces con un minuto de diferencia.
+5. Nunca dos el mismo día en un canal:
+   `SELECT platform, (scheduled_at AT TIME ZONE 'America/Denver')::date, count(*)
+   … GROUP BY 1,2 HAVING count(*) > 1` → **0 filas**.
+6. Medir `dailyPostingLimits` (exige `DateTime` completo) para saber la
+   profundidad de cola que el plan Free permite.
+
+#### Backlog abierto, con evidencia
+- **El tope diario estrangula la cola**: `publish_approved` limita a
+  `MAX_PER_DAY − claimed` sobre `(APPROVED, PUBLISHING)` ordenado por
+  `approved_at`, y una pieza programada sigue en `PUBLISHING` días con la fecha
+  de aprobación más antigua — así que ocupa un puesto del límite en cada tick
+  solo para ser saltada. Con 4 en cola, la 5.ª aprobada no se reclama. Es una
+  profundidad de cola implícita de `MAX_PER_DAY`, ni diseñada ni testeada; con 2
+  borradores/día se toca en dos días.
+- Dos ejecuciones solapadas comparten día (la fila reclamada aún no tiene
+  `scheduled_at`). Hoy no ocurre: un worker, una réplica, bucle secuencial.
+- `_claimed_today` no cuenta piezas reanudadas. Una hora de hueco dentro del
+  salto DST se resuelve en silencio. El filtro no ve un traceback (`exc_info`).
+- Sin botón «desprogramar»: hoy la salida es borrar el post en Buffer, y el
+  reconciliador lo cierra honestamente.
+
 ### ✅ Fase 0 — v0.67.11: el token deja de escribirse (3-sep-2026)
 
 Fuga **mía**: `httpx` registra la URL completa de cada petición a INFO y Telegram
