@@ -661,3 +661,90 @@ async def test_render_jobs_are_tenant_isolated(database_url: str) -> None:
         assert found == 0
     finally:
         await _cleanup()
+
+
+# ── The doorbell ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg/ffprobe not on PATH")
+@pytest.mark.parametrize(
+    "starting",
+    [ContentStatus.DRAFT, ContentStatus.NEEDS_APPROVAL],
+)
+async def test_a_delivered_video_rings_the_bell(
+    database_url: str, worker_token: str, media_dir, monkeypatch, starting
+) -> None:
+    """Both starting states, and the second is the one that matters.
+
+    A clean GENERATED piece is already sitting in NEEDS_APPROVAL when its
+    render lands — that is the whole shape of the piece-5 incident. A bell
+    wired to "the advance happened" would stay silent on the commonest path of
+    all: the doorbell that never rings, which is the fault this exists to fix.
+    Seeding only the DRAFT case would let that implementation pass.
+    """
+    from app.services import telegram_notify
+
+    rung: list[tuple[int, int]] = []
+
+    async def _fake(piece_id: int, waiting: int) -> bool:
+        rung.append((piece_id, waiting))
+        return True
+
+    monkeypatch.setattr(telegram_notify, "notify_video_ready", _fake)
+    vertical = _vertical_clip(media_dir)
+    try:
+        await _brokerage()
+        piece_id, job_id = await _piece_with_job(status=starting)
+        async with _client() as client:
+            await client.post("/api/v1/internal/render-jobs/claim?worker=w")
+            resp = await client.put(
+                f"/api/v1/internal/render-jobs/result?job_id={job_id}",
+                content=vertical.read_bytes(),
+            )
+        assert resp.status_code == 200, resp.text
+        assert [p for p, _ in rung] == [piece_id], rung
+        assert rung[0][1] >= 1
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg/ffprobe not on PATH")
+async def test_a_doorbell_that_fails_does_not_cost_the_video(
+    database_url: str, worker_token: str, media_dir, monkeypatch
+) -> None:
+    """It runs on the path that just delivered a finished render. Losing the
+    video to a failed message would be a spectacular way to pay for a
+    convenience."""
+    from app.services import telegram_notify
+
+    async def _explodes(piece_id: int, waiting: int) -> bool:
+        raise RuntimeError("telegram is down")
+
+    monkeypatch.setattr(telegram_notify, "notify_video_ready", _explodes)
+    vertical = _vertical_clip(media_dir)
+    try:
+        await _brokerage()
+        piece_id, job_id = await _piece_with_job()
+        async with _client() as client:
+            await client.post("/api/v1/internal/render-jobs/claim?worker=w")
+            resp = await client.put(
+                f"/api/v1/internal/render-jobs/result?job_id={job_id}",
+                content=vertical.read_bytes(),
+            )
+        assert resp.status_code == 200, resp.text
+        async with get_bypass_session_factory()() as db:
+            status, job_status = (
+                await db.execute(
+                    text(
+                        "SELECT p.status, j.status FROM content_pieces p "
+                        "JOIN render_jobs j ON j.piece_id = p.id WHERE p.id = :i"
+                    ),
+                    {"i": piece_id},
+                )
+            ).one()
+        assert status == "needs_approval"
+        assert job_status == "done"
+    finally:
+        await _cleanup()

@@ -437,6 +437,13 @@ def test_every_wire_touching_function_is_declared_or_exempt() -> None:
             "emails the platform operator that the machinery broke; the body is"
             " a status word and a remedy, never a content piece, and it is"
             " addressed to PLATFORM_ADMIN_EMAILS rather than to any audience",
+        "app/services/telegram_notify.py::notify_video_ready":
+            "tells the owner's own chat that a video is waiting for him; the"
+            " body is a piece id, a count and a link to the console — never the"
+            " hook, the script or the caption — and it goes to TELEGRAM_CHAT_ID"
+            " rather than to any audience. A message carrying the text would"
+            " invite approving from a phone without watching the video, which"
+            " is the one thing the approval gate exists to prevent",
     }
     # The messaging senders, accounted for by the opt-out sweep next door.
     MESSAGING = {"send_email", "send_sms", "send_text_message"}

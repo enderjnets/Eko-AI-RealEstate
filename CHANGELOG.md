@@ -2,6 +2,22 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.67.10] — 2026-09-03
+
+### Added
+- **A Telegram notice when a video becomes approvable.** The machine produces on
+  its own and the human gate had no bell: four pieces piled up waiting while
+  everything depended on somebody remembering to open the console. Fired after
+  the commit that makes the render durable, and conditioned on the RESULTING
+  state rather than on the transition — a clean generated piece is already in
+  NEEDS_APPROVAL when its render lands, so a bell wired to "the advance
+  happened" would be silent on the commonest path of all.
+- The body carries a piece id, a count and a link — never the hook, the script
+  or the caption. A message with the text invites approving from a phone
+  without watching the video, which is what the gate exists to prevent.
+- Settings `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`, empty by default: with no
+  token nothing is attempted and the reason is logged once.
+
 ## [0.67.9] — 2026-09-03
 
 ### Added

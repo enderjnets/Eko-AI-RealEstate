@@ -474,6 +474,12 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
             " PLATFORM_ADMIN_EMAILS and never to a lead. The exemption runs both"
             " ways and both matter: a lead's STOP must not silence an outage"
             " report, and an outage report must never land in a lead's inbox",
+        "app/services/telegram_notify.py::notify_video_ready":
+            "messages the owner's own chat that a video is waiting for him,"
+            " addressed to TELEGRAM_CHAT_ID and never to a lead. Same two-way"
+            " reasoning as the operator email above: a lead's STOP must not"
+            " silence the approval queue's doorbell, and that doorbell must"
+            " never reach a lead",
         "app/services/buffer_publisher.py::_graphql":
             "posts a video to the agency's OWN social channels through Buffer."
             " Nobody is addressed: a marketing video on a public channel is"

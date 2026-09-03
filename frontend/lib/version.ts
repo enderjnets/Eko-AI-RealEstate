@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.67.9";
+export const CURRENT_VERSION = "0.67.10";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.67.10",
+    date: "2026-09-03",
+    title: {
+      en: "A doorbell for the approval queue",
+      es: "Un timbre para la cola de aprobaci\u00f3n",
+    },
+    changes: [
+      {
+        en: "A Telegram message arrives the moment a video becomes approvable. The machine produces on its own and the human gate had no bell \u2014 four pieces had piled up waiting while everything depended on somebody remembering to open the console. The message carries a link, never the script: it should send you to watch the video, not let you approve it from a phone without having seen it.",
+        es: "Llega un mensaje de Telegram en cuanto un v\u00eddeo puede aprobarse. La m\u00e1quina produce sola y la puerta humana no ten\u00eda timbre \u2014 se hab\u00edan apilado cuatro piezas esperando mientras todo depend\u00eda de que alguien se acordara de entrar. El mensaje lleva un enlace, nunca el guion: debe mandarte a ver el v\u00eddeo, no dejarte aprobarlo desde el m\u00f3vil sin haberlo visto.",
+      },
+    ],
+  },
   {
     version: "0.67.9",
     date: "2026-09-03",

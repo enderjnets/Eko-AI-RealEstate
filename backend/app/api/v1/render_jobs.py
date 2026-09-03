@@ -38,7 +38,7 @@ import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -399,6 +399,21 @@ async def job_result(request: Request, job_id: int = Query()) -> dict[str, str]:
         job.last_error = None
         await db.commit()
         delivered = True
+        # AFTER the commit, never before: a notice is a consequence of a fact,
+        # and announcing one before it is durable is how somebody is told about
+        # a video that is not there.
+        #
+        # The condition is the RESULTING state, not the transition. A clean
+        # generated piece is ALREADY in NEEDS_APPROVAL when the render lands —
+        # that is the whole shape of the piece-5 incident — so a bell wired to
+        # "the advance happened" would stay silent on the commonest path of
+        # all: the doorbell that never rings, which is the fault this exists to
+        # fix.
+        if (
+            piece.status is ContentStatus.NEEDS_APPROVAL
+            and piece.media_path
+        ):
+            await _ring_the_bell(db, piece.id)
 
     if not delivered:  # pragma: no cover — belt to the suspenders above
         destination.unlink(missing_ok=True)
@@ -408,6 +423,37 @@ async def job_result(request: Request, job_id: int = Query()) -> dict[str, str]:
     if previous and previous != destination.name and _OUR_NAME.fullmatch(previous):
         (media_root / previous).unlink(missing_ok=True)
     return {"status": "done"}
+
+
+
+async def _ring_the_bell(db: AsyncSession, piece_id: int) -> None:
+    """Tell the owner a video is waiting. Never raises.
+
+    Wrapped whole: this runs on the path that just delivered a finished render,
+    and losing that video to a failed message would be a spectacular way to pay
+    for a convenience.
+
+    No "already notified" column. Delivery happens once per render —
+    `_refuse_unless_awaited` forbids the second — and after a rebuild it happens
+    again, which is exactly when the owner wants telling again. A flag here
+    would be state to keep in step with a fact that is already unique.
+    """
+    from app.services.telegram_notify import notify_video_ready
+
+    try:
+        waiting = (
+            await db.execute(
+                select(func.count())
+                .select_from(ContentPiece)
+                .where(
+                    ContentPiece.status == ContentStatus.NEEDS_APPROVAL,
+                    ContentPiece.media_path.is_not(None),
+                )
+            )
+        ).scalar_one()
+        await notify_video_ready(piece_id, waiting)
+    except Exception:  # noqa: BLE001 — a doorbell cannot break the delivery
+        log.exception("Could not send the approval notice for piece %s", piece_id)
 
 
 @router.post("/{job_id}/fail")

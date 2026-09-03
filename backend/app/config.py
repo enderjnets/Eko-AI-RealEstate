@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.67.9"
+    APP_VERSION: str = "0.67.10"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -322,6 +322,12 @@ class Settings(BaseSettings):
     # not to use signed or expiring URLs, so this address is stable and the
     # gate is the piece's STATUS instead.
     CONTENT_PUBLIC_BASE_URL: str = ""
+
+    # The doorbell for the approval queue. The owner's existing bot, reused as
+    # an extra function — see `services/telegram_notify.py` for the trade that
+    # decision carries. Empty means no notice is attempted at all.
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_CHAT_ID: str = ""
     # A short. Conservative on purpose and measured against the platforms on
     # the first real post rather than remembered from a table.
     CONTENT_PUBLISH_MAX_SECONDS: int = 90
