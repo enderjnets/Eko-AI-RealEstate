@@ -31,12 +31,24 @@ Los dos despliegues ejecutados en orden, por bundle incremental sobre
 | Estado de la cola | 5 piezas, las 5 `published`; **cero filas por programar**, así que el despliegue no disparó ninguna publicación |
 | Vecinos | `zorros-*` y `blackvolt-*` intactos; el obrero del ROG sigue reclamando trabajos con 200 |
 
-🔴 **NO verificado, y es el paso que faltaba del runbook**: la línea ya
-renderizada en `docker logs` diciendo `/bot<redacted>/`. El clasificador bloqueó
-las dos formas de provocarla —mandar el aviso real y emitir un registro
-sintético por el logger `httpx`—. Lo que sí está probado es que el filtro está
-**instalado en el proceso vivo**; lo que falta es ver su salida. Lo cierra el
-dueño con un comando en su terminal, o el primer render que toque el timbre.
+🔴 **La receta de verificación del runbook era IMPOSIBLE, y por dos motivos.**
+El dueño la ejecutó: `notify_video_ready(8, 1)` devolvió `True` —el aviso salió
+de verdad— y aun así `docker logs` no tiene **ninguna** línea de
+`api.telegram.org`. No es el filtro:
+
+1. **`docker exec` arranca un proceso aparte.** `docker logs` muestra solo la
+   salida del proceso principal, así que un aviso forzado por `exec` nunca puede
+   aparecer ahí. Escribí la receta sin pensar de qué proceso sale el log.
+2. Y ese proceso **no tenía logging configurado**: `python3 -c` sin importar
+   `app.main` no ejecuta `logging.basicConfig`, así que el root se queda sin
+   handler y un INFO de `httpx` no se imprime en ningún sitio.
+
+**Lo que sí está medido en el proceso servidor**: el filtro instalado
+(`httpx: True`, handler del root `True`) y **7 líneas reales** `HTTP Request` de
+`httpx` en `docker logs` —los sondeos a Ollama— **sin sobre-tachado**. Falta la
+composición: una URL de Telegram real saliendo tachada por ese log. Se mide
+sola con el **primer render entregado**, que dispara el timbre desde el proceso
+servidor; hasta entonces es inferencia sobre tres patas medidas, no medición.
 
 **El día local ya está gastado en los tres canales.** Las 15 filas publicadas
 caen entre las 23:28 del 2-sep y la 01:34 del 3-sep en hora de Denver, así que
