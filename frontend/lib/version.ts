@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.67.6";
+export const CURRENT_VERSION = "0.67.7";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.67.7",
+    date: "2026-09-03",
+    title: {
+      en: "Make the video again",
+      es: "Rehacer el v\u00eddeo",
+    },
+    changes: [
+      {
+        en: "A generated piece can be rebuilt from its own script, so a video made before a change to the design can be made again with it. It costs one narration; the pictures are reused from the cache. Filmed clips are never rebuilt \u2014 their file is the only copy of what was filmed.",
+        es: "Una pieza generada se puede volver a montar desde su propio guion, as\u00ed que un v\u00eddeo hecho antes de un cambio de dise\u00f1o puede rehacerse con \u00e9l. Cuesta una narraci\u00f3n; las im\u00e1genes se reutilizan de la cach\u00e9. Los clips grabados nunca se rehacen \u2014 su fichero es la \u00fanica copia de lo que se film\u00f3.",
+      },
+    ],
+  },
   {
     version: "0.67.6",
     date: "2026-09-02",

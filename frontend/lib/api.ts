@@ -543,6 +543,9 @@ export const contentApi = {
   /** A piece that failed to publish, back in front of a person. */
   retry: (id: number) =>
     api<ContentPiece>(`/v1/content/${id}/retry`, { method: "POST" }),
+  /** Make the video again, from the plan the piece already carries. */
+  rebuild: (id: number) =>
+    api<ContentPiece>(`/v1/content/${id}/rebuild`, { method: "POST" }),
   reject: (id: number, reason: string) =>
     api<ContentPiece>(`/v1/content/${id}/reject`, {
       method: "POST",

@@ -683,18 +683,30 @@ async def test_an_unsent_field_is_left_alone(database_url: str) -> None:
 
 
 
-async def _seeded(status: ContentStatus) -> int:
+async def _seeded(
+    status: ContentStatus,
+    *,
+    scenes: bool = False,
+    media: bool = False,
+    kind_recorded: bool = False,
+) -> int:
     """A piece sitting in `status`, for the tests that start from one."""
     async with get_bypass_session_factory()() as db:
         from app.models import ContentKind, ContentLanguage, ContentPiece
 
         piece = ContentPiece(
             org_id=1,
-            kind=ContentKind.GENERATED,
+            kind=ContentKind.RECORDED if kind_recorded else ContentKind.GENERATED,
             language=ContentLanguage.EN,
             status=status,
             hook=CLEAN["hook"],
             approved_by="someone@example.com",
+            media_path="0123456789abcdef0123456789abcdef.mp4" if media else None,
+            scenes=(
+                {"narration": "A line.", "scenes": [{"visual_prompt": "a house"}]}
+                if scenes
+                else None
+            ),
         )
         db.add(piece)
         await db.commit()
@@ -757,5 +769,54 @@ async def test_a_piece_with_no_video_cannot_be_approved(database_url: str) -> No
             resp = await client.post(f"/api/v1/content/{piece_id}/approve")
         assert resp.status_code == 409
         assert "no video yet" in resp.json()["detail"]
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_generated_piece_can_be_made_again(database_url: str) -> None:
+    """Until this existed, a rendered piece was final: the only way to get a
+    video that benefited from a change to the renderer was to wait for
+    tomorrow's script — a strange thing to tell somebody who just changed the
+    renderer because they did not like the video."""
+    try:
+        piece_id = await _seeded(ContentStatus.NEEDS_APPROVAL, scenes=True, media=True)
+        async with _client() as client:
+            resp = await client.post(f"/api/v1/content/{piece_id}/rebuild")
+        assert resp.status_code == 200
+        # No file, so the render sweep picks it up again — and the approval
+        # gate refuses it meanwhile, which is the same invariant from v0.67.6.
+        assert resp.json()["media_path"] is None
+        assert resp.json()["status"] == "needs_approval"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_filmed_clip_is_never_rebuilt(database_url: str) -> None:
+    """The safety rule, not a limitation. A recorded piece has no plan to
+    rebuild from, and once the render has replaced `media_path` that field is
+    the only copy of what the agent filmed. Clearing it would throw the footage
+    away in order to make a new version of it."""
+    try:
+        piece_id = await _seeded(
+            ContentStatus.NEEDS_APPROVAL, media=True, kind_recorded=True
+        )
+        async with _client() as client:
+            resp = await client.post(f"/api/v1/content/{piece_id}/rebuild")
+        assert resp.status_code == 409
+        assert "only a generated piece" in resp.json()["detail"]
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_published_piece_is_never_rebuilt(database_url: str) -> None:
+    """Nothing in here can un-post a video."""
+    try:
+        piece_id = await _seeded(ContentStatus.PUBLISHED, scenes=True, media=True)
+        async with _client() as client:
+            resp = await client.post(f"/api/v1/content/{piece_id}/rebuild")
+        assert resp.status_code == 409
     finally:
         await _cleanup()

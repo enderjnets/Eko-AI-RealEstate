@@ -169,6 +169,7 @@ export function ContentQueue() {
               }
               onSubmit={() => act(piece.id, () => contentApi.submit(piece.id))}
               onRetry={() => act(piece.id, () => contentApi.retry(piece.id))}
+              onRebuild={() => act(piece.id, () => contentApi.rebuild(piece.id))}
               onEdit={(body) => act(piece.id, () => contentApi.edit(piece.id, body))}
             />
           ))}
@@ -273,6 +274,7 @@ function PieceCard({
   onReject,
   onSubmit,
   onRetry,
+  onRebuild,
   onEdit,
 }: {
   piece: ContentPiece;
@@ -282,6 +284,7 @@ function PieceCard({
   onReject: (reason: string) => void;
   onSubmit: () => void;
   onRetry: () => void;
+  onRebuild: () => void;
   onEdit: (body: { hook?: string; script?: string; caption?: string }) => void;
 }) {
   const { t } = useI18n();
@@ -489,6 +492,17 @@ function PieceCard({
                   {t("content.submit")}
                 </button>
               )}
+              {piece.kind === "generated" &&
+                !!piece.media_path &&
+                piece.status !== "published" && (
+                  <button
+                    onClick={onRebuild}
+                    title={t("content.rebuildHint")}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-white/10 text-gray-300 text-sm hover:border-white/20"
+                  >
+                    <RefreshCw className="w-4 h-4" /> {t("content.rebuild")}
+                  </button>
+                )}
               {(piece.status === "needs_approval" ||
                 piece.status === "draft" ||
                 piece.status === "approved") && (

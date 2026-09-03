@@ -473,6 +473,76 @@ async def retry_piece(piece_id: int, db: AsyncSession = Depends(get_db)) -> Piec
     return PieceOut.model_validate(piece)
 
 
+@router.post("/{piece_id}/rebuild", response_model=PieceOut)
+async def rebuild_piece(piece_id: int, db: AsyncSession = Depends(get_db)) -> PieceOut:
+    """Make the video again, from the plan this piece already carries.
+
+    Until now a rendered piece was final: the only way to get a video that
+    benefited from a change to the renderer was to wait for tomorrow's script.
+    That is a strange thing to tell somebody who just changed the renderer
+    because they did not like the video.
+
+    **Generated pieces only, and that is a safety rule rather than a
+    limitation.** A generated piece is rebuilt from `scenes`, which lives in
+    this row — the narration is spoken again, the pictures come back from the
+    cache by prompt hash, and nothing is lost. A RECORDED piece is different:
+    its `media_path` is the only copy of what the agent filmed once the render
+    has replaced it, so clearing that field would throw the footage away to
+    make a new version of it.
+
+    It costs a narration. The pictures do not: they are cached at the point of
+    payment. Worth saying out loud because the button is one click and the
+    charge is real.
+    """
+    from app.models import RenderJob, RenderJobStatus
+
+    piece = await db.get(ContentPiece, piece_id)
+    if piece is None:
+        raise HTTPException(status_code=404, detail="No such piece")
+    if piece.kind is not ContentKind.GENERATED or not piece.scenes:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "only a generated piece can be rebuilt: a filmed clip has no "
+                "plan to rebuild from, and its file is the only copy"
+            ),
+        )
+    if piece.status is ContentStatus.PUBLISHED:
+        raise HTTPException(
+            status_code=409, detail="this piece is published; nothing here can un-post it"
+        )
+
+    # An approval is a decision about a video. Take the video away and the
+    # decision no longer refers to anything — and since v0.67.6 a piece with no
+    # file cannot be approved at all, so leaving it APPROVED would strand it in
+    # exactly the state that gate exists to prevent.
+    if piece.status is ContentStatus.APPROVED:
+        advance(piece, ContentStatus.NEEDS_APPROVAL)
+    piece.approved_by = None
+    piece.approved_at = None
+    piece.media_path = None
+    piece.render_error = None
+
+    # `uq_render_job` is on (piece_id, kind), so the finished row would collide
+    # with the one the sweep wants to create. Reset it rather than delete it:
+    # the attempt count and the history belong to the piece.
+    job = (
+        await db.execute(
+            select(RenderJob).where(RenderJob.piece_id == piece_id)
+        )
+    ).scalars().first()
+    if job is not None:
+        job.status = RenderJobStatus.QUEUED
+        job.worker = None
+        job.claimed_at = None
+        job.attempts = 0
+        job.last_error = None
+
+    await db.commit()
+    await db.refresh(piece)
+    return PieceOut.model_validate(piece)
+
+
 @router.post("/upload", response_model=PieceOut, status_code=201)
 async def upload_clip(
     request: Request,

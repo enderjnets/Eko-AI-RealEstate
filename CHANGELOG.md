@@ -2,6 +2,18 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.67.7] — 2026-09-03
+
+### Added
+- **Rebuild a generated piece from its own script.** A rendered piece used to be
+  final: the only way to get a video that benefited from a change to the
+  renderer was to wait for tomorrow's script — a strange thing to tell somebody
+  who just changed the renderer because they did not like the video. It costs a
+  narration; the pictures come back from the cache by prompt hash. A RECORDED
+  piece is refused, and that is a safety rule rather than a limitation: once the
+  render has replaced `media_path`, that field is the only copy of what the
+  agent filmed.
+
 ## [0.67.6] — 2026-09-02
 
 ### Fixed
