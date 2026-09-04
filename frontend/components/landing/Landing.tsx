@@ -66,6 +66,49 @@ function SplitTitle({ a, italic }: { a: string; italic: string }) {
   );
 }
 
+/**
+ * The wordmark. The BRAND leads and the people go underneath, because a
+ * visitor arrives here from a video the brand posted: a header that names only
+ * the advisors gives them no way to tell they reached the right address. That
+ * is what shipped in v0.70.0 — the string "Denver Home Story" appeared zero
+ * times on the whole page.
+ *
+ * A <p>, not a second <h1>: the page's heading is the hero's own title. With no
+ * brand configured it degrades to exactly what it was, the advisors on top.
+ */
+function Wordmark({ compact = false }: { compact?: boolean }) {
+  const lead = LANDING.brand || LANDING.advisors;
+  const under = LANDING.brand
+    ? [LANDING.advisors, LANDING.brokerage].filter(Boolean).join(" · ")
+    : LANDING.brokerage;
+  return (
+    <div className="min-w-0">
+      {lead && (
+        <p
+          className={`truncate font-ln-serif font-light leading-none text-ln-canvas ${
+            compact
+              ? "text-[19px] tracking-[0.05em]"
+              : "text-[19px] tracking-[0.05em] sm:text-[26px] sm:tracking-[0.06em]"
+          }`}
+        >
+          {lead}
+        </p>
+      )}
+      {under && (
+        <p
+          className={`mt-1 truncate font-medium uppercase text-ln-canvas/60 ${
+            compact
+              ? "text-[7px] tracking-[0.28em]"
+              : "text-[7px] tracking-[0.28em] sm:text-[8px] sm:tracking-[0.3em]"
+          }`}
+        >
+          {under}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Sits on the film, so it is cream on dark and travels with the sticky stage. */
 function LandingNav({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => void }) {
   const { t } = useI18n();
@@ -74,18 +117,7 @@ function LandingNav({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: (
   return (
     <header className="absolute inset-x-0 top-0 z-[4]">
       <div className="flex items-center justify-between gap-4 px-5 py-6 sm:px-10 lg:px-14 lg:py-8">
-        <div className="min-w-0">
-          {LANDING.advisors && (
-            <p className="truncate font-ln-serif text-[19px] font-light leading-none tracking-[0.05em] text-ln-canvas sm:text-[26px] sm:tracking-[0.06em]">
-              {LANDING.advisors}
-            </p>
-          )}
-          {LANDING.brokerage && (
-            <p className="mt-1 truncate text-[7px] font-medium uppercase tracking-[0.28em] text-ln-canvas/60 sm:text-[8px] sm:tracking-[0.3em]">
-              {LANDING.brokerage}
-            </p>
-          )}
-        </div>
+        <Wordmark />
         <nav className="flex items-center gap-5 lg:gap-10">
           <a href="#consult" className={link}>
             {t("landing.nav.buying")}
@@ -206,18 +238,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
       className="fixed inset-0 z-50 flex flex-col bg-ln-night px-[22px] pb-[calc(30px+env(safe-area-inset-bottom,0px))] pt-[calc(14px+env(safe-area-inset-top,0px))] text-ln-canvas md:hidden"
     >
       <div className="-mr-2 flex items-start justify-between">
-        <div className="min-w-0">
-          {LANDING.advisors && (
-            <p className="truncate font-ln-serif text-[19px] font-light leading-none tracking-[0.05em]">
-              {LANDING.advisors}
-            </p>
-          )}
-          {LANDING.brokerage && (
-            <p className="mt-1 truncate text-[7px] font-medium uppercase tracking-[0.28em] text-ln-canvas/60">
-              {LANDING.brokerage}
-            </p>
-          )}
-        </div>
+        <Wordmark compact />
         <button
           ref={closeRef}
           type="button"
@@ -333,7 +354,14 @@ function Hero({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => v
             <br />
             {t("landing.hero.titleLine2")} <span className="italic">{t("landing.hero.titleItalic")}</span>.
           </h1>
-          <p className={`${body} max-w-[310px] md:max-w-[600px]`}>{t("landing.hero.body")}</p>
+          {/* The sentence a visitor from Instagram reads first. Two keys and
+              not a {brand} hole in one: an install with no brand configured
+              would render " is Natalia & Robbie — …". */}
+          <p className={`${body} max-w-[310px] md:max-w-[600px]`}>
+            {LANDING.brand && LANDING.advisors
+              ? t("landing.hero.bodyBranded", { brand: LANDING.brand, advisors: LANDING.advisors })
+              : t("landing.hero.body")}
+          </p>
         </div>
 
         <div data-cap="0.27,0.49" className={`${aside} md:left-14`}>
@@ -680,9 +708,9 @@ function LandingFooter() {
     <footer className="border-t border-ln-hair bg-ln-canvas">
       <div className="flex flex-col gap-6 px-5 py-11 sm:flex-row sm:items-start sm:justify-between sm:gap-12 sm:px-10 lg:px-14">
         <div className="text-[11px] leading-[1.75] tracking-[0.04em] text-ln-muted">
-          {(LANDING.advisors || LANDING.brokerage) && (
+          {(LANDING.brand || LANDING.advisors || LANDING.brokerage) && (
             <p>
-              {[LANDING.advisors, t("landing.footer.role"), LANDING.brokerage]
+              {[LANDING.brand, LANDING.advisors, t("landing.footer.role"), LANDING.brokerage]
                 .filter(Boolean)
                 .join(" · ")}
             </p>

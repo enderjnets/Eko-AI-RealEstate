@@ -99,3 +99,54 @@ describe("LANDING.socials", () => {
     expect(await load()).toEqual([]);
   });
 });
+
+/**
+ * How the site names itself in public. v0.70.0 shipped with the string
+ * "Denver Home Story" appearing ZERO times on the page — the wordmark, the
+ * title and the footer all named the advisors instead — so a visitor arriving
+ * from the brand's own video had nothing telling them they were in the right
+ * place. These pin both directions: the brand leads when configured, and
+ * nothing changes for an install that has none.
+ */
+describe("the public name", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  const load = async (env: Record<string, string>) => {
+    vi.resetModules();
+    for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v);
+    return await import("../landing");
+  };
+
+  const AGENCY = {
+    NEXT_PUBLIC_LANDING_ADVISORS: "Natalia & Robbie",
+    NEXT_PUBLIC_LANDING_BROKERAGE: "Engel & Völkers Aspen",
+  };
+
+  it("leads with the brand, and the people follow it", async () => {
+    const m = await load({ ...AGENCY, NEXT_PUBLIC_LANDING_BRAND: "Denver Home Story" });
+    expect(m.publicName).toBe("Denver Home Story · Natalia & Robbie, Engel & Völkers Aspen");
+    expect(m.publicTitle).toBe("Denver Home Story · Natalia & Robbie, Engel & Völkers Aspen");
+    expect(m.homeScreenName).toBe("Denver Home Story");
+  });
+
+  it("without a brand is exactly what the page shipped with", async () => {
+    const m = await load({ ...AGENCY, NEXT_PUBLIC_LANDING_BRAND: "" });
+    expect(m.publicName).toBe("Natalia & Robbie · Engel & Völkers Aspen");
+    expect(m.publicTitle).toBe("Natalia & Robbie · Engel & Völkers Aspen — Colorado real estate");
+    expect(m.homeScreenName).toBe("Natalia & Robbie · Engel & Völkers Aspen");
+  });
+
+  it("with nothing configured at all still names something", async () => {
+    const m = await load({
+      NEXT_PUBLIC_LANDING_BRAND: "",
+      NEXT_PUBLIC_LANDING_ADVISORS: "",
+      NEXT_PUBLIC_LANDING_BROKERAGE: "",
+    });
+    expect(m.publicName).toBe("");
+    expect(m.publicTitle).toBe("Colorado real estate");
+    expect(m.homeScreenName).toBe("Colorado real estate");
+  });
+});

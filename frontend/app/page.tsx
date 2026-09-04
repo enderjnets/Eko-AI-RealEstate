@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { LANDING } from "@/lib/landing";
+import { LANDING, homeScreenName, publicTitle } from "@/lib/landing";
 import { BRAND_URL } from "@/lib/hosts";
 import { Landing } from "@/components/landing/Landing";
 
@@ -8,20 +8,26 @@ import { Landing } from "@/components/landing/Landing";
  * overrides the layout's "— Dashboard" title, which is what a search result
  * and a shared link would otherwise show a prospective client.
  */
-const who = [LANDING.advisors, LANDING.brokerage].filter(Boolean).join(" · ");
-
-const DESCRIPTION =
-  "Real estate advisors buying and selling across Colorado — Aspen, the Roaring Fork Valley, and the Denver metro. Book a 15-minute consult.";
+/* A visitor arrives here from a video the BRAND posted, so the brand is what
+   the tab, the shared-link card and the home-screen label have to say first.
+   Both strings are derived in lib/landing.ts, and both fall back to exactly
+   what this page shipped with when no brand is configured. */
+const DESCRIPTION = [
+  LANDING.brand && LANDING.advisors ? `${LANDING.brand} is ${LANDING.advisors}.` : "",
+  "Real estate advisors buying and selling across Colorado — Aspen, the Roaring Fork Valley, and the Denver metro. Book a 15-minute consult.",
+]
+  .filter(Boolean)
+  .join(" ");
 
 export const metadata: Metadata = {
-  title: who ? `${who} — Colorado real estate` : "Colorado real estate",
+  title: publicTitle,
   description: DESCRIPTION,
   // A marketing page is shared as a link far more often than it is typed. With
   // no Open Graph tags the preview card is a bare URL, which reads as spam in
   // the exact channels this page is meant to arrive through.
   openGraph: {
     type: "website",
-    title: who ? `${who} — Colorado real estate` : "Colorado real estate",
+    title: publicTitle,
     description: DESCRIPTION,
   },
   robots: { index: true, follow: true },
@@ -31,7 +37,7 @@ export const metadata: Metadata = {
    * Metadata is merged, not replaced, so without this the brand page would sit
    * on a seller's iPhone home screen labelled with their agent's vendor.
    */
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: who || "Colorado real estate" },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: homeScreenName },
   /**
    * One address for this page, whatever hostname served it.
    *

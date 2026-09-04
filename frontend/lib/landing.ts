@@ -44,6 +44,7 @@ export function parseTestimonials(raw: string): Testimonial[] {
   }
 }
 
+const brand = clean(process.env.NEXT_PUBLIC_LANDING_BRAND);
 const advisors = clean(process.env.NEXT_PUBLIC_LANDING_ADVISORS);
 const brokerage = clean(process.env.NEXT_PUBLIC_LANDING_BROKERAGE);
 const address = clean(process.env.NEXT_PUBLIC_LANDING_ADDRESS);
@@ -60,6 +61,7 @@ const tiktok = clean(process.env.NEXT_PUBLIC_LANDING_TIKTOK);
 const testimonials = parseTestimonials(clean(process.env.NEXT_PUBLIC_LANDING_TESTIMONIALS));
 
 export const LANDING = {
+  brand,
   advisors,
   brokerage,
   address,
@@ -86,6 +88,38 @@ export const LANDING = {
     { key: "tiktok" as const, url: tiktok },
   ].filter((s) => Boolean(s.url)),
 } as const;
+
+/**
+ * How this site names itself in public — the browser tab, the card someone
+ * sees when the link is pasted into a chat, the label on an iPhone home
+ * screen. ONE derivation, imported by both public pages.
+ *
+ * It used to be two: `app/page.tsx` built it inline and
+ * `app/contact/layout.tsx` built it again under a comment claiming they were
+ * "the same source, so the two never drift apart". They were already two
+ * sources; this is that comment made true.
+ *
+ * The brand leads because it is what the visitor was following when they got
+ * here — they came from a video posted by the brand, not by a person, and a
+ * page that never says the brand's name reads as the wrong address. The design
+ * writes it "Brand · Advisors, Brokerage", so the separator after the brand is
+ * a comma and without a brand it stays the middot this site shipped with.
+ * Every part is optional: with nothing configured these are the same neutral
+ * strings as before.
+ */
+const people = [advisors, brokerage].filter(Boolean).join(brand ? ", " : " \u00b7 ");
+
+export const publicName = [brand, people].filter(Boolean).join(" \u00b7 ");
+
+/** The <title> and og:title. With a brand it is the design's own title. */
+export const publicTitle = brand
+  ? publicName
+  : publicName
+    ? `${publicName} \u2014 Colorado real estate`
+    : "Colorado real estate";
+
+/** Short enough for a home-screen label, where a full title is truncated. */
+export const homeScreenName = brand || publicName || "Colorado real estate";
 
 /**
  * `tel:` and `sms:` refuse anything but digits and a leading `+`. A number

@@ -685,6 +685,8 @@ const EN: Record<string, string> = {
   "landing.hero.titleItalic": "the city",
   "landing.hero.body":
     "Real estate advisors buying and selling across Colorado — Aspen, the Roaring Fork Valley, and the Denver metro. In English or Spanish.",
+  "landing.hero.bodyBranded":
+    "{brand} is {advisors} — real estate advisors working both sides of Colorado: the mountain towns and the Denver metro. In English or Spanish.",
   "landing.hero.cta": "Book a 15-min consult",
   "landing.hero.callUs": "Or just call us",
   "landing.hero.scroll": "Scroll to play",
@@ -1412,6 +1414,8 @@ const ES: Record<string, string> = {
   "landing.hero.titleItalic": "la ciudad",
   "landing.hero.body":
     "Asesores inmobiliarios comprando y vendiendo en todo Colorado — Aspen, el valle Roaring Fork y el área metropolitana de Denver. En inglés o español.",
+  "landing.hero.bodyBranded":
+    "{brand} son {advisors} — asesores inmobiliarios en los dos lados de Colorado: los pueblos de montaña y el área metropolitana de Denver. En inglés o en español.",
   "landing.hero.cta": "Agenda 15 minutos",
   "landing.hero.callUs": "O llámanos ahora",
   "landing.hero.scroll": "Desplázate para verlo",

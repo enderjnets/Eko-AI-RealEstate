@@ -138,3 +138,32 @@ describe("the phone's navigation exists, and lives outside the film", () => {
     expect(landing).toMatch(/aria-modal="true"/);
   });
 });
+
+/**
+ * The brand has to be ON the page, not only in the URL. This is the defect
+ * v0.70.0 shipped: the header and the mobile menu each rendered the advisors
+ * where the design puts the brand, so a visitor coming from the brand's video
+ * saw a page that never said its name.
+ */
+describe("the brand is on the page", () => {
+  it("has one wordmark, used by both the header and the menu", () => {
+    expect(landing).toMatch(/function Wordmark\(/);
+    expect([...landing.matchAll(/<Wordmark\b/g)]).toHaveLength(2);
+  });
+
+  it("leads that wordmark with the brand and not with the advisors", () => {
+    const body = landing.slice(landing.indexOf("function Wordmark("));
+    expect(body).toMatch(/const lead = LANDING\.brand \|\| LANDING\.advisors;/);
+  });
+
+  it("names the brand in the footer line too", () => {
+    expect(landing).toMatch(/\[LANDING\.brand, LANDING\.advisors, t\("landing\.footer\.role"\)/);
+  });
+
+  it("offers a hero sentence that names it, with a fallback that does not", () => {
+    // One string with a {brand} hole would read " is Natalia & Robbie" on an
+    // install that never configured a brand.
+    expect(landing).toMatch(/landing\.hero\.bodyBranded/);
+    expect(landing).toMatch(/landing\.hero\.body"\)/);
+  });
+});
