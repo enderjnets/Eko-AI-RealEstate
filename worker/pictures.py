@@ -1,10 +1,15 @@
 """What is on screen while the narrator talks.
 
-Kling first, Pexels behind it, and a plain branded card behind that. Three
+fal.ai first, Pexels behind it, and a plain branded card behind that. Three
 levels because the first costs money, the second costs nothing but does not
 always have the shot, and the third always works — a video with a flat card
 under the words is a video, and a job that failed because a stock library had
 no photo of a Denver street is not.
+
+Kling is still here but only answers when fal.ai has no credential. Its own
+account moved to a single API key and the pair this code signs a JWT with is
+the scheme being retired; leaving the branch in costs nothing and keeps the
+worker usable by the projects next door that still hold a pair.
 
 **The cache is at the point of PAYMENT, not at the point of use.** That
 distinction is the whole reason it exists: the pipeline next door cached the
@@ -12,9 +17,10 @@ clip after generating it and paid twice for the same prompt, because the second
 caller asked before the first had finished writing. Here the key is the prompt
 itself and the check happens before the request.
 
-**The daily cap is real money, shared.** That Kling package is one balance for
+**The daily cap is real money, shared.** These accounts are one balance for
 three projects on this machine. Going over does not degrade our video — it
-takes down somebody else's publishing.
+takes down somebody else's publishing. The cap counts generated images, not
+Kling images: which supplier drew them does not change whose money it was.
 """
 
 from __future__ import annotations
@@ -33,6 +39,10 @@ import httpx
 log = logging.getLogger(__name__)
 
 _KLING_BASE = "https://api-singapore.klingai.com"
+_FAL_BASE = "https://fal.run"
+_FAL_DEFAULT_MODEL = "fal-ai/flux/schnell"
+# fal's name for 9:16. `_ASPECT` below is Kling's name for the same frame.
+_FAL_SIZE = "portrait_16_9"
 _TIMEOUT = 60.0
 _POLL_SECONDS = 5
 _POLL_ATTEMPTS = 24
@@ -42,7 +52,8 @@ _ASPECT = "9:16"
 
 
 class NoBalance(Exception):
-    """Kling said 1102: the account is empty. Reported once a day and then
+    """The supplier says the account is empty — Kling with `1102`, fal.ai with
+    an HTTP 403. Reported once a day and then
     degraded around — a paid service that stops working has to be visible even
     when the system survives without it, because the alternative is a channel
     that quietly changes its look for a week."""
@@ -84,7 +95,92 @@ def _charge(n: int = 1) -> None:
 
 
 def daily_cap() -> int:
-    return int(os.environ.get("RENDER_KLING_IMAGES_PER_DAY", "8"))
+    """How many pictures may be paid for today.
+
+    `RENDER_KLING_IMAGES_PER_DAY` is still read because it is what the render
+    machines actually have in their environment; renaming a setting without
+    reading the old name is how a cap silently becomes the default.
+    """
+    for name in ("RENDER_IMAGES_PER_DAY", "RENDER_KLING_IMAGES_PER_DAY"):
+        raw = os.environ.get(name, "").strip()
+        if raw:
+            try:
+                return int(raw)
+            except ValueError:
+                log.warning("%s is not a number; using the default", name)
+                break
+    return 8
+
+
+def _fal_model() -> str:
+    return os.environ.get("RENDER_FAL_MODEL", "").strip() or _FAL_DEFAULT_MODEL
+
+
+def _fal_key() -> str | None:
+    """The fal.ai credential, from the environment and nowhere else.
+
+    An earlier draft also read `~/.config/fal/key`, where the CLI on these
+    machines keeps it. That is one line of convenience and one real hazard:
+    the developer machine has that file, so any test reaching `fetch` without
+    stubbing this would have posted a paid request to fal.ai and passed. The
+    worker takes every other credential from its environment; this one is not
+    the exception.
+    """
+    return os.environ.get("FAL_KEY", "").strip() or None
+
+
+def _fal_image(prompt: str, destination: Path) -> bool:
+    """One generated picture from fal.ai.
+
+    Synchronous, unlike Kling: `fal.run` answers with the finished image, so
+    there is no task to poll.
+
+    **The prompt has to reach the model in English.** That is not a style
+    preference. The same request written in Spanish came back as a different
+    animal entirely, with a success code on it — the failure mode is a wrong
+    picture, not an error. Every `visual_prompt` this worker receives is
+    written in English upstream, and this note is why it must stay that way.
+    """
+    key = _fal_key()
+    if not key:
+        return False
+
+    # Charged HERE, at the point of payment, for the same reason Kling is:
+    # a ledger that only counts finished images under-counts exactly the
+    # spend nobody wanted.
+    _charge()
+    try:
+        answer = httpx.post(
+            f"{_FAL_BASE}/{_fal_model()}",
+            headers={"Authorization": f"Key {key}", "Content-Type": "application/json"},
+            json={"prompt": prompt, "image_size": _FAL_SIZE, "num_images": 1},
+            timeout=_TIMEOUT,
+        )
+    except httpx.HTTPError as exc:
+        log.warning("fal.ai could not be reached (%s)", exc)
+        return False
+
+    if answer.status_code == 403:
+        # 403 and not 401: the credential is good and the account is empty.
+        # Measured, not guessed — an expired key answers 401 here.
+        raise NoBalance("fal.ai answered 403: the account has no balance")
+    if answer.status_code >= 400:
+        log.warning("fal.ai refused the request (HTTP %d)", answer.status_code)
+        return False
+
+    try:
+        url = (answer.json().get("images") or [])[0]["url"]
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+        log.warning("fal.ai answered without an image")
+        return False
+    try:
+        blob = httpx.get(url, timeout=_TIMEOUT)
+        blob.raise_for_status()
+        destination.write_bytes(blob.content)
+        return True
+    except httpx.HTTPError as exc:
+        log.warning("fal.ai image could not be downloaded (%s)", exc)
+        return False
 
 
 def _kling_token() -> str | None:
@@ -285,12 +381,18 @@ def fetch(prompt: str, destination: Path, people_words: list[str] | None = None)
         return "cache"
 
     if _spent_today() < daily_cap():
-        if _kling_image(prompt, destination):
+        if _fal_image(prompt, destination):
+            cached.write_bytes(destination.read_bytes())
+            return "fal"
+        # Only when fal.ai was never asked. `_fal_image` charges the ledger
+        # before it calls out, so trying Kling after a fal failure would bill
+        # the day twice for one picture.
+        if _fal_key() is None and _kling_image(prompt, destination):
             cached.write_bytes(destination.read_bytes())
             return "kling"
     else:
         log.info(
-            "Kling daily cap reached (%d); this package is shared with two "
+            "Daily image cap reached (%d); this balance is shared with two "
             "other projects, so going over would stop their publishing too",
             daily_cap(),
         )

@@ -116,7 +116,7 @@ def test_the_daily_cap_stops_spending_and_still_returns_a_video(
     def _must_not_be_called(*args, **kwargs):  # pragma: no cover
         raise AssertionError("spent past the daily cap")
 
-    monkeypatch.setattr(pictures, "_kling_image", _must_not_be_called)
+    monkeypatch.setattr(pictures, "_kling_image", _never)
     monkeypatch.setattr(pictures, "_pexels", lambda p, d, w=None: False)
     # No paid image, no stock image — and still an answer the caller can use.
     assert pictures.fetch("a house", tmp_path / "o.jpg") == "none"
@@ -176,6 +176,7 @@ def test_stock_photos_are_not_cached(monkeypatch, tmp_path: Path) -> None:
     """Caching a free result would freeze one photo onto a phrase for every
     future video."""
     monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("FAL_KEY", raising=False)
     monkeypatch.setattr(pictures, "_kling_image", lambda p, d: False)
 
     def _stock(prompt: str, destination: Path, people_words=None) -> bool:
@@ -186,6 +187,140 @@ def test_stock_photos_are_not_cached(monkeypatch, tmp_path: Path) -> None:
     out = tmp_path / "o.jpg"
     assert pictures.fetch("a house", out) == "pexels"
     assert not (tmp_path / f"{pictures.cache_key('a house')}.jpg").exists()
+
+
+def _never(*args, **kwargs):  # pragma: no cover - the assertion is that it is not run
+    raise AssertionError("this supplier should not have been asked")
+
+
+# ── The generated picture ────────────────────────────────────────────────
+#
+# fal.ai answers `fal.run` synchronously, so unlike Kling there is nothing to
+# poll. What these hold is the money and the order: which supplier is asked,
+# who gets charged, and what an empty account looks like from outside.
+
+
+class _FalAnswer:
+    def __init__(self, status: int, payload: dict | None = None) -> None:
+        self.status_code = status
+        self._payload = payload or {}
+
+    def json(self) -> dict:
+        return self._payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+    @property
+    def content(self) -> bytes:
+        return b"jpeg"
+
+
+def test_fal_is_asked_first_and_kling_is_never_reached(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """The order is the decision. Kling's account moved to a single API key
+    and the pair this code signs a JWT with is the scheme being retired."""
+    monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("FAL_KEY", "id:secret")
+    monkeypatch.setattr(pictures, "_kling_image", _never)
+
+    def _drew(prompt: str, destination: Path) -> bool:
+        destination.write_bytes(b"generated")
+        return True
+
+    monkeypatch.setattr(pictures, "_fal_image", _drew)
+    out = tmp_path / "o.jpg"
+    assert pictures.fetch("a house", out) == "fal"
+    # Generated pictures ARE cached: this one cost money, unlike stock.
+    assert (tmp_path / f"{pictures.cache_key('a house')}.jpg").exists()
+
+
+def test_without_a_key_nothing_is_sent_to_fal(monkeypatch, tmp_path: Path) -> None:
+    """The guard that keeps a test suite from buying pictures. The developer
+    machine has a fal credential in `~/.config/fal/key`; reading it here would
+    have made every unstubbed test a paid request that passed."""
+    monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("FAL_KEY", raising=False)
+    monkeypatch.setattr(pictures.httpx, "post", _never)
+
+    assert pictures._fal_image("a house", tmp_path / "o.jpg") is False
+    assert pictures._spent_today() == 0
+
+
+def test_kling_answers_only_when_fal_has_no_key(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("FAL_KEY", raising=False)
+
+    def _drew(prompt: str, destination: Path) -> bool:
+        destination.write_bytes(b"kling")
+        return True
+
+    monkeypatch.setattr(pictures, "_kling_image", _drew)
+    assert pictures.fetch("a house", tmp_path / "o.jpg") == "kling"
+
+
+def test_a_fal_failure_does_not_then_bill_kling_for_the_same_picture(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """`_fal_image` charges the ledger before it calls out. Falling through to
+    Kling after it failed would put two charges behind one image."""
+    monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("FAL_KEY", "id:secret")
+    monkeypatch.setattr(pictures, "_fal_image", lambda p, d: False)
+    monkeypatch.setattr(pictures, "_kling_image", _never)
+    monkeypatch.setattr(pictures, "_pexels", lambda p, d, w=None: False)
+
+    assert pictures.fetch("a house", tmp_path / "o.jpg") == "none"
+
+
+def test_an_empty_fal_account_is_loud_and_not_a_missing_photo(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """403, not 401: the credential is good and the balance is gone. Measured
+    on the live account. Silence here is how an unpaid bill spent a week
+    looking like a change of style in the channel next door."""
+    monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("FAL_KEY", "id:secret")
+    monkeypatch.setattr(pictures.httpx, "post", lambda *a, **k: _FalAnswer(403))
+
+    with pytest.raises(pictures.NoBalance):
+        pictures._fal_image("a house", tmp_path / "o.jpg")
+
+
+def test_a_request_fal_refused_is_still_charged(monkeypatch, tmp_path: Path) -> None:
+    """Same rule the Kling path pays: the ledger counts what was asked for,
+    not what arrived, because the spend nobody wanted is exactly the spend a
+    finished-images counter hides."""
+    monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("FAL_KEY", "id:secret")
+    monkeypatch.setattr(pictures.httpx, "post", lambda *a, **k: _FalAnswer(500))
+
+    assert pictures._fal_image("a house", tmp_path / "o.jpg") is False
+    assert pictures._spent_today() == 1
+
+
+def test_an_answer_without_an_image_is_not_a_crash(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("FAL_KEY", "id:secret")
+    monkeypatch.setattr(
+        pictures.httpx, "post", lambda *a, **k: _FalAnswer(200, {"images": []})
+    )
+    assert pictures._fal_image("a house", tmp_path / "o.jpg") is False
+
+
+def test_the_cap_still_answers_to_the_name_the_machines_have(monkeypatch) -> None:
+    """Renaming a setting without reading the old name is how a cap silently
+    becomes the default. The render machines have the Kling-era name."""
+    monkeypatch.delenv("RENDER_IMAGES_PER_DAY", raising=False)
+    monkeypatch.setenv("RENDER_KLING_IMAGES_PER_DAY", "3")
+    assert pictures.daily_cap() == 3
+
+    monkeypatch.setenv("RENDER_IMAGES_PER_DAY", "11")
+    assert pictures.daily_cap() == 11
+
+    monkeypatch.setenv("RENDER_IMAGES_PER_DAY", "not a number")
+    assert pictures.daily_cap() == 8
 
 
 # ── The narrator ─────────────────────────────────────────────────────────

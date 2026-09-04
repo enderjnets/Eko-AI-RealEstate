@@ -53,8 +53,10 @@ MINIMAX_GROUP_ID=…
 RENDER_TTS_VOICE_ID=English_CalmWoman   # the channel's voice, chosen 30-Aug
 RENDER_TTS_SPEED=1.06                   # emotion alone stretched a 15.5s read
 RENDER_TTS_EMOTION=happy                # to 17.9s; this gives it back
-KLING_ACCESS_KEY=…              # images only — the video package of that
-KLING_SECRET_KEY=…              # account is reserved for another project
+FAL_KEY=id:secret               # generated pictures, asked first
+KLING_ACCESS_KEY=…              # legacy: only used when FAL_KEY is absent.
+KLING_SECRET_KEY=…              # That account now issues ONE api-… key, which
+                                # this pair cannot carry — see pictures.py
 PEXELS_API_KEY=…                # the free fallback
 RENDER_KLING_IMAGES_PER_DAY=8   # real money, and the balance is SHARED with
                                 # two other projects on this machine

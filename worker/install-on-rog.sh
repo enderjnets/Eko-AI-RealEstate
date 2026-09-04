@@ -99,6 +99,7 @@ RENDER_TTS_EMOTION=happy
 # marca, que es un vídeo correcto. El paquete de Kling es un saldo COMPARTIDO
 # con otros dos proyectos de esta máquina, así que la clave se pone cuando el
 # dueño lo diga y el tope se calibra antes.
+FAL_KEY=
 KLING_ACCESS_KEY=
 KLING_SECRET_KEY=
 PEXELS_API_KEY=
