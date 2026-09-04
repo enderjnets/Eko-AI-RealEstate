@@ -81,5 +81,5 @@ htmlcov/
 # of learning that lesson twice already; this is the third.
 docker-compose.override.yml
 
-# Playwright MCP drops page snapshots and console logs next to the repo root
+# Playwright MCP drops page snapshots and console logs wherever it runs
 .playwright-mcp/

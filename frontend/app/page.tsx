@@ -51,7 +51,7 @@ export const metadata: Metadata = {
 
 // The layout paints mobile browser chrome the dashboard's noir; on a cream
 // marketing page that reads as a rendering fault.
-export const viewport: Viewport = { themeColor: "#F4F1EA" };
+export const viewport: Viewport = { themeColor: "#0F0E0C" };
 
 export default function HomePage() {
   return <Landing />;

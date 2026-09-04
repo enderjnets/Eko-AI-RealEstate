@@ -9,8 +9,15 @@ body { -webkit-tap-highlight-color: transparent; }
    background only paints its container, so without this the overscroll gutter,
    the area past the content and the scrollbar stay noir — the marketing page
    flashes and bounces black. Scoped with :has() like the tab-bar rule below,
-   so nothing in the dashboard moves. */
-html:has(.eko-landing), body:has(.eko-landing) { background: #F4F1EA; color: #17150F; }
+   so nothing in the dashboard moves.
+
+   Since v6 the page OPENS dark — a film pinned under the fold — so the canvas
+   (which takes <html>'s background) is the film's night, as in the design:
+   the rubber-band above the hero on a phone shows night over night, not a
+   cream band over a black frame. <body> stays cream for the page itself. Not
+   measurable from desktop Chrome; decided, like the dvh/svh call in Hero. */
+html:has(.eko-landing) { background: #0F0E0C; }
+body:has(.eko-landing) { background: #F4F1EA; color: #17150F; }
 body:has(.eko-landing) *::-webkit-scrollbar-thumb {
   background: rgba(23, 21, 15, 0.18);
   border-color: #F4F1EA;
