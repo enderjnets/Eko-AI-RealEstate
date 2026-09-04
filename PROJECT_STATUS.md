@@ -355,6 +355,44 @@ despliegue del checkpoint A, que espera autorización.
 
 ---
 
+## ✅ DESPLEGADO — v0.73.0 · checkpoint A: la landing se mide a sí misma
+
+> **En producción el 4-sep-2026 a las 06:2x MDT**, autorizado por el dueño en un
+> mensaje aparte. `/api/v1/health` por el dominio → **`0.73.0`**. VPS en
+> `bf0476c`. Migración **051_landing_sessions** aplicada con la imagen nueva
+> (`050_publication_schedule` → `051_landing_sessions (head)`).
+
+**Medido en el sitio vivo, no supuesto:**
+
+| Prueba | Resultado |
+|---|---|
+| `/api/v1/health` | **0.73.0** |
+| Landing pública | `200` durante y después del despliegue |
+| Baliza con lote válido | `204` **y fila escrita** |
+| Tipo de evento desconocido | `400`, nada escrito |
+| `session` mal formada / JSON inválido | `400` |
+| `POST /public/leads` tras agotar la baliza | `422` — **el presupuesto del formulario no se tocó** |
+| Fila resultante | `source=other`, `utm_source=deploy-check`, `max_scroll_pct=50`, `sections_viewed=["markets"]`, `event_count=3` |
+
+🎯 **`country=US` llegó.** Era una incógnita declarada del plan (§6.6): confirma
+que `cf-ipcountry` atraviesa Cloudflare → cloudflared → el rewrite de Next →
+el backend. **`region` y `city` siguen vacías**: falta el clic del dueño en
+Cloudflare → Rules → Settings → Managed Transforms → «Add visitor location
+headers» en la zona `denverhomestory.com`. Sin él sólo habrá país.
+
+La fila de prueba se **borró** al terminar (3 eventos + 1 sesión); las dos
+tablas quedan en **0 y 0**, para que el primer visitante real sea el primero de
+verdad.
+
+**Reversión**, si hiciera falta: `git reset --hard c68aaf7` + rebuild. **No**
+hacer `alembic downgrade`: borraría las visitas ya recogidas y el código viejo
+convive sin problema con dos tablas que no consulta.
+
+**Lo que falta y no es mío**: abrir la landing desde un iPhone real — iOS Safari
+sigue **sin medir**, y es el navegador de la mitad de los visitantes.
+
+---
+
 ## ✅ DESPLEGADO — v0.71.0 · la página dice de quién es
 
 > **En producción el 3-sep-2026**, autorizado por el dueño. `/api/v1/health` por
