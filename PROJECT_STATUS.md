@@ -232,6 +232,30 @@ integrar `c68aaf7` en esta rama — y eso es un merge, que **no hago sin pedirlo
    `alembic downgrade`**: borraría lo ya recogido, y el código viejo convive sin
    problema con las tablas nuevas.
 
+### 🔴 URGENTE, del carril de vídeo — acción del dueño (no es de este plan)
+
+Lo reporta la sesión «fix-caption-rendering» en la madrugada del 4-sep, y no lo
+he tocado ni verificado yo:
+
+- **`install-on-rog.sh` borró tres claves de `~/.eko-render.env` sin copia**
+  (`PEXELS_API_KEY`, `KLING_ACCESS_KEY`, `KLING_SECRET_KEY`). El instalador las
+  reescribió con `cat >`. **Hay que reponerlas a mano** — el carril de vídeo
+  generado no puede producir nada hasta entonces. Su instalador ya está
+  corregido en `9127947`, en su rama.
+- **El obrero del ROG está parado** (`systemctl --user stop eko-render-worker`),
+  a propósito: el trabajo 11 entraba en bucle de 3 intentos cada ~70 s y **cada
+  intento narraba con MiniMax antes de morir — 11 narraciones pagadas** entre
+  las 23:19 y las 23:44.
+- Queda sin explicar **quién reencoló** ese trabajo: `_enqueue` solo reencola un
+  job `FAILED` tras 24 h de enfriamiento y llevaba 2. **No fui yo**: en esa
+  ventana conducía Chrome contra una pila local (`eko_live_check`, puertos 8099
+  y 3199) y no he llamado a ningún endpoint de `content` ni de `render-jobs` en
+  toda la sesión. La consulta que lo aclara, para el dueño:
+  `SELECT id, piece_id, status, attempts, worker, claimed_at, updated_at FROM render_jobs WHERE piece_id=10 ORDER BY id`.
+  **Me la pidieron a mí y la he declinado**: a esa sesión se la bloqueó su
+  clasificador de permisos, y ejecutarla yo anularía esa decisión sin que nadie
+  la revise.
+
 ### Heredado de la sesión «fix-caption-rendering» al cerrar (no es de este plan)
 
 Dos hallazgos suyos que no tocaron y que quedan aquí para que no se pierdan al
