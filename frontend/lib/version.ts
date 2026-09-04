@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.74.0";
+export const CURRENT_VERSION = "0.75.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.75.0",
+    date: "2026-09-04",
+    title: {
+      en: "What kind of deal, and did the appointment happen",
+      es: "Que tipo de negocio, y si la cita se hizo",
+    },
+    changes: [
+      {
+        en: "A closed deal now says what kind of business it was, and an appointment says whether it happened. Marking a lead as won opens a short dialog: which deal it was - a listing that sold, a buyer who bought, a rental, a referral - and the commission if it is already known. The kind is required and the amount is not, on purpose: the kind is known the day it closes and nobody remembers it three months later, while the commission often is not settled yet and demanding it would fill the column with guesses. On a visit whose time has passed, two buttons record whether it happened or nobody came. Until today no code in this product had ever written those two states, so every appointment ever booked sat as scheduled for ever and \"we set 40 appointments\" had no honest second half. The commission is visible to admins only; everything else about the close is not a secret.",
+        es: "Un negocio cerrado dice ahora que tipo de negocio fue, y una cita dice si se hizo. Marcar un lead como ganado abre un dialogo corto: que negocio fue - una captacion vendida, una compra de un cliente, un alquiler, un referido - y la comision si ya se sabe. El tipo es obligatorio y el importe no, a proposito: el tipo se sabe el dia que se cierra y nadie lo recuerda tres meses despues, mientras que la comision muchas veces aun no esta cerrada y exigirla llenaria la columna de suposiciones. En una cita cuya hora ya paso, dos botones registran si se hizo o si no vino nadie. Hasta hoy ningun codigo de este producto habia escrito nunca esos dos estados, asi que toda cita reservada se quedaba en programada para siempre y \"pusimos 40 citas\" no tenia segunda mitad honesta. La comision solo la ven los administradores; el resto del cierre no es un secreto.",
+      },
+    ],
+  },
   {
     version: "0.74.0",
     date: "2026-09-04",

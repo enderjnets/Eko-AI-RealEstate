@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -749,6 +749,70 @@ def _visit_item(v: Visit) -> CalendarItemOut:
         property_id=v.property_id,
         notes=v.notes,
     )
+
+
+class VisitOutcomeIn(BaseModel):
+    """Did the appointment actually happen."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: Literal["completed", "no_show"]
+
+
+@visits_router.post("/visits/{visit_id}/outcome", response_model=VisitOut)
+async def set_visit_outcome(
+    visit_id: int,
+    body: VisitOutcomeIn,
+    actor: str | None = Depends(current_email),
+    db: AsyncSession = Depends(get_db),
+) -> VisitOut:
+    """Record whether a booked appointment happened.
+
+    Nothing in this product has ever written `completed` or `no_show`. Every
+    visit ever booked sits at `scheduled` for ever, so "we set 40 appointments"
+    has no honest second half — and the difference between forty appointments
+    held and forty nobody turned up to is the whole question.
+
+    Only from an open state. Re-marking a cancelled visit as held, or flipping
+    `completed` to `no_show` a week later, is not a correction: it is a second
+    story about the same afternoon. Cancel and rebook instead.
+    """
+    visit = (
+        await db.execute(select(Visit).where(Visit.id == visit_id))
+    ).scalar_one_or_none()
+    if visit is None:
+        raise HTTPException(status_code=404, detail="Visit not found")
+
+    if visit.status not in (VisitStatus.SCHEDULED, VisitStatus.CONFIRMED):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"visit_not_open: this appointment is {visit.status.value}, and "
+                "an outcome only means something for one that was still standing"
+            ),
+        )
+
+    visit.status = (
+        VisitStatus.COMPLETED if body.outcome == "completed" else VisitStatus.NO_SHOW
+    )
+
+    lead_id = getattr(visit, "lead_id", None)
+    lead = await db.get(Lead, lead_id) if lead_id else None
+    record(
+        db,
+        lead,
+        "appointment_outcome",
+        actor=actor or "office",
+        meta={
+            "visit_id": visit.id,
+            "outcome": body.outcome,
+            "purpose": _purpose_value(visit),
+            "scheduled_at": visit.scheduled_at.isoformat() if visit.scheduled_at else None,
+        },
+    )
+    await db.commit()
+    await db.refresh(visit)
+    return VisitOut.model_validate(visit)
 
 
 @visits_router.get("/visits", response_model=list[VisitOut])

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from math import isfinite
 from typing import Any, Literal
@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import current_email, current_role
 from app.db.base import get_db
 from app.models import (
+    WON_KINDS,
     CallLog,
     CallOutcome,
     Conversation,
@@ -36,6 +37,7 @@ from app.services.conversation import (
     send_human_message,
 )
 from app.services.inbox import reached_somebody
+from app.services.lead_events import record
 from app.services.scoring import rescore_all, rescore_lead
 
 router = APIRouter()
@@ -62,6 +64,19 @@ class LeadPatch(BaseModel):
     property_type: str | None = None
     urgency: str | None = None
     human_takeover: bool | None = None
+
+    # ── Closing ──────────────────────────────────────────────────────────
+    won_kind: str | None = None
+    won_value: Decimal | None = Field(default=None, ge=0, le=9_999_999_999)
+    won_at: datetime | None = None
+    lost_reason: str | None = Field(default=None, max_length=500)
+
+    @field_validator("won_kind")
+    @classmethod
+    def _known_kind(cls, v: str | None) -> str | None:
+        if v is not None and v not in WON_KINDS:
+            raise ValueError(f"won_kind must be one of: {', '.join(WON_KINDS)}")
+        return v
 
 
 class LeadCreate(BaseModel):
@@ -187,6 +202,14 @@ class LeadOut(BaseModel):
     # time anybody can read it, which matters now because the videos are about
     # to be the main way leads arrive.
     attribution: dict[str, str] = Field(default_factory=dict)
+
+    # How it ended. `won_value` is money and is stripped for non-admins by
+    # `_lead_out`; the rest of the closing is not a secret — an advisor needs to
+    # know a lead is closed, and which kind of business it was.
+    won_kind: str | None = None
+    won_value: Decimal | None = None
+    won_at: datetime | None = None
+    lost_reason: str | None = None
     last_message_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -215,11 +238,22 @@ def _attribution_of(meta: object) -> dict[str, str]:
     }
 
 
-def _lead_out(row: Lead) -> LeadOut:
+def _lead_out(row: Lead, *, is_admin: bool = True) -> LeadOut:
     """`LeadOut.model_validate` plus the fields the ORM object does not carry
-    by the same name — the pattern `needs_response` already follows."""
+    by the same name — the pattern `needs_response` already follows.
+
+    `is_admin=True` is the default because most callers here are already behind
+    an admin check or are internal; the read paths that serve the whole office
+    pass the real role. Defaulting the other way would silently blank the
+    amount in places that are entitled to it, which is the harder bug to see.
+    """
     out = LeadOut.model_validate(row)
     out.attribution = _attribution_of(row.meta)
+    if not is_admin:
+        # Commissions are the one number on a lead that not everyone in the
+        # office is entitled to. Everything else about the close stays visible:
+        # an advisor needs to know it closed and what kind of deal it was.
+        out.won_value = None
     return out
 
 
@@ -239,6 +273,7 @@ async def list_leads(
     sort: str = Query(default="score", pattern="^(score|recent)$"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    role: str = Depends(current_role),
     db: AsyncSession = Depends(get_db),
 ) -> LeadListOut:
     where: list = []
@@ -261,7 +296,7 @@ async def list_leads(
     pending = await _needs_response_map(db, [r.id for r in rows])
     items = []
     for r in rows:
-        out = _lead_out(r)
+        out = _lead_out(r, is_admin=role == "admin")
         out.needs_response = pending.get(r.id, False)
         items.append(out)
     return LeadListOut(total=total, items=items)
@@ -376,6 +411,7 @@ async def create_lead(body: LeadCreate, db: AsyncSession = Depends(get_db)) -> L
 @router.get("/digest", response_model=list[LeadOut])
 async def lead_digest(
     limit: int = Query(default=5, ge=1, le=20),
+    role: str = Depends(current_role),
     db: AsyncSession = Depends(get_db),
 ) -> list[LeadOut]:
     """Top hot/active leads by score — the 'who to call first' list.
@@ -394,7 +430,7 @@ async def lead_digest(
             .limit(limit)
         )
     ).scalars().all()
-    return [_lead_out(r) for r in rows]
+    return [_lead_out(r, is_admin=role == "admin") for r in rows]
 
 
 @router.post("/rescore-all", response_model=RescoreResult)
@@ -405,11 +441,15 @@ async def rescore_all_leads(db: AsyncSession = Depends(get_db)) -> RescoreResult
 
 
 @router.get("/{lead_id}", response_model=LeadOut)
-async def get_lead(lead_id: int, db: AsyncSession = Depends(get_db)) -> LeadOut:
+async def get_lead(
+    lead_id: int,
+    role: str = Depends(current_role),
+    db: AsyncSession = Depends(get_db),
+) -> LeadOut:
     row = (await db.execute(select(Lead).where(Lead.id == lead_id))).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Lead not found")
-    return _lead_out(row)
+    return _lead_out(row, is_admin=role == "admin")
 
 
 class HumanMessageIn(BaseModel):
@@ -557,12 +597,49 @@ async def patch_lead(
     if "status" in updates:
         row._status_actor = current_email(request) or "office"
 
+    closing = updates.get("status") == LeadStatus.WON
+    if closing:
+        # The one thing that is refused rather than defaulted. "Won" with no
+        # kind is the state the whole phase exists to prevent: it answers
+        # "did we close?" and not "what did we close?", and a column of nulls
+        # cannot be filled in later because nobody will remember.
+        kind = updates.get("won_kind") or row.won_kind
+        if not kind:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "won_kind_required: a closed deal has to say what kind it "
+                    f"was — one of {', '.join(WON_KINDS)}"
+                ),
+            )
+        updates.setdefault("won_at", row.won_at or datetime.now(UTC))
+
+    if updates.get("status") == LeadStatus.LOST and updates.get("lost_reason"):
+        # Read by the history listener during the flush, so the reason lands on
+        # the same event as the status change rather than floating beside it.
+        row._status_meta = {"reason": updates["lost_reason"]}
+
     for field, value in updates.items():
         setattr(row, field, value)
 
+    if closing:
+        record(
+            db,
+            row,
+            "deal_closed",
+            actor=current_email(request) or "office",
+            meta={
+                "kind": row.won_kind or updates.get("won_kind"),
+                "value": float(updates["won_value"]) if updates.get("won_value") else None,
+                "won_at": (updates.get("won_at") or row.won_at).isoformat()
+                if (updates.get("won_at") or row.won_at)
+                else None,
+            },
+        )
+
     await db.commit()
     await db.refresh(row)
-    return _lead_out(row)
+    return _lead_out(row, is_admin=current_role(request) == "admin")
 
 
 # ── Call console ───────────────────────────────────────────────────────────

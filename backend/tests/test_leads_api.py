@@ -111,7 +111,9 @@ async def test_patch_lead_status_and_zone_partial_update(database_url: str) -> N
         async with await _http_client() as client:
             r = await client.patch(
                 f"/api/v1/leads/{lead_id}",
-                json={"status": "won", "zone": "Salamanca"},
+                # `won_kind` since 0.75.0: closing without saying what kind of
+                # deal it was is refused, because nobody can supply it later.
+                json={"status": "won", "won_kind": "rental", "zone": "Salamanca"},
             )
         assert r.status_code == 200, r.text
         body = r.json()

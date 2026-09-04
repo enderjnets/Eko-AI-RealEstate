@@ -2,6 +2,22 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.75.0] — 2026-09-04
+
+### Added
+- **A closed deal says what kind it was** (migration 053: `won_kind`,
+  `won_value`, `won_at`, `lost_reason` on `leads`). `{"status": "won"}` alone is
+  now refused with 422 — the kind is known the day it closes and unrecoverable
+  afterwards. The amount stays optional: the commission is often not settled
+  that day, and requiring it would produce a column of guesses. `won_value` is
+  admin-only; the rest of the close is visible to the office.
+- **`POST /visits/{id}/outcome`** records `completed` or `no_show`, only from a
+  visit still standing (409 otherwise). Nothing in this product had ever written
+  those two states, so every appointment ever booked sat at `scheduled` for
+  ever.
+- The lead page opens a dialog instead of patching straight to `won`, and a past
+  appointment offers "it happened" / "nobody came".
+
 ## [0.74.0] — 2026-09-04
 
 ### Added

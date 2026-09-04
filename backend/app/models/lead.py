@@ -38,6 +38,21 @@ class LeadStatus(str, enum.Enum):
     PAUSED = "paused"
 
 
+# What kind of business a closed lead turned out to be.
+#
+# A tuple and not an enum, deliberately: this set belongs to the agency and will
+# change — they will want to split "referral", or add a lease renewal — and an
+# enum makes that a migration. Worse, renaming a member would rewrite what the
+# past says was closed. The API validates against this; the column is text.
+WON_KINDS = (
+    "listing_sold",
+    "buyer_purchase",
+    "rental",
+    "referral",
+    "other",
+)
+
+
 class LeadIntent(str, enum.Enum):
     RENT = "rent"
     BUY = "buy"
@@ -161,6 +176,19 @@ class Lead(Base):
     # if its last message is inbound and this is null or older than that message.
     # A dedicated column (not meta JSON) so marking handled never races with other
     # writers to meta (e.g. discovery enrichment).
+    # ── How it ended ─────────────────────────────────────────────────────
+    #
+    # `status = won` says a deal closed and nothing about which deal. These
+    # four are what turn "we won 3" into "a listing, a rental and a referral",
+    # which are different businesses.
+    won_kind: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Nullable and expected to stay that way in most rows: the commission is
+    # often not known the day the deal closes, and a required number here would
+    # be a column of guesses that later gets averaged as though it were fact.
+    won_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    won_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lost_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     inbox_handled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

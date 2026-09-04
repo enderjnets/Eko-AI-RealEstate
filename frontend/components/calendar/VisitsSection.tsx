@@ -47,6 +47,7 @@ export function VisitsSection({
   const [error, setError] = useState<string | null>(null);
   const [bookingOpen, setBookingOpen] = useState(false);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [outcomeId, setOutcomeId] = useState<number | null>(null);
 
   // Two refreshes can now be in flight at once — cancel a visit, then book one
   // from the matched listings — and without a guard the slower first response
@@ -86,6 +87,22 @@ export function VisitsSection({
       alert(`${t("visits.cancelFailed")} ${(e as Error)?.message || e}`);
     } finally {
       setCancellingId(null);
+    }
+  }
+
+  // Only offered on an appointment whose time has passed and that is still
+  // standing. Asking "did it happen?" about tomorrow is a question nobody can
+  // answer, and the API refuses an outcome on a visit already resolved.
+  async function handleOutcome(visitId: number, outcome: "completed" | "no_show") {
+    if (outcomeId !== null) return;
+    setOutcomeId(visitId);
+    try {
+      await visitsApi.outcome(visitId, outcome);
+      await refresh();
+    } catch (e) {
+      alert(`${t("visits.outcomeFailed")} ${(e as Error)?.message || e}`);
+    } finally {
+      setOutcomeId(null);
     }
   }
 
@@ -175,6 +192,28 @@ export function VisitsSection({
                     {v.calendar_provider} · {v.external_booking_id}
                   </div>
                 </div>
+                {!isViewer &&
+                  (v.status === "scheduled" || v.status === "confirmed") &&
+                  isPast(v.scheduled_at) && (
+                    <div className="flex flex-col gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleOutcome(v.id, "completed")}
+                        disabled={outcomeId !== null}
+                        className="px-2 py-1 rounded-md text-[11px] border border-eko-green/30 text-eko-green hover:bg-eko-green/10 disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {outcomeId === v.id ? "…" : t("visits.held")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOutcome(v.id, "no_show")}
+                        disabled={outcomeId !== null}
+                        className="px-2 py-1 rounded-md text-[11px] border border-white/10 text-gray-400 hover:text-white hover:bg-white/5 disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {t("visits.noShow")}
+                      </button>
+                    </div>
+                  )}
                 {!isViewer && (v.status === "scheduled" || v.status === "confirmed") && (
                   <button
                     type="button"

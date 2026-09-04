@@ -47,6 +47,16 @@ export interface Lead {
   };
   needs_response?: boolean;
   /**
+   * How it ended. `won_kind` says which business it was — a listing that sold,
+   * a buyer who bought and a rental are three different things behind one
+   * `won`. `won_value` is the commission and arrives `null` for anyone who is
+   * not an admin; the rest of the close is visible to the whole office.
+   */
+  won_kind?: WonKind | null;
+  won_value?: string | null; // Decimal serializes as string in JSON
+  won_at?: string | null;
+  lost_reason?: string | null;
+  /**
    * Which video / campaign / page produced this lead (utm_*, referrer,
    * landing_variant…). Server-filtered through a whitelist — never the raw
    * meta column. Empty object when nothing was captured.
@@ -117,6 +127,17 @@ export interface Timeline {
 
 export type SendChannel = "sms" | "email" | "whatsapp";
 
+/** Must match `WON_KINDS` in `backend/app/models/lead.py`: the API refuses
+ *  anything else, and a close is the one field with no sensible default. */
+export const WON_KINDS = [
+  "listing_sold",
+  "buyer_purchase",
+  "rental",
+  "referral",
+  "other",
+] as const;
+export type WonKind = (typeof WON_KINDS)[number];
+
 export interface LeadPatch {
   name?: string;
   status?: LeadStatus;
@@ -127,6 +148,10 @@ export interface LeadPatch {
   property_type?: string;
   urgency?: string;
   human_takeover?: boolean;
+  won_kind?: WonKind;
+  won_value?: number | string;
+  won_at?: string;
+  lost_reason?: string;
 }
 
 export interface LeadCreate {
@@ -304,6 +329,13 @@ export const visitsApi = {
     api<Visit>(`/v1/visits/${visitId}/cancel`, {
       method: "POST",
       body: JSON.stringify({ reason }),
+    }),
+  /** Did the appointment actually happen. Only from a visit still standing —
+   *  the API answers 409 for one already cancelled or already resolved. */
+  outcome: (visitId: number, outcome: "completed" | "no_show") =>
+    api<Visit>(`/v1/visits/${visitId}/outcome`, {
+      method: "POST",
+      body: JSON.stringify({ outcome }),
     }),
   all: (opts?: { from?: string; to?: string }) => {
     const q = new URLSearchParams();

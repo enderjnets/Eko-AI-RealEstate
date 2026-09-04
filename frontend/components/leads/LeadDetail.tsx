@@ -16,10 +16,12 @@ import {
 import {
   type Lead,
   type Timeline,
+  type WonKind,
   conversationsApi,
   inboxApi,
   leadsApi,
 } from "@/lib/api";
+import { CloseDealDialog } from "./CloseDealDialog";
 import { useViewer } from "@/lib/useViewer";
 import { IntentBadge, StatusBadge } from "@/components/ui/Badge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
@@ -48,6 +50,7 @@ export function LeadDetail({ leadId }: { leadId: number }) {
   const [error, setError] = useState<string | null>(null);
   const [marking, setMarking] = useState(false);
   const [visitsReload, setVisitsReload] = useState(0);
+  const [closing, setClosing] = useState(false);
 
   // Reload just the timeline — called after the composer sends, so the new
   // outbound shows immediately (router.refresh() doesn't re-run this client effect).
@@ -55,13 +58,24 @@ export function LeadDetail({ leadId }: { leadId: number }) {
     conversationsApi.timeline(leadId).then(setTimeline).catch(() => {});
   }, [leadId]);
 
-  async function markWon() {
+  // Opens the dialog rather than patching. `{status: "won"}` on its own is now
+  // refused by the API with 422 — a closed deal has to say what kind it was —
+  // and the old catch would have swallowed that into a button that silently
+  // does nothing.
+  async function closeDeal(kind: WonKind, value?: number) {
     if (marking || !lead) return;
     setMarking(true);
     try {
-      setLead(await leadsApi.patch(lead.id, { status: "won" }));
+      setLead(
+        await leadsApi.patch(lead.id, {
+          status: "won",
+          won_kind: kind,
+          ...(value !== undefined ? { won_value: value } : {}),
+        }),
+      );
+      setClosing(false);
     } catch {
-      // non-fatal; the status badge simply stays as-is
+      // non-fatal; the dialog stays open so the advisor can retry
     } finally {
       setMarking(false);
     }
@@ -258,7 +272,7 @@ export function LeadDetail({ leadId }: { leadId: number }) {
           {t("lead.qa.bookVisit")}
         </button>
         {canWin && (
-          <button type="button" onClick={markWon} disabled={marking} className={`${qaBase} ${qaGhost} disabled:opacity-60`}>
+          <button type="button" onClick={() => setClosing(true)} disabled={marking} className={`${qaBase} ${qaGhost} disabled:opacity-60`}>
             {marking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
             {t("lead.qa.markWon")}
           </button>
@@ -338,6 +352,14 @@ export function LeadDetail({ leadId }: { leadId: number }) {
       <div id="visits">
         <VisitsSection leadId={lead.id} reloadSignal={visitsReload} />
       </div>
+
+      {/* At the root, not inside the action bar: it is a modal over the page. */}
+      <CloseDealDialog
+        open={closing}
+        saving={marking}
+        onCancel={() => setClosing(false)}
+        onConfirm={closeDeal}
+      />
     </>
   );
 }
