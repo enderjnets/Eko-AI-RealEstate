@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.75.0";
+export const CURRENT_VERSION = "0.75.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.75.1",
+    date: "2026-09-04",
+    title: {
+      en: "The link says which network it came from",
+      es: "El enlace dice de que red viene",
+    },
+    changes: [
+      {
+        en: "The link at the foot of every video now says which network it was posted on, and which video it was. Until today the same bare address went into all three captions, so every visit it produced arrived as \"direct\" and the report could not tell TikTok from YouTube - which was exactly what the first real visitors looked like. A query string is the only part of a link that survives all four things working against it: a Shorts description link is not clickable, Instagram strips the referrer, in-app browsers strip it too, and TikTok shortens the link but keeps the query. Nothing to configure: the tagging happens as each post is written. The profile links still have to be pasted by hand once - the exact three are in docs/enlaces-de-bio.md.",
+        es: "El enlace del pie de cada video dice ahora en que red se publico, y que video era. Hasta hoy la misma direccion pelada iba en los tres pies, asi que toda visita que producia llegaba como \"directa\" y el informe no podia distinguir TikTok de YouTube - que es exactamente lo que se vio con los primeros visitantes reales. Una query es la unica parte de un enlace que sobrevive a las cuatro cosas que juegan en contra: el enlace de la descripcion de un Short no se puede pulsar, Instagram borra el referente, los navegadores dentro de las apps tambien, y TikTok acorta el enlace pero conserva la query. No hay nada que configurar: la etiqueta se pone al escribir cada publicacion. Los enlaces del perfil si hay que pegarlos a mano una vez - los tres exactos estan en docs/enlaces-de-bio.md.",
+      },
+    ],
+  },
   {
     version: "0.75.0",
     date: "2026-09-04",

@@ -2,6 +2,17 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.75.1] — 2026-09-04
+
+### Added
+- **The CTA link is tagged per platform.** `utm_source` names the network and
+  `utm_content` names the piece, so a report can say "this video brought eleven
+  visits" instead of "the videos brought eleven". New setting
+  `CONTENT_UTM_CAMPAIGN` (default `video`).
+- `docs/enlaces-de-bio.md` — the three exact profile links, and why a query
+  string is the only attribution that survives Shorts, Instagram and in-app
+  browsers.
+
 ## [0.75.0] — 2026-09-04
 
 ### Added

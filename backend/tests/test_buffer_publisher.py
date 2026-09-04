@@ -46,6 +46,7 @@ from app.services.buffer_publisher import (
     publish_approved,
     publish_piece,
     verify_organization,
+    with_platform_utm,
 )
 from app.services.tenant_context import org_scope
 
@@ -1643,3 +1644,120 @@ async def test_one_platform_failing_in_queue_mode_does_not_stop_the_others(
     assert "instagram said no" in rows["instagram"][3]
     assert rows["youtube"][0] == "scheduled" and rows["youtube"][1] is not None
     assert rows["tiktok"][0] == "scheduled" and rows["tiktok"][1] is not None
+
+
+# ── The link says which network it came from ─────────────────────────────
+#
+# Measured on the live site the day this was written: every real visitor so far
+# arrived as `direct`, with no referrer at all. Instagram strips it, in-app
+# browsers strip it, and a link in a Shorts description is not even clickable.
+# A query string is the only part of a link that survives all of that, so the
+# tagging has to happen in the caption — there is nothing to read afterwards.
+
+CTA = "https://www.denverhomestory.com"
+
+
+def test_each_platform_gets_its_own_source() -> None:
+    text = f"Two numbers tell you everything. Start here: {CTA}"
+    for platform, expected in (
+        (PublicationPlatform.YOUTUBE, "utm_source=youtube"),
+        (PublicationPlatform.TIKTOK, "utm_source=tiktok"),
+        (PublicationPlatform.INSTAGRAM, "utm_source=instagram"),
+    ):
+        out = with_platform_utm(text, CTA, platform, 10, "video")
+        assert expected in out, out
+        assert "utm_medium=social" in out
+        assert "utm_campaign=video" in out
+        # Which video, not just which network: "this one brought eleven visits"
+        # rather than "the videos brought eleven".
+        assert "utm_content=piece-10" in out
+
+
+def test_a_caption_without_the_link_is_left_exactly_as_it_was() -> None:
+    text = "No call to action in this one."
+    assert with_platform_utm(text, CTA, PublicationPlatform.TIKTOK, 4, "video") == text
+
+
+def test_no_cta_configured_changes_nothing() -> None:
+    """`CONTENT_CTA_URL` is empty until the domain is live, and an empty string
+    is in every caption if you look for it with `in`."""
+    text = f"Start here: {CTA}"
+    assert with_platform_utm(text, "", PublicationPlatform.TIKTOK, 4, "video") == text
+
+
+def test_a_url_that_already_carries_a_query_gets_an_ampersand() -> None:
+    cta = "https://www.denverhomestory.com/?ref=bio"
+    out = with_platform_utm(f"Here: {cta}", cta, PublicationPlatform.YOUTUBE, 7, "video")
+    assert "?ref=bio&utm_source=youtube" in out
+    assert "??" not in out
+
+
+def test_a_longer_url_that_merely_starts_the_same_is_not_rewritten() -> None:
+    """The trap in "replace the first occurrence": the blog link starts with the
+    CTA, and rewriting it would insert a query in the middle of a path and break
+    a link that worked."""
+    text = f"Read more at {CTA}/blog and start at {CTA}"
+    out = with_platform_utm(text, CTA, PublicationPlatform.TIKTOK, 3, "video")
+    assert f"{CTA}/blog and" in out, "the blog link is untouched"
+    assert out.rstrip().endswith("utm_content=piece-3")
+
+
+def test_only_the_first_mention_is_tagged() -> None:
+    text = f"{CTA} … and again {CTA}"
+    out = with_platform_utm(text, CTA, PublicationPlatform.TIKTOK, 5, "video")
+    assert out.count("utm_source=tiktok") == 1
+
+
+def test_tagging_the_link_does_not_create_a_fair_housing_violation() -> None:
+    """The gate is demonstrated, not assumed. This function only edits a URL,
+    but the rail runs on the final text and nothing else in this repo is
+    allowed to change a caption without proving the rail still passes."""
+    from app.services.fair_housing import find_violations
+
+    text = f"A quiet street near good schools is what most families ask for. {CTA}"
+    before = find_violations(text, "en")
+    after = find_violations(
+        with_platform_utm(text, CTA, PublicationPlatform.YOUTUBE, 9, "video"), "en"
+    )
+    assert after == before
+
+
+@pytest.mark.asyncio
+async def test_the_three_posts_leave_with_three_different_sources(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End to end, on the text that actually goes over the wire.
+
+    The unit tests above prove the function can tag a link. This proves the
+    publisher calls it — which is the half that breaks silently: everything
+    still posts, the videos still go out, and the only symptom is a funnel
+    where every visit says `direct` for ever.
+    """
+    await _brokerage()
+    recorder = _Recorder()
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    s = get_settings()
+    monkeypatch.setattr(s, "CONTENT_CTA_URL", CTA, raising=False)
+    monkeypatch.setattr(s, "CONTENT_UTM_CAMPAIGN", "video", raising=False)
+    try:
+        piece_id = await _approved_piece()
+        # The caption has to carry the link for there to be anything to tag;
+        # in production `_with_cta` appends it as the piece is written.
+        async with get_bypass_session_factory()() as db:
+            piece = await db.get(ContentPiece, piece_id)
+            piece.caption = f"Three numbers decide the price. {CTA}"
+            await db.commit()
+
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                await publish_piece(db, piece_id)
+
+        texts = [sent["text"] for sent in recorder.sent]
+        assert len(texts) == 3
+        sources = sorted(
+            t.split("utm_source=")[1].split("&")[0] for t in texts if "utm_source=" in t
+        )
+        assert sources == ["instagram", "tiktok", "youtube"]
+        assert all(f"utm_content=piece-{piece_id}" in t for t in texts)
+    finally:
+        await _cleanup()

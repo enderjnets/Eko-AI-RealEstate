@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.75.0"
+    APP_VERSION: str = "0.75.1"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -310,6 +310,11 @@ class Settings(BaseSettings):
     # repo ya decide así en la landing (una sección sin dato desaparece en vez
     # de inventárselo). Se rellena cuando denverhomestory.com esté vivo.
     CONTENT_CTA_URL: str = ""
+    # La campaña que se etiqueta en el enlace del pie de cada vídeo. Un solo
+    # valor para todos: lo que separa una red de otra es `utm_source`, y lo que
+    # separa un vídeo de otro es `utm_content`. Cambiarlo por temporada
+    # («otoño-2026») es lo que permite comparar tandas sin tocar código.
+    CONTENT_UTM_CAMPAIGN: str = "video"
 
     CONTENT_MAX_DRAFTS_PER_DAY: int = 3
     CONTENT_STUDIO_INTERVAL_SECONDS: int = 3600

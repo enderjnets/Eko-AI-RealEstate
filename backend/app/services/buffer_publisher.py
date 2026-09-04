@@ -42,9 +42,11 @@ there. The platforms derive their own thumbnails.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import UTC, datetime, time, timedelta
 from datetime import date as date_cls
 from typing import Any
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -181,6 +183,58 @@ def _title_for(platform: PublicationPlatform, title: str, text: str) -> str:
     chosen = (title or text.split("\n", 1)[0]).strip()
     limit = _TITLE_MAX[platform]
     return chosen if len(chosen) <= limit else chosen[: limit - 1].rstrip() + "…"
+
+
+def with_platform_utm(
+    text: str,
+    cta_url: str,
+    platform: PublicationPlatform,
+    piece_id: int,
+    campaign: str,
+) -> str:
+    """Tag the call-to-action link with which network it was posted on.
+
+    Today the same bare URL goes into all three captions, so every visit it
+    produces arrives as `direct` and the report cannot tell a video on TikTok
+    from one on YouTube. Measured on the live site: the first real visitors all
+    arrived with no referrer at all — Instagram strips it, in-app browsers strip
+    it, and a Shorts description link is not even clickable. A query string is
+    the only part of a link that survives every one of those, which is why the
+    tagging happens here and not by reading `document.referrer` later.
+
+    Returns `text` untouched when there is no CTA configured, or when the URL
+    does not appear in the caption. Both are normal: `CONTENT_CTA_URL` is empty
+    until the domain is live, and a caption may simply not carry the link.
+
+    The replacement is bounded so a longer URL that merely starts with the CTA
+    — `…denverhomestory.com/blog` — is left alone; without that, the first
+    occurrence rule would rewrite the wrong link and silently break it.
+    """
+    if not cta_url or cta_url not in text:
+        return text
+
+    params = {
+        "utm_source": getattr(platform, "value", str(platform)),
+        "utm_medium": "social",
+        "utm_campaign": campaign,
+        # Which piece, so a report can say "this video brought eleven visits"
+        # rather than "the videos brought eleven".
+        "utm_content": f"piece-{piece_id}",
+    }
+    separator = "&" if "?" in cta_url else "?"
+    tagged = cta_url + separator + urlencode(params)
+
+    # `count=1`: the link is appended once by `_with_cta`, and rewriting a
+    # second mention would double-tag a URL the writer put there on purpose.
+    return re.sub(
+        re.escape(cta_url) + r"(?![\w/?#=&-])",
+        # A plain function as the replacement: `re.sub` reads backslashes and
+        # `\g<...>` in a replacement string, and a URL is exactly the kind of
+        # value that eventually contains one.
+        lambda _m: tagged,
+        text,
+        count=1,
+    )
 
 
 def build_post_input(
@@ -372,6 +426,17 @@ async def _send(
     it goes now. Both paths are simulated identically when BUFFER_SIMULATED.
     """
     text = (piece.caption or piece.hook or "").strip()
+    # Per platform, and therefore here rather than in the writer: the caption is
+    # written once and posted three times, and the whole point is that the three
+    # links differ.
+    settings = get_settings()
+    text = with_platform_utm(
+        text,
+        settings.CONTENT_CTA_URL,
+        platform,
+        piece.id,
+        settings.CONTENT_UTM_CAMPAIGN,
+    )
     video_url = public_media_url(piece.id)
     payload_in = build_post_input(
         channel_id=channel_id,
