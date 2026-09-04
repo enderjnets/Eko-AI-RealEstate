@@ -234,7 +234,7 @@ integrar `c68aaf7` en esta rama — y eso es un merge, que **no hago sin pedirlo
 
 ### ✅ RESUELTO — el carril de vídeo vuelve a tener imágenes (rama `fix/imagenes-fal`)
 
-> 4-sep, `f0a2ba5`, **no fusionado**. El obrero del ROG corre este código ya.
+> 4-sep, `f0a2ba5` + `643ebff`, **no fusionado**. El obrero del ROG corre este código ya.
 
 **El diagnóstico heredado era correcto y el mecanismo que yo supuse no.** Dije
 que `fetch()` no podía tumbar un trabajo porque degrada a tarjeta de marca, y
@@ -255,9 +255,9 @@ Bearer directo.
 | Kling, api key nueva como Bearer | `http=200`, `code=0 SUCCEED` |
 | fal.ai desde el ROG | `http=200` |
 | `pictures.fetch()` real en el ROG | **`fal`**, JPEG de 775 293 bytes (`ffd8ffe0`) |
-| `worker/tests` | 83 verdes, 0 saltados |
+| `worker/tests` | **85 verdes**, 0 saltados |
 | ruff en los ficheros tocados | 9 antes, **9 después** — ninguno nuevo |
-| Mutaciones | quitar la rama de fal en `fetch` → rojo; quitar la puerta de la clave → rojo. Restauradas por md5 |
+| Mutaciones | 4, todas rojas y restauradas por md5: quitar la rama de fal en `fetch`; quitar la puerta de la clave; que el 403 no agote el día; cobrar antes de que fal acepte |
 
 Qué cambia: **fal.ai primero**, Kling **sólo** cuando no hay `FAL_KEY` (los
 proyectos vecinos aún tienen un par válido), Pexels detrás. Tres decisiones que
@@ -266,10 +266,21 @@ no se ven en el diff:
 - La clave se lee **sólo del entorno**. El primer borrador leía también
   `~/.config/fal/key`, que **existe en el Mac de desarrollo**: cualquier test
   que llegara a `fetch()` habría comprado una imagen y pasado en verde.
-- El cargo al libro va **antes** de la llamada, como en Kling — y por eso Kling
-  no se intenta tras un fallo de fal: serían dos cargos por una imagen.
-- Un **403** de fal es saldo agotado, no credencial mala, y sube como
-  `NoBalance` para que una factura sin pagar no parezca un cambio de estilo.
+- El cargo al libro va **después** de que fal acepte, como Kling hace en su
+  `task_id`. Lo escribí al revés en el primer commit, diciendo «igual que
+  Kling» sin leer hasta su línea 143: cobrando antes, **diez minutos de caída
+  de fal gastaban el tope de 8 y dejaban el resto del día en Pexels** sin que
+  nadie lo viera. `test_a_refusal_is_not_charged` ya fijaba la regla con el
+  nombre. Corregido en `643ebff`.
+- Un **403** de fal es saldo agotado, no credencial mala, y **no** sube como
+  excepción: `NoBalance` se desenrolla fuera de `fetch()` sin pasar por Pexels,
+  así que una cuenta vacía habría dado tarjeta en blanco a cada escena → guard
+  de `produce.py` → trabajo muerto → reintento → **narración pagada otra vez**.
+  La forma exacta del incidente que este proveedor venía a cerrar. Ahora se
+  dice una vez, gasta el presupuesto del día para que nadie vuelva a preguntar,
+  y el vídeo sale con foto de banco.
+- Kling **no** es respaldo de un fallo de fal: contesta sólo en máquinas sin
+  credencial de fal.
 
 🔴 **Lo que sigue abierto y no he tocado**:
 
