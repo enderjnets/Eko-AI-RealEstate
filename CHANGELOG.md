@@ -34,6 +34,8 @@ All notable changes to **Eko AI Realtors**.
 - The hero also carries the design's fallback for a stage whose `sticky` did
   not stick — measured by injecting the exact CSS that broke this page once:
   without it the stage runs away to −878/−1755/−2808px, with it it holds at 0.
+  It recovers rather than prevents: the check can only run once the reader is
+  40px into the hero, so a broken stage is briefly unpinned before it engages.
 - The stage is sized in `svh` rather than `dvh`, so a phone toolbar folding
   mid-scroll no longer resizes the film under the reader.
 - `contain: paint` on the clip reveal, and `:hover` neutralised on touch so a

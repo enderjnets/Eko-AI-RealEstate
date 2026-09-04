@@ -34,6 +34,7 @@ constantes de la v4 y dos mecanismos inventados. Eso es esta tanda.
 
 | # | Motivo | Decisión |
 |---|---|---|
+| 2 | Cierre | Tres correcciones, aplicadas: **(a)** faltaba registrar esta misma consulta; **(b)** 🔴 la reversión del runbook apuntaba a `df8d602`, que es v0.69.0 y **tampoco está desplegada** — una reversión a una versión que nunca salió no revierte nada; el objetivo es el commit que hoy corre en el VPS, y **no lo he leído en esta sesión**, así que va el comando para leerlo, no un SHA adivinado; **(c)** el respaldo del sticky no puede decidir hasta que el visitante ha entrado 40 px en el host, así que «mantiene el encuadre» estaba de más: se recupera en los primeros píxeles, no desde el primero. También recordó que la medición de `svh` en Playwright no prueba nada sobre iOS, porque en escritorio `svh == dvh == lvh`. |
 | 1 | Arranque, antes de escribir el plan | Corrigió tres cosas que cambiaron el plan: **(a)** la capa del menú **no puede vivir dentro del escenario sticky** (`overflow-hidden` + el `will-change:transform` que le pone el respaldo del sticky la convertirían en bloque contenedor de `position:fixed` y la recortarían) — va como hermana de `<main>`; **(b)** los enlaces sociales son **datos**, así que por la regla de esta página van por `NEXT_PUBLIC_*` con su coste de cableado y de despliegue, no escritos en el componente; **(c)** «17,8 MB compiten con el LCP» estaba exagerado — con `preload="auto"` Chrome pide un Range de 1-3 MB, así que `preload="none"` había que **medirlo o cortarlo**. Además: ordenar la fase para que lo especulativo no bloquee lo cierto, y que el respaldo del sticky sin su mutación es decoración. |
 
 ### Lo medido, no recordado
@@ -134,11 +135,19 @@ una auto-auditoría y no es independiente**, igual que en v0.69.0.
 5. `docker compose up -d backend frontend`.
 6. Verificar `/api/v1/health` **por el dominio público** → `0.70.0`.
 
-**Reversión literal**: `git reset --hard df8d602` en el VPS + `docker compose
-build backend frontend` + `up -d` (vuelve a v0.69.0, que tampoco está
-desplegada; para volver a producción tal cual está hoy, `git reset --hard`
-al commit desplegado de v0.68.0). Las tres variables nuevas pueden quedarse en
-el `.env`: sin código que las lea son inertes.
+🔴 **Reversión — el objetivo NO es `df8d602`.** Esa es v0.69.0, que tampoco
+está desplegada: revertir a una versión que nunca salió no devuelve nada al
+estado bueno. El objetivo es **el commit que hoy corre en el VPS**, y en esta
+sesión **no lo he leído**. Antes de desplegar, leerlo y anotarlo aquí:
+
+```
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && git rev-parse HEAD'
+```
+
+y la reversión es `git reset --hard <ese SHA>` + `docker compose build backend
+frontend` + `up -d`, verificando `/api/v1/health` por el dominio. Las tres
+variables nuevas pueden quedarse en el `.env`: sin código que las lea son
+inertes.
 
 **No se despliega sin autorización del dueño en un mensaje aparte.**
 

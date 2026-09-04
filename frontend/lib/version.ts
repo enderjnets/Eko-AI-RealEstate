@@ -35,8 +35,8 @@ export const CHANGELOG: VersionEntry[] = [
         es: "La película del héroe vuelve a usar el motor del propio diseño. La cabeza lectora sigue al scroll a dos velocidades en vez de una tasa recalculada cada fotograma, las secciones aparecen al entrar en pantalla y no una pantalla antes, y el desenfoque se salta en pantallas táctiles, donde más cuesta y menos se nota.",
       },
       {
-        en: "The film keeps its frame even where the browser refuses to pin it, and no longer resizes under the reader when a phone's toolbar folds mid-scroll.",
-        es: "La película mantiene su encuadre incluso donde el navegador se niega a fijarla, y ya no se redimensiona bajo el lector cuando la barra del móvil se pliega a mitad de scroll.",
+        en: "The film recovers its frame within the first pixels of scroll even where the browser refuses to pin it, and no longer resizes under the reader when a phone's toolbar folds mid-scroll.",
+        es: "La película recupera su encuadre en los primeros píxeles de scroll incluso donde el navegador se niega a fijarla, y ya no se redimensiona bajo el lector cuando la barra del móvil se pliega a mitad de scroll.",
       },
     ],
   },
