@@ -8,7 +8,7 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ## 🔵 EN CURSO — v0.69.0 · la landing pasa al diseño v6 (el héroe es una película guiada por el scroll)
 
-Rama `feat/landing-v6` desde `f07b719`. Origen: carpeta `deploy-v6` del proyecto
+Rama `feat/landing-v6` desde `f07b719` — commit **`d5c492b`**, en `origin`. Origen: carpeta `deploy-v6` del proyecto
 de Claude Design (`04db33bc…`), descargada por el dueño a `~/Downloads/deploy-v6`
 (la MCP `claude_design` pide `/design-login`; se trabajó desde la copia local,
 que trae exactamente los ficheros que el dueño nombró).
@@ -17,6 +17,7 @@ que trae exactamente los ficheros que el dueño nombró).
 
 | # | Motivo | Decisión |
 |---|---|---|
+| 2 | Cierre | `d5c492b` sólido. Dos cosas antes de pedir autorización, hechas: **(a)** el `html` de la landing seguía crema y el héroe ahora abre oscuro → el rebote superior en un móvil enseñaría una banda crema sobre la película; ahora `html` = noche (`#0F0E0C`, como el diseño) y `body` crema, y el `themeColor` de la raíz pasa a noche. **No medible desde Chrome de escritorio**: decidido y escrito en `globals.css`. **(b)** la reversión del runbook era una frase sin comando → literal abajo, con el árbol del VPS medido. Además: confirmar el commit por `git show --stat` (14 ficheros ✓, árbol limpio ✓), no reintentar ni omitir en silencio la memoria, y no convertir el `docker build` no ejecutado en «compila». |
 | 1 | Arranque: enfoque y riesgos | Enfoque B (portar al React existente, no sustituir la raíz) validado. Añadió 9 puntos, todos aplicados: quitar `autoPlay`/`loop` del `<video>` (el `loop` habría deshecho en silencio el «sin bucle»); leyendas 2–4 con `opacity-0 pointer-events-none` iniciales (sin JS y antes de hidratar se apilaban las cuatro); medir el sticky **y** `scrollWidth`; host en `svh` + stage en `dvh`, y decirlo; Fair Housing sobre las cadenas nuevas; el runbook reconstruye **backend** además de frontend (`APP_VERSION` vive en `config.py`); auditoría + cobertura declarada; desviaciones por escrito; póster a 1280; timers a la limpieza. |
 
 ### Lo medido, no recordado
@@ -69,7 +70,8 @@ Sin migración. `APP_VERSION` cambia en `config.py`, así que **se reconstruyen 
 2. `docker compose build backend frontend` (las `NEXT_PUBLIC_LANDING_*` son build args: **rebuild, no restart**).
 3. `docker compose up -d backend frontend`.
 4. Verificar por el dominio: `/api/v1/health` → `0.69.0`; `curl -sI https://www.denverhomestory.com/landing/hero-poster.jpg` → 200 y `…/hero-plate.jpg` → 404; en el navegador del dueño: la casa se queda fija mientras las cuatro leyendas se turnan y el vídeo avanza con el scroll; el formulario sigue enviando (no se tocó).
-5. **Reversión** = redeploy del commit anterior (`8d0a47a`, v0.68.0) con el mismo runbook; sin datos que revertir. Vecinos `zorros-*`/`blackvolt-*`: intocables.
+5. **Reversión**, literal: en el VPS `cd ~/Eko-AI-RealEstate && git reset --hard 8d0a47a` → `docker compose build backend frontend` (las dos: `APP_VERSION` vuelve a 0.68.0 y el frontend hornea sus build args) → `docker compose up -d backend frontend` → `/api/v1/health` → `0.68.0`. **Árbol del VPS medido el 3-sep**: HEAD `8d0a47a`, 0 ficheros trackeados modificados, 0 sin trackear no ignorados — `reset --hard` no tiene nada vivo que pisar (el `.env` está ignorado y `reset` no toca lo no trackeado). Sin datos que revertir. Vecinos `zorros-*`/`blackvolt-*`: intocables.
+6. **No medido desde aquí** (Chrome de escritorio no lo reproduce): Safari iOS con la barra plegándose (`dvh`/`svh`) y el color del rebote superior; **`docker build` no ejecutado en local**. El proyecto remoto de Claude Design **no se comparó** con la copia local: la MCP pide `/design-login`.
 
 ---
 
