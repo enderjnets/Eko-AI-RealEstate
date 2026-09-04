@@ -59,15 +59,31 @@ export interface StorageLike {
   setItem(key: string, value: string): void;
 }
 
-/** A 32-character hex key. Random, per tab, and deliberately not derived from
- *  anything about the visitor. */
-export function newSessionKey(
-  random: (a: Uint8Array) => Uint8Array = (a) => {
-    globalThis.crypto.getRandomValues(a);
-    return a;
-  },
-): string {
-  const bytes = random(new Uint8Array(16));
+/**
+ * A 32-character hex key. Random, per tab, and deliberately not derived from
+ * anything about the visitor.
+ *
+ * Falls back to `Math.random` when `crypto` is missing, and that fallback is
+ * the point rather than an afterthought. Without it a browser with no `crypto`
+ * throws here, `sessionKey`'s catch calls this again, it throws again, and the
+ * exception escapes the effect and takes the page down — analytics breaking the
+ * marketing page is the one failure this whole feature must not have. The key
+ * only has to be unique among one agency's visits in a day; it authenticates
+ * nothing and guards nothing.
+ */
+export function newSessionKey(random?: (a: Uint8Array) => Uint8Array): string {
+  const fill =
+    random ??
+    ((a: Uint8Array) => {
+      const source = globalThis.crypto;
+      if (source?.getRandomValues) {
+        source.getRandomValues(a);
+        return a;
+      }
+      for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256);
+      return a;
+    });
+  const bytes = fill(new Uint8Array(16));
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 

@@ -160,6 +160,42 @@ que es lo que clasifica el dispositivo, pero `sessionStorage` bloqueado y el
 comportamiento de `sendBeacon` en un WebView de Instagram siguen sin
 comprobarse en hardware. La primera comprobación real es un teléfono.
 
+### Auditoría de F2 — ⚠️ MÍA, NO INDEPENDIENTE
+
+El subagente **murió por límite de sesión** (429, `rate_limit`) sin emitir un
+solo hallazgo: su única salida fue «voy a leer el commit». Así que la auditoría
+la hice yo, sobre mi propio código, y **eso vale menos** — un autor es el peor
+revisor de sus propios supuestos. Queda etiquetada como tal por si conviene
+repetirla con ojos ajenos cuando haya cuota.
+
+**Un hallazgo, y de la peor clase para esta función.** `newSessionKey` llamaba a
+`globalThis.crypto.getRandomValues` sin comprobar que exista. En un navegador
+sin `crypto` lanzaba **dentro** del `try` de `sessionKey`, cuyo `catch` la volvía
+a llamar — lanzaba otra vez, la excepción escapaba del efecto y **se llevaba la
+página por delante**. La analítica nunca puede tumbar la landing que mide.
+Corregido con un respaldo por `Math.random`: la clave solo necesita ser única
+entre las visitas de una agencia en un día, no autentica ni protege nada.
+Mutación O verificada.
+
+**Comprobado y sano, con evidencia:**
+
+| Qué | Resultado |
+|---|---|
+| Recursión de `flush()` | no puede colgarse: `record` vacía a los 25 y cada pasada acorta la cola |
+| Temporizador | `disarm()` en `flush`, en `stop` y en la limpieza |
+| Simetría de listeners | **4 añadidos, 4 quitados** (era el fallo que corregí antes) |
+| Contrato con el servidor | 8 campos enviados, 8 aceptados; **ningún** nombre de evento ni sección fuera del conjunto cerrado |
+| `path` | `pathname`, sin query — y el servidor vuelve a recortarla |
+| `referrer` | se envía entero, se **guarda solo el host** (`referrer_host`) |
+| Honeypot, consentimiento y Turnstile | el diff de `ConsultForm` no toca ni una línea suya |
+| `getTracker()` tras desmontar | devuelve `null`; el envío es `?.`, así que no hace nada |
+
+**Menores aceptados, no corregidos:** dos `focus` en el mismo tick podrían
+emitir dos `form_start` (el servidor usa `COALESCE`, así que la marca de tiempo
+es correcta igual); y `beaconSender` devuelve `true` al entregar a `fetch` sin
+esperar la respuesta — es «entregado», no «recibido», y así lo dice su
+documentación.
+
 ### 🔴 Antes de desplegar el checkpoint A — leer esto
 
 **Mi rama NO contiene la v0.72.0 que se desplegó anoche.** Está apilada sobre

@@ -80,6 +80,22 @@ describe("session key", () => {
     expect(sessionKey(s)).toMatch(/^[0-9a-f]{32}$/);
   });
 
+  it("survives a browser with no crypto at all", () => {
+    // The failure this guards is not a bad key: it is `sessionKey` catching a
+    // throw and calling the thrower again, so the exception escapes the effect
+    // and takes the landing page down with it. Analytics must never be able to
+    // break the page it measures.
+    const real = globalThis.crypto;
+    try {
+      // @ts-expect-error — deliberately removing it
+      delete globalThis.crypto;
+      expect(newSessionKey()).toMatch(/^[0-9a-f]{32}$/);
+      expect(sessionKey(hostileStorage)).toMatch(/^[0-9a-f]{32}$/);
+    } finally {
+      Object.defineProperty(globalThis, "crypto", { value: real, configurable: true });
+    }
+  });
+
   it("survives storage that throws instead of returning null", () => {
     expect(sessionKey(hostileStorage)).toMatch(/^[0-9a-f]{32}$/);
     expect(sessionKey(null)).toMatch(/^[0-9a-f]{32}$/);
