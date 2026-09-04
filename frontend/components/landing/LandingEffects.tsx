@@ -42,13 +42,15 @@
  *     clip cannot loop: it ends on the house and opens inside a different
  *     room (docs/hero-video-procedencia.md), so a loop is a hard cut. The
  *     playhead simply holds on the last frame instead.
- *  2. prefers-reduced-motion: reveals are marked done, drift and parallax
- *     never move, and the video stays parked on its first frame. The captions
- *     still crossfade with the scroll — they ARE the hero's copy, and hiding
- *     three of the four would remove content, not motion — but without the
- *     26px lift. That visitor scrolls the hero over one still frame; it is
- *     the design's at-top composition, static, the same call 54ca7e7 made
- *     for v4.
+ *  2. prefers-reduced-motion stops HALF way, not all the way. Reveals are
+ *     marked done and drift and parallax never move: those are decoration,
+ *     and the self-starting kind of motion that setting exists to stop. The
+ *     film keeps running — it does not animate on its own, it follows the
+ *     reader's own finger, and it is the hero's content rather than an effect
+ *     laid over it; parking it would delete the page's main copy, not its
+ *     motion. deploy-v6 disables nothing but the reveals; the version this
+ *     replaces disabled everything, and left a visitor with Reduce Motion on
+ *     looking at one still frame. Owner's call, 3-sep.
  */
 
 import { useEffect } from "react";
@@ -254,7 +256,7 @@ export function LandingEffects() {
             o = Math.min(fi, fo);
           }
           c.style.opacity = o.toFixed(3);
-          c.style.transform = reduce ? "none" : `translate3d(0,${((1 - o) * 26).toFixed(1)}px,0)`;
+          c.style.transform = `translate3d(0,${((1 - o) * 26).toFixed(1)}px,0)`;
           c.style.pointerEvents = o > 0.5 ? "auto" : "none";
           // Not in the design: opacity 0 leaves the caption's buttons in the
           // Tab order and in the accessibility tree, so a keyboard user would
@@ -265,7 +267,7 @@ export function LandingEffects() {
         if (bar) bar.style.width = `${(p * 100).toFixed(2)}%`;
         const v = host.querySelector<Vid>("video[data-hero-video]");
         if (!v || !v.duration || isNaN(v.duration)) return;
-        if (reduce || r.bottom < -60 || r.top > vh + 60) {
+        if (r.bottom < -60 || r.top > vh + 60) {
           if (!v.paused) v.pause();
           v.__target = null;
           return;
