@@ -36,6 +36,7 @@ from app.models import (
 )
 from app.models.lead import LeadIntent, LeadStatus, PreferredChannel
 from app.services.followups import AUTOMATED_PREFERENCES, enqueue_after_call
+from app.services.lead_events import record
 from app.services.scoring import rescore_lead
 
 log = logging.getLogger(__name__)
@@ -232,6 +233,11 @@ async def register_call(
         consent_recorded = _record_verbal_consent(lead, who=logged_by, when=now)
         consent_refused = already_opted_out
 
+    # Whoever pressed the button owns every status change below. Set once,
+    # before any of them, because the history listener reads it during the
+    # flush and there are five different branches that can move the lead.
+    lead._status_actor = logged_by or "office"
+
     follow_up: FollowUp | None = None
     cancelled = 0
 
@@ -275,6 +281,19 @@ async def register_call(
     # Rescore inside the transaction so the console's next screen — the
     # property proposals — sees the lead the call actually described.
     score = await rescore_lead(lead, db, commit=False)
+
+    # The call itself, separate from any status change it caused. A call that
+    # moved nothing — no answer, voicemail — leaves no `status_changed`, and
+    # "we rang them and nobody picked up" is precisely the fact the follow-up
+    # report is missing today.
+    record(
+        db,
+        lead,
+        "call_logged",
+        actor=logged_by,
+        at=now,
+        meta={"outcome": outcome.value, "call_log_id": call.id},
+    )
 
     await db.commit()
     return CallResult(

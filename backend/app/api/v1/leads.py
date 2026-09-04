@@ -13,13 +13,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.auth import current_email
+from app.api.v1.auth import current_email, current_role
 from app.db.base import get_db
 from app.models import (
     CallLog,
     CallOutcome,
     Conversation,
     Lead,
+    LeadEvent,
     LeadIntent,
     LeadStatus,
     Message,
@@ -516,6 +517,7 @@ async def post_suggestions(
 async def patch_lead(
     lead_id: int,
     body: LeadPatch,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> LeadOut:
     """Apply a partial update. Only fields present in the request are written.
@@ -547,6 +549,13 @@ async def patch_lead(
                 "and the lead would stop matching anything"
             ),
         )
+
+    # Set before the assignment below, because the history listener reads it
+    # during the flush that `commit()` triggers. A transient attribute, never a
+    # column: who moved a lead belongs in `lead_events`, which is append-only,
+    # and not in a field on the lead that the next edit would overwrite.
+    if "status" in updates:
+        row._status_actor = current_email(request) or "office"
 
     for field, value in updates.items():
         setattr(row, field, value)
@@ -759,3 +768,56 @@ async def list_calls(
         )
     ).unique().scalars().all()
     return [CallOut.model_validate(r) for r in rows]
+
+
+class LeadEventOut(BaseModel):
+    """One line of a lead's timeline."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    type: str
+    at: datetime
+    actor: str | None = None
+    from_status: str | None = None
+    to_status: str | None = None
+    meta: dict[str, Any] | None = None
+
+
+@router.get("/{lead_id}/events", response_model=list[LeadEventOut])
+async def list_lead_events(
+    lead_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> list[LeadEventOut]:
+    """The lead's history, oldest first.
+
+    Ascending, unlike the calls above: this is read as a story, and a story
+    runs forwards. `id` breaks ties because several events can share a
+    timestamp — a status change and the call that caused it are written in the
+    same flush.
+
+    **The recording URL is admin-only.** It is a link to a customer's voice,
+    and the rest of this object is a timeline anybody in the office needs.
+    Stripping the one field is what lets the timeline stay open.
+    """
+    rows = (
+        await db.execute(
+            select(LeadEvent)
+            .where(LeadEvent.lead_id == lead_id)
+            .order_by(LeadEvent.at.asc(), LeadEvent.id.asc())
+        )
+    ).scalars().all()
+
+    is_admin = current_role(request) == "admin"
+    out: list[LeadEventOut] = []
+    for row in rows:
+        event = LeadEventOut.model_validate(row)
+        if not is_admin and event.meta:
+            # Safe to mutate: measured, not assumed. `model_validate` copies
+            # the dict rather than referencing the row's own — `out.meta is
+            # row.meta` is False — so popping here cannot reach the database.
+            # Worth stating because the obvious fear is the opposite, and a
+            # permission check that deletes data would be worse than none.
+            event.meta.pop("recording_url", None)
+        out.append(event)
+    return out

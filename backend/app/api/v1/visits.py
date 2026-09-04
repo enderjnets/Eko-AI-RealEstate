@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -18,6 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1._validators import trimmed, trimmed_or_none
+from app.api.v1.auth import current_email
 from app.db.base import get_db
 from app.models import (
     AgentSettings,
@@ -36,8 +38,39 @@ from app.services.calendar_cal import (
     ensure_recordable,
     list_available_slots,
 )
+from app.services.lead_events import record
 from app.services.tenant_context import get_org_id
 from app.services.timezones import resolve_zone
+
+
+def _purpose_value(visit: Any) -> str | None:
+    purpose = getattr(visit, "purpose", None)
+    if purpose is None:
+        return None
+    return getattr(purpose, "value", None) or str(purpose)
+
+
+def _appointment_event(db: AsyncSession, lead: Any, visit: Visit, via: str) -> None:
+    """One shape for the three places an appointment can be born.
+
+    `via` is the part a report cannot infer afterwards: an appointment the
+    voice agent booked while the caller was on the line and one an advisor
+    typed in later look identical in the visits table, and they say completely
+    different things about whether the automation is working.
+    """
+    record(
+        db,
+        lead,
+        "appointment_set",
+        meta={
+            "visit_id": visit.id,
+            "purpose": _purpose_value(visit),
+            "scheduled_at": visit.scheduled_at.isoformat() if visit.scheduled_at else None,
+            "assigned_email": visit.assigned_email,
+            "via": via,
+        },
+    )
+
 
 log = logging.getLogger(__name__)
 
@@ -532,6 +565,8 @@ async def book_slot(
         assigned_email=target.agent_email,
     )
     db.add(visit)
+    await db.flush()
+    _appointment_event(db, lead, visit, "panel")
     await db.commit()
     await db.refresh(visit)
 
@@ -585,6 +620,11 @@ async def cancel_visit(
             "otherwise the visit can never be cancelled from anywhere."
         ),
     ),
+    # A dependency, not a `Request` parameter: this handler is also called
+    # directly by two tests that assert a visit can always be cancelled,
+    # and a required positional argument broke both. FastAPI fills it in
+    # over HTTP; a direct call gets None and the actor falls back.
+    actor: str | None = Depends(current_email),
     db: AsyncSession = Depends(get_db),
 ) -> VisitOut:
     visit = (await db.execute(select(Visit).where(Visit.id == visit_id))).scalar_one_or_none()
@@ -629,6 +669,24 @@ async def cancel_visit(
         )
     if reason and not visit.notes:
         visit.notes = f"Cancelled: {reason}"
+    # `getattr` throughout, not attribute access: a visit's lead is nullable by
+    # design — the calendar holds blocks that belong to nobody — and this
+    # handler is also reached with partial objects from the tests that assert a
+    # visit can always be cancelled. Analytics must not be what makes a
+    # cancellation fail.
+    lead_id = getattr(visit, "lead_id", None)
+    lead = await db.get(Lead, lead_id) if lead_id else None
+    record(
+        db,
+        lead,
+        "appointment_cancelled",
+        actor=actor or "office",
+        meta={
+            "visit_id": getattr(visit, "id", None),
+            "purpose": _purpose_value(visit),
+            "reason": reason,
+        },
+    )
     await db.commit()
     await db.refresh(visit)
 
@@ -744,6 +802,12 @@ async def create_manual_event(
         notes=body.notes,
     )
     db.add(visit)
+    await db.flush()
+    # `lead_id` is nullable here: the calendar holds blocks that belong to
+    # nobody — a viewing for a walk-in, an hour held for the office. There is
+    # no history to attach those to, and `record` says so and moves on.
+    lead = await db.get(Lead, body.lead_id) if body.lead_id else None
+    _appointment_event(db, lead, visit, "manual")
     await db.commit()
     await db.refresh(visit)
     return VisitOut.model_validate(visit)

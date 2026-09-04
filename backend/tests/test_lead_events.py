@@ -247,3 +247,107 @@ async def test_an_event_with_no_org_anywhere_is_dropped_rather_than_raised() -> 
             lead = Lead(phone=f"{MARKER}9010", intent=LeadIntent.BUY, status=LeadStatus.NEW)
             assert record(db, lead, "created") is None
 
+
+
+# ── The timeline endpoint ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_timeline_reads_forwards_and_hides_the_recording_from_staff(
+    monkeypatch,
+) -> None:
+    """Two claims in one pass.
+
+    The order: a history read as a story runs oldest first, unlike the calls
+    list next to it, which is a worklist and runs newest first.
+
+    The redaction: `recording_url` is a link to a customer's voice. Everyone in
+    the office needs the timeline; not everyone needs the recording. Stripping
+    the one field is exactly what lets the rest stay open — the alternative is
+    an admin-only timeline, which means nobody looks at it.
+    """
+    from httpx import ASGITransport, AsyncClient
+
+    from app.api.v1 import auth
+    from app.main import app
+
+    async with get_bypass_session_factory()() as db:
+        lead = Lead(
+            org_id=ORG_A,
+            phone=f"{MARKER}9011",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+        )
+        db.add(lead)
+        await db.commit()
+        lead_id = lead.id
+        record(
+            db,
+            lead,
+            "call_inbound",
+            actor="vapi",
+            meta={"duration_seconds": 26.832, "recording_url": "https://x/private.wav"},
+        )
+        await db.commit()
+
+    async def _as(role: str) -> list[dict]:
+        monkeypatch.setattr(auth, "current_role", lambda request: role)
+        monkeypatch.setattr("app.api.v1.leads.current_role", lambda request: role)
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as client:
+            resp = await client.get(f"/api/v1/leads/{lead_id}/events")
+            assert resp.status_code == 200, resp.text
+            return resp.json()
+
+    try:
+        rows = await _as("member")
+        assert [r["type"] for r in rows] == ["created", "call_inbound"], "oldest first"
+        assert "recording_url" not in rows[1]["meta"]
+        # The rest of the metadata is not collateral damage of the redaction.
+        assert rows[1]["meta"]["duration_seconds"] == 26.832
+
+        rows = await _as("admin")
+        assert rows[1]["meta"]["recording_url"] == "https://x/private.wav"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_redacting_the_recording_does_not_delete_it(monkeypatch) -> None:
+    """The redaction must not reach the database.
+
+    It does not today: `model_validate` copies the dict, measured directly —
+    `out.meta is row.meta` is False — so the pop in the handler touches only
+    the response. This test does not distinguish popping from rebuilding, and
+    that is fine: what it guards is the shape where somebody hands the model
+    the row's own dict, and the redaction quietly starts deleting recordings
+    for every non-admin who opens a lead."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    async with get_bypass_session_factory()() as db:
+        lead = Lead(
+            org_id=ORG_A,
+            phone=f"{MARKER}9012",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+        )
+        db.add(lead)
+        await db.commit()
+        lead_id = lead.id
+        record(db, lead, "call_inbound", meta={"recording_url": "https://x/keep.wav"})
+        await db.commit()
+
+    try:
+        monkeypatch.setattr("app.api.v1.leads.current_role", lambda request: "member")
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as client:
+            await client.get(f"/api/v1/leads/{lead_id}/events")
+
+        stored = await _events(lead_id)
+        assert stored[-1].meta["recording_url"] == "https://x/keep.wav"
+    finally:
+        await _cleanup()

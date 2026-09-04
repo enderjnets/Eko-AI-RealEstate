@@ -2,6 +2,23 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.74.0] — 2026-09-04
+
+### Added
+- **A lead keeps a history** (`lead_events`, migration 052). Every status change
+  with its actor, every inbound call with duration, ended reason, recording and
+  cost, every appointment with *how* it was booked — `voice`, `panel` or
+  `manual`. `GET /leads/{id}/events` returns the timeline oldest-first; the
+  recording URL is admin-only.
+- VAPI's `analysis.summary` is stored on the conversation instead of parsed and
+  discarded.
+
+### Fixed
+- **Duration is computed, not read.** Two live VAPI calls were measured before
+  this was written: the `Call` object carries no `durationSeconds` at all, which
+  the plan had assumed. It is `endedAt - startedAt`, and a negative result is
+  dropped rather than stored.
+
 ## [0.73.1] — 2026-09-04
 
 ### Fixed

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.73.1";
+export const CURRENT_VERSION = "0.74.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.74.0",
+    date: "2026-09-04",
+    title: {
+      en: "A lead now remembers what happened to it",
+      es: "Un lead ahora recuerda lo que le paso",
+    },
+    changes: [
+      {
+        en: "A lead now keeps a history. Until today it had a status and nothing else: whether it moved from new to qualified in an hour or in three weeks, whether a person moved it or a phone call did, whether anybody ever rang back - none of it was recorded anywhere. Every status change is now stored with who made it and when, every inbound call with how long it lasted, why it ended and what it cost, and every appointment with whether the voice agent booked it live or an advisor typed it in afterwards. The lead's page will show it as a timeline; the recording of a call stays admin-only.",
+        es: "Un lead ahora guarda su historia. Hasta hoy tenia un estado y nada mas: si paso de nuevo a cualificado en una hora o en tres semanas, si lo movio una persona o una llamada, si alguien devolvio el telefono alguna vez, no quedaba en ninguna parte. Ahora cada cambio de estado se guarda con quien lo hizo y cuando, cada llamada entrante con lo que duro, por que termino y lo que costo, y cada cita con si la reservo el agente de voz en directo o la escribio despues un asesor. La ficha del lead lo mostrara como una linea de tiempo; la grabacion de una llamada sigue siendo solo para administradores.",
+      },
+    ],
+  },
   {
     version: "0.73.1",
     date: "2026-09-04",

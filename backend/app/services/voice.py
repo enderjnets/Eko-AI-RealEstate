@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services._common import clip_identifier
+from app.services.lead_events import record
 from app.services.lead_fields import storable_text
 from app.services.timezones import resolve_zone
 
@@ -614,6 +615,26 @@ async def handle_tool_call(
                 assigned_email=target.agent_email,
             )
             db.add(visit)
+            await db.flush()
+            # The one appointment nobody typed in: the caller was on the line
+            # and the agent booked it. `via` is what separates that from an
+            # advisor entering it afterwards, and it is the whole measure of
+            # whether the voice agent is doing its job.
+            record(
+                db,
+                lead,
+                "appointment_set",
+                actor="vapi",
+                meta={
+                    "visit_id": visit.id,
+                    "purpose": getattr(activity, "value", None) or str(activity),
+                    "scheduled_at": booking.scheduled_at.isoformat()
+                    if booking.scheduled_at
+                    else None,
+                    "assigned_email": target.agent_email,
+                    "via": "voice",
+                },
+            )
             await db.commit()
             await db.refresh(visit)
 
