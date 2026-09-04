@@ -9,6 +9,29 @@
 
 ---
 
+## 0. Estado de ejecución (al 4-sep-2026)
+
+| Fase | Estado |
+|---|---|
+| F1 — eventos de la landing: esquema + endpoint [CRÍTICA] | ✅ hecha, `b53b539` |
+| F2 — el tracker en la landing | ✅ hecha, `0fe036c` |
+| **Checkpoint A** | ✅ **desplegado como 0.73.0**, `bf0476c`, migración `051` aplicada |
+| F3 — historial del lead y llamadas de voz [CRÍTICA] | siguiente |
+| F4 … F9 | sin empezar |
+
+**Verificado en producción**, no en local: baliza válida `204` con fila escrita;
+tipo desconocido, sesión mal formada y JSON roto → `400` sin escribir; el
+presupuesto del formulario de captura intacto; **`country=US` llegó**, lo que
+resuelve la incógnita §6.6 — las cabeceras de Cloudflare atraviesan el túnel y
+el rewrite de Next. `region` y `city` siguen vacías: falta el clic de §7.4.
+
+Las desviaciones respecto a lo escrito aquí están anotadas **en su fase**, no en
+esta tabla, para que quien lea F1 vea por qué el código no dice lo que decía el
+plan. Son cuatro: el tope diario de sesiones, el cuerpo de 16 KB, el `400` en
+vez de `422`, y el `session_id` sin `pattern`.
+
+---
+
 ## 1. Objetivo y alcance
 
 **Objetivo.** Que `/analytics` responda, con números medidos y no inferidos, a la
@@ -183,11 +206,17 @@ cada uno con su bump; la autorización de cada uno la da el dueño en un mensaje
 
 | Checkpoint | Fases | Versión | Qué empieza a acumularse |
 |---|---|---|---|
-| A | F1 + F2 | 0.72.0 | sesiones y eventos de la landing |
-| B | F3 | 0.73.0 | historial del lead, llamadas con duración |
-| C | F4 + F5 | 0.74.0 | citas realizadas, cierres, UTM por red |
-| D | F6 | 0.75.0 | vistas de YouTube por vídeo |
-| E | F7 + F8 | 0.76.0 | la página que lo enseña |
+| A | F1 + F2 | ~~0.72.0~~ → **0.73.0** ✅ **desplegado 4-sep** | sesiones y eventos de la landing |
+| B | F3 | ~~0.73.0~~ → **0.74.0** | historial del lead, llamadas con duración |
+| C | F4 + F5 | ~~0.74.0~~ → **0.75.0** | citas realizadas, cierres, UTM por red |
+| D | F6 | ~~0.75.0~~ → **0.76.0** | vistas de YouTube por vídeo |
+| E | F7 + F8 | ~~0.76.0~~ → **0.77.0** | la página que lo enseña |
+
+> **Renumerado el 4-sep.** Mientras esta rama se escribía, producción publicó
+> su propia **0.72.0** (la puerta de la marca de agua leía el brillo de la foto,
+> otra sesión). El plan reservaba ese número para el checkpoint A, así que toda
+> la columna corre un escalón. No es un cambio de alcance: es que una rama
+> paralela llegó antes al numerador.
 
 El orden es el de la urgencia del dueño («pronto empezaremos a recibir visitas»): primero
 los colectores, la página al final, cuando haya algo que pintar.
@@ -252,7 +281,7 @@ disponibilidad del formulario de captura, que es el eslabón que produce leads.
     solo si nulo, `event_count += len`.
 - `backend/app/api/v1/public.py`:
   - Constantes propias: `EVENTS_PER_IP_LIMIT = 60`, `EVENTS_PER_IP_WINDOW = 600.0`,
-    `EVENTS_GLOBAL_LIMIT = 3000`, `EVENTS_GLOBAL_WINDOW = 600.0`, `EVENTS_MAX_BODY = 8_192`,
+    `EVENTS_GLOBAL_LIMIT = 3000`, `EVENTS_GLOBAL_WINDOW = 600.0`, `EVENTS_MAX_BODY = 16_384`
     `EVENTS_MAX_PER_BATCH = 25`, contadores separados (`_ev_hits`, `_ev_global_hits`) con
     el mismo mecanismo acotado (`MAX_TRACKED_IPS`); `reset_rate_limits()` los vacía también.
   - `class LandingEventIn(BaseModel)`: `t: str` (∈ `LANDING_EVENT_TYPES`), `meta: dict[str,
@@ -263,7 +292,7 @@ disponibilidad del formulario de captura, que es el eslabón que produce leads.
     añadir claves**), `referrer: str | None ≤ 500`, `events: list[LandingEventIn]` (1..25).
   - `@router.post("/landing", status_code=204)`: orden fijo — (1) `_ev_ip_limited` → 429;
     (2) `raw = await request.body()`; `len(raw) > EVENTS_MAX_BODY` → 413; `json.loads` →
-    400; `LandingBatchIn.model_validate` → 422 (el cuerpo llega como `text/plain` desde
+    400; `LandingBatchIn.model_validate` → **400** (el cuerpo llega como `text/plain` desde
     `sendBeacon`, por eso no se usa el parseo de Pydantic del cuerpo); (3) `_ev_global_limited`
     → 429; (4) `if not get_settings().LANDING_EVENTS_ENABLED: return` (204, nada escrito);
     (5) `org_id = await webhook_org_or_refuse(CHANNEL_WEB, body.form, fallback_when_unmapped=not
@@ -271,12 +300,28 @@ disponibilidad del formulario de captura, que es el eslabón que produce leads.
     `set_org_id(org_id)`; (6) upsert de sesión: `INSERT … ON CONFLICT (org_id, session_key)
     DO NOTHING` + `SELECT`, `merge_session`, `add_all(LandingEvent(... at=now ...))`
     (**hora del servidor**, no la del cliente), `commit`. Respuesta siempre 204.
-  - `capture` (`/leads`): `PublicLeadIn.session_id: str | None` (misma regex). Tras el
+  - `capture` (`/leads`): `PublicLeadIn.session_id: str | None`, **`max_length=64`
+    y deliberadamente SIN `pattern`**. El plan pedía «la misma regex», y eso era
+    un error: un `pattern` en Pydantic devuelve 422 y **rechaza el formulario
+    entero**, así que una clave de sesión corrupta costaría el lead. La forma se
+    comprueba después, con `_SESSION_KEY.fullmatch`, y si no encaja sólo se
+    pierde el enlace con la visita. Un lead vale más que su atribución. Tras el
     `commit` del lead: `UPDATE landing_sessions SET lead_id=:lead, form_submitted_at=now
     WHERE org_id=:org AND session_key=:sid AND lead_id IS NULL` (idempotente; en
     `duplicate` no se toca). **No entra en `ATTRIBUTION_KEYS`.**
 - `backend/app/config.py` + `.env.example` + `docker-compose.yml` (bloque `backend:`):
-  `LANDING_EVENTS_ENABLED: bool = True`, `LANDING_EVENTS_RETENTION_DAYS: int = 90`.
+  `LANDING_EVENTS_ENABLED: bool = True`, `LANDING_EVENTS_RETENTION_DAYS: int = 90`,
+  **`LANDING_SESSIONS_PER_DAY: int = 20000`** (añadido al ejecutar, ver abajo).
+
+  > **Añadido durante F1, y el plan lo necesitaba.** La auditoría de cierre
+  > encontró un hallazgo BLOQUEANTE que este documento no preveía: el
+  > limitador acota la **velocidad**, no el **total**. Con 60 balizas por IP y
+  > ventana, **una sola dirección puede crear 8.640 filas permanentes al día**,
+  > y ninguna de ellas caduca. La retención de `LANDING_EVENTS_RETENTION_DAYS`
+  > no lo tapa: borra eventos, no sesiones. El tope va sobre la **creación de
+  > sesiones**, por agencia y por día local — un visitante ya conocido sigue
+  > pudiendo emitir, así que una avalancha no ciega la medición de quien ya
+  > estaba leyendo.
 - `backend/app/services/landing_analytics.py::purge_landing_events(db)`: `DELETE FROM
   landing_events WHERE at < now() - retention` (las sesiones se conservan). Se invoca
   como sentencia adicional del `try` de `_llm_monitor_loop` (`main.py:468-500`), el
@@ -292,8 +337,12 @@ calcando `test_public_capture.py` con `ASGITransport` y `reset_rate_limits` auto
 1. Lote válido → 204, 1 sesión, N eventos, `source` derivado, `at` = hora servidor.
 2. Segundo lote misma `session` → misma fila; `max_scroll_pct` no baja; `sections_viewed`
    es unión; `cta_clicks` suma; `event_count` suma.
-3. Tipo desconocido / 26 eventos / `session` mal formada → 422 y **nada** escrito.
-4. Cuerpo > 8 KB → 413; JSON inválido → 400; `text/plain` válido → 204.
+3. Tipo desconocido / 26 eventos / `session` mal formada → **400** y **nada**
+   escrito. Escrito como 422 en el plan y cambiado al implementarlo: un 422
+   describe una entidad que el cliente puede corregir, y aquí no hay cliente
+   que lea la respuesta — una baliza es un disparo sin retorno. Un cuerpo mal
+   formado es una petición mal formada.
+4. Cuerpo > 16 KB → 413; JSON inválido → 400; `text/plain` válido → 204.
 5. **Separación de presupuestos**: agotar `EVENTS_PER_IP_LIMIT` → 429 en `/landing` **y
    un POST a `/leads` sigue pasando**. (Mutación: reutilizar `_ip_limited` → rojo.)
 6. Cabeceras `cf-ipcountry: US`, `cf-region-code: CO`, `cf-ipcity: Denver` → columnas;
@@ -694,6 +743,24 @@ número a número.
   `055_analytics_indexes`** solo si `EXPLAIN` sobre la base de test con 10 k filas
   sintéticas lo justifica (criterio: > 200 ms por sección). Si no hace falta, se dice.
 
+- 🔴 **Requisito previo que este plan no tenía: una tabla de agregados diarios.**
+  `landing_events` se purga a los 90 días y `landing_sessions` **no se purga
+  nunca**, porque hoy no puede: cada número del embudo se calcula sumando las
+  filas vivas, así que borrar sesiones viejas **reescribiría el denominador de
+  todos los informes pasados** — «en marzo convertimos el 4 %» pasaría a decir
+  otra cosa el día que marzo se borre. Es la misma razón por la que el modelo ya
+  prohíbe sumar eventos para un informe.
+
+  La salida es congelar el pasado: una tabla `analytics_daily` (`org_id`, `day`
+  local, y las cifras del embudo de ese día) escrita una vez por día cerrado y
+  nunca recalculada. Con ella, un informe lee agregados para los días cerrados y
+  filas vivas sólo para el día en curso, y **entonces sí** se pueden retener
+  sesiones por antigüedad sin cambiar la historia.
+
+  **Mientras no exista, el tope diario de sesiones de F1 es lo único que acota
+  el crecimiento de esa tabla**, y hay que decirlo en voz alta: son dos piezas
+  de la misma decisión, no dos tareas sueltas.
+
 **Tests** (`test_analytics_v2.py`, con valores): sembrar bajo org A: 4 sesiones (2
 `engaged`, 1 con `tel_click`, 1 con `form_submit` enlazada a un lead), 3 leads (uno con
 `utm_source=tiktok`, uno `direct`, uno de voz), mensajes (1 humano, 1 IA, 1 `fallback`, 1
@@ -767,6 +834,10 @@ metric dictionary and status`.
 ---
 
 ## 5. Backlog (no justifican fase)
+
+- **Retención de `landing_sessions`**, que hoy no se puede hacer sin mentir
+  sobre el pasado. Depende de la tabla de agregados diarios descrita en F7; sin
+  ella, borrar una sesión vieja cambia un informe ya dado por bueno.
 
 - H11: unificar la definición de «cerrado» entre `console.py:40` (incluye `PAUSED`) y la
   analítica; F7 define `close_rate = won/(won+lost)` y lo etiqueta así, pero la consola
