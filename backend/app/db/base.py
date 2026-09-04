@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from sqlalchemy import Enum as SqlEnum
-from sqlalchemy import event, text
+from sqlalchemy import event, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -132,6 +132,65 @@ def _stamp_org_id(session: Session, flush_context: Any, instances: Any) -> None:
     for obj in session.new:
         if hasattr(type(obj), "org_id") and getattr(obj, "org_id", None) is None:
             obj.org_id = org_id
+
+
+@event.listens_for(Session, "before_flush")
+def _record_lead_history(session: Session, flush_context: Any, instances: Any) -> None:
+    """Turn a change to `Lead.status` into a row nobody has to remember to write.
+
+    Registered after `_stamp_org_id`, but not relying on that: SQLAlchemy runs
+    `before_flush` listeners in registration order today, and a history that is
+    correct only because of an ordering detail is a history that breaks the
+    first time somebody adds a third listener. `record()` resolves the org from
+    the context var when the lead has none yet, which is the case for every lead
+    created inside a request.
+
+    Only `status` is watched here. Everything else — calls, appointments, deals
+    — is recorded at the call site, because those carry an actor and a reason
+    that a database hook cannot see.
+    """
+    # Imported here, not at module scope: `app.models.lead` imports `Base` from
+    # this module, and hoisting either name makes the import circular.
+    from app.models.lead import Lead
+    from app.services.lead_events import record
+
+    # Materialised before iterating, defensively: `record()` adds to the same
+    # session we are walking. SQLAlchemy tolerates it today — removing the
+    # `list()` does not turn any test red — but "the collection I am iterating
+    # is also the one I am appending to" is not a property worth depending on
+    # across versions, and the copy costs nothing at these sizes.
+    for obj in list(session.new):
+        if isinstance(obj, Lead):
+            record(session, obj, "created", to_status=_status_value(obj.status))
+
+    for obj in list(session.dirty):
+        if not isinstance(obj, Lead):
+            continue
+        history = inspect(obj).attrs.status.history
+        if not history.has_changes():
+            continue
+        before = history.deleted[0] if history.deleted else None
+        record(
+            session,
+            obj,
+            "status_changed",
+            actor=getattr(obj, "_status_actor", None),
+            from_status=_status_value(before),
+            to_status=_status_value(obj.status),
+            meta=getattr(obj, "_status_meta", None),
+        )
+
+
+def _status_value(status: Any) -> str | None:
+    """The enum's value, or the plain string if it is already one.
+
+    Both sides go through this. `history.deleted[0]` is the enum instance, and
+    writing `str(enum)` there would store `LeadStatus.NEW` instead of `new` —
+    which reads fine in a log and groups into nothing in a report.
+    """
+    if status is None:
+        return None
+    return getattr(status, "value", None) or str(status)
 
 
 @event.listens_for(Session, "after_begin")

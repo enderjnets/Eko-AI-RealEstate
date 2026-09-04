@@ -47,6 +47,7 @@ from app.services.classifier import classify_intent
 from app.services.delivery import schedule_retry
 from app.services.fair_housing import find_violations
 from app.services.i18n import detect_language, language_instruction, pick_supported_language
+from app.services.lead_events import record
 from app.services.lead_fields import (
     merge_budget,
     storable_budget,
@@ -645,7 +646,48 @@ async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | b
     if report.structured:
         _apply_voice_structured(lead, report.structured)
     await rescore_lead(lead, db, commit=False)
+
+    # The call's own summary, kept once. VAPI's analysis was parsed and thrown
+    # away until now, so "what did they want" existed only as a transcript
+    # somebody had to read. `not conv.summary` because a redelivered report
+    # must not overwrite a summary a person may have since edited.
+    if report.summary and not conv.summary:
+        conv.summary = report.summary[:5000]
+
     await db.commit()
+
+    # ── 6. The history row, AFTER the call is safely stored ──────────────────
+    #
+    # Deliberately after the commit above and inside its own try. This is
+    # analytics; the four lines before it are a customer's phone call. A NOT
+    # NULL this code did not anticipate, or a policy that refuses the row,
+    # would otherwise leave the session in PendingRollback and take the
+    # transcript with it — which is exactly how a transcript was lost here
+    # once already, and the comment forty lines up is the scar.
+    if not already_ingested:
+        try:
+            record(
+                db,
+                lead,
+                "call_inbound",
+                actor="vapi",
+                at=report.started_at,
+                meta={
+                    "call_id": report.call_id,
+                    "duration_seconds": report.duration_seconds,
+                    "ended_reason": report.ended_reason,
+                    "recording_url": report.recording_url,
+                    "cost": report.cost,
+                    "conversation_id": conv.id,
+                },
+            )
+            await db.commit()
+        except Exception as exc:  # noqa: BLE001 - the call is already safe
+            log.warning("Could not record the call in the lead's history: %s", exc)
+            try:
+                await db.rollback()
+            except Exception:
+                log.warning("Rollback after the history failure also failed")
 
     log.info(
         "Voice call ingested: lead=%d call=%s turns_stored=%d intent=%s%s",

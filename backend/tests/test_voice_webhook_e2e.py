@@ -247,3 +247,55 @@ async def test_the_assistant_apologises_instead_of_quoting_a_wrong_hour(
     assert "call you back" in spoken.lower(), spoken
     # And nothing that looks like a time was offered.
     assert "AM" not in spoken and "PM" not in spoken, spoken
+
+
+@pytest.mark.asyncio
+async def test_a_broken_history_does_not_cost_us_the_call(
+    database_url: str, monkeypatch
+) -> None:
+    """The rule this phase is built around: analytics must not be able to take
+    down the thing it measures.
+
+    A lead's history is a nice-to-have. A caller's transcript is the product.
+    If recording the event raises — a column this code did not anticipate, a
+    policy that refuses the row — the call must still be there afterwards.
+    This file's own history is the argument: a transcript was lost here once
+    already to an exception raised mid-write.
+    """
+    from app.services import conversation as conv_module
+
+    def _explode(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("the history table is on fire")
+
+    monkeypatch.setattr(conv_module, "record", _explode)
+
+    sfx = uuid.uuid4().hex[:8]
+    phone = f"+1303555{sfx[:4]}"
+    call_id = f"call_{sfx}"
+    try:
+        async with await _http_client() as client:
+            resp = await client.post("/api/v1/webhooks/voice", json=_eocr(call_id, phone))
+        assert resp.status_code == 200, resp.text
+
+        engine = create_async_engine(database_url, echo=False, future=True)
+        Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+        try:
+            async with Session() as s:
+                conv = (
+                    await s.execute(
+                        select(Conversation).where(
+                            Conversation.external_thread_id == call_id
+                        )
+                    )
+                ).scalar_one_or_none()
+                assert conv is not None, "the conversation must survive a broken history"
+                turns = (
+                    await s.execute(
+                        select(Message).where(Message.conversation_id == conv.id)
+                    )
+                ).scalars().all()
+                assert turns, "and so must the transcript"
+        finally:
+            await engine.dispose()
+    finally:
+        await _cleanup(database_url, phone)

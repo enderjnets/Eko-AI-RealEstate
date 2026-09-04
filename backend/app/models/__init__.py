@@ -30,6 +30,7 @@ from app.models.landing import (
     LandingSession,
 )
 from app.models.lead import Lead, LeadIntent, LeadStatus
+from app.models.lead_event import LEAD_EVENT_TYPES, LeadEvent
 from app.models.message import (
     Message,
     MessageDirection,
@@ -78,7 +79,9 @@ __all__: list[str] = [
     "FollowUp",
     "FollowUpKind",
     "FollowUpStatus",
+    "LEAD_EVENT_TYPES",
     "LandingEvent",
+    "LeadEvent",
     "LandingSession",
     "LANDING_EVENT_TYPES",
     "LANDING_SECTIONS",

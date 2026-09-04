@@ -72,6 +72,15 @@ class VoiceCallReport:
     turns: list[tuple[str, str]]  # (role, text); role ∈ {"user","agent"}
     structured: dict[str, Any] = field(default_factory=dict)
 
+    # What the call cost us and how it went. All optional, all read inside a
+    # try: a caller's transcript must never be lost because a field the vendor
+    # renamed could not be parsed.
+    duration_seconds: float | None = None
+    ended_reason: str | None = None
+    recording_url: str | None = None
+    cost: float | None = None
+    started_at: datetime | None = None
+
 
 # VAPI transcript roles → our turn roles. "bot" is the assistant; "user" the caller.
 # system / tool_calls / tool_call_result turns are not part of the human transcript.
@@ -91,6 +100,82 @@ def _customer_number(msg: dict[str, Any]) -> str | None:
         num = (cust.get("number") or "").strip()
         return num or None
     return None
+
+
+def _first(msg: dict[str, Any], call: dict[str, Any], *names: str) -> Any:
+    """The first of `names` present on the message, then on the nested call.
+
+    VAPI's webhook and its REST `Call` object are not the same shape: the
+    webhook hoists some fields onto `message` and leaves the rest inside
+    `message.call`. Measured against two real calls on 4-sep-2026, the REST
+    object carries `endedReason`, `startedAt`, `endedAt`, `cost` and
+    `recordingUrl` at the root — and **no `durationSeconds` at all**, which the
+    plan had assumed. Duration is computed, not read.
+    """
+    for source in (msg, call):
+        for name in names:
+            value = source.get(name)
+            if value not in (None, ""):
+                return value
+    return None
+
+
+def _moment(raw: Any) -> datetime | None:
+    """An ISO timestamp from VAPI, or None. Their `Z` suffix is not accepted by
+    `fromisoformat` before 3.11 and the vendor could send anything at all."""
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        return datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _call_extras(msg: dict[str, Any], call: dict[str, Any]) -> dict[str, Any]:
+    """Duration, outcome and cost, or an empty dict.
+
+    Wrapped whole rather than field by field: this is the part of the payload
+    the vendor owns and can change without telling us, and the caller is
+    `ingest_voice_call`, which has already lost one transcript to an exception
+    raised mid-write. Nothing measured here is worth a lost call.
+    """
+    try:
+        artifact = msg.get("artifact") if isinstance(msg.get("artifact"), dict) else {}
+        started = _moment(_first(msg, call, "startedAt"))
+        ended = _moment(_first(msg, call, "endedAt"))
+
+        duration = _first(msg, call, "durationSeconds", "duration")
+        try:
+            duration = float(duration) if duration is not None else None
+        except (TypeError, ValueError):
+            duration = None
+        if duration is None and started and ended:
+            # The real path: neither of the two live calls carried a duration
+            # field. 26.8s and 124.7s came out of this subtraction.
+            duration = (ended - started).total_seconds()
+        if duration is not None and duration < 0:
+            duration = None
+
+        cost = _first(msg, call, "cost")
+        try:
+            cost = float(cost) if cost is not None else None
+        except (TypeError, ValueError):
+            cost = None
+
+        reason = _first(msg, call, "endedReason")
+        url = _first(msg, call, "recordingUrl") or (
+            artifact.get("recordingUrl") if isinstance(artifact, dict) else None
+        )
+        return {
+            "duration_seconds": duration,
+            "ended_reason": reason if isinstance(reason, str) else None,
+            "recording_url": url if isinstance(url, str) else None,
+            "cost": cost,
+            "started_at": started,
+        }
+    except Exception as exc:  # noqa: BLE001 - deliberately total
+        log.warning("Could not read the call's metadata (%s); ingesting anyway", exc)
+        return {}
 
 
 def parse_end_of_call_report(payload: dict[str, Any]) -> VoiceCallReport | None:
@@ -151,6 +236,7 @@ def parse_end_of_call_report(payload: dict[str, Any]) -> VoiceCallReport | None:
         summary=summary,
         turns=turns,
         structured=structured,
+        **_call_extras(msg, call),
     )
 
 
