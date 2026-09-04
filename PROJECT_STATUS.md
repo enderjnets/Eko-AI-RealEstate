@@ -109,12 +109,101 @@ para ellos.
   es **acción del dueño** (la sesión vecina no pudo, y yo tampoco debo: exigiría
   fabricar un token de sesión).
 
+### ✅ F2 — el tracker en la landing · checkpoint A cerrado en **v0.73.0** · `5cd543e`
+
+> **Sin desplegar. Autorización pendiente del dueño.**
+
+| Comprobación | Resultado |
+|---|---|
+| `pytest` desde base recreada | **1474 passed**, 0 failed, **0 saltados**, 4:42 |
+| `vitest run` | **228 passed** (eran 200; +28) · `tsc --noEmit` limpio |
+| `ruff check app tests` | All checks passed |
+| `next build` con las `NEXT_PUBLIC_*` reales | exit 0, y **`/` sigue siendo estática** (`○`) |
+| `docker build -f backend/Dockerfile` | exit 0 |
+| Secretos / depuración en el diff | ninguno |
+
+**Un intento de corrección gastado**, y el fallo fue real: `useSearchParams()`
+en el tracker rompía el `next build` («should be wrapped in a suspense
+boundary») y habría dejado la portada fuera del renderizado estático. Resuelto
+leyendo `window.location.search` dentro del efecto: el componente no pinta nada
+y lee la query una sola vez tras montar, así que el gancho no aportaba nada y
+costaba la página entera.
+
+**Mutaciones verificadas** (cinco): ignorar Global Privacy Control · dejar de
+recordar la atribución · quitar `session_id` del formulario · montar el tracker
+dentro del héroe · quitar las etiquetas `data-track` de las anclas.
+
+### La verificación que importa: un navegador real, no «debería»
+
+Pila local levantada (backend en 8099 contra una base de usar y tirar, frontend
+en 3199 con las variables reales) y **Chrome recorriendo la página**: llegar con
+`?utm_source=tiktok&utm_content=piece-7`, leer las cuatro secciones, tocar
+«llamar», rellenar el formulario y enviarlo. Lo que quedó escrito en la base:
+
+| | escritorio | teléfono (UA de iPhone) |
+|---|---|---|
+| origen / pieza | `tiktok` / `piece-7` | `tiktok` / `piece-7` |
+| dispositivo · navegador | `desktop` · Chrome | **`phone` · Safari** |
+| scroll máximo | 75 % | 75 % |
+| secciones vistas | las cuatro | las cuatro |
+| toques en «llamar» | 1 (`where: hero`) | 1 |
+| formulario empezado / enviado | sí / sí | no / no |
+| **lead enlazado** | **sí** (`beacon-live@example.test`) | — |
+
+Y el embudo contado como lo contará el informe: **2 visitas → 2 interesados →
+2 toques en llamar → 1 empezó → 1 envió → 1 lead**. Repetido tras el cambio de
+`useSearchParams`, con resultado idéntico: no se da por bueno lo que ya no es
+el mismo código.
+
+🔴 **No medido**: iOS Safari de verdad. La emulación usa su cadena de agente,
+que es lo que clasifica el dispositivo, pero `sessionStorage` bloqueado y el
+comportamiento de `sendBeacon` en un WebView de Instagram siguen sin
+comprobarse en hardware. La primera comprobación real es un teléfono.
+
+### 🔴 Antes de desplegar el checkpoint A — leer esto
+
+**Mi rama NO contiene la v0.72.0 que se desplegó anoche.** Está apilada sobre
+`feat/landing-marca` (0.71.1), mientras que la 0.72.0 vive en
+`feat/maquina-de-video-dhs` (`c68aaf7`). Desplegar esta rama tal cual
+**revertiría el arreglo de la puerta de la marca**. Antes del despliegue hay que
+integrar `c68aaf7` en esta rama — y eso es un merge, que **no hago sin pedirlo**.
+
+### Runbook del checkpoint A (preparado, no ejecutado)
+
+1. Integrar `c68aaf7` en `feat/analitica-embudo` (**pedir permiso**) y correr la
+   suite otra vez sobre el resultado.
+2. Copia del `.env` del VPS: `cp .env .env.bak.$(date +%Y%m%d)_v0730`.
+3. Bundle → `scp ender-vps:/tmp/eko.bundle` → `git fetch` + `merge --ff-only`.
+4. `docker compose build backend frontend` — **el frontend hay que reconstruirlo**
+   aunque no haya variables nuevas: el tracker es código de cliente.
+5. **Migrar con la imagen nueva**: `docker compose run --rm -T backend alembic
+   upgrade head` → debe dejar `051_landing_sessions`.
+6. `docker compose up -d backend frontend`.
+7. Verificar por el dominio público: `/api/v1/health` → **`0.73.0`**; abrir
+   `https://www.denverhomestory.com/?utm_source=tiktok` desde un teléfono y
+   comprobar en la base que aparece la fila con `source='tiktok'` y `country`
+   no nulo (si `city` es nula, falta el clic de Cloudflare — decisión 4 del plan).
+8. **Reversión**: `git reset --hard c68aaf7` + rebuild. ⚠️ **No hacer
+   `alembic downgrade`**: borraría lo ya recogido, y el código viejo convive sin
+   problema con las tablas nuevas.
+
+### Heredado de la sesión «fix-caption-rendering» al cerrar (no es de este plan)
+
+Dos hallazgos suyos que no tocaron y que quedan aquí para que no se pierdan al
+morir su sesión. **Ninguno se arregla en esta tanda**: son del carril de vídeo.
+
+- 🔴 `render_watch` solo mira el **latido** del obrero, así que un trabajo en
+  `failed` deja el vigía en «ok» y la alarma no puede sonar. Es la misma forma
+  de avería que este proyecto ya pagó dos veces: el vigilante mide que el
+  proceso vive, no que el trabajo salga.
+- `/data/media` tiene 12 mp4 y solo 6 referenciados; nada los barre.
+
 ### Siguiente paso
 
-**F2 — el tracker en la landing.** `frontend/lib/track.ts` (puro y testable),
-`LandingTracker.tsx` montado fuera del pin-host, atribución persistida en
-`sessionStorage` para que no se pierda al navegar, y `session_id` en el
-formulario. Cierra el checkpoint A con el bump a 0.73.0.
+**F3 — historial del lead y llamadas de voz completas** ([CRÍTICA]). Su paso 0
+es leer un `Call` real de VAPI para fijar los nombres de campo antes de escribir
+el parser; los ids están en `conversations.external_thread_id`. Antes, el
+despliegue del checkpoint A, que espera autorización.
 
 ---
 

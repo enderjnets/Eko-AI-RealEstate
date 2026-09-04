@@ -18,6 +18,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { submitPublicLead, type CaptureOutcome } from "@/lib/api";
 import { collectAttribution } from "@/lib/capture";
+import { getTracker, sessionKey, storedAttribution } from "@/lib/track";
 import { useI18n } from "@/lib/i18n";
 import { ArrowRight } from "lucide-react";
 import { Turnstile, TURNSTILE_SITE_KEY } from "@/components/ui/Turnstile";
@@ -37,20 +38,43 @@ function ConsultFormInner() {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [consent, setConsent] = useState(false);
   const [utm, setUtm] = useState<Record<string, string>>({});
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+  const [started, setStarted] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const collected = collectAttribution(
-      params,
-      typeof document !== "undefined" ? document.referrer : null,
-    );
-    // A variant named in the URL is more specific than "it was the landing",
-    // so it wins; otherwise this page identifies itself.
-    setUtm({ landing_variant: LANDING_VARIANT, ...collected });
+    if (typeof window === "undefined") return;
+    let storage: Storage | null = null;
+    try {
+      storage = window.sessionStorage;
+    } catch {
+      storage = null;
+    }
+    const collected = collectAttribution(params, document.referrer);
+    // What the tracker remembered when the visit started wins over an empty
+    // URL: somebody who landed on `/?utm_source=tiktok`, read three sections
+    // and scrolled down here still came from TikTok. A UTM in the CURRENT url
+    // is more specific still, so it goes last.
+    setUtm({
+      landing_variant: LANDING_VARIANT,
+      ...storedAttribution(storage),
+      ...collected,
+    });
+    setSessionId(sessionKey(storage));
   }, [params]);
+
+  // The moment somebody starts filling this in — once, on the first field they
+  // touch. It is the funnel step between "read the page" and "sent it", and
+  // without it an abandoned form is indistinguishable from a visitor who never
+  // looked at it.
+  const onFirstTouch = () => {
+    if (started) return;
+    setStarted(true);
+    getTracker()?.record("form_start");
+  };
 
   const set =
     (k: "name" | "phone" | "email" | "website") =>
@@ -110,15 +134,22 @@ function ConsultFormInner() {
       consent,
       consent_text: consent ? consentWording : undefined,
       utm,
+      session_id: sessionId,
       turnstile_token: captchaToken || undefined,
       website: f.website || undefined,
     });
 
     setLoading(false);
     if (outcome.ok) {
+      // Recorded on the page as well as by the server's own link, because the
+      // two disagreeing is the interesting case: a submission the server never
+      // saw — a captcha refusal, a dropped connection — is invisible if only
+      // the successful path writes it.
+      getTracker()?.record("form_submit");
       setDone(true);
       return;
     }
+    getTracker()?.record("form_error", { reason: outcome.reason || "generic" });
     // A Turnstile token is single-use; whatever failed, this one is spent.
     setCaptchaToken(null);
     setError(
@@ -144,7 +175,12 @@ function ConsultFormInner() {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    // `onFocusCapture` on the form rather than a prop threaded through every
+    // field: it catches the first input, the checkbox and anything added
+    // later, and cannot be forgotten on a new field. The chips get an explicit
+    // call because a button tap does not focus on iOS, so relying on focus
+    // alone would under-report exactly the device most of this traffic uses.
+    <form onSubmit={handleSubmit} onFocusCapture={onFirstTouch}>
       <div className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <LandingField
@@ -188,7 +224,10 @@ function ConsultFormInner() {
                   key={g.id}
                   type="button"
                   aria-pressed={active}
-                  onClick={() => setGoal(active ? null : g.id)}
+                  onClick={() => {
+                    onFirstTouch();
+                    setGoal(active ? null : g.id);
+                  }}
                   // 44px floor: below it a thumb misses on a phone, and a
                   // phone is where this page is read.
                   className={`min-h-[44px] px-[18px] text-[10px] uppercase tracking-[0.14em] transition-colors ${

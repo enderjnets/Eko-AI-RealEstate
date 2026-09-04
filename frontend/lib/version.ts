@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.71.1";
+export const CURRENT_VERSION = "0.73.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,55 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.73.0",
+    date: "2026-09-04",
+    title: {
+      en: "The landing page reports on itself",
+      es: "La pagina publica informa de si misma",
+    },
+    changes: [
+      {
+        en:
+          "Until now the only thing we knew about a visitor was the form they " +
+          "sent. Everyone who read the page and left was invisible, so \"the " +
+          "video brought a hundred people and two wrote\" and \"it brought two " +
+          "and both wrote\" looked identical — and they call for opposite " +
+          "decisions.",
+        es:
+          "Hasta ahora lo unico que sabiamos de una visita era el formulario " +
+          "que enviaba. Quien leia la pagina y se iba era invisible, asi que " +
+          "\"el video trajo cien personas y escribieron dos\" y \"trajo dos y " +
+          "escribieron las dos\" se veian igual — y piden decisiones opuestas.",
+      },
+      {
+        en:
+          "The page now records which network sent each visit, the device, how " +
+          "far people read, which sections they reached, taps on \"call\", and " +
+          "whether the form was started and sent. A submission is joined to the " +
+          "visit that produced it, so a lead can be traced back to where it " +
+          "came from.",
+        es:
+          "La pagina registra ahora de que red viene cada visita, el " +
+          "dispositivo, cuanto se lee, que secciones se alcanzan, los toques en " +
+          "«llamar» y si el formulario se empezo y se envio. Un envio se une a " +
+          "la visita que lo produjo, asi que un lead se puede rastrear hasta su " +
+          "origen.",
+      },
+      {
+        en:
+          "No cookie, no identifier that outlives the tab, no stored IP address " +
+          "and no raw browser fingerprint — the browser is reduced to a family " +
+          "before anything is written. A visitor whose browser sends the Global " +
+          "Privacy Control signal is not measured at all.",
+        es:
+          "Sin cookies, sin identificador que sobreviva a la pestana, sin " +
+          "guardar direcciones IP y sin huella del navegador — se reduce a una " +
+          "familia antes de escribir nada. A quien envia la senal de Global " +
+          "Privacy Control no se le mide en absoluto.",
+      },
+    ],
+  },
   {
     version: "0.71.1",
     date: "2026-09-03",

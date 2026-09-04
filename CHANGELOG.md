@@ -2,6 +2,33 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.73.0] — 2026-09-04
+
+### Added
+- **The landing page reports on itself.** Everything this product knew about a
+  visitor began when they submitted the form; whoever read the page and left was
+  invisible. `landing_sessions` now records, per visit, which network sent it
+  (from the UTM or the referrer host), the device, browser and OS families, the
+  in-app browser when it is one, the country — and the region and city once
+  Cloudflare's visitor-location transform is switched on — how far the visitor
+  read, which sections they reached, taps on *call* and on the consult form,
+  whether the form was started and sent, and the lead it became. Behind it,
+  `landing_events` keeps the raw stream for `LANDING_EVENTS_RETENTION_DAYS` (90).
+- **A submission is joined to the visit that produced it.** The form sends the
+  visit's key alongside the rest, so a lead can be traced back to the video that
+  brought it. The field carries no shape pattern on purpose: rejecting a
+  malformed one would cost the *lead*, and it may only ever cost the report.
+- `LANDING_SESSIONS_PER_DAY` (20,000) bounds how many permanent rows an
+  anonymous caller can create. The rate limit bounds the speed of writing them
+  and not their number, and sessions are never deleted by age — that would
+  rewrite the denominator of every historical funnel.
+
+### Privacy
+- No cookie and no identifier that outlives the tab; the visit key lives in
+  `sessionStorage`. No IP address is stored, and the user agent is reduced to a
+  family before it is written. **Global Privacy Control is honoured**: with it
+  set the page sends nothing at all. See `docs/public-capture-form.md`.
+
 ## [0.71.1] — 2026-09-03
 
 ### Fixed

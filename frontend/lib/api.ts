@@ -1138,6 +1138,9 @@ export interface CapturePayload {
   consent: boolean;
   consent_text?: string;
   utm?: Record<string, string>;
+  /** The landing visit this submission came from, when the tracker is
+   *  running. Joins the lead to what the visitor did before writing. */
+  session_id?: string;
   turnstile_token?: string;
   website?: string;
 }

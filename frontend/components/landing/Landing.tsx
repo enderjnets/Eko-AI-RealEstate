@@ -39,6 +39,7 @@ import { ArrowDown, ArrowRight, Building2, CalendarCheck, Clock, Menu, Phone, Ru
 import { LANDING, dialable } from "@/lib/landing";
 import { STAFF_LOGIN_HREF } from "@/lib/hosts";
 import { LandingEffects } from "@/components/landing/LandingEffects";
+import { LandingTracker } from "@/components/landing/LandingTracker";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { ConsultForm } from "@/components/landing/ConsultForm";
@@ -119,10 +120,10 @@ function LandingNav({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: (
       <div className="flex items-center justify-between gap-4 px-5 py-6 sm:px-10 lg:px-14 lg:py-8">
         <Wordmark />
         <nav className="flex items-center gap-5 lg:gap-10">
-          <a href="#consult" className={link}>
+          <a href="#consult" data-track="nav-buying" className={link}>
             {t("landing.nav.buying")}
           </a>
-          <a href="#consult" className={link}>
+          <a href="#consult" data-track="nav-selling" className={link}>
             {t("landing.nav.selling")}
           </a>
           <a href="#markets" className={link}>
@@ -272,6 +273,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
           href={`tel:${dialable(LANDING.phone)}`}
           onClick={onClose}
           data-menu-link="1"
+          data-track="menu"
           className="flex items-center justify-center gap-2.5 rounded-full bg-ln-canvas px-6 py-[18px] text-[11px] font-medium uppercase tracking-[0.16em] text-[#242219]"
         >
           <Phone className="h-3.5 w-3.5" />
@@ -402,6 +404,7 @@ function Hero({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => v
           <div className="flex w-full max-w-[360px] flex-col gap-2.5 md:w-auto md:max-w-none md:flex-row md:gap-3.5">
             <a
               href="#consult"
+              data-track="hero"
               className="inline-flex min-h-[52px] items-center justify-center gap-3 rounded-full bg-ln-canvas px-8 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-[#242219] hover:opacity-90"
             >
               <CalendarCheck className="h-3.5 w-3.5" />
@@ -410,6 +413,7 @@ function Hero({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => v
             {LANDING.phone && (
               <a
                 href={`tel:${dialable(LANDING.phone)}`}
+                data-track="hero"
                 className="inline-flex min-h-[52px] items-center justify-center gap-3 rounded-full border border-ln-canvas/45 bg-ln-night/35 px-8 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-ln-canvas backdrop-blur hover:border-ln-canvas"
               >
                 <Phone className="h-3.5 w-3.5" />
@@ -765,6 +769,7 @@ export function Landing() {
     // bounces black behind a cream page.
     <div className="eko-landing relative min-h-screen bg-ln-canvas font-ln-sans text-ln-ink antialiased">
       <LandingEffects />
+      <LandingTracker />
       <main>
         <Hero menuOpen={menuOpen} onOpenMenu={() => setMenuOpen(true)} />
         <TwoOfUs />
