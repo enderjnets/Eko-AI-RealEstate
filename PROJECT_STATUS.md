@@ -135,19 +135,29 @@ una auto-auditoría y no es independiente**, igual que en v0.69.0.
 5. `docker compose up -d backend frontend`.
 6. Verificar `/api/v1/health` **por el dominio público** → `0.70.0`.
 
-🔴 **Reversión — el objetivo NO es `df8d602`.** Esa es v0.69.0, que tampoco
-está desplegada: revertir a una versión que nunca salió no devuelve nada al
-estado bueno. El objetivo es **el commit que hoy corre en el VPS**, y en esta
-sesión **no lo he leído**. Antes de desplegar, leerlo y anotarlo aquí:
+**Reversión — medido en el VPS el 3-sep 20:5x**, no adivinado. El objetivo NO
+era `df8d602` (eso es v0.69.0, que tampoco está desplegada; revertir a una
+versión que nunca salió no devuelve nada al estado bueno):
 
-```
-ssh ender-vps 'cd ~/Eko-AI-RealEstate && git rev-parse HEAD'
-```
+| Qué | Medida |
+|---|---|
+| HEAD en el VPS | **`8d0a47ad1d00e8aa86e70abfc4b636e2d9bf64eb`** |
+| Rama del VPS | `feat/maquina-de-video-dhs` |
+| `/api/v1/health` | `0.68.0` · `captcha:on` · `llm_fallback:ok` |
+| Árbol del VPS | limpio (0 líneas) |
+| Disco | 90 G libres de 156 G (40 %) |
+| Contenedores | los cuatro `Up` |
+| `origin` del VPS | **`/tmp/eko.bundle`, que ya no existe** — no alcanza GitHub, así que el despliegue va por bundle nuevo |
 
-y la reversión es `git reset --hard <ese SHA>` + `docker compose build backend
-frontend` + `up -d`, verificando `/api/v1/health` por el dominio. Las tres
-variables nuevas pueden quedarse en el `.env`: sin código que las lea son
-inertes.
+**Reversión**: `git reset --hard 8d0a47a` + `docker compose build backend
+frontend` + `up -d`, y verificar `/api/v1/health` por el dominio → `0.68.0`.
+Las tres variables nuevas pueden quedarse en el `.env`: sin código que las lea
+son inertes.
+
+**Lo que se desplegaría**: 10 commits, `8d0a47a..761c0c8` — v0.69.0 **y**
+v0.70.0 juntas, 20 ficheros, **ninguna migración** (verificado: `git diff
+--name-only` sobre `backend/migrations/` vuelve vacío). Del backend solo cambia
+`APP_VERSION`; el resto es la landing.
 
 **No se despliega sin autorización del dueño en un mensaje aparte.**
 
