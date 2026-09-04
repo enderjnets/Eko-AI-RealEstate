@@ -50,6 +50,32 @@ const IMMEDIATE: ReadonlySet<EventName> = new Set<EventName>([
   "form_error",
 ]);
 
+/**
+ * Whether a section counts as seen.
+ *
+ * Not `IntersectionObserver`'s own ratio, and that is the whole point: its
+ * ratio is a fraction of the ELEMENT, so a block taller than the screen can
+ * never reach it. Measured against production on an iPhone 13 (viewport
+ * 664 px): `#about` is 1 249 px tall, so the most it can ever intersect is
+ * **0.53** — with a 0.5 threshold it counted only when almost perfectly
+ * centred, and two of the four sections were simply never reported. The
+ * metric said "they did not read that far" when they had.
+ *
+ * The rule here is "half of whatever can fit": half the screen for a section
+ * taller than the screen, half the section for one shorter than it. Both ends
+ * stay reachable, which a fraction of either alone does not.
+ */
+export const SECTION_SEEN_RATIO = 0.5;
+
+export function sectionWasSeen(
+  visible: number,
+  sectionHeight: number,
+  viewportHeight: number,
+): boolean {
+  if (!(visible > 0) || !(sectionHeight > 0) || !(viewportHeight > 0)) return false;
+  return visible >= SECTION_SEEN_RATIO * Math.min(sectionHeight, viewportHeight);
+}
+
 /** The depths worth knowing. More would be noise; fewer would not distinguish
  *  "bounced" from "read the whole thing". */
 export const SCROLL_MARKS = [25, 50, 75, 100] as const;

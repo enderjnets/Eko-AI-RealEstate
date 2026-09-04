@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.73.0";
+export const CURRENT_VERSION = "0.73.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.73.1",
+    date: "2026-09-04",
+    title: {
+      en: "Two sections were read and never counted",
+      es: "Dos secciones se leian y no se contaban",
+    },
+    changes: [
+      {
+        en: "Two of the four sections of the page were never counted as read on a phone. The check asked whether a section filled half of ITSELF, and the About and How-it-works blocks are nearly twice the height of an iPhone screen: the most they could ever reach was 0.53, so they only counted when left almost perfectly centred. Measured on the live page with the Safari engine, a full read reported two sections instead of four. It now asks whether the section filled half the SCREEN, or half of itself when it is shorter than the screen, so both ends stay reachable. The funnel was saying people left early when they had read straight through.",
+        es: "Dos de las cuatro secciones de la pagina no se contaban nunca como leidas en un movil. La comprobacion preguntaba si una seccion llenaba la mitad de SI MISMA, y los bloques de \u00abQuienes somos\u00bb y \u00abComo funciona\u00bb miden casi el doble que la pantalla de un iPhone: lo maximo que podian alcanzar era 0,53, asi que solo contaban si quedaban casi perfectamente centradas. Medido en la pagina viva con el motor de Safari, una lectura completa reportaba dos secciones en vez de cuatro. Ahora pregunta si la seccion lleno la mitad de la PANTALLA, o la mitad de si misma cuando es mas baja que la pantalla, para que ninguno de los dos extremos quede fuera de alcance. El embudo decia que la gente se iba antes cuando habia leido de principio a fin.",
+      },
+    ],
+  },
   {
     version: "0.73.0",
     date: "2026-09-04",

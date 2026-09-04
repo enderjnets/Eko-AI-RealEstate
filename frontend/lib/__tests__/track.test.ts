@@ -16,13 +16,14 @@ import {
   MAX_PER_BATCH,
   SESSION_STORAGE_KEY,
   Tracker,
-  type TrackerOptions,
   beaconSender,
   newSessionKey,
   persistAttribution,
+  sectionWasSeen,
   sessionKey,
   storedAttribution,
   trackingAllowed,
+  type TrackerOptions,
 } from "../track";
 
 function memoryStorage(seed: Record<string, string> = {}) {
@@ -357,5 +358,48 @@ describe("wiring", () => {
     expect(stored).toBeGreaterThan(-1);
     // Spread later wins, so the CURRENT url still beats what was remembered.
     expect(current).toBeGreaterThan(stored);
+  });
+});
+
+describe("sectionWasSeen", () => {
+  // Measured against production with Safari's own engine on an iPhone 13
+  // (viewport 664px): #about is 1249px tall and #how 1259px, so the most
+  // either can ever intersect is 0.53 of itself. Under the old 0.5 threshold
+  // they counted only when almost perfectly centred, and in a real pass over
+  // the page neither was ever reported. The funnel then said people left
+  // before those sections when they had read straight through them.
+  const PHONE = 664;
+
+  it("counts a section taller than the screen once it fills half the screen", () => {
+    expect(sectionWasSeen(332, 1249, PHONE)).toBe(true);
+    expect(sectionWasSeen(331, 1249, PHONE)).toBe(false);
+  });
+
+  it("counts a section shorter than the screen at half of itself", () => {
+    // Half the screen is unreachable for a 300px block; requiring it would
+    // trade one blind spot for another.
+    expect(sectionWasSeen(150, 300, PHONE)).toBe(true);
+    expect(sectionWasSeen(149, 300, PHONE)).toBe(false);
+  });
+
+  it("does not count a section barely on screen", () => {
+    expect(sectionWasSeen(40, 1249, PHONE)).toBe(false);
+  });
+
+  it("survives the degenerate numbers a browser can hand it", () => {
+    expect(sectionWasSeen(0, 1249, PHONE)).toBe(false);
+    expect(sectionWasSeen(100, 0, PHONE)).toBe(false);
+    expect(sectionWasSeen(100, 1249, 0)).toBe(false);
+    expect(sectionWasSeen(Number.NaN, 1249, PHONE)).toBe(false);
+  });
+
+  it("the four real sections all become reachable on the smallest phone", () => {
+    // Heights read off the live page. Under the old rule #about and #how
+    // topped out at 0.53 of themselves; here every one of them is reachable
+    // because the screen, not the block, sets the bar.
+    for (const height of [1249, 1259, 742, 1020]) {
+      const mostVisible = Math.min(height, PHONE);
+      expect(sectionWasSeen(mostVisible, height, PHONE)).toBe(true);
+    }
   });
 });

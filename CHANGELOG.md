@@ -2,6 +2,17 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.73.1] — 2026-09-04
+
+### Fixed
+- **Two of the four sections were read and never counted, on phones.** The
+  observer asked whether a section filled half of *itself*; `#about` (1 249 px)
+  and `#how` (1 259 px) are nearly twice the height of an iPhone 13 viewport
+  (664 px), so the most either could ever intersect was **0.53**. Measured
+  against the live page with Safari's own engine: a full read reported two
+  sections, not four. The rule is now half the *screen*, or half the section
+  when it is shorter than the screen, so neither end is unreachable.
+
 ## [0.73.0] — 2026-09-04
 
 ### Added

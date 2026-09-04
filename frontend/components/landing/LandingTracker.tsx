@@ -19,6 +19,7 @@ import {
   Tracker,
   beaconSender,
   persistAttribution,
+  sectionWasSeen,
   sessionKey,
   setTracker,
   trackingAllowed,
@@ -73,13 +74,27 @@ export function LandingTracker() {
     setTracker(tracker);
     tracker.record("page_view");
 
+    // Twenty-one steps rather than one: the callback only fires when a
+    // threshold is crossed, and the threshold is a fraction of the ELEMENT.
+    // A section twice the height of the screen is half-seen at a quarter of
+    // itself, so a single 0.5 step would never fire for it. `sectionWasSeen`
+    // makes the actual decision; these are only the moments it gets asked.
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting && entry.target.id) tracker.section(entry.target.id);
+          if (!entry.isIntersecting || !entry.target.id) continue;
+          if (
+            sectionWasSeen(
+              entry.intersectionRect.height,
+              entry.boundingClientRect.height,
+              window.innerHeight,
+            )
+          ) {
+            tracker.section(entry.target.id);
+          }
         }
       },
-      { threshold: 0.5 },
+      { threshold: Array.from({ length: 21 }, (_, i) => i / 20) },
     );
     for (const id of SECTIONS) {
       const node = document.getElementById(id);
