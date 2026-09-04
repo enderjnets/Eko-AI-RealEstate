@@ -26,8 +26,17 @@ html:has(.eko-landing) { scroll-behavior: smooth; }
 /* The original engine ships body{overflow-x:hidden} for a reason: an armed
    clip-reveal is scale(1.14) until it fires, and a scaled full-width element
    widens the body's scrollable area — horizontal wiggle on a phone. Scoped to
-   the landing; the dashboard keeps its own overflow behavior. */
-html:has(.eko-landing), body:has(.eko-landing) { overflow-x: hidden; }
+   the landing; the dashboard keeps its own overflow behavior.
+
+   `hidden` on <html> propagates to the viewport, which is the intent. On
+   <body> it does something else: a non-visible overflow-x forces overflow-y
+   to `auto`, so body becomes a scroll container — and the v6 hero is
+   `position: sticky`, which sticks to the NEAREST scroll container. Body never
+   actually scrolls (it is exactly as tall as its content), so the stage would
+   scroll away with the page instead of pinning. `clip` clips without creating
+   a scroll container. */
+html:has(.eko-landing) { overflow-x: hidden; }
+body:has(.eko-landing) { overflow-x: clip; }
 
 /* Accessible keyboard focus + a dark scrollbar that matches the noir console. */
 :focus-visible { outline: 2px solid rgba(124, 58, 237, 0.6); outline-offset: 2px; border-radius: 6px; }

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.68.0";
+export const CURRENT_VERSION = "0.69.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.69.0",
+    date: "2026-09-03",
+    title: {
+      en: "The landing's hero becomes a scroll-driven film",
+      es: "El héroe de la landing pasa a ser una película guiada por el scroll",
+    },
+    changes: [
+      {
+        en: "The house clip now stays pinned to the screen for several scrolls: scrolling down plays it, scrolling back rewinds it, and four captions take turns over it — the opening, who we are, how we work, and the consult with its two buttons — above a thin progress line. The header sits on the film. Nothing that carries weight moved: the real consult form, both languages and the staff login are as they were.",
+        es: "El clip de la casa se queda fijo en pantalla durante varios desplazamientos: bajar lo reproduce, subir lo rebobina, y cuatro textos se turnan encima — la apertura, quiénes somos, cómo trabajamos y la consulta con sus dos botones — sobre una línea fina de progreso. La cabecera va sobre la película. Nada de lo que pesa se movió: el formulario real, los dos idiomas y el acceso del equipo siguen igual.",
+      },
+    ],
+  },
   {
     version: "0.68.0",
     date: "2026-09-03",

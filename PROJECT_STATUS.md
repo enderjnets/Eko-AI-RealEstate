@@ -6,7 +6,74 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
-## 🔵 EN CURSO — v0.67.11 (tachar el token) + v0.68.0 (la cola con fecha)
+## 🔵 EN CURSO — v0.69.0 · la landing pasa al diseño v6 (el héroe es una película guiada por el scroll)
+
+Rama `feat/landing-v6` desde `f07b719`. Origen: carpeta `deploy-v6` del proyecto
+de Claude Design (`04db33bc…`), descargada por el dueño a `~/Downloads/deploy-v6`
+(la MCP `claude_design` pide `/design-login`; se trabajó desde la copia local,
+que trae exactamente los ficheros que el dueño nombró).
+
+### Consultas al advisor
+
+| # | Motivo | Decisión |
+|---|---|---|
+| 1 | Arranque: enfoque y riesgos | Enfoque B (portar al React existente, no sustituir la raíz) validado. Añadió 9 puntos, todos aplicados: quitar `autoPlay`/`loop` del `<video>` (el `loop` habría deshecho en silencio el «sin bucle»); leyendas 2–4 con `opacity-0 pointer-events-none` iniciales (sin JS y antes de hidratar se apilaban las cuatro); medir el sticky **y** `scrollWidth`; host en `svh` + stage en `dvh`, y decirlo; Fair Housing sobre las cadenas nuevas; el runbook reconstruye **backend** además de frontend (`APP_VERSION` vive en `config.py`); auditoría + cobertura declarada; desviaciones por escrito; póster a 1280; timers a la limpieza. |
+
+### Lo medido, no recordado
+
+| Qué | Medida |
+|---|---|
+| El vídeo de v6 | **Es el mismo encode** que `casa-hero.mp4`, ya en producción (1920×1080, 20,57 s, 617 frames, 6,95 Mb/s, keyframes cada 0,5 s; difieren 5,9 KB de contenedor). Cero trabajo de vídeo |
+| Los JPG de v6 | Mismo encuadre que los del repo (diff medio 1,8–8,9/255 tras reescalar); solo más resolución. Tarjetas se quedan a 1200 px; `cta-bg` sube a 2400 px (fondo a sangre, retina): 537 KB → 808 KB |
+| Fotograma 0 del vídeo | Un salón interior (generado por IA, `docs/hero-video-procedencia.md`); el póster v4 (`hero-plate.jpg`) era la casa = **último** fotograma. Póster nuevo = fotograma 0 a 1280 px, 92 KB |
+| `body{overflow-x:hidden}` | Convierte al body en contenedor de scroll y **rompe `position:sticky`**. Con `clip`: stage `top=0` en 6 posiciones de scroll a 1440 y a 390, y `scrollWidth == clientWidth` en los dos (la regla existía por el wiggle horizontal del clip-reveal; `clip` lo sigue cubriendo) |
+| Motor a 1440×900 (Playwright, viewport exacto) | host 4410 = 4,9 vh · span 3510 · leyendas: p=0 → `0,0.22`=1,00 y resto 0; p=0,38 → solo `0.27,0.49`=1,00; p=0,64 → solo `0.53,0.75`; p=0,90 → solo `0.79,1` · `currentTime` = target ±0,01 en las 6 posiciones · barra = p · al final `t=20,51`, pausado, **sin bucle** · fuera de pantalla: pausado y target `null` |
+| Motor a 390×844 | host 3376 = 4,0 vh · idéntico patrón · `scrollWidth 390` |
+| `prefers-reduced-motion` (`reducedMotion: reduce`) | leyendas cruzan por scroll **sin** translate; vídeo `t=0`, target `null`, pausado; reveals/drift/parallax sin tocar (visibles tal cual se renderizan) |
+| Carril de mercados | arrastre real con ratón: `scrollLeft` 0 → 48 (su máximo a 1440: 3 tarjetas + «More» apenas exceden el ancho) |
+| Consola del navegador | un solo error: `/favicon.ico` 404, preexistente |
+| Fair Housing | 11 claves × 2 idiomas → **0** violaciones |
+
+### Desviaciones del diseño, decididas y escritas (cabeceras de `LandingEffects.tsx` y `Landing.tsx`)
+
+1. **Sin bucle al final del héroe**: el diseño hace `loop` en `p ≥ 1`; este clip termina en la casa y empieza en otra habitación (`e321f95` lo dejó como PENDIENTE). El cabezal se queda en el último fotograma.
+2. **Reduced motion**: las leyendas siguen cruzando por scroll (son el contenido; ocultar tres de cuatro quitaría texto, no movimiento), sin el lift de 26 px; el vídeo queda en el fotograma 0.
+3. **Móvil conserva lo que la mesa de 390 recorta**: la tarjeta del Valle, la 4.ª tarjeta de «cómo trabajamos» y la lista de credenciales.
+4. **No se adopta**: el zoom de mesas fijas, la activación de dos vídeos, el Lucide por CDN, los enlaces muertos del pie (Fair Housing/Privacy/Terms) ni la hamburguesa sin función del móvil.
+5. **Copy**: la leyenda 2 del diseño nombra a «Natalia and Robbie» y a la brokerage en el cuerpo; aquí va sin nombres (los hechos de negocio salen de `lib/landing.ts`, regla de la landing). La promesa «respuesta real el mismo día, fines de semana incluidos» de la leyenda 3 **ya estaba publicada** en `landing.how.answered.body`.
+
+### Checklist de «terminado»
+
+| Ítem | Resultado |
+|---|---|
+| `tsc --noEmit` | limpio |
+| `vitest run` | **160/160** (i18nParity cubre las 11 claves nuevas) |
+| `next build` (con los `NEXT_PUBLIC_LANDING_*` de producción) | compila |
+| Suite backend desde base recreada | **1374 passed** (4 min 22 s); 0 saltados |
+| `ruff check app tests` | limpio |
+| `docker build` | **no ejecutado en local**: la imagen del frontend se construye en el VPS en el deploy; `next build` local con el mismo `package.json` es la señal que hay |
+| Cobertura | **sin instrumento**: el repo no tiene cobertura de frontend (los tests son de `lib/`, no de componentes; sin jsdom). El backend solo cambia una constante de versión. Se dice, no se omite |
+| Mutación | no hay guard nuevo con test que mutar; lo que protege el cambio es la medición en navegador de arriba |
+| Secretos en el diff | ninguno (los valores `NEXT_PUBLIC_LANDING_*` del build local son los que ya pinta la landing pública) |
+| Auditoría de cierre | ⚠️ **auto-auditoría, no independiente**: el subagente auditor murió por límite de sesión de la API (429, se reinicia 19:30 Denver) antes de leer nada; el árbol quedó intacto (verificado con `git status`). Hice yo los 8 puntos que le había dado. Hallazgos: **(importante, a11y)** los dos botones de la leyenda 4 eran enfocables con Tab estando invisibles — `opacity:0` no saca del orden de tabulación; el diseño original tiene el mismo defecto. Arreglado: las leyendas ocultas pasan también a `visibility:hidden` (motor + clase `invisible` inicial), medido con 12 Tabs reales desde el tope. **(menor)** el token `ln-warm` de v4 quedó huérfano: borrado. Limpio: claves i18n ×2, CSS generado por Tailwind (7 reglas nuevas presentes en el bundle), limpieza del `useEffect` (todo lo registrado se quita), `ConsultForm` y `/login` sin diff, ningún hecho de negocio en el copy nuevo, sin secretos |
+| Test nuevo `landingHero.test.ts` (5) | fija los dos puntos «que se rompen en silencio»: el `<video>` sin `autoPlay`/`loop` y el motor sin `.loop = true`; las leyendas 2–4 con `opacity-0 invisible pointer-events-none` iniciales. **Mutaciones** (guardar, mutar, rojo, restaurar; md5 idénticos al final): `loop` en el `<video>` → rojo · quitar `invisible` de las leyendas → rojo · `v.loop = true` en el motor → rojo · control sin mutar → 5/5 |
+| Teclado (Playwright, 12 Tabs desde el tope, 1440 y 390) | el foco recorre nav → idioma → carril → formulario; **ninguna parada dentro de una leyenda oculta**. Las leyendas ocultas miden `visibility: hidden`; las visibles, no |
+| Navegador a 1440 y 390 con scroll real | ✅ medido arriba; capturas en el scratchpad de la sesión |
+| **No medido**: Safari iOS | `dvh`/`svh` con la barra plegándose — mi Chrome no lo reproduce. Decisión escrita en `Hero`: host `svh` (el documento no cambia de largo), stage `dvh` (la película llena lo visible); el denominador de `p` se mueve una vez, poco, al plegarse la barra |
+
+### 🚦 DESPLIEGUE PREPARADO — NO EJECUTADO (falta autorización del dueño en mensaje aparte)
+
+Sin migración. `APP_VERSION` cambia en `config.py`, así que **se reconstruyen backend y frontend**.
+
+1. Bundle incremental desde el Mac: `git bundle create /tmp/v069.bundle ^8d0a47a feat/landing-v6` → `scp` al VPS → `git fetch /tmp/v069.bundle refs/heads/feat/landing-v6:refs/deploy/landing-v6` → `git merge-base --is-ancestor HEAD refs/deploy/landing-v6` → `git merge --ff-only refs/deploy/landing-v6`.
+2. `docker compose build backend frontend` (las `NEXT_PUBLIC_LANDING_*` son build args: **rebuild, no restart**).
+3. `docker compose up -d backend frontend`.
+4. Verificar por el dominio: `/api/v1/health` → `0.69.0`; `curl -sI https://www.denverhomestory.com/landing/hero-poster.jpg` → 200 y `…/hero-plate.jpg` → 404; en el navegador del dueño: la casa se queda fija mientras las cuatro leyendas se turnan y el vídeo avanza con el scroll; el formulario sigue enviando (no se tocó).
+5. **Reversión** = redeploy del commit anterior (`8d0a47a`, v0.68.0) con el mismo runbook; sin datos que revertir. Vecinos `zorros-*`/`blackvolt-*`: intocables.
+
+---
+
+## ✅ DESPLEGADO — v0.67.11 (tachar el token) + v0.68.0 (la cola con fecha) — dos verificaciones se miden solas
 
 ### Consultas al advisor (Fable 5.1, autor del plan)
 

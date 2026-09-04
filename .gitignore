@@ -80,3 +80,6 @@ htmlcov/
 # exact outcome the loopback binding exists to prevent. This file has a history
 # of learning that lesson twice already; this is the third.
 docker-compose.override.yml
+
+# Playwright MCP drops page snapshots and console logs next to the repo root
+.playwright-mcp/

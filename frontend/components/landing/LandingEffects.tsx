@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The v4 scroll choreography, ported from the design's `deploy-v4/index.html`
+ * The v6 scroll choreography, ported from the design's `deploy-v6/index.html`
  * (the `<script>` at the end of that file is the authoritative engine — this
  * is that engine, kept as literal as TypeScript and React mounting allow).
  *
@@ -9,26 +9,45 @@
  * `data-*` attributes the design's artboards carry, and this component makes
  * them move —
  *
- *   data-rise-host          the hero section; scroll progress is measured on it
- *   data-rise="s0,s1,y"     the house plate: scale s0→s1, translate to y px
- *   data-fade-out           hero copy fades and lifts as the hero scrolls away
- *   data-hero-video         SCRUBS with scroll over the hero's first 30%,
- *                           then free-runs on loop
+ *   data-pin-host           the hero: a section several viewports tall whose
+ *                           sticky stage stays on screen while progress p runs
+ *                           0→1 down the host
+ *   data-pin-stage          that stage — viewport-tall, sticky at the top
+ *   data-cap="a,b"          a caption on the stage, visible while a ≤ p ≤ b and
+ *                           fading over the outer 20% of that window; while
+ *                           hidden it takes no clicks, no keyboard focus and
+ *                           is out of the accessibility tree (visibility)
+ *   data-pin-bar            the hairline progress bar: width = p
+ *   data-hero-video         the playhead follows p. Forward is real playback at
+ *                           a variable rate (smooth); scrolling back is a seek.
+ *                           Off screen it pauses.
  *   data-reveal="up|clip"   sections blur/slide in when they near the viewport,
  *                           staggered 70ms between siblings; inside a rail the
- *                           slide comes from the right
+ *                           slide comes from the right. Anything that has sat
+ *                           within two viewports for 4s shows regardless.
  *   data-drift="px"         headings drift against the scroll
- *   data-parallax="amt"     portrait (0.14) and consult background (0.24)
+ *   data-parallax="amt"     portrait and market cards (0.10), consult (0.24)
  *   data-rail               the markets rail: drag to scroll
  *
- * What was deliberately NOT ported from deploy-v4: its artboard-scaling
- * "responsive" block (it transforms fixed 1440/390 layouts; our page is
- * genuinely responsive), its transform-aware anchor navigation (ours is
- * native + CSS smooth), and its CDN Lucide painter (we use lucide-react).
+ * What was deliberately NOT ported from deploy-v6: its artboard-zoom
+ * "responsive" block (it zooms fixed 1440/390 layouts; our page is genuinely
+ * responsive), its twin-video activation (two artboards, two <video>s — this
+ * page has one), its transform-aware anchor navigation (ours is native + CSS
+ * smooth), and its CDN Lucide painter (we use lucide-react).
  *
- * prefers-reduced-motion: reveals are marked done, rise/fade/drift/parallax
- * never move, and the hero video is parked on its poster frame — the page is
- * the design's at-top composition, static.
+ * Two deliberate departures, written down so nobody "fixes" them back:
+ *
+ *  1. Past the end of the host the design free-runs the clip on loop. This
+ *     clip cannot loop: it ends on the house and opens inside a different
+ *     room (docs/hero-video-procedencia.md), so a loop is a hard cut. The
+ *     playhead simply holds on the last frame instead.
+ *  2. prefers-reduced-motion: reveals are marked done, drift and parallax
+ *     never move, and the video stays parked on its first frame. The captions
+ *     still crossfade with the scroll — they ARE the hero's copy, and hiding
+ *     three of the four would remove content, not motion — but without the
+ *     26px lift. That visitor scrolls the hero over one still frame; it is
+ *     the design's at-top composition, static, the same call 54ca7e7 made
+ *     for v4.
  */
 
 import { useEffect } from "react";
@@ -37,14 +56,16 @@ const EASE = "cubic-bezier(.22,.61,.36,1)";
 
 /* The engine tracks per-element state in expando properties, exactly like the
    original. A WeakMap would be tidier; staying close to the source is worth
-   more here — every behavioral diff from deploy-v4 is a bug by definition. */
+   more here — every behavioral diff from deploy-v6 that the header does not
+   list is a bug by definition. */
 type El = HTMLElement & {
   __done?: number;
   __rv?: number;
   __d?: number;
   __pending?: number;
+  __safe?: number;
 };
-type Vid = HTMLVideoElement & { __free?: boolean; __target?: number | null };
+type Vid = HTMLVideoElement & { __target?: number | null; __pl?: number };
 
 export function LandingEffects() {
   useEffect(() => {
@@ -52,16 +73,15 @@ export function LandingEffects() {
     let disposed = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    // ---------- Video: prime for scrubbing ----------
+    // ---------- Video: prime (decode frame 0), then let the scroll drive it ----------
     const kick = () => {
       document.querySelectorAll<Vid>("video[data-hero-video]").forEach((v) => {
         v.muted = true;
         v.defaultMuted = true;
         v.playsInline = true;
         v.preload = "auto";
-        if (v.__free) return;
         const p = v.play();
-        if (p && p.then) p.then(() => { if (!v.__free) v.pause(); }).catch(() => {});
+        if (p && p.then) p.then(() => v.pause()).catch(() => {});
         else v.pause();
       });
     };
@@ -70,20 +90,34 @@ export function LandingEffects() {
     document.addEventListener("pointerdown", kick, { once: true });
     document.addEventListener("touchstart", kick, { once: true, passive: true });
 
-    // Smooth-scrub loop: currentTime eases toward the scroll target.
+    // Forward motion is real playback at a variable rate (smooth); only
+    // scrolling back falls back to a seek.
     let scrubRaf = 0;
-    const easeLoop = () => {
+    const ease = () => {
       if (disposed) return;
-      scrubRaf = requestAnimationFrame(easeLoop);
+      scrubRaf = requestAnimationFrame(ease);
       document.querySelectorAll<Vid>("video[data-hero-video]").forEach((v) => {
-        if (v.__free || !v.duration || v.seeking || v.__target == null) return;
+        if (!v.duration || v.seeking || v.__target == null) return;
         const cur = v.currentTime || 0;
         const d = v.__target - cur;
-        if (Math.abs(d) < 0.02) return;
-        v.currentTime = cur + d * 0.24;
+        if (d > 0.06) {
+          const rate = Math.round(Math.max(0.5, Math.min(4, d * 2.2)) * 4) / 4;
+          if (v.playbackRate !== rate) v.playbackRate = rate;
+          if (v.paused && !v.__pl) {
+            v.__pl = 1;
+            const p = v.play();
+            if (p && p.then) p.then(() => { v.__pl = 0; }).catch(() => { v.__pl = 0; });
+            else v.__pl = 0;
+          }
+        } else if (d < -0.35) {
+          if (!v.paused) v.pause();
+          v.currentTime = v.__target;
+        } else if (d <= 0.01) {
+          if (!v.paused) v.pause();
+        }
       });
     };
-    easeLoop();
+    ease();
 
     // ---------- Scroll choreography ----------
     const show = (el: El, animate: boolean) => {
@@ -130,13 +164,6 @@ export function LandingEffects() {
       });
     }
 
-    const progressOf = (el: HTMLElement) => {
-      const host =
-        (el.closest("[data-rise-host]") as HTMLElement | null) || el.parentElement!;
-      const r = host.getBoundingClientRect();
-      return Math.max(0, Math.min(1, -r.top / (r.height || 1)));
-    };
-
     let rafId = 0;
     const tick = () => {
       rafId = 0;
@@ -161,65 +188,58 @@ export function LandingEffects() {
             show(el, false);
             return;
           }
+          // Belt and braces: a section that has sat within two viewports for
+          // 4s shows anyway, so a missed event can never leave one invisible.
+          if (!el.__safe && r.top < vh * 2) {
+            el.__safe = 1;
+            timers.push(setTimeout(() => { if (!el.__done) show(el, true); }, 4000));
+          }
           if (near) {
             el.__pending = 1;
             timers.push(setTimeout(() => show(el, true), el.__d || 0));
           }
         });
 
-      document.querySelectorAll<HTMLElement>("[data-rise]").forEach((el) => {
-        if (reduce) return;
-        const p = progressOf(el);
-        const c = (el.getAttribute("data-rise") || "").split(",").map(Number);
-        const s0 = c[0] || 0.86;
-        const s1 = c[1] || 1.2;
-        const y1 = c[2] || -150;
-        el.style.willChange = "transform";
-        el.style.transform = `translate3d(0,${(p * y1).toFixed(1)}px,0) scale(${(
-          s0 + (s1 - s0) * p
-        ).toFixed(4)})`;
-      });
-
-      // Hero video scrubs with scroll over the first 30% of the hero span,
-      // then free-runs in loop.
-      document.querySelectorAll<Vid>("video[data-hero-video]").forEach((v) => {
-        // reduced-motion: the markup's autoPlay may have started it before
-        // this ran — park it on its poster frame and leave it parked.
-        if (reduce) {
-          if (!v.paused) v.pause();
-          return;
-        }
-        if (!v.duration || isNaN(v.duration)) return;
-        const host =
-          (v.closest("[data-rise-host]") as HTMLElement | null) || v.parentElement!;
-        const hr = host.getBoundingClientRect();
-        if (hr.bottom < -60 || hr.top > vh + 60) {
+      // Scroll-locked hero: sticky stage, progress drives playhead + captions.
+      document.querySelectorAll<HTMLElement>("[data-pin-host]").forEach((host) => {
+        const stage = host.querySelector<HTMLElement>("[data-pin-stage]");
+        if (!stage || host.offsetParent === null) return;
+        const r = host.getBoundingClientRect();
+        const sr = stage.getBoundingClientRect();
+        const p = Math.max(0, Math.min(1, -r.top / Math.max(1, r.height - sr.height)));
+        host.querySelectorAll<HTMLElement>("[data-cap]").forEach((c) => {
+          const ab = (c.getAttribute("data-cap") || "0,1").split(",").map(Number);
+          const a = ab[0];
+          const b = ab[1];
+          const f = Math.max(0.01, 0.2 * (b - a));
+          let o = 0;
+          if (p >= a && p <= b) {
+            const fi = a <= 0 ? 1 : Math.min(1, (p - a) / f);
+            const fo = b >= 1 ? 1 : Math.min(1, (b - p) / f);
+            o = Math.min(fi, fo);
+          }
+          c.style.opacity = o.toFixed(3);
+          c.style.transform = reduce ? "none" : `translate3d(0,${((1 - o) * 26).toFixed(1)}px,0)`;
+          c.style.pointerEvents = o > 0.5 ? "auto" : "none";
+          // Not in the design: opacity 0 leaves the caption's buttons in the
+          // Tab order and in the accessibility tree, so a keyboard user would
+          // land on an invisible "Book a consult". visibility drops them out.
+          c.style.visibility = o > 0 ? "visible" : "hidden";
+        });
+        const bar = host.querySelector<HTMLElement>("[data-pin-bar]");
+        if (bar) bar.style.width = `${(p * 100).toFixed(2)}%`;
+        const v = host.querySelector<Vid>("video[data-hero-video]");
+        if (!v || !v.duration || isNaN(v.duration)) return;
+        if (reduce || r.bottom < -60 || r.top > vh + 60) {
           if (!v.paused) v.pause();
           v.__target = null;
           return;
         }
-        const SPAN = 0.3;
-        const p = Math.min(1, Math.max(0, -hr.top / (hr.height || 1)) / SPAN);
-        if (p < 1 && !reduce) {
-          if (!v.paused) v.pause();
-          v.__free = false;
-          v.__target = Math.min(v.duration - 0.05, p * v.duration);
-        } else if (!v.__free || v.paused) {
-          v.__free = true;
-          v.loop = true;
-          const pl = v.play();
-          if (pl && pl.catch) pl.catch(() => {});
-        }
+        // Clamped, never free-running: departure 1 in the header.
+        v.__target = Math.min(v.duration - 0.05, p * v.duration);
       });
 
       if (!reduce) {
-        document.querySelectorAll<HTMLElement>("[data-fade-out]").forEach((el) => {
-          const p = progressOf(el);
-          el.style.willChange = "opacity, transform";
-          el.style.opacity = (1 - Math.min(1, p * 2.6)).toFixed(3);
-          el.style.transform = `translate3d(0,${(-p * 160).toFixed(1)}px,0)`;
-        });
-
         document.querySelectorAll<El>("[data-drift]").forEach((el) => {
           if (el.hasAttribute("data-reveal") && !el.__done) return;
           const r = el.getBoundingClientRect();
@@ -258,6 +278,9 @@ export function LandingEffects() {
     addEventListener("touchmove", onScroll, { passive: true });
     addEventListener("visibilitychange", onWake);
     addEventListener("pageshow", onWake);
+    // v6 also polls: the video's `duration` lands whenever its metadata does,
+    // and neither the playhead nor a caption should wait for the next scroll.
+    const poll = setInterval(onWake, 250);
     tick();
 
     // ---------- Markets rail: drag to scroll ----------
@@ -303,6 +326,7 @@ export function LandingEffects() {
       disposed = true;
       cancelAnimationFrame(scrubRaf);
       if (rafId) cancelAnimationFrame(rafId);
+      clearInterval(poll);
       timers.forEach(clearTimeout);
       removeEventListener("scroll", onScroll, { capture: true } as EventListenerOptions);
       removeEventListener("resize", onScroll);

@@ -2,6 +2,27 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.69.0] — 2026-09-03
+
+### Changed
+- **The landing's hero is the v6 design: a scroll-driven film.** The house clip
+  is pinned to the viewport for several screens of scrolling; the scroll drives
+  its playhead (forward as real playback at a variable rate, backwards as a
+  seek) while four captions take turns over it — the opening, who we are, how
+  we work, and the consult with its two buttons — above a hairline progress
+  bar. The header sits on the film in cream. Market cards gain the design's
+  inner parallax; the consult background ships at 2400px for retina screens.
+  Everything that carries weight is untouched: the real consult form (captcha,
+  TCPA consent, notice to the agency), both languages, the business facts read
+  from the environment, and the staff login link.
+- Two deliberate departures from the design, written down in
+  `LandingEffects.tsx`: the clip does not loop past the end of the hero (it
+  cannot — it ends on the house and opens in a different room), and under
+  reduced motion the captions still crossfade with the scroll while the video
+  stays on its first frame.
+- The poster is the clip's own first frame (1280px), so the page reads as
+  seamless before a byte of video arrives; the v4 house plate is gone.
+
 ## [0.68.0] — 2026-09-03
 
 ### Added

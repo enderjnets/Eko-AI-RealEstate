@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The public landing — the v4 design from the Claude Design project, converted
+ * The public landing — the v6 design from the Claude Design project, converted
  * to a responsive page. Root is deliberately the marketing page and not the
  * dashboard: this is the address a stranger arrives at from an ad or a video.
  * Staff sign in at /login, which still lands on /leads.
@@ -15,9 +15,11 @@
  * The imagery is served from `public/landing/`, never hotlinked from the
  * design tool's CDN: that host belongs to somebody else's uptime and referrer
  * policy, and it would break silently — the layout would still render, with
- * holes. The hero is a <video> whose poster is the design's hero plate; when
- * `/landing/casa-hero.mp4` has not been shipped, the poster IS the hero and
- * the page is complete without it.
+ * holes. The hero is a <video> pinned to the viewport for several screens of
+ * scrolling, its playhead driven by the scroll while four captions take turns
+ * over it (LandingEffects documents the attributes). Its poster is the clip's
+ * own first frame, so the page reads as complete and seamless before a byte
+ * of video has arrived.
  *
  * Every section lives at module scope, NOT nested inside `Landing`. Nested
  * component functions get a new identity on each render, so React tears down
@@ -25,6 +27,11 @@
  * consumer on language change, switching to Spanish mid-form would wipe the
  * visitor's name, phone, consent tick and Turnstile token on the one page
  * whose entire purpose is that form.
+ *
+ * What the design's 390px artboard leaves out and this page keeps: the Roaring
+ * Fork Valley card, the fourth "how we work" card and the credentials list. An
+ * artboard is a sketch of a phone, not a decision that a phone visitor should
+ * hear about two markets instead of three.
  */
 
 import Link from "next/link";
@@ -58,43 +65,40 @@ function SplitTitle({ a, italic }: { a: string; italic: string }) {
   );
 }
 
+/** Sits on the film, so it is cream on dark and travels with the sticky stage. */
 function LandingNav() {
   const { t } = useI18n();
+  const link =
+    "hidden text-[11px] uppercase tracking-[0.18em] text-ln-canvas/80 hover:text-ln-gold md:inline";
   return (
-    <header className="absolute inset-x-0 top-0 z-20">
+    <header className="absolute inset-x-0 top-0 z-[4]">
       <div className="flex items-center justify-between gap-4 px-5 py-6 sm:px-10 lg:px-14 lg:py-8">
         <div className="min-w-0">
           {LANDING.advisors && (
-            <p className="truncate font-ln-serif text-[22px] font-light leading-none tracking-[0.06em] text-ln-ink sm:text-[25px]">
+            <p className="truncate font-ln-serif text-[19px] font-light leading-none tracking-[0.05em] text-ln-canvas sm:text-[26px] sm:tracking-[0.06em]">
               {LANDING.advisors}
             </p>
           )}
           {LANDING.brokerage && (
-            <p className="mt-1 truncate text-[8px] font-medium uppercase tracking-[0.3em] text-ln-ink/60">
+            <p className="mt-1 truncate text-[7px] font-medium uppercase tracking-[0.28em] text-ln-canvas/60 sm:text-[8px] sm:tracking-[0.3em]">
               {LANDING.brokerage}
             </p>
           )}
         </div>
-        <nav className="flex items-center gap-5 lg:gap-9">
-          <a
-            href="#about"
-            className="hidden text-[11px] uppercase tracking-[0.18em] text-ln-ink/75 hover:text-ln-gold md:inline"
-          >
-            {t("landing.nav.about")}
+        <nav className="flex items-center gap-5 lg:gap-10">
+          <a href="#consult" className={link}>
+            {t("landing.nav.buying")}
           </a>
-          <a
-            href="#how"
-            className="hidden text-[11px] uppercase tracking-[0.18em] text-ln-ink/75 hover:text-ln-gold md:inline"
-          >
-            {t("landing.how.eyebrow")}
+          <a href="#consult" className={link}>
+            {t("landing.nav.selling")}
           </a>
-          <a
-            href="#markets"
-            className="hidden text-[11px] uppercase tracking-[0.18em] text-ln-ink/75 hover:text-ln-gold md:inline"
-          >
+          <a href="#markets" className={link}>
             {t("landing.nav.markets")}
           </a>
-          <span className="[&_button]:text-ln-ink/60 [&_button:hover]:text-ln-ink">
+          <a href="#about" className={link}>
+            {t("landing.nav.about")}
+          </a>
+          <span className="[&_button]:text-ln-canvas/70 [&_button:hover]:bg-ln-canvas/10 [&_button:hover]:text-ln-canvas">
             <LanguageSwitcher />
           </span>
         </nav>
@@ -103,76 +107,136 @@ function LandingNav() {
   );
 }
 
+/**
+ * The scroll-driven film. The host is several viewports tall and its stage is
+ * sticky, so the page keeps scrolling while the frame stays put; the engine
+ * turns that scroll into the clip's playhead and into which caption is up.
+ *
+ * Heights: the design's artboards are 4400/900 (desktop) and 2900/720 (phone)
+ * — host over stage — i.e. 4.9 and 4.0 viewports. The host is in `svh` so the
+ * document never changes length when a phone's toolbar collapses (that would
+ * move everything below the hero mid-scroll); the stage is `dvh` so the film
+ * always fills whatever the viewport currently is. The cost is a small shift in
+ * the progress denominator when the toolbar folds, once, early in the scroll.
+ *
+ * Caption windows are the design's, as fractions of that scroll: 0–.22 the
+ * opening, .27–.49 who we are, .53–.75 how we work, .79–1 the consult with its
+ * buttons. Only the first is visible before the engine runs (and with JS off);
+ * the others start `opacity-0 invisible pointer-events-none` so the four never
+ * stack on the first paint and no invisible button takes a click or a Tab.
+ * `lib/__tests__/landingHero.test.ts` pins that, and the video's missing
+ * `autoPlay`/`loop`: either would come back silently and undo the engine.
+ */
 function Hero() {
   const { t } = useI18n();
-  return (
-    <section
-      data-rise-host="1"
-      className="relative h-[660px] overflow-hidden bg-[linear-gradient(180deg,#A9BDD2_0%,#C7D0D6_26%,#E1DBD1_52%,#EFE3D0_74%,#E4D4BC_100%)] md:h-[min(69.4vw,1000px)]"
-    >
-      {/* The design's radial glow keeps the copy readable where the
-          composition lets it ride over the house; data-fade-out lifts and
-          fades it as the hero scrolls away. */}
-      <div
-        data-fade-out="1"
-        className="absolute inset-x-0 top-[86px] z-[3] flex flex-col items-center px-5 text-center [background:radial-gradient(58%_66%_at_50%_44%,rgba(244,241,234,0.78)_0%,rgba(244,241,234,0.44)_54%,rgba(244,241,234,0)_80%)] sm:px-10 md:top-[150px]"
-      >
-        <p className="mb-7 text-[10px] font-medium uppercase tracking-[0.32em] text-ln-ink/60">
-          {t("landing.hero.kicker")}
-        </p>
-        <h1 className="mb-6 font-ln-serif text-[52px] font-light leading-[0.95] tracking-[-0.025em] text-ln-ink sm:text-[80px] lg:text-[108px]">
-          {t("landing.hero.titleLine1")}
-          <br />
-          {t("landing.hero.titleLine2")} <span className="italic">{t("landing.hero.titleItalic")}</span>.
-        </h1>
-        <p className="mb-9 max-w-[600px] text-[15px] leading-[1.7] text-ln-ink-soft [text-shadow:0_1px_14px_rgba(244,241,234,0.95)] sm:text-base">
-          {t("landing.hero.body")}
-        </p>
-        <div className="flex flex-col items-center gap-3.5 sm:flex-row">
-          <a
-            href="#consult"
-            className="inline-flex min-h-[52px] items-center gap-3 rounded-full bg-[#242219] px-8 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-ln-canvas hover:opacity-90"
-          >
-            <CalendarCheck className="h-3.5 w-3.5" />
-            {t("landing.hero.cta")}
-          </a>
-          {LANDING.phone && (
-            <a
-              href={`tel:${dialable(LANDING.phone)}`}
-              className="inline-flex min-h-[52px] items-center gap-3 rounded-full border border-ln-ink/25 bg-ln-canvas/80 px-8 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-ln-ink backdrop-blur hover:border-ln-gold"
-            >
-              <Phone className="h-3.5 w-3.5" />
-              {t("landing.hero.callUs")}
-            </a>
-          )}
-        </div>
-      </div>
+  const eyebrow =
+    "mb-4 text-[9px] font-medium uppercase tracking-[0.26em] text-ln-canvas/70 md:mb-6 md:text-[10px] md:tracking-[0.32em]";
+  const title = "font-ln-serif font-light text-ln-cream [text-wrap:pretty]";
+  const body = "text-[15px] leading-[1.7] text-ln-canvas/85 md:text-[17px] md:leading-[1.75]";
+  const aside =
+    "invisible pointer-events-none absolute inset-x-5 bottom-[70px] z-[3] opacity-0 will-change-[opacity,transform] md:inset-x-auto md:bottom-[110px] md:max-w-[660px]";
+  const asideTitle = `${title} mb-3.5 text-[46px] leading-[0.98] tracking-[-0.02em] md:mb-[22px] md:text-[64px] md:leading-[0.96] lg:text-[84px]`;
 
-      {/* The house, rising and scaling from the bottom as the page scrolls
-          (data-rise), its clip scrubbing with the scroll (data-hero-video).
-          Poster-first: without the mp4 or with JS off, the plate IS the hero. */}
-      <div
-        data-rise="0.86,1.22,-200"
-        className="absolute inset-x-0 bottom-[-40px] z-[2] h-[400px] origin-bottom overflow-hidden [mask-image:radial-gradient(135%_108%_at_50%_100%,#000_70%,transparent_99%)] [transform:scale(0.86)] md:bottom-[max(-4.2vw,-60px)] md:h-[min(54.2vw,780px)]"
-      >
+  return (
+    <section data-pin-host="1" className="relative h-[400svh] bg-ln-night md:h-[490svh]">
+      <div data-pin-stage="1" className="sticky top-0 h-dvh overflow-hidden bg-ln-night">
+        {/* No autoPlay, no loop: the engine primes it and then owns the
+            playhead, and the clip cannot loop (see LandingEffects). */}
         <video
           data-hero-video="1"
-          autoPlay
           muted
-          loop
           playsInline
           preload="auto"
-          poster="/landing/hero-plate.jpg"
-          className="h-full w-full object-cover [object-position:50%_42%]"
+          poster="/landing/hero-poster.jpg"
+          className="absolute inset-0 h-full w-full object-cover"
         >
           <source src="/landing/casa-hero.mp4" type="video/mp4" />
         </video>
-      </div>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[3] h-28 bg-gradient-to-b from-transparent via-ln-warm/30 to-ln-warm" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-40 bg-gradient-to-b from-ln-night/60 to-transparent md:h-[220px]" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[260px] bg-gradient-to-t from-ln-night/75 to-transparent md:h-[320px]" />
 
-      <div className="absolute bottom-6 left-5 z-[4] hidden items-center gap-2.5 text-[10px] uppercase tracking-[0.22em] text-ln-ink/55 sm:left-10 md:flex lg:left-14">
-        <ArrowDown className="h-[13px] w-[13px]" />
-        {t("landing.hero.scroll")}
+        <LandingNav />
+
+        <div
+          data-cap="0,0.22"
+          className="absolute inset-0 z-[3] flex flex-col items-center justify-center px-5 text-center will-change-[opacity,transform] md:px-14"
+        >
+          <p className={`${eyebrow} md:mb-[30px]`}>{t("landing.hero.kicker")}</p>
+          <h1
+            className={`${title} mb-4 text-[50px] leading-[0.96] tracking-[-0.02em] [text-shadow:0_2px_40px_rgba(0,0,0,0.35)] sm:text-[80px] md:mb-[22px] md:leading-[0.92] md:tracking-[-0.025em] lg:text-[96px] xl:text-[118px]`}
+          >
+            {t("landing.hero.titleLine1")}
+            <br />
+            {t("landing.hero.titleLine2")} <span className="italic">{t("landing.hero.titleItalic")}</span>.
+          </h1>
+          <p className={`${body} max-w-[310px] md:max-w-[600px]`}>{t("landing.hero.body")}</p>
+        </div>
+
+        <div data-cap="0.27,0.49" className={`${aside} md:left-14`}>
+          <p className={eyebrow}>{t("landing.hero.who.eyebrow")}</p>
+          <h2 className={asideTitle}>
+            {t("landing.hero.who.titleA")}
+            <br />
+            <span className="italic">{t("landing.hero.who.titleItalic")}</span>.
+          </h2>
+          <p className={`${body} md:max-w-[520px]`}>{t("landing.hero.who.body")}</p>
+        </div>
+
+        <div data-cap="0.53,0.75" className={`${aside} md:right-14`}>
+          <p className={eyebrow}>{t("landing.how.eyebrow")}</p>
+          <h2 className={asideTitle}>
+            {t("landing.hero.price.titleA")}
+            <br />
+            <span className="italic">{t("landing.hero.price.titleItalic")}</span>.
+          </h2>
+          <p className={`${body} md:max-w-[520px]`}>{t("landing.hero.price.body")}</p>
+        </div>
+
+        <div
+          data-cap="0.79,1"
+          className="invisible pointer-events-none absolute inset-0 z-[3] flex flex-col items-center justify-center px-5 text-center opacity-0 will-change-[opacity,transform] md:px-14"
+        >
+          <p className={eyebrow}>{t("landing.hero.talk.eyebrow")}</p>
+          <h2
+            className={`${title} mb-4 text-[50px] leading-[0.96] tracking-[-0.02em] md:mb-6 md:text-[76px] md:leading-[0.94] md:tracking-[-0.025em] lg:text-[96px]`}
+          >
+            {t("landing.consult.titleA")}
+            <br />
+            <span className="italic">{t("landing.consult.titleItalic")}</span>.
+          </h2>
+          <p className={`${body} mb-[26px] max-w-[310px] md:mb-9 md:max-w-[560px]`}>
+            {t("landing.consult.body")}
+          </p>
+          <div className="flex w-full max-w-[360px] flex-col gap-2.5 md:w-auto md:max-w-none md:flex-row md:gap-3.5">
+            <a
+              href="#consult"
+              className="inline-flex min-h-[52px] items-center justify-center gap-3 rounded-full bg-ln-canvas px-8 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-[#242219] hover:opacity-90"
+            >
+              <CalendarCheck className="h-3.5 w-3.5" />
+              {t("landing.hero.cta")}
+            </a>
+            {LANDING.phone && (
+              <a
+                href={`tel:${dialable(LANDING.phone)}`}
+                className="inline-flex min-h-[52px] items-center justify-center gap-3 rounded-full border border-ln-canvas/45 bg-ln-night/35 px-8 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-ln-canvas backdrop-blur hover:border-ln-canvas"
+              >
+                <Phone className="h-3.5 w-3.5" />
+                {t("landing.hero.callUs")}
+              </a>
+            )}
+          </div>
+        </div>
+
+        <div
+          data-cap="0,0.14"
+          className="absolute bottom-[30px] left-14 z-[4] hidden items-center gap-2.5 text-[10px] uppercase tracking-[0.22em] text-ln-canvas/60 md:flex"
+        >
+          <ArrowDown className="h-[13px] w-[13px]" />
+          {t("landing.hero.scroll")}
+        </div>
+        <div className="absolute inset-x-5 bottom-0 z-[4] h-px bg-ln-canvas/20 md:inset-x-14">
+          <div data-pin-bar="1" className="h-full w-0 bg-ln-canvas" />
+        </div>
       </div>
     </section>
   );
@@ -318,18 +382,23 @@ function Markets() {
         >
           {markets.map(({ key, src }, i) => (
             <article key={key} data-reveal="up" className="w-[290px] flex-none sm:w-[400px]">
-              <div className="overflow-hidden bg-ln-tint">
-                {/* eslint-disable-next-line @next/next/no-img-element -- see
-                    the portrait note. The aspect-* class reserves the box, so
-                    nothing reflows while the landscape files load and
-                    object-cover crops them to the design's portrait cards. */}
-                <img
-                  src={src}
-                  alt=""
-                  loading={i === 0 ? "eager" : "lazy"}
-                  decoding="async"
-                  className="aspect-[4/5] w-full object-cover"
-                />
+              <div className="relative aspect-[4/5] overflow-hidden bg-ln-tint">
+                {/* The design's card parallax (0.10): the image box is taller
+                    than the frame and starts above it, so the translate has
+                    room on both sides and object-cover never shows an edge.
+                    The aspect-* class reserves the frame, so nothing reflows
+                    while the landscape files load. */}
+                <div data-parallax="0.10" className="absolute inset-x-0 -top-[8%] h-[117%]">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- see
+                      the portrait note. */}
+                  <img
+                    src={src}
+                    alt=""
+                    loading={i === 0 ? "eager" : "lazy"}
+                    decoding="async"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
               </div>
               <div className="mt-4 flex items-baseline justify-between gap-5 border-t border-ln-hair pt-4">
                 <div>
@@ -432,7 +501,6 @@ export function Landing() {
     // bounces black behind a cream page.
     <div className="eko-landing relative min-h-screen bg-ln-canvas font-ln-sans text-ln-ink antialiased">
       <LandingEffects />
-      <LandingNav />
       <main>
         <Hero />
         <TwoOfUs />
