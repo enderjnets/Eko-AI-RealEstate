@@ -415,11 +415,16 @@ Sin tocar migraciones.
 | `POST /public/leads` tras agotar la baliza | `422` — **el presupuesto del formulario no se tocó** |
 | Fila resultante | `source=other`, `utm_source=deploy-check`, `max_scroll_pct=50`, `sections_viewed=["markets"]`, `event_count=3` |
 
-🎯 **`country=US` llegó.** Era una incógnita declarada del plan (§6.6): confirma
-que `cf-ipcountry` atraviesa Cloudflare → cloudflared → el rewrite de Next →
-el backend. **`region` y `city` siguen vacías**: falta el clic del dueño en
-Cloudflare → Rules → Settings → Managed Transforms → «Add visitor location
-headers» en la zona `denverhomestory.com`. Sin él sólo habrá país.
+🎯 **La geolocalización está completa.** `country=US` llegó desde el primer día,
+lo que ya confirmaba que las cabeceras de Cloudflare atraviesan el túnel y el
+rewrite de Next. El **4-sep el dueño activó** «Add visitor location headers»
+(Cloudflare → Rules → Settings → Managed Transforms) y una visita de prueba
+devolvió **`US / CO / Parker`**: país, región **y ciudad**. La incógnita §6.6 del
+plan queda cerrada y §7.4 hecho.
+
+«Remove visitor IP headers» se dejó **apagado** a propósito: borraría la cabecera
+con la IP del visitante, que es de donde el limitador del formulario saca a quién
+está frenando.
 
 La fila de prueba se **borró** al terminar (3 eventos + 1 sesión); las dos
 tablas quedan en **0 y 0**, para que el primer visitante real sea el primero de
