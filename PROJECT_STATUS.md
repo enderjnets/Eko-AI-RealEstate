@@ -256,6 +256,8 @@ Bearer directo.
 | fal.ai desde el ROG | `http=200` |
 | `pictures.fetch()` real en el ROG | **`fal`**, JPEG de 775 293 bytes (`ffd8ffe0`) |
 | **Vídeo completo, trabajo 11** | **entregado el 4-sep 05:54**, las **5 escenas con `fal`**, marca de agua presente (correlación 0,975), **0 errores y 0 avisos**, 88 s de principio a fin |
+| **Juicio del dueño sobre ese vídeo** | **«se ve bien»** — visto entero el 4-sep. Es lo único que ningún test da: que las cinco imágenes digan lo que dice el guion |
+| Pieza 10 en la cola | aprobada por el dueño a las 06:05, **programada en Buffer** (TikTok 5-sep 08:30, Instagram y YouTube el 6). Pieza 9 sale antes: **TikTok hoy 08:30** |
 | `worker/tests` | **85 verdes**, 0 saltados |
 | ruff en los ficheros tocados | 9 antes, **9 después** — ninguno nuevo |
 | Mutaciones | 4, todas rojas y restauradas por md5: quitar la rama de fal en `fetch`; quitar la puerta de la clave; que el 403 no agote el día; cobrar antes de que fal acepte |
