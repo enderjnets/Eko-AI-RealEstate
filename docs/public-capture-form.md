@@ -264,3 +264,91 @@ Do this in a browser, not with curl — a 202 is not verification:
 3. The lead is in the Inbox, badged **Web form**, with a non-zero score.
 4. In Postgres, that lead carries the `utm_content` and a `consent_at` with
    the wording, IP and user agent.
+
+---
+
+# The landing beacon — `POST /api/v1/public/landing`
+
+The form tells you who wrote. This tells you who *read* — and without it "the
+video brought a hundred people and two wrote" and "the video brought two people
+and both wrote" are the same picture, while calling for opposite decisions.
+
+## What it stores
+
+One `landing_sessions` row per visit, rolled up as the visit goes: where they
+came from (`source`, derived from the UTM or the referrer host), the device,
+browser and OS **families**, the in-app browser if it is one, the country and —
+when Cloudflare's "Add visitor location headers" transform is on for the zone —
+the region and city, how far they scrolled, which sections they reached, taps
+on *call* and on the consult form, whether the form was started and submitted,
+and the lead it became if it became one.
+
+Behind it, `landing_events` holds the raw stream, deleted after
+`LANDING_EVENTS_RETENTION_DAYS` (90). **Reports read the session, never the
+events** — the session carries the same facts already merged, so the numbers do
+not change when the purge runs.
+
+## What it does not store, and why that is the whole design
+
+- **No cookie and no persistent identifier.** The session key lives in
+  `sessionStorage`; it dies with the tab and cannot follow anybody anywhere.
+- **No IP address.** It is read for the rate limit and dropped.
+- **No raw user agent.** Reduced to families (`phone` / `Chrome` / `iOS`)
+  before it is written; the full string is close enough to a fingerprint that
+  keeping it would undo not setting a cookie.
+
+Because of those three, this is not tracking in the sense a cookie banner
+exists for. A privacy notice is still the right thing to publish, and the
+Global Privacy Control signal is honoured by the page: with it set, the tracker
+sends nothing at all.
+
+## Contract
+
+`text/plain` body — `navigator.sendBeacon` cannot reliably send JSON — parsed
+by hand. At most **16 KB** and **25 events** per batch; a closed set of event
+names (`page_view`, `section_view`, `scroll`, `cta_click`, `tel_click`,
+`form_start`, `form_submit`, `form_error`); metadata of at most five short
+keys. Its own rate budget (60 per address per 10 minutes, 3,000 platform-wide),
+**separate from the form's** — one attentive visitor sends four beacons, and
+sharing the form's budget of five would mean reading the page carefully costs
+you the ability to submit it.
+
+**`LANDING_SESSIONS_PER_DAY` (20,000) is the control that actually bounds the
+table**, and it is worth being clear about why the rate limit is not. Sixty
+posts per address per ten minutes is 8,640 permanent session rows a day from a
+single address, and sessions are never deleted by age — deleting them would
+rewrite the denominator of every historical funnel. So the cap is on **creating**
+a session, per agency, per local day. A visit already being recorded keeps
+merging its beacons after the cap is reached, so a real visitor is never
+truncated mid-page; only somebody inventing session keys is stopped. It is
+logged once per agency per day when it trips.
+
+Every counter is written as a SQL expression (`cta_clicks + :n`,
+`GREATEST(max_scroll_pct, :pct)`, `COALESCE(form_started_at, :now)`), never as a
+number computed in Python from a row that was read a moment earlier. Two
+beacons for the same visit are normal — `sendBeacon` fires on both
+`visibilitychange` and `pagehide` — and folding them in the process loses
+clicks and lets the scroll depth go *down*.
+
+**Always 204**, including when it declines: an endpoint that answers
+differently for a valid and an invalid form key is an oracle for enumerating an
+operator's tenants, and a beacon has nothing useful to do with the difference.
+
+## Joining a visit to its lead
+
+The form sends `session_id` alongside the rest. It is a **separate field, not
+an attribution key**: the whitelist in `services/capture.py` means "which
+campaign produced this lead" and is pinned by a test, an assert and this
+document — a per-visit identifier is not that and must never reach `lead.meta`.
+The join is applied after the lead is committed and notified, wrapped, because
+a failure there must cost a row in a report and never a resubmission. For the
+same reason the field carries **no shape pattern**: a `pattern` would reject the
+whole submission with 422, so a bug in the tracker's key generator would stop
+costing an analytics row and start costing the lead. The shape is checked where
+it is used, and a value that does not match is simply not looked up.
+
+**`form_submitted_at IS NOT NULL AND lead_id IS NULL`** is the funnel step that
+would otherwise be invisible: the visitor pressed send and no lead ever arrived
+— a captcha refusal, a dropped connection. The page's own `form_submit` beacon
+writes the timestamp, so this survives even when the submission never reached
+the server.

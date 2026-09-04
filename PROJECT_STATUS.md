@@ -6,6 +6,118 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## 🟢 EN CURSO — la analítica del embudo (`PLAN.md`, rama `feat/analitica-embudo`)
+
+### ✅ F1 — eventos de la landing: esquema + endpoint público · `de15475`
+
+> **Sin desplegar.** El checkpoint A necesita también F2 (el tracker): F1 sin
+> emisor no recoge nada y F2 sin F1 escribe contra un 404.
+
+**Checklist, con la salida real** (base `eko_test_analitica`, recreada):
+
+| Comprobación | Resultado |
+|---|---|
+| `pytest` desde base recreada | **1469 passed**, 0 failed, **0 saltados**, 4:35 |
+| `ruff check app tests` | All checks passed |
+| `tsc --noEmit` · `vitest run` | limpio · **200 passed** (frontend intacto en esta fase) |
+| `docker build -f backend/Dockerfile` | exit 0 |
+| Cobertura, ficheros nuevos | `landing_analytics.py` **96,8 %** · `models/landing.py` **96,5 %** |
+| Cobertura, `public.py` | **94,4 %** frente al 89,8 % de partida — ver la nota de medición |
+| Cobertura total | 80,8 % → **81,1 %** |
+| Secretos / depuración en el diff | ninguno (barrido por forma sobre las líneas añadidas) |
+
+⚠️ **Nota de medición, porque el número desnudo engaña.** Con el arnés que usa
+el repo, `public.py` aparenta bajar de 89,8 % a 83,7 %. Es un artefacto:
+`coverage` no traza lo que corre dentro del greenlet de SQLAlchemy, así que en
+un handler `async` **todo lo que va después del primer `await db.execute(...)`
+sale como no cubierto aunque los tests demuestren que escribe filas**. Medido
+con `concurrency = greenlet`, el mismo fichero da **94,4 %**, y las 17 líneas
+que quedan son 15 preexistentes (interiores del limitador, los `except` de
+`capture`, el `ValueError` de la ruta de medios) y 2 defensivas nuevas. El
+mismo artefacto explica el «62 %» de `analytics.py` en el diagnóstico del plan.
+
+**Qué entra**: migración **051_landing_sessions** (dos tablas con RLS
+`ENABLE`+`FORCE`, política y GRANT), `models/landing.py`,
+`services/landing_analytics.py` (clasificación pura + purga),
+`POST /api/v1/public/landing`, `session_id` en `POST /api/v1/public/leads`,
+tres settings nuevos en sus tres sitios de cableado, la purga colgada del tick
+del monitor, y 79 tests nuevos en cuatro ficheros.
+
+**Mutaciones verificadas** (guardar, mutar, ver rojo, restaurar, md5 idéntico):
+compartir el presupuesto de la captura · quitar `FORCE ROW LEVEL SECURITY` ·
+quitar el estampado explícito de `org_id` en el INSERT core · borrar el enlace
+sesión→lead · desconectar la purga del bucle · quitar el tope diario · volver a
+calcular los contadores en Python. **Siete, todas rojas y restauradas.**
+
+### Consultas al advisor
+
+| # | Motivo | Decisión |
+|---|---|---|
+| 1 | Arranque + puerta de F1 [CRÍTICA] (una sola consulta, cubre los dos disparadores) | Rama `feat/analitica-embudo` según el plan, no `feat/<fase>`, que partiría fases apiladas. Cuatro correcciones aplicadas antes de escribir código: el INSERT core **no** lo estampa `before_flush` (org_id explícito); 8 KB de cuerpo era incoherente con un lote máximo → **16 KB**; **medir el estado real de RLS antes** de escribir la guardia; y el enlace sesión→lead nunca puede romper el 202 |
+| 2 | Hallazgo bloqueante de la auditoría: las sesiones no se purgan nunca | **La retención NO es el arreglo** — no acota el abuso y sí destruye el denominador histórico del embudo. El control es un **tope diario de sesiones nuevas por agencia**. La retención de sesiones solo será posible cuando F7 tenga una tabla de agregados. Y para la actualización perdida: **expresiones SQL, no `FOR UPDATE`**, que pondría una espera de bloqueo en un handler público |
+
+### Auditoría de cierre (2 subagentes, revisión de código ya escrito)
+
+**Bloqueante (1), corregido en la fase:** `landing_sessions` no se purgaba y
+nada acotaba su número — 8.640 filas permanentes al día desde una sola
+dirección, sin captcha. Arreglado con `LANDING_SESSIONS_PER_DAY=20000`, sobre
+la **creación** de sesiones y por día local de la agencia; una visita ya
+registrada sigue fusionando sus balizas, así que un visitante real nunca se
+trunca a medias.
+
+**Importantes (4), corregidos:** actualización perdida en los contadores con dos
+balizas concurrentes —`max_scroll_pct` podía **bajar**, justo lo que el
+comentario prometía que no— resuelto con expresiones SQL; el 400 no registraba
+nada, así que una deriva del tracker habría dejado la tabla a cero en silencio;
+el techo global se cobraba **después** de leer y parsear el cuerpo, que es el
+fallo que el endpoint hermano documenta como outage pasado; y `session_id` con
+`pattern` convertía un fallo del tracker en un **422 que tumbaba el lead** —
+exactamente la inversión que ese bloque existe para evitar.
+
+**Menores corregidos:** tipos `BigInteger` del modelo alineados con la
+migración y los dos índices compuestos declarados (autogenerate ya no propone
+borrarlos); predicado `org_id` en la purga; `commit` incondicional; `path` sin
+query string; `form_submit` deja rastro en la sesión; docstring del oráculo
+suavizado, porque el tiempo de respuesta **sí** distingue aunque el estado no.
+
+**Al backlog, con motivo:** clave foránea compuesta `(org_id, session_id)`; el
+hueco entre el límite de 256 KB del middleware y los 16 KB del handler; la
+confianza en las cabeceras `cf-*` y en la IP del cliente, inherente a estar
+detrás del túnel; la purga cada 300 s para una retención de 90 días, correcta y
+derrochadora; y `MAX_TRACKED_IPS` ahora aplica a dos mapas, así que el techo de
+memoria del limitador se dobla a 10.000 entradas.
+
+### Incidencia de coordinación, resuelta
+
+Compartíamos `eko_realestate_test` con la sesión «fix-caption-rendering»: sus
+`DROP DATABASE` borraron la migración 051 a mitad de una pasada y produjeron
+185 rojos que **atribuí por error** a la opción de cobertura `greenlet`. Se lo
+dije como bueno y **lo he retractado**: la opción no está descartada, era el
+borrado. Yo me he mudado a `eko_test_analitica` y `eko_realestate_test` queda
+para ellos.
+
+### Hallazgos abiertos
+
+- 🔴 **Hueco del plan, decisión del dueño:** F1 gana `LANDING_SESSIONS_PER_DAY`,
+  que el plan no contemplaba, y F7 gana una tabla de agregados como requisito
+  previo a cualquier retención de sesiones. **No he editado `PLAN.md`.**
+- 🔴 **Choque de versión:** el plan reservaba 0.72.0 para el checkpoint A, pero
+  la sesión vecina la desplegó anoche. El checkpoint A pasa a **0.73.0**.
+- Producción quedó anoche en **`c68aaf7`**, `/api/v1/health` → **0.72.0** (antes
+  `02f0ac8` / 0.71.1). Ése es el punto de reversión del checkpoint A.
+- La pieza 10 sigue sin vídeo. El botón «Rehacer el vídeo» ya aparece; pulsarlo
+  es **acción del dueño** (la sesión vecina no pudo, y yo tampoco debo: exigiría
+  fabricar un token de sesión).
+
+### Siguiente paso
+
+**F2 — el tracker en la landing.** `frontend/lib/track.ts` (puro y testable),
+`LandingTracker.tsx` montado fuera del pin-host, atribución persistida en
+`sessionStorage` para que no se pierda al navegar, y `session_id` en el
+formulario. Cierra el checkpoint A con el bump a 0.73.0.
+
+---
+
 ## ✅ DESPLEGADO — v0.71.0 · la página dice de quién es
 
 > **En producción el 3-sep-2026**, autorizado por el dueño. `/api/v1/health` por

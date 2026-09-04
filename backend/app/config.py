@@ -154,6 +154,28 @@ class Settings(BaseSettings):
     # being offered) — that flip is the reactivation, no deploy needed.
     BOOKING_OFFERS_PAUSED: bool = False
 
+    # ─── Landing analytics ───────────────────────────────────────────────
+    # What the marketing page reports about itself: page views, how far people
+    # scrolled, which sections they reached, taps on "call" and on the consult
+    # form. Anonymous by construction — no cookie, no stored IP, no raw user
+    # agent — because the question is "did the video bring anybody", not "who".
+    #
+    # On by default: every day it is off is a day of traffic nobody can account
+    # for, and the endpoint writes nothing that would be awkward to delete.
+    LANDING_EVENTS_ENABLED: bool = True
+    # The rolled-up session row is the record and is kept forever; this bounds
+    # only the raw event stream behind it, which answers nothing after a
+    # quarter and grows per interaction.
+    LANDING_EVENTS_RETENTION_DAYS: int = 90
+    # The only thing that bounds how many PERMANENT rows an anonymous caller
+    # can create. The rate limit bounds the speed of writing them and not their
+    # number, and sessions are never deleted by age — doing that would rewrite
+    # the denominator of every historical funnel. Counted per agency, per local
+    # day, on session CREATION: a visit already recorded keeps merging, so real
+    # traffic is never truncated mid-page. Real traffic will not approach this;
+    # a flood reaches it within the hour.
+    LANDING_SESSIONS_PER_DAY: int = 20000
+
     SMS_SIMULATED: bool = True
     TWILIO_ACCOUNT_SID: str = ""
     # Two jobs used to ride on this one value: authenticating what we SEND, and

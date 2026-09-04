@@ -476,8 +476,10 @@ async def _llm_monitor_loop() -> None:
     `run_monitor_tick`, not in this interval.
     """
     from app.services.fair_housing_watch import run_fair_housing_tick
+    from app.services.landing_analytics import purge_landing_events
     from app.services.llm_monitor import run_monitor_tick
     from app.services.render_watch import run_render_watch_tick
+    from app.services.tenant_context import run_for_every_org
 
     interval = max(60, settings.LLM_MONITOR_INTERVAL_SECONDS)
     while True:
@@ -502,6 +504,19 @@ async def _llm_monitor_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001 — same reason as above
             logger.error("Fair Housing watch tick failed: %s", exc)
+
+        # Also rides this loop, and for the plainest of reasons: a DELETE of
+        # rows older than a quarter, on an indexed column, in a table that a
+        # marketing page writes a handful of rows into per visit. A dedicated
+        # task for that would be more machinery than the work. Per-org because
+        # the table is under RLS and a sweep with no organization bound would
+        # match nothing at all.
+        try:
+            await run_for_every_org(purge_landing_events)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — same reason as above
+            logger.error("Landing events purge failed: %s", exc)
 
 
 async def _content_studio_loop() -> None:
