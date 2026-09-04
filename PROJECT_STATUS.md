@@ -232,7 +232,62 @@ integrar `c68aaf7` en esta rama — y eso es un merge, que **no hago sin pedirlo
    `alembic downgrade`**: borraría lo ya recogido, y el código viejo convive sin
    problema con las tablas nuevas.
 
-### 🔴 URGENTE, del carril de vídeo — acción del dueño (no es de este plan)
+### ✅ RESUELTO — el carril de vídeo vuelve a tener imágenes (rama `fix/imagenes-fal`)
+
+> 4-sep, `f0a2ba5`, **no fusionado**. El obrero del ROG corre este código ya.
+
+**El diagnóstico heredado era correcto y el mecanismo que yo supuse no.** Dije
+que `fetch()` no podía tumbar un trabajo porque degrada a tarjeta de marca, y
+me faltó leer `produce.py:357`: un guard deliberado exige **al menos una**
+imagen real y lanza `ValueError` cuando ninguna escena la consiguió. Ése es el
+error del diario, once veces, cada una detrás de una narración ya pagada.
+
+**La causa raíz no era una clave borrada.** El instalador sí vació las tres,
+pero la de Kling ya no se podía reponer: esa cuenta pasa a emitir **una sola
+API key** (`api-…`) y `pictures.py:90` firmaba un JWT con el par
+`ACCESS_KEY`/`SECRET_KEY`, el esquema que se retira. Con el access vacío no
+llamaba a nadie. Medido en vivo: la clave nueva responde `200 code=0` como
+Bearer directo.
+
+| Medición | Resultado |
+|---|---|
+| Pexels desde el ROG | `http=200` |
+| Kling, api key nueva como Bearer | `http=200`, `code=0 SUCCEED` |
+| fal.ai desde el ROG | `http=200` |
+| `pictures.fetch()` real en el ROG | **`fal`**, JPEG de 775 293 bytes (`ffd8ffe0`) |
+| `worker/tests` | 83 verdes, 0 saltados |
+| ruff en los ficheros tocados | 9 antes, **9 después** — ninguno nuevo |
+| Mutaciones | quitar la rama de fal en `fetch` → rojo; quitar la puerta de la clave → rojo. Restauradas por md5 |
+
+Qué cambia: **fal.ai primero**, Kling **sólo** cuando no hay `FAL_KEY` (los
+proyectos vecinos aún tienen un par válido), Pexels detrás. Tres decisiones que
+no se ven en el diff:
+
+- La clave se lee **sólo del entorno**. El primer borrador leía también
+  `~/.config/fal/key`, que **existe en el Mac de desarrollo**: cualquier test
+  que llegara a `fetch()` habría comprado una imagen y pasado en verde.
+- El cargo al libro va **antes** de la llamada, como en Kling — y por eso Kling
+  no se intenta tras un fallo de fal: serían dos cargos por una imagen.
+- Un **403** de fal es saldo agotado, no credencial mala, y sube como
+  `NoBalance` para que una factura sin pagar no parezca un cambio de estilo.
+
+🔴 **Lo que sigue abierto y no he tocado**:
+
+- **El orden invertido sigue vivo**: la narración se paga antes de comprobar
+  que hay proveedor de imágenes. Hoy ya no sangra porque hay dos proveedores
+  vivos, pero el defecto es el orden, no los reintentos.
+- **`install-on-rog.sh:79` sigue con `cat > ~/.eko-render.env`**, que es lo que
+  borró las claves. Le he añadido `FAL_KEY=` a la plantilla y al README, pero
+  **el arreglo del `cat >` es `9127947`, en `fix/la-puerta-de-la-marca`** — de
+  otra sesión, y no lo duplico.
+- El obrero tiene horas permitidas `[1,2,13,15,16,17,21,23]`: **no cogerá
+  trabajo hasta las 13:00**. Por eso la verificación es una llamada directa a
+  `fetch()` y no un vídeo entero.
+- Tope diario en **8 imágenes**, heredado de cuando cada una era un clip caro
+  de Kling. Con fal a céntimos, un segundo vídeo del día cae a Pexels sin que
+  nadie lo pida. Sube `RENDER_IMAGES_PER_DAY` cuando quieras.
+
+### 🔴 Lo que queda del incidente — acción del dueño
 
 Lo reporta la sesión «fix-caption-rendering» en la madrugada del 4-sep, y no lo
 he tocado ni verificado yo:
