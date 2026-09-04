@@ -27,7 +27,30 @@ v0.56.0 y anteriores vive en git y en el plan.
 > **Reversión**: `git reset --hard 8814b64` + `docker compose build backend
 > frontend` + `up -d`. Copia del `.env`: `.env.bak.20260903_v0710`.
 
-### 🔴 Dos cosas que la verificación dejó a la vista y NO se han tocado
+### ✅ v0.71.1 — las dos cosas que la verificación dejó a la vista, arregladas
+
+Desplegada y verificada por el dominio público: `/api/v1/health` → **`0.71.1`**.
+VPS en `02f0ac8`. Copia del `.env`: `.env.bak.20260903_v0711`.
+
+| Qué | Antes | Después (medido en el sitio vivo) |
+|---|---|---|
+| Brokerage en la web | `Engel & Völkers` | **`Engel & Völkers Aspen`**, 6 apariciones; **0** de la forma corta |
+| ¿Coincide con los vídeos? | 🔴 no (`agent_settings.brokerage_line` = «Engel & Völkers Aspen») | ✅ sí |
+| `<title>` | `… Engel & Völkers` | `Denver Home Story · Natalia & Robbie, Engel & Völkers Aspen` |
+| Enlace del pie | `next/link` a `/login` → 308 a otro origen → **2 errores de CORS por carga** | ancla directa a `https://inmo-demo.…/login`; **consola sin errores nuestros** |
+
+Lo que **sí** queda en la consola y **no es nuestro**: dos líneas de estilo del
+widget de Turnstile (`%c%d font-size:0…`), su baliza abortada al navegar, y un
+404 de `/favicon.ico` — este último sí es nuestro y es trivial, **anotado sin
+arreglar** para no ensanchar la tanda.
+
+**Por qué la brokerage importaba y no era estética**: es la identificación que
+Colorado **exige** que lleve la publicidad inmobiliaria. Que la web y el vídeo
+dijeran cosas distintas solo era invisible mientras la web no la enseñaba en
+ningún sitio; v0.71.0 la puso en el logotipo, el pie y el título, y entonces se
+vio. Decisión del dueño: igualarla a los vídeos.
+
+### Historial: las dos cosas, cuando estaban abiertas
 
 1. **La brokerage en producción dice «Engel & Völkers», no «Engel & Völkers
    Aspen».** Ahora se lee en el logotipo, en el pie y en el `<title>`, así que
