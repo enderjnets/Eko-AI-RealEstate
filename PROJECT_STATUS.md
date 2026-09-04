@@ -391,6 +391,50 @@ despliegue del checkpoint A, que espera autorización.
 
 ---
 
+## ✅ DESPLEGADO — v0.74.0 · checkpoint B: el lead recuerda lo que le pasó
+
+> **En producción el 4-sep-2026**, autorizado por el dueño. `/api/v1/health` →
+> **`0.74.0`**. VPS en `67c4594`. Migración **052_lead_events** aplicada con la
+> imagen nueva (`051` → `052_lead_events (head)`).
+
+## 🧹 Base de leads vaciada — 42 de prueba, con copia previa
+
+> Autorizado el 4-sep. **Nada de esto es reversible sin la copia**, así que la
+> copia es lo primero que se hizo, no lo último.
+
+| | |
+|---|---|
+| Volcado completo | `eko_pre_purge_20260904.sql`, 211 KB, **en el VPS y en el Mac** (`~/eko-realtors-backups-vps/`), sha256 idéntico en los dos |
+| Ids de las 5 llamadas de VAPI | guardados aparte en `vapi_call_ids_20260904.tsv` — siguen existiendo en VAPI y son el único material real para probar el parser |
+| Bajas (opt-out) entre los 42 | **0** — lo que hacía seguro el borrado: ninguna ficha era la prueba de que alguien pidió no ser contactado |
+
+Borrado: 42 leads y, en cascada, 13 conversaciones, 157 mensajes, 1 llamada
+registrada, 5 visitas y 6 seguimientos. **Intactas a propósito**: las 7 piezas de
+contenido y sus 21 publicaciones (dos están programadas en Buffer y borrarlas
+dejaría publicaciones huérfanas saliendo solas), y las sesiones de la landing.
+
+**Verificado después**: `/health` en 0.74.0, la landing en 200, el colector
+responde `204` y el formulario sigue rechazando un cuerpo vacío con `422`. La
+fila de esa comprobación se borró.
+
+### 📈 Y ya está entrando tráfico real
+
+Tres visitas que **no son del dueño ni mías**, todas de esta mañana:
+
+| Cuándo (MDT) | Qué | Recorrido |
+|---|---|---|
+| 08:06 | escritorio, Chrome, macOS, **San Jose** | 0 %, rebote |
+| 08:25 | **iPhone, Safari, Denver** | 0 %, rebote |
+| 09:07 | **iPhone, Safari, Aurora** | 0 %, rebote |
+
+Las tres llegan como `direct`, sin referente — exactamente el techo de
+atribución que el plan declaró: las apps borran el referrer. **Y las tres
+rebotan sin bajar nada.** Dos de Denver y Aurora en iPhone parecen personas; la
+de San Jose, con Chrome de escritorio, huele a rastreador. Es pronto para
+concluir, pero esa columna de ceros es justo el número que antes no existía.
+
+---
+
 ## ✅ DESPLEGADO — v0.73.1 · dos secciones se leían y no se contaban
 
 > **En producción el 4-sep-2026**, con la autorización del dueño («si pasan
