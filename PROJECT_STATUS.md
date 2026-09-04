@@ -255,6 +255,7 @@ Bearer directo.
 | Kling, api key nueva como Bearer | `http=200`, `code=0 SUCCEED` |
 | fal.ai desde el ROG | `http=200` |
 | `pictures.fetch()` real en el ROG | **`fal`**, JPEG de 775 293 bytes (`ffd8ffe0`) |
+| **Vídeo completo, trabajo 11** | **entregado el 4-sep 05:54**, las **5 escenas con `fal`**, marca de agua presente (correlación 0,975), **0 errores y 0 avisos**, 88 s de principio a fin |
 | `worker/tests` | **85 verdes**, 0 saltados |
 | ruff en los ficheros tocados | 9 antes, **9 después** — ninguno nuevo |
 | Mutaciones | 4, todas rojas y restauradas por md5: quitar la rama de fal en `fetch`; quitar la puerta de la clave; que el 403 no agote el día; cobrar antes de que fal acepte |
@@ -291,9 +292,10 @@ no se ven en el diff:
   borró las claves. Le he añadido `FAL_KEY=` a la plantilla y al README, pero
   **el arreglo del `cat >` es `9127947`, en `fix/la-puerta-de-la-marca`** — de
   otra sesión, y no lo duplico.
-- El obrero tiene horas permitidas `[1,2,13,15,16,17,21,23]`: **no cogerá
-  trabajo hasta las 13:00**. Por eso la verificación es una llamada directa a
-  `fetch()` y no un vídeo entero.
+- ~~El obrero no coge trabajo hasta las 13:00~~ — el dueño autorizó abrir la
+  ventana a las 05:52; el vídeo salió en 88 s y las horas quedaron
+  **restauradas** a `[1,2,13,15,16,17,21,23]`. La cadena entera (guion → voz →
+  Whisper → 5 imágenes de fal → montaje → marca) está probada.
 - Tope diario en **8 imágenes**, heredado de cuando cada una era un clip caro
   de Kling. Con fal a céntimos, un segundo vídeo del día cae a Pexels sin que
   nadie lo pida. Sube `RENDER_IMAGES_PER_DAY` cuando quieras.
