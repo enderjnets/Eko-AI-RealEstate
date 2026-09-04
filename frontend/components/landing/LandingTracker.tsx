@@ -114,13 +114,18 @@ export function LandingTracker() {
       if (document.visibilityState === "hidden") tracker.flush();
     };
     document.addEventListener("visibilitychange", onHide);
-    window.addEventListener("pagehide", () => tracker.flush());
+    // Bound to a name, not an inline arrow: an arrow cannot be removed, so the
+    // listener would outlive the effect holding a tracker that is already torn
+    // down — and every remount would add another.
+    const onPageHide = () => tracker.flush();
+    window.addEventListener("pagehide", onPageHide);
 
     return () => {
       observer.disconnect();
       window.removeEventListener("scroll", onScroll);
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onPageHide);
       tracker.flush();
       tracker.stop();
       setTracker(null);

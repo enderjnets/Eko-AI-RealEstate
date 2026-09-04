@@ -171,7 +171,16 @@ integrar `c68aaf7` en esta rama — y eso es un merge, que **no hago sin pedirlo
 ### Runbook del checkpoint A (preparado, no ejecutado)
 
 1. Integrar `c68aaf7` en `feat/analitica-embudo` (**pedir permiso**) y correr la
-   suite otra vez sobre el resultado.
+   suite otra vez sobre el resultado. **Los conflictos ya están medidos en seco**
+   (`git merge-tree`): son exactamente tres, y ninguno de código —
+   `backend/app/config.py`, `frontend/lib/version.ts` y `CHANGELOG.md`, los tres
+   solo por la línea de versión. Resolución: **gana 0.73.0** y se conservan las
+   dos entradas de changelog, la de 0.72.0 debajo de la de 0.73.0. Alternativa
+   más limpia para producción, decisión del dueño: rebasar mis dos commits
+   **encima** de `c68aaf7`, que deja un historial lineal pero reescribe una rama
+   ya empujada.
+   ⚠️ **`git reset --hard c68aaf7` solo sirve como reversión DESPUÉS de esa
+   integración**; hoy `c68aaf7` no es antepasado de esta rama.
 2. Copia del `.env` del VPS: `cp .env .env.bak.$(date +%Y%m%d)_v0730`.
 3. Bundle → `scp ender-vps:/tmp/eko.bundle` → `git fetch` + `merge --ff-only`.
 4. `docker compose build backend frontend` — **el frontend hay que reconstruirlo**

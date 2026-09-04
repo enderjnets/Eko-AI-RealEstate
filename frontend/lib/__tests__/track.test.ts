@@ -292,6 +292,30 @@ describe("wiring", () => {
     expect(root.indexOf("<LandingTracker />")).toBeLessThan(root.indexOf("<main>"));
   });
 
+  it("removes every listener it adds", () => {
+    // An inline arrow cannot be removed, so a listener bound that way outlives
+    // the effect while holding a tracker that has already been torn down —
+    // and each remount adds another. Counting is crude and catches exactly
+    // this, which is the mistake that actually gets made.
+    const src = read("components/landing/LandingTracker.tsx");
+    const added = (src.match(/addEventListener\(/g) ?? []).length;
+    const removed = (src.match(/removeEventListener\(/g) ?? []).length;
+    expect(added).toBeGreaterThan(0);
+    expect(removed).toBe(added);
+  });
+
+  it("agrees with the server about how many events fit in a batch", () => {
+    // Two constants in two languages that must hold the same number: over it,
+    // every batch is a 400 and the table quietly stays empty.
+    const server = readFileSync(
+      join(process.cwd(), "..", "backend", "app", "api", "v1", "public.py"),
+      "utf8",
+    );
+    const declared = server.match(/^EVENTS_MAX_PER_BATCH = (\d+)/m);
+    expect(declared).not.toBeNull();
+    expect(Number(declared![1])).toBe(MAX_PER_BATCH);
+  });
+
   it("labels every anchor the tracker reports on", () => {
     // Without `data-track` every tap reads as "somebody clicked call", and
     // which control works is the question this page exists to answer.
