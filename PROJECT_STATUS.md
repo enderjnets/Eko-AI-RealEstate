@@ -6,7 +6,45 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
-## 🔵 EN CURSO — v0.71.0 · la página dice de quién es
+## ✅ DESPLEGADO — v0.71.0 · la página dice de quién es
+
+> **En producción el 3-sep-2026**, autorizado por el dueño. `/api/v1/health` por
+> el dominio público → **`0.71.0`**. VPS en `bf440e5`. Sin migración.
+>
+> **Medido en el sitio vivo** (`https://www.denverhomestory.com`):
+>
+> | Qué | Resultado |
+> |---|---|
+> | `Denver Home Story` en el HTML | **0 → 17** |
+> | `<title>` y `og:title` | `Denver Home Story · Natalia & Robbie, Engel & Völkers` |
+> | Logotipo, escritorio | «Denver Home Story» a 26 px, **visible** |
+> | Logotipo, móvil y menú | 19 px, **visible**, con la línea de personas debajo |
+> | Frase del héroe | EN «Denver Home Story is Natalia & Robbie — …» · ES «Denver Home Story son Natalia & Robbie — …» |
+> | Pie | `Denver Home Story · Natalia & Robbie · Real estate advisors · Engel & Völkers` |
+> | Con `prefers-reduced-motion` | `currentTime` **0 / 5,96 / 12,36 / 18,16** (antes clavado en 0,02) y el parallax sigue vacío |
+> | Sin reducir, móvil | escenario clavado en 0, vídeo siguiendo al scroll |
+>
+> **Reversión**: `git reset --hard 8814b64` + `docker compose build backend
+> frontend` + `up -d`. Copia del `.env`: `.env.bak.20260903_v0710`.
+
+### 🔴 Dos cosas que la verificación dejó a la vista y NO se han tocado
+
+1. **La brokerage en producción dice «Engel & Völkers», no «Engel & Völkers
+   Aspen».** Ahora se lee en el logotipo, en el pie y en el `<title>`, así que
+   ya no pasa desapercibido. La decisión escrita del 26-ago era «Engel &
+   Völkers Aspen», y **es la identificación legal de la brokerage que Colorado
+   exige en la publicidad** — no es una preferencia de estilo. Se cambia con una
+   línea del `.env` del VPS (`NEXT_PUBLIC_LANDING_BROKERAGE`) **y un rebuild del
+   frontend**, porque es `NEXT_PUBLIC_*`. **Decisión del dueño**, no mía.
+2. **El enlace del pie a `/login` provoca un error de CORS en cada carga.** Next
+   precarga la ruta, el middleware la manda 308 a `inmo-demo…`, y el `fetch`
+   entre orígenes se bloquea: `Failed to fetch RSC payload … Falling back to
+   browser navigation`. **El enlace funciona** (cae a una navegación normal),
+   pero deja dos errores en la consola de todo visitante. Es anterior a esta
+   tanda (viene del enrutado por host). Arreglo probable: `prefetch={false}` en
+   ese `Link`, o un `<a>` normal. **Backlog, no tocado hoy.**
+
+### Detalle de la tanda
 
 Rama `feat/landing-marca` desde `4fd35bd` (apilada, sin merge). Commits
 **`b67cb86`** (la marca) y **`b354665`** (movimiento reducido).
