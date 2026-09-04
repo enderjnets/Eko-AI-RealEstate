@@ -355,6 +355,47 @@ despliegue del checkpoint A, que espera autorización.
 
 ---
 
+## ✅ DESPLEGADO — v0.73.1 · dos secciones se leían y no se contaban
+
+> **En producción el 4-sep-2026**, con la autorización del dueño («si pasan
+> todas las pruebas quedas autorizado»). `/api/v1/health` → **`0.73.1`**. VPS en
+> `d3f8a1e`. **Sin migración**; `alembic current` comprobado antes de levantar:
+> `051_landing_sessions (head)`.
+
+**El defecto.** El observador preguntaba si una sección llenaba la mitad de **sí
+misma**. `#about` mide 1.249 px y `#how` 1.259 px, casi el doble que la pantalla
+de un iPhone 13 (664 px): lo máximo que podían intersecar era **0,53**, así que
+con el umbral en 0,5 sólo contaban si quedaban casi perfectamente centradas.
+Medido contra la página viva con el motor de Safari, **una lectura completa
+reportaba dos secciones en vez de cuatro** — el embudo decía que la gente se iba
+antes de tiempo cuando había leído entera.
+
+Lo encontró la verificación de iOS, no un test: el dueño no tiene iPhone (usa un
+Fold, y por eso su visita real sí registró las cuatro — su pantalla es más alta).
+
+**La regla nueva es «la mitad de lo que quepa»**: media pantalla para una sección
+más alta que la pantalla, media sección para una más baja. Ninguna fracción sola
+sirve — exigir siempre media pantalla dejaría fuera un bloque corto. Vive en
+`lib/track.ts`, no en el componente, porque es una regla y no fontanería del DOM.
+
+| Prueba | Resultado |
+|---|---|
+| Backend | 1476 verdes, 0 saltados |
+| Frontend | 236 verdes (5 nuevos, con los números medidos en producción) |
+| `ruff` · `tsc` · `next build` (`/` estática) · `docker build` | limpios |
+| **Mutación que importa**: volver al ratio del elemento | **roja** — es la que prueba el arreglo |
+| Mutación secundaria: quitar la guarda de números degenerados | roja (prueba la guarda, no el arreglo) |
+| **iPhone 13 (390 px) contra producción** | **4 secciones**, scroll 100 %, `tel_click` |
+| **iPhone 13 Pro Max (428 px)** | **4 secciones** — el fallo dependía del alto de pantalla, un solo tamaño no lo probaría |
+
+Las filas de verificación se borraron: en producción queda **sólo la visita real
+del dueño**.
+
+**Reversión**: `git reset --hard bf0476c` + rebuild de backend **y** frontend.
+Sin tocar migraciones.
+
+---
+
 ## ✅ DESPLEGADO — v0.73.0 · checkpoint A: la landing se mide a sí misma
 
 > **En producción el 4-sep-2026 a las 06:2x MDT**, autorizado por el dueño en un
