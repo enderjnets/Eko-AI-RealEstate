@@ -6,6 +6,77 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## 🔵 EN CURSO — v0.71.0 · la página dice de quién es
+
+Rama `feat/landing-marca` desde `4fd35bd` (apilada, sin merge). Commits
+**`b67cb86`** (la marca) y **`b354665`** (movimiento reducido).
+
+### El dato que abre esto
+
+El dueño: *«no se ve en ningún lado denverhomestory.com; como los visitantes
+vienen de las redes de Denver Home Story y al llegar no sale nada sobre Denver
+Home Story, parece que la landing no tiene nada que ver»*.
+
+**Medido en la página que servía producción**: la cadena `Denver Home Story`
+aparecía **0 veces**. El `<title>` decía «Natalia & Robbie · Engel & Völkers —
+Colorado real estate». El diseño v6 la lleva en **nueve** sitios; al convertirlo
+a React puse `LANDING.advisors` donde el diseño pone la marca y la borré de las
+frases. Mismo tipo de fallo que la tanda anterior: **el diseño ya lo traía
+resuelto y el port no lo copió.**
+
+### Lo medido, no recordado
+
+| Qué | Antes | Después |
+|---|---|---|
+| `Denver Home Story` en el HTML | **0** | **17** |
+| `<title>` | `Natalia & Robbie · Engel & Völkers — Colorado real estate` | `Denver Home Story · Natalia & Robbie, Engel & Völkers Aspen` (el del diseño, exacto) |
+| Logotipo de cabecera | `Natalia & Robbie` (26 px) | **`Denver Home Story`** (26 px), con `Natalia & Robbie · Engel & Völkers Aspen` debajo |
+| Cabecera del menú móvil | igual defecto | igual arreglo (**un solo** componente para los dos) |
+| Pie | sin marca | `Denver Home Story · Natalia & Robbie · Real estate advisors · Engel & Völkers Aspen` |
+| Primera frase del héroe | «Real estate advisors buying and selling…» | «**Denver Home Story** is Natalia & Robbie — …» · ES: «**Denver Home Story** son Natalia & Robbie — …» |
+| Con `prefers-reduced-motion` | `currentTime` clavado en **0,02** | avanza **5,96 / 12,34 / 18,11**, y el parallax sigue vacío |
+
+### El defecto de fondo que se arregló de paso
+
+El nombre público tenía **dos** derivaciones: `app/page.tsx` la construía en
+línea y `app/contact/layout.tsx` la volvía a construir **bajo un comentario que
+afirmaba que eran «la misma fuente para que no se separen»**. Ya eran dos. Ahora
+hay una sola en `lib/landing.ts` y las dos páginas la importan.
+
+### Mutaciones verificadas
+
+| Mutación | Resultado |
+|---|---|
+| Escribir la marca en el código en vez de leerla del entorno | 🔴 (2 tests) |
+| El logotipo vuelve a `LANDING.advisors` | 🔴 |
+| El pie pierde la marca | 🔴 |
+
+### Checklist
+
+`tsc` ✅ · `vitest` ✅ **197** · backend desde base recreada ✅ **1374, 0 saltados**
+· `ruff` ✅ · `next build` ✅ · `docker build` ✅ · Fair Housing ✅ 0 en 5 cadenas
+EN+ES · 3 mutaciones rojas y restauradas · sin secretos.
+
+### Despliegue: preparado y parado
+
+Otro `NEXT_PUBLIC_*`, así que **otro rebuild** y el valor en el `.env` del VPS
+**antes** de compilar: `NEXT_PUBLIC_LANDING_BRAND="Denver Home Story"`.
+Reversión: `git reset --hard 8814b64` (v0.70.0, ya verificada en producción) +
+`docker compose build backend frontend` + `up -d`.
+
+### 👁️ Visto y NO reproducido — Opera de Android
+
+El dueño reportó que en **Opera Android 101.2.5178.89973** no había efectos: ni
+el vídeo con el scroll ni los demás. Comprobado con él en directo: el héroe
+**sí** se quedaba fijo varias pantallas (eso es CSS y funciona sin JS), y luego
+el menú **sí** abría, el idioma **sí** cambiaba y el vídeo **sí** se movía —
+*«ya funciona bien, veo que se mueve como debería»*. En Chrome de Android nunca
+falló. **No se cambió nada por esto.** Explicación más probable: HTML en caché
+de antes del despliegue, o el clip de 17,8 MB aún sin buffer. Si vuelve, mirar
+primero la caché y el estado del vídeo, no el motor.
+
+---
+
 ## ✅ DESPLEGADO — v0.70.0 · la landing termina de ser el diseño v6
 
 > **En producción el 3-sep-2026**, autorizado por el dueño. `/api/v1/health` por

@@ -2,6 +2,33 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.71.0] — 2026-09-03
+
+### Fixed
+- **The page never said whose it is.** Measured on the live site: the string
+  "Denver Home Story" appeared **zero times** — the header and the mobile menu
+  rendered the advisors where the design puts the brand, the `<title>` read
+  "Natalia & Robbie · Engel & Völkers — Colorado real estate", and the footer
+  and hero copy named nobody. Every visitor arrives from a video the brand
+  posted, so a page that never repeats that name reads as the wrong address.
+  The brand now leads one shared wordmark used by both the header and the menu,
+  the title, Open Graph card, home-screen label, footer line and the hero's
+  first sentence. It comes from `NEXT_PUBLIC_LANDING_BRAND` like every other
+  fact on this page: unset, the page is byte-for-byte what it was.
+- The public name had **two** derivations — `app/page.tsx` built it inline and
+  `app/contact/layout.tsx` built it again under a comment claiming they were
+  "the same source, so the two never drift apart". They were already two. One
+  derivation now lives in `lib/landing.ts` and both pages import it.
+
+### Changed
+- **`prefers-reduced-motion` now stops half way.** It used to park the hero
+  film on its first frame along with the parallax and the drifting headings,
+  which left that visitor scrolling five screens over a still image — the
+  page's opening copy deleted, not its motion. The film follows the reader's
+  own scroll rather than animating on its own, so it stays; the decorative
+  parallax and drift stay off, which is what the setting is for. The design
+  disables neither.
+
 ## [0.70.0] — 2026-09-03
 
 ### Added

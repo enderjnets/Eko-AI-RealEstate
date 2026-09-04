@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.70.0";
+export const CURRENT_VERSION = "0.71.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.71.0",
+    date: "2026-09-03",
+    title: {
+      en: "The site says whose it is",
+      es: "El sitio dice de quién es",
+    },
+    changes: [
+      {
+        en: "The brand now leads the page: the header and the menu carry it above the advisors' names, the browser tab and the card people see when the link is shared open with it, the footer names it, and the first line of the hero introduces the advisors as part of it. Visitors arrive from the brand's own videos, and the page never said the brand's name.",
+        es: "La marca encabeza la página: la cabecera y el menú la llevan encima de los nombres de los asesores, la pestaña del navegador y la tarjeta que se ve al compartir el enlace abren con ella, el pie la nombra y la primera frase del héroe presenta a los asesores como parte de ella. Los visitantes llegan desde los vídeos de la marca, y la página no decía su nombre en ningún sitio.",
+      },
+      {
+        en: "Someone browsing with Reduce Motion switched on gets the hero film back. It follows their own scrolling rather than animating by itself, and it carries the page's opening copy; the decorative parallax and drifting headings stay off, which is what that setting is for.",
+        es: "Quien navega con «Reducir movimiento» activado recupera la película del héroe: sigue a su propio scroll en vez de animarse sola, y es el texto de apertura de la página. El parallax decorativo y las derivas de los títulos siguen apagados, que es para lo que sirve ese ajuste.",
+      },
+    ],
+  },
   {
     version: "0.70.0",
     date: "2026-09-03",
