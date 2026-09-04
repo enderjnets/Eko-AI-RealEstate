@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.75.1";
+export const CURRENT_VERSION = "0.75.2";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.75.2",
+    date: "2026-09-04",
+    title: {
+      en: "Short links for each profile",
+      es: "Enlaces cortos para cada perfil",
+    },
+    changes: [
+      {
+        en: "Short links for the profile of each network: /yt, /tt and /ig. The long tagged URL could not be pasted where it had to go - TikTok only offers a website field on a business account, Instagram refused the edit, and several apps silently drop everything after the \"?\" when saving. A short path has no query string to lose, the profile shows something readable, and the tagging happens on the server where it is versioned and tested instead of typed into someone's phone.",
+        es: "Enlaces cortos para el perfil de cada red: /yt, /tt e /ig. La URL larga con etiquetas no se podia pegar donde tenia que ir: TikTok solo ofrece el campo de sitio web en una cuenta de empresa, Instagram rechazo la edicion, y varias apps recortan en silencio todo lo que va detras del \"?\" al guardar. Una ruta corta no tiene query que perder, el perfil muestra algo legible, y la etiqueta se pone en el servidor, donde esta versionada y probada en vez de escrita en el movil de alguien.",
+      },
+    ],
+  },
   {
     version: "0.75.1",
     date: "2026-09-04",

@@ -31,27 +31,27 @@ decir «este vídeo trajo once visitas» en vez de «los vídeos trajeron once»
 
 ## Lo que hay que poner a mano, una vez
 
-El enlace del **perfil** de cada red no lo pone el sistema. Estos tres, tal cual,
-en el sitio del enlace de cada perfil:
+**Usa las rutas cortas.** La URL larga con `?utm_...` no se puede pegar en dos de
+las tres redes, medido el 4-sep: TikTok solo ofrece el campo de sitio web en una
+cuenta de empresa, e Instagram rechazó la edición. Además, varias apps recortan
+en silencio todo lo que va detrás del `?` al guardar.
 
-**YouTube** (`@denverhomestory` → Personalizar canal → Enlaces):
-```
-https://www.denverhomestory.com?utm_source=youtube&utm_medium=bio&utm_campaign=profile
-```
+Una ruta corta esquiva las tres cosas — no hay query que perder, el perfil
+muestra algo legible, y la etiqueta se pone en el servidor, donde está
+versionada y probada en vez de escrita en el móvil de alguien:
 
-**TikTok** (Editar perfil → Sitio web):
-```
-https://www.denverhomestory.com?utm_source=tiktok&utm_medium=bio&utm_campaign=profile
-```
+| Red | Qué pegar |
+|---|---|
+| **YouTube** (Personalizar canal → Enlaces) | `https://www.denverhomestory.com/yt` |
+| **TikTok** (Editar perfil → Sitio web) | `https://www.denverhomestory.com/tt` |
+| **Instagram** (Editar perfil → Enlaces) | `https://www.denverhomestory.com/ig` |
 
-**Instagram** (Editar perfil → Enlaces → Enlace externo):
-```
-https://www.denverhomestory.com?utm_source=instagram&utm_medium=bio&utm_campaign=profile
-```
+También valen escritas enteras: `/youtube`, `/tiktok`, `/instagram`.
 
-`utm_medium=bio` es lo que los separa del pie de los vídeos: así se puede ver si
-la gente llega desde el vídeo o desde el perfil, que son dos intenciones
-distintas — una es curiosidad y la otra es alguien que fue a buscarte.
+Cada una redirige (302, no 301: un permanente se cachea a fuego en el navegador
+y el día que cambie la campaña estaríamos peleando con cachés de aparatos que no
+podemos tocar) a la landing con su `utm_source`, `utm_medium=bio` y
+`utm_campaign=profile`.
 
 ## Cómo comprobar que funciona
 

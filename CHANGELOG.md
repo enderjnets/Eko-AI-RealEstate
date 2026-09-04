@@ -2,6 +2,16 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.75.2] — 2026-09-04
+
+### Added
+- **`/yt`, `/tt`, `/ig`** (and the spelled-out aliases) redirect to the landing
+  with the right `utm_source` and `utm_medium=bio`. The long tagged URL could
+  not be pasted into two of the three profiles — TikTok needs a business
+  account, Instagram refused — and several apps drop everything after the `?`
+  when saving. 302, not 301: a permanent redirect is cached hard and the
+  campaign will change.
+
 ## [0.75.1] — 2026-09-04
 
 ### Added
