@@ -322,7 +322,7 @@ def test_a_real_render_is_vertical_and_carries_the_mark(tmp_path: Path) -> None:
 
     pytest.importorskip("PIL")
     correlation = verify.brand_is_present(out, mark, tmp_path)
-    assert correlation >= 0.15
+    assert correlation >= verify.BRAND_THRESHOLD
 
 
 @pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg/ffprobe not on PATH")
@@ -568,3 +568,124 @@ def test_a_machine_that_cannot_be_measured_still_renders(monkeypatch) -> None:
 
     monkeypatch.setattr(worker_main, "available_memory_gb", lambda: None)
     assert worker_main.enough_memory(99.0)
+
+
+# ── The mark this product actually uses ──────────────────────────────────
+#
+# Every brand test above builds its mark with `testsrc`, which is OPAQUE. The
+# mark shipped in `worker/assets` is 47.9% fully transparent, and that is the
+# only mark production has ever composited. The gate passed for months on the
+# one case that does not exist.
+
+REAL_MARK = Path(__file__).resolve().parent.parent / "assets" / "dhs-mark.png"
+
+
+def _pale_scene(destination: Path, colour: str = "0xF2F2F2") -> None:
+    """A bright frame with texture in it.
+
+    Bright because that is the half of the range the old check could not see,
+    and textured because a flat colour is caught by the blank-corner branch
+    and never exercises the correlation at all.
+    """
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-v", "error",
+            "-f", "lavfi", "-i", f"color=c={colour}:size=1080x1920:rate=25:duration=2",
+            "-vf", "noise=alls=14:allf=t+u",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", str(destination),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg/ffprobe not on PATH")
+@pytest.mark.skipif(not REAL_MARK.is_file(), reason="the brand mark is not in this tree")
+@pytest.mark.parametrize("ground", ["0xF2F2F2", "0x101010"])
+def test_the_real_mark_is_found_whatever_is_behind_it(tmp_path: Path, ground: str) -> None:
+    """The mark is composited; the gate has to say so on a pale ground too.
+
+    This is the test that was missing. `overlay` draws only where the mark's
+    alpha says to, so half of the reference is pixels ffmpeg never puts on
+    screen — and comparing those against the PHOTOGRAPH is what the old check
+    did. On a dark ground the photograph happened to agree with them and the
+    score was high; on a pale one it collapsed to noise and a correct video was
+    refused three times in seventy-one seconds.
+
+    Both grounds, one assertion: the answer must not depend on the picture.
+    """
+    pytest.importorskip("PIL")
+    source = tmp_path / f"src-{ground}.mp4"
+    _pale_scene(source, ground)
+
+    brokerage = tmp_path / "b.txt"
+    brokerage.write_text("Engel & Völkers Aspen", encoding="utf-8")
+    domain = tmp_path / "d.txt"
+    domain.write_text("denverhomestory.com", encoding="utf-8")
+    out = tmp_path / f"out-{ground}.mp4"
+    assemble.run(
+        assemble.build_command(
+            source, out,
+            duration=2.0,
+            has_audio=False,
+            brokerage_file=brokerage,
+            domain_file=domain,
+            font=None,
+            mark=REAL_MARK,
+        )
+    )
+
+    correlation = verify.brand_is_present(out, REAL_MARK, tmp_path)
+    assert correlation >= verify.BRAND_THRESHOLD
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg/ffprobe not on PATH")
+@pytest.mark.skipif(not REAL_MARK.is_file(), reason="the brand mark is not in this tree")
+def test_the_real_mark_is_missed_when_nothing_drew_it(tmp_path: Path) -> None:
+    """The other half of the instrument, with the real mark.
+
+    On a DARK ground, which is where the old check scored highest by accident:
+    a gate that only says no on pale pictures says nothing at all.
+    """
+    pytest.importorskip("PIL")
+    unmarked = tmp_path / "unmarked.mp4"
+    _pale_scene(unmarked, "0x101010")
+    with pytest.raises(verify.Rejected, match="mark"):
+        verify.brand_is_present(unmarked, REAL_MARK, tmp_path)
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg/ffprobe not on PATH")
+@pytest.mark.skipif(not REAL_MARK.is_file(), reason="the brand mark is not in this tree")
+def test_a_real_photograph_does_not_pass_for_the_mark(tmp_path: Path) -> None:
+    """The test that holds the THRESHOLD, and it needed a real picture.
+
+    `tests/data/pale-corner.png` is the top-LEFT corner of a video this
+    installation actually delivered — the same crop geometry, real photograph,
+    and no mark in it, because the mark is on the right. Composited where the
+    mark belongs it scores about 0.58: far above the old threshold of 0.15 and
+    far below the 0.981 every real render gives.
+
+    Without this, nothing was red when the threshold was lowered back to 0.15,
+    and 0.15 with the mask accepts a frame that has no mark in it at all. A
+    synthetic negative cannot do this job — a foreign logo scores -0.05 and is
+    rejected at any threshold, so it never touches the number.
+    """
+    pytest.importorskip("PIL")
+    corner = Path(__file__).resolve().parent / "data" / "pale-corner.png"
+    assert corner.is_file(), "the recorded corner is part of the test"
+
+    faked = tmp_path / "faked.mp4"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-v", "error",
+            "-f", "lavfi", "-i", "color=c=0x909090:size=1080x1920:rate=25:duration=2",
+            "-i", str(corner),
+            "-filter_complex",
+            "[0:v]noise=alls=14:allf=t+u[bg];[bg][1:v]overlay=W-w-44:44[out]",
+            "-map", "[out]", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(faked),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    with pytest.raises(verify.Rejected, match="mark"):
+        verify.brand_is_present(faked, REAL_MARK, tmp_path)

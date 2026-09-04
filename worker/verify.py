@@ -19,6 +19,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 OUT_W, OUT_H = 1080, 1920
+# Named rather than a default buried in a signature: the tests assert against
+# the same number the worker enforces, and a threshold a test spells out for
+# itself is a threshold that can drift away from the one in production.
+BRAND_THRESHOLD = 0.80
 
 
 class Rejected(Exception):
@@ -93,7 +97,7 @@ def brand_is_present(
     mark: Path,
     workdir: Path,
     *,
-    threshold: float = 0.15,
+    threshold: float = BRAND_THRESHOLD,
     mark_width: int = 190,
     margin: int = 44,
 ) -> float:
@@ -107,12 +111,24 @@ def brand_is_present(
 
     The crop is the EXACT rectangle `assemble.build_command` composites into —
     same width, same margin, height derived from the mark's own aspect ratio.
-    An approximate region was tried first and it does not work: the surrounding
-    video dilutes the mark until the correlation is noise, and a threshold low
-    enough to accept that is a threshold that accepts anything.
 
-    The threshold is deliberately low. This answers "is our mark there", not
-    "is it pretty".
+    **Only the pixels the mark's alpha says were drawn are compared**, and that
+    is the whole correction. `overlay` draws the mark where its alpha allows and
+    leaves the photograph everywhere else; this file's own mark is 47.9%
+    fully transparent with black underneath it. Reading the reference through
+    `convert("L")` throws the alpha away, so half of what was being correlated
+    was black pixels that ffmpeg never puts on screen — against the PICTURE. A
+    dark photograph agreed with them and scored 0.892; a pale one disagreed and
+    scored 0.014, and a correct video was refused three times in seventy-one
+    seconds while the console showed a spinner.
+
+    Measured on the six renders this installation has delivered: the old
+    reading ranged 0.170 to 0.892 with the mark identically present in all six;
+    masked, the same six give 0.981 to 0.994. The same crop taken from the
+    OPPOSITE corner — real picture, no mark — reaches 0.647, which is why the
+    threshold is 0.80 and not the old 0.15: with the mask, 0.15 would accept a
+    frame with no mark in it at all. The number sits between the two measured
+    populations, not where it looks comfortable.
     """
     try:
         from PIL import Image
@@ -127,17 +143,37 @@ def brand_is_present(
     _grab_frame(video, 1.0, frame_path)
     try:
         frame = Image.open(frame_path).convert("L")
-        reference = Image.open(mark).convert("L")
+        reference = Image.open(mark)
 
         scale = mark_width / reference.width
         mark_h = max(1, round(reference.height * scale))
+        drawn = reference.resize((mark_width, mark_h))
         w, _h = frame.size
         left = w - margin - mark_width
         box = frame.crop((left, margin, left + mark_width, margin + mark_h))
 
-        size = (64, 64)
-        a = list(box.resize(size).getdata())
-        b = list(reference.resize(size).getdata())
+        # A mark with no alpha channel is opaque everywhere. Not a special
+        # case to tolerate: it is what a client uploading a JPEG logo would
+        # give us, and `getchannel("A")` on it raises.
+        if "A" in drawn.getbands():
+            alpha = list(drawn.getchannel("A").getdata())
+        else:
+            alpha = [255] * (mark_width * mark_h)
+        # 128 rather than 0: ffmpeg and Pillow resample the mark's edges
+        # differently, so the half-covered pixels of an outline are the one
+        # place the two disagree. Comparing only the solidly drawn interior
+        # costs nothing — there are thousands of those pixels.
+        wanted = [i for i, value in enumerate(alpha) if value > 128]
+        if not wanted:
+            raise Rejected(
+                "the brand mark image is fully transparent; there is nothing "
+                "in it to draw"
+            )
+
+        reference_pixels = list(drawn.convert("L").getdata())
+        frame_pixels = list(box.getdata())
+        a = [frame_pixels[i] for i in wanted]
+        b = [reference_pixels[i] for i in wanted]
 
         mean_a = sum(a) / len(a)
         mean_b = sum(b) / len(b)

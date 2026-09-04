@@ -337,6 +337,71 @@ async def test_a_transient_failure_is_retried_not_buried(
 
 
 @pytest.mark.asyncio
+async def test_a_verdict_on_our_own_output_is_not_tried_twice(
+    database_url: str, worker_token: str
+) -> None:
+    """A failure another attempt cannot change spends no more of them.
+
+    Piece 10 paid for three MiniMax narrations in seventy-one seconds to be
+    told the same thing three times, because every failure was treated as
+    weather. The worker is the one that knows which exception it caught, so it
+    is the one that says so.
+    """
+    try:
+        piece_id, job_id = await _piece_with_job()
+        async with _client() as client:
+            await client.post("/api/v1/internal/render-jobs/claim?worker=w")
+            resp = await client.post(
+                f"/api/v1/internal/render-jobs/{job_id}/fail",
+                json={
+                    "error": "Rejected: the brand mark is not in the frame",
+                    "terminal": True,
+                },
+            )
+        assert resp.json()["status"] == "failed"
+
+        async with get_bypass_session_factory()() as db:
+            status, attempts = (
+                await db.execute(
+                    text("SELECT status, attempts FROM render_jobs WHERE id=:i"),
+                    {"i": job_id},
+                )
+            ).one()
+            reason = (
+                await db.execute(
+                    text("SELECT render_error FROM content_pieces WHERE id=:i"),
+                    {"i": piece_id},
+                )
+            ).scalar_one()
+        assert status == "failed"
+        # Counted, because it happened; not repeated, because it cannot change.
+        assert attempts == 1
+        assert "brand mark" in reason
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_worker_that_does_not_know_about_terminal_still_retries(
+    database_url: str, worker_token: str
+) -> None:
+    """`extra="forbid"` would 422 a field the model does not declare, so the
+    default is what lets a half-updated worker keep reporting failures at all.
+    Absent means transient, exactly as before."""
+    try:
+        _piece_id, job_id = await _piece_with_job()
+        async with _client() as client:
+            await client.post("/api/v1/internal/render-jobs/claim?worker=w")
+            resp = await client.post(
+                f"/api/v1/internal/render-jobs/{job_id}/fail",
+                json={"error": "image provider timed out"},
+            )
+        assert resp.json()["status"] == "queued"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
 async def test_a_result_that_is_not_a_video_is_refused(
     database_url: str, worker_token: str, media_dir
 ) -> None:

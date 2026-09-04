@@ -29,6 +29,55 @@ All notable changes to **Eko AI Realtors**.
   family before it is written. **Global Privacy Control is honoured**: with it
   set the page sends nothing at all. See `docs/public-capture-form.md`.
 
+## [0.72.0] — 2026-09-04
+
+### Fixed
+- **The watermark check was reading the photograph, not the watermark.**
+  `verify.brand_is_present` correlated the top-right crop of the frame against
+  `dhs-mark.png` put through `convert("L")` — which throws the alpha away. The
+  mark is 600×262 RGBA and **47.9% of it is fully transparent with black
+  underneath**, so half the reference was pixels `overlay` never draws, matched
+  against the picture behind them. A dark photograph agreed with them and a
+  pale one did not: measured over the same mark, correctly composited, the old
+  reading ran from 0.998 on a dark ground to 0.000 on a pale one. Piece 10 was
+  refused three times at 0.014 with its mark in the frame.
+
+  It now compares **only the pixels the mark's alpha says were drawn**. The six
+  renders this installation has delivered — whose old scores spread from 0.170
+  to 0.892 — all fall between 0.981 and 0.994, which is the measurement that
+  proves the spread was the picture and not the mark. A mark with no alpha
+  channel counts as opaque throughout, so an uploaded logo still works.
+
+  The threshold moved from 0.15 to **0.80, and it had to**: with the mask, the
+  opposite corner of a real render — real photograph, no mark — scores as high
+  as 0.647, so 0.15 would now accept a frame with no mark in it. The number
+  sits between the two measured populations. `tests/data/pale-corner.png` is
+  that corner, kept so the threshold has a test that goes red when it is
+  lowered; a synthetic negative cannot do that job, as a foreign logo scores
+  −0.05 and is rejected at any threshold.
+
+- **The console animated a render that was over.** `RenderProgress` only
+  branched on `queued`; every other state — `failed` included — fell through to
+  the spinner and showed the last stage the worker managed to report. Piece 10
+  sat at "Adding captions and the end card, 88%" for hours with nothing running
+  on any machine. Failed and finished states now say so, without a spinner.
+
+- **A piece whose render failed had no way out but Reject.** The Rebuild button
+  was hidden behind `!!piece.media_path`, and a failed render leaves no file —
+  yet `rebuild_piece` never required one. The only exit offered was throwing
+  away a script that was fine. Rebuild is now offered on a failed render, and
+  it clears the dead job's `stage`/`progress` rather than leaving the new
+  render sitting at the percentage the old one died at.
+
+### Changed
+- **A failure another attempt cannot change is no longer retried.** `/fail`
+  takes `terminal` (defaulted, because `extra="forbid"` would 422 a worker that
+  has not been updated), and the worker sets it for `verify.Rejected` and
+  nothing else — a verdict on our own finished file renders identically next
+  time, and each attempt pays for a fresh narration. Piece 10 spent three in
+  seventy-one seconds. Provider outages keep all three attempts, including the
+  "no image provider produced a single picture" case, which *is* an outage.
+
 ## [0.71.1] — 2026-09-03
 
 ### Fixed
