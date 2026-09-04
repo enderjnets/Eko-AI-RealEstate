@@ -75,7 +75,28 @@ Guardar → mutar → **ver rojo** → restaurar → md5 idéntico. Las cinco:
 | Fair Housing sobre el copy nuevo | ✅ 0 en 19 cadenas × 2 idiomas |
 | Mutaciones | ✅ 5 de 5 rojas, restauradas por md5 |
 | Secretos en el diff | ✅ ninguno |
-| Auditoría de cierre | ⬜ |
+| Auditoría de cierre | ✅ **auto-auditoría, NO independiente** (ver abajo) |
+
+### Auditoría de cierre — mía, y por tanto vale menos
+
+El método pide subagente; no se lanzó ninguno en esta sesión, así que **esto es
+una auto-auditoría y no es independiente**, igual que en v0.69.0.
+
+- 🔴 **Bloqueante, encontrado y corregido dentro de la fase**: el menú no
+  atrapaba el foco. Está en la tabla de medidas: la 9ª tabulación caía en el
+  formulario detrás del panel.
+- 🟡 **Menor, anotado y no arreglado**: `aria-controls="landing-menu"` apunta a
+  un id que solo existe con el menú abierto. `aria-expanded` sí lleva el estado,
+  así que no se pierde información; la alternativa —dejar un `position: fixed`
+  oculto permanentemente en el DOM— es peor que el defecto.
+- 🟡 **Menor**: el respaldo del sticky deja `position: absolute` en línea sobre
+  el escenario y no lo limpia al desmontar, y `host.__js` persiste en el
+  elemento. Es el comportamiento del diseño y no tiene efecto: motor y escenario
+  viven en el mismo árbol, así que uno no sobrevive al otro.
+- ✅ Sin secretos en el diff (14 ficheros, +653/−40), sin
+  `dangerouslySetInnerHTML`, el único enlace externo nuevo con
+  `rel="noopener noreferrer"`, `.env.example` con las tres claves **vacías**,
+  árbol limpio.
 
 ### Lo que NO se pudo medir, dicho como tal
 
