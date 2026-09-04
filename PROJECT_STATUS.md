@@ -348,6 +348,40 @@ morir su sesión. **Ninguno se arregla en esta tanda**: son del carril de vídeo
   proceso vive, no que el trabajo salga.
 - `/data/media` tiene 12 mp4 y solo 6 referenciados; nada los barre.
 
+### 💡 IDEA DEL DUEÑO (4-sep) — pedirle al sistema una pieza concreta
+
+No es de este plan y no se ha empezado. Queda escrita porque la parte difícil no
+es la pantalla.
+
+**Lo que pidió**: una sección en `/content` donde escribir la descripción de lo
+que se quiere para un post, adjuntar **opcionalmente** una imagen o vídeo de
+referencia, elegir si sale con foto(s) o con vídeo, y **elegir el modelo entre
+los disponibles — de los gratis a los de pago — con el coste estimado a la vista
+en el propio selector**.
+
+Lo mejor de la idea es lo último: hoy se elige proveedor a ciegas y el precio
+aparece en la factura. Cuatro cosas que hay que resolver bien o hacen daño:
+
+1. **El precio no puede estar escrito en la pantalla.** Un número en el
+   componente envejece en silencio y miente con cara de dato. Va en un catálogo
+   único (modelo → precio por unidad → qué produce) que la UI lee; y para vídeo
+   el coste depende de la duración, así que es un rango, no una cifra.
+2. **La puerta de aprobación no se salta.** Una pieza pedida por el dueño entra
+   como cualquier otra: pasa el rail de Fair Housing y espera aprobación. «Lo
+   pedí yo» no es una exención — el producto promete que nada se publica sin que
+   una persona lo apruebe, y esa frase está en la propia página.
+3. **La referencia adjunta es referencia, no material.** Los ejemplos que mandó
+   son Reels de otras cuentas. Como inspiración de estilo, bien; usar el vídeo
+   de otro dentro de una pieza publicada es un problema de derechos, no de
+   producto. La UI debe decir «referencia de estilo» y el pipeline no debe poder
+   incrustarla.
+4. **La descripción tiene que llegar al modelo en inglés.** Medido y pagado ya:
+   un prompt en español a fal.ai no falla, **miente** — devuelve otra cosa con
+   éxito. Si el dueño escribe en español hay que traducir antes de generar.
+
+Y el tope diario de imágenes (`RENDER_IMAGES_PER_DAY`, hoy 8) tiene que cubrir
+también este camino, o será la vía por la que se gasta sin freno.
+
 ### Siguiente paso
 
 **F3 — historial del lead y llamadas de voz completas** ([CRÍTICA]). Su paso 0
