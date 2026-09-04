@@ -6,7 +6,42 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
-## 🔵 EN CURSO — v0.70.0 · la landing termina de ser el diseño v6
+## ✅ DESPLEGADO — v0.70.0 · la landing termina de ser el diseño v6
+
+> **En producción el 3-sep-2026**, autorizado por el dueño. `/api/v1/health` por
+> el dominio público → **`0.70.0`** · `captcha:on` · `llm_fallback:ok`.
+> Se desplegaron **v0.69.0 y v0.70.0 juntas** (10 commits, `8d0a47a..8814b64`),
+> sin migración. VPS ahora en `8814b64`.
+>
+> **Medido en el sitio vivo, no en local** (Playwright contra
+> `https://www.denverhomestory.com`):
+>
+> | Qué | Resultado |
+> |---|---|
+> | Escenario clavado, 1440 y 390 | `top = 0` en las cuatro posiciones |
+> | Leyendas | cada una a 1,00 solo en su ventana; las otras en `visibility:hidden` |
+> | Barra de progreso | = p (0 / 38,01 / 63,99 / 90 %) |
+> | Vídeo | sigue al scroll (t = 5,96 / 12,44 / 18,17) |
+> | Sin scroll horizontal | ✅ en los tres contextos |
+> | Carril de mercados | arrastra 0 → 48 |
+> | Movimiento reducido | vídeo parado en 0,02 s, leyendas cruzándose |
+> | Menú a 390 | capa de **390×844 exactos**, foco en el cierre, scroll bloqueado, **12 tabulaciones dentro**, Escape devuelve el foco, un enlace lleva a `#markets` |
+> | Pie | los 3 canales con sus URL correctas |
+> | Hamburguesa en escritorio | ausente |
+> | Panel | `/login` 200, raíz 307 — intacto |
+> | Vecinos | `zorros-*` y `blackvolt-*` sin tocar, `Up` 4 y 5 semanas |
+>
+> **Sigue sin medir: iOS Safari** — el `svh` del héroe con la barra plegándose y
+> el bloqueo de scroll del menú. En escritorio `svh == dvh == lvh`, así que nada
+> de lo anterior lo prueba. **La primera comprobación real es un iPhone.**
+>
+> Copia del `.env` antes de tocarlo: `~/Eko-AI-RealEstate/.env.bak.20260903_v0700`
+> (160 líneas; ahora 163, las 3 nuevas son URL públicas, ningún secreto tocado).
+>
+> **Reversión**: `git reset --hard 8d0a47a` + `docker compose build backend
+> frontend` + `up -d` → vuelve a 0.68.0.
+
+### Detalle de la tanda
 
 Rama `feat/landing-v6-afinado` desde `df8d602` (apilada sobre `feat/landing-v6`,
 sin merge). Commits **`07a265b`** (motor) y **`68583fb`** (menú, escenario, pie).
