@@ -6,7 +6,124 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
-## 🔵 EN CURSO — v0.69.0 · la landing pasa al diseño v6 (el héroe es una película guiada por el scroll)
+## 🔵 EN CURSO — v0.70.0 · la landing termina de ser el diseño v6
+
+Rama `feat/landing-v6-afinado` desde `df8d602` (apilada sobre `feat/landing-v6`,
+sin merge). Commits **`07a265b`** (motor) y **`68583fb`** (menú, escenario, pie).
+
+### La premisa, medida antes de tocar nada
+
+El dueño volvió a pedir la importación del proyecto de Claude Design pidiendo
+«esta última versión con todos los nuevos arreglos y optimizaciones». **No había
+versión nueva.** Con `/design-login` autorizado, la MCP devuelve el
+`deploy-v6/index.html` remoto y es **byte a byte idéntico** al que se portó en
+v0.69.0:
+
+| Qué | Medida |
+|---|---|
+| md5 remoto vs local | `c88418ae1a7a18ee345055feaf521041` los dos |
+| Tamaño | 58.469 bytes los dos |
+| `natalia-robbie.jpg` | 85.733 B los dos |
+| Carpetas del proyecto | `deploy-v4` y `deploy-v6`; nada más nuevo |
+
+Así que «los arreglos y optimizaciones» eran los que estaban **dentro de ese
+mismo v6 y el port no copió**: al convertir el fichero a React se colaron
+constantes de la v4 y dos mecanismos inventados. Eso es esta tanda.
+
+### Consultas al advisor
+
+| # | Motivo | Decisión |
+|---|---|---|
+| 1 | Arranque, antes de escribir el plan | Corrigió tres cosas que cambiaron el plan: **(a)** la capa del menú **no puede vivir dentro del escenario sticky** (`overflow-hidden` + el `will-change:transform` que le pone el respaldo del sticky la convertirían en bloque contenedor de `position:fixed` y la recortarían) — va como hermana de `<main>`; **(b)** los enlaces sociales son **datos**, así que por la regla de esta página van por `NEXT_PUBLIC_*` con su coste de cableado y de despliegue, no escritos en el componente; **(c)** «17,8 MB compiten con el LCP» estaba exagerado — con `preload="auto"` Chrome pide un Range de 1-3 MB, así que `preload="none"` había que **medirlo o cortarlo**. Además: ordenar la fase para que lo especulativo no bloquee lo cierto, y que el respaldo del sticky sin su mutación es decoración. |
+
+### Lo medido, no recordado
+
+| Qué | Medida | Consecuencia |
+|---|---|---|
+| **Puerta G — `preload="none"` + `data-src`** | bytes del clip transferidos **antes de que el póster termine**, a 390 px con la red estrangulada a 1,6 Mbps: **11.254 → 0**. Póster listo a 2,13 s vs 2,08 s. Total en 6 s: 1.431.754 vs 1.398.754 B | **11 KB de 17,8 MB no es un movimiento visible → G NO se despliega**, y el motivo queda escrito en el propio `<video>`. Es la puerta que yo mismo puse antes de medir |
+| **Puerta A — respaldo del sticky** | inyectando `body{overflow-x:hidden}` en caliente (el CSS exacto que rompió esta página): **sin** el respaldo el escenario cae a **−878 / −1755 / −2808 px**; **con** él se queda en **0/0/0** y pasa a `position:absolute` | pasa, y la mutación existe: no es decoración |
+| El playhead **converge** con la tasa nueva | tras un salto instantáneo: brecha 8,31 → 4,31 → **0 s** a los 6 s, y la tasa vuelve sola de 2× a 1× y se queda | la tasa de dos velocidades es más suave, no más lenta |
+| **D se nota** | la sección `#about` ahora revela con su borde **197 px DENTRO** del viewport (umbral 0,82); antes disparaba con el borde aún por debajo del pliegue | las animaciones ocurren donde se ven |
+| El menú a 390×844 | capa de **390×844 exactos** (prueba de que no la recorta el escenario), `rootOverflow: hidden`, foco en el cierre, Escape cierra y **devuelve el foco**, la página no se mueve detrás, un enlace cierra y lleva a `#markets` | ✅ |
+| 🔴 **Defecto que la medición destapó** | `aria-modal="true"` **no** cambia el orden de tabulación del navegador: la 6ª tabulación salía de la capa y la 9ª caía en el **campo de nombre del formulario**, invisible detrás de un panel a pantalla completa | añadida trampa de foco; ahora **12 tabulaciones no salen** |
+| El pie | 3 iconos con las 3 URL correctas; con una variable vacía su icono **no existe** (test unitario con `stubEnv`) | ✅ |
+| Fair Housing | 19 cadenas nuevas EN+ES → **0 hallazgos** | ✅ |
+| `contain: paint` | el retrato sigue a sangre y sin borde en la captura, con el parallax aplicado (`scale(1.11)`) | ✅ aislamiento, no recorte |
+
+### Las mutaciones, verificadas una a una
+
+Guardar → mutar → **ver rojo** → restaurar → md5 idéntico. Las cinco:
+
+| Mutación | Resultado |
+|---|---|
+| Quitar la guarda `!coarse` del desenfoque | 🔴 |
+| Volver a la tasa continua de reproducción | 🔴 |
+| `host.__js = false` (matar el respaldo del sticky) | 🔴 |
+| Meter la capa del menú **dentro** de `<main>` | 🔴 |
+| Quitar el `.filter()` de `LANDING.socials` | 🔴 (3 tests) |
+
+### Checklist de «terminado»
+
+| Comprobación | Resultado |
+|---|---|
+| `tsc --noEmit` | ✅ limpio |
+| `vitest run` | ✅ **186** (13 ficheros) |
+| Suite backend desde base recreada | ✅ **1374** pasados, **0 saltados** (3 m 56 s) |
+| `ruff check app tests` | ✅ limpio |
+| `next build` con los `NEXT_PUBLIC_*` reales | ✅ |
+| `docker build -f backend/Dockerfile` | ✅ compila |
+| Fair Housing sobre el copy nuevo | ✅ 0 en 19 cadenas × 2 idiomas |
+| Mutaciones | ✅ 5 de 5 rojas, restauradas por md5 |
+| Secretos en el diff | ✅ ninguno |
+| Auditoría de cierre | ⬜ |
+
+### Lo que NO se pudo medir, dicho como tal
+
+- **Safari en iOS con la barra plegándose**: el cambio `dvh → svh` y el bloqueo
+  de scroll del menú (`documentElement.style.overflow`, que iOS puede ignorar).
+  Decidido y escrito en el componente; no medido desde un Mac.
+- El color del rebote superior en un móvil real (heredado de v0.69.0).
+- **Ningún test unitario cubre el comportamiento del menú**: este repo no tiene
+  jsdom. Los tests leen el fuente; el comportamiento se midió en navegador.
+
+### Decisiones y por qué
+
+- **`preload="none"` no entra.** La puerta era mía y la medición la suspendió.
+- **El vídeo sigue sin bucle** al final (decisión del dueño, 3-sep): el diseño
+  lo suelta en `loop`, pero el clip termina en la casa y abre en otra
+  habitación — el bucle es un corte visible.
+- **Privacy y Terms no se enlazan** aunque el diseño los liste: no existen.
+- **Rama apilada, no continuación de `feat/landing-v6`**, para que esta tanda
+  sea revertible por separado.
+
+### 🔴 Consecuencia para el despliegue
+
+**v0.69.0 no se despliega sola.** El runbook preparado pasa a ser el de
+**v0.70.0**, y suma un paso que antes no tenía:
+
+1. En el `.env` del VPS (copia de seguridad antes), **antes del build** porque
+   son `NEXT_PUBLIC_*` y se hornean:
+   `NEXT_PUBLIC_LANDING_INSTAGRAM=https://www.instagram.com/denverhomestory/`,
+   `NEXT_PUBLIC_LANDING_YOUTUBE=https://www.youtube.com/@DenverHomeStory`,
+   `NEXT_PUBLIC_LANDING_TIKTOK=https://www.tiktok.com/@denverhomestory`.
+2. Bundle → `scp ender-vps` → `git fetch` + `merge --ff-only`.
+3. `docker compose build backend frontend` — **los dos**: `APP_VERSION` vive en
+   `backend/app/config.py`.
+4. **Sin migración.**
+5. `docker compose up -d backend frontend`.
+6. Verificar `/api/v1/health` **por el dominio público** → `0.70.0`.
+
+**Reversión literal**: `git reset --hard df8d602` en el VPS + `docker compose
+build backend frontend` + `up -d` (vuelve a v0.69.0, que tampoco está
+desplegada; para volver a producción tal cual está hoy, `git reset --hard`
+al commit desplegado de v0.68.0). Las tres variables nuevas pueden quedarse en
+el `.env`: sin código que las lea son inertes.
+
+**No se despliega sin autorización del dueño en un mensaje aparte.**
+
+---
+
+## ✅ ENTREGADO — v0.69.0 · la landing pasa al diseño v6 (el héroe es una película guiada por el scroll) (el héroe es una película guiada por el scroll)
 
 Rama `feat/landing-v6` desde `f07b719` — commit **`d5c492b`**, en `origin`. Origen: carpeta `deploy-v6` del proyecto
 de Claude Design (`04db33bc…`), descargada por el dueño a `~/Downloads/deploy-v6`

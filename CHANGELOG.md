@@ -2,6 +2,47 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.70.0] — 2026-09-03
+
+### Added
+- **The phone has navigation again.** The header's four links are `md:inline`,
+  so below 768px the public site offered no way at all to reach Markets or
+  About — the state v0.69.0 shipped in. The design's menu is back: a
+  full-screen panel with the four destinations numbered 01–04 and a call
+  button, which appears only where a phone number is configured. It is
+  rendered outside the hero on purpose — the sticky stage is `overflow-hidden`
+  and the engine's fallback puts `will-change: transform` on it, either of
+  which would crop a `position: fixed` overlay to the film. Measured at
+  390×844: the panel covers the viewport exactly, focus enters the close
+  button, Escape closes it and hands focus back, the page does not scroll
+  behind it, and twelve tab presses never leave it — that last one only after
+  a focus trap was added, because `aria-modal` does not change the browser's
+  tab order and the ninth tab was landing in the consult form behind the panel.
+- The footer links the brand's own Instagram, YouTube and TikTok, each read
+  from the environment and each rendered only when it has been configured.
+  Privacy and Terms, which the design also lists, are deliberately absent:
+  those pages do not exist, and this page does not link to what is not there.
+
+### Changed
+- **The hero runs the design's engine again, not a paraphrase of it.** The
+  playhead follows the scroll at the design's two speeds with its 400ms hold
+  instead of a rate recomputed every frame; the reveal thresholds, timings,
+  stagger and offsets go back to v6's, so a section now appears as its edge
+  enters the screen rather than a full screen early; and the reveal blur is
+  skipped on a coarse pointer, where it is the most expensive thing on the
+  page and the least visible.
+- The hero also carries the design's fallback for a stage whose `sticky` did
+  not stick — measured by injecting the exact CSS that broke this page once:
+  without it the stage runs away to −878/−1755/−2808px, with it it holds at 0.
+- The stage is sized in `svh` rather than `dvh`, so a phone toolbar folding
+  mid-scroll no longer resizes the film under the reader.
+- `contain: paint` on the clip reveal, and `:hover` neutralised on touch so a
+  tapped link does not keep the gold colour.
+- Not adopted from the design, with the number written down: `preload="none"`
+  plus `data-src` on the hero video moves the clip's bytes transferred before
+  the poster completes from 11,254 to 0 — 11KB of 17.8MB, with the poster
+  landing at the same 2.1s. That is not an optimisation worth the claim.
+
 ## [0.69.0] — 2026-09-03
 
 ### Changed

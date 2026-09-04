@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.69.0";
+export const CURRENT_VERSION = "0.70.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,32 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.70.0",
+    date: "2026-09-03",
+    title: {
+      en: "The landing finishes becoming the v6 design",
+      es: "La landing termina de ser el diseño v6",
+    },
+    changes: [
+      {
+        en: "On a phone the site has navigation again: a full-screen menu with the four destinations and a call button. Below 768px the header's links were hidden, so there was no way to reach Markets or About from a phone at all.",
+        es: "En el teléfono el sitio vuelve a tener navegación: un menú a pantalla completa con los cuatro destinos y un botón de llamar. Por debajo de 768 px los enlaces de la cabecera estaban ocultos, así que desde un móvil no había forma de llegar a Mercados ni a Nosotros.",
+      },
+      {
+        en: "The footer links the brand's own Instagram, YouTube and TikTok. Each icon appears only where that channel has been configured.",
+        es: "El pie enlaza el Instagram, YouTube y TikTok de la marca. Cada icono aparece solo donde ese canal esté configurado.",
+      },
+      {
+        en: "The hero film runs the design's own engine again. The playhead follows the scroll at two speeds instead of a rate recomputed every frame, sections appear as they enter the screen rather than a screen early, and the reveal blur is skipped on touch, where it costs the most and shows the least.",
+        es: "La película del héroe vuelve a usar el motor del propio diseño. La cabeza lectora sigue al scroll a dos velocidades en vez de una tasa recalculada cada fotograma, las secciones aparecen al entrar en pantalla y no una pantalla antes, y el desenfoque se salta en pantallas táctiles, donde más cuesta y menos se nota.",
+      },
+      {
+        en: "The film keeps its frame even where the browser refuses to pin it, and no longer resizes under the reader when a phone's toolbar folds mid-scroll.",
+        es: "La película mantiene su encuadre incluso donde el navegador se niega a fijarla, y ya no se redimensiona bajo el lector cuando la barra del móvil se pliega a mitad de scroll.",
+      },
+    ],
+  },
   {
     version: "0.69.0",
     date: "2026-09-03",
