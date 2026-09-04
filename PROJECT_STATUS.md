@@ -391,6 +391,32 @@ despliegue del checkpoint A, que espera autorización.
 
 ---
 
+## ✅ DESPLEGADO — v0.75.1 · checkpoint C: qué negocio se cerró, y de qué red viene
+
+> **En producción el 4-sep-2026**, autorizado por el dueño. `/api/v1/health` →
+> **`0.75.1`**. VPS en `1704d37`. Migración **053_deal_columns** aplicada con la
+> imagen nueva (`052` → `053_deal_columns (head)`).
+
+| Comprobación | Resultado |
+|---|---|
+| `/api/v1/health` | **0.75.1** |
+| Landing pública | `200` |
+| Columnas de cierre en `leads` | **4** (`won_kind`, `won_value`, `won_at`, `lost_reason`) |
+| `CONTENT_UTM_CAMPAIGN` en el contenedor | `video` — llega por el defecto del compose, **sin tocar el `.env`** |
+
+🔴 **Las 5 publicaciones ya programadas en Buffer llevan el enlace SIN etiquetar.**
+Se escribieron y se entregaron a Buffer antes de este despliegue, y su texto ya
+está del lado de Buffer: piezas 9 y 10, entre el 5 y el 6 de septiembre. La
+etiqueta empieza a aplicarse en **la siguiente pieza que se publique**, no en
+las que ya están en cola. No se tocan: reescribirlas significaría borrarlas y
+reprogramarlas, y una publicación duplicada cuesta más que un `direct` de más.
+
+**Acción del dueño, sin la cual la mitad de F5 no sirve**: pegar los tres
+enlaces de perfil (`docs/enlaces-de-bio.md`). El sistema etiqueta el pie de los
+vídeos; el enlace del perfil no lo pone nadie más que él.
+
+---
+
 ## ✅ DESPLEGADO — v0.74.0 · checkpoint B: el lead recuerda lo que le pasó
 
 > **En producción el 4-sep-2026**, autorizado por el dueño. `/api/v1/health` →
