@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
+  AlertTriangle,
   Check,
   Info,
   Loader2,
@@ -431,6 +432,21 @@ function RenderProgress({ piece }: { piece: ContentPiece }) {
     );
   }
 
+  // A job that is over is not a job in progress. Every state that is not
+  // "claimed" used to fall through to the spinner below, so a render that had
+  // failed for good kept animating the last stage it managed to report — piece
+  // 10 spun at "Adding captions and the end card, 88%" for hours with nothing
+  // running anywhere. "done" is here too: with no file, it is finished and not
+  // working, whatever else went wrong.
+  if (state === "failed" || state === "done") {
+    return (
+      <span className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-amber-300">
+        <AlertTriangle className="w-4 h-4 shrink-0" />
+        <span title={t("content.renderFailedHint")}>{t("content.renderFailed")}</span>
+      </span>
+    );
+  }
+
   // A percentage the worker reported, or an honest indeterminate bar. Never a
   // number invented on this side: a bar that moves on its own is a lie with an
   // animation.
@@ -669,7 +685,11 @@ function PieceCard({
                 </button>
               )}
               {piece.kind === "generated" &&
-                !!piece.media_path &&
+                // A render that failed leaves no file, and the only way out of
+                // that state was Reject — throwing away a piece whose text is
+                // fine because its video is missing. `rebuild_piece` never
+                // required a file; only this condition did.
+                (!!piece.media_path || piece.render_state === "failed") &&
                 piece.status !== "published" && (
                   <button
                     onClick={onRebuild}

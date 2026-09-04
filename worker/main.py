@@ -176,9 +176,13 @@ class Panel:
             resp = self.http.put("/result", params={"job_id": job_id}, content=handle)
         resp.raise_for_status()
 
-    def failed(self, job_id: int, error: str) -> None:
+    def failed(self, job_id: int, error: str, *, terminal: bool = False) -> None:
+        """`terminal` means another attempt would fail the same way."""
         try:
-            self.http.post(f"/{job_id}/fail", json={"error": error[:2000]})
+            self.http.post(
+                f"/{job_id}/fail",
+                json={"error": error[:2000], "terminal": terminal},
+            )
         except Exception:  # noqa: BLE001 — reporting a failure must not raise
             log.exception("could not report the failure of job %s", job_id)
 
@@ -305,7 +309,20 @@ def handle(cfg: config.Config, panel: Panel, job: dict) -> None:
         log.info("job %s delivered", job["id"])
     except Exception as exc:  # noqa: BLE001 — one bad job must not stop the worker
         log.exception("job %s failed", job["id"])
-        panel.failed(job["id"], f"{type(exc).__name__}: {exc}")
+        # `verify.Rejected` and nothing else. It is a verdict on OUR OWN
+        # finished file and the next attempt renders the same thing from the
+        # same plan, so the retries are pure spend — three narrations for one
+        # answer. Everything else here can genuinely change: an image provider
+        # out of balance, a disk full for a minute, the panel unreachable. The
+        # `ValueError` from `produce` is the sharpest case of that — "no image
+        # provider produced a single picture" IS a provider outage, and burning
+        # the piece's only attempt on it would turn an hour of Kling downtime
+        # into a dead piece.
+        panel.failed(
+            job["id"],
+            f"{type(exc).__name__}: {exc}",
+            terminal=isinstance(exc, verify.Rejected),
+        )
     finally:
         # Always, including on success: these are hundreds of megabytes on a
         # machine three projects share.

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.71.1";
+export const CURRENT_VERSION = "0.72.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,32 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.72.0",
+    date: "2026-09-04",
+    title: {
+      en: "The watermark check was reading the photograph",
+      es: "La comprobación de la marca leía la fotografía",
+    },
+    changes: [
+      {
+        en: "A finished video was refused three times for \"the brand mark is not in the frame\" — and the mark was there. The check compared the corner of the frame against the whole logo file, half of which is transparent, so what it really measured was whether the photograph behind the logo happened to be dark. A dark picture scored 0.892 and a pale one 0.014, with the mark identically present in both. It now compares only the pixels the logo actually draws: the six videos this account has produced score between 0.981 and 0.994.",
+        es: "Un vídeo terminado fue rechazado tres veces por «la marca no está en el cuadro» — y la marca estaba. La comprobación comparaba la esquina del cuadro con el fichero entero del logo, que es transparente por la mitad, así que lo que medía en realidad era si la fotografía de detrás era oscura. Una foto oscura puntuaba 0,892 y una clara 0,014, con la marca igual de presente en las dos. Ahora compara solo los píxeles que el logo dibuja de verdad: los seis vídeos que ha hecho esta cuenta puntúan entre 0,981 y 0,994.",
+      },
+      {
+        en: "The queue no longer animates a render that is over. A piece whose video failed showed a spinner at \"Adding captions and the end card, 88%\" for hours with nothing running anywhere — the last thing the worker managed to report before it died. It now says the video could not be made, and offers to make it again.",
+        es: "La cola ya no anima un montaje que ha terminado. Una pieza cuyo vídeo falló mostraba un indicador girando en «Añadiendo subtítulos y cierre, 88 %» durante horas sin que se estuviera haciendo nada — lo último que el obrero alcanzó a reportar antes de morir. Ahora dice que el vídeo no se pudo hacer, y ofrece rehacerlo.",
+      },
+      {
+        en: "A piece whose render failed can be rebuilt. Until now the only button offered was Reject, so the only way out of a failed video was to throw away a script that was fine.",
+        es: "Una pieza cuyo montaje falló se puede rehacer. Hasta ahora el único botón ofrecido era Rechazar, así que la única salida a un vídeo fallido era tirar un guion que estaba bien.",
+      },
+      {
+        en: "A render that fails its own output check is no longer retried twice more. That failure gives the same answer every time, and each attempt pays for a new narration: the piece above spent three of them in seventy-one seconds. A provider outage is still retried, because that one can genuinely change.",
+        es: "Un montaje que suspende su propia comprobación ya no se reintenta dos veces más. Ese fallo da la misma respuesta siempre, y cada intento paga una narración nueva: la pieza de arriba gastó tres en setenta y un segundos. Una caída de proveedor sí se sigue reintentando, porque esa sí puede cambiar.",
+      },
+    ],
+  },
   {
     version: "0.71.1",
     date: "2026-09-03",

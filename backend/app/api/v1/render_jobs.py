@@ -131,6 +131,15 @@ class FailIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     error: str = Field(max_length=2000)
+    # Whether another attempt could possibly answer differently. Declared by
+    # the worker, which knows WHICH exception it caught; this side would only
+    # have a sentence to guess from, and a rule that reads the prefix of an
+    # error message breaks the day somebody rewords it.
+    #
+    # It has a default because `extra="forbid"` rejects a field the model does
+    # not declare: without one, a worker that has not been updated yet would
+    # get a 422 and lose the ability to report failures at all.
+    terminal: bool = False
 
 
 def _for_the_console(reason: str) -> str:
@@ -463,6 +472,12 @@ async def job_failed(job_id: int, payload: FailIn) -> dict[str, str]:
     Counted as an attempt rather than failed outright: a transient failure —
     an image provider timing out, a disk full for a minute — should be retried,
     and only a job that beat every attempt is a job for a person.
+
+    Unless the worker says the answer cannot change. A render that failed its
+    own output verification will fail it identically on the next two attempts:
+    piece 10 spent three MiniMax narrations in seventy-one seconds to be told
+    the same thing three times. The attempt is still counted — it happened —
+    but the remaining ones are not spent on a foregone conclusion.
     """
     async with get_bypass_session_factory()() as db:
         job = await _load(db, job_id)
@@ -475,7 +490,7 @@ async def job_failed(job_id: int, payload: FailIn) -> dict[str, str]:
             )
         job.attempts += 1
         job.last_error = payload.error[:2000]
-        if job.attempts >= MAX_ATTEMPTS:
+        if payload.terminal or job.attempts >= MAX_ATTEMPTS:
             job.status = RenderJobStatus.FAILED
             await _write_failure_to_piece(db, job, payload.error)
         else:

@@ -638,6 +638,12 @@ async def rebuild_piece(piece_id: int, db: AsyncSession = Depends(get_db)) -> Pi
         job.claimed_at = None
         job.attempts = 0
         job.last_error = None
+        # The old job's last report belongs to the old job. Left behind, the
+        # console shows the new render sitting at whatever percentage the
+        # previous one died at until the worker gets far enough to say
+        # otherwise — which is the same lie in a smaller window.
+        job.stage = None
+        job.progress = None
 
     await db.commit()
     await db.refresh(piece)
