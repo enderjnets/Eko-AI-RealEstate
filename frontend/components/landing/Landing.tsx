@@ -35,7 +35,8 @@
  */
 
 import Link from "next/link";
-import { ArrowDown, ArrowRight, Building2, CalendarCheck, Clock, Phone, Ruler, Users } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowDown, ArrowRight, Building2, CalendarCheck, Clock, Menu, Phone, Ruler, Users, X } from "lucide-react";
 import { LANDING, dialable } from "@/lib/landing";
 import { LandingEffects } from "@/components/landing/LandingEffects";
 import { useI18n } from "@/lib/i18n";
@@ -66,7 +67,7 @@ function SplitTitle({ a, italic }: { a: string; italic: string }) {
 }
 
 /** Sits on the film, so it is cream on dark and travels with the sticky stage. */
-function LandingNav() {
+function LandingNav({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => void }) {
   const { t } = useI18n();
   const link =
     "hidden text-[11px] uppercase tracking-[0.18em] text-ln-canvas/80 hover:text-ln-gold md:inline";
@@ -101,9 +102,164 @@ function LandingNav() {
           <span className="[&_button]:text-ln-canvas/70 [&_button:hover]:bg-ln-canvas/10 [&_button:hover]:text-ln-canvas">
             <LanguageSwitcher />
           </span>
+          {/* Below md the four links are hidden and this is the only way into
+              the page: without it a phone visitor cannot reach Markets or
+              About at all, which is what shipped in v0.69.0. */}
+          <button
+            type="button"
+            onClick={onOpenMenu}
+            aria-haspopup="dialog"
+            aria-expanded={menuOpen}
+            aria-controls="landing-menu"
+            aria-label={t("landing.menu.open")}
+            className="-mr-2 flex h-11 w-11 items-center justify-center text-ln-canvas md:hidden"
+          >
+            <Menu className="h-[22px] w-[22px]" strokeWidth={1} />
+          </button>
         </nav>
       </div>
     </header>
+  );
+}
+
+/**
+ * The phone's navigation, from the design's 390 artboard.
+ *
+ * 🔴 It is rendered as a sibling of <main>, NOT inside the hero, and that is
+ * not tidiness. `[data-pin-stage]` has `overflow-hidden`, and the engine's
+ * sticky fallback sets `will-change: transform` on it the moment it fires —
+ * either one makes the stage a containing block for `position: fixed`, so an
+ * overlay nested in there would be cropped to the film instead of covering the
+ * screen. deploy-v6 puts `#mob-menu` outside its page for the same reason.
+ */
+function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useI18n();
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    // Whatever opened it gets the focus back when it closes — otherwise the
+    // reader is returned to the top of the document with no idea where.
+    const opener = document.activeElement as HTMLElement | null;
+    const root = document.documentElement;
+    const previousOverflow = root.style.overflow;
+    root.style.overflow = "hidden";
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      /* aria-modal tells a screen reader to ignore the page behind; it does
+         nothing to the browser's tab order. Measured before this existed: the
+         6th Tab left the overlay and the 9th landed in the consult form's name
+         field, invisible behind a full-screen panel. */
+      const panel = dialogRef.current;
+      if (!panel) return;
+      const items = Array.from(
+        panel.querySelectorAll<HTMLElement>("a[href], button:not([disabled])"),
+      ).filter((el) => el.offsetParent !== null);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      const outside = !active || !panel.contains(active);
+      if (e.shiftKey ? active === first || outside : active === last || outside) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      }
+    };
+    // Resizing to a desktop width hides the overlay by CSS; without this the
+    // page would stay locked behind an overlay nobody can see.
+    const wide = matchMedia("(min-width: 768px)");
+    const onWide = () => {
+      if (wide.matches) onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    wide.addEventListener("change", onWide);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      wide.removeEventListener("change", onWide);
+      root.style.overflow = previousOverflow;
+      opener?.focus?.();
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const items = [
+    { href: "#about", label: t("landing.menu.about"), italic: false },
+    { href: "#how", label: t("landing.menu.how"), italic: false },
+    { href: "#markets", label: t("landing.menu.markets"), italic: false },
+    { href: "#consult", label: t("landing.nav.book"), italic: true },
+  ];
+
+  return (
+    <div
+      ref={dialogRef}
+      id="landing-menu"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("landing.menu.title")}
+      className="fixed inset-0 z-50 flex flex-col bg-ln-night px-[22px] pb-[calc(30px+env(safe-area-inset-bottom,0px))] pt-[calc(14px+env(safe-area-inset-top,0px))] text-ln-canvas md:hidden"
+    >
+      <div className="-mr-2 flex items-start justify-between">
+        <div className="min-w-0">
+          {LANDING.advisors && (
+            <p className="truncate font-ln-serif text-[19px] font-light leading-none tracking-[0.05em]">
+              {LANDING.advisors}
+            </p>
+          )}
+          {LANDING.brokerage && (
+            <p className="mt-1 truncate text-[7px] font-medium uppercase tracking-[0.28em] text-ln-canvas/60">
+              {LANDING.brokerage}
+            </p>
+          )}
+        </div>
+        <button
+          ref={closeRef}
+          type="button"
+          onClick={onClose}
+          aria-label={t("landing.menu.close")}
+          className="flex h-11 w-11 flex-none items-center justify-center text-ln-canvas"
+        >
+          <X className="h-[22px] w-[22px]" strokeWidth={1} />
+        </button>
+      </div>
+
+      <nav className="my-auto flex flex-col">
+        {items.map(({ href, label, italic }, i) => (
+          <a
+            key={href}
+            href={href}
+            onClick={onClose}
+            data-menu-link="1"
+            className="flex items-baseline justify-between border-t border-ln-canvas/15 py-[18px] font-ln-serif text-[40px] font-light leading-none text-ln-cream last:border-b"
+          >
+            <span className={italic ? "italic" : undefined}>{label}</span>
+            <span className="font-ln-sans text-[10px] uppercase tracking-[0.22em] text-ln-canvas/50">
+              {String(i + 1).padStart(2, "0")}
+            </span>
+          </a>
+        ))}
+      </nav>
+
+      {LANDING.phone && (
+        <a
+          href={`tel:${dialable(LANDING.phone)}`}
+          onClick={onClose}
+          data-menu-link="1"
+          className="flex items-center justify-center gap-2.5 rounded-full bg-ln-canvas px-6 py-[18px] text-[11px] font-medium uppercase tracking-[0.16em] text-[#242219]"
+        >
+          <Phone className="h-3.5 w-3.5" />
+          {LANDING.advisors
+            ? t("landing.menu.call", { who: LANDING.advisors })
+            : t("landing.menu.callPlain")}
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -113,11 +269,15 @@ function LandingNav() {
  * turns that scroll into the clip's playhead and into which caption is up.
  *
  * Heights: the design's artboards are 4400/900 (desktop) and 2900/720 (phone)
- * — host over stage — i.e. 4.9 and 4.0 viewports. The host is in `svh` so the
- * document never changes length when a phone's toolbar collapses (that would
- * move everything below the hero mid-scroll); the stage is `dvh` so the film
- * always fills whatever the viewport currently is. The cost is a small shift in
- * the progress denominator when the toolbar folds, once, early in the scroll.
+ * — host over stage — i.e. 4.9 and 4.0 viewports. BOTH are in `svh`, which is
+ * the stable one: `dvh` tracks the live viewport, so on iOS the film would
+ * resize under the reader every time the Safari toolbar folds or unfolds
+ * mid-scroll, and the progress denominator would move with it. deploy-v6 says
+ * this in as many words and pins its stage to a measured height that it only
+ * re-reads on a width change or a jump over 160px. The cost of `svh` is the
+ * mirror image and much smaller: with the toolbar collapsed the stage is a
+ * strip shorter than the viewport, and that strip is the host's own night.
+ * Not measurable from a Mac — decided, and listed as undecided-by-measurement.
  *
  * Caption windows are the design's, as fractions of that scroll: 0–.22 the
  * opening, .27–.49 who we are, .53–.75 how we work, .79–1 the consult with its
@@ -127,7 +287,7 @@ function LandingNav() {
  * `lib/__tests__/landingHero.test.ts` pins that, and the video's missing
  * `autoPlay`/`loop`: either would come back silently and undo the engine.
  */
-function Hero() {
+function Hero({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => void }) {
   const { t } = useI18n();
   const eyebrow =
     "mb-4 text-[9px] font-medium uppercase tracking-[0.26em] text-ln-canvas/70 md:mb-6 md:text-[10px] md:tracking-[0.32em]";
@@ -139,7 +299,7 @@ function Hero() {
 
   return (
     <section data-pin-host="1" className="relative h-[400svh] bg-ln-night md:h-[490svh]">
-      <div data-pin-stage="1" className="sticky top-0 h-dvh overflow-hidden bg-ln-night">
+      <div data-pin-stage="1" className="sticky top-0 h-svh overflow-hidden bg-ln-night">
         {/* No autoPlay, no loop: the engine primes it and then owns the
             playhead, and the clip cannot loop (see LandingEffects).
             `preload` stays "auto" and NOT the design's "none" + data-src:
@@ -159,7 +319,7 @@ function Hero() {
         <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-40 bg-gradient-to-b from-ln-night/60 to-transparent md:h-[220px]" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[260px] bg-gradient-to-t from-ln-night/75 to-transparent md:h-[320px]" />
 
-        <LandingNav />
+        <LandingNav menuOpen={menuOpen} onOpenMenu={onOpenMenu} />
 
         <div
           data-cap="0,0.22"
@@ -462,6 +622,50 @@ function Consult() {
   );
 }
 
+/* lucide-react carries no brand marks, so these are the design's own outlines.
+   They are decorative — the link's aria-label names the destination — and they
+   live inside a component rather than in a module constant: JSX evaluated at
+   module scope needs React in scope and blows up the moment another module
+   merely imports this file. */
+function SocialGlyph({ name }: { name: string }) {
+  const paths =
+    name === "instagram" ? (
+      <>
+        <rect x="2" y="2" width="20" height="20" rx="5" />
+        <circle cx="12" cy="12" r="4" />
+        <circle cx="17.5" cy="6.5" r="0.6" fill="currentColor" />
+      </>
+    ) : name === "youtube" ? (
+      <>
+        <path d="M2.5 12c0-3 .3-4.6.6-5.3a2.6 2.6 0 0 1 1.8-1.5C6.5 4.8 12 4.8 12 4.8s5.5 0 7.1.4a2.6 2.6 0 0 1 1.8 1.5c.3.7.6 2.3.6 5.3s-.3 4.6-.6 5.3a2.6 2.6 0 0 1-1.8 1.5c-1.6.4-7.1.4-7.1.4s-5.5 0-7.1-.4a2.6 2.6 0 0 1-1.8-1.5c-.3-.7-.6-2.3-.6-5.3z" />
+        <path d="M10 9.5v5l4.5-2.5z" fill="currentColor" />
+      </>
+    ) : (
+      <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
+    );
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths}
+    </svg>
+  );
+}
+
+const SOCIAL_NAME: Record<string, string> = {
+  instagram: "Instagram",
+  youtube: "YouTube",
+  tiktok: "TikTok",
+};
+
 function LandingFooter() {
   const { t } = useI18n();
   // "Licensed in Colorado" is a claim about a specific licence: it appears
@@ -485,20 +689,45 @@ function LandingFooter() {
           )}
           {legal.length > 0 && <p>{legal.join(" · ")}</p>}
         </div>
-        {/* inline-flex + min-height so the tap target reaches 44px on a
-            phone. As a bare inline link it measured 15px. */}
-        <Link
-          href="/login"
-          className="inline-flex min-h-[44px] items-center whitespace-nowrap text-[11px] tracking-[0.04em] text-ln-muted underline underline-offset-4 hover:text-ln-gold"
-        >
-          {t("landing.footer.staffLogin")}
-        </Link>
+        <div className="flex items-center gap-6">
+          {/* The videos send people here; this is the way back. Each icon
+              exists only if its URL was configured — an empty row of dead
+              circles would be worse than no row. Privacy and Terms, which the
+              design also lists, are deliberately NOT here: those pages do not
+              exist, and this page does not link to anything that is not there. */}
+          {LANDING.socials.length > 0 && (
+            <div className="flex items-center gap-2.5">
+              {LANDING.socials.map(({ key, url }) => (
+                <a
+                  key={key}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={SOCIAL_NAME[key]}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ln-hair text-ln-body hover:border-ln-gold hover:text-ln-gold"
+                >
+                  <SocialGlyph name={key} />
+                </a>
+              ))}
+            </div>
+          )}
+          {/* inline-flex + min-height so the tap target reaches 44px on a
+              phone. As a bare inline link it measured 15px. */}
+          <Link
+            href="/login"
+            className="inline-flex min-h-[44px] items-center whitespace-nowrap text-[11px] tracking-[0.04em] text-ln-muted underline underline-offset-4 hover:text-ln-gold"
+          >
+            {t("landing.footer.staffLogin")}
+          </Link>
+        </div>
       </div>
     </footer>
   );
 }
 
 export function Landing() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
   return (
     // `eko-landing` is the hook globals.css uses to repaint the document
     // background: the app shell is dark, and without it the overscroll gutter
@@ -506,13 +735,14 @@ export function Landing() {
     <div className="eko-landing relative min-h-screen bg-ln-canvas font-ln-sans text-ln-ink antialiased">
       <LandingEffects />
       <main>
-        <Hero />
+        <Hero menuOpen={menuOpen} onOpenMenu={() => setMenuOpen(true)} />
         <TwoOfUs />
         <HowWeWork />
         <Markets />
         <Consult />
       </main>
       <LandingFooter />
+      <MobileMenu open={menuOpen} onClose={closeMenu} />
     </div>
   );
 }

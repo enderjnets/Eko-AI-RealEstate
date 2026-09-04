@@ -54,6 +54,9 @@ const years = clean(process.env.NEXT_PUBLIC_LANDING_YEARS);
 const markets = clean(process.env.NEXT_PUBLIC_LANDING_MARKETS);
 const portrait = clean(process.env.NEXT_PUBLIC_LANDING_PORTRAIT);
 const bookingUrl = clean(process.env.NEXT_PUBLIC_LANDING_BOOKING_URL);
+const instagram = clean(process.env.NEXT_PUBLIC_LANDING_INSTAGRAM);
+const youtube = clean(process.env.NEXT_PUBLIC_LANDING_YOUTUBE);
+const tiktok = clean(process.env.NEXT_PUBLIC_LANDING_TIKTOK);
 const testimonials = parseTestimonials(clean(process.env.NEXT_PUBLIC_LANDING_TESTIMONIALS));
 
 export const LANDING = {
@@ -67,11 +70,21 @@ export const LANDING = {
   markets,
   portrait,
   bookingUrl,
+  instagram,
+  youtube,
+  tiktok,
   testimonials,
 
   /** The stat strip is all-or-nothing: one lonely number reads as an omission. */
   hasStats: Boolean(years && markets),
   hasAnyChannel: Boolean(phone || sms || email),
+  /** The footer row disappears entirely rather than showing one lone icon
+      of a channel nobody has: same rule as the stat strip. */
+  socials: [
+    { key: "instagram" as const, url: instagram },
+    { key: "youtube" as const, url: youtube },
+    { key: "tiktok" as const, url: tiktok },
+  ].filter((s) => Boolean(s.url)),
 } as const;
 
 /**

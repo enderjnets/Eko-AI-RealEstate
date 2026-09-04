@@ -45,6 +45,20 @@ html:has(.eko-landing) { scroll-behavior: smooth; }
 html:has(.eko-landing) { overflow-x: hidden; }
 body:has(.eko-landing) { overflow-x: clip; }
 
+/* Two rules straight from deploy-v6.
+
+   `contain: paint` on the clip reveal: that element animates clip-path,
+   transform and a blur together over a full-height photo, and it is the
+   most expensive thing this page does. It already has overflow-hidden, so
+   this is isolation, not a new crop.
+
+   And a tap is not a hover: without the second rule the gold :hover colour
+   sticks to whatever link a finger last touched, on every phone. */
+.eko-landing [data-reveal="clip"] { contain: paint; }
+@media (hover: none) {
+  .eko-landing a:hover { color: inherit; }
+}
+
 /* Accessible keyboard focus + a dark scrollbar that matches the noir console. */
 :focus-visible { outline: 2px solid rgba(124, 58, 237, 0.6); outline-offset: 2px; border-radius: 6px; }
 * { scrollbar-color: rgba(255, 255, 255, 0.12) transparent; scrollbar-width: thin; }

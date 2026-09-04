@@ -105,3 +105,36 @@ describe("the engine is deploy-v6's, not a paraphrase of it", () => {
     expect(effects).toMatch(/stage\.style\.position = "absolute"/);
   });
 });
+
+/**
+ * The phone had no navigation at all in v0.69.0 — the four links are md:inline
+ * — so the overlay is the only way into the page from a phone. It has to sit
+ * outside the hero: `[data-pin-stage]` is overflow-hidden and the engine's
+ * sticky fallback puts `will-change: transform` on it, and either makes the
+ * stage a containing block for position:fixed, which would crop the overlay
+ * to the film. Nesting it back inside would look right in a desktop browser
+ * and be broken exactly where it is the only navigation there is.
+ */
+describe("the phone's navigation exists, and lives outside the film", () => {
+  const root = landing.slice(landing.indexOf("export function Landing()"));
+
+  it("renders the menu as a sibling of <main>, never inside the hero", () => {
+    const main = root.indexOf("</main>");
+    const menu = root.indexOf("<MobileMenu");
+    expect(main).toBeGreaterThan(-1);
+    expect(menu).toBeGreaterThan(main);
+  });
+
+  it("covers the screen and offers the design's four destinations", () => {
+    expect(landing).toMatch(/role="dialog"[\s\S]{0,400}?className="fixed inset-0/);
+    for (const href of ["#about", "#how", "#markets", "#consult"]) {
+      expect(landing).toContain(`{ href: "${href}"`);
+    }
+  });
+
+  it("is opened by a control that says what it does", () => {
+    expect(landing).toMatch(/aria-controls="landing-menu"/);
+    expect(landing).toMatch(/aria-expanded=\{menuOpen\}/);
+    expect(landing).toMatch(/aria-modal="true"/);
+  });
+});

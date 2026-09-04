@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { dialable, parseTestimonials } from "../landing";
 
 describe("dialable", () => {
@@ -58,5 +58,44 @@ describe("parseTestimonials", () => {
   it("trims the values it keeps", () => {
     const raw = JSON.stringify([{ quote: "  Quoted.  ", attribution: "  Buyer  " }]);
     expect(parseTestimonials(raw)).toEqual([{ quote: "Quoted.", attribution: "Buyer" }]);
+  });
+});
+
+/**
+ * The footer's channel row obeys the rule the whole page obeys: a fact that
+ * was not configured does not appear. Worth a test and not an eyeball, because
+ * the failure is an empty circle linking to nowhere — which looks like a bug in
+ * the brand, on the brand's own page.
+ */
+describe("LANDING.socials", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  const load = async () => {
+    vi.resetModules();
+    return (await import("../landing")).LANDING.socials;
+  };
+
+  it("lists only the channels that were configured, in the design's order", async () => {
+    vi.stubEnv("NEXT_PUBLIC_LANDING_INSTAGRAM", "https://instagram.test/x");
+    vi.stubEnv("NEXT_PUBLIC_LANDING_YOUTUBE", "");
+    vi.stubEnv("NEXT_PUBLIC_LANDING_TIKTOK", "https://tiktok.test/x");
+    expect((await load()).map((s) => s.key)).toEqual(["instagram", "tiktok"]);
+  });
+
+  it("is empty when none is set, so the row disappears instead of emptying", async () => {
+    vi.stubEnv("NEXT_PUBLIC_LANDING_INSTAGRAM", "");
+    vi.stubEnv("NEXT_PUBLIC_LANDING_YOUTUBE", "");
+    vi.stubEnv("NEXT_PUBLIC_LANDING_TIKTOK", "");
+    expect(await load()).toEqual([]);
+  });
+
+  it("ignores a value that is only whitespace", async () => {
+    vi.stubEnv("NEXT_PUBLIC_LANDING_INSTAGRAM", "   ");
+    vi.stubEnv("NEXT_PUBLIC_LANDING_YOUTUBE", "");
+    vi.stubEnv("NEXT_PUBLIC_LANDING_TIKTOK", "");
+    expect(await load()).toEqual([]);
   });
 });
