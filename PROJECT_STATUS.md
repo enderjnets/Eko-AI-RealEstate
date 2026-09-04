@@ -246,6 +246,17 @@ he tocado ni verificado yo:
   a propósito: el trabajo 11 entraba en bucle de 3 intentos cada ~70 s y **cada
   intento narraba con MiniMax antes de morir — 11 narraciones pagadas** entre
   las 23:19 y las 23:44.
+- 🔴 **Por qué costó dinero, y esto es lo que hay que arreglar**: el obrero
+  **paga la narración ANTES de comprobar que hay proveedor de imágenes**. Con
+  las claves borradas, cada reintento compraba una narración para morir en el
+  mismo punto. Los reintentos no son el defecto — el orden sí: lo que no puede
+  fallar se verifica antes de gastar. Es la misma forma que
+  [[feedback_pagar_dos_veces_el_insumo]], un escalón más arriba.
+- Descartadas por la sesión vecina, con evidencia, quién reencoló: **no fue el
+  sweep** (`_enqueue` exige 24 h y llevaba 2) ni **la consola** (en
+  `ContentQueue.tsx` `onRebuild` solo cuelga del `onClick`, y el único
+  `useEffect` carga la lista: sin sondeo ni acciones automáticas, una pestaña
+  abierta en `/content` no lo explica).
 - Queda sin explicar **quién reencoló** ese trabajo: `_enqueue` solo reencola un
   job `FAILED` tras 24 h de enfriamiento y llevaba 2. **No fui yo**: en esa
   ventana conducía Chrome contra una pila local (`eko_live_check`, puertos 8099
