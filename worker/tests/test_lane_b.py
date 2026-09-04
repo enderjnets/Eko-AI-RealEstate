@@ -274,29 +274,68 @@ def test_a_fal_failure_does_not_then_bill_kling_for_the_same_picture(
     assert pictures.fetch("a house", tmp_path / "o.jpg") == "none"
 
 
-def test_an_empty_fal_account_is_loud_and_not_a_missing_photo(
+def test_an_empty_fal_account_is_loud_but_does_not_stop_the_video(
     monkeypatch, tmp_path: Path
 ) -> None:
-    """403, not 401: the credential is good and the balance is gone. Measured
-    on the live account. Silence here is how an unpaid bill spent a week
-    looking like a change of style in the channel next door."""
+    """403, not 401: the credential is good and the balance is gone, measured
+    on the live account.
+
+    It must NOT raise. `NoBalance` unwinds out of `fetch` without reaching
+    Pexels, so an empty account would give every scene a blank card, the guard
+    in `produce.py` would fail the whole job, and the retry would buy the
+    narration again — the incident this supplier was brought in to end.
+    """
     monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
     monkeypatch.setenv("FAL_KEY", "id:secret")
     monkeypatch.setattr(pictures.httpx, "post", lambda *a, **k: _FalAnswer(403))
 
-    with pytest.raises(pictures.NoBalance):
-        pictures._fal_image("a house", tmp_path / "o.jpg")
+    assert pictures._fal_image("a house", tmp_path / "o.jpg") is False
+    # The day is spent, so nothing asks an empty account a second time.
+    assert pictures._spent_today() >= pictures.daily_cap()
 
 
-def test_a_request_fal_refused_is_still_charged(monkeypatch, tmp_path: Path) -> None:
-    """Same rule the Kling path pays: the ledger counts what was asked for,
-    not what arrived, because the spend nobody wanted is exactly the spend a
-    finished-images counter hides."""
+def test_after_a_403_the_day_asks_nobody_and_stock_carries_the_video(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """One 403 per day, not one per scene — and the video still comes out."""
+    monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("FAL_KEY", "id:secret")
+    monkeypatch.setattr(pictures.httpx, "post", lambda *a, **k: _FalAnswer(403))
+    assert pictures._fal_image("a house", tmp_path / "first.jpg") is False
+
+    monkeypatch.setattr(pictures.httpx, "post", _never)
+
+    def _stock(prompt: str, destination: Path, people_words=None) -> bool:
+        destination.write_bytes(b"stock")
+        return True
+
+    monkeypatch.setattr(pictures, "_pexels", _stock)
+    assert pictures.fetch("a barn", tmp_path / "second.jpg") == "pexels"
+
+
+def test_a_request_fal_refused_costs_nothing(monkeypatch, tmp_path: Path) -> None:
+    """The same line the Kling path draws: a request the supplier never
+    accepted costs nothing, and counting it would let a ten-minute outage
+    spend the whole day's cap and quietly drop the rest to stock."""
     monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
     monkeypatch.setenv("FAL_KEY", "id:secret")
     monkeypatch.setattr(pictures.httpx, "post", lambda *a, **k: _FalAnswer(500))
 
     assert pictures._fal_image("a house", tmp_path / "o.jpg") is False
+    assert pictures._spent_today() == 0
+
+
+def test_an_accepted_request_is_charged_once(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("FAL_KEY", "id:secret")
+    monkeypatch.setattr(
+        pictures.httpx,
+        "post",
+        lambda *a, **k: _FalAnswer(200, {"images": [{"url": "https://x/y.jpg"}]}),
+    )
+    monkeypatch.setattr(pictures.httpx, "get", lambda *a, **k: _FalAnswer(200))
+
+    assert pictures._fal_image("a house", tmp_path / "o.jpg") is True
     assert pictures._spent_today() == 1
 
 

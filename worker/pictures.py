@@ -52,8 +52,10 @@ _ASPECT = "9:16"
 
 
 class NoBalance(Exception):
-    """The supplier says the account is empty — Kling with `1102`, fal.ai with
-    an HTTP 403. Reported once a day and then
+    """Kling said 1102: the account is empty. Only Kling raises it; fal.ai
+    reports an empty account without unwinding, because this exception skips
+    past the free supplier and a video with no picture at all is a job that
+    fails and gets retried. Reported once a day and then
     degraded around — a paid service that stops working has to be visible even
     when the system survives without it, because the alternative is a channel
     that quietly changes its look for a week."""
@@ -145,10 +147,6 @@ def _fal_image(prompt: str, destination: Path) -> bool:
     if not key:
         return False
 
-    # Charged HERE, at the point of payment, for the same reason Kling is:
-    # a ledger that only counts finished images under-counts exactly the
-    # spend nobody wanted.
-    _charge()
     try:
         answer = httpx.post(
             f"{_FAL_BASE}/{_fal_model()}",
@@ -161,12 +159,30 @@ def _fal_image(prompt: str, destination: Path) -> bool:
         return False
 
     if answer.status_code == 403:
-        # 403 and not 401: the credential is good and the account is empty.
-        # Measured, not guessed — an expired key answers 401 here.
-        raise NoBalance("fal.ai answered 403: the account has no balance")
+        # 403 and not 401: the credential is good and the balance is gone.
+        #
+        # Deliberately NOT `NoBalance`. That exception unwinds out of `fetch`
+        # without ever reaching Pexels, so an empty account would hand every
+        # scene a blank card, the guard in `produce.py` would fail the whole
+        # job, and the retry would buy the narration again — which is exactly
+        # the incident this supplier was brought in to end.
+        #
+        # Instead: say it once, spend the rest of the day's budget so nothing
+        # asks fal again today, and let stock carry the video out.
+        log.error(
+            "fal.ai answered 403: the account has no balance. Today's pictures "
+            "come from stock instead; the videos still go out."
+        )
+        _charge(daily_cap())
+        return False
     if answer.status_code >= 400:
         log.warning("fal.ai refused the request (HTTP %d)", answer.status_code)
         return False
+
+    # Charged HERE, once fal has accepted and answered — the same line Kling
+    # draws at its `task_id`, and the one `test_a_refusal_is_not_charged`
+    # holds: a cap that counted refusals would stop work that was free.
+    _charge()
 
     try:
         url = (answer.json().get("images") or [])[0]["url"]
@@ -384,9 +400,9 @@ def fetch(prompt: str, destination: Path, people_words: list[str] | None = None)
         if _fal_image(prompt, destination):
             cached.write_bytes(destination.read_bytes())
             return "fal"
-        # Only when fal.ai was never asked. `_fal_image` charges the ledger
-        # before it calls out, so trying Kling after a fal failure would bill
-        # the day twice for one picture.
+        # Kling is the supplier for machines that have no fal credential at
+        # all — not a retry for fal's failures. A machine with both would
+        # otherwise pay two accounts for one picture.
         if _fal_key() is None and _kling_image(prompt, destination):
             cached.write_bytes(destination.read_bytes())
             return "kling"
