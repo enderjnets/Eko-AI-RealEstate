@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.71.0";
+export const CURRENT_VERSION = "0.71.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.71.1",
+    date: "2026-09-03",
+    title: {
+      en: "The brokerage reads the same everywhere",
+      es: "La brokerage se lee igual en todas partes",
+    },
+    changes: [
+      {
+        en: "The site and the videos identified the brokerage differently — the videos burn in \"Engel & Völkers Aspen\" and the page said \"Engel & Völkers\". Someone who watched a video and then opened the site read two different identifications. They match now.",
+        es: "El sitio y los vídeos identificaban la brokerage de forma distinta — los vídeos llevan quemado «Engel & Völkers Aspen» y la página decía «Engel & Völkers». Quien veía un vídeo y luego abría el sitio leía dos identificaciones diferentes. Ahora coinciden.",
+      },
+      {
+        en: "The staff link in the footer goes straight to the panel. It used to be prefetched and redirected across hostnames, which the browser blocks: the link worked by falling back, and left two errors in every visitor's console.",
+        es: "El enlace de acceso del equipo en el pie va directo al panel. Antes se precargaba y se redirigía a otro dominio, cosa que el navegador bloquea: el enlace funcionaba de rebote y dejaba dos errores en la consola de cada visitante.",
+      },
+    ],
+  },
   {
     version: "0.71.0",
     date: "2026-09-03",

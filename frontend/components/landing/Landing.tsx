@@ -34,10 +34,10 @@
  * hear about two markets instead of three.
  */
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowRight, Building2, CalendarCheck, Clock, Menu, Phone, Ruler, Users, X } from "lucide-react";
 import { LANDING, dialable } from "@/lib/landing";
+import { STAFF_LOGIN_HREF } from "@/lib/hosts";
 import { LandingEffects } from "@/components/landing/LandingEffects";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
@@ -739,14 +739,17 @@ function LandingFooter() {
               ))}
             </div>
           )}
-          {/* inline-flex + min-height so the tap target reaches 44px on a
-              phone. As a bare inline link it measured 15px. */}
-          <Link
-            href="/login"
+          {/* A plain <a>, not next/link: on the brand host this is always a
+              cross-origin destination, and Link's prefetch made a request the
+              browser blocks (see STAFF_LOGIN_HREF). inline-flex + min-height so
+              the tap target reaches 44px on a phone; as a bare inline link it
+              measured 15px. */}
+          <a
+            href={STAFF_LOGIN_HREF}
             className="inline-flex min-h-[44px] items-center whitespace-nowrap text-[11px] tracking-[0.04em] text-ln-muted underline underline-offset-4 hover:text-ln-gold"
           >
             {t("landing.footer.staffLogin")}
-          </Link>
+          </a>
         </div>
       </div>
     </footer>

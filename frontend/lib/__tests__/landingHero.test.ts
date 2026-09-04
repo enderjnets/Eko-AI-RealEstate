@@ -167,3 +167,10 @@ describe("the brand is on the page", () => {
     expect(landing).toMatch(/landing\.hero\.body"\)/);
   });
 });
+
+describe("the footer's staff link does not prefetch across origins", () => {
+  it("is a plain anchor on the derived href, not a next/link", () => {
+    expect(landing).toMatch(/<a\s+href=\{STAFF_LOGIN_HREF\}/);
+    expect(landing).not.toMatch(/from "next\/link"/);
+  });
+});

@@ -189,3 +189,30 @@ describe("host routing", () => {
     expect(re.test("/_next/static/chunk.js")).toBe(false);
   });
 });
+
+/**
+ * The footer's staff link. Measured on the live site before this existed: a
+ * `next/link` to `/login` on the brand host made Next prefetch a route the
+ * middleware answers with a 308 to another origin, so every visitor's console
+ * carried two blocked-fetch errors per page load.
+ */
+describe("the staff login link", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+  });
+
+  it("points straight at the panel when the two hosts are configured", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BRAND_URL", "https://www.denverhomestory.com");
+    vi.stubEnv("NEXT_PUBLIC_PANEL_URL", "https://inmo-demo.ekoaiautomation.com");
+    const { STAFF_LOGIN_HREF } = await import("../hosts");
+    expect(STAFF_LOGIN_HREF).toBe("https://inmo-demo.ekoaiautomation.com/login");
+  });
+
+  it("stays relative on a single-hostname install", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BRAND_URL", "");
+    vi.stubEnv("NEXT_PUBLIC_PANEL_URL", "");
+    const { STAFF_LOGIN_HREF } = await import("../hosts");
+    expect(STAFF_LOGIN_HREF).toBe("/login");
+  });
+});

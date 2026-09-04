@@ -2,6 +2,24 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.71.1] — 2026-09-03
+
+### Fixed
+- **The brokerage was identified two different ways.** The videos burn in
+  "Engel & Völkers Aspen" (`agent_settings.brokerage_line`) and the landing said
+  "Engel & Völkers" (`NEXT_PUBLIC_LANDING_BROKERAGE`), so a visitor who watched
+  a short and then opened the site read two identifications of the same
+  brokerage. That is the identification Colorado requires real-estate
+  advertising to carry, not a styling choice. The site now matches the videos.
+  Only invisible until v0.71.0 put the brokerage in the wordmark, the footer and
+  the title.
+- **The footer's staff link left two errors in every visitor's console.** As a
+  `next/link` to `/login` it was prefetched, the middleware answered 308 to the
+  panel hostname, and the browser blocked the cross-origin RSC fetch:
+  `Failed to fetch RSC payload … Falling back to browser navigation`. It is now
+  a plain anchor on `STAFF_LOGIN_HREF`, which points at the panel directly when
+  both hostnames are configured and stays relative when they are not.
+
 ## [0.71.0] — 2026-09-03
 
 ### Fixed

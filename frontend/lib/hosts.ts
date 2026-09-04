@@ -28,6 +28,22 @@ export const BRAND_URL = (process.env.NEXT_PUBLIC_BRAND_URL || "").trim().replac
 /** Operator panel, e.g. `https://realtors.ekoaiautomation.com`. Empty until DNS moves. */
 export const PANEL_URL = (process.env.NEXT_PUBLIC_PANEL_URL || "").trim().replace(/\/$/, "");
 
+/**
+ * Where the footer's staff link points.
+ *
+ * It used to be a `next/link` to `/login`, and on the brand host that is always
+ * a cross-origin trip: Next prefetches the route, the middleware answers 308 to
+ * the panel hostname, and the browser blocks the RSC fetch. Measured on the live
+ * site, every visitor's console carried `Failed to fetch RSC payload … Falling
+ * back to browser navigation` — the link worked, by falling back, and shouted
+ * about it twice per page load.
+ *
+ * Pointing straight at the panel removes the prefetch, the redirect hop and the
+ * error. Unset, it stays the relative path, which is correct for a
+ * single-hostname install.
+ */
+export const STAFF_LOGIN_HREF = PANEL_URL ? `${PANEL_URL}/login` : "/login";
+
 /** Hostname only, lowercased, no port — what a request's `host` header compares against. */
 function hostOf(url: string): string {
   if (!url) return "";
