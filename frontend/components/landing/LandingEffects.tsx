@@ -22,9 +22,10 @@
  *                           a variable rate (smooth); scrolling back is a seek.
  *                           Off screen it pauses.
  *   data-reveal="up|clip"   sections blur/slide in when they near the viewport,
- *                           staggered 70ms between siblings; inside a rail the
- *                           slide comes from the right. Anything that has sat
- *                           within two viewports for 4s shows regardless.
+ *                           staggered 120ms between siblings; inside a rail the
+ *                           slide comes from the right. The blur is skipped on
+ *                           a coarse pointer. Anything that has sat inside a
+ *                           viewport for 4s shows regardless.
  *   data-drift="px"         headings drift against the scroll
  *   data-parallax="amt"     portrait and market cards (0.10), consult (0.24)
  *   data-rail               the markets rail: drag to scroll
@@ -58,6 +59,7 @@ const EASE = "cubic-bezier(.22,.61,.36,1)";
    original. A WeakMap would be tidier; staying close to the source is worth
    more here — every behavioral diff from deploy-v6 that the header does not
    list is a bug by definition. */
+type Host = HTMLElement & { __js?: boolean | null };
 type El = HTMLElement & {
   __done?: number;
   __rv?: number;
@@ -65,11 +67,15 @@ type El = HTMLElement & {
   __pending?: number;
   __safe?: number;
 };
-type Vid = HTMLVideoElement & { __target?: number | null; __pl?: number };
+type Vid = HTMLVideoElement & { __target?: number | null; __pl?: number; __rt?: number };
 
 export function LandingEffects() {
   useEffect(() => {
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // deploy-v6 skips the reveal blur on touch: a filter over a full-width
+    // section is the most expensive thing on this page, and on a phone held
+    // at arm's length nobody sees the 9px it saves.
+    const coarse = matchMedia("(pointer: coarse)").matches;
     let disposed = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
@@ -101,8 +107,15 @@ export function LandingEffects() {
         const cur = v.currentTime || 0;
         const d = v.__target - cur;
         if (d > 0.06) {
-          const rate = Math.round(Math.max(0.5, Math.min(4, d * 2.2)) * 4) / 4;
-          if (v.playbackRate !== rate) v.playbackRate = rate;
+          // Two speeds, and a 400ms hold between changes — deploy-v6's, not a
+          // continuous rate. A playbackRate recomputed every frame makes the
+          // decoder re-plan constantly and the picture judders under the scroll.
+          const now = performance.now();
+          const want = d > 1.6 ? 2 : d < 0.9 ? 1 : v.playbackRate;
+          if (v.playbackRate !== want && (!v.__rt || now - v.__rt > 400)) {
+            v.playbackRate = want;
+            v.__rt = now;
+          }
           if (v.paused && !v.__pl) {
             v.__pl = 1;
             const p = v.play();
@@ -126,7 +139,7 @@ export function LandingEffects() {
         const slow = el.getAttribute("data-reveal") === "clip";
         el.style.transition = slow
           ? `opacity 1100ms ${EASE}, transform 2600ms ${EASE}, clip-path 2600ms ${EASE}, filter 1800ms ${EASE}`
-          : `opacity 600ms ${EASE}, transform 1000ms ${EASE}, clip-path 1000ms ${EASE}, filter 800ms ${EASE}`;
+          : `opacity 900ms ${EASE}, transform 1400ms ${EASE}, clip-path 1400ms ${EASE}, filter 1000ms ${EASE}`;
       }
       el.style.opacity = "1";
       el.style.transform = "none";
@@ -143,7 +156,7 @@ export function LandingEffects() {
       const i = sibs.indexOf(el);
       el.__d =
         (parseInt(el.getAttribute("data-reveal-delay") || "0", 10) || 0) +
-        (sibs.length > 1 ? i * 70 : 0);
+        (sibs.length > 1 ? i * 120 : 0);
       el.style.willChange = "opacity, transform, filter";
       el.style.opacity = "0";
       if (el.getAttribute("data-reveal") === "clip") {
@@ -151,10 +164,10 @@ export function LandingEffects() {
         el.style.transform = "scale(1.14)";
       } else if (el.closest("[data-rail]")) {
         el.style.transform = "translate3d(130px,0,0) scale(0.94)";
-        el.style.filter = "blur(12px)";
+        if (!coarse) el.style.filter = "blur(12px)";
       } else {
-        el.style.transform = "translate3d(0,78px,0) scale(0.972)";
-        el.style.filter = "blur(9px)";
+        el.style.transform = "translate3d(0,64px,0) scale(0.98)";
+        if (!coarse) el.style.filter = "blur(9px)";
       }
     };
 
@@ -175,7 +188,7 @@ export function LandingEffects() {
           if (el.__done || el.__pending) return;
           if (el.offsetParent === null) return; // hidden — leave as authored
           const r = el.getBoundingClientRect();
-          const m = el.getAttribute("data-reveal") === "clip" ? 1.35 : 1.02;
+          const m = el.getAttribute("data-reveal") === "clip" ? 1.0 : 0.82;
           const near = r.top < vh * m || r.bottom < vh;
           if (!el.__rv) {
             // First sighting. Already on screen = shown without ceremony:
@@ -188,9 +201,9 @@ export function LandingEffects() {
             show(el, false);
             return;
           }
-          // Belt and braces: a section that has sat within two viewports for
-          // 4s shows anyway, so a missed event can never leave one invisible.
-          if (!el.__safe && r.top < vh * 2) {
+          // Belt and braces: a section that has sat inside a viewport for 4s
+          // shows anyway, so a missed event can never leave one invisible.
+          if (!el.__safe && r.top < vh) {
             el.__safe = 1;
             timers.push(setTimeout(() => { if (!el.__done) show(el, true); }, 4000));
           }
@@ -201,12 +214,34 @@ export function LandingEffects() {
         });
 
       // Scroll-locked hero: sticky stage, progress drives playhead + captions.
-      document.querySelectorAll<HTMLElement>("[data-pin-host]").forEach((host) => {
+      document.querySelectorAll<Host>("[data-pin-host]").forEach((host) => {
         const stage = host.querySelector<HTMLElement>("[data-pin-stage]");
         if (!stage || host.offsetParent === null) return;
         const r = host.getBoundingClientRect();
         const sr = stage.getBoundingClientRect();
         const p = Math.max(0, Math.min(1, -r.top / Math.max(1, r.height - sr.height)));
+        /* Once, well inside the host, ask whether `position: sticky` actually
+           stuck. It silently does not when any ancestor has a non-visible
+           overflow — the exact bug `globals.css` had to fix for this page — and
+           the failure mode is the whole film scrolling past in one screen. If
+           the stage is not at the top when it should be, drive it by hand.
+           `sc` is 1 here (nothing scales the page); it is the design's, kept so
+           an ancestor transform some day cannot silently halve the travel. */
+        if (host.__js == null && r.top < -40 && r.bottom > sr.height + 40) {
+          host.__js = Math.abs(sr.top) > 3;
+          if (host.__js) {
+            stage.style.position = "absolute";
+            stage.style.left = "0";
+            stage.style.right = "0";
+            stage.style.willChange = "transform";
+          }
+        }
+        if (host.__js) {
+          const sc = r.height / (host.offsetHeight || 1) || 1;
+          const travel = Math.max(1, host.offsetHeight - stage.offsetHeight);
+          const y = Math.max(0, Math.min(1, -r.top / (travel * sc))) * travel;
+          stage.style.transform = `translate3d(0,${y.toFixed(1)}px,0)`;
+        }
         host.querySelectorAll<HTMLElement>("[data-cap]").forEach((c) => {
           const ab = (c.getAttribute("data-cap") || "0,1").split(",").map(Number);
           const a = ab[0];

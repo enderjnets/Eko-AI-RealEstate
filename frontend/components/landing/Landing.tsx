@@ -141,7 +141,11 @@ function Hero() {
     <section data-pin-host="1" className="relative h-[400svh] bg-ln-night md:h-[490svh]">
       <div data-pin-stage="1" className="sticky top-0 h-dvh overflow-hidden bg-ln-night">
         {/* No autoPlay, no loop: the engine primes it and then owns the
-            playhead, and the clip cannot loop (see LandingEffects). */}
+            playhead, and the clip cannot loop (see LandingEffects).
+            `preload` stays "auto" and NOT the design's "none" + data-src:
+            measured on this build, that swap moved the clip's bytes before the
+            poster finished from 11,254 to 0 — 11KB of 17.8MB, with the poster
+            landing at the same 2.1s. A 11KB claim is not an optimisation. */}
         <video
           data-hero-video="1"
           muted

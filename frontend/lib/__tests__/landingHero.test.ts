@@ -75,3 +75,33 @@ describe("only the opening caption is visible before the engine runs", () => {
     }
   });
 });
+
+/**
+ * deploy-v6's engine is the specification, and three of its mechanisms were
+ * quietly replaced by v4 constants or by inventions of mine when the file was
+ * converted to React. Each is cheap to undo by accident and none of them shows
+ * up as an error — only as a page that behaves a little worse than the design.
+ */
+describe("the engine is deploy-v6's, not a paraphrase of it", () => {
+  it("skips the reveal blur on a coarse pointer", () => {
+    const blurs = [...effects.matchAll(/el\.style\.filter = "blur\(/g)];
+    expect(blurs.length).toBeGreaterThan(0);
+    const guarded = [...effects.matchAll(/if \(!coarse\) el\.style\.filter = "blur\(/g)];
+    expect(guarded).toHaveLength(blurs.length);
+    expect(effects).toMatch(/matchMedia\("\(pointer: coarse\)"\)/);
+  });
+
+  it("drives the playhead at the design's two speeds, with its 400ms hold", () => {
+    expect(effects).toMatch(/d > 1\.6 \? 2 : d < 0\.9 \? 1 : v\.playbackRate/);
+    expect(effects).toMatch(/now - v\.__rt > 400/);
+    // One assignment only: a rate recomputed per frame is what this replaced.
+    expect([...effects.matchAll(/v\.playbackRate = /g)]).toHaveLength(1);
+  });
+
+  it("carries the fallback for a stage whose sticky did not stick", () => {
+    // Measured, not assumed: with body{overflow-x:hidden} injected at runtime
+    // the stage without this sits at -878/-1755/-2808px instead of 0.
+    expect(effects).toMatch(/host\.__js = Math\.abs\(sr\.top\) > 3/);
+    expect(effects).toMatch(/stage\.style\.position = "absolute"/);
+  });
+});
