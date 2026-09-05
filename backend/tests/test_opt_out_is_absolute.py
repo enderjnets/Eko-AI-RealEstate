@@ -454,6 +454,11 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
         "sendmail",
         "publish",
         "send_message",
+        # Indirect senders, for the same reason as the content sweep: a helper
+        # holding the POST must not hide the functions that call it.
+        "_post_to_telegram",
+        "send_operator_telegram",
+        "_send_email",
     }
 
     # Functions the classifier flags that are OUTBOUND but not MESSAGING —
@@ -470,16 +475,34 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
         "app/services/llm.py::_ollama_generate":
             "POSTs a prompt to a local model; no lead is addressed",
         "app/services/ops_alert.py::send_operator_alert":
+            "the operator alert itself, now reaching PLATFORM_ADMIN_EMAILS and"
+            " the owner's own Telegram chat, never a lead. The exemption runs"
+            " both ways and both matter: a lead's STOP must not silence an"
+            " outage report, and an outage report must never land in a lead's"
+            " inbox",
+        "app/services/telegram_notify.py::notify_video_ready":
+            "messages the owner's own chat that a video is waiting for him,"
+            " addressed to TELEGRAM_CHAT_ID and never to a lead",
+        "app/services/telegram_notify.py::send_operator_telegram":
+            "the Telegram half of the operator alert; same reasoning as the"
+            " email half above",
+        "app/services/ops_alert.py::_send_email":
             "emails the platform operator about the machinery, addressed to"
             " PLATFORM_ADMIN_EMAILS and never to a lead. The exemption runs both"
             " ways and both matter: a lead's STOP must not silence an outage"
-            " report, and an outage report must never land in a lead's inbox",
-        "app/services/telegram_notify.py::notify_video_ready":
-            "messages the owner's own chat that a video is waiting for him,"
-            " addressed to TELEGRAM_CHAT_ID and never to a lead. Same two-way"
-            " reasoning as the operator email above: a lead's STOP must not"
-            " silence the approval queue's doorbell, and that doorbell must"
-            " never reach a lead",
+            " report, and an outage report must never land in a lead's inbox."
+            " (It was `send_operator_alert` until the alert gained a second"
+            " transport; that function no longer touches the wire itself, so"
+            " naming it here would exempt something the sweep can no longer"
+            " see — and would silently cover a POST added back into it later)",
+        "app/services/telegram_notify.py::_post_to_telegram":
+            "the single wire-touching function of the Telegram module, always"
+            " addressed to the owner's own chat (TELEGRAM_CHAT_ID) and never to"
+            " a lead. It carries two messages: that a video is waiting for him,"
+            " and that the machinery broke. Same two-way reasoning as the"
+            " operator email above: a lead's STOP must not silence the approval"
+            " queue's doorbell nor an outage report, and neither may ever reach"
+            " a lead",
         "app/services/buffer_publisher.py::_graphql":
             "posts a video to the agency's OWN social channels through Buffer."
             " Nobody is addressed: a marketing video on a public channel is"

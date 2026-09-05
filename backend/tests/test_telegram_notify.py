@@ -113,3 +113,59 @@ async def test_a_network_failure_is_reported_not_raised(monkeypatch) -> None:
 
     monkeypatch.setattr(telegram_notify.httpx, "AsyncClient", _Breaks)
     assert await telegram_notify.notify_video_ready(7, waiting=1) is False
+
+
+# ── the operator-alert transport (v0.79) ───────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_long_alert_is_clipped_so_telegram_accepts_it(monkeypatch) -> None:
+    """MUTATION GUARD — drop the slice in `_post_to_telegram` and this goes red.
+
+    Telegram refuses a message over its limit, and a refused alert is a silent
+    alert: the exact failure the second transport was added to remove, coming
+    back through the door it opened.
+    """
+    _configured(monkeypatch)
+    _Client.sent = []
+    monkeypatch.setattr(telegram_notify.httpx, "AsyncClient", _Client)
+
+    assert await telegram_notify.send_operator_telegram("asunto", "x" * 9000) is True
+    assert len(_Client.sent) == 1
+    assert len(_Client.sent[0]["json"]["text"]) <= telegram_notify._MAX_CHARS
+
+
+@pytest.mark.asyncio
+async def test_the_operator_alert_carries_the_subject_and_the_remedy(
+    monkeypatch,
+) -> None:
+    _configured(monkeypatch)
+    _Client.sent = []
+    monkeypatch.setattr(telegram_notify.httpx, "AsyncClient", _Client)
+
+    assert await telegram_notify.send_operator_telegram("se cayo", "haz esto") is True
+    text = _Client.sent[0]["json"]["text"]
+    assert "se cayo" in text and "haz esto" in text
+    assert _Client.sent[0]["json"]["chat_id"] == "555"
+    # The bot's identity stays in the URL, never in the body.
+    assert "123:abc" not in text
+
+
+@pytest.mark.asyncio
+async def test_a_transport_error_that_is_not_httpx_never_escapes(monkeypatch) -> None:
+    """MUTATION GUARD — narrow the except back to `httpx.HTTPError` and this
+    goes red.
+
+    This now runs inside the watchdog tick. An OSError or an SSL failure
+    escaping here would abort the tick before it commits — and with the
+    debounce reading its previous value out of that commit, that is how the
+    alarm goes quiet for good.
+    """
+    _configured(monkeypatch)
+
+    class _Explodes(_Client):
+        async def post(self, url, json=None, **kwargs):
+            raise OSError("network unreachable")
+
+    monkeypatch.setattr(telegram_notify.httpx, "AsyncClient", _Explodes)
+    assert await telegram_notify.send_operator_telegram("asunto", "cuerpo") is False

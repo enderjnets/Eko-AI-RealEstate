@@ -60,44 +60,72 @@ def console_url() -> str:
     return f"{base}/content" if base else "/content"
 
 
-async def notify_video_ready(piece_id: int, waiting: int) -> bool:
-    """Say a video is ready to approve. True only if it actually went out.
+# Telegram refuses anything longer than this, and a refused alert is a silent
+# alert. The operator body carries a remedy in its first lines, so clipping the
+# tail costs nothing that matters.
+_MAX_CHARS = 3900
 
-    Never raises. It is called on the path that delivers a finished render, and
-    losing a video because a notification failed would be a spectacular way to
-    pay for a convenience.
+
+async def _post_to_telegram(text: str, *, what: str) -> bool:
+    """The one function here that touches the wire. True only if it went out.
+
+    Single on purpose: a second wire-touching path in this module would have to
+    declare itself in `test_content_gate_is_absolute.py` too, which is the point
+    of that sweep. Never raises — both callers are on paths (a finished render,
+    a watchdog tick) where losing the work to a failed notification would be a
+    spectacular way to pay for a convenience.
     """
     blocked = undeliverable_reason()
     if blocked is not None:
-        log.info("Telegram notice not sent (%s) — piece %s is ready", blocked, piece_id)
+        log.info("Telegram notice not sent (%s) — %s", blocked, what)
         return False
 
     s = get_settings()
-    text = (
-        f"🎬 A video is ready to approve (piece {piece_id}).\n"
-        f"{waiting} waiting in the queue.\n"
-        f"{console_url()}"
-    )
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
             resp = await client.post(
                 _api_url(s.TELEGRAM_BOT_TOKEN.strip()),
                 json={
                     "chat_id": s.TELEGRAM_CHAT_ID.strip(),
-                    "text": text,
+                    "text": text[:_MAX_CHARS],
                     "disable_web_page_preview": True,
                 },
             )
-    except httpx.HTTPError as exc:
-        log.warning("Telegram notice failed for piece %s: %s", piece_id, exc)
+    except Exception as exc:  # noqa: BLE001 — the caller must outlive its transport
+        log.warning("Telegram notice failed (%s): %s", what, exc)
         return False
 
     if resp.status_code >= 400:
         # Telegram answers 200 with `ok: false` for some refusals and a 4xx for
         # others; both are failures and neither should be read as delivery.
         log.warning(
-            "Telegram refused the notice for piece %s (%s): %.200s",
-            piece_id, resp.status_code, resp.text,
+            "Telegram refused the notice (%s) (%s): %.200s",
+            what, resp.status_code, resp.text,
         )
         return False
     return True
+
+
+async def notify_video_ready(piece_id: int, waiting: int) -> bool:
+    """Say a video is ready to approve. True only if it actually went out."""
+    text = (
+        f"🎬 A video is ready to approve (piece {piece_id}).\n"
+        f"{waiting} waiting in the queue.\n"
+        f"{console_url()}"
+    )
+    return await _post_to_telegram(text, what=f"piece {piece_id} is ready")
+
+
+async def send_operator_telegram(subject: str, body: str) -> bool:
+    """An operator alert on the owner's own phone. True only if it went out.
+
+    The second transport for `ops_alert.send_operator_alert`, and the reason it
+    exists is measured rather than theoretical: on 5-sep-2026 the watchdog spent
+    all three of its daily attempts on a flapping provider and `alerted_state`
+    never advanced, so the outage that followed was never reported at all. One
+    transport meant one point of silence.
+
+    Same line as `notify_video_ready` on content: this carries a status word and
+    a remedy, never a piece's hook, script or caption.
+    """
+    return await _post_to_telegram(f"⚠️ {subject}\n\n{body}", what="operator alert")

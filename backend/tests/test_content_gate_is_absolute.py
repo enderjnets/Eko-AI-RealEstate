@@ -403,6 +403,14 @@ def test_every_wire_touching_function_is_declared_or_exempt() -> None:
     exemption with the reason it is neither.
     """
     wire_verbs = {
+        # The indirect ones. Factoring a POST behind a helper used to hide
+        # every caller from this sweep: a new `notify_piece_approved` passing a
+        # hook to `_post_to_telegram` would have shipped green. Naming the
+        # helpers here puts their callers back under the same rule as anyone
+        # who writes `client.post` directly.
+        "_post_to_telegram",
+        "send_operator_telegram",
+        "_send_email",
         "post",
         "put",
         "send",
@@ -444,6 +452,24 @@ def test_every_wire_touching_function_is_declared_or_exempt() -> None:
             " rather than to any audience. A message carrying the text would"
             " invite approving from a phone without watching the video, which"
             " is the one thing the approval gate exists to prevent",
+        "app/services/telegram_notify.py::send_operator_telegram":
+            "the second transport of the operator alert: a status word and a"
+            " remedy to the owner's own chat, never a content piece",
+        "app/services/ops_alert.py::_send_email":
+            "the mail half of the same operator alert, split out when a second"
+            " transport was added. Identical grounds: a status word and a"
+            " remedy to PLATFORM_ADMIN_EMAILS, never a content piece",
+        "app/services/telegram_notify.py::_post_to_telegram":
+            "the single wire-touching function of the Telegram module, carrying"
+            " two kinds of message to the owner's OWN chat (TELEGRAM_CHAT_ID)"
+            " and never to an audience: that a video is waiting for him — a"
+            " piece id, a count and a link to the console, never the hook, the"
+            " script or the caption — and that the machinery broke, a status"
+            " word and a remedy. A message carrying the text would invite"
+            " approving from a phone without watching the video, which is the"
+            " one thing the approval gate exists to prevent. It is one function"
+            " on purpose: a second wire-touching path in that module would have"
+            " to be declared here too, which is the point of this sweep",
     }
     # The messaging senders, accounted for by the opt-out sweep next door.
     MESSAGING = {"send_email", "send_sms", "send_text_message"}
@@ -483,6 +509,15 @@ def test_every_wire_touching_function_is_declared_or_exempt() -> None:
         "these touch the wire and are neither a declared messaging primitive, "
         "a declared publisher, nor exempted with a reason — a publisher here "
         f"would skip the approval gate unnoticed: {unaccounted}"
+    )
+    # And an exemption has to still describe something the sweep sees. Without
+    # this, splitting a sender into helpers leaves its old entry behind as a
+    # standing licence: the day a POST goes back into that function it is
+    # exempt already, and nothing says so.
+    stale = [q for q in WIRE_NOT_PUBLISHING if q not in flagged]
+    assert stale == [], (
+        "these are exempted from the wire sweep but no longer touch the wire — "
+        f"a dead exemption is a licence waiting to be inherited: {stale}"
     )
     # And a declared publisher has to actually exist, so the list cannot rot.
     assert PUBLISH_PRIMITIVES <= set(flagged.values()), (

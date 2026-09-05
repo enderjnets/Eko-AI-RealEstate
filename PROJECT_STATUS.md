@@ -6,6 +6,90 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## 🟡 ESCRITA, SIN DESPLEGAR — Red de seguridad del LLM · Fase 1: la alarma que sí llega
+
+> Rama `fix/llm-safety-net`. Plan en `PLAN.md` (el de analítica se archivó en
+> `docs/plan-analitica-embudo.md`, F9 sigue vivo ahí). **Sin bump todavía**: la
+> versión la cierra la Fase 2.
+
+**El diagnóstico, que son DOS averías** — el patrón de la v0.54.2, donde
+arreglar una sola *parece* un arreglo:
+
+1. La red de seguridad apunta al ROG (`100.88.47.99`), un portátil de casa. El
+   5-sep se **colgó**: encendido, ventiladores girando, y **7 h fuera de la red**
+   por LAN y por tailnet. Volvió tras reiniciarlo y el VPS lo alcanza otra vez
+   (`gemma3:4b` presente), pero la fragilidad no se arregló. *(Fase 2.)*
+2. **La alarma no llegó.** `monitor_state.llm_fallback` tenía
+   `state=unreachable`, `alerted_state=ok` y **los 3 avisos del día gastados**:
+   el ROG *parpadeó*, cada flip fue una transición real, y cuando se colgó de
+   verdad ya no quedaba presupuesto. Con un solo transporte (email), silencio.
+
+**Lo que hace esta fase**, y por qué cada decisión:
+
+| Cambio | Por qué |
+|---|---|
+| **Dos transportes**: el aviso sale por email **y** Telegram, y cuenta como entregado si **cualquiera** lo acepta | un canal único es un punto único de silencio. Los dos se intentan siempre, no uno como reserva del otro: un canal que solo se prueba cuando el primero *informa* de su fallo no sirve cuando el primero falla informando un éxito que no logró |
+| **Anti-parpadeo**: una lectura debe repetirse antes de gastar un intento | es la avería del 5-sep escrita en código. Cuesta un tick (5 min) de retraso |
+| El anti-parpadeo compara **salud, no la palabra exacta** | comparar cadenas dejaba mudo para siempre un fallo que alternara `unreachable` ↔ `model-missing`: caído el 100% del tiempo y sin avisar nunca — la avería que el módulo existe para impedir, reproducida dentro de su propio arreglo |
+| La lectura se **confirma con `commit` antes** de nada que pueda fallar | el anti-parpadeo lee su valor previo de la base. Si un fallo posterior del tick hace `rollback`, la lectura nunca cuaja y el silencio es permanente. Antes del anti-parpadeo el mismo `rollback` solo reenviaba un aviso ya salido |
+| Cada transporte en su propio `try` | si el primero escapa, el segundo no se intenta —el punto único de silencio otra vez— y la excepción aborta el tick del vigilante antes de commitear |
+| `EMAIL_SIMULATED` corta **los dos** transportes | gateaba solo el correo: una máquina de desarrollo con el bot real publicaba en el chat del dueño en cada aviso mientras el log decía «SIMULATED» |
+
+**Auditoría (2 subagentes, solo lectura, sin advisor).** 1 bloqueante y 3
+importantes **corregidos en la fase**; el resto al backlog. En seguridad, cero
+hallazgos: el token de Telegram va en la URL y `logging_redact.py` lo filtra en
+los handlers de root; el payload no lleva `parse_mode`, así que no hay inyección;
+ningún aviso transporta datos de un lead.
+
+**Los dos barridos AST recuperados.** Factorizar el POST tras un ayudante había
+dejado ciegos a los dos guardianes: un emisor nuevo que llamara a
+`_post_to_telegram` habría pasado en verde. Los nombres de los ayudantes están
+ahora en sus listas de verbos, así que **quien los llama vuelve a quedar
+marcado**, y se añadió una aserción anti-podredumbre: una exención que ya no
+corresponde a nada es una licencia esperando a ser heredada.
+
+**Mutaciones verificadas** (copia, mutar, ver el rojo, restaurar, `md5`):
+
+| Mutación | Rojo |
+|---|---|
+| enviar solo por email | 3 tests |
+| quitar el anti-parpadeo | 3 tests |
+| `undeliverable` si falla cualquiera (semántica vieja) | 2 tests |
+| comparar la cadena exacta en vez de la salud | `test_two_different_failures_still_confirm_each_other` |
+| no debouncear la recuperación | `test_a_recovery_is_debounced_too` |
+| quitar el commit temprano | `test_the_reading_survives_a_later_failure_in_the_same_tick` |
+| quitar el aislamiento entre transportes | `test_a_transport_that_raises_does_not_stop_the_other` |
+
+**Consultas al advisor.** *Arranque* (obligatoria): validar lectura del plan.
+Decisión → **invertir F1 y F2**: la alarma primero, porque no depende de una
+decisión ni de una credencial del dueño y es la que habría detectado la caída de
+hoy (el tercer eslabón hace la avería más rara; la alarma la hace *sabida*).
+Señaló además tres riesgos que se confirmaron todos: el debounce obliga a
+retocar los tests del monitor, la semántica de `undeliverable_reason()` cambia
+en dos ramas, y **Telegram entra en el barrido AST** — este último me ahorró
+descubrirlo en rojo.
+
+**Hallazgos abiertos (backlog, no bloquean):**
+- Con email sin configurar y Telegram sí, `_send_email` escribe un ERROR con el
+  cuerpo entero en cada aviso. Acotado: los avisos tienen tope de 3/día, así que
+  no es un bucle.
+- `_MAX_CHARS` cuenta caracteres y Telegram cuenta unidades UTF-16 (un emoji
+  vale 2). Inalcanzable con los cuerpos actuales (<1 KB).
+- Los avisos de `fair_housing_watch` ahora también salen por un bot que
+  administra otro proyecto. No son datos de leads, pero son más que «una palabra
+  de estado y un remedio».
+
+### Siguiente paso — Fase 2, y necesita una palabra del dueño
+
+**B** (recomendado si quiere que la máquina conteste siempre): tercer proveedor
+cloud compatible con el protocolo Anthropic, mismo SDK, sin RAM del VPS, sin
+depender del ROG. Necesita que el dueño cree una clave. **C**: sin proveedor
+nuevo, se apaga la red falsa y se confía en la alarma de esta fase para tomar el
+control manual. Hoy el ROG volvió y la alarma ya existe, así que **C es
+defendible**; **B** si no quiere depender de estar mirando el teléfono.
+
+---
+
 ## 🟢 EN CURSO — la analítica del embudo (`PLAN.md`, rama `feat/analitica-embudo`)
 
 ### ✅ F1 — eventos de la landing: esquema + endpoint público · `de15475`

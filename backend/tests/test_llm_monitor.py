@@ -92,7 +92,9 @@ async def test_second_tick_in_the_same_state_says_nothing(clean_state) -> None:
     with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value="model-missing")), \
          patch.object(llm_monitor, "send_operator_alert", alert), _no_canned_replies():
         await run_monitor_tick()
-        assert alert.await_count == 1, "la primera lectura mala debe avisar"
+        assert alert.await_count == 0, "una sola lectura no basta: hay debounce"
+        await run_monitor_tick()
+        assert alert.await_count == 1, "confirmada por la segunda, avisa"
         await run_monitor_tick()
         await run_monitor_tick()
 
@@ -106,7 +108,9 @@ async def test_recovery_is_reported_too(clean_state) -> None:
     with patch.object(llm_monitor, "send_operator_alert", alert), _no_canned_replies():
         with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value="unreachable")):
             await run_monitor_tick()
+            await run_monitor_tick()
         with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value="ok")):
+            await run_monitor_tick()
             await run_monitor_tick()
 
     assert alert.await_count == 2
@@ -133,6 +137,7 @@ async def test_the_alert_names_the_command_that_fixes_it(clean_state) -> None:
     with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value="model-missing")), \
          patch.object(llm_monitor, "send_operator_alert", alert), _no_canned_replies():
         await run_monitor_tick()
+        await run_monitor_tick()
 
     body = alert.await_args.args[1]
     assert "ollama pull" in body
@@ -142,11 +147,116 @@ async def test_the_alert_names_the_command_that_fixes_it(clean_state) -> None:
 
 
 @pytest.mark.asyncio
-async def test_daily_budget_stops_a_flapping_provider(clean_state) -> None:
-    """Flapping between states is still a loop, and it shares Resend's quota
-    with the replies that go to real customers."""
+async def test_a_flapping_provider_wakes_nobody(clean_state) -> None:
+    """MUTATION GUARD — delete `confirmed` in `run_monitor_tick` and this goes red.
+
+    This is the failure of 5-sep-2026, written down. The ROG went in and out of
+    the tailnet; every flip was a genuine transition, three of them spent the
+    whole daily budget, and when the machine finally hung there was nothing left
+    to report it with — `alerted_state` sat at "ok" through the entire outage.
+    A reading that does not survive to the next tick is noise, and noise must
+    not be able to spend the budget a real outage needs.
+    """
     alert = AsyncMock(return_value=True)
     states = ["unreachable", "ok", "unreachable", "ok", "unreachable"]
+    with patch.object(llm_monitor, "send_operator_alert", alert), _no_canned_replies():
+        for st in states:
+            with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value=st)):
+                await run_monitor_tick()
+
+    alert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_recovery_is_debounced_too(clean_state) -> None:
+    """MUTATION GUARD — debounce only the bad readings and this goes red.
+
+    Half a flap is still a flap. `elif changed and not confirmed` covers both
+    directions on purpose: a net that keeps coming back for one tick would
+    otherwise spend the budget announcing recoveries that do not hold, which is
+    the same way the day's three attempts were burned on 5-sep before the real
+    outage arrived.
+
+    Sequence: the outage confirms once, and neither "ok" that follows survives
+    to a second reading. Exactly one alert may leave.
+    """
+    alert = AsyncMock(return_value=True)
+    states = ["unreachable", "unreachable", "ok", "unreachable", "ok", "unreachable"]
+    with patch.object(llm_monitor, "send_operator_alert", alert), _no_canned_replies():
+        for st in states:
+            with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value=st)):
+                await run_monitor_tick()
+
+    assert alert.await_count == 1, "solo la caida confirmada; las vueltas no cuajan"
+
+
+@pytest.mark.asyncio
+async def test_two_different_failures_still_confirm_each_other(clean_state) -> None:
+    """MUTATION GUARD — compare the exact word instead of health and this goes red.
+
+    `unreachable` (the box is off the network) and `model-missing` (it answers
+    with the model evicted) are different words for one fact: the net cannot
+    catch a fall. A net alternating between them is down one hundred percent of
+    the time, and string equality would never see the same reading twice —
+    silence for ever, which is the failure this module exists to prevent
+    reproduced inside the fix for it.
+    """
+    alert = AsyncMock(return_value=True)
+    states = ["unreachable", "model-missing", "unreachable", "model-missing"]
+    with patch.object(llm_monitor, "send_operator_alert", alert), _no_canned_replies():
+        for st in states:
+            with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value=st)):
+                await run_monitor_tick()
+
+    assert alert.await_count == 1, "la caida se confirma pese a cambiar de sintoma"
+    # And it does not re-alert for each new flavour of broken: the operator's
+    # action is the same and the budget is not for describing nuance.
+    assert "caido" in alert.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_the_reading_survives_a_later_failure_in_the_same_tick(clean_state) -> None:
+    """MUTATION GUARD — move the early commit back down and this goes red.
+
+    The debounce reads the previous reading out of the database, so a reading
+    that never lands is a confirmation that can never happen. Before the
+    debounce, a crash after the send merely re-sent an alert that had already
+    gone out; now it would send none at all, for ever, while the net is down.
+    """
+    alert = AsyncMock(return_value=True)
+    boom = AsyncMock(side_effect=RuntimeError("un tenant roto"))
+    with patch.object(llm_monitor, "send_operator_alert", alert):
+        # Un tick sano primero: deja la marca del barrido puesta, que es lo que
+        # hace que el barrido llegue a ejecutarse (y a reventar) en el siguiente.
+        with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value="ok")), \
+             _no_canned_replies():
+            await run_monitor_tick()
+
+        with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value="unreachable")), \
+             patch.object(llm_monitor, "_count_canned_replies", boom):
+            with pytest.raises(RuntimeError):
+                await run_monitor_tick()
+
+    row = await _row(clean_state)
+    assert row is not None and row.state == "unreachable", \
+        "la lectura tiene que sobrevivir al fallo posterior"
+
+    # Y la prueba de que sirve de algo: el tick siguiente ya puede confirmarla.
+    with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value="unreachable")), \
+         patch.object(llm_monitor, "send_operator_alert", alert), _no_canned_replies():
+        await run_monitor_tick()
+    assert alert.await_count == 1, "confirmada contra la lectura que sobrevivio"
+
+
+@pytest.mark.asyncio
+async def test_daily_budget_stops_a_confirmed_oscillation(clean_state) -> None:
+    """The cap is still needed once readings do confirm: a provider that is
+    genuinely up and down for hours shares Resend's quota with the replies that
+    go to real customers."""
+    alert = AsyncMock(return_value=True)
+    # Pairs, so every change is confirmed and actually reaches the sender.
+    states = ["unreachable", "unreachable", "ok", "ok",
+              "unreachable", "unreachable", "ok", "ok"]
     with patch.object(llm_monitor, "send_operator_alert", alert), _no_canned_replies():
         for st in states:
             with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value=st)):
@@ -285,6 +395,7 @@ async def test_failed_send_is_retried_next_tick(clean_state) -> None:
     alert = AsyncMock(return_value=False)
     with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value="unreachable")), \
          patch.object(llm_monitor, "send_operator_alert", alert), _no_canned_replies():
+        await run_monitor_tick()  # primera lectura: confirma, no avisa
         await run_monitor_tick()
         assert alert.await_count == 1
 
@@ -351,7 +462,9 @@ async def test_budget_exhaustion_delivers_after_the_day_rolls_over(
     alert = AsyncMock(return_value=True)
     with patch.object(llm_monitor, "send_operator_alert", alert), _no_canned_replies():
         monkeypatch.setattr(llm_monitor, "_today_utc", lambda: "2026-08-25")
-        for st in ["unreachable", "ok", "unreachable", "ok"]:
+        # En parejas: cada cambio queda confirmado y llega al emisor.
+        for st in ["unreachable", "unreachable", "ok", "ok",
+                   "unreachable", "unreachable", "ok", "ok"]:
             with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value=st)):
                 await run_monitor_tick()
 

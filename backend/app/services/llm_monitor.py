@@ -12,6 +12,14 @@ So this module does two things a startup probe cannot:
 that costs nothing and does not load the model into VRAM, which is why the check
 can be frequent while the alert stays rare.
 
+**Waits for a second opinion before waking anyone.** A reading has to repeat
+before it is allowed to spend an attempt. This is not caution for its own sake:
+on 5-sep-2026 a flapping provider turned three genuine transitions into three
+spent attempts, and the sustained outage that followed had no budget left to be
+reported with. The damage sweep below is deliberately NOT debounced — a canned
+reply is something that already happened to a customer, not a reading that might
+settle.
+
 **Reads the ground truth.** The probe says whether the net *could* catch a fall.
 A message stamped ``llm_provider='fallback'`` says one already happened and was
 missed: a real customer got "someone will get back to you shortly" instead of an
@@ -183,11 +191,47 @@ async def run_monitor_tick() -> FallbackStatus:
         # mentioned again.
         previous = row.alerted_state
 
-        # `row.state` is observability and moves unconditionally; the alert
-        # decision below never reads it.
+        # ── the debounce: two readings agree before anyone is woken ──────
+        #
+        # Measured on 5-sep-2026, and it is why the outage that day went
+        # unreported: the ROG flapped in and out of the tailnet, each flip was
+        # a real transition, three of them spent the entire daily budget, and
+        # when the machine finally hung for good there was nothing left to send
+        # the alert with. `alerted_state` sat at "ok" through the whole thing.
+        #
+        # `row.state` already holds the PREVIOUS reading, so confirmation costs
+        # no schema. The price is one tick of delay (five minutes) before the
+        # first alert of an episode — including the first bad reading after a
+        # boot, which used to be immediate.
+        #
+        # It compares **health, not the exact word**, and that is not a detail.
+        # An earlier draft compared the strings, and a net that alternated
+        # between two different failures (`unreachable` while the box is off
+        # the network, `model-missing` once it answers with the model evicted)
+        # would never see the same word twice: down one hundred percent of the
+        # time and silent for ever, which is the failure this module exists to
+        # prevent, reproduced inside the fix for it. Two consecutive readings
+        # that agree on *whether the net can catch a fall* are a confirmation.
+        healthy = status in _HEALTHY
+        confirmed = row.state is not None and healthy == (row.state in _HEALTHY)
+
+        # `row.state` is observability and moves unconditionally; it is what
+        # /api/v1/health reports, so the live reading is never debounced — only
+        # the decision to wake somebody is.
         if row.state != status:
             log.warning("LLM fallback state changed: %s -> %s", row.state, status)
         row.state = status
+
+        # Committed HERE, before anything that can fail. The debounce reads the
+        # previous reading back out of this column, so a reading that never
+        # lands is a confirmation that can never happen: an exception later in
+        # this tick (the per-tenant sweep, the sender, the final commit) would
+        # roll the reading back, and every following tick would find the same
+        # stale value and stay quiet — for ever, while the net is down. Before
+        # the debounce the same rollback merely re-sent an alert that had
+        # already gone out; now it would send none at all, so the observation
+        # has to be durable on its own.
+        await session.commit()
 
         # ── the probe: alert until the operator has actually been told ───
         #
@@ -195,9 +239,25 @@ async def run_monitor_tick() -> FallbackStatus:
         # still alerts when the reading is bad: discovering at boot that the net
         # is missing is exactly what we want to hear about. A first reading of
         # "ok" is silent, because nothing happened.
-        if status in _HEALTHY and previous is None:
+        # The operator is told about health changing, not about which flavour
+        # of broken it is: `unreachable` and `model-missing` both mean the net
+        # cannot catch a fall, and re-alerting as one becomes the other would
+        # spend the day's budget describing a distinction that does not change
+        # what he has to do. The body still names the specific reading and its
+        # remedy.
+        told_healthy = previous is not None and previous in _HEALTHY
+        changed = previous is None or healthy != told_healthy
+
+        if healthy and previous is None:
             row.alerted_state = status
-        elif status != previous:
+        elif changed and not confirmed:
+            # Seen once, not yet twice. Say nothing and let the next tick decide
+            # — a flap dies here instead of spending an attempt.
+            log.info(
+                "LLM fallback read %s (was %s); waiting for a second reading "
+                "before alerting", status, previous,
+            )
+        elif changed:
             subject, body = _describe(status, previous)
             undeliverable = undeliverable_reason()
             if undeliverable:
