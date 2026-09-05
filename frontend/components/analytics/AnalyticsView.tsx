@@ -87,16 +87,24 @@ export function AnalyticsView() {
     );
   }
 
-  const resp =
-    data.avg_first_response_seconds == null
-      ? "—"
-      : data.avg_first_response_seconds >= 60
-      ? `${Math.round(data.avg_first_response_seconds / 60)} ${t("analytics.minutes")}`
-      : `${Math.round(data.avg_first_response_seconds)} ${t("analytics.seconds")}`;
+  // Adapted to the v2 contract without redesigning the page: that is F8. The
+  // median rather than the mean, because one lead answered three days late
+  // dragged the old average past anything a person would recognise.
+  const median = data.response.first_response_seconds.median;
+  const byStatus = data.leads.by_status;
 
-  const funnelMax = Math.max(1, ...Object.values(data.funnel));
-  const chanMax = Math.max(1, ...Object.values(data.by_channel));
-  const days = [...data.leads_per_day].sort((a, b) => a.date.localeCompare(b.date));
+  const resp =
+    median == null
+      ? "—"
+      : median >= 60
+      ? `${Math.round(median / 60)} ${t("analytics.minutes")}`
+      : `${Math.round(median)} ${t("analytics.seconds")}`;
+
+  const funnelMax = Math.max(1, ...Object.values(byStatus));
+  const chanMax = Math.max(1, ...Object.values(data.leads.by_channel));
+  const days = [...data.leads.new_by_day]
+    .map((d) => ({ date: d.date, count: d.leads }))
+    .sort((a, b) => a.date.localeCompare(b.date));
   const dayMax = Math.max(1, ...days.map((d) => d.count));
   const last7 = days.slice(-7).reduce((s, d) => s + d.count, 0);
   const prev7 = days.slice(-14, -7).reduce((s, d) => s + d.count, 0);
@@ -111,17 +119,17 @@ export function AnalyticsView() {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <Stat icon={Users} label={t("analytics.totalLeads")} value={String(data.total_leads)} />
+        <Stat icon={Users} label={t("analytics.totalLeads")} value={String(data.leads.total)} />
         <Stat icon={Activity} label={t("analytics.newThisWeek")} value={String(last7)} trend={weekTrend} />
-        <Stat icon={TrendingUp} label={t("analytics.conversion")} value={`${Math.round(data.conversion_rate * 100)}%`} />
+        <Stat icon={TrendingUp} label={t("analytics.conversion")} value={`${Math.round(data.deals.close_rate * 100)}%`} />
         <Stat icon={Clock} label={t("analytics.avgResponse")} value={resp} />
-        <Stat icon={Flame} label={t("analytics.hotLeads")} value={String(data.by_score_tier.hot ?? 0)} />
+        <Stat icon={Flame} label={t("analytics.sessions")} value={String(data.traffic.sessions)} />
       </div>
 
       <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
         <h2 className="text-sm font-semibold text-white mb-3">{t("analytics.funnel")}</h2>
         <div className="space-y-2">
-          {Object.entries(data.funnel).map(([status, n]) => (
+          {Object.entries(byStatus).map(([status, n]) => (
             <Bar key={status} label={t(`status.${status}`)} value={n} max={funnelMax} color="bg-eko-violet/70" />
           ))}
         </div>
@@ -130,11 +138,11 @@ export function AnalyticsView() {
       <div className="grid md:grid-cols-2 gap-6">
         <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
           <h2 className="text-sm font-semibold text-white mb-3">{t("analytics.byChannel")}</h2>
-          {Object.keys(data.by_channel).length === 0 ? (
+          {Object.keys(data.leads.by_channel).length === 0 ? (
             <p className="text-sm text-gray-600">{t("analytics.noData")}</p>
           ) : (
             <div className="space-y-2">
-              {Object.entries(data.by_channel).map(([ch, n]) => (
+              {Object.entries(data.leads.by_channel).map(([ch, n]) => (
                 <Bar key={ch} label={ch} value={n} max={chanMax} color="bg-eko-magenta/60" />
               ))}
             </div>
@@ -148,8 +156,8 @@ export function AnalyticsView() {
               <Bar
                 key={tier}
                 label={t(`score.${tier}`)}
-                value={data.by_score_tier[tier] ?? 0}
-                max={Math.max(1, ...Object.values(data.by_score_tier))}
+                value={data.leads.by_intent[tier] ?? 0}
+                max={Math.max(1, ...Object.values(data.leads.by_intent), 1)}
                 color={TIER_COLOR[tier]}
               />
             ))}

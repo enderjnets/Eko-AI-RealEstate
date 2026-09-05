@@ -1063,18 +1063,111 @@ export const activityApi = {
   list: () => api<UserActivity[]>(`/v1/team/activity`),
 };
 
-export interface Analytics {
-  total_leads: number;
-  funnel: Record<string, number>;
-  conversion_rate: number;
-  by_channel: Record<string, number>;
-  by_score_tier: Record<string, number>;
-  leads_per_day: { date: string; count: number }[];
-  avg_first_response_seconds: number | null;
+export interface FunnelStep {
+  stage: string;
+  count: number;
+  /** Against the step above, not against the top. "Half the people who reached
+   *  the form sent it" is actionable; "3% of visitors sent it" is not. */
+  pct_of_previous: number | null;
 }
 
+export interface Breakdown {
+  name: string;
+  sessions: number;
+  leads: number;
+}
+
+export interface Analytics {
+  range: { from: string; to: string; timezone: string };
+  traffic: {
+    sessions: number;
+    engaged: number;
+    avg_scroll_pct: number;
+    cta_clicks: number;
+    tel_clicks: number;
+    form_starts: number;
+    form_submits: number;
+    by_day: { date: string; sessions: number }[];
+    by_source: Breakdown[];
+    by_device: Breakdown[];
+    by_in_app: Breakdown[];
+    by_country: Breakdown[];
+    by_region: Breakdown[];
+    by_city: Breakdown[];
+    by_lang: Breakdown[];
+    sections: Record<string, number>;
+  };
+  funnel: FunnelStep[];
+  leads: {
+    total: number;
+    by_status: Record<string, number>;
+    by_intent: Record<string, number>;
+    by_channel: Record<string, number>;
+    /** `no_web` is a lead that never touched the landing page — imported,
+     *  phoned in, found by discovery. Not the same as `direct`. */
+    by_source: Record<string, number>;
+    new_by_day: { date: string; leads: number }[];
+  };
+  response: {
+    first_response_seconds: { median: number | null; p90: number | null; avg: number | null };
+    /** `fallback` is the canned reply sent when no model answered. Folded into
+     *  `ai` it would hide an outage behind a healthy response time. */
+    by_kind: Record<string, number>;
+    unanswered: number;
+  };
+  calls: {
+    inbound: number;
+    avg_duration_seconds: number | null;
+    by_ended_reason: Record<string, number>;
+    logged: number;
+    by_outcome: Record<string, number>;
+  };
+  appointments: {
+    set: number;
+    completed: number;
+    no_show: number;
+    cancelled: number;
+    by_purpose: Record<string, number>;
+  };
+  deals: {
+    won: number;
+    by_kind: Record<string, number>;
+    /** null for anyone who is not an admin. */
+    total_value: number | null;
+    median_days_lead_to_won: number | null;
+    lost: number;
+    lost_reasons: Record<string, number>;
+    close_rate: number;
+  };
+  content: {
+    piece_id: number;
+    platform: string;
+    published_at: string;
+    external_url: string | null;
+    /** **Association, not attribution.** What happened in the 48 hours after
+     *  this went out. A Shorts description link is not clickable and Instagram
+     *  strips the referrer, so most viewers arrive indistinguishable from
+     *  anyone else. The page must never label this "attribution". */
+    association: { window_hours: number; sessions: number; leads: number };
+    leads_tagged: number;
+  }[];
+  by_agent: { email: string; calls_logged: number; appointments: number; won: number }[];
+}
+
+export type AnalyticsRange = "7d" | "30d" | "90d";
+
 export const analyticsApi = {
-  get: () => api<Analytics>(`/v1/analytics`),
+  get: (opts?: { range?: AnalyticsRange } | { from: string; to: string }) => {
+    const q = new URLSearchParams();
+    if (opts && "from" in opts) {
+      q.set("from", opts.from);
+      q.set("to", opts.to);
+    } else if (opts?.range) {
+      q.set("range", opts.range);
+    }
+    const qs = q.toString();
+    return api<Analytics>(`/v1/analytics${qs ? `?${qs}` : ""}`);
+  },
 };
 
 export type LeadCategory =

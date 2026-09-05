@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.75.2";
+export const CURRENT_VERSION = "0.76.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.76.0",
+    date: "2026-09-04",
+    title: {
+      en: "The whole funnel, in the agency\u2019s own days",
+      es: "El embudo entero, en los d\u00edas de la agencia",
+    },
+    changes: [
+      {
+        en: "The analytics endpoint now answers the whole chain instead of five numbers with no date range. Where visits came from, how far people read, which sections they reached, whether the phone was picked up and for how long, whether an appointment was set and whether it happened, what kind of business closed, and how long each of those took. Every day is the agency's day, not UTC: a lead that arrived at half eleven at night in Denver used to be filed under the following morning, which quietly moved the two busiest hours of every evening to the wrong date. And an internal note is no longer counted as a reply - a lead nobody ever answered used to show a two-minute response time because an advisor had typed \"called, no answer\" into the thread. The page that draws all this is the next release; this one is the data behind it.",
+        es: "El endpoint de analitica responde ahora la cadena entera en vez de cinco cifras sin rango de fechas. De donde vienen las visitas, cuanto se lee, que secciones se alcanzan, si se descolgo el telefono y cuanto duro, si se puso una cita y si se hizo, que tipo de negocio se cerro, y cuanto tardo cada cosa. Cada dia es el dia de la agencia, no UTC: un lead que entraba a las once y media de la noche en Denver se archivaba en la manana siguiente, lo que movia en silencio las dos horas mas activas de cada tarde a la fecha equivocada. Y una nota interna ya no cuenta como respuesta: un lead al que nadie contesto nunca mostraba un tiempo de respuesta de dos minutos porque un asesor habia escrito \"llamado, no contesta\" en el hilo. La pagina que dibuja todo esto es la siguiente entrega; esta es el dato de debajo.",
+      },
+    ],
+  },
   {
     version: "0.75.2",
     date: "2026-09-04",

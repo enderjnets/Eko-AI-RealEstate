@@ -2,6 +2,24 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.76.0] — 2026-09-04
+
+### Added
+- **`GET /api/v1/analytics` v2**: traffic, funnel, leads, response, calls,
+  appointments, deals, content and per-agent, over `?range=7d|30d|90d` or an
+  explicit `?from=&to=`. Replaces v1 rather than sitting beside it — two
+  endpoints answering the same question differently is how a dashboard starts
+  disagreeing with itself.
+
+### Fixed
+- **Days are the agency's days.** Every grouping goes through
+  `timezone(<agency tz>, col)`. A lead that arrived at 23:30 in Denver was filed
+  under the next day.
+- **An internal note is not a reply** (H8). The old average counted advisors'
+  own notes, so a lead nobody answered showed a two-minute response time.
+- `close_rate` now divides one cohort by itself: `lost` is scoped on when it was
+  lost, not on when the lead arrived.
+
 ## [0.75.2] — 2026-09-04
 
 ### Added
