@@ -1112,8 +1112,9 @@ async def test_typing_it_twice_corrects_rather_than_appends(
                 second.json()["publications"][0]["latest_metrics"]["views"] == 900
             )
         async with get_bypass_session_factory()() as db:
-            from app.models import ContentMetric
             from sqlalchemy import func, select
+
+            from app.models import ContentMetric
 
             total = await db.scalar(select(func.count()).select_from(ContentMetric))
             assert total == 1, "one reading per day, corrected in place"

@@ -50,9 +50,10 @@ Nada se rompe, y esa es la decisión de diseño:
   de ese día y un aviso en el registro. El resto del sistema sigue igual.
 - **Vídeo borrado o puesto en privado**: YouTube contesta 200 con una lista
   vacía. Eso es «no hay dato para ese id», no un error.
-- **Publicaciones anteriores a agosto de 2026**: no tienen dirección guardada
-  (Buffer empezó a reportarla hace poco), así que no se pueden leer. Es un hueco
-  en el pasado, no una avería.
+- **Las 15 publicaciones anteriores al 3 de septiembre de 2026**: no tienen la
+  dirección guardada, porque el sistema empezó a recogerla de Buffer ese día
+  (medido: 15 publicadas sin dirección, 4 con ella). No se pueden leer nunca.
+  Es un hueco en el pasado, no una avería en el presente.
 
 ## Corregir un número a mano
 

@@ -43,6 +43,13 @@ function Views({
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
+    // An empty box is not a zero. Opening the editor and clicking away fires
+    // `onBlur`, and `Number("")` is 0 — which would write "this video was seen
+    // by nobody", the exact claim the card exists to avoid making by accident.
+    if (value.trim() === "") {
+      setEditing(false);
+      return;
+    }
     const views = Number(value);
     if (!Number.isFinite(views) || views < 0) return;
     setBusy(true);

@@ -172,6 +172,13 @@ describe("view counts, and where they came from", () => {
     expect(source).toContain("analytics.noViews");
   });
 
+  it("never turns an empty box into a zero", () => {
+    // Opening the editor and clicking away fires onBlur, and Number("") is 0.
+    // Saving that would write "seen by nobody" — the one claim this card is
+    // built to avoid making by accident.
+    expect(table()).toContain('value.trim() === ""');
+  });
+
   it("sends the typed count to the publication's own route", () => {
     expect(api()).toContain(
       "`/v1/content/${id}/publications/${platform}/metrics`",
