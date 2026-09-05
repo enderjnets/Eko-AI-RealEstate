@@ -6,6 +6,50 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## `/calculator` — la calculadora renta→compra (rama `feat/calculator`, v0.81.0 reservada)
+
+**En ejecución, NO desplegada.** Plan: `PLAN.md` (con las aclaraciones del autor
+al final). Base `8ee1f31` (fast-forward desde `6f6ee2d`: un commit de docs).
+Worktree `~/eko-calculator`, base de tests `eko_realestate_test_calculator`,
+puertos propios 8021 (API) y 3010 (web).
+
+### Fases
+
+| Fase | Commit | Checklist (salida real) |
+|---|---|---|
+| 0 · Aislamiento y estado base | el de esta entrada | backend **1659/1659**, cobertura **82 %**, ruff ✅ · tsc ✅ · vitest **268/268** · lint ✅ · build ✅ · prerender `/` `/contact` `/fall` `<main>`=1, spinner=0 · secretos: el diff es solo `PLAN.md` y este fichero · cobertura frontend: **no verificable** (A-4) · auditoría independiente: no aplica, sin código |
+
+### Consultas al advisor
+
+1. **Arranque (5-sep).** Motivo: validar orden, dependencias y riesgos.
+   Decisión: orden 0→8 sin cambios; la 9 se prepara y se detiene; la 10 no se
+   ejecuta (7.1 por defecto). Base a `8ee1f31`. Aclaraciones A-2 (guard `0/0`
+   en `solvePrice`), A-3 (override de `rate`), A-4 (cobertura frontend no
+   verificable), A-5/A-6 (estado por fase, rama única). Próxima consulta:
+   antes de la Fase 3a.
+
+### Hallazgos abiertos
+
+- **(heredado de `/fall`, no de esta rama)** El aviso de lead nuevo por Resend
+  no entrega en producción (200 sin entrega, ver sección de `/fall`). De los
+  tres canales por los que la calculadora llega a Natalia, hoy solo el Inbox y
+  la ficha del lead entregan seguro; el correo depende de ese arreglo.
+
+### Decisiones
+
+- 7.1–7.8 con el valor «si no dices nada» del plan: **sin** respuesta
+  automática al lead; apreciación 2 %; alquiler 2 %; diferencial por crédito
+  0 / +0,25 / +0,75; venta 4 %; suelo $150.000; **sin despliegue**; sin prueba
+  contra producción.
+- Rama única `feat/calculator`, un commit por fase, push tras cada fase.
+
+### Siguiente paso
+
+Fase 1: `frontend/lib/calculator.ts`, el fixture compartido
+`backend/tests/fixtures/calculator_golden.json` y su test, contra la hoja de Jeff.
+
+---
+
 ## `/fall` — la guia que promete el reel (rama `feat/fall-guide`, v0.80.0)
 
 **DESPLEGADO el 5-sep-2026.** Produccion en `6f6ee2d`, `/api/v1/health` = **0.80.0**.
