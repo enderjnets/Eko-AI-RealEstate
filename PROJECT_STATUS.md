@@ -198,7 +198,78 @@ se arregla — es la mayoría del público.
 recibe el mismo prompt que MiniMax, que pasa los cuatro casos. **1.659 tests**
 (base 1.617, +42), 4 mutaciones en rojo, `md5` restaurado.
 
-## 🔴 LISTA PARA DESPLEGAR, SIN DESPLEGAR — Fase 2.4: la verificación real
+## ✅ DESPLEGADO — v0.79.0 · la red de seguridad deja de ser un portátil
+
+> Autorizado por el dueño el 5-sep-2026 20:11 UTC. `/api/v1/health` sirve
+> **0.79.0** con `llm_fallback: ok`.
+
+**Un detalle del despliegue que casi me cuesta caro:** el VPS **no estaba donde
+yo había escrito en el checklist**. Estaba en `feat/maquina-de-video-dhs` en
+`d63974b0c`, no en `4ca286f`. Comprobado antes de tocar nada —`d63974b` **sí**
+era ancestro de la rama y el VPS no tenía **ningún** commit que yo no tuviera—,
+así que el `--ff-only` de 10 commits era seguro. Un bundle escrito contra el
+commit equivocado habría fallado, y peor: asumirlo habría invitado a forzar.
+
+| Paso | Resultado |
+|---|---|
+| Copia del `.env` | `.env.bak.20260905_v0790`, 7.802 bytes |
+| Bundle `d63974b..fix/llm-safety-net` | 105.662 bytes, `--ff-only` limpio, 10 commits |
+| `docker compose build backend frontend` | las dos construidas |
+| **La sonda con la imagen nueva, ANTES de levantar** | **`ok`** · 4 eslabones configurados: `kimi, minimax, groq, ollama` |
+| `up -d` + `/api/v1/health` | **`0.79.0`**, `llm_fallback: ok`, frontend 200 |
+| Log de arranque | limpio: ni un aviso de red de seguridad |
+| Sin migración | correcto, no había esquema nuevo |
+
+### La prueba que justifica el trabajo entero
+
+Con **Kimi y MiniMax forzados a caer**, en producción, con la imagen nueva:
+
+```
+LLM provider kimi not configured (missing API key); skipping
+LLM provider minimax not configured (missing API key); skipping
+  proveedor : groq
+  modelo    : openai/gpt-oss-120b
+  tokens    : 127 -> 134
+  respuesta : '¡Hola! Sí, tenemos disponibles varios departamentos de 2 habitaciones...'
+```
+
+Un lead que escribe en español recibe una respuesta **en español**, de Groq, sin
+tocar el portátil. Antes de hoy, eso era «alguien te responderá en breve».
+
+### Lo que los tests no podían probar, comprobado en vivo
+
+- **El vigía calla, que era la predicción.** Tick forzado con el código nuevo:
+  `state=ok`, `alerted_state=ok`, `alerts_today=3` sin moverse y `last_alert_at`
+  intacto en las 01:51 de esta mañana. **Ningún correo.** Escribí primero que
+  saldría uno de «recuperación» y era falso; leer la fila lo corrigió.
+- **Los cinco casos de idioma, en el contenedor nuevo:** EN largo ✓ · EN corto ✓
+  · ES largo ✓ · **ES corto ✓** · ES mínimo (`"Me interesa"`) ✓. El corto es el
+  que `langdetect` leía como italiano y hoy ya se contesta en español.
+- **Telemetría del modelo:** `empty completion from groq` = **0**. Es la línea
+  base; si sube, el razonamiento de `gpt-oss-120b` se está comiendo los 600
+  tokens y el recambio evaluado es `qwen/qwen3.8-27b`.
+- **Las dos entradas públicas, sin regresión:** `denverhomestory.com` sirve la
+  landing (200, título de marca) y `inmo-demo` es el panel, que **por diseño**
+  redirige `/` a `/leads` — el middleware de dos dominios. `/docs` sigue dando
+  **404**. *(Corrijo algo que escribí mal en el checklist: `/api/v1/health` **sí**
+  responde 200 por el túnel, y es lo correcto — el frontend proxea `/api/*`. Lo
+  que no debe estar es `/docs`.)*
+
+### 🔴 Sigue abierto, y no lo arregla este despliegue
+
+**Kimi está sin cuota semanal** (`403 permission_error`). El proveedor primario
+lleva rechazando peticiones, así que ahora mismo la cadena real es
+**MiniMax → Groq → ROG**. Se restablece solo al cerrar la ventana de 7 días.
+Hoy eso ya no es una avería: hay dos eslabones detrás. Ayer habría sido uno.
+
+### Reversión, si hiciera falta
+
+`git reset --hard d63974b` + `docker compose build backend frontend && up -d`.
+El `.env` **no se toca**: `GROQ_API_KEY` es inofensiva sin código que la lea.
+
+---
+
+## Fase 2.4 — la verificación real (historia)
 
 > **La autorización la da el dueño en un mensaje aparte.** Nada de esto se ha
 > desplegado: el VPS sigue corriendo la v0.78.0.
