@@ -60,7 +60,7 @@ async def _send_and_record(lead_id: int, message_id: int | None) -> None:
         MessageSender,
         MessageStatus,
     )
-    from app.services.capture import ATTRIBUTION_KEYS
+    from app.services.capture import ATTRIBUTION_KEYS, normalize_phone
     from app.services.delivery import MAX_ATTEMPTS
     from app.services.tenant_context import get_org_id
 
@@ -106,13 +106,28 @@ async def _send_and_record(lead_id: int, message_id: int | None) -> None:
             if isinstance(touch.get(k), str) and touch[k]
         )
 
-        who = lead.name or lead.phone or lead.email or f"lead {lead.id}"
+        # `leads.phone` is the IDENTIFIER, not necessarily a phone: capture
+        # stores the number when there is one and the EMAIL ADDRESS otherwise,
+        # so that an SMS reply and a form post resolve to the same person.
+        # Labelling it "Phone" unconditionally told the advisor to call an
+        # email address, and printed the same value twice under two different
+        # labels. On leads from `/fall` that is not an edge case: the form's
+        # only required field is the address, so it was going to be every one
+        # of them.
+        identifier = (lead.phone or "").strip()
+        phone = identifier if normalize_phone(identifier) else None
+        # If the identifier IS the address, it is the contact even when the
+        # column is empty — losing it would leave a notice with no way to
+        # answer the person it is about.
+        email = (lead.email or "").strip() or (None if phone else identifier or None)
+
+        who = lead.name or phone or email or f"lead {lead.id}"
         subject = f"New lead from the website — {who}"
         body = (
             "A new inquiry just came in through the website.\n\n"
             + _line("Name", lead.name)
-            + _line("Phone", lead.phone)
-            + _line("Email", lead.email)
+            + _line("Phone", phone)
+            + _line("Email", email)
             + _line("Message", (inbound.content if inbound else None))
             + _line("Came from", attribution)
             + "\nThey are expecting a call back in the next few hours.\n"

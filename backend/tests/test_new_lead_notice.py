@@ -164,6 +164,69 @@ async def test_a_form_submission_tells_the_agency() -> None:
 
 
 @pytest.mark.asyncio
+async def test_an_email_only_lead_is_not_reported_as_a_phone_number() -> None:
+    """`leads.phone` is the IDENTIFIER, not always a phone.
+
+    Capture stores the number when there is one and the EMAIL ADDRESS
+    otherwise, so an SMS reply and a form post resolve to the same person.
+    The notice used to render that column under a literal "Phone:" label, so an
+    email-only lead produced
+
+        Phone: someone@example.com
+        Email: someone@example.com
+
+    — the same value twice, one of them telling the advisor to dial an address.
+
+    This is not an edge case since `/fall`: that page's form requires only the
+    address, so every lead the reel campaign produces arrives email-only.
+    """
+    sender = AsyncMock(return_value={"id": "re_notice_email_only"})
+    try:
+        with patch("app.services.lead_notify.send_email", sender):
+            status = await _post(
+                {
+                    "name": "Address Only",
+                    "email": "address-only@notice.test",
+                    "utm": {"utm_source": "instagram", "landing_variant": "fall"},
+                }
+            )
+        assert status == 202
+        body = sender.await_args.kwargs["body_text"]
+        # The address is still there — losing it would leave a notice nobody
+        # can act on.
+        assert "address-only@notice.test" in body
+        assert "Email: address-only@notice.test" in body
+        # But nothing claims it is a phone number.
+        assert "Phone:" not in body, f"no phone was given; body was:\n{body}"
+        # And it is not printed twice under two labels.
+        assert body.count("address-only@notice.test") == 1
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_real_phone_is_still_reported_as_one() -> None:
+    """The other half: fixing the label must not drop a number that IS one."""
+    sender = AsyncMock(return_value={"id": "re_notice_with_phone"})
+    try:
+        with patch("app.services.lead_notify.send_email", sender):
+            status = await _post(
+                {
+                    "name": "Has A Number",
+                    "email": "has-number@notice.test",
+                    "phone": "+13035550188",
+                    "utm": {"landing_variant": "fall"},
+                }
+            )
+        assert status == 202
+        body = sender.await_args.kwargs["body_text"]
+        assert "Phone: +13035550188" in body
+        assert "Email: has-number@notice.test" in body
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
 async def test_a_duplicate_submission_notifies_once() -> None:
     """A double-submit is one inquiry, not two phone calls to make."""
     sender = AsyncMock(return_value={"id": "re_notice_dup"})
