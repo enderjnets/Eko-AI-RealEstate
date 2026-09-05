@@ -86,6 +86,96 @@ NVIDIA NIM. El plan de ejecución está en `PLAN.md` §4, fases 2.1 a 2.4.
 
 ---
 
+## 🟡 ESCRITA, SIN DESPLEGAR — Fase 2.2: la sonda mide la red, no una máquina
+
+> Rama `fix/llm-safety-net`. **Sin bump todavía** (va en la 2.3).
+
+`check_fallback_provider()` describía **el portátil**. Ahora describe **la red
+entera**: dos eslabones, sana si **cualquiera** contesta. Es lo que sirve
+`/api/v1/health` y sobre lo que alarma el vigía, así que con Groq vivo y el ROG
+dormido el sistema decía «caída» de una red **en pie** — y una alarma que se
+equivoca es una alarma que se acaba ignorando.
+
+| Cambio | Por qué |
+|---|---|
+| `_probe_groq` con caché de 1 h a nivel de módulo | Groq no documenta si `GET /models` cuenta contra el límite. Cacheada, el peor caso son 24 llamadas/día de 1.000 (**2,4 %**) y el vigía sigue tickeando cada 5 min sobre la lectura guardada. El precio: un cambio real tarda ≤ 65 min en verse |
+| **TTL corto (60 s) para los fallos** | Un fallo **no gasta cuota**, así que la asimetría sale gratis. Con un solo TTL, un parpadeo de 1 s congelaba `unreachable` una hora: correo de «red caída» por un hipo de red, y el de recuperación 55 min tarde |
+| El **429 cuenta como `ok`** | El servicio contestó. Estar limitado no es estar ausente, y despertar al dueño por un minuto ocupado es entrenarle a ignorar el aviso |
+| 401/403 → `log.error` **nombrando la variable** | Una clave muerta merece una línea a la hora; la caché es lo que impide que sea un bucle |
+| Comprobar que `GROQ_MODEL` sigue en `data[].id` | Lo gratis se retira sin avisar: **así se rompió Kling**. Responder no es poder responder |
+| Cortocircuito si Groq dice `ok` | Ahorra hasta 5 s por tick con el ROG dormido, y saca del camino a un eslabón que ya no sostiene nada |
+| El remedio se **construye**, no se plantilla | Una palabra no puede llevar un par: con Groq caído y el ROG sin su modelo, un texto fijo decía «ninguno responde» (falso) y recetaba `systemctl status`, que sale verde, en vez del `ollama pull` que arreglaba la red |
+| Los textos nombran solo los eslabones **que existen** | Una instalación sin clave estaba siendo mandada a revisar un Groq que nunca se configuró, citando un `GROQ_MODEL` que la sonda jamás miró |
+
+**Verificado, con salida real:** **1617 tests en verde** (base 1565, +52), **0
+saltados**, cobertura **82 %**, `llm.py` **94 %**; `ruff check app tests` limpio;
+`docker build` exit 0; diff sin secretos ni `print`.
+
+**12 mutaciones en rojo, árbol restaurado con `md5` idéntico** — las 5 del plan
+y 7 más que salieron de la auditoría:
+
+| Mutación | Estado |
+|---|---|
+| la sonda ignora Groq · no comprueba el modelo · el 429 como caída · quitar la lectura de caché · cachear el `off` | ✅ rojo (las 5 del plan) |
+| **un 5xx de Groq reportado como red sana** | ✅ rojo |
+| la sonda sin cabecera `Bearer` · pidiendo a la ruta equivocada | ✅ rojo |
+| TTL encogido (86.400 llamadas/día contra un tope de 1.000) | ✅ rojo |
+| `model-missing` fuera del TTL largo | ✅ rojo |
+| prioridad invertida (manda a la máquina equivocada) | ✅ rojo |
+| sin el cortocircuito · parseo de Ollama fuera del `try` · sin las guardas `isinstance` | ✅ rojo |
+
+### Auditoría de cierre de la 2.2 (2 subagentes)
+
+**🔴 BLOQUEANTE, arreglado — la sonda SÍ lanzaba, y un Groq sano no protegía.**
+El parseo de la respuesta de Ollama estaba **fuera** del `try`: un 200 con forma
+inesperada (`{"models": "texto"}`, una lista en la raíz, una cadena) lanzaba
+`AttributeError` desde una función cuyo contrato —del que dependen el arranque y
+cada tick— es **no lanzar nunca**. Y la composición lo empeoró en vez de
+mejorarlo: el portátil se sondeaba **aunque Groq ya hubiera dicho `ok`**, así que
+el eslabón degradado a extra podía tumbar el informe de una red demostrablemente
+sana. Verificado ejecutándolo con Groq sano en los cuatro casos. La consecuencia
+era la peor posible: `app.state.llm_fallback` **congelado para siempre**,
+`/health` sirviendo una lectura muerta, `row.state` sin moverse, el debounce sin
+confirmar nunca y **ningún aviso saliendo jamás** — la alarma fallando por culpa
+de la avería que existe para reportar.
+
+**🟠 IMPORTANTE, arreglado ×4** — la caché pegada una hora en un parpadeo · dos
+celdas de la tabla de verdad mandaban al dueño a la máquina equivocada · sin
+clave de Groq el texto nombraba un eslabón inexistente y citaba un modelo que la
+sonda nunca miró · **la suite podía llamar a Groq de verdad con la clave viva**
+(`test_whatsapp_channel.py` arranca la app real sin parchear `httpx`; el auditor
+lo capturó contra un listener local, con la cabecera `Bearer` y todo). Esto
+último es la lección que ya pagamos —*la clave del home compra en los tests*— y
+está blindado en `tests/conftest.py` **incondicionalmente**, no con `setdefault`.
+
+**🟠 Huecos de test que el código no tenía**, cerrados: un **5xx** de Groq no lo
+cubría nadie (el código estaba bien; nada lo fijaba) · la sonda podía pedir a la
+ruta equivocada o sin credencial y la suite seguía verde · encoger **los dos**
+TTL a la vez respetaba el orden relativo y pasaba, mientras la sonda iba de 24 a
+86.400 llamadas al día · invertir la prioridad del fallo reportado pasaba · el
+cortocircuito no lo fijaba nada. Y un test mío, `test_the_laptop_alone…`,
+prometía «cualquiera de los dos basta» y **solo demostraba uno**.
+
+**Descartado con razón:** la clave **no** puede filtrarse (medido `str()` y
+`repr()` de seis excepciones de `httpx` construidas sobre una request que sí
+lleva la cabecera: ninguna la contiene) · no hay carrera en la caché (los dos
+llamadores están serializados, un solo worker) · `monkeypatch.setattr` sobre la
+variable de módulo **sí** muerde, y parchear `_now` en vez de `time.monotonic`
+mantiene fuera al planificador de asyncio · los cinco tests viejos de sonda
+siguen probando exactamente lo que probaban.
+
+**Al backlog:** un 401 de Groq **con el ROG vivo no avisa** —la red está sana, y
+es lo que significa «basta con que uno conteste»; la 2.4 lo caza al desplegar—; un
+200 ilegible se cachea una hora como `model-missing` cuando lo honesto sería «no
+supe leerlo»; y `_probe_ollama` no honra códigos de estado, heredado del doble
+de test viejo.
+
+### Consultas al advisor
+
+| Momento | Motivo | Decisión |
+|---|---|---|
+| Pre-2.2 (`[CRÍTICA]`) | Validar el plan de la fase antes de tocar la sonda | Plan correcto, seguir. Cinco cosas que el plan no resolvía: (1) **tres textos más** fuera de la lista del plan —`_REMEDY["off"]`, que ahora significa «no hay red ninguna»; el estado en el aviso de respuesta enlatada; y las variables del `.format()`, donde un placeholder olvidado es un **`KeyError` dentro del tick** justo al avisar—; (2) parchear `_now` propio del módulo y **nunca `time.monotonic`**, que asyncio usa para su planificador; (3) el reset de caché va en la fixture autouse, la comprobación de clave **antes** que la de caché, y el camino sin clave **no escribe caché**; (4) la mutación de la caché tiene que cortar la **lectura**, no la escritura; (5) registrar como comportamiento conocido que un 401 de Groq con el ROG vivo no avisa |
+
 ## 🟡 ESCRITA, SIN DESPLEGAR — Fase 2.1: Groq en la cadena
 
 > Rama `fix/llm-safety-net`. **Sin bump todavía** (va en la Fase 2.3).

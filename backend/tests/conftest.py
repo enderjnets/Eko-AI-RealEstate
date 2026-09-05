@@ -36,6 +36,22 @@ import os
 # `setdefault`, so an operator deliberately testing the disabled path still can.
 os.environ.setdefault("WHATSAPP_ENABLED", "true")
 
+# And Groq's key is wiped, unconditionally — not `setdefault`.
+#
+# The health probe now calls a THIRD PARTY with a credential. Several tests
+# drive the real startup path (`test_whatsapp_channel.py`) without patching
+# httpx, and on any machine that exports GROQ_API_KEY — the ROG does, and so
+# does anyone who ran the deploy — that reaches `api.groq.com` carrying the
+# owner's live key. Until this fase the same path only ever touched a local
+# Ollama on the LAN.
+#
+# This repo has paid for that shape before: a fallback that read the key from
+# the home directory made any test without a stub buy an image, and pass green
+# while doing it. One source for the credential, and inside the suite it is
+# empty. A test that genuinely needs Groq configured sets it itself, with
+# monkeypatch, and stubs the transport.
+os.environ["GROQ_API_KEY"] = ""
+
 import pytest  # noqa: E402 — must follow the environment default above
 
 from app.db.base import dispose_engine

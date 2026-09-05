@@ -58,9 +58,12 @@ def _force_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     # cambie pondría en rojo dos tests que no dependen de su configuración.
     monkeypatch.setenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
     monkeypatch.setenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-    # Clear the lru_cache on get_settings so the new env vars apply.
+    # Clear the lru_cache on get_settings so the new env vars apply — and the
+    # probe cache at the same instant, or a cached "ok" would hide a GROQ_MODEL
+    # that this test just changed.
     from app.config import get_settings
     get_settings.cache_clear()
+    monkeypatch.setattr(llm_module, "_groq_probe_cache", None)
 
 
 @pytest.mark.asyncio
@@ -532,6 +535,501 @@ def _enable_ollama(monkeypatch: pytest.MonkeyPatch, model: str) -> None:
 
 def _tags(*names: str) -> dict[str, Any]:
     return {"models": [{"name": n} for n in names]}
+
+
+# ── The probe describes the NET, not one machine ──────────────────────────
+#
+# One transport double for both providers, routing by URL. Two separate
+# `patch.object` calls on `httpx.AsyncClient` would write the same attribute and
+# the second would silently win — the exact trap that made an ops_alert test
+# assert on a client that was never used.
+
+
+def _net_client(
+    *,
+    groq: Any = None,
+    groq_status: int = 200,
+    groq_raises: Exception | None = None,
+    ollama: Any = None,
+    ollama_raises: Exception | None = None,
+) -> MagicMock:
+    """Stand in for httpx.AsyncClient, answering per host."""
+    calls: list[str] = []
+    requests: list[dict[str, Any]] = []
+
+    async def get(url: str, **kw: Any) -> Any:
+        calls.append(url)
+        # Headers too, not just the host. Routing by `"groq.com" in url` catches
+        # a probe sent to the wrong PROVIDER, and nothing below it: a missing
+        # Authorization header, or a path that is not `/models`, both left the
+        # suite green while production would get a permanent 401 or 404.
+        requests.append({"url": url, **kw})
+        if "groq.com" in url:
+            if groq_raises is not None:
+                raise groq_raises
+            resp = MagicMock()
+            resp.status_code = groq_status
+            resp.raise_for_status = MagicMock()
+            resp.json = MagicMock(return_value=groq if groq is not None else {})
+            return resp
+        if ollama_raises is not None:
+            raise ollama_raises
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value=ollama if ollama is not None else {})
+        return resp
+
+    client = MagicMock()
+    client.get = AsyncMock(side_effect=get)
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=client)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    factory = MagicMock(return_value=ctx)
+    factory.calls = calls
+    factory.requests = requests
+    return factory
+
+
+def _models(*ids: str) -> dict[str, Any]:
+    """Groq's GET /models shape."""
+    return {"object": "list", "data": [{"id": i, "object": "model"} for i in ids]}
+
+
+@pytest.mark.asyncio
+async def test_the_net_is_ok_when_groq_answers_and_the_laptop_is_dead(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The case that lies today: a healthy net reported as down.
+
+    Before Groq, `unreachable` here was true — the laptop WAS the net. Now it is
+    a working safety net waking the owner at 7am to fix a machine whose absence
+    changes nothing, which is the fastest way to teach someone to ignore the
+    alarm.
+
+    MUTATION GUARD — make the probe ignore Groq and return `_probe_ollama()`
+    alone; this goes red.
+    """
+    _enable_groq(monkeypatch)
+    _enable_ollama(monkeypatch, "gemma3:4b")
+    factory = _net_client(
+        groq=_models("llama-3.3-70b-versatile", "llama-3.1-8b-instant"),
+        ollama_raises=httpx.ConnectError("[Errno 111] Connection refused"),
+    )
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "ok"
+
+
+@pytest.mark.asyncio
+async def test_groq_answering_without_our_model_is_model_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Free tiers withdraw models without notice — that is how Kling broke.
+
+    MUTATION GUARD — stop checking that GROQ_MODEL is in `data[].id` (return
+    "ok" as soon as the listing responds) and this goes red.
+    """
+    _enable_groq(monkeypatch)
+    monkeypatch.setenv("OLLAMA_ENABLED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    factory = _net_client(groq=_models("llama-3.1-8b-instant", "whisper-large-v3"))
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "model-missing"
+
+
+@pytest.mark.asyncio
+async def test_a_rate_limited_groq_is_present_not_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """429 means the service answered. Being limited is not being gone.
+
+    MUTATION GUARD — treat 429 as `unreachable` and this goes red. It would page
+    the owner for a busy minute on a link that is working.
+    """
+    _enable_groq(monkeypatch)
+    monkeypatch.setenv("OLLAMA_ENABLED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    factory = _net_client(groq_status=429, groq={"error": {"code": "rate_limit_exceeded"}})
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "ok"
+
+
+@pytest.mark.asyncio
+async def test_a_dead_key_says_so_and_names_the_variable(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A 401 is the owner's to fix, and the log has to say WHICH thing to fix."""
+    _enable_groq(monkeypatch)
+    monkeypatch.setenv("OLLAMA_ENABLED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    factory = _net_client(groq_status=401, groq={"error": {"code": "invalid_api_key"}})
+    with caplog.at_level("ERROR"), patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "unreachable"
+
+    assert "GROQ_API_KEY" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_the_laptop_alone_still_holds_the_net_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Either link is enough — including the one that is only a bonus."""
+    _enable_groq(monkeypatch)
+    _enable_ollama(monkeypatch, "gemma3:4b")
+    factory = _net_client(
+        groq_raises=httpx.ConnectError("groq unreachable"),
+        ollama=_tags("gemma3:4b"),
+    )
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "ok"
+
+    # Both were asked. Without this the test passed with Groq deleted from the
+    # function entirely: its name promises "either link is enough" and it only
+    # ever demonstrated one of them.
+    assert [u for u in factory.calls if "groq.com" in u], "no se sondeo Groq"
+    assert [u for u in factory.calls if "groq.com" not in u], "no se sondeo el ROG"
+
+
+@pytest.mark.asyncio
+async def test_with_nothing_configured_it_behaves_exactly_as_before(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No key and no laptop is `off` — a choice, not a fault — and costs no request."""
+    monkeypatch.setenv("OLLAMA_ENABLED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    factory = _net_client(groq=_models("llama-3.3-70b-versatile"))
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "off"
+    factory.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_the_probe_does_not_spend_what_it_is_watching(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The monitor ticks every 5 minutes; Groq is asked at most once an hour.
+
+    A watchman that consumes the resource it watches is the v0.54.3 lesson
+    upside down. `monotonic` is patched on THIS module's own reference, never on
+    the `time` module: asyncio reads `time.monotonic()` for its own scheduling,
+    and patching it globally either hangs the loop or passes for the wrong
+    reason.
+
+    MUTATION GUARD — delete the cache READ (always fall through to the GET) and
+    the first assertion goes red.
+    """
+    _enable_groq(monkeypatch)
+    monkeypatch.setenv("OLLAMA_ENABLED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(llm_module, "_now", lambda: clock["t"])
+
+    factory = _net_client(groq=_models("llama-3.3-70b-versatile"))
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "ok"
+        assert await llm_module.check_fallback_provider() == "ok"
+        groq_calls = [u for u in factory.calls if "groq.com" in u]
+        assert len(groq_calls) == 1, f"asked Groq {len(groq_calls)} times in an hour"
+
+        # Past the TTL it asks again — a cache that never expires is a probe
+        # that stopped probing.
+        clock["t"] += llm_module._GROQ_PROBE_TTL_SECONDS + 1
+        assert await llm_module.check_fallback_provider() == "ok"
+        groq_calls = [u for u in factory.calls if "groq.com" in u]
+        assert len(groq_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_removing_the_key_is_not_hidden_by_a_cached_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The no-key path must not write the cache.
+
+    Caching `off` would report "no link" for an hour after a key was added, and
+    between tests it would leak one case's answer into the next.
+    """
+    monkeypatch.setenv("OLLAMA_ENABLED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    factory = _net_client(groq=_models("llama-3.3-70b-versatile"))
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "off"
+        assert llm_module._groq_probe_cache is None
+
+        _enable_groq(monkeypatch)
+        assert await llm_module.check_fallback_provider() == "ok"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", [
+    {"models": "texto"},
+    {"models": ["texto"]},
+    {"models": [None]},
+    {"models": {"gemma3:4b": True}},
+    ["una", "lista", "en", "la", "raiz"],
+    "una cadena",
+    None,
+])
+async def test_the_probe_never_raises_whatever_comes_back(
+    monkeypatch: pytest.MonkeyPatch, body: Any,
+) -> None:
+    """Never raising is the contract, not a nicety — and Groq being fine is no shield.
+
+    `main.py` calls this during startup and the monitor every 5 minutes, and
+    neither has anywhere to put an exception. An `AttributeError` out of here
+    leaves `app.state.llm_fallback` frozen at its last value — so `/api/v1/health`
+    serves a stale reading for ever — and stops `row.state` from moving, so the
+    debounce never confirms and **no alert is ever sent** while the log fills
+    with a line every five minutes. The alarm failing because of the fault it
+    exists to report.
+
+    Groq is healthy in every case below, which is the part that matters: the
+    composition awaited the laptop's probe regardless, so the link that was just
+    demoted to a bonus could still take down a report about a net that is
+    demonstrably fine.
+
+    MUTATION GUARD — move the Ollama parsing back outside its `try`, or drop the
+    `isinstance` guards, and these go red.
+    """
+    _enable_groq(monkeypatch)
+    _enable_ollama(monkeypatch, "gemma3:4b")
+
+    # Groq answers, but WITHOUT our model, so the composition is forced to go on
+    # and probe the laptop — a short-circuit on `ok` would otherwise mean this
+    # test never exercised the parsing it is here to pin.
+    factory = _net_client(groq=_models("otro-modelo"), ollama=body)
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        status = await llm_module.check_fallback_provider()
+
+    assert status in ("ok", "unreachable", "model-missing", "off")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", [
+    {"models": "texto"},
+    {"models": ["texto"]},
+    {"models": [None]},
+    {"models": {"gemma3:4b": True}},
+    ["una", "lista", "en", "la", "raiz"],
+    "una cadena",
+    None,
+])
+async def test_something_answered_is_not_the_same_as_nothing_answered(
+    monkeypatch: pytest.MonkeyPatch, body: Any,
+) -> None:
+    """A 200 nobody can parse means "answered, model not found" — not "down".
+
+    Groq is off here on purpose, so the laptop's own word is the one that comes
+    out; with Groq configured the composition returns Groq's and this would
+    prove nothing.
+
+    The two words send the owner to different places: `unreachable` says the
+    port is dead (`systemctl status`), `model-missing` says something is
+    listening and the model is not on it. Getting a 200 and reporting the port
+    dead is the same class of lie the whole fase exists to remove, one level
+    down — and it is the difference the `isinstance` guards make, since without
+    them the `try` swallows an `AttributeError` and calls it `unreachable`.
+
+    MUTATION GUARD — drop either `isinstance` guard in `_probe_ollama` and this
+    goes red.
+    """
+    monkeypatch.setenv("GROQ_API_KEY", "")
+    _enable_ollama(monkeypatch, "gemma3:4b")
+
+    factory = _net_client(ollama=body)
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "model-missing"
+
+
+@pytest.mark.asyncio
+async def test_a_blip_is_not_cached_for_an_hour(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failure spends no quota, so it must not buy an hour of silence.
+
+    The hour-long cache exists to protect the free tier's allowance. A refused
+    or unreachable call costs nothing, so caching it for the same hour is all
+    downside: a one-second network hiccup froze `unreachable`, the monitor's
+    two-reading debounce mailed "the safety net is down" about it, and the
+    recovery notice arrived fifty-five minutes after the net was back.
+
+    MUTATION GUARD — give failures the same TTL as successes and this goes red.
+    """
+    _enable_groq(monkeypatch)
+    monkeypatch.setenv("OLLAMA_ENABLED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    clock = {"t": 5000.0}
+    monkeypatch.setattr(llm_module, "_now", lambda: clock["t"])
+
+    blip = _net_client(groq_raises=httpx.ConnectError("un parpadeo"))
+    with patch.object(llm_module.httpx, "AsyncClient", blip):
+        assert await llm_module.check_fallback_provider() == "unreachable"
+
+    healthy = _net_client(groq=_models("llama-3.3-70b-versatile"))
+    with patch.object(llm_module.httpx, "AsyncClient", healthy):
+        # Still inside the failure TTL: the cached answer stands.
+        clock["t"] += llm_module._GROQ_PROBE_FAIL_TTL_SECONDS - 1
+        assert await llm_module.check_fallback_provider() == "unreachable"
+        assert healthy.calls == []
+
+        # Just past it — and well short of the hour a success would have bought.
+        clock["t"] += 2
+        assert await llm_module.check_fallback_provider() == "ok"
+
+    assert llm_module._GROQ_PROBE_FAIL_TTL_SECONDS < llm_module._GROQ_PROBE_TTL_SECONDS
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code", [500, 502, 503, 504, 404, 418])
+async def test_a_bad_status_from_groq_is_not_a_healthy_net(
+    monkeypatch: pytest.MonkeyPatch, code: int,
+) -> None:
+    """Any status that is not 200/429 means Groq cannot serve a lead right now.
+
+    A connection error was covered; a bad status code was not, and it is the
+    likelier failure: Groq answering 503 with the laptop asleep would have made
+    `/api/v1/health` say `ok`, the monitor stay quiet, and leads collect the
+    holding line with nothing making a sound. That is precisely the outage this
+    branch exists to make visible, hiding inside the thing built to reveal it.
+
+    MUTATION GUARD — return `ok` from the catch-all status branch and this goes
+    red.
+    """
+    _enable_groq(monkeypatch)
+    monkeypatch.setenv("OLLAMA_ENABLED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    factory = _net_client(groq_status=code, groq={"error": {"code": "server_error"}})
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "unreachable"
+
+
+@pytest.mark.asyncio
+async def test_the_request_the_probe_actually_sends(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The probe's own wire contract: right path, right credential.
+
+    Routing the double by host proves the probe went to the right provider and
+    nothing under that. A probe sent to `/no-such-endpoint`, or one that forgets
+    the `Authorization` header, is a permanent 404 or 401 in production — the
+    net reported down for ever while it is perfectly fine — and both left every
+    test green.
+
+    MUTATION GUARD — change the path or drop the header and this goes red.
+    """
+    _enable_groq(monkeypatch)
+    monkeypatch.setenv("OLLAMA_ENABLED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    factory = _net_client(groq=_models("llama-3.3-70b-versatile"))
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "ok"
+
+    assert len(factory.requests) == 1
+    sent = factory.requests[0]
+    assert sent["url"] == "https://api.groq.com/openai/v1/models"
+    assert sent["headers"]["Authorization"] == "Bearer gsk_dummy_not_a_real_key"
+
+
+@pytest.mark.asyncio
+async def test_a_configured_groq_is_the_fault_worth_reporting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With both links broken, the word describes the one the owner can fix.
+
+    A dead `GROQ_API_KEY` is fixable from a phone in another country; the laptop
+    needs somebody in the house. Report the laptop's fault instead and the alarm
+    says `model-missing` — "run ollama pull" — for a problem that is a revoked
+    key, which is the wrong machine and the exact thing the alert text was
+    rewritten to stop doing.
+
+    MUTATION GUARD — swap the priority so the laptop's word wins and this goes
+    red.
+    """
+    _enable_groq(monkeypatch)
+    _enable_ollama(monkeypatch, "gemma3:4b")
+
+    factory = _net_client(
+        groq_status=401,
+        groq={"error": {"code": "invalid_api_key"}},
+        ollama=_tags("qwen2.5:14b"),   # responde, pero no tiene NUESTRO modelo
+    )
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "unreachable"
+
+
+@pytest.mark.asyncio
+async def test_the_hour_is_the_point_not_the_ordering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The TTL's actual value, because the argument for it is a number.
+
+    Asserting only that the failure TTL is shorter than the success one lets
+    both shrink together: with 1.0 and 0.5 the ordering still holds, the suite
+    still passes, and the probe goes from 24 calls a day to 86,400 against an
+    allowance of 1,000. The whole justification written above the constant is
+    "2.4% of the quota", so that is what has to be pinned.
+
+    MUTATION GUARD — shrink either constant and this goes red.
+    """
+    assert llm_module._GROQ_PROBE_TTL_SECONDS >= 3600.0
+    assert 30.0 <= llm_module._GROQ_PROBE_FAIL_TTL_SECONDS <= 300.0
+
+    _enable_groq(monkeypatch)
+    monkeypatch.setenv("OLLAMA_ENABLED", "false")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    clock = {"t": 9000.0}
+    monkeypatch.setattr(llm_module, "_now", lambda: clock["t"])
+
+    # `model-missing` takes the long TTL too: the model being withdrawn is a
+    # 200 like any other, and asking again every minute would spend the quota
+    # the cache exists to protect.
+    factory = _net_client(groq=_models("otro-modelo"))
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "model-missing"
+        clock["t"] += 3599.0
+        assert await llm_module.check_fallback_provider() == "model-missing"
+        assert len(factory.calls) == 1, "volvio a preguntar dentro de la hora"
+
+
+@pytest.mark.asyncio
+async def test_a_healthy_groq_does_not_wake_the_laptop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When Groq answers, the ROG is never asked — and that is not just speed.
+
+    With the laptop asleep its probe costs the full `_PROBE_TIMEOUT_SECONDS` on
+    startup and on every 5-minute tick, and it puts a link that no longer
+    matters back in the path of a report about a net that is demonstrably fine:
+    a malformed answer from it used to take down the whole reading.
+
+    MUTATION GUARD — remove the short-circuit and this goes red.
+    """
+    _enable_groq(monkeypatch)
+    _enable_ollama(monkeypatch, "gemma3:4b")
+
+    factory = _net_client(
+        groq=_models("llama-3.3-70b-versatile"),
+        ollama_raises=AssertionError("no se debe preguntar al ROG"),
+    )
+    with patch.object(llm_module.httpx, "AsyncClient", factory):
+        assert await llm_module.check_fallback_provider() == "ok"
+
+    assert [u for u in factory.calls if "groq.com" not in u] == []
 
 
 @pytest.mark.asyncio

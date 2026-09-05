@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from time import monotonic as _now
 from typing import Any, Literal
 
 import httpx
@@ -47,14 +48,38 @@ log = logging.getLogger(__name__)
 # analytics can tell a held line apart from something a model wrote.
 ProviderName = Literal["kimi", "minimax", "groq", "ollama", "fallback"]
 
-# What `check_fallback_provider()` can say about the last-resort provider.
-# "off" is a choice, not a fault; the other two are faults with different fixes.
+# What `check_fallback_provider()` can say about **the safety net** — the whole
+# of it, not one machine. Since Groq joined the chain the net is two links, and
+# it is healthy when EITHER of them can answer; a word here that described only
+# the laptop would report a working net as down every time it went to sleep.
+# "off" is a choice, not a fault (nothing configured); the other two are faults
+# with different fixes.
 FallbackStatus = Literal["ok", "unreachable", "model-missing", "off"]
 
 # The probe is not a generation, so it does not get the generation timeout
 # (OLLAMA_TIMEOUT_SECONDS, 120s by default). A readiness check that can hold the
 # startup for two minutes is a readiness check someone will delete.
 _PROBE_TIMEOUT_SECONDS = 5.0
+
+# Groq publishes no statement on whether `GET /models` counts against the free
+# tier's limits, and a watchman that spends what it watches is the v0.54.3
+# lesson upside down. Cached for an hour, the worst case is 24 calls a day
+# against a 1,000/day allowance — 2.4% — while the monitor keeps ticking every
+# 5 minutes off the cached reading. The price is latency of detection: a real
+# change at Groq surfaces in at most 65 minutes.
+_GROQ_PROBE_TTL_SECONDS = 3600.0
+
+# A failure gets a much shorter one, and the asymmetry is free: the whole reason
+# for the hour above is not spending the free tier's allowance, and a refused or
+# unreachable call spends nothing. With one TTL for both, a one-second blip
+# froze `unreachable` for an hour — long enough for the monitor's two-reading
+# debounce to mail the owner "the safety net is down" about a network hiccup,
+# and to deliver the recovery notice fifty-five minutes after the fact.
+_GROQ_PROBE_FAIL_TTL_SECONDS = 60.0
+
+# (instant, result). Process-local and never persisted: a stale reading that
+# outlived a restart would be a probe reporting on a world it never saw.
+_groq_probe_cache: tuple[float, FallbackStatus] | None = None
 
 
 @dataclass(frozen=True)
@@ -418,8 +443,83 @@ def _model_is_available(configured: str, available: set[str]) -> bool:
     return ":" not in configured and f"{configured}:latest" in available
 
 
-async def check_fallback_provider() -> FallbackStatus:
-    """Can the last-resort provider actually answer right now?
+async def _probe_groq() -> FallbackStatus:
+    """Can Groq answer right now, and does it still have our model?
+
+    The same two-part check as the one below, for the same reason: a provider
+    that responds while the model we configured has been retired is exactly as
+    useless as one that is down, and it looks healthier. Groq is a free tier —
+    what is free today can be withdrawn without notice, which is precisely how
+    Kling broke — so "the model is still on the list" is not a formality.
+
+    A **429 counts as `ok`**: the service answered, and being rate limited is
+    not being absent. Treating it as a fault would page the owner for a busy
+    minute on a link that is working.
+
+    A 401/403 is logged at ERROR because a dead key is worth a line an hour —
+    the cache is what stops it becoming a loop — and it names the variable to
+    fix, because an alert that does not say what to do gets postponed.
+
+    Never raises.
+    """
+    global _groq_probe_cache
+    s = get_settings()
+    key = (s.GROQ_API_KEY or "").strip()
+    # Before the cache, and it deliberately does NOT write one. Caching "off"
+    # would survive the key being added and report no link for an hour after it
+    # exists — and in tests it would leak the answer into the next case.
+    if not key:
+        return "off"
+
+    cached = _groq_probe_cache
+    if cached is not None:
+        ttl = (
+            _GROQ_PROBE_TTL_SECONDS
+            if cached[1] in ("ok", "model-missing")
+            else _GROQ_PROBE_FAIL_TTL_SECONDS
+        )
+        if _now() - cached[0] < ttl:
+            return cached[1]
+
+    status: FallbackStatus
+    try:
+        async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_SECONDS) as client:
+            resp = await client.get(
+                f"{s.GROQ_BASE_URL.rstrip('/')}/models",
+                headers={"Authorization": f"Bearer {key}"},
+            )
+        code = resp.status_code
+        if code == 200:
+            data = resp.json()
+            items = data.get("data") if isinstance(data, dict) else None
+            available = {
+                str((m or {}).get("id") or "")
+                for m in (items or [])
+                if isinstance(m, dict)
+            }
+            status = "ok" if s.GROQ_MODEL in available else "model-missing"
+        elif code == 429:
+            status = "ok"
+        elif code in (401, 403):
+            log.error(
+                "Groq refused the probe with %s: GROQ_API_KEY is wrong, revoked "
+                "or out of permissions. The LLM safety net is one link short.",
+                code,
+            )
+            status = "unreachable"
+        else:
+            log.warning("Groq probe got %s from %s", code, s.GROQ_BASE_URL)
+            status = "unreachable"
+    except Exception as exc:  # noqa: BLE001 — every failure to reach it means the same
+        log.debug("Groq probe failed against %s: %s", s.GROQ_BASE_URL, exc)
+        status = "unreachable"
+
+    _groq_probe_cache = (_now(), status)
+    return status
+
+
+async def _probe_ollama() -> FallbackStatus:
+    """Can the local model answer right now?
 
     Two things have to be true, and checking only the first is precisely how
     this stayed broken for twelve weeks: the server has to respond, AND the
@@ -439,11 +539,57 @@ async def check_fallback_provider() -> FallbackStatus:
             resp = await client.get(f"{s.OLLAMA_BASE_URL.rstrip('/')}/api/tags")
             resp.raise_for_status()
             data = resp.json()
+        # Inside the `try`, and with the same `isinstance` guards its Groq
+        # sibling has. This parsing used to sit outside it: a 200 carrying an
+        # unexpected shape (`{"models": "text"}`, a bare list, a JSON string)
+        # raised `AttributeError` straight out of a function whose contract —
+        # relied on by startup and by every monitor tick — is that it never
+        # raises. Composition made that worse rather than better: the laptop was
+        # probed even when Groq had already answered `ok`, so a healthy net
+        # could be brought down by the link that no longer matters.
+        items = data.get("models") if isinstance(data, dict) else None
+        available = {
+            str((m or {}).get("name") or "")
+            for m in (items or [])
+            if isinstance(m, dict)
+        }
     except Exception as exc:  # noqa: BLE001 — every failure to reach it means the same thing
         log.debug("Ollama probe failed against %s: %s", s.OLLAMA_BASE_URL, exc)
         return "unreachable"
 
-    available = {
-        str((m or {}).get("name") or "") for m in (data.get("models") or [])
-    }
     return "ok" if _model_is_available(s.OLLAMA_MODEL, available) else "model-missing"
+
+
+async def check_fallback_provider() -> FallbackStatus:
+    """Is there a safety net right now — any safety net?
+
+    This is what `/api/v1/health` serves and what the monitor alarms on, so what
+    it describes has to be the thing that matters: **whether a lead who writes
+    while Kimi and MiniMax are both down gets an answer**. Two links can provide
+    that, and either one is enough. Reporting the state of the laptop alone —
+    which is what this did until the net stopped being only the laptop — means
+    waking the owner at 7am to fix a machine whose absence changes nothing.
+
+    When Groq is not configured it behaves **exactly** as it did before, so an
+    install without a key sees no change in behaviour at all.
+
+    Never raises. `main.py` calls it during startup and the monitor every 5
+    minutes; neither has anywhere to put an exception.
+    """
+    groq = await _probe_groq()
+    # Short-circuit, and it is not only about speed: probing the laptop when the
+    # answer is already known costs up to `_PROBE_TIMEOUT_SECONDS` on every tick
+    # with the ROG asleep, and it puts a link that no longer matters back in the
+    # path of a report about a net that is demonstrably fine.
+    if groq == "ok":
+        return "ok"
+
+    ollama = await _probe_ollama()
+    if ollama == "ok":
+        return "ok"
+    # Neither can answer. Which fault to report is a question of which one the
+    # owner can act on: a configured Groq that is failing is the net, and it is
+    # fixable from a laptop anywhere. The ROG needs someone in the house.
+    if groq != "off":
+        return groq
+    return ollama

@@ -74,22 +74,69 @@ MONITOR_KEY = "llm_fallback"
 # What each status means for the person reading the email at 7am. The probe
 # returns a word; this turns it into the command that fixes it, because an alert
 # that does not say what to do gets postponed until it is forgotten.
-_REMEDY: dict[str, str] = {
-    "unreachable": (
-        "Ollama no responde en {base_url}.\n"
-        "  - En el ROG: systemctl status ollama-bridge && systemctl status ollama\n"
-        "  - El puente escucha en la IP del bridge de Docker, que Docker asigna\n"
-        "    por orden de creacion: si alguna red se recreo, esa IP pudo migrar."
-    ),
-    "model-missing": (
-        "Ollama responde en {base_url} pero no tiene el modelo {model}.\n"
-        "  - En el ROG: ollama pull {model}"
-    ),
-    "off": (
-        "OLLAMA_ENABLED esta en false, asi que no hay tercer eslabon.\n"
-        "  - Si es a proposito, ignora este aviso."
-    ),
-}
+# The remedy is BUILT, not looked up, and this is not decoration.
+#
+# The probe returns one word about the whole net, and one word cannot carry a
+# pair: with Groq unreachable and the laptop merely missing its model, `unreachable`
+# is the honest summary — but a fixed template then told the owner "neither link
+# responds" (false: one does) and sent him to run `systemctl status`, which comes
+# back green, instead of the `ollama pull` that would actually restore the net.
+# The mirror case sent him to `ollama pull` on a machine that was off the network.
+#
+# So no line here asserts the state of a provider. It says what the net could not
+# do, and lists what to check on the links that EXIST — an install with no
+# GROQ_API_KEY was being told to go and check a Groq that was never configured,
+# and being shown a GROQ_MODEL the probe had never looked at.
+def _remedy(status: str) -> str:
+    s = get_settings()
+    groq_on = bool((s.GROQ_API_KEY or "").strip())
+    ollama_on = bool(s.OLLAMA_ENABLED)
+
+    if status == "off":
+        return (
+            "No hay red de seguridad configurada: ni GROQ_API_KEY ni\n"
+            "OLLAMA_ENABLED. Kimi y MiniMax son lo unico que le responde a un\n"
+            "lead, y si fallan los dos a la vez recibe la linea de espera.\n"
+            "  - Si es a proposito, ignora este aviso."
+        )
+
+    lines = [
+        "La red de seguridad no puede responder a un lead.",
+        "",
+        f"La sonda midio: {status}. Esa palabra describe la RED entera, no un",
+        "proveedor: con dos eslabones no puede decir cual de los dos falla ni",
+        "como. Revisa el que tengas puesto.",
+        "",
+    ]
+    if groq_on:
+        lines += [
+            f"  - Groq ({s.GROQ_BASE_URL}) — este es el eslabon que sostiene",
+            "    la red, y se arregla desde cualquier sitio:",
+            "      * clave: revisa GROQ_API_KEY en el .env del VPS. Un 401 o un",
+            "        403 sale en el log del backend nombrando la variable.",
+            f"      * modelo: GROQ_MODEL={s.GROQ_MODEL} tiene que seguir en la",
+            "        lista de console.groq.com. Lo gratis se retira sin avisar,",
+            "        que es exactamente como se rompio Kling.",
+        ]
+    else:
+        lines += [
+            "  - Groq: NO configurado (GROQ_API_KEY vacia). Es el unico eslabon",
+            "    que no depende de que haya alguien en casa; ponerlo es la",
+            "    mejora mas barata que tiene esto.",
+        ]
+    if ollama_on:
+        lines += [
+            f"  - Ollama ({s.OLLAMA_BASE_URL}) — opcional, en el ROG:",
+            "      * systemctl status ollama-bridge && systemctl status ollama",
+            f"      * ollama pull {s.OLLAMA_MODEL}",
+            "      * El puente escucha en la IP del bridge de Docker, que Docker",
+            "        asigna por orden de creacion: si alguna red se recreo, esa",
+            "        IP pudo migrar.",
+        ]
+    else:
+        lines.append("  - Ollama: NO habilitado (OLLAMA_ENABLED=false).")
+    return "\n".join(lines)
+
 
 _HEALTHY: tuple[str, ...] = ("ok",)
 
@@ -151,25 +198,22 @@ async def _count_canned_replies(cutoff: datetime) -> tuple[int, datetime | None]
 
 
 def _describe(status: str, previous: str | None) -> tuple[str, str]:
-    s = get_settings()
     if status in _HEALTHY:
         return (
             "[Eko Realtors] La red de seguridad LLM se ha recuperado",
             f"llm_fallback: {previous} -> {status}\n\n"
-            "El tercer eslabon (Ollama local) vuelve a poder responder. "
+            "La red de seguridad (Groq / Ollama) vuelve a poder responder. "
             "No hace falta hacer nada.",
         )
-    remedy = _REMEDY.get(status, "Estado desconocido: {status}").format(
-        base_url=s.OLLAMA_BASE_URL, model=s.OLLAMA_MODEL, status=status
-    )
+    remedy = _remedy(status)
     return (
         "[Eko Realtors] La red de seguridad LLM ha caido",
         f"llm_fallback: {previous or 'desconocido'} -> {status}\n\n"
         f"{remedy}\n\n"
         "Kimi y MiniMax no se ven afectados por esto. El riesgo es que fallen "
         "los dos a la vez (paso el 1-jun-2026: 403 y 429 en el mismo minuto): "
-        "sin el eslabon local, los leads reciben la linea de espera en vez de "
-        "una respuesta.\n\n"
+        "sin la red de seguridad, los leads reciben la linea de espera en vez "
+        "de una respuesta.\n\n"
         "Estado en vivo: https://inmo-demo.ekoaiautomation.com/api/v1/health",
     )
 
@@ -330,10 +374,11 @@ async def run_monitor_tick() -> FallbackStatus:
                         "[Eko Realtors] Un cliente recibio la respuesta enlatada",
                         f"{count} mensaje(s) salieron sellados provider='fallback' "
                         "desde el ultimo control.\n\n"
-                        "Eso significa que la cadena entera (Kimi, MiniMax y el "
-                        "Ollama local) fallo mientras un lead escribia, y recibio "
-                        "'alguien te respondera en breve' en vez de una respuesta.\n\n"
-                        f"Estado actual del eslabon local: {status}\n"
+                        "Eso significa que la cadena entera (Kimi, MiniMax, Groq "
+                        "y el Ollama local) fallo mientras un lead escribia, y "
+                        "recibio 'alguien te respondera en breve' en vez de una "
+                        "respuesta.\n\n"
+                        f"Estado actual de la red de seguridad: {status}\n"
                         "Revisa las conversaciones recientes en la consola.",
                     )
                     if sent:

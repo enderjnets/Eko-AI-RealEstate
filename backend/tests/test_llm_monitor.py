@@ -513,3 +513,37 @@ async def test_an_unconfigured_channel_also_consumes_the_damage_mark(
     assert row is not None
     assert row.last_seen_fallback_at == newest, "consumido: no hay nada que reintentar"
     assert row.alerts_today == 0
+
+
+@pytest.mark.parametrize("status", ["ok", "unreachable", "model-missing", "off", "vaya"])
+def test_every_status_renders_into_an_alert_a_person_can_act_on(status: str) -> None:
+    """`_describe` must not raise for ANY status the probe can return.
+
+    `_REMEDY`'s templates carry `{placeholders}` and `_describe` fills them from
+    settings. A template that uses a name the `.format()` call does not pass is
+    a `KeyError` raised INSIDE the monitor tick, at the exact moment it was
+    trying to warn somebody — the alarm failing because of the fault it exists
+    to report. The templates now name two providers instead of one, which is
+    four placeholders where there were two, so this is pinned rather than left
+    to be discovered at 7am.
+
+    The last case is deliberately not a real status: an unknown word must
+    degrade into a readable line, not explode.
+    """
+    subject, body = llm_monitor._describe(status, previous="ok")
+    assert subject.startswith("[Eko Realtors] ")
+    assert body.strip()
+    assert "{" not in body, f"placeholder sin rellenar en el aviso de {status!r}: {body}"
+
+    if status == "ok":
+        return
+    # Every unhealthy alert points somewhere a person can look.
+    assert "/api/v1/health" in body
+
+    if status == "vaya":
+        return  # an unknown word only has to render; there is no remedy to name
+    # A real fault names what to look at. Which provider depends on the status;
+    # that at least one of the two is named does not — mandar al dueno a
+    # `ollama pull` cuando lo que falla es la clave de Groq es hacerle arreglar
+    # la maquina equivocada.
+    assert "Groq" in body or "Ollama" in body or "GROQ" in body or "OLLAMA" in body

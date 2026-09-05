@@ -1235,21 +1235,33 @@ async def _startup() -> None:
         logger.debug("LLM fallback probe raised: %s", exc)
         app.state.llm_fallback = "unreachable"
 
-    if app.state.llm_fallback == "unreachable":
+    if app.state.llm_fallback in ("unreachable", "model-missing"):
+        # Only the links this install actually has. Naming Groq on a deployment
+        # with no key sends the operator to check something that was never
+        # configured, and quoting a GROQ_MODEL the probe never looked at is an
+        # assertion nobody measured.
+        links = []
+        if (settings.GROQ_API_KEY or "").strip():
+            links.append(
+                f"Groq at {settings.GROQ_BASE_URL} "
+                f"(GROQ_API_KEY, GROQ_MODEL={settings.GROQ_MODEL})"
+            )
+        else:
+            links.append("Groq: NOT configured (GROQ_API_KEY is empty)")
+        if settings.OLLAMA_ENABLED:
+            links.append(
+                f"Ollama at {settings.OLLAMA_BASE_URL} "
+                f"(OLLAMA_MODEL={settings.OLLAMA_MODEL})"
+            )
+        else:
+            links.append("Ollama: not enabled (OLLAMA_ENABLED=false)")
         logger.error(
-            "⚠️  OLLAMA_ENABLED=true but %s does not answer. The last-resort LLM is "
-            "NOT there: if Kimi and MiniMax fail together (a 429 on a subscription "
-            "plan is routine), leads get the canned holding line instead of a reply.",
-            settings.OLLAMA_BASE_URL,
-        )
-    elif app.state.llm_fallback == "model-missing":
-        logger.error(
-            "⚠️  Ollama answers at %s but does not have OLLAMA_MODEL=%s. The "
-            "last-resort LLM is reachable and still cannot reply — run "
-            "`ollama pull %s`.",
-            settings.OLLAMA_BASE_URL,
-            settings.OLLAMA_MODEL,
-            settings.OLLAMA_MODEL,
+            "⚠️  The LLM safety net cannot answer (probe says %s). It is the "
+            "whole net, not one provider: %s. If Kimi and MiniMax fail together "
+            "(a 429 on a subscription plan is routine), leads get the canned "
+            "holding line instead of a reply.",
+            app.state.llm_fallback,
+            "; ".join(links),
         )
 
     global _llm_monitor_task

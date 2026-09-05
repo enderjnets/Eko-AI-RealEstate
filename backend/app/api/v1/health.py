@@ -8,9 +8,9 @@ router = APIRouter()
 
 @router.get("/health")
 async def health(request: Request) -> dict[str, object]:
-    """Cheap liveness probe. Does NOT touch DB / Redis / Ollama per request —
-    `llm_fallback` is the result the startup probe already measured, read from
-    app state, so this endpoint stays free to call."""
+    """Cheap liveness probe. Does NOT touch DB / Redis / the LLM safety net per
+    request — `llm_fallback` is the result the startup probe already measured,
+    read from app state, so this endpoint stays free to call."""
     s = get_settings()
     return {
         "status": "ok",
@@ -26,14 +26,18 @@ async def health(request: Request) -> dict[str, object]:
         # that dropped the value would go unnoticed until the spam arrived.
         # A boolean, not the value — this endpoint is unauthenticated.
         "captcha": "on" if (s.TURNSTILE_SECRET or "").strip() else "off",
-        # Whether the last-resort LLM can actually answer, for exactly the same
+        # Whether the LLM safety net can actually answer, for exactly the same
         # reason as the line above: the failure is invisible from outside. This
         # install ran with OLLAMA_ENABLED=true for twelve weeks while the server
         # was unreachable and the model was not downloaded.
         #
-        # "off"           — deliberately not configured, not a fault
-        # "unreachable"   — the port does not answer
-        # "model-missing" — it answers, but not for OLLAMA_MODEL
+        # It describes the NET — Groq plus the optional local Ollama — and not
+        # one machine: it is healthy when EITHER can answer, so the laptop going
+        # to sleep no longer turns this red.
+        #
+        # "off"           — nothing configured, deliberately; not a fault
+        # "unreachable"   — no link answers
+        # "model-missing" — a link answers, but not for the model configured on it
         # "unknown"       — the startup probe has not run
         #
         # A word, never a URL or a key: this endpoint is unauthenticated.
