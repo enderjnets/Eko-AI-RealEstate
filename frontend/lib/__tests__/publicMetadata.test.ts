@@ -55,6 +55,31 @@ describe("public pages do not leak the platform's identity", () => {
     for (const s of strings(metadata)) expect(s).not.toMatch(PLATFORM);
   });
 
+  it("the fall guide declares its own title, description and preview card", async () => {
+    // It is the page a reel's caption promises, so it is also the page whose
+    // link gets pasted into a DM — and an undeclared openGraph title makes that
+    // preview card read "Eko AI Realtors — Dashboard" to somebody who was told
+    // they were getting a guide to the aspens.
+    const { metadata } = await import("../../app/fall/page");
+    expect(metadata.title).toBeTruthy();
+    expect(metadata.description).toBeTruthy();
+    expect(metadata.openGraph?.title).toBeTruthy();
+    expect(metadata.appleWebApp).toBeTruthy();
+  });
+
+  it("nothing the fall guide publishes names the platform", async () => {
+    const { metadata } = await import("../../app/fall/page");
+    for (const s of strings(metadata)) expect(s).not.toMatch(PLATFORM);
+  });
+
+  it("the fall guide is indexable — being found is most of its job", async () => {
+    // The root layout defaults to `index: false`, which is right for the panel.
+    // This page exists to be searched for in September and linked to from three
+    // bios; inheriting that default would be the whole point, silently undone.
+    const { metadata } = await import("../../app/fall/page");
+    expect(metadata.robots).toMatchObject({ index: true });
+  });
+
   it("both public pages set their own home-screen name", async () => {
     // The root layout's is the platform's. Metadata merges, so an undeclared
     // one is inherited and a seller's iPhone shows their agent's vendor.

@@ -70,9 +70,25 @@ describe("host routing", () => {
 
   it("leaves the public pages alone on the brand domain", async () => {
     const { middleware } = await load(BRAND, PANEL);
-    for (const p of ["/", "/contact"]) {
+    for (const p of ["/", "/contact", "/fall"]) {
       expect(location(middleware(req("www.denverhomestory.com", p)))).toBeNull();
     }
+  });
+
+  it("serves the fall guide on the brand domain, which is the only place it is read", async () => {
+    // Named separately from the loop above because this one has a failure mode
+    // the loop's message would not explain. `/fall` is what a reel's caption
+    // promises: somebody comments a keyword, gets the link in a DM and taps it.
+    // Dropped from PUBLIC_PATHS it answers 308 to the panel, and the visitor —
+    // exactly the person the campaign was built to reach — lands on a login
+    // screen for an internal tool. Nothing in the product reports that; it
+    // reads as "the campaign did not convert".
+    const { middleware } = await load(BRAND, PANEL);
+    expect(location(middleware(req("www.denverhomestory.com", "/fall")))).toBeNull();
+    // And with a UTM query, which is how every real visit to it arrives.
+    expect(
+      location(middleware(req("www.denverhomestory.com", "/fall", "?utm_source=instagram"))),
+    ).toBeNull();
   });
 
   it("does not serve the platform's own sales page on the brand domain", async () => {
@@ -167,6 +183,8 @@ describe("host routing", () => {
     expect(hosts.isPublicPath("/contact/thanks")).toBe(true);
     expect(hosts.isPublicPath("/contactos")).toBe(false);
     expect(hosts.isPublicPath("/leads")).toBe(false);
+    expect(hosts.isPublicPath("/fall")).toBe(true);
+    expect(hosts.isPublicPath("/fallback")).toBe(false);
   });
 
   it("never redirects the API, or the capture form would lose its POST", async () => {

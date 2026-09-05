@@ -2,6 +2,34 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.80.0] — 2026-09-05
+
+### Added
+- **The fall-colour guide at `/fall`** — the landing page a reel's caption
+  promises. Built for the *comment-to-DM* mechanic: somebody comments a keyword
+  under a scenic reel, gets the link back, and reads this.
+  - **The guide is not gated.** The DM already promised it; putting it behind
+    the form afterwards is a bait-and-switch, and this is a local audience. The
+    guide is the page; the consult form sits underneath it, asking the
+    real-estate question separately and honestly.
+  - **Sorted by elevation, not by place.** A list of seven spots is stale eight
+    days after publication. Aspens turn from the top down, so four elevation
+    bands keep the page useful from mid-September to November — the difference
+    between one reel's landing page and a page worth linking in a bio.
+- **`ConsultForm` takes a `variant`.** `/fall` renders the landing's own form
+  rather than a copy of it: same endpoint, same honeypot, same Turnstile, and
+  the same consent string rendered and stored. Only the attribution differs, so
+  a lead from the guide is distinguishable in the Inbox from one off the
+  landing. A second capture form is how a TCPA record ends up describing a
+  sentence the visitor never read.
+
+### Fixed
+- **`/fall` registered in `PUBLIC_PATHS`.** Without it the brand domain answers
+  the route with a 308 to the internal panel, and every visitor who taps the
+  link in a DM lands on a login screen for an operator tool. Nothing in the
+  product reports that — it reads as "the campaign did not convert". Covered by
+  a routing test that fails on the path's absence, mutation-verified.
+
 ## [0.79.0] — 2026-09-05
 
 ### Added

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.79.0";
+export const CURRENT_VERSION = "0.80.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.80.0",
+    date: "2026-09-05",
+    title: {
+      en: "Fall color guide at /fall",
+      es: "Guía de colores de otoño en /fall",
+    },
+    changes: [
+      {
+        en: "A season-long guide to Colorado's aspens, sorted by elevation rather than by place — the landing page a reel's caption promises. The guide is not gated: it is given away in full, and the consult form sits underneath it.",
+        es: "Una guía de los álamos de Colorado para toda la temporada, ordenada por altitud y no por sitio — la página que promete el pie de un reel. La guía no está detrás de un muro: se regala entera, y el formulario va debajo.",
+      },
+      {
+        en: "The page renders the landing's own consult form with its own attribution tag, so a lead from the guide is distinguishable in the Inbox from one off the landing. One form, one consent string, one endpoint.",
+        es: "La página usa el mismo formulario de la landing con su propia etiqueta de atribución, así un lead de la guía se distingue en el Inbox de uno de la landing. Un formulario, un consentimiento, un endpoint.",
+      },
+      {
+        en: "/fall is registered as a public route. Left out, the brand domain answers it with a 308 to the internal panel and every visitor who taps the link lands on a login screen.",
+        es: "/fall queda registrada como ruta pública. Sin eso, el dominio de marca la contesta con un 308 al panel interno y quien toca el enlace acaba en una pantalla de login.",
+      },
+    ],
+  },
   {
     version: "0.79.0",
     date: "2026-09-05",

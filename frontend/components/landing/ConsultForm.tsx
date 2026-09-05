@@ -25,12 +25,21 @@ import { Turnstile, TURNSTILE_SITE_KEY } from "@/components/ui/Turnstile";
 
 const FORM_KEY = process.env.NEXT_PUBLIC_CAPTURE_FORM_KEY || undefined;
 
-/** Whitelisted attribution key; marks the lead as having come from this page. */
+/**
+ * Whitelisted attribution key; marks the lead as having come from this page.
+ *
+ * The DEFAULT, not the only value. `/fall` renders this same form and passes
+ * its own variant, which is the whole reason the form takes a prop instead of
+ * being copied: the consent wording rendered beside the checkbox is the wording
+ * stored as evidence, and a second capture form is how that record ends up
+ * describing a sentence the visitor never read. One form, one consent string,
+ * one endpoint — only the attribution differs.
+ */
 const LANDING_VARIANT = "landing";
 
 type Goal = "selling" | "buying" | "valuing";
 
-function ConsultFormInner() {
+function ConsultFormInner({ variant }: { variant: string }) {
   const { t } = useI18n();
   const params = useSearchParams();
 
@@ -59,12 +68,12 @@ function ConsultFormInner() {
     // and scrolled down here still came from TikTok. A UTM in the CURRENT url
     // is more specific still, so it goes last.
     setUtm({
-      landing_variant: LANDING_VARIANT,
+      landing_variant: variant,
       ...storedAttribution(storage),
       ...collected,
     });
     setSessionId(sessionKey(storage));
-  }, [params]);
+  }, [params, variant]);
 
   // The moment somebody starts filling this in — once, on the first field they
   // touch. It is the funnel step between "read the page" and "sent it", and
@@ -335,12 +344,12 @@ function LandingField({
   );
 }
 
-export function ConsultForm() {
+export function ConsultForm({ variant = LANDING_VARIANT }: { variant?: string } = {}) {
   // useSearchParams needs a Suspense boundary or the whole route opts out of
   // static rendering.
   return (
     <Suspense fallback={<div className="h-96 border border-ln-cream/20" />}>
-      <ConsultFormInner />
+      <ConsultFormInner variant={variant} />
     </Suspense>
   );
 }

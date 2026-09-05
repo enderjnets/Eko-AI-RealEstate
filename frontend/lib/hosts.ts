@@ -79,8 +79,14 @@ export const PANEL_HOST = hostOf(PANEL_URL);
  * reach the brand domain are Denver home sellers who watched a video; showing
  * them the pitch we make to their agent's competitors is the single worst page
  * we could serve there. It stays reachable internally.
+ *
+ * `/fall` is here because it is the page a reel's caption promises. Left out,
+ * the middleware 308s it to the panel and every visitor who comments a keyword,
+ * gets the link and taps it lands on an internal login screen — the exact
+ * people the campaign exists to reach, and a failure that looks like nothing at
+ * all from inside the product.
  */
-export const PUBLIC_PATHS = ["/", "/contact"];
+export const PUBLIC_PATHS = ["/", "/contact", "/fall"];
 
 /** `/contact` and `/contact/anything` both count; `/contactos` does not. */
 export function isPublicPath(pathname: string): boolean {
