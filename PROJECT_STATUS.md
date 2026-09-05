@@ -382,12 +382,28 @@ aparece en la factura. Cuatro cosas que hay que resolver bien o hacen daño:
 Y el tope diario de imágenes (`RENDER_IMAGES_PER_DAY`, hoy 8) tiene que cubrir
 también este camino, o será la vía por la que se gasta sin freno.
 
-### Siguiente paso
+### Siguiente paso — pendiente para mañana (5-sep)
 
-**F3 — historial del lead y llamadas de voz completas** ([CRÍTICA]). Su paso 0
-es leer un `Call` real de VAPI para fijar los nombres de campo antes de escribir
-el parser; los ids están en `conversations.external_thread_id`. Antes, el
-despliegue del checkpoint A, que espera autorización.
+El plan queda con **dos fases sin empezar** y todo lo demás desplegado.
+
+**F6 — vistas por vídeo de YouTube.** Necesita una acción del dueño **antes** de
+que se pueda probar de verdad: crear una clave en Google Cloud (APIs y servicios
+→ Credenciales → Clave de API, restringida a «YouTube Data API v3») y ponerla en
+el `.env` del VPS como `YOUTUBE_DATA_API_KEY`. El agente no la ve. Sin clave, el
+código se escribe y se prueba con la API parcheada, pero la verificación real
+espera. Coste medido: `videos.list` es 1 unidad por llamada de hasta 50 vídeos,
+cuota diaria 10.000, un tick cada 6 h gasta ~4 unidades al día.
+
+TikTok e Instagram **no** entran: sus APIs no exponen las vistas sin una app
+propia con revisión de Meta/TikTok, así que esas columnas se teclean a mano
+desde la consola de contenido.
+
+**F9 — cierre documental.** `docs/analytics.md` con el diccionario de métricas:
+la definición exacta de cada número, qué es medición y qué es asociación, la
+retención, GPC, y qué no se guarda. Es lo que evita que dentro de tres meses
+alguien lea «tasa de cierre» y suponga otra cosa.
+
+Nada de esto bloquea el uso: lo desplegado hoy ya mide y ya se puede mirar.
 
 ---
 
