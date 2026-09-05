@@ -8,7 +8,54 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ## `/fall` — la guia que promete el reel (rama `feat/fall-guide`, v0.80.0)
 
-**Construido y verificado en local, NO desplegado.** Produccion sigue en
+**DESPLEGADO el 5-sep-2026.** Produccion en `6f6ee2d`, `/api/v1/health` = **0.80.0**.
+`www.denverhomestory.com/fall` = **200** con `<main>=1`, `Guanella=1`,
+`Checking session=0` — la guia, no el spinner. Sin regresion: `/` y `/contact`
+200, `/leads` `/about` `/login` `/docs` 308 al panel, la API sin sesion 401, y
+en navegador real sin cookies `/leads` `/inbox` `/settings` acaban en `/login`
+(el guarda que toque sigue protegiendo el panel).
+
+### 🔴 ABIERTO: el aviso de lead nuevo NO llega
+
+**El formulario funciona de punta a punta.** Envio real desde `/fall` en
+produccion: `202 {"ok":true}`, Turnstile **deja pasar** a un navegador
+automatizado, y la fila quedo escrita —lead **1260**— con la atribucion entera:
+`landing_variant=fall, utm_source=instagram, utm_campaign=fall2026,
+utm_content=preflight-reel`. La pieza que prometia («vas a saber que reel
+produjo cada lead») **esta probada**.
+
+**Lo que no funciona es avisar de que ha llegado.** Resend contesto **200**, el
+producto escribio `delivery_status=sent` con
+`external_id=96edcb61-f2ef-4177-806f-3756e503f20a` y `last_error` vacio — y el
+correo **nunca aparecio** en `enderjnets@gmail.com` (buscado con `in:anywhere`,
+que incluye spam y papelera). Un 200 no es entrega.
+
+El dato que estrecha el problema: los avisos del vigia LLM (`alertas@…`) **si
+llegan** a esa misma direccion, y salen del **mismo dominio verificado**. La
+diferencia es el remitente: `OPS_ALERT_FROM=alertas@` funciona,
+`RESEND_FROM=…noreply@…` no. La sospecha razonable es **lista de supresion en
+Resend** para esa direccion o ese remitente, pero **no lo he comprobado**: hace
+falta el panel de Resend y ahi no entro. **Un id que buscar:
+`96edcb61-f2ef-4177-806f-3756e503f20a`.**
+
+**Por que importa mas de lo que parece:** la pagina promete «We'll call you back
+within a few hours». Un lead del reel entra bien y se atribuye bien, y **nadie
+se entera**. El texto del producto es una promesa.
+
+**Correccion a lo que afirme antes:** dije «0 leads en produccion, el formulario
+nunca ha capturado uno». Era mas debil de lo que lo dije. `leads` tiene RLS
+**forzada** (`relrowsecurity` y `relforcerowsecurity` ambas `t`) y yo consulto
+como rol `eko`, asi que solo veo lo que la politica deja ver; ademas
+`leads_id_seq` estaba en **1260**, o sea que se han consumido ids antes. Lo
+honesto es: **0 filas visibles para ese rol**, no «nunca ha pasado nada».
+
+**Lead de prueba 1260 sigue en la base** — decir si se borra.
+
+---
+
+### Antecedente (antes del despliegue)
+
+**Construido y verificado en local.** Produccion sigue en
 `fix/llm-safety-net` @ `dacde8a`, asi que hoy `www.denverhomestory.com/fall`
 contesta **308 al panel** y quien toque el enlace acaba en un login. **Nadie
 puede publicar un pie de reel que prometa esa pagina hasta que se despliegue.**
