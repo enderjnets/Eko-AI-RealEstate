@@ -386,6 +386,10 @@ también este camino, o será la vía por la que se gasta sin freno.
 
 El plan queda con **dos fases sin empezar** y todo lo demás desplegado.
 
+**F6 — ✅ HECHA y desplegada el 5-sep** (v0.78.0). Lo que sigue es el texto
+original de cuando estaba pendiente, conservado porque describe bien el coste y
+el reparto entre lo que se lee solo y lo que se teclea:
+
 **F6 — vistas por vídeo de YouTube.** Necesita una acción del dueño **antes** de
 que se pueda probar de verdad: crear una clave en Google Cloud (APIs y servicios
 → Credenciales → Clave de API, restringida a «YouTube Data API v3») y ponerla en
@@ -407,12 +411,11 @@ Nada de esto bloquea el uso: lo desplegado hoy ya mide y ya se puede mirar.
 
 ---
 
-## 🟡 ESCRITA, SIN DESPLEGAR — F6: cuánta gente vio cada vídeo
+## ✅ DESPLEGADO — v0.78.0 · checkpoint D: cuánta gente vio cada vídeo
 
-> Rama `feat/analitica-embudo`. Migración **054_content_metrics**. Bump
-> **0.78.0**. **Falta la verificación real**, que necesita la clave del dueño:
-> hasta entonces esto es *código completo y probado contra la API parcheada*,
-> no *terminado*.
+> **En producción el 5-sep-2026**, autorizado por el dueño. `/api/v1/health` →
+> **`0.78.0`**. VPS en `d63974b`. Migración **054_content_metrics** aplicada con
+> la imagen nueva (`053` → `054_content_metrics (head)`).
 
 **Qué problema resuelve.** Todo lo que el embudo sabe empieza en la landing. Lo
 que pasó **antes** de la visita — si un vídeo lo vieron cuatro personas o cuatro
@@ -476,11 +479,34 @@ llegan como **cadenas**, no como números, y `likeCount` viene presente en este
 canal (no oculto) — el camino del `None` sigue siendo el correcto para cuando
 un canal los esconda, pero no es el caso de este.
 
-🔴 **Falta el último eslabón**: que la fila la escriba el **bucle**, no mi
-`curl`. La lectura de arriba prueba la credencial y el id; no prueba
-`record_snapshot` bajo RLS ni el `org_id` explícito contra la base real. Eso se
-mide después del despliegue forzando un tick, sin esperar las 6 horas del
-primer `sleep`. Hasta que esa fila exista, esto sigue en amarillo.
+✅ **El último eslabón, cerrado.** Tras el despliegue forcé un tick a mano —sin
+esperar las 6 h del primer `sleep`— y la fila la escribió **el bucle real**:
+`run_for_every_org` → sesión con RLS → `snapshot_youtube` → insert de Core.
+
+```
+id | org_id | publication_id | platform | captured_on | views | source
+ 1 |      1 |             16 | youtube  | 2026-09-05  |    44 | youtube_api
+```
+
+`org_id = 1` es lo que se estaba probando: en un insert de Core `before_flush`
+no corre, así que si no lo escribiera a mano la política RLS habría rechazado la
+fila. Un **segundo tick** dejó **una sola fila** con `views = 46` y el
+`updated_at` refrescado: el `ON CONFLICT` refina en producción, no duplica.
+
+🔎 **Hallazgo que solo aparece midiendo de verdad**: tres lecturas seguidas del
+mismo vídeo en veinte minutos dieron **46, 44 y 46**. El contador de YouTube es
+consistente *con el tiempo*, no al instante — sus servidores no coinciden entre
+sí. No es un fallo nuestro, y refuerza la forma elegida: una foto al día que se
+refina vale más que un número que finge precisión al segundo. Cualquier lectura
+suelta tiene un margen de un par de unidades, y la página no debe presentarla
+como exacta.
+
+⚠️ **Aviso previo, no causado por esto**: el arranque del backend registra que
+`OLLAMA_ENABLED=true` pero `http://100.88.47.99:11434` no contesta, y
+`/api/v1/health` dice `llm_fallback: unreachable`. El último recurso del LLM no
+está. Si Kimi y MiniMax fallan a la vez —un 429 en un plan de suscripción es
+rutina— los leads reciben la frase enlatada en vez de una respuesta. Es
+exactamente la avería de la v0.54.2 repetida, y merece su propia tanda.
 
 ---
 
