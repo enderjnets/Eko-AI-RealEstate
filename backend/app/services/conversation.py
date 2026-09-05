@@ -46,7 +46,12 @@ from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
 from app.services.delivery import schedule_retry
 from app.services.fair_housing import find_violations
-from app.services.i18n import detect_language, language_instruction, pick_supported_language
+from app.services.i18n import (
+    detect_for,
+    detect_language,
+    language_instruction,
+    pick_supported_language,
+)
 from app.services.lead_events import record
 from app.services.lead_fields import (
     merge_budget,
@@ -426,7 +431,7 @@ async def generate_reply_suggestions(
         (m.content for m in reversed(history) if m.direction == MessageDirection.INBOUND),
         history[-1].content,
     )
-    target_lang = pick_supported_language(detect_language(last_user_content), supported)
+    target_lang = detect_for(last_user_content, supported)
 
     # IMPORTANT: do NOT reuse the inmobiliario persona here. The LLM gets
     # confused between "I am the assistant chatting with the user" and "I am

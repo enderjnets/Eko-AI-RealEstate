@@ -13,6 +13,7 @@ change in `_LANG_NAMES`.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Iterable
 
 from langdetect import DetectorFactory, LangDetectException, detect
@@ -45,6 +46,55 @@ def detect_language(text: str, *, fallback: str = DEFAULT_LANGUAGE) -> str:
     except LangDetectException as exc:
         log.debug("langdetect failed (%s) — fallback %s", exc, fallback)
         return fallback
+
+
+# Spelling that is Spanish and cannot be anything else, for the case below.
+#
+# Nothing here is a word an English-writing lead would type: no cognates, no
+# proper nouns, no "casa"/"patio"/"plaza" that live in English too. Inverted
+# punctuation and Spanish-only diacritics are on the list because a keyboard
+# that produces `¿` or `ñ` is not producing English.
+_SPANISH_MARKERS = re.compile(
+    r"[ñ¿¡]|[áéíóú]|"
+    r"\b(hola|buenas|buenos\s+d[ií]as|buenas\s+(tardes|noches)|gracias|disponible|"
+    r"cu[áa]nto|cu[áa]l|quisiera|quiero|me\s+interesa|por\s+favor|habitaci[óo]n|"
+    r"habitaciones|alquiler|vivienda|piso|precio|est[áa]|mudarme|visita)\b",
+    re.IGNORECASE,
+)
+
+
+def _marker_language(text: str) -> str | None:
+    """`es` when the text carries Spanish-only spelling, else `None`."""
+    return "es" if text and _SPANISH_MARKERS.search(text) else None
+
+
+def detect_for(text: str, supported: Iterable[str], *, fallback: str = DEFAULT_LANGUAGE) -> str:
+    """The language to answer a lead in: `langdetect`, corrected by markers.
+
+    `langdetect` is unreliable on the short strings people actually open with,
+    and it does not hesitate — it returns a confident wrong answer rather than
+    raising, so nothing downstream can tell. Measured on twelve realistic first
+    messages in Spanish, four came back as another language entirely:
+    `"Hola, esta disponible?"` → Italian, `"Me interesa"` → German, `"hola"` →
+    Welsh. Each of those was then answered in English, because an unsupported
+    result falls back to `supported[0]`.
+
+    So the marker pass runs **only when langdetect's answer is not one we
+    support** — a confident, usable detection is never second-guessed, and the
+    correction can only fire on an answer that was going to be discarded anyway.
+
+    It never widens what the agency offers: a marker hit that is not in
+    `supported` still falls through. An agency configured for English only keeps
+    replying in English, which is a business decision, not a detection bug.
+    """
+    sup = list(supported) or [fallback]
+    detected = detect_language(text, fallback=fallback)
+    if detected in sup:
+        return detected
+    marker = _marker_language(text)
+    if marker is not None and marker in sup:
+        return marker
+    return sup[0]
 
 
 def pick_supported_language(detected: str, supported: Iterable[str], *, fallback: str = DEFAULT_LANGUAGE) -> str:

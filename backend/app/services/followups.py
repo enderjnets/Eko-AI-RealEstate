@@ -38,7 +38,7 @@ from app.services.conversation import (
 )
 from app.services.delivery import schedule_retry
 from app.services.fair_housing import find_violations
-from app.services.i18n import detect_language, pick_supported_language
+from app.services.i18n import detect_for
 from app.services.tenant_context import get_org_id
 
 log = logging.getLogger(__name__)
@@ -188,7 +188,7 @@ async def _lead_language(lead: Lead, db: AsyncSession) -> str:
         )
     ).scalar_one_or_none()
     if last_in:
-        return pick_supported_language(detect_language(last_in), supported)
+        return detect_for(last_in, supported)
     return supported[0]
 
 

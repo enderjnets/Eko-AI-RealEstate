@@ -86,6 +86,90 @@ NVIDIA NIM. El plan de ejecución está en `PLAN.md` §4, fases 2.1 a 2.4.
 
 ---
 
+## 🔴 LOS DOS IDIOMAS — verificado contra los cuatro proveedores, y hay dos averías
+
+Encargo: que la cadena conteste bien en **inglés (la mayoría del público)** y en
+**español si el lead escribe en español**. Inglés es el idioma por defecto.
+
+### 🔴 Avería 1, VIVA HOY: Kimi está sin cuota
+
+```
+HTTP 403  {"error":{"type":"permission_error","message":"You've reached your
+weekly (7-day) usage limit..."}}
+```
+
+El proveedor **primario** lleva rechazando peticiones. La cadena está
+sosteniéndose sobre **MiniMax**, con el ROG detrás — y Groq **todavía no está
+desplegado**. Es exactamente el escenario para el que existe todo este trabajo,
+ocurriendo hoy: si MiniMax cae ahora, lo único que queda es un portátil de casa.
+La clave no está revocada (72 caracteres, prefijo `sk-kim`); es cuota semanal y
+se restablece sola al cerrar la ventana de 7 días.
+
+### 🔴 Avería 2: la config de producción bloquea el español
+
+`agent_settings.languages` para Denver Home Story es **`["en"]`**. Con eso,
+`pick_supported_language` descarta el español detectado y devuelve `en`, así que
+al modelo le llega *«responde EXCLUSIVAMENTE en inglés»* **para un lead que
+escribió en español** — contradiciendo la propia persona, que dos párrafos antes
+dice *«Reply in the language the lead writes in»*.
+
+**Y esto es lo que hay que saber ANTES de desplegar Groq.** Medido con el prompt
+real de producción, lead en español + dirección a inglés:
+
+| proveedor | qué hace hoy |
+|---|---|
+| MiniMax | **desobedece** y contesta en español (gana la persona) |
+| Ollama | **desobedece** y contesta en español |
+| **Groq** | **obedece** y contesta en **inglés** |
+
+Es decir: el español hoy solo funciona **por accidente**, porque los modelos
+ignoran la instrucción. **Desplegar Groq sin cambiar la config haría que los
+leads en español empezaran a recibir respuestas en inglés.** No es un fallo de
+Groq: es el único que hace caso.
+
+**🔴 Decisión del dueño, y bloquea el despliegue:**
+```sql
+UPDATE agent_settings SET languages = '["en","es"]' WHERE org_id = 1;
+```
+Inglés sigue siendo el primero, que es lo que se usa cuando el lead no ha
+escrito nada todavía (una visita agendada desde la web o por teléfono).
+
+### ✅ Arreglado en código: `langdetect` miente en los mensajes cortos
+
+Con `["en","es"]`, el español pasaba de 0/12 a **8/12**. Los 4 que faltaban son
+los mensajes con los que la gente **abre de verdad**, y `langdetect` no duda:
+devuelve una respuesta segura y equivocada en vez de fallar, así que nada
+aguas abajo puede notarlo.
+
+| mensaje | detectado |
+|---|---|
+| `"Hola, esta disponible?"` | **italiano** |
+| `"Hola, vi su anuncio"` | **italiano** |
+| `"Me interesa"` | **alemán** |
+| `"hola"` | **galés** |
+
+`detect_for()` añade una pasada de marcas de ortografía inequívocamente española
+(`ñ`, `¿`, `¡`, vocales acentuadas y una lista corta de palabras) que corre
+**solo cuando la respuesta de `langdetect` no es un idioma soportado** — una
+detección buena nunca se pisa, y la corrección solo puede actuar sobre una
+respuesta que se iba a tirar igualmente. **Ningún cognado** entra en la lista:
+`casa`, `patio`, `plaza`, `villa` y `hacienda` están fijados por un test, porque
+mandar a un lead **inglés** una respuesta en español es un fallo peor que el que
+se arregla — es la mayoría del público.
+
+**Verificación de punta a punta, cadena real, con el prompt de producción:**
+
+| proveedor | ES corto | ES largo | EN corto | EN largo |
+|---|---|---|---|---|
+| MiniMax | ✅ es | ✅ es | ✅ en | ✅ en |
+| Groq | ✅ es | ✅ es | ✅ en | ✅ en |
+| Ollama | ✅ es | ✅ es | ✅ en | ✅ en |
+| Kimi | — sin cuota, no probado — | | | |
+
+**12 de 12.** Kimi no se pudo probar por la cuota; habla el mismo protocolo y
+recibe el mismo prompt que MiniMax, que pasa los cuatro casos. **1.659 tests**
+(base 1.617, +42), 4 mutaciones en rojo, `md5` restaurado.
+
 ## 🔴 LISTA PARA DESPLEGAR, SIN DESPLEGAR — Fase 2.4: la verificación real
 
 > **La autorización la da el dueño en un mensaje aparte.** Nada de esto se ha
