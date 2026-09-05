@@ -391,6 +391,36 @@ despliegue del checkpoint A, que espera autorización.
 
 ---
 
+## ✅ DESPLEGADO — v0.77.0 · checkpoint E: la analítica que se puede mirar
+
+> **En producción el 4-sep-2026**, autorizado por el dueño. `/api/v1/health` →
+> **`0.77.0`**. VPS en `c1e3cca`. **Sin migración** — `alembic current` sigue en
+> `053_deal_columns (head)`, comprobado antes de levantar.
+
+Va con las dos fases juntas: **F7** (la API v2) y **F8** (la página).
+
+| Comprobación | Resultado |
+|---|---|
+| `/api/v1/health` | **0.77.0** |
+| Landing pública | `200` |
+| `/analytics` | se sirve `200` |
+| `GET /api/v1/analytics` sin sesión | `401` — la ruta existe y el guard muerde |
+| `/ig` · `/tt` · `/yt` | `200`, cada uno con su `utm_source` |
+
+**Lo que la página contesta ahora**: de dónde vienen las visitas, hasta dónde
+leen, qué secciones alcanzan, quién responde y cuán rápido, llamadas recibidas y
+registradas, citas puestas y hechas, y qué tipo de negocio se cerró — sobre 7,
+30 o 90 días, cortados a la medianoche de la oficina. Y cada lead tiene su línea
+de tiempo.
+
+🔴 **Falta que el dueño la abra.** Todo lo verificado arriba es que responde;
+que los números signifiquen lo que dicen sólo lo puede juzgar quien conoce el
+negocio. Hoy hay poquísimos datos reales, así que la mayoría de tarjetas dirán
+que están vacías — y ese texto es a propósito: dice *por qué* está vacía, no un
+cero que se lee como un hecho.
+
+---
+
 ## ✅ DESPLEGADO — v0.75.1 · checkpoint C: qué negocio se cerró, y de qué red viene
 
 > **En producción el 4-sep-2026**, autorizado por el dueño. `/api/v1/health` →
