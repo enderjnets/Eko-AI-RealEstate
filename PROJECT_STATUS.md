@@ -457,11 +457,30 @@ sus claves **faltan** en vez de llegar a cero; que la clave restringida por
 bump es **0.78.0** y no el 0.75.0 que decía el plan, escrito cuando producción
 iba por 0.71.1.
 
-🔴 **Lo que falta para poder decir «terminado»**: una lectura real contra Google
-con la clave del dueño en el `.env` del VPS. Una sola llamada, 1 unidad de
-cuota, sobre `iUThdDk6zBY`. Sin eso, lo único demostrado es que el código hace
-lo que los tests dicen — que es exactamente lo que un proveedor con un esquema
-cambiado por debajo no respeta (la lección de Kling).
+✅ **Credencial verificada contra Google el 5-sep**, que es lo que separa «los
+tests pasan» de «el proveedor contesta lo que creemos». El dueño creó la clave
+en el proyecto `eko-ai-realtors` (el mismo que ya alojaba el cliente de OAuth
+del panel), restringida a YouTube Data API v3 y **sin** restricción de
+aplicación. Comprobada por forma en el `.env` del VPS —39 caracteres, prefijo
+`AIza`, una sola línea, copia previa en `.env.bak.f6`— y ejercida con **una**
+llamada real, 1 unidad de cuota:
+
+```
+GET videos.list?part=statistics&id=iUThdDk6zBY  →  HTTP 200
+{"viewCount": "46", "likeCount": "0", "favoriteCount": "0", "commentCount": "0"}
+```
+
+**46 vistas** en nuestro primer Short. Y confirma sobre datos reales las dos
+suposiciones que el advisor señaló y que los tests solo simulaban: los valores
+llegan como **cadenas**, no como números, y `likeCount` viene presente en este
+canal (no oculto) — el camino del `None` sigue siendo el correcto para cuando
+un canal los esconda, pero no es el caso de este.
+
+🔴 **Falta el último eslabón**: que la fila la escriba el **bucle**, no mi
+`curl`. La lectura de arriba prueba la credencial y el id; no prueba
+`record_snapshot` bajo RLS ni el `org_id` explícito contra la base real. Eso se
+mide después del despliegue forzando un tick, sin esperar las 6 horas del
+primer `sleep`. Hasta que esa fila exista, esto sigue en amarillo.
 
 ---
 
