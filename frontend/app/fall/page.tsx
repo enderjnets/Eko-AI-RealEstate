@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 
 import { ConsultForm } from "@/components/landing/ConsultForm";
+import { LandingTracker } from "@/components/landing/LandingTracker";
 import { LANDING, homeScreenName } from "@/lib/landing";
 import { BRAND_URL } from "@/lib/hosts";
 
@@ -204,6 +205,14 @@ export default function FallGuidePage() {
 
   return (
     <main className="min-h-screen bg-ln-canvas text-ln-body">
+      {/* Without this the page is invisible in /analytics: `getTracker()`
+          returns null, so `page_view` never fires and ConsultForm's
+          `form_start` / `form_submit` / `form_error` are silent no-ops. A lead
+          that converts still carries its UTM, so attribution survives — what is
+          lost is the ratio the funnel exists to show: how many read the guide
+          against how many filled the form. Those are opposite problems needing
+          opposite fixes, and without this they look identical. */}
+      <LandingTracker variant="fall" />
       <article className="mx-auto max-w-2xl px-5 py-14 sm:px-8 sm:py-20">
         {brandLine && (
           <a

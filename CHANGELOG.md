@@ -16,6 +16,13 @@ All notable changes to **Eko AI Realtors**.
     days after publication. Aspens turn from the top down, so four elevation
     bands keep the page useful from mid-September to November — the difference
     between one reel's landing page and a page worth linking in a bio.
+- **`LandingTracker` takes a `variant`, and `/fall` mounts it.** Without it
+  `getTracker()` returns `null` on the guide, so `page_view` never fires and
+  `ConsultForm`'s `form_start` / `form_submit` / `form_error` are silent
+  no-ops. A lead that converts still carries its UTM, so attribution survives —
+  what was lost is the ratio the funnel exists to show: how many read the guide
+  against how many filled the form. Those are opposite problems needing
+  opposite fixes, and unmeasured they look identical.
 - **`ConsultForm` takes a `variant`.** `/fall` renders the landing's own form
   rather than a copy of it: same endpoint, same honeypot, same Turnstile, and
   the same consent string rendered and stored. Only the attribution differs, so
@@ -24,6 +31,17 @@ All notable changes to **Eko AI Realtors**.
   sentence the visitor never read.
 
 ### Fixed
+- **The second allow-list — `AuthGuard` now DERIVES its ungated routes instead
+  of keeping a copy.** `/fall` was registered in `lib/hosts.ts`, the middleware
+  served it, and every routing test went green — while `AuthGuard`, which wraps
+  the whole app from `app/layout.tsx`, still bounced the visitor to `/login`
+  from its own hand-written Set. Measured on the prerendered output:
+  `fall.html` shipped `spinner=1, <main>=0` — a "Checking session…" screen, on
+  a page declaring `robots: index`, so what Google would have crawled is the
+  spinner. After the fix: `spinner=0, <main>=1`. Deriving from one list makes
+  the dangerous direction impossible, and `isPublicPath` also ungates
+  sub-paths, which the old Set gated. Found by a peer session working on
+  `/calculator`; verified here before acting on it.
 - **`/fall` registered in `PUBLIC_PATHS`.** Without it the brand domain answers
   the route with a 308 to the internal panel, and every visitor who taps the
   link in a DM lands on a login screen for an operator tool. Nothing in the

@@ -234,3 +234,47 @@ describe("the staff login link", () => {
     expect(STAFF_LOGIN_HREF).toBe("/login");
   });
 });
+
+/**
+ * The second allow-list, and the bug that made this file exist.
+ *
+ * `/fall` was added to `lib/hosts.ts`, the middleware served it on the brand
+ * domain, and every test above went green — while `AuthGuard` bounced the
+ * visitor to `/login`, because it kept its OWN hand-written copy of "which
+ * routes are public". Two lists, one tested. The prerendered HTML proved it:
+ * `fall.html` shipped a "Checking session…" spinner and no `<main>`, on a page
+ * declaring `robots: index`.
+ *
+ * The fix was to derive rather than copy, so these assert the derivation holds
+ * — not that two lists happen to agree today.
+ */
+describe("the auth guard cannot fall behind the public list", () => {
+  it("never gates a route the brand site publishes", async () => {
+    const hosts = await import("../hosts");
+    const { isUngatedForTest } = await import("../../components/ui/AuthGuard");
+    for (const p of hosts.PUBLIC_PATHS) {
+      expect(isUngatedForTest(p)).toBe(true);
+    }
+    // Sub-paths too: /contact/thanks is public for the same reason /contact is,
+    // and the hand-written Set gated it.
+    expect(isUngatedForTest("/contact/thanks")).toBe(true);
+  });
+
+  it("still lets a stranger reach the two screens that create a session", async () => {
+    const { isUngatedForTest } = await import("../../components/ui/AuthGuard");
+    // Ungated by the guard, and deliberately NOT in the brand site's list:
+    // that list publishes what it contains, and these are panel screens.
+    const hosts = await import("../hosts");
+    for (const p of ["/login", "/register"]) {
+      expect(isUngatedForTest(p)).toBe(true);
+      expect(hosts.PUBLIC_PATHS).not.toContain(p);
+    }
+  });
+
+  it("still gates the panel", async () => {
+    const { isUngatedForTest } = await import("../../components/ui/AuthGuard");
+    for (const p of ["/leads", "/inbox", "/settings", "/analytics", "/about"]) {
+      expect(isUngatedForTest(p)).toBe(false);
+    }
+  });
+});

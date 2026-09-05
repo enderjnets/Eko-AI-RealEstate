@@ -28,14 +28,20 @@ import { useI18n } from "@/lib/i18n";
 
 const FORM_KEY = process.env.NEXT_PUBLIC_CAPTURE_FORM_KEY || undefined;
 
-/** Marks the visit as having come from this page, exactly as the form does. */
+/**
+ * Marks the visit as having come from this page, exactly as the form does.
+ *
+ * The DEFAULT, not the only value — the same prop `ConsultForm` takes, for the
+ * same reason. Mounted on `/fall` without it, every visit to the guide would be
+ * filed under "landing" and the two pages would be one line in the funnel.
+ */
 const LANDING_VARIANT = "landing";
 
 /** The sections an IntersectionObserver reports. Must match `LANDING_SECTIONS`
  *  in `backend/app/models/landing.py`: the server drops anything else. */
 const SECTIONS = ["about", "how", "markets", "consult"] as const;
 
-export function LandingTracker() {
+export function LandingTracker({ variant = LANDING_VARIANT }: { variant?: string } = {}) {
   const { lang } = useI18n();
 
   useEffect(() => {
@@ -66,7 +72,7 @@ export function LandingTracker() {
       path: window.location.pathname,
       lang: lang === "es" ? "es" : "en",
       screenW: window.innerWidth,
-      utm: { landing_variant: LANDING_VARIANT, ...collected },
+      utm: { landing_variant: variant, ...collected },
       referrer: document.referrer || null,
       allowed: trackingAllowed(navigator),
       send: beaconSender(),
