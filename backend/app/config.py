@@ -53,6 +53,18 @@ class Settings(BaseSettings):
     MINIMAX_BASE_URL: str = "https://api.minimax.io/anthropic"
     MINIMAX_MODEL: str = "MiniMax-M2.7"
 
+    # Third link in the chain, and the first one that does not depend on a house.
+    # Speaks the OpenAI chat protocol (not Anthropic), so it is handled apart —
+    # see `_openai_chat_generate`. Free tier, which is why it sits ahead of the
+    # ROG: it is always up, and the laptop is a bonus when it happens to be
+    # awake. Without a key the link simply does not exist, exactly like Kimi and
+    # MiniMax without theirs. No timeout of its own: it reuses
+    # LLM_TIMEOUT_SECONDS, because Groq is fast and a fourth setting would be
+    # three more edits for nothing.
+    GROQ_API_KEY: str = ""
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+
     # Local Google open model (Gemma) via Ollama — a zero-cost FINAL fallback so
     # the agent can still reply when the paid providers are out of quota. Speaks
     # Ollama's own /api/chat (not the Anthropic protocol), so it's handled apart.

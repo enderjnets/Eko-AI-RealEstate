@@ -79,14 +79,121 @@ descubrirlo en rojo.
   administra otro proyecto. No son datos de leads, pero son más que «una palabra
   de estado y un remedio».
 
-### Siguiente paso — Fase 2, y necesita una palabra del dueño
+### Decisión tomada (5-sep): **B**, y el proveedor es **Groq**
 
-**B** (recomendado si quiere que la máquina conteste siempre): tercer proveedor
-cloud compatible con el protocolo Anthropic, mismo SDK, sin RAM del VPS, sin
-depender del ROG. Necesita que el dueño cree una clave. **C**: sin proveedor
-nuevo, se apaga la red falsa y se confía en la alarma de esta fase para tomar el
-control manual. Hoy el ROG volvió y la alarma ya existe, así que **C es
-defendible**; **B** si no quiere depender de estar mirando el teléfono.
+Un tercer eslabón alojado, capa gratuita, elegido sobre DeepSeek de pago y sobre
+NVIDIA NIM. El plan de ejecución está en `PLAN.md` §4, fases 2.1 a 2.4.
+
+---
+
+## 🟡 ESCRITA, SIN DESPLEGAR — Fase 2.1: Groq en la cadena
+
+> Rama `fix/llm-safety-net`. **Sin bump todavía** (va en la Fase 2.3).
+
+La cadena pasa de **Kimi → MiniMax → ROG** a **Kimi → MiniMax → Groq → ROG**.
+Lo que cambia de verdad no es que haya un eslabón más, es **cuál sostiene la
+red**: Groq va **antes** que el ROG porque es un servicio alojado que está
+siempre en pie, mientras que el portátil duerme y el 5-sep se colgó 7 h. El ROG
+deja de ser load-bearing y pasa a ser un extra gratuito cuando esté despierto.
+
+| Cambio | Por qué |
+|---|---|
+| 3 settings (`GROQ_API_KEY`/`_BASE_URL`/`_MODEL`) en `config.py` + `.env.example` + `docker-compose.yml` | Son **9 ediciones idénticas** o el contenedor no ve el valor: dos tests de guarda lo exigen (`test_config_example`, `test_compose_env`) |
+| `_openai_chat_generate` nueva, no reutilizar el SDK de Anthropic | Groq habla **protocolo OpenAI**. El módulo ya tenía dos protocolos de hecho (Ollama habla el suyo); ahora lo dice el docstring, que afirmaba lo contrario |
+| Sin `response_format` aunque `json_mode=True` | `generate_reply` ya mete la instrucción de JSON en el prompt de sistema para todos. Un `response_format` a un modelo que no lo soporte es un **400 evitable**: la diferencia entre un eslabón que degrada y uno muerto |
+| Sin timeout propio: reusa `LLM_TIMEOUT_SECONDS` | Groq es rápido, y un setting más son tres ediciones más sin motivo |
+| El `log.warning` de la rama imprime `status` y `body[:200]` | «Groq iba limitado» y «le mandamos un cuerpo malformado» eran la misma línea, y solo uno de los dos es **bug nuestro**. Corrección del advisor |
+| Sin clave, el eslabón no existe | Mismo gate que Kimi y MiniMax. Un despliegue sin clave se comporta **exactamente** como hoy |
+
+**Verificado, con salida real:** **1579 tests en verde** (base 1565, +14), **0
+saltados**, cobertura total **82 %** (subió del 81) y `llm.py` **93 %** (del
+87); `ruff check app tests` limpio; `docker build` exit 0; diff sin secretos ni
+`print`.
+
+**12 mutaciones, cada una en rojo, árbol restaurado con `md5` idéntico** — las 4
+del plan, 3 de los arreglos de la auditoría y las 5 de la costura:
+
+| Mutación | Rojo |
+|---|---|
+| no añadir `"groq"` a `order` | `test_groq_answers_when_both_paid_providers_are_down` |
+| `"groq"` **después** de `"ollama"` | `test_groq_is_tried_before_the_laptop` |
+| sin cabecera `Bearer` | `test_the_request_groq_actually_receives` |
+| leer `choices[0]["text"]` en vez de `message.content` | idem |
+| quitar `_refuse_empty` de `_openai_chat_generate` | 7 casos de `test_an_empty_answer_from_groq…` |
+| quitar `_refuse_empty` de `_ollama_generate` | `test_an_empty_answer_from_the_laptop…` |
+| `system=None` en la llamada · `messages=[]` · `max_tokens` literal · `temperature` literal · timeout de Ollama | `test_the_request_groq_actually_receives` (una cada una) |
+
+**Una mutación sobrevivió y es EQUIVALENTE, no un hueco:** quitar
+`groq_cfg.is_configured` de la guarda de `order`. La clave está defendida **dos
+veces** —esa guarda y el gate por proveedor del bucle—, así que quitando una
+sola no cambia el comportamiento; quitando **las dos a la vez**, rojo.
+
+### Auditoría de cierre (2 subagentes, código ya escrito)
+
+**🔴 BLOQUEANTE, arreglado** — *una respuesta 200 vacía de Groq se devolvía como
+éxito.* `{"choices":[]}`, `{"choices":[null]}`, `{"message":null}` y **un objeto
+de error servido con status 200** parsean todos limpiamente a `text=""`.
+Devuelto como `LLMResult`, eso **para la cadena en seco**: Ollama no se prueba,
+`LLMUnavailable` no se lanza, y `conversation.py` **no tiene ni una guarda**
+sobre texto vacío (`grep` = 0) → el lead recibe un mensaje **en blanco**. Y la
+fila queda sellada `provider="groq"`, así que la analítica lo cuenta como
+respuesta sana de IA y el vigilante, que solo mira `"fallback"`, no dice nada.
+Verificado a mano trazando los cinco cuerpos. Arreglo: `_refuse_empty()`, que
+**lanza** en vez de devolver, y así el fallo cae en el `except` de la rama y
+sigue al eslabón siguiente. Aplicado **también a `_ollama_generate`**: mismo
+defecto, preexistente, misma línea de arreglo, y ahí el vacío llega al lead sin
+red debajo.
+
+**🟠 IMPORTANTE, arreglado** — *el docstring afirmaba algo que aún no es cierto.*
+Decía que `/api/v1/health` deja de ponerse en rojo con el ROG dormido. **Falso
+hoy**: la sonda sigue mirando solo a Ollama, y eso es la Fase 2.2. Reescrito
+para decir lo que sí es cierto ya (la cadena) y admitir explícitamente lo que
+falta.
+
+**🟠 IMPORTANTE, arreglado** — *un test que no podía fallar.*
+`test_groq_without_a_key_is_skipped_in_silence` dejaba contestar a Kimi el
+primero, así que `assert_not_awaited` se cumplía **hubiera clave o no**: el
+auditor demostró con el mutante que la cadena llegaba a hacer un POST real con
+`Authorization: Bearer ` **vacío** y el test seguía verde. Reescrito para tumbar
+los dos de pago y exigir `LLMUnavailable`.
+
+**🟠 IMPORTANTE, arreglado** — *la costura no la afirmaba nadie.* Todos los
+tests de cadena parchean `_openai_chat_generate` con un doble que **descarta sus
+kwargs**, y el del cable lo llamaba **directamente** con literales: nada unía
+los dos extremos, y **cinco mutantes del sitio de llamada sobrevivían en verde**.
+Los dos caros son silenciosos: `system=None` borra la persona **y** la
+instrucción de JSON que `generate_reply` añade —el clasificador recibe prosa,
+falla el Pydantic y degrada a `intent=OTHER` sin una palabra—; `messages=[]` le
+pide al modelo que conteste a un lead que no dijo nada. Los dos entregan una
+respuesta fluida sellada `provider="groq"`. Arreglo: el test del cable ahora se
+conduce **a través de `generate_reply`**, parcheando solo el transporte. Las
+cinco mutaciones mueren.
+
+**🟡 MENOR, arreglado** — el manejador de excepciones de la rama de Groq leía
+`response.status_code`/`.text` sin protección; corre dentro de un `except` sin
+`try` exterior, así que si alguna vez lanzara **escaparía de `generate_reply`** y
+se saltaría el eslabón siguiente *y* la línea enlatada. Envuelto.
+
+**🟡 MENOR, arreglado** — `GROQ_MODEL` y `GROQ_BASE_URL` no estaban pinnados en
+la fixture: una máquina que los configure ponía dos tests en **rojo falso**.
+
+**Descartado con razón (lo relevante):** la `GROQ_API_KEY` **no** puede filtrarse
+—viaja solo en la cabecera, nada loguea cabeceras ni payload, y el esquema de
+error de Groq no reproduce la credencial—; `ProviderName` con `"groq"` no rompe
+nada (`messages.llm_provider` es `String(20)` **sin** CHECK ni Enum, y los dos
+consumidores usan `== "fallback"` con rama abierta, así que `analytics.py` lo
+cuenta como `"ai"`); una instalación **sin clave** se comporta exactamente como
+antes, verificado línea a línea; ningún test puede gastar una clave real.
+
+**Al backlog (es la Fase 2.2, no un hallazgo de esta):** el eslabón que ahora
+sostiene la red —Groq— **no tiene sonda, ni estado, ni alarma**, mientras que el
+que acaba de degradarse a extra se queda con el aviso al dueño.
+
+### Consultas al advisor
+
+| Momento | Motivo | Decisión |
+|---|---|---|
+| Arranque + pre-2.1 (`[CRÍTICA]`) | Validar la lectura del plan: orden, dependencias, riesgos | **Seguir con los valores por defecto del plan, no bloquear**: las dos decisiones abiertas del §7 ya traen valor escrito. Cuatro correcciones aceptadas: (1) loguear `status` y cuerpo en la rama de Groq —un 400 nuestro no puede leerse como «Groq caído»—; (2) la Fase 2.4 debe incluir **una llamada real con `json_mode=True`**, no solo un hola: si Llama envuelve el JSON en vallas de markdown, el clasificador cae a `intent=OTHER` **en silencio**; (3) todo test de Groq afirma `provider == "groq"` o que la función fue esperada, nunca «no lanzó»; (4) al desplegar la 2.2, la sonda pasará de `unreachable` a `ok` y **la alarma mandará un correo de recuperación**: es correcto, va anotado como esperado para que nadie lo lea como avería |
 
 ---
 

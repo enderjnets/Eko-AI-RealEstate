@@ -474,6 +474,8 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
             "cancels that same booking; same reasoning",
         "app/services/llm.py::_ollama_generate":
             "POSTs a prompt to a local model; no lead is addressed",
+        "app/services/llm.py::_openai_chat_generate":
+            "POSTs a prompt to a hosted model (Groq); no lead is addressed",
         "app/services/ops_alert.py::send_operator_alert":
             "the operator alert itself, now reaching PLATFORM_ADMIN_EMAILS and"
             " the owner's own Telegram chat, never a lead. The exemption runs"
