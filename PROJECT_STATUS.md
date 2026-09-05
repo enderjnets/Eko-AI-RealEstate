@@ -459,7 +459,20 @@ reprogramarlas, y una publicación duplicada cuesta más que un `direct` de más
 
 **Acción del dueño, sin la cual la mitad de F5 no sirve**: pegar los tres
 enlaces de perfil (`docs/enlaces-de-bio.md`). El sistema etiqueta el pie de los
-vídeos; el enlace del perfil no lo pone nadie más que él.
+vídeos; el enlace del perfil no lo pone nadie más que él. **Hecha, 5-sep**, en
+las tres redes y de tres maneras distintas:
+
+| Red | Cómo quedó | Medido |
+|---|---|---|
+| YouTube | enlace largo etiquetado en el campo de sitio web | **2 sesiones** `youtube` / `bio` en `landing_sessions` |
+| Instagram | `/ig`, editado desde la app del teléfono (la web no dejaba) | 0 sesiones todavía |
+| TikTok | **texto en la bio**, no enlace: el campo de sitio web exige cuenta de empresa verificada o 1.000 seguidores | 0 sesiones todavía |
+
+El de TikTok es el único que exige teclear, así que va a sub-contar por diseño.
+Eso no es una avería: una sesión `tiktok` que aparezca es cierta, y la ausencia
+de sesiones no prueba ausencia de tráfico. Cuando la cuenta llegue a empresa
+verificada, el campo acepta `https://www.denverhomestory.com/tt` y el
+sub-conteo desaparece sin tocar código — la redirección ya existe y responde.
 
 ---
 
