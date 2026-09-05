@@ -133,7 +133,7 @@ const BANDS: Band[] = [
     spots: [
       {
         name: "Golden Gate Canyon State Park",
-        drive: "20 miles west of Golden",
+        drive: "Northwest of Golden",
         what:
           "Lower-elevation aspen groves with the mountain vistas behind them. " +
           "Close enough to go after work.",
@@ -176,8 +176,8 @@ const BANDS: Band[] = [
         name: "Washington Park, City Park, Sloan's Lake",
         drive: "In town",
         what:
-          "The three that hold their color longest, and the only ones on this " +
-          "page you can reach without a car.",
+          "The three that hold their color longest, and the ones you can walk " +
+          "to from a Denver neighborhood.",
       },
     ],
   },

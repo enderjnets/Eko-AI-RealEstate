@@ -6,6 +6,46 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## `/fall` — la guia que promete el reel (rama `feat/fall-guide`, v0.80.0)
+
+**Construido y verificado en local, NO desplegado.** Produccion sigue en
+`fix/llm-safety-net` @ `dacde8a`, asi que hoy `www.denverhomestory.com/fall`
+contesta **308 al panel** y quien toque el enlace acaba en un login. **Nadie
+puede publicar un pie de reel que prometa esa pagina hasta que se despliegue.**
+`PUBLIC_PATHS` viaja en el bundle del middleware y los `NEXT_PUBLIC_*` se
+hornean en build: hace falta `next build` en el VPS con su `.env`, no vale una
+imagen vieja.
+
+**Medido, con salida real:** 265 tests del frontend en verde · `tsc` limpio ·
+`next build` prerenderiza `/fall` como estatica · las dos guardas nuevas
+mutadas (3 rojos y 1 rojo respectivamente, `md5` restaurado) · el filtro real
+de Fair Housing sobre toda la copia: **0 violaciones** · el POST que el
+formulario emite de verdad lleva
+`landing_variant=fall` + `utm_content=reel-1`, y la landing sigue emitiendo
+`landing`.
+
+**Pendiente, y lo primero es del dueno:**
+1. **Autorizacion de despliegue** (`--ff-only` desde `dacde8a`, verificar
+   ancestria antes).
+2. **Probar el formulario de punta a punta.** Nunca ha capturado un lead:
+   `select count(*) from leads` = **0**. El aviso va a
+   `booking_contact_email`, que es **la direccion de Natalia** — cambiarla
+   desde Settings del panel antes de probar, y devolverla despues. No esta
+   probado que Turnstile deje pasar a un navegador automatizado; si no deja,
+   el envio lo tiene que hacer una persona.
+3. **Pagina de Facebook + ManyChat** para el comment-to-DM de Instagram (Meta
+   solo deja mandar el DM a apps aprobadas; TikTok no lo permite a nadie).
+4. **Bandera para el dueno:** la correduria configurada es *Engel & Volkers
+   **Aspen*** y la guia es de **Denver**. Es una divulgacion regulada y el
+   lector nota la geografia. Decision suya.
+5. Backlog: `CAPTURE_REQUIRE_EMAIL` esta vacio en produccion mientras el campo
+   de email es `required` en el marcado — desajuste en la direccion segura,
+   pero un lead solo-telefono seria una fila que nadie puede contestar.
+
+**La urgencia:** 2026 viene **temprano** (minimo historico de nieve, sequia).
+Los pasos altos pueden llegar a su maximo a **mediados-finales de septiembre**,
+no a finales. Hoy es el 5. El despliegue es el camino critico de esta semana.
+
 ## 🟡 ESCRITA, SIN DESPLEGAR — Red de seguridad del LLM · Fase 1: la alarma que sí llega
 
 > Rama `fix/llm-safety-net`. Plan en `PLAN.md` (el de analítica se archivó en
