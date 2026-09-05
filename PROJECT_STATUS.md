@@ -127,12 +127,40 @@ ignoran la instrucción. **Desplegar Groq sin cambiar la config haría que los
 leads en español empezaran a recibir respuestas en inglés.** No es un fallo de
 Groq: es el único que hace caso.
 
-**🔴 Decisión del dueño, y bloquea el despliegue:**
+**✅ RESUELTO (5-sep, autorizado por el dueño) — `languages` = `["en","es"]`**
+
 ```sql
-UPDATE agent_settings SET languages = '["en","es"]' WHERE org_id = 1;
+-- valor previo, anotado antes de tocar: ["en"]
+UPDATE agent_settings SET languages = '["en","es"]'::json, updated_at = now()
+ WHERE org_id = 1 AND languages::text = '["en"]';   -- UPDATE 1
 ```
-Inglés sigue siendo el primero, que es lo que se usa cuando el lead no ha
-escrito nada todavía (una visita agendada desde la web o por teléfono).
+
+Una sola fila, y con la condición del valor viejo en el `WHERE` para que no
+pudiera pisar otra cosa. **El defecto del modelo ya era `["en","es"]`**
+(`agent_settings.py:85`): solo la fila de producción estaba escrita a mano en
+`["en"]` — exactamente el agujero que el docstring de
+`test_agency_default_language.py` avisaba que solo alcanzaría a las agencias
+creadas después. Inglés sigue el primero, que es lo que se usa cuando el lead
+todavía no ha escrito nada (una visita agendada desde la web o por teléfono).
+
+**Surte efecto sin desplegar**: el sistema lee esa fila en cada mensaje.
+Verificado contra el contenedor vivo (v0.78.0): un lead en español largo ya
+recibe *«responde EXCLUSIVAMENTE en castellano»*. Los mensajes **cortos** en
+español siguen mal hasta el despliegue, porque eso lo arregla `detect_for` en el
+código.
+
+**Alcance decidido: inglés + español, y no los seis.** La respuesta del modelo
+puede espejar los seis idiomas, pero **cinco superficies automáticas son solo
+EN/ES**: la línea enlatada cuando cae el LLM, la confirmación de baja
+(STOP/START), las plantillas de seguimiento, la invitación a visita y la puerta
+que revisa el idioma de la salida. Un lead francés recibiría la primera
+respuesta en francés y **todo lo demás en inglés** —recordatorios, baja, línea
+de espera— y Natalia tampoco podría continuar esa conversación. Un inglés
+coherente es mejor que un francés que el sistema no sostiene. *(Fair Housing sí
+está a salvo: `find_violations` **ignora el idioma a propósito** y corre siempre
+las dos listas.)*
+
+Abrir los seis exige extender antes esas cinco superficies. **Al backlog.**
 
 ### ✅ Arreglado en código: `langdetect` miente en los mensajes cortos
 
