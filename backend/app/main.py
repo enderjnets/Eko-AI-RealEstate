@@ -442,6 +442,7 @@ _enrichment_task: asyncio.Task | None = None
 _content_studio_task: asyncio.Task | None = None
 _content_render_task: asyncio.Task | None = None
 _content_publish_task: asyncio.Task | None = None
+_content_metrics_task: asyncio.Task | None = None
 _delivery_retry_task: asyncio.Task | None = None
 _listings_sync_task: asyncio.Task | None = None
 _llm_monitor_task: asyncio.Task | None = None
@@ -581,6 +582,27 @@ async def _content_publish_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.error("Content publish tick failed: %s", exc)
+
+
+async def _content_metrics_loop() -> None:
+    """Background worker: how many people watched what we published (v0.78).
+
+    Six-hourly by default rather than hourly. The counters move slowly after
+    the first day, one reading is kept per day anyway, and the quota is a
+    shared daily budget — asking more often buys nothing and spends something.
+    """
+    from app.services.tenant_context import run_for_every_org
+    from app.services.video_metrics import snapshot_youtube
+
+    interval = max(3600, settings.CONTENT_METRICS_INTERVAL_SECONDS)
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await run_for_every_org(snapshot_youtube)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Content metrics tick failed: %s", exc)
 
 
 async def _enrichment_loop() -> None:
@@ -1279,6 +1301,21 @@ async def _startup() -> None:
             settings.BUFFER_SIMULATED,
         )
 
+    if settings.CONTENT_METRICS_ENABLED:
+        global _content_metrics_task
+        _content_metrics_task = asyncio.create_task(_content_metrics_loop())
+        if not settings.YOUTUBE_DATA_API_KEY.strip():
+            # Said out loud, because the alternative is a worker that ticks for
+            # ever writing nothing while the console shows a column of dashes.
+            logger.error(
+                "Content metrics are enabled but YOUTUBE_DATA_API_KEY is empty: "
+                "no view counts will be read"
+            )
+        logger.info(
+            "Content metrics worker started (every %ds)",
+            settings.CONTENT_METRICS_INTERVAL_SECONDS,
+        )
+
     if settings.DELIVERY_RETRY_ENABLED:
         global _delivery_retry_task
         _delivery_retry_task = asyncio.create_task(_delivery_retry_loop())
@@ -1297,7 +1334,7 @@ async def _startup() -> None:
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task, _content_studio_task, _content_render_task, _content_publish_task, _llm_monitor_task):
+    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task, _content_studio_task, _content_render_task, _content_publish_task, _content_metrics_task, _llm_monitor_task):
         if task is not None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

@@ -13,8 +13,10 @@ from app.models.allowed_user import AllowedUser
 from app.models.call_log import CallLog, CallOutcome
 from app.models.channel_route import CHANNELS, ChannelRoute, normalize_destination
 from app.models.content import (
+    METRIC_SOURCES,
     ContentKind,
     ContentLanguage,
+    ContentMetric,
     ContentPiece,
     ContentPublication,
     ContentStatus,
@@ -66,6 +68,8 @@ __all__: list[str] = [
     "ContentKind",
     "ContentLanguage",
     "ContentPiece",
+    "METRIC_SOURCES",
+    "ContentMetric",
     "ContentPublication",
     "ContentStatus",
     "PublicationPlatform",

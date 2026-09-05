@@ -129,3 +129,53 @@ describe("reaching the page at all", () => {
     expect(read("components/ui/Nav.tsx")).not.toContain("2xl:inline-flex");
   });
 });
+
+describe("view counts, and where they came from", () => {
+  const table = () => read("components/analytics/ContentTable.tsx");
+  const api = () => read("lib/api.ts");
+
+  it("keeps views apart from the association numbers", () => {
+    // The distinction the whole card rests on: views is the platform's own
+    // counter — a measurement — while sessions and leads in the 48 hours after
+    // are only association. Folding them into one figure would launder one into
+    // the other, and a number with the wrong standing is worse than none.
+    const source = table();
+    expect(source).toContain("r.association.sessions");
+    expect(source).toContain("row.views?.count");
+    expect(source).not.toMatch(/association\.sessions \+/);
+  });
+
+  it("says whether a number was read or typed", () => {
+    // TikTok and Instagram hand view counts to nobody without a reviewed
+    // first-party app, so those are typed by a person. A column that showed
+    // both alike would let an estimate be read as a measurement.
+    expect(table()).toContain("analytics.viewsTyped");
+    expect(table()).toContain("analytics.viewsRead");
+    for (const dict of [EN, ES]) {
+      expect(dict["analytics.viewsTyped"]).toBeTruthy();
+      expect(dict["analytics.viewsRead"]).toBeTruthy();
+      expect(dict["analytics.viewsTyped"]).not.toBe(dict["analytics.viewsRead"]);
+    }
+  });
+
+  it("offers the pencil only where no machine can read the number", () => {
+    const source = table();
+    expect(source).toContain('TYPED_BY_HAND = new Set(["tiktok", "instagram"])');
+    expect(source).toContain("TYPED_BY_HAND.has(row.platform)");
+  });
+
+  it("never renders a missing reading as zero", () => {
+    // A zero says the video was seen by nobody. "No reading" says we have not
+    // looked. They are opposite facts and the second one is the true one.
+    const source = table();
+    expect(source).toContain("count === null");
+    expect(source).toContain("analytics.noViews");
+  });
+
+  it("sends the typed count to the publication's own route", () => {
+    expect(api()).toContain(
+      "`/v1/content/${id}/publications/${platform}/metrics`",
+    );
+    expect(api()).toMatch(/setMetrics[\s\S]{0,400}method: "PUT"/);
+  });
+});

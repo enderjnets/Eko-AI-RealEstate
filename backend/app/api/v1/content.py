@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import anyio
@@ -45,7 +45,9 @@ from app.models import (
     ContentKind,
     ContentLanguage,
     ContentPiece,
+    ContentPublication,
     ContentStatus,
+    PublicationPlatform,
 )
 from app.services.buffer_publisher import undeliverable_reason
 from app.services.content_studio import (
@@ -55,10 +57,21 @@ from app.services.content_studio import (
     text_violations,
 )
 from app.services.tenant_context import get_org_id
+from app.services.video_metrics import record_snapshot
 
 router = APIRouter()
 
 _SUFFIXES = {".mp4", ".mov", ".m4v", ".webm"}
+
+
+class MetricsOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    views: int | None = None
+    likes: int | None = None
+    comments: int | None = None
+    captured_on: date
+    source: str
 
 
 class PublicationOut(BaseModel):
@@ -76,6 +89,11 @@ class PublicationOut(BaseModel):
     # Without it a published piece leaves the console with nowhere to click.
     external_url: str | None = None
     last_error: str | None = None
+    # The newest reading of the public counters, or None when nobody has read
+    # them: no key configured, no address to read, or a network that publishes
+    # nothing and has not been typed in yet. `source` travels with the numbers
+    # so the console can show a hand-typed count as what it is.
+    latest_metrics: MetricsOut | None = None
 
 
 class PieceOut(BaseModel):
@@ -353,6 +371,17 @@ async def _with_render_state(
         piece.render_stage = job.stage
         piece.render_progress = job.progress
         piece.render_machine_working = working
+
+    # The view counts, in one query for the whole page rather than one per
+    # publication: a console tab of twenty pieces is sixty publications.
+    from app.services.video_metrics import latest_metrics
+
+    publications = [pub for piece in out for pub in piece.publications]
+    newest = await latest_metrics(db, [pub.id for pub in publications])
+    for pub in publications:
+        row = newest.get(pub.id)
+        if row is not None:
+            pub.latest_metrics = MetricsOut.model_validate(row)
     return out
 
 
@@ -730,3 +759,79 @@ async def serve_media(piece_id: int, db: AsyncSession = Depends(get_db)):
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Media file is missing")
     return FileResponse(file_path)
+
+
+class MetricsIn(BaseModel):
+    """A view count somebody read off their phone.
+
+    Every field is optional except `views`, because the number the owner
+    actually goes looking for is the view count and demanding likes and
+    comments as well is how a thirty-second job stops being done at all.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    views: int = Field(ge=0, le=10_000_000_000)
+    likes: int | None = Field(default=None, ge=0, le=10_000_000_000)
+    comments: int | None = Field(default=None, ge=0, le=10_000_000_000)
+
+
+@router.put("/{piece_id}/publications/{platform}/metrics", response_model=PieceOut)
+async def set_publication_metrics(
+    piece_id: int,
+    platform: PublicationPlatform,
+    body: MetricsIn,
+    db: AsyncSession = Depends(get_db),
+) -> PieceOut:
+    """Type in what a platform will not tell a machine.
+
+    TikTok and Instagram hand view counts only to a first-party app that has
+    passed platform review, so for those two this route is the only way the
+    number ever arrives. It is deliberately allowed for YouTube as well: a
+    person correcting a stale reading is more right than a tick from six hours
+    ago, and forbidding it would mean the one platform we can read is the one
+    nobody can fix.
+
+    Stored against **today in the agency's zone**, overwriting today's reading
+    rather than appending, so typing the number twice does not invent a second
+    data point.
+    """
+    from app.services.video_metrics import agency_today
+
+    publication = (
+        await db.execute(
+            select(ContentPublication).where(
+                ContentPublication.piece_id == piece_id,
+                ContentPublication.platform == platform,
+            )
+        )
+    ).scalar_one_or_none()
+    if publication is None:
+        raise HTTPException(status_code=404, detail="No such publication")
+    if publication.published_at is None:
+        # A queued post has been seen by nobody. Accepting a view count for it
+        # would put a number on a video that does not exist yet.
+        raise HTTPException(status_code=409, detail="not_published_yet")
+
+    org_id = get_org_id()
+    if org_id is None:  # pragma: no cover - the router is behind auth
+        raise HTTPException(status_code=403, detail="No organization in context")
+
+    await record_snapshot(
+        db,
+        org_id=org_id,
+        publication_id=publication.id,
+        captured_on=await agency_today(db),
+        source="manual",
+        values={
+            "views": body.views,
+            "likes": body.likes,
+            "comments": body.comments,
+        },
+    )
+    await db.commit()
+
+    piece = await db.get(ContentPiece, piece_id)
+    if piece is None:  # pragma: no cover - the publication just proved it exists
+        raise HTTPException(status_code=404, detail="No such piece")
+    return (await _with_render_state(db, [piece]))[0]

@@ -407,6 +407,64 @@ Nada de esto bloquea el uso: lo desplegado hoy ya mide y ya se puede mirar.
 
 ---
 
+## 🟡 ESCRITA, SIN DESPLEGAR — F6: cuánta gente vio cada vídeo
+
+> Rama `feat/analitica-embudo`. Migración **054_content_metrics**. Bump
+> **0.78.0**. **Falta la verificación real**, que necesita la clave del dueño:
+> hasta entonces esto es *código completo y probado contra la API parcheada*,
+> no *terminado*.
+
+**Qué problema resuelve.** Todo lo que el embudo sabe empieza en la landing. Lo
+que pasó **antes** de la visita — si un vídeo lo vieron cuatro personas o cuatro
+mil — es invisible, así que una pieza que no llegó a nadie y una pieza que llegó
+a mucha gente y no convenció **se ven idénticas** desde dentro del producto. Son
+problemas opuestos y piden arreglos opuestos: hacer mejores vídeos, o arreglar
+la página.
+
+| Decisión | Por qué |
+|---|---|
+| Una **fila por día**, no una columna en la publicación | una columna contesta «cuántas ahora» y destruye la única pregunta interesante: si el vídeo se sigue viendo una semana después. La forma de la curva es la señal |
+| `UNIQUE (publication_id, captured_on)` + `ON CONFLICT` | un tick cada 6 h **refina** la lectura del día en vez de inventar cuatro puntos |
+| `captured_on` es una **fecha en la zona de la agencia** | una lectura a las 19:00 en Denver ocurre al día siguiente en UTC: agrupar por la fecha del servidor juntaría dos tardes seguidas en un cubo y dejaría vacío el día de en medio |
+| `views/likes/comments` **anulables** | YouTube omite `likeCount` si el canal esconde los «me gusta» y `commentCount` si los comentarios están cerrados. `NULL` dice «la plataforma no lo publicó»; un `0` diría «no le gustó a nadie», que es otra cosa |
+| `source` (`youtube_api` \| `manual`) viaja con el número | TikTok e Instagram no dan las vistas a nada que no sea una app propia con revisión de la plataforma, así que esas cifras las teclea una persona. Una columna sin procedencia es como una estimación acaba leyéndose como una medición |
+| El módulo se llama `video_metrics.py`, **no** `content_*` | `test_content_gate_is_absolute` barre los ficheros cuyo nombre contiene `content` buscando escrituras de estado. Este no escribe ninguna; un nombre que lo metiera en ese barrido haría que un test en verde significara otra cosa |
+| `org_id` explícito en el `INSERT` | es un insert de **Core**, no de ORM: el listener `before_flush` que estampa `org_id` en todo lo demás **no corre**. Sin él la política RLS rechaza la fila con un error de permisos lejos de la causa. Es la misma lección de F3 |
+| Nada aquí lanza excepción | una negativa de cuota, un vídeo borrado, una clave mal tecleada: cada uno es un día sin lectura, un hueco en una gráfica. Convertirlo en excepción tumbaría un bucle de fondo que no tiene nada que ver |
+
+**Lo que se midió antes de escribir**, y que corrige el plan: ya hay **4
+publicaciones con `external_url`** en producción (la pieza 9 en las tres redes y
+la 10 en TikTok), y la de YouTube es `https://www.youtube.com/shorts/iUThdDk6zBY`
+— un **Short**. Un parser que solo conociera `watch?v=` habría devuelto `None`
+para todos los vídeos de esta agencia y habría pasado todos los tests escritos
+alrededor de la forma en que pensaba su autor. Las 5 publicaciones más antiguas
+**no tienen `external_url`** y nunca lo tendrán: Buffer empezó a reportar la
+dirección hace poco. Son un hueco en el pasado, no una avería en el presente.
+
+**Mutaciones verificadas** (copia, mutar, ver el rojo, restaurar, `md5` idéntico
+`36efda64…`):
+
+| Mutación | Resultado |
+|---|---|
+| quitar `org_id=org_id` del insert | **4 rojos** (violación de NOT NULL) |
+| quitar el `ON CONFLICT` | **1 rojo**: `test_the_same_day_twice_refines_one_row` |
+
+**Consulta al advisor** (obligatoria por el protocolo, registrada aquí): antes de
+escribir nada. Señaló cuatro cosas que cambiaron el resultado — el `org_id`
+explícito en un insert de Core; que las `statistics` de YouTube son **cadenas** y
+sus claves **faltan** en vez de llegar a cero; que la clave restringida por
+«referentes HTTP» devuelve 403 a un servidor y parece una clave mala; y que el
+bump es **0.78.0** y no el 0.75.0 que decía el plan, escrito cuando producción
+iba por 0.71.1.
+
+🔴 **Lo que falta para poder decir «terminado»**: una lectura real contra Google
+con la clave del dueño en el `.env` del VPS. Una sola llamada, 1 unidad de
+cuota, sobre `iUThdDk6zBY`. Sin eso, lo único demostrado es que el código hace
+lo que los tests dicen — que es exactamente lo que un proveedor con un esquema
+cambiado por debajo no respeta (la lección de Kling).
+
+---
+
 ## ✅ DESPLEGADO — v0.77.0 · checkpoint E: la analítica que se puede mirar
 
 > **En producción el 4-sep-2026**, autorizado por el dueño. `/api/v1/health` →

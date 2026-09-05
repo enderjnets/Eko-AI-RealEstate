@@ -17,10 +17,12 @@ nothing may be published from any other state.
 from __future__ import annotations
 
 import enum
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    BigInteger,
+    Date,
     DateTime,
     ForeignKey,
     String,
@@ -240,3 +242,66 @@ class ContentPublication(Base):
     )
 
     piece: Mapped[ContentPiece] = relationship(back_populates="publications")
+
+
+# The two ways a view count can get here. `youtube_api` was read from the
+# platform; `manual` was typed by a person because TikTok and Instagram do not
+# publish view counts to anything short of a first-party app with platform
+# review. Keeping the provenance on the row is what stops a hand-typed estimate
+# from being read later with the confidence of a measurement.
+METRIC_SOURCES = ("youtube_api", "manual")
+
+
+class ContentMetric(Base):
+    """One day's reading of one publication's public counters.
+
+    A row per day rather than a column on the publication, because the question
+    worth asking is not "how many views now" but "is it still being watched" —
+    and that needs history. `UNIQUE (publication_id, captured_on)` makes the day
+    the unit, so a tick running every six hours refines its own snapshot instead
+    of inventing four.
+
+    Every counter is nullable on purpose: YouTube omits `likeCount` when a
+    channel hides likes and `commentCount` when comments are off. `None` means
+    "the platform did not say"; `0` would mean "nobody did it".
+    """
+
+    __tablename__ = "content_metrics"
+    __table_args__ = (
+        UniqueConstraint(
+            "publication_id", "captured_on", name="uq_content_metrics_pub_day"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    org_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    publication_id: Mapped[int] = mapped_column(
+        ForeignKey("content_publications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # A date in the agency's zone, not a timestamp: it labels a bucket, and the
+    # counter it holds is cumulative since publication, so the exact instant of
+    # the reading carries nothing worth the confusion.
+    captured_on: Mapped[date] = mapped_column(Date, nullable=False)
+
+    views: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    likes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    comments: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

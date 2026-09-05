@@ -459,6 +459,22 @@ export type ContentStatus =
   | "rejected"
   | "failed";
 
+/**
+ * The newest reading of a post's public counters.
+ *
+ * `source` is not decoration: `youtube_api` was read from the platform,
+ * `manual` was typed by a person because TikTok and Instagram hand view counts
+ * only to a first-party app that has passed platform review. The console shows
+ * which is which so a hand-read estimate is never taken for a measurement.
+ */
+export interface PublicationMetrics {
+  views: number | null;
+  likes: number | null;
+  comments: number | null;
+  captured_on: string;
+  source: "youtube_api" | "manual";
+}
+
 export interface ContentPublication {
   id: number;
   platform: string;
@@ -470,6 +486,9 @@ export interface ContentPublication {
   /** The post's real address on the platform, once it has gone out. */
   external_url: string | null;
   last_error: string | null;
+  /** Null when nobody has read the counters yet: no key, no address, or a
+   *  network whose number has not been typed in. */
+  latest_metrics: PublicationMetrics | null;
 }
 
 export interface ContentPiece {
@@ -607,6 +626,23 @@ export const contentApi = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+  /**
+   * Type in a view count the platform will not tell a machine.
+   *
+   * For TikTok and Instagram this is the only way the number ever arrives.
+   * Allowed for YouTube too: a person correcting a stale reading is more right
+   * than a tick from six hours ago.
+   */
+  setMetrics: (
+    id: number,
+    platform: string,
+    body: { views: number; likes?: number; comments?: number },
+  ) =>
+    api<ContentPiece>(`/v1/content/${id}/publications/${platform}/metrics`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
   /** The clip itself, behind the same auth as everything else. */
   mediaUrl: (id: number) => `/api/v1/content/${id}/media`,
 
@@ -1150,6 +1186,11 @@ export interface Analytics {
      *  anyone else. The page must never label this "attribution". */
     association: { window_hours: number; sessions: number; leads: number };
     leads_tagged: number;
+    /** How many people actually watched. This one IS a measurement — it is the
+     *  platform's own counter — which is why it sits apart from `association`.
+     *  Null when nobody has read it: no key, no address, or a network whose
+     *  number has not been typed in yet. */
+    views: { count: number | null; captured_on: string; source: string } | null;
   }[];
   by_agent: { email: string; calls_logged: number; appointments: number; won: number }[];
 }

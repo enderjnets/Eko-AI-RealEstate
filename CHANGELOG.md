@@ -2,6 +2,23 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.78.0] — 2026-09-05
+
+### Added
+- **Per-video view counts** (`content_metrics`, migration 054). YouTube is read
+  automatically every six hours through `videos.list` — public data, an API key,
+  no OAuth, 1 quota unit per call of up to 50 videos. TikTok and Instagram are
+  typed in from the content console, because neither exposes view counts without
+  a reviewed first-party app.
+- A row per publication **per day**, not a running column: whether a video is
+  still being watched a week later is the signal, and that needs history.
+- `source` (`youtube_api` | `manual`) travels with every number, so a hand-read
+  count is never displayed with the confidence of a measurement.
+
+### Fixed
+- Seventeen doubled unicode escapes in the Spanish 0.77.0 changelog entry, which
+  rendered in the app as `La p\u00e1gina` instead of `La página`.
+
 ## [0.77.0] — 2026-09-04
 
 ### Added

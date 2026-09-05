@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.77.0";
+export const CURRENT_VERSION = "0.78.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -15,6 +15,20 @@ export interface VersionEntry {
 
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.78.0",
+    date: "2026-09-05",
+    title: {
+      en: "How many people watched",
+      es: "Cu\u00e1nta gente lo vio",
+    },
+    changes: [
+      {
+        en: "Each published video now carries how many people actually watched it. Until now everything the funnel knew started at the landing page, so a video that reached four people and a video that reached four thousand and persuaded nobody looked identical from inside the product - opposite problems needing opposite fixes. YouTube's counters are read automatically every six hours; TikTok's and Instagram's are typed in from the content console, because neither platform gives view counts to anything short of a reviewed first-party app. Each number says which of the two it is, so a hand-read count is never mistaken for a measured one, and a video nobody has read yet says so instead of showing a zero.",
+        es: "Cada v\u00eddeo publicado lleva ahora cu\u00e1nta gente lo vio de verdad. Hasta hoy todo lo que el embudo sab\u00eda empezaba en la landing, as\u00ed que un v\u00eddeo que lleg\u00f3 a cuatro personas y uno que lleg\u00f3 a cuatro mil y no convenci\u00f3 a nadie se ve\u00edan id\u00e9nticos desde dentro del producto - problemas opuestos que piden arreglos opuestos. Las cifras de YouTube se leen solas cada seis horas; las de TikTok e Instagram se teclean desde la consola de contenido, porque ninguna de las dos da las vistas a nada que no sea una app propia con revisi\u00f3n de la plataforma. Cada n\u00famero dice cu\u00e1l de las dos cosas es, para que una cifra le\u00edda a mano no se confunda con una medida, y un v\u00eddeo que nadie ha le\u00eddo a\u00fan lo dice en vez de ense\u00f1ar un cero.",
+      },
+    ],
+  },
+  {
     version: "0.77.0",
     date: "2026-09-04",
     title: {
@@ -24,7 +38,7 @@ export const CHANGELOG: VersionEntry[] = [
     changes: [
       {
         en: "The analytics page now shows the whole funnel instead of five numbers with no date range: where visits came from, how far people read, which sections they reached, who replied and how fast, calls in and calls logged, appointments set and appointments that actually happened, and what kind of business closed - over 7, 30 or 90 days, cut at the office's own midnight rather than UTC. Every lead's page also grows a timeline of what happened to it. Two things are said in words rather than implied: what follows a video is called association and never attribution, because a Shorts link is not clickable and Instagram strips the referrer; and the canned reply sent when no model answers is named as such instead of counted as the agent.",
-        es: "La p\\u00e1gina de anal\\u00edtica muestra ahora el embudo entero en vez de cinco cifras sin rango de fechas: de d\\u00f3nde vienen las visitas, hasta d\\u00f3nde leen, qu\\u00e9 secciones alcanzan, qui\\u00e9n responde y cu\\u00e1n r\\u00e1pido, llamadas recibidas y registradas, citas puestas y citas que de verdad se hicieron, y qu\\u00e9 tipo de negocio se cerr\\u00f3 - sobre 7, 30 o 90 d\\u00edas, cortados a la medianoche de la oficina y no a la de UTC. La ficha de cada lead gana adem\\u00e1s una l\\u00ednea de tiempo de lo que le ha pasado. Dos cosas se dicen con palabras en vez de insinuarse: lo que sigue a un v\\u00eddeo se llama asociaci\\u00f3n y nunca atribuci\\u00f3n, porque el enlace de un Short no se puede pulsar e Instagram borra el referente; y la respuesta enlatada que sale cuando ning\\u00fan modelo contesta se nombra como tal en vez de contarse como el agente.",
+        es: "La p\u00e1gina de anal\u00edtica muestra ahora el embudo entero en vez de cinco cifras sin rango de fechas: de d\u00f3nde vienen las visitas, hasta d\u00f3nde leen, qu\u00e9 secciones alcanzan, qui\u00e9n responde y cu\u00e1n r\u00e1pido, llamadas recibidas y registradas, citas puestas y citas que de verdad se hicieron, y qu\u00e9 tipo de negocio se cerr\u00f3 - sobre 7, 30 o 90 d\u00edas, cortados a la medianoche de la oficina y no a la de UTC. La ficha de cada lead gana adem\u00e1s una l\u00ednea de tiempo de lo que le ha pasado. Dos cosas se dicen con palabras en vez de insinuarse: lo que sigue a un v\u00eddeo se llama asociaci\u00f3n y nunca atribuci\u00f3n, porque el enlace de un Short no se puede pulsar e Instagram borra el referente; y la respuesta enlatada que sale cuando ning\u00fan modelo contesta se nombra como tal en vez de contarse como el agente.",
       },
     ],
   },

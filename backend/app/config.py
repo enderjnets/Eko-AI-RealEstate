@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.77.0"
+    APP_VERSION: str = "0.78.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -342,6 +342,14 @@ class Settings(BaseSettings):
     BUFFER_CHANNEL_INSTAGRAM: str = ""
     CONTENT_PUBLISH_ENABLED: bool = False
     CONTENT_PUBLISH_INTERVAL_SECONDS: int = 900
+    # How many people actually watched. A public API key (no OAuth): the
+    # counters on a published video are public data, so nothing here needs a
+    # channel owner's consent, and `videos.list` costs ONE unit per call of up
+    # to 50 ids against a 10,000/day quota — a six-hourly tick spends about 4.
+    # Off by default: without a key the loop would tick for ever doing nothing.
+    YOUTUBE_DATA_API_KEY: str = ""
+    CONTENT_METRICS_ENABLED: bool = False
+    CONTENT_METRICS_INTERVAL_SECONDS: int = 21600
     # PIECES per day, not posts: one piece is three platforms, and counting
     # posts would let a single video eat three days of budget.
     CONTENT_PUBLISH_MAX_PER_DAY: int = 4

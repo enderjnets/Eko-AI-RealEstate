@@ -1029,3 +1029,144 @@ async def test_a_queued_piece_cannot_be_rebuilt(database_url: str) -> None:
         assert row[1] is not None, "the video Buffer is waiting for was removed"
     finally:
         await _cleanup()
+
+
+# --------------------------------------------------------------------------
+# View counts typed by a person (v0.78)
+# --------------------------------------------------------------------------
+
+
+async def _publish(piece_id: int, platform: str, *, sent: bool) -> None:
+    """A publication row in the state the console would show it in."""
+    from datetime import UTC, datetime
+
+    from app.models import (
+        ContentPublication,
+        PublicationPlatform,
+        PublicationStatus,
+    )
+
+    async with get_bypass_session_factory()() as db:
+        db.add(
+            ContentPublication(
+                org_id=1,
+                piece_id=piece_id,
+                platform=PublicationPlatform(platform),
+                status=(
+                    PublicationStatus.PUBLISHED if sent else PublicationStatus.PENDING
+                ),
+                published_at=datetime.now(UTC) if sent else None,
+            )
+        )
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_typed_view_count_comes_back_on_the_piece(database_url: str) -> None:
+    """The only way a TikTok or Instagram number ever arrives.
+
+    Neither platform hands view counts to anything short of a first-party app
+    with platform review, so this route is not a convenience — it is the whole
+    mechanism for two of the three networks.
+    """
+    try:
+        async with _client() as client:
+            created = await client.post("/api/v1/content", json=CLEAN)
+            piece_id = created.json()["id"]
+            await _publish(piece_id, "tiktok", sent=True)
+
+            saved = await client.put(
+                f"/api/v1/content/{piece_id}/publications/tiktok/metrics",
+                json={"views": 1240, "likes": 31},
+            )
+            assert saved.status_code == 200, saved.text
+            publication = saved.json()["publications"][0]
+            assert publication["latest_metrics"]["views"] == 1240
+            assert publication["latest_metrics"]["likes"] == 31
+            assert publication["latest_metrics"]["comments"] is None
+            # The provenance travels with the number, so a hand-read count is
+            # never displayed with the confidence of an API reading.
+            assert publication["latest_metrics"]["source"] == "manual"
+
+            # And the listing shows it too, which is where the console reads.
+            listed = await client.get("/api/v1/content")
+            row = next(p for p in listed.json() if p["id"] == piece_id)
+            assert row["publications"][0]["latest_metrics"]["views"] == 1240
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_typing_it_twice_corrects_rather_than_appends(
+    database_url: str,
+) -> None:
+    try:
+        async with _client() as client:
+            created = await client.post("/api/v1/content", json=CLEAN)
+            piece_id = created.json()["id"]
+            await _publish(piece_id, "instagram", sent=True)
+            url = f"/api/v1/content/{piece_id}/publications/instagram/metrics"
+            await client.put(url, json={"views": 10})
+            second = await client.put(url, json={"views": 900})
+            assert (
+                second.json()["publications"][0]["latest_metrics"]["views"] == 900
+            )
+        async with get_bypass_session_factory()() as db:
+            from app.models import ContentMetric
+            from sqlalchemy import func, select
+
+            total = await db.scalar(select(func.count()).select_from(ContentMetric))
+            assert total == 1, "one reading per day, corrected in place"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_queued_post_cannot_have_views(database_url: str) -> None:
+    """It has been seen by nobody. A number here would be about a video that
+    does not exist yet."""
+    try:
+        async with _client() as client:
+            created = await client.post("/api/v1/content", json=CLEAN)
+            piece_id = created.json()["id"]
+            await _publish(piece_id, "youtube", sent=False)
+            refused = await client.put(
+                f"/api/v1/content/{piece_id}/publications/youtube/metrics",
+                json={"views": 5},
+            )
+            assert refused.status_code == 409
+            assert refused.json()["detail"] == "not_published_yet"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_platform_that_was_never_posted_to_is_404(database_url: str) -> None:
+    try:
+        async with _client() as client:
+            created = await client.post("/api/v1/content", json=CLEAN)
+            piece_id = created.json()["id"]
+            await _publish(piece_id, "tiktok", sent=True)
+            missing = await client.put(
+                f"/api/v1/content/{piece_id}/publications/youtube/metrics",
+                json={"views": 5},
+            )
+            assert missing.status_code == 404
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_negative_view_count_is_refused(database_url: str) -> None:
+    try:
+        async with _client() as client:
+            created = await client.post("/api/v1/content", json=CLEAN)
+            piece_id = created.json()["id"]
+            await _publish(piece_id, "tiktok", sent=True)
+            bad = await client.put(
+                f"/api/v1/content/{piece_id}/publications/tiktok/metrics",
+                json={"views": -1},
+            )
+            assert bad.status_code == 422
+    finally:
+        await _cleanup()

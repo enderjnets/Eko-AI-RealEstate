@@ -43,6 +43,7 @@ from app.models import (
     Visit,
     VisitStatus,
 )
+from app.services import video_metrics
 
 # The office's day, when the agency has not said otherwise. Denver because that
 # is where this product's only customer is; a second agency sets its own.
@@ -545,6 +546,7 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
     rows = (
         await db.execute(
             select(
+                ContentPublication.id,
                 ContentPublication.piece_id,
                 ContentPublication.platform,
                 ContentPublication.published_at,
@@ -566,8 +568,14 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
         await db.execute(select(Lead.meta).where(w.within(Lead.created_at)))
     ).scalars().all()
 
+    # How many people actually saw it, which is the number that separates "the
+    # video reached nobody" from "the video reached people and the page lost
+    # them" — opposite problems that look identical without it. One query for
+    # the whole list; `None` for anything nobody has read yet.
+    newest = await video_metrics.latest_metrics(db, [row[0] for row in rows])
+
     out: list[dict] = []
-    for piece_id, platform, published_at, url in rows:
+    for publication_id, piece_id, platform, published_at, url in rows:
         until = published_at + timedelta(hours=48)
         sessions = await _scalar(
             db,
@@ -603,6 +611,18 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
                     "leads": leads_after,
                 },
                 "leads_tagged": tagged,
+                "views": (
+                    {
+                        "count": snapshot.views,
+                        "captured_on": snapshot.captured_on.isoformat(),
+                        # `manual` means a person typed it off their phone,
+                        # and the page says so: a hand-read number and an API
+                        # reading must not sit in a column looking alike.
+                        "source": snapshot.source,
+                    }
+                    if (snapshot := newest.get(publication_id)) is not None
+                    else None
+                ),
             }
         )
     return out
