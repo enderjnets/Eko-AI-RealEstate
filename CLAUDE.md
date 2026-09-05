@@ -118,7 +118,7 @@ For the full port map across all four stacks, see
   - **Kimi 2.6 `kimi-for-coding`** (primary) and **MiniMax M2.7** (fallback)
     speak `anthropic-messages`, so they share the `anthropic` Python SDK with a
     custom `base_url`.
-  - **Groq** (`llama-3.3-70b-versatile`, free tier) speaks the **OpenAI chat**
+  - **Groq** (`openai/gpt-oss-120b`, free tier) speaks the **OpenAI chat**
     protocol, and **Ollama** its own `/api/chat`. Both are plain `httpx` POSTs
     in their own branch of `generate_reply` — no extra dependency, and
     deliberately **no OpenAI SDK**.

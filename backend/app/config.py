@@ -63,7 +63,20 @@ class Settings(BaseSettings):
     # three more edits for nothing.
     GROQ_API_KEY: str = ""
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    # The model id is checked against Groq's live list by the health probe, and
+    # that check earns its keep: the first value written here,
+    # `llama-3.3-70b-versatile`, had already been RETIRED from the catalogue by
+    # the time it was verified against the real account — the whole Llama-3.x
+    # family is gone. Free tiers withdraw models without notice, which is how
+    # Kling broke. This one was measured answering a real lead in Spanish with
+    # the injected listings, and returning parseable JSON under `json_mode`.
+    #
+    # It is a REASONING model: the thinking is billed to the same
+    # `max_tokens` budget and returned in a separate `reasoning` field. A real
+    # reply used 441 of the 600 we allow, so there is margin — and if it ever
+    # runs out, `content` comes back empty and `_refuse_empty` drops to the next
+    # link rather than sending a lead a blank message.
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
 
     # Local Google open model (Gemma) via Ollama — a zero-cost FINAL fallback so
     # the agent can still reply when the paid providers are out of quota. Speaks

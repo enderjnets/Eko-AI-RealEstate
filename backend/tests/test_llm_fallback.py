@@ -57,7 +57,7 @@ def _force_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     # Y su modelo y su URL: son configurables por entorno, y una máquina que los
     # cambie pondría en rojo dos tests que no dependen de su configuración.
     monkeypatch.setenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
-    monkeypatch.setenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    monkeypatch.setenv("GROQ_MODEL", "openai/gpt-oss-120b")
     # Clear the lru_cache on get_settings so the new env vars apply — and the
     # probe cache at the same instant, or a cached "ok" would hide a GROQ_MODEL
     # that this test just changed.
@@ -200,7 +200,7 @@ async def test_groq_answers_when_both_paid_providers_are_down(
         result = await generate_reply(messages=[{"role": "user", "content": "hola"}])
 
     assert result.provider == "groq"
-    assert result.model == "llama-3.3-70b-versatile"
+    assert result.model == "openai/gpt-oss-120b"
     assert "agente" in result.text
 
 
@@ -469,7 +469,7 @@ async def test_the_request_groq_actually_receives(monkeypatch: pytest.MonkeyPatc
     assert captured["headers"]["Authorization"] == "Bearer gsk_dummy_not_a_real_key"
 
     body = captured["json"]
-    assert body["model"] == "llama-3.3-70b-versatile"
+    assert body["model"] == "openai/gpt-oss-120b"
     # The caller's numbers, not the module defaults (600 / 0.7) and not literals.
     assert body["max_tokens"] == 321
     assert body["temperature"] == 0.35
@@ -498,7 +498,7 @@ async def test_the_request_groq_actually_receives(monkeypatch: pytest.MonkeyPatc
     assert captured["client_kwargs"]["timeout"] == 30.0
 
     assert result.provider == "groq"
-    assert result.model == "llama-3.3-70b-versatile"
+    assert result.model == "openai/gpt-oss-120b"
     assert result.text == "Hola."
     assert result.input_tokens == 41
     assert result.output_tokens == 7
@@ -613,7 +613,7 @@ async def test_the_net_is_ok_when_groq_answers_and_the_laptop_is_dead(
     _enable_groq(monkeypatch)
     _enable_ollama(monkeypatch, "gemma3:4b")
     factory = _net_client(
-        groq=_models("llama-3.3-70b-versatile", "llama-3.1-8b-instant"),
+        groq=_models("openai/gpt-oss-120b", "llama-3.1-8b-instant"),
         ollama_raises=httpx.ConnectError("[Errno 111] Connection refused"),
     )
     with patch.object(llm_module.httpx, "AsyncClient", factory):
@@ -705,7 +705,7 @@ async def test_with_nothing_configured_it_behaves_exactly_as_before(
     from app.config import get_settings
     get_settings.cache_clear()
 
-    factory = _net_client(groq=_models("llama-3.3-70b-versatile"))
+    factory = _net_client(groq=_models("openai/gpt-oss-120b"))
     with patch.object(llm_module.httpx, "AsyncClient", factory):
         assert await llm_module.check_fallback_provider() == "off"
     factory.assert_not_called()
@@ -734,7 +734,7 @@ async def test_the_probe_does_not_spend_what_it_is_watching(
     clock = {"t": 1000.0}
     monkeypatch.setattr(llm_module, "_now", lambda: clock["t"])
 
-    factory = _net_client(groq=_models("llama-3.3-70b-versatile"))
+    factory = _net_client(groq=_models("openai/gpt-oss-120b"))
     with patch.object(llm_module.httpx, "AsyncClient", factory):
         assert await llm_module.check_fallback_provider() == "ok"
         assert await llm_module.check_fallback_provider() == "ok"
@@ -762,7 +762,7 @@ async def test_removing_the_key_is_not_hidden_by_a_cached_answer(
     from app.config import get_settings
     get_settings.cache_clear()
 
-    factory = _net_client(groq=_models("llama-3.3-70b-versatile"))
+    factory = _net_client(groq=_models("openai/gpt-oss-120b"))
     with patch.object(llm_module.httpx, "AsyncClient", factory):
         assert await llm_module.check_fallback_provider() == "off"
         assert llm_module._groq_probe_cache is None
@@ -876,7 +876,7 @@ async def test_a_blip_is_not_cached_for_an_hour(monkeypatch: pytest.MonkeyPatch)
     with patch.object(llm_module.httpx, "AsyncClient", blip):
         assert await llm_module.check_fallback_provider() == "unreachable"
 
-    healthy = _net_client(groq=_models("llama-3.3-70b-versatile"))
+    healthy = _net_client(groq=_models("openai/gpt-oss-120b"))
     with patch.object(llm_module.httpx, "AsyncClient", healthy):
         # Still inside the failure TTL: the cached answer stands.
         clock["t"] += llm_module._GROQ_PROBE_FAIL_TTL_SECONDS - 1
@@ -933,7 +933,7 @@ async def test_the_request_the_probe_actually_sends(monkeypatch: pytest.MonkeyPa
     from app.config import get_settings
     get_settings.cache_clear()
 
-    factory = _net_client(groq=_models("llama-3.3-70b-versatile"))
+    factory = _net_client(groq=_models("openai/gpt-oss-120b"))
     with patch.object(llm_module.httpx, "AsyncClient", factory):
         assert await llm_module.check_fallback_provider() == "ok"
 
@@ -1023,7 +1023,7 @@ async def test_a_healthy_groq_does_not_wake_the_laptop(
     _enable_ollama(monkeypatch, "gemma3:4b")
 
     factory = _net_client(
-        groq=_models("llama-3.3-70b-versatile"),
+        groq=_models("openai/gpt-oss-120b"),
         ollama_raises=AssertionError("no se debe preguntar al ROG"),
     )
     with patch.object(llm_module.httpx, "AsyncClient", factory):

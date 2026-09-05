@@ -86,6 +86,110 @@ NVIDIA NIM. El plan de ejecución está en `PLAN.md` §4, fases 2.1 a 2.4.
 
 ---
 
+## 🔴 LISTA PARA DESPLEGAR, SIN DESPLEGAR — Fase 2.4: la verificación real
+
+> **La autorización la da el dueño en un mensaje aparte.** Nada de esto se ha
+> desplegado: el VPS sigue corriendo la v0.78.0.
+
+### 🔴 El hallazgo: el modelo del plan ya no existía
+
+`llama-3.3-70b-versatile` **no está en el catálogo de Groq**. `GET /models` con
+la clave real devuelve 14 modelos y **toda la familia Llama-3.x ha desaparecido**
+—solo quedan dos `prompt-guard` diminutos de Meta—. Es el riesgo que el plan
+escribió con todas las letras («lo gratis se retira sin avisar, así se rompió
+Kling») ocurriendo **antes** de desplegar, y es exactamente lo que la Fase 2.4
+existe para cazar: los 1.617 tests pasaban en verde contra un modelo inexistente,
+porque un test parchea el transporte y **nunca pregunta si el modelo está ahí**.
+
+Cambiado a **`openai/gpt-oss-120b`**, la alternativa que el plan ya nombraba, en
+los 6 sitios. Medido, no supuesto:
+
+| Comprobación real | Resultado |
+|---|---|
+| Respuesta a un lead en español, con las fichas inyectadas y el prompt de sistema del tamaño real | ✅ 441 de 600 tokens, `finish=stop`, español correcto usando las fichas |
+| `json_mode` tal y como lo manda el clasificador | ✅ `{"intent":"rent","zone":"Capitol Hill","budget":2200}`, **sin vallas de markdown**, `json.loads()` OK |
+| `check_fallback_provider()` del código nuevo contra Groq real, ROG apagado | ✅ **`ok`** — *el caso que hoy miente* |
+| Ídem con el modelo retirado | ✅ `model-missing` |
+| Ídem con la clave estropeada | ✅ `unreachable`, y el log nombra `GROQ_API_KEY` |
+| Segunda llamada seguida | ✅ servida de caché |
+
+**Dos cosas más que solo se ven llamando de verdad:**
+
+1. **`openai/gpt-oss-120b` es un modelo de razonamiento**: el pensamiento se
+   cobra del **mismo** `max_tokens` y vuelve en un campo `reasoning` aparte. Con
+   `max_tokens: 20` el `content` volvió **vacío**. Con nuestros 600 hay margen
+   (441 usados), y si algún día se agota, el `_refuse_empty` de la Fase 2.1 lo
+   convierte en «pasa al eslabón siguiente» en vez de en un mensaje en blanco
+   para un lead. Las dos fases encajan por casualidad afortunada, pero encajan.
+2. **El borde de Groq bloquea el User-Agent `Python-urllib`** con un 403 (medido:
+   `python-httpx` → 200, `curl` → 200, `Python-urllib` → **403**, sin UA → 200).
+   Era un artefacto de mi arnés de pruebas, **no del producto**: el código usa
+   `httpx`. Anotado para que nadie diagnostique una caída de proveedor la
+   próxima vez que pruebe con `urllib`.
+
+**Descartado, con la razón:** `qwen/qwen3.8-27b` también pasa las dos pruebas y
+gasta menos (247 tokens), pero `gpt-oss-120b` es el que el plan nombraba y el
+más capaz. `qwen/qwen3.6-27b` **rechazado con evidencia**: filtra su `<think>`
+dentro de `content` y **rompe el `json.loads()`** — el clasificador habría
+degradado a `intent=OTHER` en silencio.
+
+### Checklist de despliegue (preparado, NO ejecutado)
+
+```bash
+# 1. Copia del .env (ya hecha hoy: .env.bak.20260905_pre_groq, 7.732 bytes)
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && cp .env .env.bak.$(date +%Y%m%d)_v0790'
+
+# 2. Llevar la rama (bundle, no push directo)
+cd ~/Eko-AI-RealEstate
+git bundle create /tmp/llm-safety-net.bundle 4ca286f..fix/llm-safety-net
+scp /tmp/llm-safety-net.bundle ender-vps:/tmp/
+
+# 3. En el VPS: fetch + merge --ff-only
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && git fetch /tmp/llm-safety-net.bundle fix/llm-safety-net:refs/remotes/bundle/llm && git merge --ff-only refs/remotes/bundle/llm'
+
+# 4. Construir. SIN migracion: no hay esquema nuevo.
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && docker compose build backend frontend'
+
+# 5. La sonda real con la imagen nueva, ANTES de levantar nada
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && docker compose run --rm -T backend python -c "
+import asyncio; from app.services.llm import check_fallback_provider
+print(asyncio.run(check_fallback_provider()))"'   # debe imprimir: ok
+
+# 6. Levantar y comprobar
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && docker compose up -d backend frontend'
+curl -s http://localhost:8011/api/v1/health   # (por tunel SSH) -> version 0.79.0, llm_fallback ok
+```
+
+**Variables de entorno nuevas:** solo **`GROQ_API_KEY`** (ya puesta y verificada
+por forma: 56 caracteres, prefijo `gsk_`). `GROQ_BASE_URL` y `GROQ_MODEL` llegan
+por defecto del compose.
+
+**Reversión:** `git reset --hard 4ca286f` + `docker compose build && up -d`. El
+`.env` **no se toca**: la clave nueva es inofensiva sin código que la lea.
+
+### 🔔 Lo que va a pasar al desplegar, y es CORRECTO
+
+`monitor_state.llm_fallback` está hoy en el estado que dejó el ROG. Con Groq
+configurado, el primer tick leerá `ok`, verá un cambio, lo debounceará, y **el
+segundo tick mandará un correo y un Telegram de «La red de seguridad LLM se ha
+recuperado»**. Es el comportamiento correcto, no una avería: **que nadie lo lea
+como un fallo.**
+
+### Después del despliegue, lo que los tests no pueden probar
+
+- `/api/v1/health` con el **ROG dormido** → debe seguir diciendo `ok`. Es el caso
+  que hoy miente y la razón entera de la Fase 2.2.
+- Forzar un tick del vigía → sin aviso de caída, y `monitor_state.llm_fallback.state` = `ok`.
+
+### Backlog abierto de esta rama
+
+- Un **401 de Groq con el ROG vivo no avisa**: la red está sana, y eso es lo que
+  significa «basta con que uno conteste». La sonda real lo caza al desplegar.
+- Un 200 ilegible se cachea una hora como `model-missing`, cuando lo honesto
+  sería «no supe leerlo».
+- `_probe_ollama` no honra códigos de estado (heredado del doble de test viejo).
+- **F9** del plan de analítica: `docs/analytics.md`, el diccionario de métricas.
+
 ## 🟡 ESCRITA, SIN DESPLEGAR — Fase 2.3: documentación y **v0.79.0**
 
 Ningún fichero del repo afirma ya que «todos los proveedores hablan Anthropic»
