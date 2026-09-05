@@ -167,19 +167,47 @@ por defecto del compose.
 **Reversión:** `git reset --hard 4ca286f` + `docker compose build && up -d`. El
 `.env` **no se toca**: la clave nueva es inofensiva sin código que la lea.
 
-### 🔔 Lo que va a pasar al desplegar, y es CORRECTO
+### 🔔 Lo que va a pasar al desplegar: **nada**, y eso es lo correcto
 
-`monitor_state.llm_fallback` está hoy en el estado que dejó el ROG. Con Groq
-configurado, el primer tick leerá `ok`, verá un cambio, lo debounceará, y **el
-segundo tick mandará un correo y un Telegram de «La red de seguridad LLM se ha
-recuperado»**. Es el comportamiento correcto, no una avería: **que nadie lo lea
-como un fallo.**
+Escribí primero que saldría un correo de «recuperación», **y era falso**. Lo
+suponía en vez de leerlo. La fila, leída hoy sin tocar nada:
+
+```
+ key          | state | alerted_state | alerts_today | last_alert_at
+ llm_fallback | ok    | ok            |            3 | 2026-09-05 01:51:49+00
+```
+
+El ROG volvió tras el reinicio y el VPS lo alcanza, así que la red ya consta
+sana y `/health` del contenedor vivo dice `0.78.0` / `llm_fallback: ok`. Al
+desplegar, el primer tick seguirá leyendo `ok` —ahora medido contra Groq en vez
+de contra el portátil—, **no habrá cambio de estado y no saldrá ningún aviso.**
+
+**La predicción comprobable es esa: silencio.** Si llega un correo de
+recuperación, algo no cuadra y hay que mirarlo. *(Los `alerts_today = 3` son del
+incidente de esta madrugada; el presupuesto diario está gastado y se reinicia con
+el día UTC.)*
 
 ### Después del despliegue, lo que los tests no pueden probar
 
 - `/api/v1/health` con el **ROG dormido** → debe seguir diciendo `ok`. Es el caso
-  que hoy miente y la razón entera de la Fase 2.2.
-- Forzar un tick del vigía → sin aviso de caída, y `monitor_state.llm_fallback.state` = `ok`.
+  que hoy miente y la razón entera de la Fase 2.2. **Es la comprobación que
+  importa**, y hoy no se puede hacer porque el portátil está despierto.
+- Forzar un tick del vigía → sin aviso, y `monitor_state.llm_fallback.state` = `ok`.
+- **Telemetría del modelo**, y esto es lo que dice si Groq está de verdad
+  atendiendo leads o solo fallando con elegancia:
+  ```bash
+  ssh ender-vps 'docker logs eko-realestate-backend --since 24h 2>&1 | grep -c "empty completion from groq"'
+  ```
+  El margen de `gpt-oss-120b` se midió en **un solo turno** con 5 fichas: 441 de
+  600 tokens. Su razonamiento se cobra del mismo presupuesto y crece con la
+  complejidad de la entrada, y una conversación de seis turnos con ocho fichas
+  **no está cubierta por esa medición**. Si se agota, `_refuse_empty` lo hace
+  caer al eslabón siguiente en vez de mandar un mensaje en blanco —el fallo es
+  benigno— pero ese `grep` es la única forma de saber si está pasando.
+  Si el contador sube, el recambio es **`qwen/qwen3.8-27b`**: pasó las dos
+  pruebas reales, gastó 247 tokens en la misma respuesta y **no tiene campo de
+  razonamiento**. Es un valor en tres ficheros; no hace falta rehacer la
+  comparación.
 
 ### Backlog abierto de esta rama
 
@@ -188,6 +216,11 @@ como un fallo.**
 - Un 200 ilegible se cachea una hora como `model-missing`, cuando lo honesto
   sería «no supe leerlo».
 - `_probe_ollama` no honra códigos de estado (heredado del doble de test viejo).
+- El verde de `test_the_request_groq_actually_receives` prueba que el valor de
+  `GROQ_MODEL` llega al cuerpo de la petición, **no que ese modelo exista**. Es
+  correcto para un test unitario, y es justo por lo que hace falta la Fase 2.4:
+  la suite entera pasó en verde contra un modelo retirado. Que nadie lea ese
+  verde como «el modelo es válido».
 - **F9** del plan de analítica: `docs/analytics.md`, el diccionario de métricas.
 
 ## 🟡 ESCRITA, SIN DESPLEGAR — Fase 2.3: documentación y **v0.79.0**
