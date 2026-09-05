@@ -191,7 +191,7 @@ export function Nav() {
             {isOperator && (
               <Link
                 href="/discovery"
-                className="hidden 2xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
+                className="hidden xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
               >
                 <Search className="w-3.5 h-3.5" />
                 {t("nav.discovery")}
@@ -218,12 +218,12 @@ export function Nav() {
               {t("nav.content")}
             </Link>
             {/* The twin of the OverflowMenu entry below, and it is not optional:
-                that menu is `2xl:hidden`, so without this link the page had NO
+                that menu is `xl:hidden`, so without this link the page had NO
                 entry point at 1536px and up — the office desktop. Every other
                 item in that menu has this pair; this one was missing it. */}
             <Link
               href="/availability"
-              className="hidden 2xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
+              className="hidden xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
             >
               <CalendarClock className="w-3.5 h-3.5" />
               {t("nav.availability")}
@@ -318,7 +318,7 @@ export function Nav() {
 
             <Link
               href="/properties"
-              className="hidden 2xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
+              className="hidden xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
             >
               <Home className="w-3.5 h-3.5" />
               {t("nav.properties")}
@@ -332,7 +332,7 @@ export function Nav() {
             </Link>
             <Link
               href="/analytics"
-              className="hidden 2xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
+              className="hidden xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
             >
               <BarChart3 className="w-3.5 h-3.5" />
               {t("nav.analytics")}
@@ -340,7 +340,7 @@ export function Nav() {
             {isAdmin && (
               <Link
                 href="/settings"
-                className="hidden 2xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
+                className="hidden xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
               >
                 <Settings className="w-3.5 h-3.5" />
                 {t("nav.settings")}
@@ -369,7 +369,7 @@ export function Nav() {
                 the menu becomes the back door to it. */}
             <OverflowMenu
               label={t("nav.more")}
-              className="2xl:hidden"
+              className="xl:hidden"
               items={[
                 ...(isOperator
                   ? [{ href: "/discovery", label: t("nav.discovery"), Icon: Search }]

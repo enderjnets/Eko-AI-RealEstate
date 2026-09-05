@@ -1297,3 +1297,19 @@ export async function submitPublicLead(payload: CapturePayload): Promise<Capture
   }
   return { ok: false, reason: "generic" };
 }
+
+export interface LeadEvent {
+  type: string;
+  at: string;
+  actor: string | null;
+  from_status: string | null;
+  to_status: string | null;
+  /** `recording_url` is stripped for anyone who is not an admin. */
+  meta: Record<string, unknown> | null;
+}
+
+export const leadEventsApi = {
+  /** Oldest first: this is read as a story, unlike the calls list beside it,
+   *  which is a worklist and runs newest first. */
+  list: (leadId: number) => api<LeadEvent[]>(`/v1/leads/${leadId}/events`),
+};

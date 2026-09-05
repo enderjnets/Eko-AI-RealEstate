@@ -22,6 +22,7 @@ import {
   leadsApi,
 } from "@/lib/api";
 import { CloseDealDialog } from "./CloseDealDialog";
+import { LeadTimeline } from "./LeadTimeline";
 import { useViewer } from "@/lib/useViewer";
 import { IntentBadge, StatusBadge } from "@/components/ui/Badge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
@@ -348,6 +349,8 @@ export function LeadDetail({ leadId }: { leadId: number }) {
       )}
 
       <MatchesSection leadId={lead.id} onBooked={() => setVisitsReload((n) => n + 1)} />
+
+      <LeadTimeline leadId={lead.id} />
 
       <div id="visits">
         <VisitsSection leadId={lead.id} reloadSignal={visitsReload} />

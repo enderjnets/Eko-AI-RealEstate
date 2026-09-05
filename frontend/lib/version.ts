@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.76.0";
+export const CURRENT_VERSION = "0.77.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.77.0",
+    date: "2026-09-04",
+    title: {
+      en: "The page that shows the whole funnel",
+      es: "La p\u00e1gina que ense\u00f1a el embudo entero",
+    },
+    changes: [
+      {
+        en: "The analytics page now shows the whole funnel instead of five numbers with no date range: where visits came from, how far people read, which sections they reached, who replied and how fast, calls in and calls logged, appointments set and appointments that actually happened, and what kind of business closed - over 7, 30 or 90 days, cut at the office's own midnight rather than UTC. Every lead's page also grows a timeline of what happened to it. Two things are said in words rather than implied: what follows a video is called association and never attribution, because a Shorts link is not clickable and Instagram strips the referrer; and the canned reply sent when no model answers is named as such instead of counted as the agent.",
+        es: "La p\\u00e1gina de anal\\u00edtica muestra ahora el embudo entero en vez de cinco cifras sin rango de fechas: de d\\u00f3nde vienen las visitas, hasta d\\u00f3nde leen, qu\\u00e9 secciones alcanzan, qui\\u00e9n responde y cu\\u00e1n r\\u00e1pido, llamadas recibidas y registradas, citas puestas y citas que de verdad se hicieron, y qu\\u00e9 tipo de negocio se cerr\\u00f3 - sobre 7, 30 o 90 d\\u00edas, cortados a la medianoche de la oficina y no a la de UTC. La ficha de cada lead gana adem\\u00e1s una l\\u00ednea de tiempo de lo que le ha pasado. Dos cosas se dicen con palabras en vez de insinuarse: lo que sigue a un v\\u00eddeo se llama asociaci\\u00f3n y nunca atribuci\\u00f3n, porque el enlace de un Short no se puede pulsar e Instagram borra el referente; y la respuesta enlatada que sale cuando ning\\u00fan modelo contesta se nombra como tal en vez de contarse como el agente.",
+      },
+    ],
+  },
   {
     version: "0.76.0",
     date: "2026-09-04",

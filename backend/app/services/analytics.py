@@ -683,9 +683,17 @@ async def by_agent(db: AsyncSession, w: Window) -> list[dict]:
 async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
     """Each step counts LEADS that reached it, not events.
 
-    A lead called back twice is one lead called back. Counting events would
-    make a stage exceed the one above it, which is the shape that makes a
-    funnel chart obviously wrong and a funnel table quietly wrong.
+    A lead contacted twice is one lead contacted. Counting events would make a
+    stage exceed the one above it, which is the shape that makes a funnel chart
+    obviously wrong and a funnel table quietly wrong.
+
+    **`called_back` is deliberately not a step**, and finding that out needed
+    real data: a seeded month showed four appointments sitting under zero
+    call-backs, because an appointment can be booked by the voice agent or from
+    the panel without anybody logging a call. A stage wider than the one above
+    it is not a funnel, it is two questions drawn as one. How many leads were
+    phoned lives in the calls card, as a fact about the office rather than a
+    rung on a ladder.
     """
     scope = w.within(Lead.created_at)
 
@@ -707,7 +715,6 @@ async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
         .join(Message, Message.conversation_id == Conversation.id)
         .where(scope, _real_outbound()),
     )
-    called_back = await _leads_with(CallLog)
     appointment_set = await _leads_with(Visit)
     appointment_held = await _leads_with(Visit, Visit.status == VisitStatus.COMPLETED)
     won = await _scalar(
@@ -720,7 +727,6 @@ async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
         ("cta", traffic_now["cta_clicks"] + traffic_now["tel_clicks"] + traffic_now["form_starts"]),
         ("leads", total_leads),
         ("contacted", contacted),
-        ("called_back", called_back),
         ("appointment_set", appointment_set),
         ("appointment_held", appointment_held),
         ("won", won),

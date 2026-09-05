@@ -2,6 +2,26 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.77.0] — 2026-09-04
+
+### Added
+- **`/analytics` rebuilt**: twelve cards over a 7/30/90-day range — funnel,
+  per-day chart, source, device, geography, how far people read, who replies,
+  calls, appointments, deals, content and per person. No charting library.
+- **A timeline on each lead's page**, oldest first, from `lead_events`.
+- Analytics is reachable from the desktop bar below 1536px (H13). It used to
+  live in the "More" menu, so on a normal laptop the page existed and nobody
+  could find it.
+
+### Fixed
+- **`called_back` is no longer a funnel step.** Seeded with a realistic month it
+  sat *wider* than the step above it — an appointment can be booked by the voice
+  agent without anybody logging a call — and a stage wider than its parent is
+  not a funnel. It lives in the calls card now.
+- The calls card no longer reads "nobody logged a call" directly above "average
+  call: 2 min". Calls received and calls logged are two facts and get two
+  absences.
+
 ## [0.76.0] — 2026-09-04
 
 ### Added

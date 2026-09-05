@@ -1,194 +1,269 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Activity, Clock, Flame, Loader2, Minus, TrendingDown, TrendingUp, Users } from "lucide-react";
-import { type Analytics, analyticsApi } from "@/lib/api";
+/**
+ * The whole funnel on one page.
+ *
+ * What this replaces answered five questions with no date range: how many
+ * leads, by status, by channel, by score, and an average first response that
+ * counted advisors' own notes as replies. It could not say where anybody came
+ * from, whether the phone was ever picked up, whether an appointment happened,
+ * or what kind of business closed.
+ *
+ * Two rules the layout follows, and they are the same rule twice: **a number
+ * appears with the words that make it true, or it does not appear.** The
+ * content card says "association", never "attribution". The empty states say
+ * why a section is empty rather than showing a zero that reads like a fact.
+ */
+
+import { useCallback, useEffect, useState } from "react";
+import {
+  CalendarCheck,
+  Clock,
+  Handshake,
+  Loader2,
+  Phone,
+  Users,
+} from "lucide-react";
+import { type Analytics, type AnalyticsRange, analyticsApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-
-function Bar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
-  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
-  return (
-    <div className="flex items-center gap-3 text-sm">
-      <span className="w-28 text-gray-400 truncate">{label}</span>
-      <div className="flex-1 h-5 rounded bg-white/[0.04] overflow-hidden">
-        <div className={`h-full ${color}`} style={{ width: `${Math.max(pct, value > 0 ? 4 : 0)}%` }} />
-      </div>
-      <span className="w-8 text-right text-gray-300 tabular-nums">{value}</span>
-    </div>
-  );
-}
-
-function TrendPill({ pct, title }: { pct: number | null; title?: string }) {
-  if (pct === null) return null;
-  const up = pct > 0;
-  const down = pct < 0;
-  const cls = up
-    ? "text-eko-green bg-eko-green/10 border-eko-green/30"
-    : down
-    ? "text-red-400 bg-red-500/10 border-red-500/30"
-    : "text-gray-400 bg-white/5 border-white/10";
-  const Icon = up ? TrendingUp : down ? TrendingDown : Minus;
-  return (
-    <span
-      className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border tabular-nums ${cls}`}
-      title={title}
-    >
-      <Icon className="w-3 h-3" />
-      {up ? "+" : ""}
-      {pct}%
-    </span>
-  );
-}
+import { AgentsTable } from "./AgentsTable";
+import { ContentTable } from "./ContentTable";
+import { DayChart } from "./DayChart";
+import { FunnelSteps } from "./FunnelSteps";
+import { RangePicker } from "./RangePicker";
+import { Bars, Card, Empty, duration, fromBreakdown, fromMap } from "./parts";
 
 function Stat({
   icon: Icon,
   label,
   value,
-  trend,
+  hint,
 }: {
   icon: typeof Users;
   label: string;
   value: string;
-  trend?: number | null;
+  hint?: string;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-gray-500 mb-1">
-        <Icon className="w-3.5 h-3.5" /> {label}
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-gray-500 mb-1">
+        <Icon className="w-3.5 h-3.5 shrink-0" />
+        <span className="truncate">{label}</span>
       </div>
-      <div className="flex items-center gap-2">
-        <div className="text-2xl font-bold text-white tabular-nums">{value}</div>
-        {trend !== undefined && <TrendPill pct={trend ?? null} />}
-      </div>
+      <div className="text-xl font-semibold text-white tabular-nums">{value}</div>
+      {hint && <div className="text-[10px] text-gray-600 mt-0.5">{hint}</div>}
     </div>
   );
 }
 
 export function AnalyticsView() {
   const { t } = useI18n();
+  const [range, setRange] = useState<AnalyticsRange>("30d");
   const [data, setData] = useState<Analytics | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback((r: AnalyticsRange) => {
+    setLoading(true);
+    setError(null);
     analyticsApi
-      .get()
+      .get({ range: r })
       .then(setData)
-      .catch((e) => setError(String((e as Error)?.message || e)));
+      .catch((e) => setError(String(e?.message || e)))
+      .finally(() => setLoading(false));
   }, []);
 
-  if (error) {
-    return <div className="text-sm text-red-300 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">{error}</div>;
-  }
-  if (!data) {
+  useEffect(() => load(range), [load, range]);
+
+  if (loading && !data) {
     return (
-      <div className="flex items-center gap-2 text-gray-500 text-sm py-12 justify-center">
-        <Loader2 className="w-4 h-4 animate-spin" /> {t("analytics.loading")}
+      <div className="flex items-center gap-2 text-gray-400 text-sm py-12">
+        <Loader2 className="w-4 h-4 animate-spin" /> {t("common.loading")}
       </div>
     );
   }
+  if (error) {
+    return <p className="text-sm text-red-400 py-8">{error}</p>;
+  }
+  if (!data) return null;
 
-  // Adapted to the v2 contract without redesigning the page: that is F8. The
-  // median rather than the mean, because one lead answered three days late
-  // dragged the old average past anything a person would recognise.
-  const median = data.response.first_response_seconds.median;
-  const byStatus = data.leads.by_status;
-
-  const resp =
-    median == null
-      ? "—"
-      : median >= 60
-      ? `${Math.round(median / 60)} ${t("analytics.minutes")}`
-      : `${Math.round(median)} ${t("analytics.seconds")}`;
-
-  const funnelMax = Math.max(1, ...Object.values(byStatus));
-  const chanMax = Math.max(1, ...Object.values(data.leads.by_channel));
-  const days = [...data.leads.new_by_day]
-    .map((d) => ({ date: d.date, count: d.leads }))
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const dayMax = Math.max(1, ...days.map((d) => d.count));
-  const last7 = days.slice(-7).reduce((s, d) => s + d.count, 0);
-  const prev7 = days.slice(-14, -7).reduce((s, d) => s + d.count, 0);
-  const weekTrend = prev7 > 0 ? Math.round(((last7 - prev7) / prev7) * 100) : last7 > 0 ? 100 : null;
-
-  const TIER_COLOR: Record<string, string> = {
-    hot: "bg-red-400/70",
-    warm: "bg-amber-400/70",
-    cold: "bg-gray-400/60",
+  // Translate if we have a word for it, otherwise show what the database said.
+  // The raw values are already readable — `tiktok`, `instagram`, `phone` — so a
+  // missing translation degrades to "slightly less polished", never to a blank
+  // row or the literal key.
+  const label = (key: string, raw: string) => {
+    const translated = t(key);
+    return translated === key ? raw : translated;
   };
 
+  const { traffic, leads, response, calls, appointments, deals } = data;
+  const days = traffic.by_day.map((d, i) => ({
+    date: d.date,
+    sessions: d.sessions,
+    leads: leads.new_by_day[i]?.leads ?? 0,
+  }));
+
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <Stat icon={Users} label={t("analytics.totalLeads")} value={String(data.leads.total)} />
-        <Stat icon={Activity} label={t("analytics.newThisWeek")} value={String(last7)} trend={weekTrend} />
-        <Stat icon={TrendingUp} label={t("analytics.conversion")} value={`${Math.round(data.deals.close_rate * 100)}%`} />
-        <Stat icon={Clock} label={t("analytics.avgResponse")} value={resp} />
-        <Stat icon={Flame} label={t("analytics.sessions")} value={String(data.traffic.sessions)} />
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <RangePicker value={range} onChange={setRange} timezone={data.range.timezone} />
+        {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-500" />}
       </div>
 
-      <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-        <h2 className="text-sm font-semibold text-white mb-3">{t("analytics.funnel")}</h2>
-        <div className="space-y-2">
-          {Object.entries(byStatus).map(([status, n]) => (
-            <Bar key={status} label={t(`status.${status}`)} value={n} max={funnelMax} color="bg-eko-violet/70" />
-          ))}
-        </div>
-      </section>
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        <Stat icon={Users} label={t("analytics.sessions")} value={String(traffic.sessions)} />
+        <Stat
+          icon={Users}
+          label={t("analytics.leadsWord")}
+          value={String(leads.total)}
+          hint={`${leads.by_source.no_web ?? 0} ${t("analytics.noWeb")}`}
+        />
+        <Stat
+          icon={Clock}
+          label={t("analytics.firstResponse")}
+          value={duration(response.first_response_seconds.median, (k) => t(`unit.${k}`))}
+          hint={
+            response.unanswered > 0
+              ? `${response.unanswered} ${t("analytics.unanswered")}`
+              : undefined
+          }
+        />
+        <Stat icon={Phone} label={t("analytics.callsIn")} value={String(calls.inbound)} />
+        <Stat
+          icon={CalendarCheck}
+          label={t("analytics.appointments")}
+          value={`${appointments.completed}/${appointments.set}`}
+          hint={t("analytics.heldOfSet")}
+        />
+        <Stat
+          icon={Handshake}
+          label={t("analytics.won")}
+          value={String(deals.won)}
+          hint={
+            deals.total_value !== null
+              ? `$${Math.round(deals.total_value).toLocaleString()}`
+              : undefined
+          }
+        />
+      </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-          <h2 className="text-sm font-semibold text-white mb-3">{t("analytics.byChannel")}</h2>
-          {Object.keys(data.leads.by_channel).length === 0 ? (
-            <p className="text-sm text-gray-600">{t("analytics.noData")}</p>
+      <div className="grid lg:grid-cols-2 gap-4">
+        <Card title={t("analytics.funnel")} hint={t("analytics.funnelHint")}>
+          <FunnelSteps steps={data.funnel} />
+        </Card>
+
+        <Card title={t("analytics.perDay")}>
+          <DayChart days={days} />
+        </Card>
+
+        <Card title={t("analytics.bySource")} hint={t("analytics.bySourceHint")}>
+          <Bars
+            rows={fromBreakdown(traffic.by_source)}
+            empty={t("analytics.empty.traffic")}
+            label={(n) => label(`source.${n}`, n)}
+          />
+        </Card>
+
+        <Card title={t("analytics.byDevice")}>
+          <Bars rows={fromBreakdown(traffic.by_device)} empty={t("analytics.empty.traffic")} />
+        </Card>
+
+        <Card title={t("analytics.where")} hint={t("analytics.whereHint")}>
+          {traffic.by_city.length === 0 ? (
+            <Empty>{t("analytics.empty.traffic")}</Empty>
           ) : (
-            <div className="space-y-2">
-              {Object.entries(data.leads.by_channel).map(([ch, n]) => (
-                <Bar key={ch} label={ch} value={n} max={chanMax} color="bg-eko-magenta/60" />
-              ))}
-            </div>
+            <Bars rows={fromBreakdown(traffic.by_city)} empty={t("analytics.empty.traffic")} />
           )}
-        </section>
+        </Card>
 
-        <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-          <h2 className="text-sm font-semibold text-white mb-3">{t("analytics.byTier")}</h2>
-          <div className="space-y-2">
-            {(["hot", "warm", "cold"] as const).map((tier) => (
-              <Bar
-                key={tier}
-                label={t(`score.${tier}`)}
-                value={data.leads.by_intent[tier] ?? 0}
-                max={Math.max(1, ...Object.values(data.leads.by_intent), 1)}
-                color={TIER_COLOR[tier]}
+        <Card title={t("analytics.howFar")} hint={`${traffic.avg_scroll_pct}% ${t("analytics.avgScroll")}`}>
+          <Bars
+            rows={fromMap(traffic.sections)}
+            empty={t("analytics.empty.traffic")}
+            label={(n) => label(`section.${n}`, n)}
+          />
+        </Card>
+
+        <Card title={t("analytics.whoAnswers")} hint={t("analytics.whoAnswersHint")}>
+          <Bars
+            rows={fromMap(response.by_kind)}
+            empty={t("analytics.empty.replies")}
+            label={(n) => label(`replyKind.${n}`, n)}
+          />
+          <p className="text-[11px] text-gray-500">
+            {t("analytics.p90")}: {duration(response.first_response_seconds.p90, (k) => t(`unit.${k}`))}
+          </p>
+        </Card>
+
+        {/* Two different facts, and the first draft put them in one card with
+            one empty state: it read "no calls logged in this range" directly
+            above "average call: 2 min". They are calls the office made and
+            calls the agent received, and each needs its own absence. */}
+        <Card title={t("analytics.calls")}>
+          <div className="space-y-1.5">
+            <p className="text-[11px] uppercase tracking-wider text-gray-500">
+              {t("analytics.callsIn")}
+            </p>
+            {calls.inbound === 0 ? (
+              <Empty>{t("analytics.empty.callsIn")}</Empty>
+            ) : (
+              <p className="text-sm text-gray-300">
+                {calls.inbound}
+                {calls.avg_duration_seconds !== null && (
+                  <span className="text-gray-500">
+                    {" · "}
+                    {t("analytics.avgCall")}{" "}
+                    {duration(calls.avg_duration_seconds, (k) => t(`unit.${k}`))}
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
+          <div className="space-y-1.5 pt-1">
+            <p className="text-[11px] uppercase tracking-wider text-gray-500">
+              {t("analytics.callsLogged")}
+            </p>
+            <Bars rows={fromMap(calls.by_outcome)} empty={t("analytics.empty.calls")} />
+          </div>
+        </Card>
+
+        <Card title={t("analytics.appointments")}>
+          <Bars
+            rows={[
+              { name: t("analytics.held"), value: appointments.completed },
+              { name: t("analytics.noShow"), value: appointments.no_show },
+              { name: t("analytics.cancelled"), value: appointments.cancelled },
+            ].filter((r) => r.value > 0)}
+            empty={t("analytics.empty.appointments")}
+          />
+        </Card>
+
+        <Card title={t("analytics.deals")} hint={t("analytics.dealsHint")}>
+          {deals.won === 0 && deals.lost === 0 ? (
+            <Empty>{t("analytics.empty.deals")}</Empty>
+          ) : (
+            <>
+              <Bars
+                rows={fromMap(deals.by_kind)}
+                empty={t("analytics.empty.deals")}
+                label={(n) => label(`lead.close.kind.${n}`, n)}
               />
-            ))}
-          </div>
-        </section>
-      </div>
+              <p className="text-[11px] text-gray-500">
+                {t("analytics.closeRate")}: {Math.round(deals.close_rate * 100)}% ·{" "}
+                {deals.lost} {t("analytics.lost")}
+              </p>
+            </>
+          )}
+        </Card>
 
-      <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-        <div className="flex items-center justify-between mb-3 gap-2">
-          <h2 className="text-sm font-semibold text-white">{t("analytics.perDay")}</h2>
-          <TrendPill pct={weekTrend} title={t("analytics.vsLastWeek")} />
-        </div>
-        {days.length === 0 ? (
-          <p className="text-sm text-gray-600">{t("analytics.noData")}</p>
-        ) : (
-          <div className="flex items-end gap-1.5 h-28">
-            {days.map((d, i) => {
-              const thisWeek = i >= days.length - 7;
-              return (
-                <div key={d.date} className="flex-1 flex flex-col items-center justify-end gap-1" title={`${d.date}: ${d.count}`}>
-                  <div
-                    className={`w-full rounded-t ${thisWeek ? "bg-eko-violet/70" : "bg-eko-violet/25"}`}
-                    style={{ height: `${Math.max((d.count / dayMax) * 100, d.count > 0 ? 8 : 2)}%` }}
-                  />
-                  <span className="text-[9px] text-gray-600">{d.date.slice(5)}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+        <Card title={t("analytics.content")} hint={t("analytics.contentHint")}>
+          <ContentTable rows={data.content} />
+        </Card>
+
+        <Card title={t("analytics.byAgent")}>
+          <AgentsTable rows={data.by_agent} />
+        </Card>
+      </div>
     </div>
   );
 }

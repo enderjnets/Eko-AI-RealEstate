@@ -238,6 +238,10 @@ async def test_the_funnel_never_widens_as_it_goes_down() -> None:
     stages = [step["stage"] for step in body["funnel"]]
     assert stages[-1] == "won"
     assert stages[:4] == ["sessions", "engaged", "cta", "leads"]
+    # Not a step on purpose: an appointment can be booked by the voice agent
+    # without anybody logging a call, so this one sat wider than the step above
+    # it. A seeded month showed it immediately; an empty database never would.
+    assert "called_back" not in stages
     # Leads can exceed sessions — a phone call is a lead with no visit — so the
     # monotonic claim is only made from `leads` down, where it must hold.
     below = counts[stages.index("leads") :]
