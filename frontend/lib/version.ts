@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.78.0";
+export const CURRENT_VERSION = "0.79.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,32 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.79.0",
+    date: "2026-09-05",
+    title: {
+      en: "A safety net that is not a laptop",
+      es: "Una red de seguridad que no es un port\u00e1til",
+    },
+    changes: [
+      {
+        en: "**Groq is the LLM safety net now.** When Kimi and MiniMax both fail at the same time \u2014 a 429 on a subscription plan is routine \u2014 the chain no longer depends on a laptop at home. It is a free tier, so this costs nothing.",
+        es: "**Groq es ahora la red de seguridad del LLM.** Cuando Kimi y MiniMax fallan a la vez \u2014un 429 en un plan de suscripci\u00f3n es rutina\u2014 la cadena ya no depende de un port\u00e1til de casa. Es capa gratuita, as\u00ed que no cuesta nada.",
+      },
+      {
+        en: "The chain is now Kimi \u2192 MiniMax \u2192 Groq \u2192 Ollama. The local model on the ROG is a free extra when that machine is awake, and is no longer what holds the net up: on 5 September it froze for seven hours.",
+        es: "La cadena es ahora Kimi \u2192 MiniMax \u2192 Groq \u2192 Ollama. El modelo local del ROG es un extra gratis cuando esa m\u00e1quina est\u00e1 despierta, y ha dejado de ser lo que sostiene la red: el 5 de septiembre se colg\u00f3 siete horas.",
+      },
+      {
+        en: "**The health check measures the net, not one machine.** It reports healthy when either link can answer, so the status page stops going red \u2014 and stops sending an alert \u2014 merely because the laptop is asleep.",
+        es: "**La comprobaci\u00f3n de salud mide la red, no una m\u00e1quina.** Dice que est\u00e1 sana si cualquiera de los dos eslabones puede responder, as\u00ed que la p\u00e1gina de estado deja de ponerse en rojo \u2014y de mandar un aviso\u2014 solo porque el port\u00e1til est\u00e9 durmiendo.",
+      },
+      {
+        en: "An empty answer from a provider is now treated as a failure and falls through to the next link. Before, a reply with no text was returned as a success and could reach a lead as a blank message.",
+        es: "Una respuesta vac\u00eda de un proveedor cuenta ahora como fallo y pasa al eslab\u00f3n siguiente. Antes se devolv\u00eda como \u00e9xito y pod\u00eda llegarle a un lead como un mensaje en blanco.",
+      },
+    ],
+  },
   {
     version: "0.78.0",
     date: "2026-09-05",

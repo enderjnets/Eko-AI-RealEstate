@@ -41,8 +41,9 @@ EU/LATAM):
   blast radius.
 - **No per-seat cloud SaaS lock-in** — The office runs it on a small VPS or box.
 - **LLM** — Cloud-hosted **Kimi 2.6** (primary) + **MiniMax M2.7** (fallback),
-  both spoken over the `anthropic-messages` protocol with inline failover. On-prem
-  LLM (Ollama) is an optional swap, not required.
+  both over the `anthropic-messages` protocol, then **Groq** (free tier, OpenAI
+  protocol) as the safety net, all with inline failover. On-prem LLM (Ollama) is
+  an optional extra link, not required and not load-bearing.
 
 ## Stack
 
@@ -51,7 +52,7 @@ EU/LATAM):
 | Backend | FastAPI (Python 3.11) + SQLAlchemy async + Alembic |
 | Database | Postgres 16 |
 | Queue / cache | Redis 7 |
-| LLM | Kimi 2.6 (`kimi-for-coding`) primary + MiniMax M2.7 fallback (cloud, anthropic protocol). Ollama optional. |
+| LLM | Kimi 2.6 (`kimi-for-coding`) primary + MiniMax M2.7 fallback (cloud, anthropic protocol) → Groq `llama-3.3-70b-versatile` (free tier, OpenAI protocol) as the safety net. Ollama optional. |
 | Frontend | Next.js 14 (App Router) + TailwindCSS |
 | Channels | WhatsApp Business Cloud API + Email (Resend) + SMS (Twilio). Voice planned. |
 | Calendar | Cal.com (Google Calendar planned) |

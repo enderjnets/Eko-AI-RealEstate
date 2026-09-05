@@ -8,10 +8,16 @@ office's own machine or VPS.
 
 - **Docker** + the **Docker Compose** plugin (`docker compose version` works).
 - ~2 GB RAM free, ~5 GB disk.
-- Outbound HTTPS to the LLM providers (`api.kimi.com`, `api.minimax.io`) and, when
-  enabled, to Meta / Resend / Cal.com.
+- Outbound HTTPS to the LLM providers (`api.kimi.com`, `api.minimax.io`,
+  `api.groq.com`) and, when enabled, to Meta / Resend / Cal.com.
 - No GPU required — the LLM runs in the cloud (Kimi 2.6 primary, MiniMax M2.7
-  fallback). On-prem LLM (Ollama) is optional and out of scope for the default install.
+  fallback, Groq as the safety net). On-prem LLM (Ollama) is optional, and only
+  an extra link: the install answers leads without it.
+
+  `api.groq.com` is worth allowing even on an install that does not set
+  `GROQ_API_KEY` yet — it is what stops a lead getting "someone will reply
+  shortly" when both paid providers fail at the same time, which a 429 on a
+  subscription plan makes routine.
 
 ## Quick start (interactive)
 

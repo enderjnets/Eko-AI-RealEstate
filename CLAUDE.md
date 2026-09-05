@@ -57,7 +57,14 @@ the product, used in README / landing / marketing copy, is **"Eko AI Realtors"**
    the pricing-v2 marketing branch.
 5. **NEVER use Anthropic OAuth (Claude Max plan token) for the customer
    product LLM.** That is for our personal Claude Code / OpenClaw usage and
-   would violate Anthropic ToS at scale. Use **Kimi + MiniMax** here, period.
+   would violate Anthropic ToS at scale. The product's chain is **Kimi →
+   MiniMax → Groq → Ollama**, and nothing else.
+
+   The safety net is **Groq** (free tier, OpenAI protocol) since v0.79.0. The
+   local Ollama on the ROG is an optional extra when that laptop happens to be
+   awake — it is **not** load-bearing, and `/api/v1/health` no longer goes red
+   because it is asleep. It used to be the whole net, and on 2026-09-05 it
+   froze for seven hours.
 6. **NEVER bake API keys, customer phone numbers, or WhatsApp tokens into
    committed files.** Always read from `.env` (gitignored).
 7. **WhatsApp is DISABLED by default** (`WHATSAPP_ENABLED=false`). This is a US
@@ -105,11 +112,21 @@ For the full port map across all four stacks, see
   a lightweight client context (`lib/i18n.tsx`, `useI18n().t(key)`) — English
   default + Spanish, switcher in the Nav. All UI strings go through `t()`; add
   new strings to BOTH the EN and ES dictionaries.
-- **LLM provider (this product)**: **Kimi 2.6 `kimi-for-coding`** primary,
-  **MiniMax M2.7** fallback. Both use the `anthropic-messages` HTTP protocol,
-  so we use the `anthropic` Python SDK with custom `base_url`. Fallback is
-  **inline per request** (not a separate cron / watchdog): if primary fails or
-  times out, the same request retries against the fallback before erroring out.
+- **LLM provider (this product)**: a chain of four, **two protocols**. Assuming
+  one protocol for all of them is how a provider gets wired to a client that
+  cannot talk to it:
+  - **Kimi 2.6 `kimi-for-coding`** (primary) and **MiniMax M2.7** (fallback)
+    speak `anthropic-messages`, so they share the `anthropic` Python SDK with a
+    custom `base_url`.
+  - **Groq** (`llama-3.3-70b-versatile`, free tier) speaks the **OpenAI chat**
+    protocol, and **Ollama** its own `/api/chat`. Both are plain `httpx` POSTs
+    in their own branch of `generate_reply` — no extra dependency, and
+    deliberately **no OpenAI SDK**.
+
+  Fallback is **inline per request** (not a separate cron / watchdog): if a
+  provider fails or times out, the same request moves down the chain before
+  erroring out. `check_fallback_provider()` reports on the **net** (Groq or
+  Ollama), not on one machine.
 - **WhatsApp**: Meta WhatsApp Business Cloud API (webhooks for inbound,
   Graph API for outbound). Signature verification with HMAC-SHA256 +
   `WHATSAPP_APP_SECRET`.

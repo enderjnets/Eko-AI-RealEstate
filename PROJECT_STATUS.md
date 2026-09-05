@@ -86,6 +86,27 @@ NVIDIA NIM. El plan de ejecución está en `PLAN.md` §4, fases 2.1 a 2.4.
 
 ---
 
+## 🟡 ESCRITA, SIN DESPLEGAR — Fase 2.3: documentación y **v0.79.0**
+
+Ningún fichero del repo afirma ya que «todos los proveedores hablan Anthropic»
+ni que la cadena termina en el ROG. Tocados: `CLAUDE.md` (la regla de **nunca
+OAuth de Anthropic** sigue intacta; lo que cambia es la cadena que la acompaña,
+y el bloque de Stack pasa a describir **dos protocolos**), `README.md`,
+`docs/install.md` (añadido `api.groq.com` a las salidas HTTPS necesarias, con el
+motivo escrito), `docs/roadmap.md` y `docs/setup-discovery.md`.
+
+**Bump 0.79.0** en los tres sitios que exige `test_version_is_one_number`:
+`config.py`, `frontend/lib/version.ts` y la cabecera de `CHANGELOG.md`. La
+entrada de `version.ts` se escribió con **`json.dumps`**, no con
+`repr().replace`: ese apaño corrompió un apóstrofo dos veces en este repo y en
+la v0.78.0 dejó **17 escapes unicode duplicados** que se veían en pantalla como
+«La p\u00e1gina». Verificado decodificando la entrada: `portátil`,
+`comprobación`, `eslabón` salen bien, y `grep` de escapes duplicados da **0**.
+
+**Verificado:** 1617 backend en verde, 0 saltados, 82 % · **261 frontend** en
+verde · `npx tsc --noEmit` exit 0 · `ruff` limpio · `docker build` exit 0 ·
+`grep -rn "anthropic-messages"` sin afirmaciones falsas.
+
 ## 🟡 ESCRITA, SIN DESPLEGAR — Fase 2.2: la sonda mide la red, no una máquina
 
 > Rama `fix/llm-safety-net`. **Sin bump todavía** (va en la 2.3).

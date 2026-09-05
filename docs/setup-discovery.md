@@ -44,8 +44,8 @@ Colorado businesses** across the four sources. The whole flow — search → pre
 → import, and file upload → preview → import — works with **zero API keys and no
 external calls**. This is what the public demo runs.
 
-File import still uses the LLM (Kimi/MiniMax) to read the uploaded text — that's
-the normal product LLM, no extra account.
+File import still uses the LLM (Kimi → MiniMax → Groq → Ollama) to read the
+uploaded text — that's the normal product LLM, no extra account.
 
 ---
 

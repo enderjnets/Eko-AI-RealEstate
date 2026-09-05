@@ -11,7 +11,8 @@ health endpoint, landing placeholder.
 ## Phase 1 · CORE — ✅ done (`v0.1.0`)
 
 WhatsApp Business Cloud API webhook (GET handshake + POST inbound with
-HMAC-SHA256), LLM client (Kimi primary + MiniMax fallback, inline failover),
+HMAC-SHA256), LLM client (Kimi primary + MiniMax fallback, inline failover;
+Groq was added as the safety net in v0.79.0),
 models (Lead / Conversation / Message / Property / AgentSettings), Alembic
 baseline, intent classifier (`rent | buy | valuation | other` + entity
 extraction), and the auto-response orchestrator. SIMULATED mode for dev.

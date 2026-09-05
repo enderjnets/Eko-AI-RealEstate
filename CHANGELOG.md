@@ -2,6 +2,53 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.79.0] — 2026-09-05
+
+### Added
+- **Groq as the LLM safety net** (`GROQ_API_KEY` / `GROQ_BASE_URL` /
+  `GROQ_MODEL`). The chain is now **Kimi → MiniMax → Groq → Ollama**. Groq
+  speaks the **OpenAI chat protocol**, not Anthropic's, so it gets its own
+  `_openai_chat_generate` — named for the protocol, so the next compatible
+  provider needs a config entry and a branch, not a new function. No new Python
+  dependency: `httpx` was already there, and the OpenAI SDK is deliberately not
+  installed.
+- Without `GROQ_API_KEY` the link simply does not exist and the install behaves
+  exactly as it did before, the same gate as Kimi and MiniMax without theirs.
+
+### Changed
+- **The ROG is no longer load-bearing.** The local Ollama was the whole safety
+  net; on 2026-09-05 that laptop froze — powered on, fans spinning — and spent
+  seven hours off the network. It is now an optional extra link when it happens
+  to be awake, and `/api/v1/health` no longer goes red because it is asleep.
+- **`check_fallback_provider()` measures the net, not one machine.** It reports
+  healthy when *either* last link can answer. Groq is probed with `GET /models`
+  (cached one hour, so at most 24 calls a day against a 1,000/day allowance —
+  a watchman must not spend what it watches), and the probe checks the model is
+  still on the list, because a free tier can withdraw one without notice. A
+  **429 counts as healthy**: the service answered, and being rate limited is not
+  being absent. A failure is cached for only 60 seconds, since a failure spends
+  no quota and one shared TTL turned a one-second network blip into an hour of
+  "the safety net is down".
+- Startup and alert texts name **both** links, and only the ones an install
+  actually has. They no longer send the operator to run `ollama pull` when the
+  problem is a Groq key, or tell an install with no key to go and check a Groq
+  that was never configured.
+
+### Fixed
+- **An empty completion is a failure, not an answer.** A 200 carrying
+  `choices: []`, a null message, or an error object served with a 200 status all
+  parsed cleanly into empty text. Returned as a result, that stopped the chain
+  dead — the next link was never tried — and, with no guard on empty text
+  anywhere downstream, reached the lead as a **blank message** stamped as a
+  healthy AI reply. It now raises and falls through. Same fix applied to the
+  Ollama branch, which had the defect already.
+- **The health probe could raise**, which its callers have nowhere to put. The
+  Ollama response was parsed outside its `try`, so a 200 with an unexpected
+  shape took down a reading that startup and every monitor tick depend on —
+  freezing `/api/v1/health` on a stale value and silencing the alarm entirely.
+- The test suite could reach `api.groq.com` with a real key on any machine that
+  exported one. `GROQ_API_KEY` is now emptied for the whole suite.
+
 ## [0.78.0] — 2026-09-05
 
 ### Added
