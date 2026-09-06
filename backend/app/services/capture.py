@@ -37,6 +37,7 @@ from app.models.channel_route import CHANNEL_WEB
 from app.models.conversation import Conversation, ConversationStatus
 from app.models.lead import Lead
 from app.models.message import Message, MessageDirection, MessageSender, MessageStatus
+from app.services.calculator import build_snapshot, summary_line
 from app.services.scoring import rescore_lead
 
 log = logging.getLogger(__name__)
@@ -118,6 +119,9 @@ class FormSubmission:
     attribution: dict[str, str] = field(default_factory=dict)
     ip: str | None = None
     user_agent: str | None = None
+    # `CalculatorIn.model_dump()` when the form sat under /calculator: the
+    # three inputs, the sliders moved, the page's language. Never a result.
+    calculator: dict | None = None
 
 
 def clean_text(value: str | None, limit: int) -> str | None:
@@ -219,20 +223,54 @@ def clean_attribution(raw: dict | None) -> dict[str, str]:
     return out
 
 
-def _summary(message: str | None, name: str | None) -> str:
+def _summary(message: str | None, name: str | None, snapshot: dict | None = None) -> str:
     """What the realtor reads in the Inbox.
 
     The lead's own words when they wrote any, and otherwise a plain statement of
     what the form knows — never an empty message, which in the Inbox looks like
     a bug rather than like a contact request with no note.
 
+    With a calculator snapshot, its one-line summary rides along: after the
+    words when there are any, alone when there are none. It is what the
+    classifier reads too, so the estimate reaches the score.
+
     Takes the CLEANED message, never `sub.message`: reading the raw field here
     is how the 5,000-character cap ends up applying to nothing at all.
     """
+    calc = summary_line(snapshot) if snapshot else None
+    if message and calc:
+        return f"{message} — {calc}"
     if message:
         return message
+    if calc:
+        return calc
     who = name or "Someone"
     return f"{who} submitted the contact form and left no message."
+
+
+# The keys of `CalculatorIn` that are inputs, and the ones that are sliders.
+_CALC_INPUTS = ("rent", "savings", "credit")
+_CALC_OVERRIDES = ("appreciation", "rent_growth", "rate", "hoa_monthly")
+
+
+def _snapshot_of(raw: dict | None) -> dict | None:
+    """The server's own recomputation of what the form said was calculated.
+
+    Returns None when there is nothing to compute or when the payload cannot
+    be computed. The route has already validated ranges, but this function is
+    also reached by direct callers, and a calculation must never cost the
+    lead: a bad one is logged and dropped, the person is still captured.
+    """
+    if not raw or not isinstance(raw, dict):
+        return None
+    try:
+        inputs = {k: raw.get(k) for k in _CALC_INPUTS}
+        overrides = {k: raw.get(k) for k in _CALC_OVERRIDES}
+        lang = raw.get("lang")
+        return build_snapshot(inputs, overrides, lang=lang if isinstance(lang, str) else None)
+    except Exception as exc:  # noqa: BLE001 — the promise above is "never"
+        log.warning("Calculator payload dropped, lead still captured: %s", type(exc).__name__)
+        return None
 
 
 def validate_submission(sub: FormSubmission) -> None:
@@ -314,6 +352,16 @@ async def capture_lead(sub: FormSubmission, db: AsyncSession) -> dict[str, objec
     _record_attribution(lead, attribution, now)
     _record_consent(lead, sub, now, allowed=consent_allowed, is_new_lead=is_new)
 
+    # The calculation, recomputed here. Last one wins: someone who goes back,
+    # moves a slider and submits again has changed their mind, and the agent
+    # should see the number they last looked at. That holds on a lead reached
+    # by email merge too (`by_address`), where consent is refused: a snapshot
+    # is not a permission, it is what the person with that address looked at
+    # — SMS first, calculator later, is the case Natalia wants to see.
+    snapshot = _snapshot_of(sub.calculator)
+    if snapshot is not None:
+        lead.calculator_snapshot = snapshot
+
     conv = await first_or_create(
         db,
         select(Conversation)
@@ -330,7 +378,7 @@ async def capture_lead(sub: FormSubmission, db: AsyncSession) -> dict[str, objec
         ),
     )
 
-    content = _summary(message, name)
+    content = _summary(message, name, snapshot)
     if await _already_said(conv.id, content, now, db):
         log.info("Duplicate web submission for lead %d ignored", lead.id)
         return {

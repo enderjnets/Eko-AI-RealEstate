@@ -20,7 +20,7 @@ from typing import Any, Literal
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -276,6 +276,33 @@ async def _turnstile_ok(token: str | None, ip: str | None) -> bool:
         return False
 
 
+class CalculatorIn(BaseModel):
+    """What the visitor typed on /calculator, and the sliders they moved.
+
+    Inputs and overrides only — never the result. The server recomputes it
+    (`services/calculator.build_snapshot`) before anything is stored, so a
+    browser cannot file "$2,000,000" beside a $900 rent.
+
+    Validated INSIDE the route, not by the envelope: a calculation that fails
+    these bounds is dropped with a warning and the lead is captured anyway.
+    The `session_id` comment below says why in the analytics' words — a
+    pattern on the envelope turns a page bug into a lost person — and a
+    calculator is a courtesy, the lead is the point. `extra="forbid"` so an
+    unknown key drops the calculation rather than riding along unnoticed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    rent: float = Field(gt=0, le=50_000)
+    savings: float = Field(ge=0, le=5_000_000)
+    credit: Literal["excellent", "good", "fair"]
+    appreciation: float | None = Field(default=None, ge=-0.10, le=0.15)
+    rent_growth: float | None = Field(default=None, ge=-0.10, le=0.15)
+    rate: float | None = Field(default=None, ge=0.0, le=0.20)
+    hoa_monthly: float | None = Field(default=None, ge=0, le=5_000)
+    lang: Literal["en", "es"] | None = None
+
+
 class PublicLeadIn(BaseModel):
     # The public key of the form, as configured in channel_routes. Optional:
     # a single-agency install has nothing to disambiguate, and requiring a key
@@ -311,6 +338,15 @@ class PublicLeadIn(BaseModel):
     # Honeypot. Named for something a browser autofill would plausibly target
     # and hidden in the markup, so a human never sees it and a bot fills it in.
     website: str | None = Field(default=None, max_length=200)
+    # Present only when the form sits under /calculator. Travels as its own
+    # field, not as an attribution key: the whitelist in `capture.py` means
+    # "which campaign produced this lead" and is pinned by tests; a
+    # calculation is not that.
+    #
+    # `Any`, deliberately: `CalculatorIn` is applied in the handler so that a
+    # malformed calculation can never make this envelope a 422 — see
+    # `CalculatorIn` for why the lead must survive it.
+    calculator: Any = None
 
     # No trimming validator here, deliberately, and it took writing one to find
     # out why: `services/capture.py` already normalises every field that is
@@ -358,6 +394,18 @@ async def capture(
     #    for a dead one, which made this a quiet enumeration oracle: unlike a
     #    202 probe it writes no lead, so a scan left no trace anywhere the
     #    operator looks. Same answer now regardless of the key.
+    # The calculation, bounded here and dropped — not the lead — when it
+    # fails. Nothing of the payload is logged; the shape of the failure is.
+    calculator: dict | None = None
+    if body.calculator is not None:
+        try:
+            calculator = CalculatorIn.model_validate(body.calculator).model_dump()
+        except ValidationError as exc:
+            log.warning(
+                "Calculator payload refused (%d problem(s)); lead still captured",
+                len(exc.errors()),
+            )
+
     submission = FormSubmission(
         name=body.name,
         email=body.email,
@@ -368,6 +416,7 @@ async def capture(
         attribution=body.utm or {},
         ip=ip,
         user_agent=request.headers.get("user-agent"),
+        calculator=calculator,
     )
     try:
         validate_submission(submission)

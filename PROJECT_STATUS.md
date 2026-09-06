@@ -20,10 +20,20 @@ puertos propios 8021 (API) y 3010 (web).
 | 0 · Aislamiento y estado base | `8bb3687` | backend **1659/1659**, cobertura **82 %**, ruff ✅ · tsc ✅ · vitest **268/268** · lint ✅ · build ✅ · prerender `/` `/contact` `/fall` `<main>`=1, spinner=0 · secretos: el diff es solo `PLAN.md` y este fichero · cobertura frontend: **no verificable** (A-4) · auditoría independiente: no aplica, sin código |
 | 1 · Aritmética TS contra la hoja de Jeff | `6b6bb5b` | vitest **301/301** (33 nuevos en `calculator.test.ts`) · tsc ✅ · lint ✅ · build ✅ · mutación obligatoria (`−`→`+` en `net`): **4 rojos** (casos 4, 9b, 10a, 10b), restaurado · secretos: ninguno · sin `console.` · cobertura frontend: no verificable (A-4); backend sin cambios · auditoría independiente: 1 importante corregido en fase (A-8), 0 bloqueantes |
 | 2 · La misma aritmética en Python | `d4f65b6` | pytest **1699/1699** antes del arreglo de auditoría y **1701/1701** después; `calculator.py` **100 %** cobertura, total 82 % · ruff ✅ · mutación de signo en `net`: **5 rojos**, restaurado · secretos: ninguno · sin `print` · frontend sin cambios · auditoría independiente: paridad TS↔Python medida en **6.006 casos** (precio, préstamo, mensualidades bit-exactos), 1 importante corregido en fase, 0 bloqueantes |
-| 3a · Migración 055 `leads.calculator_snapshot` **[CRÍTICA]** | el de esta entrada | `alembic upgrade head` → 055, `heads`=1, `downgrade -1`+`upgrade head` limpios, columna `jsonb` nullable verificada en `information_schema` · pytest focalizado 56/56 y suite completa **1703/1703** (82 %) · ruff ✅ (alcance `app tests` + el fichero 055) · tsc ✅ · vitest 301/301 · lint ✅ · build ✅ · secretos: ninguno · `LeadDetail` sin test unitario (sin jsdom por decisión del repo): solo `tsc`, se verifica de extremo a extremo en 6b · auditoría independiente: 0 bloqueantes, 0 importantes, 3 menores aplicados (snapshot real en el test, docstring, aviso en log) |
+| 3a · Migración 055 `leads.calculator_snapshot` **[CRÍTICA]** | `aecaf9c` | `alembic upgrade head` → 055, `heads`=1, `downgrade -1`+`upgrade head` limpios, columna `jsonb` nullable verificada en `information_schema` · pytest focalizado 56/56 y suite completa **1703/1703** (82 %) · ruff ✅ (alcance `app tests` + el fichero 055) · tsc ✅ · vitest 301/301 · lint ✅ · build ✅ · secretos: ninguno · `LeadDetail` sin test unitario (sin jsdom por decisión del repo): solo `tsc`, se verifica de extremo a extremo en 6b · auditoría independiente: 0 bloqueantes, 0 importantes, 3 menores aplicados (snapshot real en el test, docstring, aviso en log) |
+| 3b · El cálculo viaja con el lead | el de esta entrada | pytest focalizado **118/118** (9 nuevos: 6 captura + 2 aviso + parametrizado de 422) y suite completa **1720/1720** (82 %; `capture.py` 95 %, `lead_notify.py` 53→57 %) · ruff ✅ · tsc ✅ · vitest 301/301 · lint ✅ · build ✅ · secretos: ninguno · entrada externa: `CalculatorIn` con `extra="forbid"` y rangos; el servidor recalcula, nunca guarda lo que dice el navegador; un payload incomputable se descarta con aviso y el lead se captura igual · auditoría independiente: 0 bloqueantes; 2 importantes que eran decisiones de contrato → consulta 3 al advisor (A-10 aplicado, 7.9 registrada); 3 menores al backlog |
 
 ### Consultas al advisor
 
+3. **Fase 3b, plan defectuoso (regla 4).** Motivo: el auditor independiente
+   señaló que el 422 del plan (casos 3-5) ante un cálculo malformado **cuesta
+   el lead**, y que un lead fusionado por correo ve su snapshot sobrescrito.
+   Decisión del autor: **#1 es defecto del plan** (la analogía con «a bad
+   batch writes nothing» era falsa) → A-10: `CalculatorIn` se valida dentro
+   de la ruta, un cálculo malo se descarta con aviso y el lead se captura
+   (`NULL`); **#2 es decisión, no defecto** → «la última gana» se mantiene,
+   comentada, registrada como 7.9. **Cambié el contrato del plan aquí; el
+   dueño puede vetarlo: volver al 422 es un solo hunk en `capture()`.**
 2. **Antes de la Fase 3a [CRÍTICA] (5-sep).** Motivo: regla 2 del dueño.
    Decisión: (a) el contrato del snapshot cambió en la Fase 2 (`net_5y` y
    `crossover_year` nulos bajo el suelo) → el tipo TS lo declara y la ficha
@@ -54,6 +64,11 @@ puertos propios 8021 (API) y 3010 (web).
   `Math.round` (3,4 % de las entradas enteras diferían en $1), `deepcopy` de
   `DEFAULTS` (los dicts anidados se compartían), y el techo de $5M se redacta
   como «search ceiling», no como estimación.
+- **Backlog (menores, auditoría Fase 3b):** el aviso repite la línea del
+  cálculo (`Message:` ya la lleva y `Calculator:` la repite; conforme al plan,
+  redundante); la línea es siempre en inglés aunque el mensaje del chip venga
+  en español (el plan la especifica en inglés); un `NaN`/`Infinity` literal en
+  el JSON da 500 en vez de 422 (**preexistente**, no introducido).
 - **Backlog (menor, auditoría Fase 2):** un `Decimal` en `inputs` vale 0 en
   silencio (`_dollars` solo acepta `int|float`); hoy inalcanzable porque
   `CalculatorIn` entrega `float`.
@@ -75,9 +90,18 @@ puertos propios 8021 (API) y 3010 (web).
   0 / +0,25 / +0,75; venta 4 %; suelo $150.000; **sin despliegue**; sin prueba
   contra producción.
 - Rama única `feat/calculator`, un commit por fase, push tras cada fase.
+- **A-10 (3b):** un `calculator` fuera de rango o con clave desconocida **no**
+  es un 422: se descarta con aviso y el lead se captura sin snapshot. Motivo:
+  la calculadora es una cortesía, el lead es el objetivo. Reversible en un hunk.
+- **7.9 (3b):** en un lead fusionado por correo el snapshot se sobrescribe
+  («la última gana»): un snapshot no es un permiso, es lo que miró la persona
+  con esa dirección. Reversible con `if is_new or not by_address`.
 
 ### Siguiente paso
 
+Fase 4: evento `calculator_result` (sin migración: `landing_events.type` es `Text`).
+
+<!-- hecho -->
 Fase 3b: `CalculatorIn` en `public.py`, `FormSubmission.calculator`,
 `build_snapshot` en `capture_lead`, `_summary` con la línea del cálculo, la línea
 «Calculator» en el aviso, `CapturePayload.calculator` y el prop de `ConsultForm`.

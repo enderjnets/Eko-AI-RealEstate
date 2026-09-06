@@ -318,3 +318,34 @@ async def test_a_lead_without_a_calculation_is_null_in_json_and_in_sql(
         assert await _sql_null_count(lead_id) == 1
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_direct_caller_with_garbage_calculator_still_captures(database_url: str) -> None:
+    """`capture_lead` is reachable without the route's bounds. Whatever it is
+    handed as a calculation, the lead is written and the column stays NULL."""
+    await _cleanup()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                await capture_lead(
+                    FormSubmission(name="Garbage Probe", phone=PHONE, calculator="garbage"),  # type: ignore[arg-type]
+                    db,
+                )
+                # An absurd override overflows float pow inside the arithmetic
+                # (verified: it raises) — the kind of exception the route's
+                # bounds prevent and a direct caller does not.
+                await capture_lead(
+                    FormSubmission(
+                        name="Garbage Probe",
+                        phone=PHONE,
+                        calculator={"rent": 2100, "savings": 60000, "credit": "good", "rate": 10000000000.0},
+                    ),
+                    db,
+                )
+                await db.commit()
+        async with get_bypass_session_factory()() as db:
+            lead = (await db.execute(select(Lead).where(Lead.phone == PHONE))).scalar_one()
+            assert lead.calculator_snapshot is None
+    finally:
+        await _cleanup()

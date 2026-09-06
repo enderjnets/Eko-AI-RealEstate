@@ -1022,3 +1022,28 @@ el diseño; cierran huecos que el texto de las fases dejaba abiertos.
   no finitos → valor de `DEFAULTS`; `hoaMonthly` negativo o no finito → 0;
   `years` = `clamp(floor(years) finito ? … : 5, 1, 40)`. Para entradas bien
   formadas nada cambia; las anclas de paridad se conservan al céntimo.
+- **A-9 · Fase 3b, caso 6.** El texto decía «`savings: 10_000_000` (dentro del
+  tope)», pero `CalculatorIn` fija `savings ≤ 5_000_000`: 10 M es un 422, no
+  un 202. El caso se ejecuta con el ahorro **en el tope (5 000 000)** → 202,
+  `capped_by="rent"`, `loan=0`. Los 10 M quedan cubiertos por el parametrizado
+  de 422 (`savings` fuera de rango). Errata del plan, no cambio de diseño.
+- **A-10 · Fase 3b, casos 3-5 — corrección de contrato (hallazgo del auditor,
+  confirmado por el autor).** El plan mandaba **422 sin lead** ante un
+  `calculator` fuera de rango o con clave desconocida, «misma promesa que un
+  batch malo». La analogía era falsa: un batch perdido es una fila de
+  analítica; un 422 en `/public/leads` es **una persona** que ve «something
+  went wrong». `CalculatorIn` y sus rangos se mantienen íntegros, pero se
+  validan **dentro** de la ruta: si falla, se registra un aviso, el cálculo
+  se descarta y **el lead se captura sin snapshot** (`NULL` SQL). Los tests
+  de los casos 3-5 pasan a esperar 202 + fila + `IS NULL` + aviso en el log.
+  **Es un cambio de contrato respecto al plan y el dueño puede vetarlo**:
+  volver al 422 es un solo hunk en `capture()` (quitar el `try`). La Fase 6b
+  además solo adjunta `calculator` cuando las entradas de la página son
+  válidas — dos defensas contra perder un lead.
+- **7.9 (decisión registrada, reversible) · Snapshot en un lead fusionado por
+  correo.** Un POST con el correo de un lead existente (`by_address`, donde el
+  consentimiento se rechaza) **sí** sobrescribe `calculator_snapshot` («la
+  última gana», ya decidido en el plan). Un snapshot no es un permiso: es lo
+  que la persona con esa dirección miró; SMS primero y calculadora después es
+  el caso legítimo. Si el dueño prefiere protegerlo: `if is_new or not
+  by_address` en la asignación.

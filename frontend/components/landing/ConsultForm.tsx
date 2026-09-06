@@ -16,7 +16,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { submitPublicLead, type CaptureOutcome } from "@/lib/api";
+import { submitPublicLead, type CalculatorPayload, type CaptureOutcome } from "@/lib/api";
 import { collectAttribution } from "@/lib/capture";
 import { getTracker, sessionKey, storedAttribution } from "@/lib/track";
 import { useI18n } from "@/lib/i18n";
@@ -39,7 +39,16 @@ const LANDING_VARIANT = "landing";
 
 type Goal = "selling" | "buying" | "valuing";
 
-function ConsultFormInner({ variant }: { variant: string }) {
+function ConsultFormInner({
+  variant,
+  calculator,
+}: {
+  variant: string;
+  /** What the visitor calculated, when this form sits under /calculator.
+   *  Sent as-is; the server recomputes it. Nothing else about the form
+   *  changes — not the copy, not the consent, not the endpoint. */
+  calculator?: CalculatorPayload;
+}) {
   const { t } = useI18n();
   const params = useSearchParams();
 
@@ -146,6 +155,7 @@ function ConsultFormInner({ variant }: { variant: string }) {
       session_id: sessionId,
       turnstile_token: captchaToken || undefined,
       website: f.website || undefined,
+      calculator,
     });
 
     setLoading(false);
@@ -344,12 +354,15 @@ function LandingField({
   );
 }
 
-export function ConsultForm({ variant = LANDING_VARIANT }: { variant?: string } = {}) {
+export function ConsultForm({
+  variant = LANDING_VARIANT,
+  calculator,
+}: { variant?: string; calculator?: CalculatorPayload } = {}) {
   // useSearchParams needs a Suspense boundary or the whole route opts out of
   // static rendering.
   return (
     <Suspense fallback={<div className="h-96 border border-ln-cream/20" />}>
-      <ConsultFormInner variant={variant} />
+      <ConsultFormInner variant={variant} calculator={calculator} />
     </Suspense>
   );
 }

@@ -14,7 +14,9 @@ the handler resolved and bound a tenant on its own.
 """
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from unittest.mock import patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -1197,3 +1199,167 @@ async def test_the_requirement_is_a_setting_and_lifts_when_sms_comes_back(
                 text("DELETE FROM leads WHERE phone = '+19995558802'")
             )
             await session.commit()
+
+
+# ── The calculation travels with the lead ────────────────────────────────
+
+# $2,100 of rent, $15,000 saved, good credit: the golden fixture's cross anchor
+# says $262,451.17, so the server must store 262451 whatever the browser says.
+CALC = {"rent": 2100, "savings": 15000, "credit": "good"}
+
+
+async def _calc_snapshot(email: str) -> dict | None:
+    async with get_bypass_session_factory()() as db:
+        value = (
+            await db.execute(
+                text("SELECT calculator_snapshot FROM leads WHERE email = :e"), {"e": email}
+            )
+        ).scalar_one_or_none()
+    return json.loads(value) if isinstance(value, str) else value
+
+
+async def _inbound_contents(email: str) -> list[str]:
+    async with get_bypass_session_factory()() as db:
+        rows = (
+            await db.execute(
+                text(
+                    "SELECT m.content FROM messages m "
+                    "JOIN conversations c ON c.id = m.conversation_id "
+                    "JOIN leads l ON l.id = c.lead_id "
+                    "WHERE l.email = :e AND m.direction = 'inbound' ORDER BY m.id"
+                ),
+                {"e": email},
+            )
+        ).scalars().all()
+    return list(rows)
+
+
+@pytest.mark.asyncio
+async def test_a_calculation_is_recomputed_and_stored_with_the_lead() -> None:
+    """The browser sends inputs; the row holds the server's own result, and the
+    Inbox message says what they calculated so the agent reads it first."""
+    await _seed()
+    try:
+        status, _ = await _post(
+            {"form": FORM_A, "email": "calc@capture.test", "calculator": {**CALC, "lang": "es"}}
+        )
+        assert status == 202
+        snap = await _calc_snapshot("calc@capture.test")
+        assert snap is not None
+        assert snap["inputs"] == {"rent": 2100.0, "savings": 15000.0, "credit": "good"}
+        assert isinstance(snap["result"]["price"], int)
+        assert snap["result"]["price"] == 262451
+        assert snap["result"]["capped_by"] == "rent"
+        assert snap["lang"] == "es"
+        assert snap["version"] == 1
+        contents = await _inbound_contents("calc@capture.test")
+        assert len(contents) == 1
+        assert "rent-vs-buy calculator" in contents[0]
+        assert "$262,000" in contents[0]
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_form_without_a_calculation_stores_sql_null() -> None:
+    """Nothing changes for `/` and `/fall`: no snapshot, and the column is SQL
+    NULL — not a JSON `null` a later "who used the calculator" query would count."""
+    await _seed()
+    try:
+        status, _ = await _post({"form": FORM_A, "email": "plain@capture.test", "message": "Hi"})
+        assert status == 202
+        assert await _calc_snapshot("plain@capture.test") is None
+        async with get_bypass_session_factory()() as db:
+            n = (
+                await db.execute(
+                    text("SELECT count(*) FROM leads WHERE email = :e AND calculator_snapshot IS NULL"),
+                    {"e": "plain@capture.test"},
+                )
+            ).scalar_one()
+        assert n == 1
+        assert (await _inbound_contents("plain@capture.test")) == ["Hi"]
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {**CALC, "rent": 0},  # gt=0
+        {**CALC, "savings": -1},  # ge=0
+        {**CALC, "savings": 10_000_000},  # le=5e6
+        {**CALC, "credit": "superb"},  # Literal
+        {**CALC, "rate": 0.50},  # le=0.20
+        {**CALC, "hoa_monthly": 9_999},  # le=5000
+        {**CALC, "appreciation": 0.5},  # le=0.15
+        {**CALC, "price": 2_000_000},  # extra="forbid": the browser does not file results
+        {**CALC, "foo": 1},  # extra="forbid"
+        "garbage",  # not even an object
+    ],
+    ids=["rent0", "savings-1", "savings10M", "credit", "rate", "hoa", "appreciation", "price", "foo", "garbage"],
+)
+@pytest.mark.asyncio
+async def test_a_bad_calculation_is_dropped_and_the_lead_is_still_captured(bad: object) -> None:
+    """The calculator is a courtesy; the lead is the point. A payload outside
+    `CalculatorIn`'s bounds — or with a key the server does not know, or not
+    an object at all — is dropped with a warning, and the person is captured
+    with no snapshot: SQL NULL, and an Inbox message with no estimate in it."""
+    await _seed()
+    try:
+        with patch("app.api.v1.public.log") as log:
+            status, _ = await _post({"form": FORM_A, "email": "bad@capture.test", "calculator": bad})
+        assert status == 202
+        assert log.warning.called, "a dropped calculation must not be invisible"
+        assert await _lead_row("bad@capture.test") is not None
+        assert await _calc_snapshot("bad@capture.test") is None
+        contents = await _inbound_contents("bad@capture.test")
+        assert len(contents) == 1
+        assert "calculator" not in contents[0]
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_server_recomputes_and_does_not_trust_the_browser() -> None:
+    """Savings at the cap: the server's answer is a rent-capped price with no
+    loan at all, whatever number the page had shown."""
+    await _seed()
+    try:
+        status, _ = await _post(
+            {"form": FORM_A, "email": "rich@capture.test", "calculator": {**CALC, "savings": 5_000_000}}
+        )
+        assert status == 202
+        snap = await _calc_snapshot("rich@capture.test")
+        assert snap["result"]["capped_by"] == "rent"
+        assert snap["result"]["loan"] == 0
+        assert snap["result"]["monthly"]["pi"] == 0
+        assert 1_000_000 < snap["result"]["price"] < 5_000_000
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_second_submission_replaces_the_snapshot_and_is_not_deduplicated() -> None:
+    """Last calculation wins, and a different estimate is a different message —
+    the duplicate guard keys on content."""
+    await _seed()
+    try:
+        assert (await _post({"form": FORM_A, "email": "twice@capture.test", "calculator": CALC}))[0] == 202
+        assert (
+            await _post(
+                {
+                    "form": FORM_A,
+                    "email": "twice@capture.test",
+                    "message": "Actually my rent went up",
+                    "calculator": {**CALC, "rent": 3000},
+                }
+            )
+        )[0] == 202
+        snap = await _calc_snapshot("twice@capture.test")
+        assert snap["inputs"]["rent"] == 3000.0
+        contents = await _inbound_contents("twice@capture.test")
+        assert len(contents) == 2
+        assert contents[1].startswith("Actually my rent went up — Used the rent-vs-buy calculator")
+        assert "rent $3,000/mo" in contents[1]
+    finally:
+        await _cleanup()

@@ -429,3 +429,39 @@ async def test_an_empty_mailbox_skips_the_send_and_still_captures() -> None:
             row.booking_contact_email = AGENCY_EMAIL
             await db.commit()
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_notice_carries_what_they_calculated() -> None:
+    """One line, after "Came from": the agent calling back knows the number the
+    person saw before they typed their email."""
+    sender = AsyncMock(return_value={"id": "re_notice_calc"})
+    try:
+        with patch("app.services.lead_notify.send_email", sender):
+            status = await _post(
+                {
+                    "name": "Calc Probe",
+                    "email": "calc@notice.test",
+                    "calculator": {"rent": 2100, "savings": 15000, "credit": "good"},
+                }
+            )
+        assert status == 202
+        assert sender.await_count == 1
+        body = sender.await_args.kwargs["body_text"]
+        assert "Calculator: Used the rent-vs-buy calculator" in body
+        for fact in ("rent $2,100/mo", "savings $15,000", "good credit", "~$262,000"):
+            assert fact in body, f"the call needs {fact!r} in hand"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_notice_has_no_calculator_line_for_everyone_else() -> None:
+    sender = AsyncMock(return_value={"id": "re_notice_plain"})
+    try:
+        with patch("app.services.lead_notify.send_email", sender):
+            status = await _post({"name": "Plain Probe", "email": "plain@notice.test", "message": "Hi"})
+        assert status == 202
+        assert "Calculator" not in sender.await_args.kwargs["body_text"]
+    finally:
+        await _cleanup()

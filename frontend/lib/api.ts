@@ -1324,6 +1324,22 @@ export type CaptureOutcome =
   | { ok: true }
   | { ok: false; reason: "contact" | "email" | "rate" | "captcha" | "generic" };
 
+/**
+ * What /calculator sends along with the form: the three inputs and the
+ * sliders the visitor moved — never the result. Mirrors `CalculatorIn` on the
+ * server, which recomputes everything before storing it.
+ */
+export interface CalculatorPayload {
+  rent: number;
+  savings: number;
+  credit: CalculatorCredit;
+  appreciation?: number;
+  rent_growth?: number;
+  rate?: number;
+  hoa_monthly?: number;
+  lang?: "en" | "es";
+}
+
 export interface CapturePayload {
   form?: string;
   name?: string;
@@ -1338,6 +1354,8 @@ export interface CapturePayload {
   session_id?: string;
   turnstile_token?: string;
   website?: string;
+  /** Present only when the form sits under /calculator. */
+  calculator?: CalculatorPayload;
 }
 
 export async function submitPublicLead(payload: CapturePayload): Promise<CaptureOutcome> {

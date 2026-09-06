@@ -40,10 +40,24 @@ import logging
 
 from sqlalchemy import select
 
+from app.services.calculator import summary_line
 from app.services.email import send_email
 from app.services.telegram_notify import send_operator_telegram, undeliverable_reason
 
 log = logging.getLogger("app.lead_notify")
+
+
+def _calculator_line(lead: object) -> str | None:
+    """The one-line summary of what they calculated, or None. A malformed
+    snapshot must not cost the notice: the number is a courtesy, the lead is
+    the point."""
+    snapshot = getattr(lead, "calculator_snapshot", None)
+    if not isinstance(snapshot, dict):
+        return None
+    try:
+        return summary_line(snapshot)
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def _line(label: str, value: str | None) -> str:
@@ -187,6 +201,7 @@ async def _send_and_record(lead_id: int, message_id: int | None) -> None:
             + _line("Email", email)
             + _line("Message", (inbound.content if inbound else None))
             + _line("Came from", attribution)
+            + _line("Calculator", _calculator_line(lead))
             + "\nThey are expecting a call back in the next few hours.\n"
         )
 
