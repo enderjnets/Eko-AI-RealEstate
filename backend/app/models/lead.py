@@ -18,6 +18,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db.base import Base, pg_enum
@@ -136,6 +137,16 @@ class Lead(Base):
     score_breakdown: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     meta: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+    # What the visitor calculated on /calculator before leaving their email:
+    # inputs, assumptions and result, recomputed by the server
+    # (`services/calculator.build_snapshot`). Nullable with no default so an
+    # INSERT that never heard of it stays valid; `none_as_null` so a Python
+    # None is SQL NULL, not the JSON literal `null` (which `IS NULL` would
+    # not match). Last calculation wins.
+    calculator_snapshot: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
 
     # How this person asked to be contacted, when they said so on a call. It
     # narrows the channels the follow-up worker may pick and never widens them:

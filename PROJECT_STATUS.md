@@ -19,10 +19,21 @@ puertos propios 8021 (API) y 3010 (web).
 |---|---|---|
 | 0 · Aislamiento y estado base | `8bb3687` | backend **1659/1659**, cobertura **82 %**, ruff ✅ · tsc ✅ · vitest **268/268** · lint ✅ · build ✅ · prerender `/` `/contact` `/fall` `<main>`=1, spinner=0 · secretos: el diff es solo `PLAN.md` y este fichero · cobertura frontend: **no verificable** (A-4) · auditoría independiente: no aplica, sin código |
 | 1 · Aritmética TS contra la hoja de Jeff | `6b6bb5b` | vitest **301/301** (33 nuevos en `calculator.test.ts`) · tsc ✅ · lint ✅ · build ✅ · mutación obligatoria (`−`→`+` en `net`): **4 rojos** (casos 4, 9b, 10a, 10b), restaurado · secretos: ninguno · sin `console.` · cobertura frontend: no verificable (A-4); backend sin cambios · auditoría independiente: 1 importante corregido en fase (A-8), 0 bloqueantes |
-| 2 · La misma aritmética en Python | el de esta entrada | pytest **1699/1699** antes del arreglo de auditoría y **1701/1701** después; `calculator.py` **100 %** cobertura, total 82 % · ruff ✅ · mutación de signo en `net`: **5 rojos**, restaurado · secretos: ninguno · sin `print` · frontend sin cambios · auditoría independiente: paridad TS↔Python medida en **6.006 casos** (precio, préstamo, mensualidades bit-exactos), 1 importante corregido en fase, 0 bloqueantes |
+| 2 · La misma aritmética en Python | `d4f65b6` | pytest **1699/1699** antes del arreglo de auditoría y **1701/1701** después; `calculator.py` **100 %** cobertura, total 82 % · ruff ✅ · mutación de signo en `net`: **5 rojos**, restaurado · secretos: ninguno · sin `print` · frontend sin cambios · auditoría independiente: paridad TS↔Python medida en **6.006 casos** (precio, préstamo, mensualidades bit-exactos), 1 importante corregido en fase, 0 bloqueantes |
+| 3a · Migración 055 `leads.calculator_snapshot` **[CRÍTICA]** | el de esta entrada | `alembic upgrade head` → 055, `heads`=1, `downgrade -1`+`upgrade head` limpios, columna `jsonb` nullable verificada en `information_schema` · pytest focalizado 56/56 y suite completa **1703/1703** (82 %) · ruff ✅ (alcance `app tests` + el fichero 055) · tsc ✅ · vitest 301/301 · lint ✅ · build ✅ · secretos: ninguno · `LeadDetail` sin test unitario (sin jsdom por decisión del repo): solo `tsc`, se verifica de extremo a extremo en 6b · auditoría independiente: 0 bloqueantes, 0 importantes, 3 menores aplicados (snapshot real en el test, docstring, aviso en log) |
 
 ### Consultas al advisor
 
+2. **Antes de la Fase 3a [CRÍTICA] (5-sep).** Motivo: regla 2 del dueño.
+   Decisión: (a) el contrato del snapshot cambió en la Fase 2 (`net_5y` y
+   `crossover_year` nulos bajo el suelo) → el tipo TS lo declara y la ficha
+   tiene rama «floor» sin precio; (b) `JSONB(none_as_null=True)` en el modelo
+   y un test que distingue `NULL` SQL de `null` JSON con `IS NULL`; (c) el
+   despliegue: **el contenedor no migra al arrancar** (`Dockerfile` arranca
+   `uvicorn` a secas) → en la Fase 9 la migración va ANTES de levantar el
+   backend nuevo, y el rollback de código a 0.80.0 **no** hace `downgrade`
+   (la columna nullable es inocua para el código viejo; `downgrade` destruye
+   snapshots). Próxima consulta: antes de preparar la Fase 9.
 1. **Arranque (5-sep).** Motivo: validar orden, dependencias y riesgos.
    Decisión: orden 0→8 sin cambios; la 9 se prepara y se detiene; la 10 no se
    ejecuta (7.1 por defecto). Base a `8ee1f31`. Aclaraciones A-2 (guard `0/0`
@@ -67,9 +78,9 @@ puertos propios 8021 (API) y 3010 (web).
 
 ### Siguiente paso
 
-Fase 3a **[CRÍTICA]** (consulta previa al advisor, regla 2): migración
-`055_calculator_snapshot` (JSONB nullable en `leads`), columna en el modelo,
-`LeadOut.calculator`, tipo en `api.ts`, bloque en `LeadDetail`.
+Fase 3b: `CalculatorIn` en `public.py`, `FormSubmission.calculator`,
+`build_snapshot` en `capture_lead`, `_summary` con la línea del cálculo, la línea
+«Calculator» en el aviso, `CapturePayload.calculator` y el prop de `ConsultForm`.
 
 ---
 

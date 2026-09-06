@@ -21,6 +21,33 @@ export type MessageDirection = "inbound" | "outbound";
 export type MessageSender = "lead" | "agent" | "human";
 export type MessageStatus = "pending" | "sent" | "delivered" | "read" | "failed";
 
+export type CalculatorCredit = "excellent" | "good" | "fair";
+export type CalculatorCappedBy = "rent" | "savings" | "floor";
+
+/**
+ * What a visitor calculated on /calculator before leaving their email —
+ * recomputed and stored by the server (`leads.calculator_snapshot`), never the
+ * browser's own figure. Under the estimate floor (`capped_by: "floor"`) the
+ * page showed no price, `price` is a sub-floor number and the two comparison
+ * fields are null: a floor snapshot is "they tried", not "they could buy X".
+ */
+export interface CalculatorSnapshot {
+  version: number;
+  computed_at: string;
+  lang: "en" | "es" | null;
+  inputs: { rent: number; savings: number; credit: CalculatorCredit };
+  assumptions: Record<string, unknown>;
+  result: {
+    price: number;
+    capped_by: CalculatorCappedBy;
+    loan: number;
+    down: number;
+    monthly: { pi: number; tax: number; insurance: number; pmi: number; hoa: number; total: number };
+    net_5y: number | null;
+    crossover_year: number | null;
+  };
+}
+
 export interface Lead {
   id: number;
   phone: string;
@@ -62,6 +89,8 @@ export interface Lead {
    * meta column. Empty object when nothing was captured.
    */
   attribution: Record<string, string>;
+  /** Null for every lead that did not come through /calculator. */
+  calculator?: CalculatorSnapshot | null;
   last_message_at: string | null;
   created_at: string;
   updated_at: string;

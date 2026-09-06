@@ -1,6 +1,7 @@
 """Leads API — list + detail + PATCH (Phase 2 dashboard needs)."""
 from __future__ import annotations
 
+import logging
 import re
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -39,6 +40,8 @@ from app.services.conversation import (
 from app.services.inbox import reached_somebody
 from app.services.lead_events import record
 from app.services.scoring import rescore_all, rescore_lead
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -203,6 +206,12 @@ class LeadOut(BaseModel):
     # to be the main way leads arrive.
     attribution: dict[str, str] = Field(default_factory=dict)
 
+    # What they calculated on /calculator, if they did: the server-recomputed
+    # snapshot (`calculator_snapshot`), whole. Null for every other lead. Not
+    # money of the agency's, so it stays visible to every role — like
+    # attribution, it is the visitor's own data.
+    calculator: dict | None = None
+
     # How it ended. `won_value` is money and is stripped for non-admins by
     # `_lead_out`; the rest of the closing is not a secret — an advisor needs to
     # know a lead is closed, and which kind of business it was.
@@ -249,6 +258,14 @@ def _lead_out(row: Lead, *, is_admin: bool = True) -> LeadOut:
     """
     out = LeadOut.model_validate(row)
     out.attribution = _attribution_of(row.meta)
+    snapshot = row.calculator_snapshot
+    if snapshot is not None and not isinstance(snapshot, dict):
+        # JSONB accepts any JSON; only the writer promises an object. A row
+        # that breaks the promise must not turn the lead's screen into a 500,
+        # and must not vanish quietly either.
+        log.warning("Lead %d: calculator_snapshot is %s, not an object", row.id, type(snapshot).__name__)
+        snapshot = None
+    out.calculator = snapshot
     if not is_admin:
         # Commissions are the one number on a lead that not everyone in the
         # office is entitled to. Everything else about the close stays visible:

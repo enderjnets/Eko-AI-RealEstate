@@ -246,6 +246,49 @@ export function LeadDetail({ leadId }: { leadId: number }) {
             </div>
           </div>
         )}
+        {/* What they calculated on /calculator, if they came from there. The
+            server recomputed it; this is what the visitor saw. Under the
+            estimate floor the page showed no price, so neither does this:
+            `result.price` there is a sub-floor number nobody was offered.
+            Absent entirely for every other lead, like attribution. */}
+        {lead.calculator && (
+          <div className="mt-4 pt-4 border-t border-white/5">
+            <div className="text-[10px] uppercase tracking-wide text-gray-600 mb-2">
+              {t("lead.calculator")}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t("lead.calculator.rent")} value={usd(lead.calculator.inputs.rent, lang)} />
+              <Field label={t("lead.calculator.savings")} value={usd(lead.calculator.inputs.savings, lang)} />
+              <Field
+                label={t("lead.calculator.credit")}
+                value={t(`lead.calculator.credit.${lead.calculator.inputs.credit}`)}
+              />
+              {lead.calculator.result.capped_by === "floor" ? (
+                <Field label={t("lead.calculator.price")} value={t("lead.calculator.floor")} />
+              ) : (
+                <>
+                  <Field label={t("lead.calculator.price")} value={usd(lead.calculator.result.price, lang)} />
+                  <Field
+                    label={t("lead.calculator.monthly")}
+                    value={usd(lead.calculator.result.monthly.total, lang)}
+                  />
+                  <Field
+                    label={t("lead.calculator.net")}
+                    value={
+                      lead.calculator.result.net_5y === null
+                        ? null
+                        : `${lead.calculator.result.net_5y >= 0 ? "+" : "−"}${usd(Math.abs(lead.calculator.result.net_5y), lang)}`
+                    }
+                  />
+                  <Field
+                    label={t("lead.calculator.cappedBy")}
+                    value={t(`lead.calculator.cappedBy.${lead.calculator.result.capped_by}`)}
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        )}
         <div className="mt-3 text-[10px] text-gray-600">
           {t("lead.created")} {exactTime(lead.created_at, lang)} · {t("lead.updated")} {exactTime(lead.updated_at, lang)}
         </div>
@@ -416,6 +459,15 @@ function ScoreInsight({ breakdown }: { breakdown: Lead["score_breakdown"] }) {
       <p className="text-[10px] text-gray-600 leading-relaxed mt-3">{t("lead.insight.foot")}</p>
     </section>
   );
+}
+
+/** Whole dollars in the viewer's locale; the snapshot's results are integers. */
+function usd(n: number, lang: string): string {
+  return new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(n);
 }
 
 function Field({ label, value }: { label: string; value: string | null }) {

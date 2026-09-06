@@ -15,6 +15,14 @@ under `meta["attribution"]`, the reader looked at the top level, and the
 endpoint returned `{}` for every real lead while eight tests passed. A fixture
 that invents the shape it is testing cannot fail — so the shape is no longer
 invented here.
+
+The calculator tests at the bottom set `calculator_snapshot` directly, because
+until the capture form learns to send a calculation (the next phase) no writer
+exists — but the VALUE is not invented: it is what `build_snapshot` produces,
+so the real shape (floats, nested dicts, nulls under the floor) is what goes
+through JSONB and comes back. They assert the read side: the column returns
+whole, and its absence is SQL NULL, not a JSON `null`. The write side gets its
+tests through `capture_lead` in the phase that adds it.
 """
 from __future__ import annotations
 
@@ -28,6 +36,7 @@ from app.api.v1.leads import _attribution_of
 from app.db.base import get_bypass_session_factory, get_session_factory
 from app.main import app
 from app.models.lead import Lead
+from app.services.calculator import build_snapshot
 from app.services.capture import FormSubmission, capture_lead
 from app.services.tenant_context import org_scope
 
@@ -233,3 +242,79 @@ def test_every_captured_key_is_readable() -> None:
         assert _attribution_of({"attribution": {key: "v"}}) == {key: "v"}, (
             f"{key} is captured but not readable"
         )
+
+
+# ── The calculator snapshot: read back whole, absent as SQL NULL ─────────────
+
+# The real thing, from the real producer. For $2,100 of rent and $15,000 saved
+# with good credit the golden fixture's cross anchor says $262,451.17.
+SNAPSHOT = build_snapshot({"rent": 2100, "savings": 15000, "credit": "good"}, None, lang="en")
+# And the shape under the estimate floor: nulls nested inside the JSON.
+FLOOR_SNAPSHOT = build_snapshot({"rent": 500, "savings": 0, "credit": "fair"}, None, lang="es")
+
+
+async def _stamp(lead_id: int, snapshot: dict | None) -> None:
+    """Write the column directly — see the module docstring for why."""
+    async with get_bypass_session_factory()() as db:
+        lead = (await db.execute(select(Lead).where(Lead.id == lead_id))).scalar_one()
+        lead.calculator_snapshot = snapshot
+        await db.commit()
+
+
+async def _sql_null_count(lead_id: int) -> int:
+    async with get_bypass_session_factory()() as db:
+        return (
+            await db.execute(
+                text("SELECT count(*) FROM leads WHERE id = :id AND calculator_snapshot IS NULL"),
+                {"id": lead_id},
+            )
+        ).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_the_calculator_snapshot_comes_back_whole(database_url: str) -> None:
+    """Whole, on both build sites: the detail screen shows it, and the list
+    goes through the same `_lead_out`."""
+    lead_id = await _capture(None)
+    try:
+        await _stamp(lead_id, SNAPSHOT)
+        body = await _get(lead_id)
+        assert body["calculator"]["result"]["price"] == 262451
+        assert body["calculator"]["result"]["capped_by"] == "rent"
+        assert body["calculator"]["inputs"] == {"rent": 2100.0, "savings": 15000.0, "credit": "good"}
+        assert body["calculator"] == SNAPSHOT
+        # Under the floor the nested nulls survive the round trip as nulls.
+        await _stamp(lead_id, FLOOR_SNAPSHOT)
+        floor = (await _get(lead_id))["calculator"]
+        assert floor["result"]["capped_by"] == "floor"
+        assert floor["result"]["net_5y"] is None
+        assert floor["result"]["crossover_year"] is None
+        assert floor["lang"] == "es"
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            r = await c.get("/api/v1/leads", params={"limit": 200})
+        assert r.status_code == 200, r.text
+        listed = next(i for i in r.json()["items"] if i["id"] == lead_id)
+        assert listed["calculator"]["result"]["capped_by"] == "floor"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_lead_without_a_calculation_is_null_in_json_and_in_sql(
+    database_url: str,
+) -> None:
+    """`None` in the API, and SQL NULL in the table — not the JSON literal
+    `null`, which `IS NULL` would not match and which a later "who used the
+    calculator" query would count as a snapshot."""
+    lead_id = await _capture(None)
+    try:
+        assert (await _get(lead_id))["calculator"] is None
+        assert await _sql_null_count(lead_id) == 1
+        # Writing a value and then clearing it lands back on SQL NULL.
+        await _stamp(lead_id, SNAPSHOT)
+        assert await _sql_null_count(lead_id) == 0
+        await _stamp(lead_id, None)
+        assert (await _get(lead_id))["calculator"] is None
+        assert await _sql_null_count(lead_id) == 1
+    finally:
+        await _cleanup()
