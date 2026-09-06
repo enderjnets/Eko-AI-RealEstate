@@ -6,6 +6,70 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## `/fall` — la guía de otoño (rama `feat/fall-ladder`, v0.85.0)
+
+**✅ v0.85.0 EN PRODUCCIÓN — desplegada el 6-sep-2026.** `/api/v1/health` sirve **0.85.0**
+(`b8b71b038`), `alembic current` = **055_calculator_snapshot** (sin migración en el diff),
+0 tracebacks en 5 min. Base **`a6e87f9fd`** (lo que corría) más `909cc1e` de la sesión par,
+así que el árbol desplegado es superconjunto estricto del anterior y `/calculator` no se
+toca: `app/calculator/page.tsx`, `lib/calculator.ts` y `lib/i18n.tsx` idénticos a los
+desplegados, verificado byte a byte por la sesión par antes del despliegue.
+Reversión: `git reset --hard a6e87f9f` + `docker compose build backend frontend` + `up -d`,
+**nunca `alembic downgrade`** (la 055 es de la 0.83.0, no de esta).
+Copia previa: `.env.bak.20260906_v0850`.
+
+**Qué cambió.** La página abría con 250 palabras; quien llega desde un reel, a mitad de
+scroll y en el móvil, tenía que leerlas antes de que la página demostrara saber algo de
+Denver. Ahora las cuatro franjas de altitud son un instrumento en la primera pantalla —un
+rail vertical que **baja**, porque los álamos amarillean de arriba abajo, y cada peldaño
+enlaza a su sección. Los peldaños no son encabezados: las franjas siguen siendo los `<h2>`
+y un segundo juego con el mismo texto le daría dos esquemas en competencia a una página
+cuyo trabajo entero es que la indexen. La nota de una línea que estaba bajo cada cabecera
+pasa a encabezar la escalera; repetirla cuatro veces bajo un índice que acababa de decirla
+era relleno.
+
+**Doce sitios, cinco fotos, ninguna inventada.** Guanella, Kenosha, la Peak to Peak, el
+Georgetown Loop y Golden Gate Canyon llevan foto **de ese sitio**, de otoño, con autor,
+licencia enlazada y enlace al original debajo. Los otros siete no llevan ninguna: una foto
+de banco de álamos genéricos bajo las palabras «Kenosha Pass» es una afirmación falsa sobre
+un sitio real en publicidad de una correduría con licencia, y no existe foto libre
+verificable de esos siete (buscado el 6-sep-2026 por categoría y por texto). Proveniencia y
+lo que falta: `frontend/public/landing/fall/LICENCIA.txt`. Los ficheros se sirven **sin
+recortar** y se encuadran por CSS: un recorte guardado es obra derivada y heredaría el
+«compartir igual» de cuatro de las cinco.
+
+**Lo que solo puede hacer el dueño:** una tarde de Natalia y Robbie con el móvil cubre los
+doce sitios, sin licencia que citar, y sustituye a estas cinco.
+
+### Checklist del despliegue (salida real, 6-sep-2026)
+
+| Paso | Resultado |
+|---|---|
+| Suite backend | **1737 passed**, 0 fallos, 0 saltados, 4:10, base propia `eko_realestate_test_fall` migrada a 055 · ruff ✅ |
+| Frontend | vitest **323/323** · tsc ✅ · lint ✅ · build ✅ · prerender `fall` `calculator` `contact` `index`: `<main>`=1, spinner=0 |
+| Mutaciones (5) | fichero de foto ausente → rojo · crédito sin autor → rojo · id de franja renombrado → rojo · `href` generado sustituido por literal → rojo · `position` como clase de Tailwind → rojo. Árbol restaurado con `md5` idéntico las cinco veces |
+| Bundle + `--ff-only` | `a6e87f9..feat/fall-ladder`, 630.082 bytes, `git bundle verify` limpio → HEAD **`b8b71b038`**, árbol limpio |
+| `docker compose build backend frontend` | las dos construidas (exit 0), `/fall` sale **○ estático** en el build del contenedor |
+| `up -d` | backend y frontend arrancados; `db` y `redis` sanos, sin recrear |
+| `/api/v1/health` | **0.85.0** · `alembic current` **055** · tracebacks en 5 min: **0** |
+| Marca (`www.denverhomestory.com`) | `/` `/fall` `/contact` `/calculator` **200**, `/leads` **308** al panel |
+| Panel (`inmo-demo.…`) | `/fall` `/contact` `/calculator` `/leads` **200**, `/` **307** a `/leads` (por diseño) |
+| HTML servido de `/fall` | `<main>`=1, «Checking session»=0, 4 peldaños ↔ 4 `id="band-N"`, 5 fotos, 10 enlaces de licencia y 10 a Commons, `object-position:50% 58%` presente, firma y retrato, `Engel & Völkers` y `Equal Housing Opportunity` en el pie, `canonical` = `https://www.denverhomestory.com/fall`, `robots` = `index, follow` |
+| Fotos servidas | las cinco **200** con su tamaño exacto (94–149 KB) |
+| Verificación visual | captura real de producción a 390 px con el ancla `#band-1`: salto correcto, fotos cargadas, créditos en una línea |
+| Leads de prueba | **ninguno enviado a producción** |
+
+**Un fallo propio, encontrado antes de desplegar y arreglado en su propio commit.** Al mover
+la tabla del contenido a `lib/fallGuide.ts`, la clase `[object-position:50%_58%]` dejó de
+generarse: `tailwind.config.ts` escanea `app/` y `components/`, no `lib/`. Cero errores,
+cero avisos — la foto vertical de Guanella se recentraba y el comentario que lo explicaba
+pasaba a ser mentira. Ahora es un valor CSS en línea, con un test que lo fija.
+
+**Ruido conocido, no nuestro:** los 2 errores de consola del widget de Turnstile, idénticos
+en `/fall`, `/contact` y `/calculator`.
+
+---
+
 ## `/calculator` — la calculadora renta→compra (rama `feat/calculator`, v0.83.0)
 
 **✅ v0.84.0 EN PRODUCCIÓN — rediseño desplegado el 6-sep-2026.** `/api/v1/health` sirve
