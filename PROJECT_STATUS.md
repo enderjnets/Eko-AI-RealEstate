@@ -124,7 +124,59 @@ en `/fall`, `/contact` y `/calculator`.
 
 ---
 
-## `/calculator` — la calculadora renta→compra (rama `feat/calculator`, v0.83.0)
+## `/calculator` — la calculadora renta→compra (rama `feat/calculator-design`, v0.88.0)
+
+**✅ v0.88.0 EN PRODUCCIÓN — la comparación se puede mirar más allá de los cinco años
+(6-sep-2026).** `/api/v1/health` sirve **0.88.0** (`0760aa16d`), `alembic current` = **055**
+(sin migración), los cuatro contenedores arriba. Base **`037c5956b`**, `--ff-only` limpio.
+Copias previas: `.env.bak.20260906_v0880` y `eko_pre_0880_20260906.sql` (161.955 bytes,
+sha256 `4c202f0f…b4d2f` **idéntico** en VPS y Mac, con `CREATE TABLE public.leads`).
+Reversión: `git reset --hard 037c5956b` + build + `up -d`, **nunca `alembic downgrade`**.
+
+**Qué trae.** Cinco horizontes —5, 10, 15, 20 y 30 años— donde antes solo había cinco. Cinco
+era el único que se ofrecía y es el caso más duro; el dueño mediano en EE. UU. se queda
+**doce** años (Redfin, 2026), así que el 10 y el 15 lo enmarcan y el 30 es el techo natural:
+el año en que el préstamo queda pagado. Debajo, un gráfico del neto año a año contra la línea
+del cero, con el año del cruce marcado, y a partir del año 10 una línea en **dinero de hoy**
+al 2% de inflación — sin ella, «+$330.662 a 20 años» se lee como si fueran dólares de 2026.
+
+**Y dos averías del modelo que solo existían porque nadie miraba más allá del año 5:**
+la cuota se cobraba **después del mes 360** (el préstamo son 30 años; a 35 el recibo seguía
+llevando P&I y comprar salía peor de lo que es), y el cruce **solo se buscaba en los años
+1..10**, así que a quien mirara a 20 o 30 años se le decía «alquilar sigue saliendo más
+barato» sobre un plazo que la página no estaba mirando.
+
+**🔴 Un test que no podía fallar, señalado por la sesión par.** Mi `test_26` decía
+`if crossover_year is not None: assert crossover_year <= max(10, years)`: salía verde con el
+límite en 30 **y** con el límite en 10 — la rama del `None` no asertaba nada. La frase de la
+pantalla y el límite de la búsqueda son el mismo hecho escrito en dos sitios; si una mitad se
+despliega sin la otra, la frase vuelve a mentir con más aplomo cuanto mayor sea el plazo.
+Reescrito con los dos lados clavados a un año: cruce **dentro** del horizonte y pasado el 10
+(apreciación 0, renta plana, horizonte 20 → **12**, exacto), y su gemelo, cruce **fuera**
+(apreciación −3,5%, horizonte 20 → `None`), más la prueba de que ese `None` viene del
+horizonte y no de una búsqueda rota: los mismos supuestos a 30 años sí lo encuentran, en el
+**25**. Y `test_26b` para el borde del plazo, que ni un test del año 30 ni uno del 35 cazan
+solos: año29 == año30 (los doce meses) y año30 − año31 == la cuota exacta.
+
+**Checklist (salida real):** backend **1742/1742** + ruff ✅ · frontend **332/332** · tsc ✅ ·
+lint ✅ · build 0 errores · prerender `calculator` `fall` `contact` `index` `<main>`=1,
+spinner=0 · **3 mutaciones vistas en rojo**: límite de vuelta a `range(1, 11)` →
+`assert None == 12` (1 failed, 46 passed); proración desplazada un año → `test_25` **y**
+`test_26b` rojos (2 failed, 45 passed); en TS, `n <= 10` → 1 failed de 42 · bundle 14.628
+bytes, `git bundle verify` limpio · `/` `/fall` `/contact` `/calculator` **200** en la marca,
+`/leads` 308 → el host de plataforma (gating intacto).
+
+**Verificado en el navegador real, en producción** (iPhone 13 y 1440): $2.500 + $60.000 +
+good → **$349.000**; los cinco botones presentes; 1 `<svg>` en `#compare`; a 20 años
+**+$330.662**, «About $222,526 in today's money, at 2.0% inflation a year», cascada
++$169.580 / +$126.006 / +$61.052 (que cuadra con el neto al restar cierre y venta); sin
+desbordamiento horizontal en ninguno de los dos tamaños. **Y el caso que el par señaló,
+comprobado vivo**: con apreciación 0 y renta plana, a 5 y 10 años sale «renting stays cheaper
+for as long as this goes» (cierto: el cruce está fuera) y a 20 y 30 sale «Owning pulls ahead
+in year 12». La frase y la búsqueda dicen lo mismo. Ningún formulario enviado contra
+producción.
+
+<details><summary>El despliegue anterior de esta rama, v0.86.0</summary>
 
 **✅ v0.86.0 EN PRODUCCIÓN — los números, anclados al mercado (6-sep-2026).** `/api/v1/health`
 sirve **0.86.0** (`4ceb58680`), sin migración (la 055 ya estaba). Los importes de un toque
@@ -139,6 +191,8 @@ mercado. Verificado en producción: $4.000+$100.000 → **$562.000**, $2.500+$20
 **$314.000**, $1.500+$20.000 → el mensaje del suelo; sin desbordamiento y 0 errores en
 móvil y escritorio. Copias: `.env.bak.20260906_v0860` y `eko_pre_0860.sql`.
 Reversión: `git reset --hard 5f0032d` + build + `up -d`.
+
+</details>
 
 <details><summary>El despliegue anterior de esta rama, v0.84.0</summary>
 
