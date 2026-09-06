@@ -171,6 +171,15 @@ export default function CalculatorPage() {
     LANDING.brokerage ? "Equal Housing Opportunity" : "",
   ].filter(Boolean);
 
+  // At the PMI cliff the highest price that costs no more than the rent can sit
+  // well under it: one more dollar of price adds mortgage insurance and the
+  // payment overshoots. "The same monthly cost as your rent" would be false
+  // there by up to several hundred dollars (measured: $578 at $250k saved), so
+  // the sentence names the gap and the reason instead.
+  const cliffGap =
+    result && result.cappedBy === "rent" && result.price < UPPER ? rent - result.monthly.total : 0;
+  const atCliff = cliffGap > 20;
+
   const priceLabel = result
     ? result.price >= UPPER
       ? t("calculator.result.ceiling")
@@ -364,7 +373,9 @@ export default function CalculatorPage() {
               <p className="mt-4 text-[15px] leading-[1.7]">
                 {result.cappedBy === "savings"
                   ? t("calculator.result.capped.savings", { n: Math.round(DEFAULTS.minDown * 100) })
-                  : t("calculator.result.capped.rent")}
+                  : atCliff
+                    ? t("calculator.result.capped.pmi", { gap: usd.format(Math.round(cliffGap)) })
+                    : t("calculator.result.capped.rent")}
               </p>
               <div className="mt-7 flex flex-wrap gap-x-10 gap-y-5 border-t border-ln-hair pt-6">
                 <Stat

@@ -452,3 +452,21 @@ describe("what travels with the lead", () => {
     expect(LIMITS).toEqual({ rent: 50_000, savings: 5_000_000, hoaMonthly: 5_000, ratePct: 20 });
   });
 });
+
+describe("the PMI cliff", () => {
+  // 24. With 20% of the price in hand, the highest price that costs no more
+  // than the rent sits at LTV 0.80 and can leave a real gap under the rent:
+  // one more dollar of price switches PMI on. The page's copy depends on this
+  // shape (it names the gap instead of claiming "the same monthly cost").
+  it("24. leaves the solved price at LTV 0.80, under the rent, with PMI one dollar away", () => {
+    const inputs = { rent: 2444, savings: 80_000, credit: "good" as const };
+    const r = solvePrice(inputs, DEFAULTS);
+    expect(r.cappedBy).toBe("rent");
+    expect(r.loan / r.price).toBeCloseTo(0.8, 3);
+    expect(r.monthly.pmi).toBe(0);
+    expect(2444 - r.monthly.total).toBeGreaterThan(50);
+    const up = monthlyFor(r.price + 1, inputs, DEFAULTS);
+    expect(up.pmi).toBeGreaterThan(100);
+    expect(up.total).toBeGreaterThan(2444);
+  });
+});
