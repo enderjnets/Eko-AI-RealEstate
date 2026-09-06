@@ -123,10 +123,21 @@ Hashes tras el rebase sobre `69214c6` (6-sep); los anteriores al rebase ya no ex
   plazo de 30 años y `pi` se sigue cobrando tras amortizar (no expuesto en la
   página); un HOA que llegue como cadena se ignora → **la Fase 6a debe pasar
   `Number()` antes de calcular**.
-- **(heredado de `/fall`, no de esta rama)** El aviso de lead nuevo por Resend
-  no entrega en producción (200 sin entrega, ver sección de `/fall`). De los
-  tres canales por los que la calculadora llega a Natalia, hoy solo el Inbox y
-  la ficha del lead entregan seguro; el correo depende de ese arreglo.
+- ✅ **«El aviso por Resend no entrega» era FALSO. Medido el 6-sep.** El correo
+  del producto **sí entrega**: dominio `realtors.ekoaiautomation.com` verificado,
+  y los **53** correos que Resend ha procesado figuran como `delivered`, incluidos
+  **5 al correo corporativo real de Natalia** (agosto). Sonda en vivo desde el VPS
+  con el remitente del producto: llegó a la **bandeja de entrada** del dueño en
+  segundos (`labelIds` incluye `INBOX`, id `010001a0777809bc…@email.amazonses.com`).
+  Lo que sí pasa está **en el buzón del dueño, no en el producto**: el aviso del
+  28-ago está en Gmail **archivado, sin etiqueta `INBOX`**, y los dos avisos de
+  prueba del 5 y 6-sep no aparecen en ninguna parte (`in:anywhere` cubre spam y
+  papelera) pese a constar entregados — el patrón de un **filtro de Gmail** que
+  casa con el asunto «New lead from the website» y archiva o borra. La misma
+  búsqueda sí encuentra la sonda, así que el método es bueno. **Acción del dueño:**
+  Gmail → Configuración → Filtros y direcciones bloqueadas, borrar la regla; y
+  confirmar con Natalia que ella los ve, porque su buzón es de `engelvoelkers.com`
+  y lo único medible desde aquí es que el transporte los aceptó.
 
 ### Decisiones
 
