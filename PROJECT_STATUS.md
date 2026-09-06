@@ -15,7 +15,38 @@ v0.56.0 y anteriores vive en git y en el plan.
 en navegador real sin cookies `/leads` `/inbox` `/settings` acaban en `/login`
 (el guarda que toque sigue protegiendo el panel).
 
-### 🔴 ABIERTO: el aviso de lead nuevo NO llega
+### ✅ CERRADO: el aviso de lead sale ahora por dos caminos (v0.82.0)
+
+**Desplegada y verificada en produccion.** `/api/v1/health` = **0.82.0**.
+Envio real por `/fall`, medido en el log:
+
+```
+capture: lead=1261 new=True source=instagram
+app.lead_notify: new-lead notice sent to the agency        <- Resend
+httpx: POST https://api.telegram.org/...  "HTTP/1.1 200 OK" <- Telegram
+POST /api/v1/public/leads 202 Accepted
+```
+
+Los dos transportes, **en paralelo**, en menos de un segundo. Y el cuerpo ya no
+miente: **no hay linea `Phone:`** cuando no hay telefono, y la direccion
+aparece **una vez**, no dos.
+
+La diferencia que importa: el **200 de Telegram significa que el mensaje esta
+en el chat**. El 200 del correo significaba «aceptado para entrega», y ese fue
+todo el problema.
+
+**Lo que sigue sin resolverse, y es del lado de Gmail:** Resend dice
+`last_event: delivered` y el correo no aparece en `enderjnets@gmail.com` ni con
+`in:anywhere`. Uno del **28-ago** del **mismo remitente** (`noreply@…`) SI esta
+en el buzon, asi que el remitente y el dominio funcionan. Apunta a un **filtro
+de Gmail**; se mira en Ajustes → Filtros y direcciones bloqueadas. Ya no
+bloquea la campana —Telegram cubre el aviso— pero conviene arreglarlo.
+
+**Leads de prueba 1260 y 1261: borrados.** `select count(*) from leads` = 0.
+
+---
+
+### Antecedente: como se encontro (5-sep)
 
 **El formulario funciona de punta a punta.** Envio real desde `/fall` en
 produccion: `202 {"ok":true}`, Turnstile **deja pasar** a un navegador
