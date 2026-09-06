@@ -174,12 +174,27 @@ export default function CalculatorPage() {
   return (
     <main className="min-h-screen bg-ln-canvas text-ln-body">
       <LandingTracker variant="calculator" sections={SECTIONS} />
-      <div className="mx-auto max-w-2xl px-5 py-12 sm:px-8 sm:py-16">
+      {/* A band of the city under the question. Decorative — empty alt, and it
+          fades into the canvas so no text ever sits on the photograph. Same
+          plain <img> the landing uses. */}
+      <div className="relative h-[132px] overflow-hidden sm:h-[200px]" aria-hidden="true">
+        {/* eslint-disable-next-line @next/next/no-img-element -- the public
+            pages use plain <img> throughout: `sharp` is not installed, so
+            next/image would optimise nothing and only add a dependency. */}
+        <img
+          src="/landing/denver-card.jpg"
+          alt=""
+          decoding="async"
+          className="h-full w-full object-cover [object-position:50%_58%]"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-ln-night/30 via-ln-canvas/25 to-ln-canvas" />
+      </div>
+      <div className="mx-auto max-w-2xl px-5 pb-12 pt-7 sm:px-8 sm:pb-16 sm:pt-9">
         <div className="flex items-center justify-between gap-4">
           {brandLine ? (
             <a
               href="/"
-              className="inline-block text-[11px] uppercase tracking-[0.18em] text-ln-muted hover:text-ln-gold"
+              className="inline-block text-[11px] uppercase tracking-[0.2em] text-ln-gold hover:text-ln-dark"
             >
               {brandLine}
             </a>
@@ -194,10 +209,10 @@ export default function CalculatorPage() {
           </span>
         </div>
 
-        <h1 className="mt-5 font-ln-serif text-[32px] leading-[1.15] text-ln-dark sm:text-[44px]">
+        <h1 className="mt-5 font-ln-serif text-[34px] leading-[1.1] text-ln-ink sm:text-[50px]">
           {t("calculator.title")}
         </h1>
-        <p className="mt-5 text-[16px] leading-[1.75]">{t("calculator.intro")}</p>
+        <p className="mt-5 max-w-[52ch] text-[16px] leading-[1.75]">{t("calculator.intro")}</p>
 
         {/* ── Inputs ─────────────────────────────────────────────────── */}
         <section id="inputs" className="mt-10 scroll-mt-10">
@@ -246,33 +261,53 @@ export default function CalculatorPage() {
 
         {/* ── Result ─────────────────────────────────────────────────── */}
         <section id="result" className="mt-12 scroll-mt-10 border-t border-ln-hair pt-10">
-          <h2 className="text-[11px] uppercase tracking-[0.18em] text-ln-gold">
-            {t("calculator.result.heading")}
-          </h2>
-          {!result && <p className="mt-4 text-[16px] text-ln-muted">{t("calculator.result.empty")}</p>}
-          {result && !shown && (
-            <p className="mt-4 text-[16px] leading-[1.7]">{t("calculator.result.floor")}</p>
+          {!(result && shown) && (
+            <>
+              <h2 className="text-[11px] uppercase tracking-[0.18em] text-ln-gold">
+                {t("calculator.result.heading")}
+              </h2>
+              {!result && (
+                <p className="mt-4 text-[16px] text-ln-muted">{t("calculator.result.empty")}</p>
+              )}
+              {result && !shown && (
+                <p className="mt-4 text-[16px] leading-[1.7]">{t("calculator.result.floor")}</p>
+              )}
+            </>
           )}
           {result && shown && (
-            <>
+            /* The answer gets a ground of its own. Flat on the canvas it read
+               as one more paragraph; the seven-row breakdown competed with the
+               figure the visitor came for, so it folds away behind a summary —
+               nothing is removed, it is ranked. */
+            <div className="border border-ln-line bg-ln-paper p-6 shadow-[0_2px_28px_-20px_rgba(23,21,15,0.7)] sm:p-9">
+              {/* The label belongs to the figure, so it lives inside the card. */}
+              <h2 className="text-[11px] uppercase tracking-[0.18em] text-ln-gold">
+                {t("calculator.result.heading")}
+              </h2>
               <p
                 data-testid="calc-price"
-                className="mt-3 font-ln-serif text-[44px] leading-none text-ln-dark sm:text-[60px]"
+                className="mt-3 font-ln-serif text-[52px] leading-[0.95] text-ln-ink sm:text-[78px]"
               >
                 {priceLabel}
               </p>
-              <p className="mt-3 text-[15px] leading-[1.7]">
+              <p className="mt-4 text-[15px] leading-[1.7]">
                 {result.cappedBy === "savings"
                   ? t("calculator.result.capped.savings", { n: Math.round(DEFAULTS.minDown * 100) })
                   : t("calculator.result.capped.rent")}
               </p>
-              <dl className="mt-7 grid gap-x-8 gap-y-2 text-[14px] sm:grid-cols-2">
-                <Line label={t("calculator.result.down")} value={usd.format(Math.round(result.down))} />
-                <Line label={t("calculator.result.loan")} value={usd.format(Math.round(result.loan))} />
-              </dl>
-              <h3 className="mt-8 font-ln-serif text-[19px] text-ln-dark">
-                {t("calculator.monthly.heading")}
-              </h3>
+              <div className="mt-7 flex flex-wrap gap-x-10 gap-y-5 border-t border-ln-hair pt-6">
+                <Stat
+                  label={t("calculator.monthly.total")}
+                  value={usd.format(Math.round(result.monthly.total))}
+                  lead
+                />
+                <Stat label={t("calculator.result.down")} value={usd.format(Math.round(result.down))} />
+                <Stat label={t("calculator.result.loan")} value={usd.format(Math.round(result.loan))} />
+              </div>
+              <details className="mt-7 border-t border-ln-hair pt-5">
+                <summary className="cursor-pointer text-[11px] uppercase tracking-[0.14em] text-ln-dark">
+                  {t("calculator.monthly.heading")}
+                </summary>
               <dl className="mt-3 divide-y divide-ln-hair text-[14px]">
                 <Line label={t("calculator.monthly.pi")} value={usd.format(Math.round(result.monthly.pi))} />
                 <Line label={t("calculator.monthly.tax")} value={usd.format(Math.round(result.monthly.tax))} />
@@ -292,7 +327,8 @@ export default function CalculatorPage() {
                   strong
                 />
               </dl>
-            </>
+              </details>
+            </div>
           )}
           <p className="mt-6 text-[12px] leading-[1.7] text-ln-muted">{t("calculator.disclaimer")}</p>
         </section>
@@ -434,13 +470,58 @@ export default function CalculatorPage() {
 
         {/* ── Consult: the shared form, with the calculation riding along ── */}
       </div>
-      <section id="consult" className="relative mt-12 scroll-mt-10 overflow-hidden bg-ln-dark">
-        <div className="mx-auto max-w-2xl px-5 py-14 sm:px-8 sm:py-16">
-          <h2 className="font-ln-serif text-[26px] leading-tight text-ln-cream sm:text-[32px]">
-            {t("calculator.cta.heading")}
+      <section id="consult" className="relative mt-14 scroll-mt-10 overflow-hidden bg-ln-dark">
+        {/* The frame carries an MLS watermark baked along its bottom edge, and
+            at this section's aspect ratio `object-position` cannot crop enough
+            of it away — measured on screen at 1280 and at 390. Rendering it
+            taller than the box and anchoring it to the top puts the watermark
+            out of view at every width. */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element -- see the band above. */}
+          <img
+            src="/landing/cta-bg.jpg"
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="absolute left-0 top-0 h-[125%] w-full object-cover object-top"
+          />
+        </div>
+        {/* Two reasons for the scrim, both measured on screen: the photograph's
+            bright patches lifted the ground until the small print stopped being
+            readable, and the source frame carries an MLS watermark along its
+            bottom edge — the crop above pushes it out of view and this covers
+            what is left. Same treatment the landing gives the same file. */}
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(20,18,14,0.88)_0%,rgba(20,18,14,0.82)_55%,rgba(20,18,14,0.94)_100%)]" />
+        <div className="relative mx-auto max-w-2xl px-5 py-14 sm:px-8 sm:py-16">
+          {LANDING.advisors && (
+            <div className="flex items-center gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element -- see above. */}
+              <img
+                src="/landing/natalia-robbie.jpg"
+                alt={LANDING.advisors}
+                loading="lazy"
+                decoding="async"
+                className="h-12 w-12 flex-none rounded-full object-cover ring-1 ring-ln-cream/30 [object-position:50%_12%]"
+              />
+              <p className="text-[11px] uppercase tracking-[0.18em] text-ln-canvas/70">
+                {LANDING.advisors}
+              </p>
+            </div>
+          )}
+          <h2 className="mt-6 font-ln-serif text-[28px] leading-tight text-ln-cream sm:text-[36px]">
+            {/* Anchored to the figure they just saw, when there is one. */}
+            {shown && priceLabel
+              ? t("calculator.cta.headingPriced", { price: priceLabel })
+              : t("calculator.cta.heading")}
           </h2>
           <p className="mt-4 text-[15px] leading-[1.7] text-ln-canvas/80">{t("calculator.cta.body")}</p>
-          <div className="mt-8">
+          <p className="mt-2 text-[13px] leading-[1.7] text-ln-canvas/75">
+            {t("calculator.cta.reassure")}
+          </p>
+          {/* The form is shared with `/`, `/fall` and `/contact`; its own file is
+              not touched. The dark-panel styling is nudged from here so a change
+              on this page can never move a pixel on those three. */}
+          <div className="mt-8 [&_button[type=submit]]:bg-ln-cream [&_button[type=submit]]:text-ln-dark [&_input:not([type=checkbox])]:border-ln-cream/25 [&_input:not([type=checkbox])]:bg-ln-cream/[0.05] [&_input:not([type=checkbox])]:px-3">
             <ConsultForm variant="calculator" calculator={payload} />
           </div>
         </div>
@@ -487,6 +568,25 @@ function MoneyField({
         />
       </div>
     </label>
+  );
+}
+
+/** A figure with its label, for the row under the price. `lead` is the one the
+ *  visitor compares against their rent. */
+function Stat({ label, value, lead = false }: { label: string; value: string; lead?: boolean }) {
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-[0.14em] text-ln-muted">{label}</p>
+      <p
+        className={
+          lead
+            ? "mt-1 font-ln-serif text-[28px] leading-none text-ln-ink"
+            : "mt-1 font-ln-serif text-[20px] leading-none text-ln-dark"
+        }
+      >
+        {value}
+      </p>
+    </div>
   );
 }
 
