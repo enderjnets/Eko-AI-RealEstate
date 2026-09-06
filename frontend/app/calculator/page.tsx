@@ -44,9 +44,14 @@ const DEBOUNCE_MS = 150;
 /** Slider range for the two growth rates, in percent. */
 const SLIDER = { min: 0, max: 5, step: 0.25 };
 /** One-tap amounts. A phone keyboard is the slowest part of this page, and
- *  these are the Denver rents and the down payments people actually type. */
-const QUICK_RENT = [1500, 2000, 2500] as const;
-const QUICK_SAVINGS = [10_000, 25_000, 50_000] as const;
+ *  these are anchored to the Denver market, not invented: the rents span a
+ *  one-bedroom (~$1,510) through a four-bedroom house (~$3,389), and the
+ *  savings start at what it actually takes to buy the cheapest thing here —
+ *  a $310,000 condo needs $13,950 between a 3% down payment and closing.
+ *  $10,000 was below the market: it pinned the answer at $222,222 for every
+ *  rent from $2,000 up, so tapping a rent chip changed nothing. */
+const QUICK_RENT = [1500, 2000, 2500, 3000, 3500, 4000] as const;
+const QUICK_SAVINGS = [15_000, 30_000, 60_000, 100_000] as const;
 
 /** A number from a money field: digits and one dot, nothing else; never NaN;
  *  never above what the server accepts, so the figure shown is one the lead
@@ -270,6 +275,7 @@ export default function CalculatorPage() {
               value={savingsRaw}
               onChange={setSavingsRaw}
               quick={QUICK_SAVINGS}
+              quickCols={2}
               format={(n) => usd.format(n)}
               group={(n) => grouped.format(n)}
             />
@@ -597,6 +603,13 @@ export default function CalculatorPage() {
           <p className="mt-2 text-[13px] leading-[1.7] text-ln-canvas/75">
             {t("calculator.cta.reassure")}
           </p>
+          {/* The page's arithmetic starts from a rent, so it naturally serves the
+              entry of the market. Someone buying above a million usually does not
+              arrive that way — they sell a house, or bring capital — so the way in
+              for them is a sentence, not a chip that nobody in Denver pays. */}
+          <p className="mt-6 border-t border-ln-cream/15 pt-5 text-[13px] leading-[1.7] text-ln-canvas/70">
+            {t("calculator.cta.luxury")}
+          </p>
           {/* The form is shared with `/`, `/fall` and `/contact`; its own file is
               not touched. The dark-panel styling is nudged from here so a change
               on this page can never move a pixel on those three. */}
@@ -630,6 +643,7 @@ function MoneyField({
   onChange,
   suffix,
   quick,
+  quickCols = 3,
   format,
   group,
 }: {
@@ -639,6 +653,8 @@ function MoneyField({
   onChange: (v: string) => void;
   suffix?: string;
   quick?: readonly number[];
+  /** Chips per row: six rent amounts need three columns, four savings need two. */
+  quickCols?: 2 | 3;
   format?: (n: number) => string;
   group?: (n: number) => string;
 }) {
@@ -666,14 +682,14 @@ function MoneyField({
         {suffix && <span className="flex-none text-[13px] text-ln-faint">{suffix}</span>}
       </div>
       {quick && format && (
-        <div className="mt-2 flex gap-2">
+        <div className={`mt-2 grid gap-2 ${quickCols === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
           {quick.map((n) => (
             <button
               key={n}
               type="button"
               onClick={() => onChange(group ? group(n) : String(n))}
               aria-label={`${label}: ${format(n)}`}
-              className="min-h-[44px] flex-1 border border-ln-line-strong text-[12px] text-ln-body transition-colors hover:border-ln-dark hover:text-ln-dark"
+              className="min-h-[44px] border border-ln-line-strong text-[12px] text-ln-body transition-colors hover:border-ln-dark hover:text-ln-dark"
             >
               {format(n)}
             </button>

@@ -182,12 +182,27 @@ def test_14_rent_inside_the_pmi_cliff_lands_on_the_cheap_side():
 
 
 def test_16_little_savings_cap_the_price():
-    inputs = {"rent": 6000, "savings": 10_000, "credit": "excellent"}
+    # 20.000 es lo menos que sigue comprando algo en Denver por encima del suelo.
+    inputs = {"rent": 6000, "savings": 20_000, "credit": "excellent"}
     r = solve_price(inputs, DEFAULTS)
     assert r["capped_by"] == "savings"
-    within(r["price"], 10_000 / 0.045, 0.01)
+    within(r["price"], 20_000 / 0.045, 0.01)
     within(r["down"] / r["price"], 0.03, 0.0001)
     assert r["monthly"]["total"] < inputs["rent"]
+
+
+def test_16b_ten_thousand_no_longer_reaches_the_denver_market():
+    """El suelo es el borde del mercado, no una constante de UX.
+
+    Con 10.000 dolares el tope por ahorro cae en 222.222, por debajo de lo que
+    se vende en Denver (condo mediano 310.000, los de entrada sobre 300.000).
+    Antes la pagina ensenaba esa cifra; ahora dice la verdad. Este test es la
+    razon por la que el suelo subio de 150.000 a 250.000.
+    """
+    r = solve_price({"rent": 6000, "savings": 10_000, "credit": "excellent"}, DEFAULTS)
+    assert r["capped_by"] == "floor"
+    assert r["price"] < DEFAULTS["price_floor"]
+    within(r["price"], 10_000 / 0.045, 0.01)
 
 
 def test_garbage_inputs_do_not_raise():
@@ -328,7 +343,7 @@ def test_defaults_are_the_page_defaults():
     assert DEFAULTS["insurance_rate"] == 0.007
     assert DEFAULTS["pmi"] == {"excellent": 0.0045, "good": 0.008, "fair": 0.013}
     assert DEFAULTS["rate_spread"] == {"excellent": 0.0, "good": 0.0025, "fair": 0.0075}
-    assert DEFAULTS["years"] == 5 and DEFAULTS["price_floor"] == 150_000
+    assert DEFAULTS["years"] == 5 and DEFAULTS["price_floor"] == 250_000
     assert set(CREDITS) == {"excellent", "good", "fair"}
 
 

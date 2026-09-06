@@ -192,6 +192,17 @@ describe("solving the price from the rent", () => {
     expect(r.price).toBeLessThan(DEFAULTS.priceFloor);
   });
 
+  it("8c. $10,000 no longer reaches the Denver market: the floor, not a figure", () => {
+    // The savings cap lands at $222,222 — under the median Denver condo
+    // ($310,000) and under what entry condos start at. The page says so
+    // instead of showing a price nothing can be bought with. This is why the
+    // floor moved from $150,000 to $250,000.
+    const r = solvePrice({ ...base, savings: 10_000 }, DEFAULTS);
+    expect(r.cappedBy).toBe("floor");
+    expect(r.price).toBeLessThan(DEFAULTS.priceFloor);
+    within(r.price, 10_000 / 0.045, 0.01);
+  });
+
   it("8b. savings that cover the whole price: no loan, no payment, no PMI", () => {
     const r = solvePrice({ ...base, savings: 10_000_000 }, DEFAULTS);
     expect(r.down).toBe(r.price);
@@ -326,10 +337,12 @@ describe("what the audit found missing", () => {
   });
 
   it("16. little savings: the ceiling is savings ÷ (3% down + 1.5% closing)", () => {
-    const inputs: Inputs = { rent: 6000, savings: 10_000, credit: "excellent" };
+    // $20,000 is about the least that still clears the Denver floor; below it
+    // the answer is "nothing sells here", which case 8c covers.
+    const inputs: Inputs = { rent: 6000, savings: 20_000, credit: "excellent" };
     const r = solvePrice(inputs, DEFAULTS);
     expect(r.cappedBy).toBe("savings");
-    within(r.price, 10_000 / 0.045, 0.01);
+    within(r.price, 20_000 / 0.045, 0.01);
     within(r.down / r.price, 0.03, 0.0001);
     expect(r.monthly.total).toBeLessThan(inputs.rent); // the rent is not what capped it
   });

@@ -40,7 +40,7 @@ DEFAULTS: dict[str, Any] = {
     "appreciation": 0.02,
     "rent_growth": 0.02,
     "years": 5,
-    "price_floor": 150_000,
+    "price_floor": 250_000,
 }
 
 # The only assumptions the page lets a visitor move. Anything else in an

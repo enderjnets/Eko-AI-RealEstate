@@ -86,7 +86,7 @@ export const DEFAULTS: Assumptions = {
   appreciation: 0.02,
   rentGrowth: 0.02,
   years: 5,
-  priceFloor: 150_000,
+  priceFloor: 250_000,
 };
 
 export const SOURCES: Record<keyof Assumptions, Source> = {
@@ -161,9 +161,10 @@ export const SOURCES: Record<keyof Assumptions, Source> = {
     asOf: "2026-09-05",
   },
   priceFloor: {
-    label: "Below this the page shows no figure — a product floor, not a market one",
-    url: "",
-    asOf: "2026-09-05",
+    label:
+      "Below this Denver has almost nothing to buy: the median condo sells for $310,000 and entry condos start around $300,000",
+    url: "https://www.redfin.com/city/5155/CO/Denver/housing-market",
+    asOf: "2026-09",
   },
 };
 

@@ -957,6 +957,7 @@ const EN: Record<string, string> = {
   "calculator.cta.heading": "Want Natalia to send you options in this range?",
   "calculator.cta.body": "Leave your email and she'll reach out.",
   "calculator.cta.headingPriced": "Want Natalia to send you options near {price}?",
+  "calculator.cta.luxury": "Buying above $1 million? That is their market too \u2014 tell Natalia what you are looking for and she will take it from there.",
   "calculator.cta.reassure": "Three fields. Natalia answers you \u2014 not a robot.",
   "landing.footer.staffLogin": "Advisor sign-in",
 };
@@ -1872,6 +1873,7 @@ const ES: Record<string, string> = {
   "calculator.cta.heading": "\u00bfQuieres que Natalia te mande opciones en este rango?",
   "calculator.cta.body": "Deja tu correo y ella te escribe.",
   "calculator.cta.headingPriced": "\u00bfQuieres que Natalia te mande opciones cerca de {price}?",
+  "calculator.cta.luxury": "\u00bfBuscas por encima del mill\u00f3n? Tambi\u00e9n es su mercado \u2014 dile a Natalia qu\u00e9 buscas y ella se encarga.",
   "calculator.cta.reassure": "Tres campos. Te contesta Natalia, no un robot.",
 };
 
