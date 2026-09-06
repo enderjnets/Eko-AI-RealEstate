@@ -1,0 +1,71 @@
+{
+  "_about": "Golden values for the rent-to-price calculator. Read by frontend/lib/__tests__/calculator.test.ts and backend/tests/test_calculator.py. 'jeff' and 'hand' are written by hand (the Buy vs Rent sheet and arithmetic done on paper); 'cross' holds parity anchors computed by the TypeScript implementation so Python cannot drift from it. Never regenerate 'jeff' or 'hand' from the code under test. The bisection stops at a residual of up to $0.50/month, which is $50-65 of price: 'cross' matches to the cent only if the server replicates the same midpoint sequence and stop rule (start at [0, 5000000], mid = (lo+hi)/2, |total-rent| < 0.5, 80 iterations, return lo on exhaustion); a 'better' bisection would be more precise and fail parity.",
+  "jeff": {
+    "price": 800000,
+    "loan": 720000,
+    "rate": 0.0675,
+    "term": 360,
+    "years": 9,
+    "appreciation_displayed": 0.0494,
+    "closing": 12000,
+    "selling_rate": 0.04,
+    "expect": {
+      "pi": 4670,
+      "balance_after_108": 628230,
+      "value_after_9": 1234407,
+      "appreciation_gain": 434407,
+      "amortization_gain": 91770,
+      "selling_cost": 49376
+    }
+  },
+  "hand": {
+    "pi_zero_rate": {
+      "loan": 120000,
+      "rate": 0,
+      "term": 360,
+      "expect": 333.33
+    },
+    "balance_at_end_is_zero": {
+      "loan": 100000,
+      "rate": 0.06,
+      "term": 360
+    },
+    "balance_at_start_is_loan": {
+      "loan": 100000,
+      "rate": 0.06,
+      "term": 360
+    },
+    "rent_total_flat": {
+      "rent": 1000,
+      "growth": 0,
+      "years": 5,
+      "expect": 60000
+    },
+    "future_value_two_years": {
+      "price": 100000,
+      "rate": 0.1,
+      "years": 2,
+      "expect": 121000
+    }
+  },
+  "cross": [
+    {
+      "rent": 2100,
+      "savings": 15000,
+      "credit": "good",
+      "price": 262451.17
+    },
+    {
+      "rent": 3000,
+      "savings": 60000,
+      "credit": "excellent",
+      "price": 428771.97
+    },
+    {
+      "rent": 4500,
+      "savings": 120000,
+      "credit": "fair",
+      "price": 595092.77
+    }
+  ]
+}

@@ -17,7 +17,8 @@ puertos propios 8021 (API) y 3010 (web).
 
 | Fase | Commit | Checklist (salida real) |
 |---|---|---|
-| 0 · Aislamiento y estado base | el de esta entrada | backend **1659/1659**, cobertura **82 %**, ruff ✅ · tsc ✅ · vitest **268/268** · lint ✅ · build ✅ · prerender `/` `/contact` `/fall` `<main>`=1, spinner=0 · secretos: el diff es solo `PLAN.md` y este fichero · cobertura frontend: **no verificable** (A-4) · auditoría independiente: no aplica, sin código |
+| 0 · Aislamiento y estado base | `8bb3687` | backend **1659/1659**, cobertura **82 %**, ruff ✅ · tsc ✅ · vitest **268/268** · lint ✅ · build ✅ · prerender `/` `/contact` `/fall` `<main>`=1, spinner=0 · secretos: el diff es solo `PLAN.md` y este fichero · cobertura frontend: **no verificable** (A-4) · auditoría independiente: no aplica, sin código |
+| 1 · Aritmética TS contra la hoja de Jeff | el de esta entrada | vitest **301/301** (33 nuevos en `calculator.test.ts`) · tsc ✅ · lint ✅ · build ✅ · mutación obligatoria (`−`→`+` en `net`): **4 rojos** (casos 4, 9b, 10a, 10b), restaurado · secretos: ninguno · sin `console.` · cobertura frontend: no verificable (A-4); backend sin cambios · auditoría independiente: 1 importante corregido en fase (A-8), 0 bloqueantes |
 
 ### Consultas al advisor
 
@@ -30,6 +31,17 @@ puertos propios 8021 (API) y 3010 (web).
 
 ### Hallazgos abiertos
 
+- **Auditoría Fase 1 → corregido en fase:** en el escalón del PMI la bisección
+  devolvía el lado caro (hasta $267/mes sobre la renta con `cappedBy="rent"`).
+  Ahora devuelve `lo` (A-8); anclas de paridad idénticas al céntimo; 6.171
+  combinaciones sin diferencia en entradas bien formadas (verificado por el
+  auditor).
+- **Backlog (menores, auditoría Fase 1):** `credit` fuera de la unión da una
+  cifra plausible en vez de error (la página usa chips y el servidor `Literal`);
+  el caso 11 no distingue «tope» de «convergido»; `MAX_YEARS=40` supera el
+  plazo de 30 años y `pi` se sigue cobrando tras amortizar (no expuesto en la
+  página); un HOA que llegue como cadena se ignora → **la Fase 6a debe pasar
+  `Number()` antes de calcular**.
 - **(heredado de `/fall`, no de esta rama)** El aviso de lead nuevo por Resend
   no entrega en producción (200 sin entrega, ver sección de `/fall`). De los
   tres canales por los que la calculadora llega a Natalia, hoy solo el Inbox y
@@ -45,8 +57,8 @@ puertos propios 8021 (API) y 3010 (web).
 
 ### Siguiente paso
 
-Fase 1: `frontend/lib/calculator.ts`, el fixture compartido
-`backend/tests/fixtures/calculator_golden.json` y su test, contra la hoja de Jeff.
+Fase 2: `backend/app/services/calculator.py` con las mismas reglas (A-2, A-3, A-8)
+leyendo el mismo fixture; `tests/test_calculator.py` con las anclas `cross`.
 
 ---
 

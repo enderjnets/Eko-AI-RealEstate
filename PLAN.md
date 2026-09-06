@@ -1010,3 +1010,15 @@ el diseño; cierran huecos que el texto de las fases dejaba abiertos.
   par dejó abierto que **el aviso de lead nuevo no llega por Resend** (200 sin
   entrega): de los tres canales de contexto de la v1, el correo hoy no entrega
   en producción; el Inbox y la ficha sí. No se toca desde esta rama.
+- **A-8 · Fase 1, `solvePrice` cuando la bisección no converge** (hallazgo del
+  auditor independiente de la fase). El coste mensual da un salto donde empieza
+  el PMI (LTV 80 %); una renta dentro del salto no tiene precio con
+  `|total − rent| < 0.5`, el bucle agota las 80 iteraciones y `mid` cae en el
+  lado caro (medido: renta $3.200, ahorro $100.000, crédito «fair» → total
+  **$3.467,51** con `cappedBy="rent"`). Regla completa, **en TS y en Python**:
+  si el bucle no converge, `vRent = lo` (el mayor precio con `total ≤ rent`).
+  Además, las suposiciones editables se normalizan a la entrada de
+  `monthlyFor`/`solvePrice`/`compare`: `rate`, `appreciation`, `rentGrowth`
+  no finitos → valor de `DEFAULTS`; `hoaMonthly` negativo o no finito → 0;
+  `years` = `clamp(floor(years) finito ? … : 5, 1, 40)`. Para entradas bien
+  formadas nada cambia; las anclas de paridad se conservan al céntimo.
