@@ -1324,21 +1324,9 @@ export type CaptureOutcome =
   | { ok: true }
   | { ok: false; reason: "contact" | "email" | "rate" | "captcha" | "generic" };
 
-/**
- * What /calculator sends along with the form: the three inputs and the
- * sliders the visitor moved — never the result. Mirrors `CalculatorIn` on the
- * server, which recomputes everything before storing it.
- */
-export interface CalculatorPayload {
-  rent: number;
-  savings: number;
-  credit: CalculatorCredit;
-  appreciation?: number;
-  rent_growth?: number;
-  rate?: number;
-  hoa_monthly?: number;
-  lang?: "en" | "es";
-}
+/** What /calculator sends along with the form — defined beside the arithmetic. */
+export type { CalculatorPayload } from "./calculator";
+import type { CalculatorPayload } from "./calculator";
 
 export interface CapturePayload {
   form?: string;

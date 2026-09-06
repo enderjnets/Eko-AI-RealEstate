@@ -17,15 +17,19 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { ConsultForm } from "@/components/landing/ConsultForm";
 import { LandingTracker } from "@/components/landing/LandingTracker";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import {
   DEFAULTS,
+  LIMITS,
   SOURCES,
   UPPER,
+  buildPayload,
   compare,
   solvePrice,
   type Assumptions,
+  type CalculatorPayload,
   type Credit,
   type Inputs,
 } from "@/lib/calculator";
@@ -40,10 +44,12 @@ const DEBOUNCE_MS = 150;
 /** Slider range for the two growth rates, in percent. */
 const SLIDER = { min: 0, max: 5, step: 0.25 };
 
-/** A number from a money field: digits and one dot, nothing else; never NaN. */
-function dollars(raw: string): number {
+/** A number from a money field: digits and one dot, nothing else; never NaN;
+ *  never above what the server accepts, so the figure shown is one the lead
+ *  can carry. */
+function dollars(raw: string, max: number): number {
   const n = Number(raw.replace(/[^0-9.]/g, ""));
-  return Number.isFinite(n) && n > 0 ? n : 0;
+  return Number.isFinite(n) && n > 0 ? Math.min(n, max) : 0;
 }
 
 /** A percent from a rate field, bounded like the server's `CalculatorIn`.
@@ -54,7 +60,7 @@ function ratePercent(raw: string): number | null {
   const trimmed = raw.trim();
   if (trimmed === "") return null;
   const n = Number(trimmed.replace(",", "."));
-  return Number.isFinite(n) && n >= 0 && n <= 20 ? n : null;
+  return Number.isFinite(n) && n >= 0 && n <= LIMITS.ratePct ? n : null;
 }
 
 function useDebounced<T>(value: T, ms: number): T {
@@ -95,8 +101,8 @@ export default function CalculatorPage() {
   const [rateRaw, setRateRaw] = useState((DEFAULTS.rate * 100).toFixed(2));
   const [hoaRaw, setHoaRaw] = useState("");
 
-  const rent = useDebounced(dollars(rentRaw), DEBOUNCE_MS);
-  const savings = useDebounced(dollars(savingsRaw), DEBOUNCE_MS);
+  const rent = useDebounced(dollars(rentRaw, LIMITS.rent), DEBOUNCE_MS);
+  const savings = useDebounced(dollars(savingsRaw, LIMITS.savings), DEBOUNCE_MS);
   const ratePct = ratePercent(rateRaw);
 
   const assumptions: Assumptions = useMemo(
@@ -105,7 +111,7 @@ export default function CalculatorPage() {
       appreciation: appreciationPct / 100,
       rentGrowth: rentGrowthPct / 100,
       rate: ratePct === null ? DEFAULTS.rate : ratePct / 100,
-      hoaMonthly: dollars(hoaRaw),
+      hoaMonthly: dollars(hoaRaw, LIMITS.hoaMonthly),
     }),
     [appreciationPct, rentGrowthPct, ratePct, hoaRaw],
   );
@@ -136,6 +142,15 @@ export default function CalculatorPage() {
       credit,
     });
   }, [result, shown, credit]);
+
+  // What travels with the lead: the inputs and only the sliders that moved,
+  // and only once the page has a figure to stand behind. The server recomputes
+  // all of it; a form sent before the numbers are typed carries nothing —
+  // one more way a calculation can never cost the lead.
+  const payload: CalculatorPayload | undefined = useMemo(
+    () => (result ? buildPayload(inputs, assumptions, lang) : undefined),
+    [result, inputs, assumptions, lang],
+  );
 
   const brandLine = [LANDING.brand, LANDING.advisors].filter(Boolean).join(" · ");
   // The footer mirrors `/fall` and the landing exactly: this is real-estate
@@ -417,7 +432,7 @@ export default function CalculatorPage() {
           </details>
         </section>
 
-        {/* ── Consult (the form arrives in the next phase) ───────────── */}
+        {/* ── Consult: the shared form, with the calculation riding along ── */}
       </div>
       <section id="consult" className="relative mt-12 scroll-mt-10 overflow-hidden bg-ln-dark">
         <div className="mx-auto max-w-2xl px-5 py-14 sm:px-8 sm:py-16">
@@ -425,7 +440,9 @@ export default function CalculatorPage() {
             {t("calculator.cta.heading")}
           </h2>
           <p className="mt-4 text-[15px] leading-[1.7] text-ln-canvas/80">{t("calculator.cta.body")}</p>
-          <div id="consult-form" className="mt-8" />
+          <div className="mt-8">
+            <ConsultForm variant="calculator" calculator={payload} />
+          </div>
         </div>
       </section>
       <footer className="border-t border-ln-hair bg-ln-canvas px-5 py-10 sm:px-8">

@@ -3,8 +3,10 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULTS,
+  LIMITS,
   SOURCES,
   balanceAfter,
+  buildPayload,
   compare,
   futureValue,
   monthlyFor,
@@ -410,5 +412,43 @@ describe("what the audit found missing", () => {
     expect(Number.isFinite(g.net)).toBe(true);
     within(g.net, compare(base, DEFAULTS, 400_000).net, 0.01);
     expect(compare(base, { ...DEFAULTS, years: 0 }, 400_000).years).toBe(1);
+  });
+});
+
+describe("what travels with the lead", () => {
+  const inputs: Inputs = { rent: 2100, savings: 15000, credit: "good" };
+
+  it("21. untouched assumptions send nothing — including a rate that went through a percent field", () => {
+    // 6.71 / 100 is 0.06709999999999999 in floating point. A strict `!==`
+    // against DEFAULTS.rate sent the untouched rate as an override on every
+    // lead; the comparison has a tolerance now.
+    const a: Assumptions = { ...DEFAULTS, rate: Number("6.71") / 100 };
+    expect(a.rate === DEFAULTS.rate).toBe(false);
+    expect(buildPayload(inputs, a, "es")).toEqual({ rent: 2100, savings: 15000, credit: "good", lang: "es" });
+  });
+
+  it("22. a moved slider or field travels, rounded, under the server's snake_case name", () => {
+    const a: Assumptions = {
+      ...DEFAULTS,
+      rate: Number("6.5") / 100,
+      appreciation: 3.25 / 100,
+      rentGrowth: 0,
+      hoaMonthly: 250,
+    };
+    expect(buildPayload(inputs, a, "en")).toEqual({
+      rent: 2100,
+      savings: 15000,
+      credit: "good",
+      lang: "en",
+      rate: 0.065,
+      appreciation: 0.0325,
+      rent_growth: 0,
+      hoa_monthly: 250,
+    });
+  });
+
+  it("23. the page's limits are the server's", () => {
+    // CalculatorIn: rent le=50_000, savings le=5_000_000, hoa_monthly le=5_000, rate le=0.20.
+    expect(LIMITS).toEqual({ rent: 50_000, savings: 5_000_000, hoaMonthly: 5_000, ratePct: 20 });
   });
 });

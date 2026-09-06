@@ -283,6 +283,13 @@ export interface PriceResult {
 export const UPPER = 5_000_000;
 
 /**
+ * The server's bounds (`CalculatorIn` in `backend/app/api/v1/public.py`). The
+ * page clamps its fields to them so it never shows a figure the server would
+ * refuse to store beside the lead.
+ */
+export const LIMITS = { rent: 50_000, savings: 5_000_000, hoaMonthly: 5_000, ratePct: 20 } as const;
+
+/**
  * The price whose monthly cost equals the rent, capped by what the savings can
  * put down. Bisection: `monthlyFor(v).total` is monotone non-decreasing in `v`
  * (every term is, and the cap on `down` keeps `loan` so).
@@ -423,4 +430,45 @@ export function compare(inputs: Inputs, raw: Assumptions, price: number): Compar
     }
   }
   return { years, ...h, crossoverYear };
+}
+
+/**
+ * What travels with the lead: the inputs, the page's language, and only the
+ * assumptions that moved off their defaults — the server recomputes from
+ * these. Mirrors `CalculatorIn` on the server; `lib/api.ts` re-exports it.
+ */
+export interface CalculatorPayload {
+  rent: number;
+  savings: number;
+  credit: Credit;
+  appreciation?: number;
+  rent_growth?: number;
+  rate?: number;
+  hoa_monthly?: number;
+  lang?: "en" | "es";
+}
+
+/** Six decimals: enough for a rate in percent with two, and stable to compare. */
+function round6(n: number): number {
+  return Number(n.toFixed(6));
+}
+
+/**
+ * Builds the payload. "Moved" is decided with a tolerance, not `!==`:
+ * `6.71 / 100` is `0.06709999999999999`, not `0.0671`, and a strict
+ * comparison sent the untouched rate as an override on every lead.
+ */
+export function buildPayload(inputs: Inputs, a: Assumptions, lang: "en" | "es"): CalculatorPayload {
+  const moved = (x: number, d: number) => Math.abs(x - d) > 1e-9;
+  const p: CalculatorPayload = {
+    rent: inputs.rent,
+    savings: inputs.savings,
+    credit: inputs.credit,
+    lang,
+  };
+  if (moved(a.appreciation, DEFAULTS.appreciation)) p.appreciation = round6(a.appreciation);
+  if (moved(a.rentGrowth, DEFAULTS.rentGrowth)) p.rent_growth = round6(a.rentGrowth);
+  if (moved(a.rate, DEFAULTS.rate)) p.rate = round6(a.rate);
+  if (moved(a.hoaMonthly, DEFAULTS.hoaMonthly)) p.hoa_monthly = a.hoaMonthly;
+  return p;
 }
