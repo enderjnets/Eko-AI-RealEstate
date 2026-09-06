@@ -16,7 +16,9 @@ pre-bound tenant.
 """
 from __future__ import annotations
 
+import asyncio
 import os
+import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -106,7 +108,7 @@ async def _thread_rows(lead_email: str) -> list[dict]:
             await db.execute(
                 text(
                     "SELECT m.direction, m.internal, m.subject, m.content, "
-                    "m.external_id, m.delivery_status, m.send_attempts, c.channel "
+                    "m.external_id, m.delivery_status, m.send_attempts, m.last_error, c.channel "
                     "FROM messages m JOIN conversations c ON c.id = m.conversation_id "
                     "JOIN leads l ON l.id = c.lead_id WHERE l.email = :e "
                     "ORDER BY m.id"
@@ -222,6 +224,139 @@ async def test_a_real_phone_is_still_reported_as_one() -> None:
         body = sender.await_args.kwargs["body_text"]
         assert "Phone: +13035550188" in body
         assert "Email: has-number@notice.test" in body
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_telegram_carries_the_notice_when_the_mail_does_not() -> None:
+    """A lead is worth at least what an infrastructure alarm is worth.
+
+    Measured on 5-Sep-2026 with a real submission: Resend accepted the send,
+    reported `last_event: delivered`, and this module recorded SENT with a
+    message id and no error — while the mail never reached the destination
+    mailbox, spam and trash included. Every layer reported success and a human
+    was still never told.
+
+    So the notice goes out over two transports, and the row states whether a
+    human was reachable AT ALL — not whether the mail worked.
+    """
+    sender = AsyncMock(side_effect=RuntimeError("resend is down"))
+    telegram = AsyncMock(return_value=True)
+    try:
+        with (
+            patch("app.services.lead_notify.send_email", sender),
+            patch("app.services.lead_notify.send_operator_telegram", telegram),
+            patch("app.services.lead_notify.undeliverable_reason", lambda: None),
+        ):
+            status = await _post(
+                {"name": "Backup Path", "email": "backup@notice.test", "utm": {}}
+            )
+        assert status == 202
+        # The mail was tried and failed; Telegram carried it.
+        assert sender.await_count == 1
+        assert telegram.await_count == 1
+        assert "Backup Path" in telegram.await_args.args[1]
+
+        rows = await _thread_rows("backup@notice.test")
+        note = [r for r in rows if r["internal"]][0]
+        assert note["delivery_status"] == "sent", (
+            "somebody WAS told, so the row must not claim the notice failed"
+        )
+        # …and it still says the mail broke, so an outage is not hidden.
+        assert "email failed" in (note["last_error"] or "")
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_when_no_transport_works_the_row_says_so() -> None:
+    """The lie this module exists to prevent is a row claiming SENT."""
+    sender = AsyncMock(side_effect=RuntimeError("resend is down"))
+    telegram = AsyncMock(return_value=False)
+    try:
+        with (
+            patch("app.services.lead_notify.send_email", sender),
+            patch("app.services.lead_notify.send_operator_telegram", telegram),
+            patch("app.services.lead_notify.undeliverable_reason", lambda: None),
+        ):
+            status = await _post(
+                {"name": "Nobody Told", "email": "nobody@notice.test", "utm": {}}
+            )
+        assert status == 202, "a notice failure never costs the capture"
+        rows = await _thread_rows("nobody@notice.test")
+        note = [r for r in rows if r["internal"]][0]
+        assert note["delivery_status"] == "failed"
+        assert note["send_attempts"] == MAX_ATTEMPTS
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_tests_can_never_send_a_real_telegram() -> None:
+    """The credential the tests can reach is the credential they will spend.
+
+    `undeliverable_reason()` is what stands between this suite and the owner's
+    real operator channel, and it answers from settings. conftest blanks the
+    token unconditionally; this pins that it actually took effect.
+    """
+    from app.services.telegram_notify import undeliverable_reason as reason
+
+    assert reason() is not None, (
+        "a token is reachable from the test process — the suite would send "
+        "real Telegram messages to the operator channel"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_two_transports_share_one_budget_instead_of_doubling_it() -> None:
+    """Adding a safety net must not make the thing it protects slower.
+
+    This runs inside the public form's POST — the funnel's only conversion
+    point. Sent in series the worst case is the SUM of the two timeouts, so a
+    second transport would have doubled the time a visitor can sit on
+    "Sending…" before anything happens. They go concurrently under ONE budget.
+
+    The assertion is logical rather than a stopwatch: each transport takes 5s
+    against an 8s budget. Concurrently both finish; in series the pair would
+    hit the timeout and neither would land.
+    """
+    async def slow_mail(**_kw: object) -> dict:
+        await asyncio.sleep(5)
+        return {"id": "re_concurrent"}
+
+    async def slow_telegram(*_a: object) -> bool:
+        await asyncio.sleep(5)
+        return True
+
+    try:
+        with (
+            patch("app.services.lead_notify.send_email", slow_mail),
+            patch("app.services.lead_notify.send_operator_telegram", slow_telegram),
+            patch("app.services.lead_notify.undeliverable_reason", lambda: None),
+        ):
+            started = time.monotonic()
+            status = await _post(
+                {"name": "Both At Once", "email": "concurrent@notice.test", "utm": {}}
+            )
+            elapsed = time.monotonic() - started
+        assert status == 202
+        # THE assertion, and it has to be the clock. The first version of this
+        # test asserted that both transports landed — and stayed green when
+        # mutated back to series, because in series each one simply gets its
+        # own 8s budget and a 5s call fits inside it twice. That is precisely
+        # the defect: the visitor waits for the SUM. Only elapsed wall time
+        # tells the two apart.
+        assert elapsed < 8.0, (
+            f"the pair took {elapsed:.1f}s — run concurrently two 5s transports "
+            f"finish in ~5s; in series they take ~10s, and this runs inside the "
+            f"visitor's POST"
+        )
+        rows = await _thread_rows("concurrent@notice.test")
+        note = [r for r in rows if r["internal"]][0]
+        assert note["external_id"] == "re_concurrent"
+        assert note["delivery_status"] == "sent"
+        assert not note["last_error"]
     finally:
         await _cleanup()
 

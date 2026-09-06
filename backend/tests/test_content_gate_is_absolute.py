@@ -463,6 +463,14 @@ def test_every_wire_touching_function_is_declared_or_exempt() -> None:
             "the mail half of the same operator alert, split out when a second"
             " transport was added. Identical grounds: a status word and a"
             " remedy to PLATFORM_ADMIN_EMAILS, never a content piece",
+        "app/services/lead_notify.py::_notify_agency_by_telegram":
+            "the backup transport of the new-lead notice, added after a"
+            " measured incident: the mail provider reported delivered and the"
+            " mailbox never received it. It carries one lead's contact details"
+            " to the owner's OWN chat (TELEGRAM_CHAT_ID) — never a content"
+            " piece, so there is no approval gate for it to skip, and never to"
+            " an audience. The email half beside it needs no entry: it calls a"
+            " declared messaging primitive",
         "app/services/telegram_notify.py::_post_to_telegram":
             "the single wire-touching function of the Telegram module, carrying"
             " two kinds of message to the owner's OWN chat (TELEGRAM_CHAT_ID)"

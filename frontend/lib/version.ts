@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.80.0";
+export const CURRENT_VERSION = "0.82.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.82.0",
+    date: "2026-09-05",
+    title: {
+      en: "The new-lead notice now has two transports",
+      es: "El aviso de lead nuevo sale ahora por dos caminos",
+    },
+    changes: [
+      { en: "A real submission proved one channel is not enough: the mail provider reported the message delivered, this product recorded it sent with an id and no error, and it never reached the mailbox. The notice now also goes to the operator's Telegram, and the record states whether a human was reachable at all — not whether the mail worked.", es: "Un envío real demostró que un solo canal no basta: el proveedor de correo dijo entregado, el producto lo guardó como enviado con id y sin error, y nunca llegó al buzón. El aviso sale ahora también por Telegram, y el registro dice si se pudo avisar a alguien — no si funcionó el correo." },
+      { en: "\"Phone:\" no longer prints an email address. `leads.phone` holds the identifier — the number when there is one, the address otherwise — and every lead from /fall arrives address-only, so the notice was telling the advisor to dial an email.", es: "«Phone:» ya no imprime una dirección de correo. `leads.phone` guarda el identificador —el número si lo hay, la dirección si no— y todos los leads de /fall llegan solo con dirección, así que el aviso decía que se marcara un email." },
+    ],
+  },
   {
     version: "0.80.0",
     date: "2026-09-05",

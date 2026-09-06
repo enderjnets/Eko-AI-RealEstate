@@ -2,6 +2,40 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.82.0] — 2026-09-05
+
+### Fixed
+- **The new-lead notice has two transports now, and the reason is measured.**
+  A real submission through `/fall` proved one channel is not enough: Resend
+  accepted the send, its API reported `last_event: delivered`, this product
+  recorded `delivery_status=sent` with a message id and an empty `last_error`
+  — and the mail never appeared in the destination mailbox, spam and trash
+  included. **Every layer reported success and a human was never told.** The
+  notice now also goes to the operator's Telegram (already configured, already
+  used here, no shared failure mode with email), and the recorded row states
+  whether a human was reachable **at all** rather than whether the mail worked.
+  The LLM monitor has had a second transport since the safety-net work; a lead
+  is worth at least what an infrastructure alarm is worth.
+- **`Phone:` no longer prints an email address.** `leads.phone` is the
+  *identifier* — the number when there is one, the address otherwise, so an SMS
+  reply and a form post resolve to the same person — and the notice rendered it
+  under a literal `Phone:` label. An address-only lead produced the same value
+  twice, one of them telling the advisor to dial an email. Since `/fall`, whose
+  form requires only the address, that was going to be every lead the reel
+  campaign produced.
+- **The suite can no longer spend the real Telegram channel.** `conftest`
+  blanks `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` unconditionally, not with
+  `setdefault`: several tests drive the real capture endpoint, and on a machine
+  that exports a token — the owner's does — a green suite would have been
+  sending real messages to the operator chat. Pinned by a test that fails if
+  the credential is reachable from the test process.
+- **Both AST sweeps told about the new channel.**
+  `lead_notify::_send_and_record` is declared in `WIRE_NOT_PUBLISHING` and
+  `OUTBOUND_NOT_MESSAGING` with its reason: it carries one lead's details to
+  the agency, never a content piece and never to the lead. It was invisible to
+  those sweeps while it only called a declared messaging primitive — surfacing
+  it the moment a second channel appeared is exactly what they are for.
+
 ## [0.80.0] — 2026-09-05
 
 ### Added

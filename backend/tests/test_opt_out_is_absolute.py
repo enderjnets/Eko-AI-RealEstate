@@ -176,7 +176,13 @@ SEND_EXEMPT = {
     # IS inbound contact), and this notice must never be dispatched to the
     # lead — its thread record is `internal=True`, which the delivery sweep
     # skips by construction.
-    "app/services/lead_notify.py::_send_and_record",
+    #
+    # It was `_send_and_record` until the notice gained a second transport and
+    # each channel moved into its own named function. `_send_and_record` no
+    # longer calls a sending primitive itself, so naming it here would exempt
+    # something this sweep can no longer see — and would silently cover a send
+    # added back into it later. Name what the sweep sees.
+    "app/services/lead_notify.py::_notify_agency_by_email",
 }
 
 APP = pathlib.Path(__file__).resolve().parents[1] / "app"
@@ -497,6 +503,19 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
             " transport; that function no longer touches the wire itself, so"
             " naming it here would exempt something the sweep can no longer"
             " see — and would silently cover a POST added back into it later)",
+        "app/services/lead_notify.py::_notify_agency_by_email":
+            "mails the AGENCY's booking mailbox that a lead arrived, and never"
+            " addresses the lead. The exemption runs both ways and both matter:"
+            " a lead's STOP must not stop the agency being told that somebody"
+            " asked to be called, and the agency's copy of a lead's phone"
+            " number must never land in that lead's inbox. The person here"
+            " ASKED to be contacted; this message is not the contact, it is the"
+            " instruction to make it",
+        "app/services/lead_notify.py::_notify_agency_by_telegram":
+            "the backup transport of that same notice, to the owner's own chat."
+            " Identical grounds — and the redundancy is the point: the incident"
+            " that added it had the mail provider reporting delivered to a"
+            " mailbox that never received it",
         "app/services/telegram_notify.py::_post_to_telegram":
             "the single wire-touching function of the Telegram module, always"
             " addressed to the owner's own chat (TELEGRAM_CHAT_ID) and never to"

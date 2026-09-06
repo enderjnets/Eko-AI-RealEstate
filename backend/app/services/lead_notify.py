@@ -6,10 +6,21 @@ form was one channel among several; it is not fine now that the funnel is
 "visitor fills the form → the agent calls them back within a few hours". If
 nobody hears about the lead, the promise on the page is false.
 
-So: one email to `AgentSettings.booking_contact_email` per captured
-submission, carrying everything needed to make the call — name, phone, email,
-what they said, and where they came from. No link to the panel: there is no
-panel-URL setting in the backend, and the email is complete without one.
+So: one notice per captured submission, carrying everything needed to make the
+call — name, phone, email, what they said, and where they came from. No link to
+the panel: there is no panel-URL setting in the backend, and the notice is
+complete without one.
+
+**Two transports, not one, and the reason is measured.** It went by email
+alone until a real submission on 5-Sep-2026 proved that is not enough: Resend
+accepted the send, reported `last_event: delivered`, the product recorded
+`delivery_status=sent` with a message id and no error — and the mail never
+appeared in the destination mailbox, spam and trash included. Every layer said
+success and a human was still never told. The LLM monitor has had a second
+transport since the safety-net work for exactly this reason; a LEAD is worth at
+least what an infrastructure alarm is worth. Telegram is the backup because it
+is already configured, already used by this product, and does not share a
+failure mode with email.
 
 Modelled on `visit_invite.py`, which already solved the hard parts:
 
@@ -30,12 +41,58 @@ import logging
 from sqlalchemy import select
 
 from app.services.email import send_email
+from app.services.telegram_notify import send_operator_telegram, undeliverable_reason
 
 log = logging.getLogger("app.lead_notify")
 
 
 def _line(label: str, value: str | None) -> str:
     return f"{label}: {value}\n" if value else ""
+
+
+async def _notify_agency_by_email(
+    to: str, subject: str, body: str, lead_id: int
+) -> tuple[str | None, str | None]:
+    """Mail the booking mailbox. Returns `(provider id, failure)`; never raises.
+
+    A module-level function with a name that says who it addresses, rather than
+    a closure called `_mail`: both AST sweeps name what they exempt, and a
+    generic name in a security table is one a future unrelated `_mail`
+    inherits by accident.
+    """
+    try:
+        result = await send_email(to=to, subject=subject, body_text=body)
+        external_id = (result or {}).get("id")
+        if external_id:
+            log.info("Lead %d: new-lead notice sent to the agency", lead_id)
+            return external_id, None
+        failure = "the provider accepted the send but returned no id"
+        log.error("Lead %d: %s", lead_id, failure)
+        return None, failure
+    except TimeoutError:
+        failure = "the email provider did not answer in time (the send may still complete)"
+        log.error("Lead %d: %s", lead_id, failure)
+        return None, failure
+    except Exception as exc:  # noqa: BLE001
+        log.error("Lead %d: new-lead notice failed to send: %s", lead_id, exc)
+        return None, str(exc)[:500]
+
+
+async def _notify_agency_by_telegram(subject: str, body: str, lead_id: int) -> bool:
+    """The backup transport, to the owner's OWN chat. Never raises.
+
+    A backup that can break the primary path is not a backup, so every failure
+    here is a log line and a `False`.
+    """
+    blocked = undeliverable_reason()
+    if blocked:
+        log.info("Lead %d: telegram backup unavailable (%s)", lead_id, blocked)
+        return False
+    try:
+        return bool(await send_operator_telegram(subject, body))
+    except Exception as exc:  # noqa: BLE001
+        log.error("Lead %d: telegram backup failed: %s", lead_id, exc)
+        return False
 
 
 async def send_new_lead_notice(lead_id: int, message_id: int | None) -> None:
@@ -133,28 +190,57 @@ async def _send_and_record(lead_id: int, message_id: int | None) -> None:
             + "\nThey are expecting a call back in the next few hours.\n"
         )
 
+        # ── Both transports, CONCURRENTLY ───────────────────────────────
+        # ONE budget for the pair, not one each. This runs inside the public
+        # form's POST — the funnel's only conversion point — and the mail
+        # client waits up to 20 s on its own. Sent in series the worst case
+        # would be the SUM of the two, which is how adding a safety net makes
+        # the thing it protects worse: sixteen seconds of "Sending…" in front
+        # of a visitor.
+        #
+        # Telegram is attempted whether or not the email reports success,
+        # because "reports success" is precisely what proved untrustworthy: the
+        # incident that put it here had an id, no error, and a provider saying
+        # delivered.
         external_id: str | None = None
         failure: str | None = None
+        telegram_ok = False
         try:
-            # Hard budget. This runs inside the public form's POST — the
-            # funnel's only conversion point — and the mail client waits up to
-            # 20 s on its own. A hung provider must cost the notice, never
-            # twenty seconds of "Sending…" in front of the visitor.
-            result = await asyncio.wait_for(
-                send_email(to=to, subject=subject, body_text=body), timeout=8.0
+            # `return_exceptions=True` on top of the per-transport handlers: a
+            # raise escaping here would cost the whole notice AND leave the row
+            # unwritten, which is worse than either transport failing.
+            results = await asyncio.wait_for(
+                asyncio.gather(
+                    _notify_agency_by_email(to, subject, body, lead.id),
+                    _notify_agency_by_telegram(subject, body, lead.id),
+                    return_exceptions=True,
+                ),
+                timeout=8.0,
             )
-            external_id = (result or {}).get("id")
-            if external_id:
-                log.info("Lead %d: new-lead notice sent to the agency", lead.id)
+            mail_result, telegram_result = results
+            if isinstance(mail_result, tuple):
+                external_id, failure = mail_result
             else:
-                failure = "the provider accepted the send but returned no id"
-                log.error("Lead %d: %s", lead.id, failure)
+                failure = str(mail_result)[:500]
+            telegram_ok = telegram_result is True
         except TimeoutError:
-            failure = "the email provider did not answer within 8s (the send may still complete)"
-            log.error("Lead %d: %s", lead.id, failure)
-        except Exception as exc:  # noqa: BLE001
-            failure = str(exc)[:500]
-            log.error("Lead %d: new-lead notice failed to send: %s", lead.id, exc)
+            failure = "no transport answered within 8s"
+            log.error("Lead %d: notice transports timed out", lead.id)
+
+        # The row states whether a human was reachable AT ALL, not whether the
+        # mail worked. Recording FAILED while Telegram carried the notice would
+        # send somebody chasing an outage that did not happen; recording SENT
+        # when neither arrived is the lie this whole module exists to prevent.
+        delivered = bool(external_id) or telegram_ok
+        if failure and telegram_ok:
+            failure = f"email failed ({failure}); telegram carried the notice"
+        elif not delivered and not failure:
+            failure = "no transport could deliver the notice"
+        if not delivered:
+            log.error(
+                "Lead %d: NOBODY was told about this lead — both transports failed",
+                lead.id,
+            )
 
         if inbound is None:
             return
@@ -174,7 +260,7 @@ async def _send_and_record(lead_id: int, message_id: int | None) -> None:
                 internal=True,
                 external_id=external_id,
                 delivery_status=(
-                    MessageStatus.SENT if external_id else MessageStatus.FAILED
+                    MessageStatus.SENT if delivered else MessageStatus.FAILED
                 ),
                 last_error=failure,
                 # Spent on purpose when the send failed: the row then states
@@ -182,7 +268,7 @@ async def _send_and_record(lead_id: int, message_id: int | None) -> None:
                 # the delivery sweep already honours. A blind retry here would
                 # send the agency's note wherever the sweep's dispatcher
                 # decides, which is the lead.
-                send_attempts=0 if external_id else MAX_ATTEMPTS,
+                send_attempts=0 if delivered else MAX_ATTEMPTS,
             )
         )
         await db.commit()

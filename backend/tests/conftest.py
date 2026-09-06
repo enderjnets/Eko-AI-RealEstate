@@ -52,6 +52,15 @@ os.environ.setdefault("WHATSAPP_ENABLED", "true")
 # monkeypatch, and stubs the transport.
 os.environ["GROQ_API_KEY"] = ""
 
+# Blanked UNCONDITIONALLY, not `setdefault`: the new-lead notice now has a
+# second transport, and several tests drive the real capture endpoint. On a
+# machine that exports a bot token — the owner's does — a green suite would be
+# sending real Telegram messages to the operator channel. A credential the
+# tests can reach is a credential the tests will spend.
+os.environ["TELEGRAM_BOT_TOKEN"] = ""
+os.environ["TELEGRAM_CHAT_ID"] = ""
+
+
 import pytest  # noqa: E402 — must follow the environment default above
 
 from app.db.base import dispose_engine
