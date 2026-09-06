@@ -46,12 +46,14 @@ const SLIDER = { min: 0, max: 5, step: 0.25 };
 /** One-tap amounts. A phone keyboard is the slowest part of this page, and
  *  these are anchored to the Denver market, not invented: the rents span a
  *  one-bedroom (~$1,510) through a four-bedroom house (~$3,389), and the
- *  savings start at what it actually takes to buy the cheapest thing here —
+ *  savings start above what it actually takes to buy the cheapest thing here —
  *  a $310,000 condo needs $13,950 between a 3% down payment and closing.
  *  $10,000 was below the market: it pinned the answer at $222,222 for every
- *  rent from $2,000 up, so tapping a rent chip changed nothing. */
+ *  rent from $2,000 up, so tapping a rent chip changed nothing. $20,000 rather
+ *  than the $15,000 that first replaced it, because $15,000 caps the price at
+ *  $333,333 and the top three rents all landed on that same figure. */
 const QUICK_RENT = [1500, 2000, 2500, 3000, 3500, 4000] as const;
-const QUICK_SAVINGS = [15_000, 30_000, 60_000, 100_000] as const;
+const QUICK_SAVINGS = [20_000, 30_000, 60_000, 100_000] as const;
 
 /** A number from a money field: digits and one dot, nothing else; never NaN;
  *  never above what the server accepts, so the figure shown is one the lead

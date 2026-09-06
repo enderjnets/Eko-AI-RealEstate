@@ -2,6 +2,28 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.86.0] — 2026-09-06
+
+### Changed
+- **The one-tap amounts on `/calculator` are anchored to the Denver market**,
+  not to a guess. Rents: $1,500 (median one-bedroom), $2,000 (the city
+  average), $2,500, $3,000 (three-bedroom), $3,500 (four-bedroom house,
+  averaging $3,389) and $4,000 — each $500 step is about $59,000 more house.
+  Savings: $20,000 / $30,000 / $60,000 / $100,000.
+- **`$10,000` was removed because it is below the market.** It capped the
+  answer at $222,222 for every rent from $2,000 up — so tapping a rent chip
+  changed nothing — and Denver's median condo sells for $310,000, which needs
+  $13,950 between a 3% down payment and 1.5% closing costs.
+- **The price floor rises from $150,000 to $250,000.** It was a UX constant and
+  is now the edge of the market, with a source. Before, it never fired: the
+  page showed believable prices for a market that does not exist in 11 of the
+  24 chip combinations. Now that is 0 — three say the truth the page already
+  had written ("the estimate falls below what Denver homes sell for; Natalia
+  can still help you plan for it") and the other 21 point at something buyable.
+- **A line beside the consult form** for whoever does not arrive through rent:
+  buying above a million is their market too. The arithmetic already reached it
+  — the search ceiling is $5,000,000 — it simply was never said.
+
 ## [0.85.0] — 2026-09-06
 
 ### Changed

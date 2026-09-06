@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.85.0";
+export const CURRENT_VERSION = "0.86.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.86.0",
+    date: "2026-09-06",
+    title: {
+      en: "/calculator: numbers anchored to what Denver actually sells",
+      es: "/calculator: números anclados a lo que Denver vende de verdad",
+    },
+    changes: [
+      { en: "The one-tap amounts now come from the market instead of a guess: rents from $1,500 (a one-bedroom) to $4,000 (a four-bedroom house), and savings from $20,000 up. $10,000 was below the market — it pinned the answer at $222,222 for every rent from $2,000 up, and nothing in Denver sells at that price.", es: "Los importes de un toque salen ahora del mercado y no de una suposición: rentas de $1,500 (un habitación) a $4,000 (una casa de cuatro), y ahorros desde $20,000. Con $10,000 la cifra se clavaba en $222,222 para toda renta de $2,000 en adelante, y a ese precio en Denver no se vende nada." },
+      { en: "The price floor rises from $150,000 to $250,000, the edge below which Denver has almost nothing to buy (the median condo sells for $310,000). The page already had the honest line for that case and never showed it; now it does, instead of a figure nothing can be bought with.", es: "El suelo sube de $150,000 a $250,000, el borde por debajo del cual Denver casi no tiene nada que comprar (el condo mediano vale $310,000). La página ya tenía la frase honesta para ese caso y nunca la enseñaba; ahora sí, en vez de una cifra con la que no se compra nada." },
+      { en: "And a line beside the form for whoever does not arrive through rent at all: buying above a million is their market too.", es: "Y una línea junto al formulario para quien no llega por la vía de la renta: comprar por encima del millón también es su mercado." },
+    ],
+  },
   {
     version: "0.85.0",
     date: "2026-09-06",
