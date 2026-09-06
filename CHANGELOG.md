@@ -45,6 +45,7 @@ All notable changes to **Eko AI Realtors**.
   mutated and seen to go red; the fourth assertion pins the ladder's generated
   href so the anchor check cannot quietly become a test that runs over an
   empty list.
+
 ## [0.84.0] — 2026-09-06
 
 ### Changed

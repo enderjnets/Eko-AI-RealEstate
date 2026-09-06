@@ -27,7 +27,15 @@
 export type Photo = {
   src: string;
   alt: string;
-  /** Tailwind `[object-position:…]`, for the files where centring is wrong. */
+  /**
+   * A raw `object-position` value (`"50% 58%"`), applied as an inline style.
+   *
+   * NOT a Tailwind `[object-position:…]` class, and that is the whole point:
+   * `tailwind.config.ts` scans `app/` and `components/`, not `lib/`, so the
+   * moment this table moved out of the page the generated class stopped being
+   * generated — no error, no warning, just a photo quietly re-centred and a
+   * comment that had become a lie. An inline style depends on nothing.
+   */
   position?: string;
   author: string;
   license: string;
@@ -72,7 +80,7 @@ export const BANDS: Band[] = [
         photo: {
           src: "/landing/fall/guanella-pass.jpg",
           alt: "The valley below Guanella Pass, aspens turning gold among the spruce",
-          position: "[object-position:50%_58%]",
+          position: "50% 58%",
           author: "JenFulmer",
           license: "CC BY-SA 4.0",
           licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",

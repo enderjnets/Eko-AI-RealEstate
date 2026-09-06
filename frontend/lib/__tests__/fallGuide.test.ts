@@ -62,6 +62,23 @@ describe("the fall guide's photographs", () => {
     }
   });
 
+  it("frames with a CSS value, never a Tailwind class this file is invisible to", () => {
+    // The bug this exists for shipped and was caught by eye, not by a test:
+    // `position` held `[object-position:50%_58%]`, a Tailwind arbitrary class.
+    // `tailwind.config.ts` scans `app/` and `components/` — not `lib/` — so
+    // when this table moved out of the page the class stopped being generated.
+    // No error, no warning; the photo just re-centred and the comment above it
+    // became false. A raw CSS value applied inline cannot be dropped by a
+    // scanner that never looks here.
+    for (const photo of PHOTOS) {
+      if (photo.position === undefined) continue;
+      expect(photo.position, `${photo.src} frames with a class, not a value`).not.toMatch(
+        /[[\]]/,
+      );
+      expect(photo.position).toMatch(/^[-\w %.]+$/);
+    }
+  });
+
   it("every photo describes what is in it, for a reader who cannot see it", () => {
     for (const photo of PHOTOS) {
       expect(photo.alt.trim().length, `thin alt text for ${photo.src}`).toBeGreaterThan(20);

@@ -132,7 +132,8 @@ function SpotEntry({ spot }: { spot: Spot }) {
             alt={photo.alt}
             loading="lazy"
             decoding="async"
-            className={`aspect-[3/2] w-full bg-ln-tint object-cover ${photo.position ?? ""}`}
+            className="aspect-[3/2] w-full bg-ln-tint object-cover"
+            style={photo.position ? { objectPosition: photo.position } : undefined}
           />
           <figcaption className="mt-2 text-[10px] leading-[1.6] tracking-[0.03em] text-ln-faint">
             {photo.author} ·{" "}
