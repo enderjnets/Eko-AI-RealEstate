@@ -2,6 +2,47 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.83.0] — 2026-09-06
+
+### Added
+- **`/calculator` — what your rent could buy in Denver.** A public, indexable
+  page on the brand domain. Three inputs (monthly rent, savings, credit range),
+  then the price you could buy at with the same monthly money, the monthly
+  breakdown, and five years of owning against renting with a signed net that
+  is never hidden. Every assumption is on the page with its source and date;
+  the two that move the answer most — home value growth and rent growth — are
+  sliders with a conservative 2% default. English and Spanish from the first
+  version. The result is given **before** anything is asked; the shared
+  consult form sits underneath.
+- **The calculation travels with the lead.** The browser sends the three
+  inputs and the sliders that moved — never the result. The server recomputes
+  them (`services/calculator.py`, the same rules as the page, with a shared
+  golden fixture so the two cannot drift) and stores a versioned snapshot in
+  `leads.calculator_snapshot` (migration `055_calculator_snapshot`, JSONB,
+  nullable, no default: code that predates it keeps working). One line goes
+  into the Inbox message, one into the new-lead notice (`Calculator: …`), and
+  the lead's screen shows what the visitor saw. Last calculation wins.
+- **The funnel sees the step.** A `calculator_result` event, sent once per
+  page load the first time a figure is shown, sits between "opened the page"
+  and "left their email". `LandingTracker` now accepts the sections a page
+  wants measured; `inputs`, `result` and `compare` are known to the server.
+
+### Changed
+- A calculation outside the accepted ranges, or with a key the server does not
+  know, is **dropped with a warning and the lead is still captured** — a
+  calculator is a courtesy, the lead is the point. (Decided during execution;
+  the plan had said 422.)
+
+### What it deliberately does not do
+- No listings, no neighborhoods, no ZIP: the page is arithmetic and prose, and
+  every string on it passes the Fair Housing filter in both languages.
+- No APR, no lender language, no tax benefit: the brokerage does not lend
+  money, and the page says so.
+- **No automatic reply to the visitor.** The web form has never had one; the
+  calculation reaches the agent by notice, Inbox and lead screen. An email to
+  the visitor with their estimate is a separate decision and a separate
+  version.
+
 ## [0.82.0] — 2026-09-05
 
 ### Fixed

@@ -1065,3 +1065,11 @@ el diseño; cierran huecos que el texto de las fases dejaba abiertos.
   inflarse si `inputs` y `result` caben en el primer viewport; `/analytics`
   itera un literal de 4 secciones y las tres nuevas se almacenan sin mostrarse;
   faltarán sus etiquetas i18n cuando se muestren. Nada de esto se toca en v1.
+- **A-13 · Fase 6b, paso 0, restaurar al terminar.** El `update agent_settings
+  set booking_contact_email=…` de la prueba de extremo a extremo deja en la
+  base de test un estado que cuatro tests (`test_shared_resources.py:682` y
+  compañía) dan por sentado como vacío: con un correo configurado, la reserva
+  sigue hasta Cal.com con una clave falsa y devuelve 401. Tras la prueba,
+  `update agent_settings set booking_contact_email=NULL where org_id=1`. Lo
+  aprendí en la suite de la Fase 8 (4 rojos); restaurado, 89/89 en esos
+  ficheros y suite completa relanzada.

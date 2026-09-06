@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.82.0";
+export const CURRENT_VERSION = "0.83.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.83.0",
+    date: "2026-09-06",
+    title: {
+      en: "/calculator: what your rent could buy",
+      es: "/calculator: qué casa podría comprar tu renta",
+    },
+    changes: [
+      { en: "A public page on the brand domain: type your rent, your savings and your credit range and see the price you could buy at, what it costs per month, and five years of owning against renting — every assumption shown with its source and date, and the result given before anything is asked. English and Spanish.", es: "Una página pública en el dominio de la marca: escribe tu renta, tu ahorro y tu rango de crédito y ve hasta qué precio podrías comprar, lo que cuesta al mes y cinco años de comprar frente a alquilar — cada supuesto con su fuente y fecha, y el resultado antes de pedir nada. Inglés y español." },
+      { en: "The calculation travels with the lead. The server recomputes it, stores it beside the lead, puts one line in the Inbox message and in the new-lead notice, and the lead's screen shows what the visitor saw. A malformed calculation is dropped with a warning; the lead is captured anyway.", es: "El cálculo viaja con el lead. El servidor lo recalcula, lo guarda junto al lead, pone una línea en el mensaje del Inbox y en el aviso de lead nuevo, y la ficha muestra lo que el visitante vio. Un cálculo malformado se descarta con aviso; el lead se captura igual." },
+      { en: "Not a loan page: no APR, no lender language, no tax benefit. Appreciation is a slider with a conservative default, not a printed fact.", es: "No es una página de préstamos: sin APR, sin lenguaje de prestamista, sin beneficio fiscal. La apreciación es un deslizador con un valor conservador, no un hecho impreso." },
+    ],
+  },
   {
     version: "0.82.0",
     date: "2026-09-05",
