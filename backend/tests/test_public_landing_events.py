@@ -611,3 +611,26 @@ async def test_the_path_never_carries_a_query_string() -> None:
     cannot forget it."""
     assert await _beacon(_batch(("page_view", {}), path="/?utm_source=x&email=bob@x.com")) == 204
     assert (await _session_row())["landing_path"] == "/"
+
+
+class TestCalculatorResult:
+    """`/calculator` reports that the visitor saw a figure. A raw event, not a
+    session column: the funnel between "opened the page" and "left their
+    email" is read from `landing_events` until `/analytics` learns to split
+    pages (backlog I-3)."""
+
+    async def test_it_is_accepted_and_stored_with_its_meta(self) -> None:
+        status = await _beacon(
+            _batch(
+                ("page_view", {}),
+                ("calculator_result", {"price_k": 310, "capped": "rent", "credit": "good"}),
+            )
+        )
+        assert status == 204
+        rows = await _event_rows()
+        assert [e["type"] for e in rows] == ["page_view", "calculator_result"]
+        assert rows[1]["meta"] == {"price_k": 310, "capped": "rent", "credit": "good"}
+        # And the session row is untouched by it: no counter, no flag.
+        row = await _session_row()
+        assert row is not None
+        assert row["event_count"] == 2

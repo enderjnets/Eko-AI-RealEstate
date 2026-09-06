@@ -403,3 +403,18 @@ describe("sectionWasSeen", () => {
     }
   });
 });
+
+describe("the calculator's own funnel step", () => {
+  it("sends calculator_result at once, with its meta", () => {
+    // Whoever sees their number may leave in the same second; a queued batch
+    // would never leave with them.
+    const { t, sent } = tracker();
+    t.record("page_view");
+    expect(sent).toHaveLength(0);
+    t.record("calculator_result", { price_k: 310, capped: "rent", credit: "good" });
+    expect(sent).toHaveLength(1);
+    const body = JSON.parse(sent[0]);
+    expect(body.events.map((e: { t: string }) => e.t)).toEqual(["page_view", "calculator_result"]);
+    expect(body.events[1].meta).toEqual({ price_k: 310, capped: "rent", credit: "good" });
+  });
+});

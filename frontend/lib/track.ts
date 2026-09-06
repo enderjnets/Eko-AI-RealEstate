@@ -37,7 +37,9 @@ export type EventName =
   | "tel_click"
   | "form_start"
   | "form_submit"
-  | "form_error";
+  | "form_error"
+  /** /calculator showed a figure. Once per page load, on the first valid result. */
+  | "calculator_result";
 
 /** Sent the moment they happen: each one is a funnel step, and a visitor who
  *  taps "call" is on their way out of the page — a queued batch would never
@@ -48,6 +50,8 @@ const IMMEDIATE: ReadonlySet<EventName> = new Set<EventName>([
   "form_start",
   "form_submit",
   "form_error",
+  // Whoever sees their number may leave in the same second.
+  "calculator_result",
 ]);
 
 /**

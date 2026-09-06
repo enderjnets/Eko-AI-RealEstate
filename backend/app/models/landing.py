@@ -42,6 +42,10 @@ LANDING_EVENT_TYPES = frozenset(
         "form_start",
         "form_submit",
         "form_error",
+        # /calculator: the visitor saw a figure. The funnel step between
+        # "opened the page" and "left their email"; stored as a raw event
+        # (`new_events`), not folded into the session row — see backlog I-3.
+        "calculator_result",
     }
 )
 
