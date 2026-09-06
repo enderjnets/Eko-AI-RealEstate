@@ -8,6 +8,17 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ## `/calculator` — la calculadora renta→compra (rama `feat/calculator`, v0.83.0)
 
+**✅ v0.84.0 EN PRODUCCIÓN — rediseño desplegado el 6-sep-2026.** `/api/v1/health` sirve
+**0.84.0** (`a6e87f9fd`), la página calcula en el navegador real ($262,000 y +$17,463 en
+iPhone 13 y en 1280) y la frase del escalón del PMI aparece donde debe
+(2.444/80.000 → «for $93 a month less than your rent…»). Sin migración: la 055 ya estaba.
+Reversión: `git reset --hard d1fd4c6` + build + `up -d`, **nunca `alembic downgrade`**.
+Copias previas: `.env.bak.20260906_v0840` y `eko_pre_0840_20260906.sql` (sha256 idéntico
+en VPS y Mac). Los 2 errores de consola que se ven son del widget de Turnstile: idénticos
+en `/fall` y `/contact`, que este despliegue no toca.
+
+<details><summary>El despliegue anterior, v0.83.0</summary>
+
 **✅ DESPLEGADA en producción el 6-sep-2026.** `/api/v1/health` sirve **0.83.0**, `alembic current` = **055_calculator_snapshot**, `https://www.denverhomestory.com/calculator` responde **200** y calcula. Fases 0–9 cerradas; la 10 no se ejecuta (7.1). Plan: `PLAN.md` (con las aclaraciones del autor
 al final). Base **`69214c6`** (= producción **`6ff48d6`**, v0.82.0, más un commit de solo
 `PROJECT_STATUS.md` de la sesión par que nunca subió al VPS — lo corrigió ella el 6-sep; rebase el
@@ -274,6 +285,8 @@ importaría para la Fase 10, que no se ejecuta.
 4. Con los supuestos conservadores (2 %/2 %) el neto a 5 años sale pequeño o
    negativo para muchas entradas: correcto y visible, pero el dueño debe verlo
    antes de anunciarlo en redes (7.2/7.3).
+
+</details>
 
 </details>
 
