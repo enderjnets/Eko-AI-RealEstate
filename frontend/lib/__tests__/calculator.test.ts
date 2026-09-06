@@ -512,18 +512,21 @@ describe("long horizons", () => {
   // looking twenty years out was told "renting stays cheaper" about a horizon
   // the page was not searching.
   it("26. the crossing is searched as far as the visitor is looking", () => {
-    const slow: Inputs = { rent: 1600, savings: 100_000, credit: "fair" };
-    const p = solvePrice(slow, DEFAULTS).price;
-    const a = { ...DEFAULTS, appreciation: 0, rentGrowth: 0 };
-    const short = compare(slow, { ...a, years: 5 }, p);
-    const long = compare(slow, { ...a, years: 30 }, p);
-    if (short.crossoverYear === null && long.crossoverYear !== null) {
-      expect(long.crossoverYear).toBeGreaterThan(10);
-    }
-    // Whatever it finds, it never claims a crossing beyond the horizon asked for.
-    for (const c of [short, long]) {
-      if (c.crossoverYear !== null) expect(c.crossoverYear).toBeLessThanOrEqual(Math.max(10, c.years));
-    }
+    // A crossing INSIDE the horizon but past year 10: pinned to the year, so
+    // narrowing the search back to 1..10 turns this red instead of quietly
+    // returning null and printing "renting stays cheaper for this whole term".
+    const slow: Inputs = { rent: 2000, savings: 30_000, credit: "good" };
+    const flat = { ...DEFAULTS, appreciation: 0, rentGrowth: 0 };
+    const p = solvePrice(slow, flat).price;
+    expect(compare(slow, { ...flat, years: 20 }, p).crossoverYear).toBe(12);
+
+    // Its twin: a crossing that really falls OUTSIDE the horizon. Here null is
+    // the truth, and the sentence the page prints with it is true too.
+    const falling = { ...flat, appreciation: -0.035 };
+    expect(compare(slow, { ...falling, years: 20 }, p).crossoverYear).toBeNull();
+    // Proof the null came from the horizon and not from a broken search: the
+    // same assumptions, looked at for thirty years, do find the crossing.
+    expect(compare(slow, { ...falling, years: 30 }, p).crossoverYear).toBe(25);
   });
 
   // 27. The curve the chart draws is the same arithmetic as the headline.

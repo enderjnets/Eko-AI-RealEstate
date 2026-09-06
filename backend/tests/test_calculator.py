@@ -456,12 +456,41 @@ def test_25_the_mortgage_payment_stops_when_the_loan_is_paid_off():
 
 
 def test_26_the_crossing_is_searched_as_far_as_the_visitor_looks():
+    """La frase y la busqueda son el mismo hecho escrito en dos sitios: si la
+    pagina dice "alquilar sigue saliendo mas barato en todo este plazo" pero el
+    cruce solo se busca hasta el ano 10, la frase miente con mas aplomo cuanto
+    mayor sea el plazo. Los dos anos van clavados a proposito: estrechar la
+    busqueda de vuelta a 1..10 pone el primero en rojo.
+    """
+    inputs = {"rent": 2000, "savings": 30_000, "credit": "good"}
+    flat = {**DEFAULTS, "appreciation": 0.0, "rent_growth": 0.0}
+    price = solve_price(inputs, flat)["price"]
+    # Cruce DENTRO del horizonte y pasado el ano 10.
+    assert compare(inputs, {**flat, "years": 20}, price)["crossover_year"] == 12
+
+    # Su gemelo: un cruce que de verdad cae FUERA. Aqui None es la verdad.
+    falling = {**flat, "appreciation": -0.035}
+    assert compare(inputs, {**falling, "years": 20}, price)["crossover_year"] is None
+    # Y el None viene del horizonte, no de una busqueda rota: los mismos
+    # supuestos mirados a treinta anos si encuentran el cruce.
+    assert compare(inputs, {**falling, "years": 30}, price)["crossover_year"] == 25
+
+
+def test_26b_the_last_month_of_the_term_is_charged_and_the_next_one_is_not():
+    """El ano 30 cubre los meses 349-360 y se cobran los doce; el ano 31 empieza
+    en el 361 y no se cobra ninguno. Un test en el ano 30 y otro en el 35 pasan
+    los dos con un desplazamiento de uno: el borde es este par.
+    """
     inputs = {"rent": 2000, "savings": 30_000, "credit": "good"}
     price = solve_price(inputs, DEFAULTS)["price"]
-    for years in (5, 30):
-        c = compare(inputs, {**DEFAULTS, "years": years}, price)
-        if c["crossover_year"] is not None:
-            assert c["crossover_year"] <= max(10, years)
+    m = monthly_for(price, inputs, DEFAULTS)
+    a = {**DEFAULTS, "appreciation": 0.0, "years": 31}
+    rows = {r["year"]: r["buy_monthly"] for r in compare(inputs, a, price)["rows"]}
+    # Sin apreciacion el resto del recibo es identico en los dos anos, asi que
+    # la diferencia entre ellos es exactamente la cuota del prestamo.
+    assert rows[30] - rows[31] == pytest.approx(m["pi"], abs=0.01)
+    # Y el ano 30 la lleva entera: los doce meses, no once.
+    assert rows[29] == pytest.approx(rows[30], abs=0.01)
 
 
 def test_defaults_carry_an_inflation_for_todays_money():
