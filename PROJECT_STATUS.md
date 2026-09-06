@@ -283,6 +283,53 @@ en `/fall`, `/contact` y `/calculator`.
 
 ---
 
+### ⛔ Fase 1 — bloqueada en el dueño: la clave de Resend NO puede crear dominios
+
+Medido el 6-sep desde **dentro** del contenedor de producción, usando la clave
+donde vive y sin imprimirla nunca (solo su forma):
+
+| Sonda | Resultado |
+|---|---|
+| `RESEND_API_KEY` en el contenedor | presente, prefijo `re_`, **36** caracteres |
+| `GET https://api.resend.com/domains` | **403**, `error code: 1010` |
+| `GET https://api.resend.com/webhooks` | **403**, `error code: 1010` |
+
+Es el **Riesgo 1 del plan, materializado**: la clave es de envío, no de gestión
+de cuenta. Consecuencia: **el dominio lo tiene que crear el dueño en el panel de
+Resend**; esta sesión solo puede verificarlo después. No se pide otra clave por
+el chat.
+
+**Lo que NO pude medir, y lo digo en vez de deducirlo:** el segundo sondeo
+—comparar la respuesta de la clave real contra una inventada del mismo largo,
+para distinguir «válida pero restringida» (403/1010) de «inválida»— lo bloqueó
+el clasificador y no se reintentó. Lo que sostiene que la clave es buena es
+indirecto: producción envía correo con ella. Así que lo afirmable es **«no
+puede crear dominios»**, no «es de solo envío» — la segunda es una etiqueta que
+no he verificado.
+
+También queda sin respuesta si existe ya un webhook con `email.received`
+(mismo 403). Se comprobará desde el panel cuando el dueño entre.
+
+**Lo que tiene que hacer el dueño (Fase 1.1), y es todo lo que le pido:**
+
+1. Resend → **Domains → Add Domain** → `denverhomestory.com`, región
+   `us-east-1`, y **Receiving ACTIVADO** (no solo sending: sin eso las
+   respuestas del cliente no entran al Inbox del panel).
+2. Pegar aquí la tabla de registros DNS que devuelva Resend — **esos**, no los
+   de la sección del subdominio de esta misma guía, que son de
+   `realtors.ekoaiautomation.com`.
+
+Entonces esta sesión: arma el bloque exacto para Cloudflare (todos en **nube
+gris / DNS only**), añade `_dmarc`, dispara `POST /domains/{id}/verify`,
+comprueba con `dig` como segunda fuente y **solo entonces** crea la ruta de
+canal (el orden está escrito en `docs/setup-email.md`, commit `15c6903`).
+
+**Confirmación pendiente, y no es un trámite:** con recepción en la **raíz**, el
+MX de `denverhomestory.com` apunta a Resend y **no podrá existir un buzón normal
+(Gmail/Workspace) en `@denverhomestory.com`** fuera del producto. Hoy no hay
+ninguno, así que no rompe nada; pero se cierra una puerta que no se reabre sin
+deshacer esto.
+
 ### ✅ Fase 4 — v0.89.0 DESPLEGADA Y VERIFICADA (6-sep-2026)
 
 `/api/v1/health` sirve **0.89.0** por `localhost:8011` y por el dominio público;
