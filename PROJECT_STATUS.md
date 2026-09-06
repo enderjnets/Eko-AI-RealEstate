@@ -18,7 +18,8 @@ puertos propios 8021 (API) y 3010 (web).
 | Fase | Commit | Checklist (salida real) |
 |---|---|---|
 | 0 · Aislamiento y estado base | `8bb3687` | backend **1659/1659**, cobertura **82 %**, ruff ✅ · tsc ✅ · vitest **268/268** · lint ✅ · build ✅ · prerender `/` `/contact` `/fall` `<main>`=1, spinner=0 · secretos: el diff es solo `PLAN.md` y este fichero · cobertura frontend: **no verificable** (A-4) · auditoría independiente: no aplica, sin código |
-| 1 · Aritmética TS contra la hoja de Jeff | el de esta entrada | vitest **301/301** (33 nuevos en `calculator.test.ts`) · tsc ✅ · lint ✅ · build ✅ · mutación obligatoria (`−`→`+` en `net`): **4 rojos** (casos 4, 9b, 10a, 10b), restaurado · secretos: ninguno · sin `console.` · cobertura frontend: no verificable (A-4); backend sin cambios · auditoría independiente: 1 importante corregido en fase (A-8), 0 bloqueantes |
+| 1 · Aritmética TS contra la hoja de Jeff | `6b6bb5b` | vitest **301/301** (33 nuevos en `calculator.test.ts`) · tsc ✅ · lint ✅ · build ✅ · mutación obligatoria (`−`→`+` en `net`): **4 rojos** (casos 4, 9b, 10a, 10b), restaurado · secretos: ninguno · sin `console.` · cobertura frontend: no verificable (A-4); backend sin cambios · auditoría independiente: 1 importante corregido en fase (A-8), 0 bloqueantes |
+| 2 · La misma aritmética en Python | el de esta entrada | pytest **1699/1699** antes del arreglo de auditoría y **1701/1701** después; `calculator.py` **100 %** cobertura, total 82 % · ruff ✅ · mutación de signo en `net`: **5 rojos**, restaurado · secretos: ninguno · sin `print` · frontend sin cambios · auditoría independiente: paridad TS↔Python medida en **6.006 casos** (precio, préstamo, mensualidades bit-exactos), 1 importante corregido en fase, 0 bloqueantes |
 
 ### Consultas al advisor
 
@@ -36,6 +37,15 @@ puertos propios 8021 (API) y 3010 (web).
   Ahora devuelve `lo` (A-8); anclas de paridad idénticas al céntimo; 6.171
   combinaciones sin diferencia en entradas bien formadas (verificado por el
   auditor).
+- **Auditoría Fase 2 → corregido en fase:** un snapshot bajo el suelo
+  (`capped_by="floor"`) guardaba `net_5y=+31.224` y cruce en el año 1 para una
+  «compra de $0»; ahora ambos son `None`. Además: redondeo half-up como
+  `Math.round` (3,4 % de las entradas enteras diferían en $1), `deepcopy` de
+  `DEFAULTS` (los dicts anidados se compartían), y el techo de $5M se redacta
+  como «search ceiling», no como estimación.
+- **Backlog (menor, auditoría Fase 2):** un `Decimal` en `inputs` vale 0 en
+  silencio (`_dollars` solo acepta `int|float`); hoy inalcanzable porque
+  `CalculatorIn` entrega `float`.
 - **Backlog (menores, auditoría Fase 1):** `credit` fuera de la unión da una
   cifra plausible en vez de error (la página usa chips y el servidor `Literal`);
   el caso 11 no distingue «tope» de «convergido»; `MAX_YEARS=40` supera el
@@ -57,8 +67,9 @@ puertos propios 8021 (API) y 3010 (web).
 
 ### Siguiente paso
 
-Fase 2: `backend/app/services/calculator.py` con las mismas reglas (A-2, A-3, A-8)
-leyendo el mismo fixture; `tests/test_calculator.py` con las anclas `cross`.
+Fase 3a **[CRÍTICA]** (consulta previa al advisor, regla 2): migración
+`055_calculator_snapshot` (JSONB nullable en `leads`), columna en el modelo,
+`LeadOut.calculator`, tipo en `api.ts`, bloque en `LeadDetail`.
 
 ---
 
