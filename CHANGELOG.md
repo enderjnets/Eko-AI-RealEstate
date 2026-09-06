@@ -2,6 +2,46 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.84.0] — 2026-09-06
+
+### Changed
+- **`/calculator` is now built around its figure.** On a screen wider than
+  1024px the page is two columns: a sticky panel of inputs on the left, the
+  answer scrolling beside it. Before, everything lived in one 672px column
+  centred in 1280 — half the screen was margin, and changing the rent meant
+  losing sight of the number. On a phone the layout is unchanged.
+- **The answer has a card of its own**: the price is the largest thing on it,
+  the monthly total sits beside it, and the seven-row breakdown folds away
+  behind a summary — nothing removed, ranked. The five-year cascade is
+  proportional bars scaled to the largest component, gains and costs told
+  apart by colour *and* by the sign. The empty state wears the same chrome,
+  so a first-time visitor can see the shape of what typing buys them.
+- **The money fields are the only thing the page asks you to touch**, and now
+  look it: their own ground, tabular figures, a `/mo` suffix, thousands
+  grouped when you leave the field (not while typing — that moves the cursor),
+  and three one-tap amounts underneath that save the keyboard on a phone.
+- **The consult panel** carries the advisors' portrait and the figure the
+  visitor just saw ("options near $262,000"), on a photographic ground.
+
+### Fixed
+- **The page could claim a monthly cost it was not showing.** Where a visitor's
+  savings put the down payment at exactly 20%, the highest price that costs no
+  more than the rent sits on the mortgage-insurance threshold: one dollar more
+  switches PMI on and the payment overshoots. The search correctly returns the
+  cheap side, but the sentence still read "at the same monthly cost as your
+  rent" while the total sat up to **$578 a month below it** (measured at
+  $250,000 saved). It now names the gap and the reason, in both languages.
+
+### Verified, not assumed
+- The arithmetic was audited against implementations that share none of its
+  code: payment against textbook anchors ($200k at 6% = $1,199.10; $300k at 7%
+  = $1,995.91), the closed-form balance against a month-by-month simulation
+  (72 cases, $0.0000 apart), and the five-year net recomputed as final wealth —
+  equity after selling, minus everything paid, plus the rent avoided — against
+  the component cascade (236 cases, $0.0000 apart). The default rate matches
+  FRED's 2026-09-03 PMMS print (6.71%) and Denver's effective property tax sits
+  inside the published 0.48–0.55% of market value.
+
 ## [0.83.0] — 2026-09-06
 
 ### Added

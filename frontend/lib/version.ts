@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.83.0";
+export const CURRENT_VERSION = "0.84.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.84.0",
+    date: "2026-09-06",
+    title: {
+      en: "/calculator, redesigned around the figure",
+      es: "/calculator, rediseñada alrededor de la cifra",
+    },
+    changes: [
+      { en: "On a wide screen the page is now two columns: the inputs stay put on the left while the answer scrolls beside them, so changing the rent never means losing sight of the figure. On a phone it is one column, as before.", es: "En pantalla ancha la página es de dos columnas: las entradas se quedan quietas a la izquierda mientras la respuesta hace scroll al lado, así que cambiar la renta nunca implica perder de vista la cifra. En móvil sigue siendo una columna." },
+      { en: "The answer gets a card of its own with the price as the largest thing on it, the monthly total beside it, and the seven-row breakdown folded away. The five-year cascade is now proportional bars, so which part weighs is readable before the numbers are. The empty state wears the same chrome, so you can see what typing buys you.", es: "La respuesta tiene tarjeta propia con el precio como lo más grande, el total mensual al lado y el desglose de siete filas plegado. La cascada a cinco años son ahora barras proporcionales, así que se ve qué pesa antes de leer las cifras. El estado vacío lleva el mismo chasis, para que se vea qué se gana al teclear." },
+      { en: "The money fields have a ground of their own, group thousands and offer one-tap amounts, which on a phone saves the keyboard entirely. The consult panel carries the advisors' portrait and the figure you just saw.", es: "Los campos tienen suelo propio, agrupan los miles y ofrecen importes de un toque, que en un móvil ahorran el teclado entero. El panel de consulta lleva el retrato de los asesores y la cifra que acabas de ver." },
+      { en: "Fixed: where a 20% down payment puts the price exactly at the mortgage-insurance threshold, the page claimed \"the same monthly cost as your rent\" while the payment sat up to $578 a month below it. It now names the gap and the reason.", es: "Corregido: donde un enganche del 20% deja el precio justo en el umbral del seguro hipotecario, la página decía «el mismo coste mensual que tu renta» mientras la cuota quedaba hasta 578 $/mes por debajo. Ahora nombra el hueco y la razón." },
+    ],
+  },
   {
     version: "0.83.0",
     date: "2026-09-06",
