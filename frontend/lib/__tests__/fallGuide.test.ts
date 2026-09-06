@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { BANDS_FOR_TEST } from "../fallGuide";
+import { BANDS_FOR_TEST, mapsUrl } from "../fallGuide";
 
 /**
  * The fall guide's three silent failures.
@@ -92,6 +92,49 @@ describe("the fall guide's photographs", () => {
     for (const photo of PHOTOS) {
       const file = photo.src.split("/").pop() as string;
       expect(licence, `${file} is not in LICENCIA.txt`).toContain(file);
+    }
+  });
+});
+
+describe("the map link under each place", () => {
+  it("exists for every one of them", () => {
+    // A place somebody might drive to on a Saturday, with no way to point a
+    // phone at it, is the one thing this page is for and does not do.
+    for (const spot of SPOTS) {
+      expect(spot.maps.length, `${spot.name} has no map link`).toBeGreaterThan(0);
+      for (const place of spot.maps) {
+        expect(place.label.trim(), `${spot.name} has an unlabelled link`).not.toBe("");
+      }
+    }
+  });
+
+  it("every query says Colorado, so no link lands in another state", () => {
+    // "Central City" alone finds Kentucky first. "Kenosha Pass" alone finds
+    // Wisconsin. The state is not decoration here — it is what makes the
+    // search resolve to the place the sentence above it is describing.
+    for (const spot of SPOTS) {
+      for (const place of spot.maps) {
+        expect(place.query, `${place.label} names no state`).toMatch(/Colorado$/);
+      }
+    }
+  });
+
+  it("builds the official Maps URL and encodes what it is given", () => {
+    // Commas, a slash and an apostrophe appear in these queries; a hand-built
+    // string breaks on all three and the link opens the wrong search with no
+    // error anywhere.
+    const url = mapsUrl("Sloan's Lake Park, Denver, Colorado");
+    expect(url.startsWith("https://www.google.com/maps/search/?api=1&query=")).toBe(true);
+    // The apostrophe stays literal: `encodeURIComponent` leaves it alone and
+    // Google accepts it. What must NOT survive is a raw comma, slash or space.
+    expect(url).toContain("Sloan's%20Lake%20Park");
+    expect(url).not.toMatch(/query=[^&]*[,/ ]/);
+  });
+
+  it("does not label two destinations the same inside one place", () => {
+    for (const spot of SPOTS) {
+      const labels = spot.maps.map((m) => m.label);
+      expect(new Set(labels).size, `${spot.name} repeats a link label`).toBe(labels.length);
     }
   });
 });

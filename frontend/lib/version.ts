@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.86.0";
+export const CURRENT_VERSION = "0.87.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.87.0",
+    date: "2026-09-06",
+    title: {
+      en: "The fall guide uses the width of a desktop screen",
+      es: "La guía de otoño usa el ancho de una pantalla de escritorio",
+    },
+    changes: [
+      { en: "On a wide screen the page was a 672px column in a 1830px window. From 1024px up it is now two columns: the elevation ladder becomes a rail on the left that stays with you through all four bands, and the guide reads on the right. The reading column keeps exactly the measure it had — widening the prose instead would have pushed lines past 100 characters and made it harder to read, not easier. Below 1024px nothing changed at all.", es: "En pantalla ancha la página era una columna de 672 px dentro de una ventana de 1830. Desde 1024 px son ahora dos columnas: la escalera de altitud pasa a ser un rail a la izquierda que te acompaña por las cuatro franjas, y la guía se lee a la derecha. La columna de lectura conserva exactamente la medida que tenía — ensanchar el texto habría llevado las líneas por encima de 100 caracteres y se leería peor, no mejor. Por debajo de 1024 px no cambia nada." },
+      { en: "Every one of the twelve places now carries a link that opens it in Google Maps — a small gold line under the description, with a drawn pin. The three entries that cover several places carry one link each, named for where it goes: a single \"Open in Maps\" under a heading that lists three parks would be a promise the link does not keep. They are searches, not coordinates, and every query names Colorado — \"Central City\" on its own finds Kentucky.", es: "Cada uno de los doce sitios lleva ya un enlace que lo abre en Google Maps: una línea dorada pequeña bajo la descripción, con un alfiler dibujado. Las tres entradas que cubren varios sitios llevan un enlace por cada uno, con el nombre de su destino: un solo «Open in Maps» bajo un título que nombra tres parques sería una promesa que el enlace no cumple. Son búsquedas, no coordenadas, y toda consulta nombra Colorado — «Central City» a secas encuentra Kentucky." },
+      { en: "Photo credits are two deliberate lines — who took it, then under what terms and from where — instead of one line that broke after a dangling separator in the narrow photo column.", es: "Los créditos de las fotos son dos líneas deliberadas —quién la hizo, y luego bajo qué términos y de dónde— en vez de una línea que se partía tras un separador colgando en la columna estrecha de la foto." },
+    ],
+  },
   {
     version: "0.86.0",
     date: "2026-09-06",

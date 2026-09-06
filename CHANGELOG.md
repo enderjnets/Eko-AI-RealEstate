@@ -2,6 +2,32 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.87.0] — 2026-09-06
+
+### Changed
+- **`/fall` uses the width of a desktop screen.** It was a 672px column in an
+  1830px window. From `lg` (1024px) up the container widens and splits: the
+  elevation ladder becomes a rail on the left, sticky, so it stays with the
+  reader through all four bands — which is what an instrument should do — and
+  the guide reads on the right. The reading column keeps **exactly** the measure
+  it had: widening the prose would have pushed lines past 100 characters and
+  made the page harder to read, not easier, so the width goes to structure
+  instead. Below 1024px the rendering is unchanged, verified at 390, 768 and
+  1024.
+- **Every place opens in Google Maps.** A small gold line under each
+  description with a drawn pin. They are SEARCHES, not coordinates: three of
+  these entries are a 22-mile byway, a city-wide trail and three parks at once,
+  and a pin would be an invented point on a road — the same failure as a stock
+  photograph under a place name. Every query names Colorado, because "Central
+  City" on its own finds Kentucky and "Kenosha Pass" finds Wisconsin. The three
+  multi-place entries carry one link per destination, each labelled with where
+  it goes, rather than a single "Open in Maps" that would promise more than it
+  delivers. Five of the sixteen links were opened and checked against the place
+  they claim.
+- **Photo credits are two deliberate lines** — the author, then the licence and
+  the source — instead of one line that wrapped after a dangling `·` in the
+  224px photo column.
+
 ## [0.86.0] — 2026-09-06
 
 ### Changed

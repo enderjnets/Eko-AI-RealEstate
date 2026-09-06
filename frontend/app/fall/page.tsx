@@ -4,7 +4,7 @@ import { ConsultForm } from "@/components/landing/ConsultForm";
 import { LandingTracker } from "@/components/landing/LandingTracker";
 import { LANDING, homeScreenName } from "@/lib/landing";
 import { BRAND_URL } from "@/lib/hosts";
-import { BANDS, type Spot } from "@/lib/fallGuide";
+import { BANDS, mapsUrl, type Spot } from "@/lib/fallGuide";
 
 /**
  * The fall-colour guide: the page a reel's caption promises.
@@ -72,7 +72,7 @@ function ElevationLadder() {
   return (
     <nav
       aria-label="The season by elevation"
-      className="mt-10 border border-ln-hair bg-ln-paper px-5 py-6 sm:px-7 sm:py-7"
+      className="border border-ln-hair bg-ln-paper px-5 py-6 sm:px-7 sm:py-7"
     >
       <p className="text-[10px] font-medium uppercase tracking-[0.3em] text-ln-muted">
         The season, top to bottom
@@ -107,6 +107,27 @@ function ElevationLadder() {
   );
 }
 
+/** A stroke pin on a 24px grid, drawn inline so it scales and takes the link's colour. */
+function MapPin() {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="flex-none"
+    >
+      <path d="M20 10c0 4.4-8 12-8 12s-8-7.6-8-12a8 8 0 0 1 16 0Z" />
+      <circle cx="12" cy="10" r="2.6" />
+    </svg>
+  );
+}
+
 /**
  * One place, with its photograph when there is a licence-clear one of THAT
  * place.
@@ -135,27 +156,31 @@ function SpotEntry({ spot }: { spot: Spot }) {
             className="aspect-[3/2] w-full bg-ln-tint object-cover"
             style={photo.position ? { objectPosition: photo.position } : undefined}
           />
+          {/* Two deliberate lines rather than one that wraps wherever it
+              lands. On a 224px photo column the single line broke after a
+              dangling "·"; splitting it by meaning — who took it, then under
+              what terms and from where — reads the same at every width. */}
           <figcaption className="mt-2 text-[10px] leading-[1.6] tracking-[0.03em] text-ln-faint">
-            {photo.author} ·{" "}
-            <a
-              href={photo.licenseUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline decoration-ln-line underline-offset-2 hover:text-ln-gold"
-            >
-              {photo.license}
-            </a>{" "}
-            ·{" "}
-            <a
-              href={photo.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline decoration-ln-line underline-offset-2 hover:text-ln-gold"
-            >
-              {/* Non-breaking: at the 224px photo column the credit wraps, and
-                  without this it splits the source's name across two lines. */}
-              Wikimedia&nbsp;Commons
-            </a>
+            <span className="block">{photo.author}</span>
+            <span className="block">
+              <a
+                href={photo.licenseUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-ln-line underline-offset-2 hover:text-ln-gold"
+              >
+                {photo.license}
+              </a>{" "}
+              ·{" "}
+              <a
+                href={photo.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-ln-line underline-offset-2 hover:text-ln-gold"
+              >
+                Wikimedia&nbsp;Commons
+              </a>
+            </span>
           </figcaption>
         </figure>
       )}
@@ -167,6 +192,27 @@ function SpotEntry({ spot }: { spot: Spot }) {
           </span>
         </div>
         <p className="mt-2 text-[15px] leading-[1.7]">{spot.what}</p>
+
+        {/* The link somebody taps once they have decided to go. Gold and
+            uppercase like the page's other micro-labels, so it reads as an
+            action without competing with the place's name; `py-1.5` gives the
+            row a thumb-sized target on a phone without opening a gap in the
+            text rhythm. `flex-wrap` because three of these entries carry more
+            than one destination. */}
+        <p className="mt-2.5 flex flex-wrap items-center gap-x-5 text-[11px] uppercase tracking-[0.14em] text-ln-gold">
+          {spot.maps.map((place) => (
+            <a
+              key={place.query}
+              href={mapsUrl(place.query)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 py-1.5 transition-colors hover:text-ln-bronze"
+            >
+              <MapPin />
+              {place.label}
+            </a>
+          ))}
+        </p>
       </div>
     </li>
   );
@@ -201,7 +247,15 @@ export default function FallGuidePage() {
           against how many filled the form. Those are opposite problems needing
           opposite fixes, and without this they look identical. */}
       <LandingTracker variant="fall" />
-      <article className="mx-auto max-w-2xl px-5 py-14 sm:px-8 sm:py-20">
+      {/* Below `lg` this is exactly the column it has always been. From `lg`
+          the container widens and splits: the instrument moves into a sticky
+          rail on the left and stays with the reader through all four bands,
+          while the reading column keeps the SAME measure it has today. That is
+          the point — the page was narrow on a desktop, but widening the prose
+          would have pushed lines past 100 characters and made it worse. The
+          width goes to structure, not to line length. */}
+      <article className="mx-auto max-w-2xl px-5 py-14 sm:px-8 sm:py-20 lg:max-w-5xl">
+        <header className="max-w-2xl">
         {brandLine && (
           <a
             href="/"
@@ -219,18 +273,27 @@ export default function FallGuidePage() {
           Aspens turn from the top down. So the useful question is not <em>where</em> — it
           is <em>how high, this week</em>. Here is the whole season, sorted by elevation.
         </p>
+        </header>
 
-        <ElevationLadder />
+        <div className="mt-10 lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start lg:gap-14">
+          {/* The instrument and the line that says how to read it, together.
+              `self-start` is what lets the sticky work at all inside a grid:
+              without it the cell stretches to the row's height and there is
+              nothing left for the element to stick within. */}
+          <div className="lg:sticky lg:top-10 lg:self-start">
+            <ElevationLadder />
 
-        {/* The one line that makes this a guide rather than a list. It is also
-            the thing a local actually says out loud, which is why it sits
-            directly under the instrument it explains how to read. */}
-        <p className="mt-8 border-l-2 border-ln-gold pl-5 font-ln-serif text-[19px] leading-[1.55] text-ln-dark sm:text-[21px]">
-          If the top of the pass is already bare, go lower. If the valley is still green,
-          go higher.
-        </p>
+            {/* The one line that makes this a guide rather than a list. It is
+                also the thing a local actually says out loud, which is why it
+                sits directly under the instrument it explains how to read. */}
+            <p className="mt-8 border-l-2 border-ln-gold pl-5 font-ln-serif text-[19px] leading-[1.55] text-ln-dark sm:text-[21px] lg:text-[19px]">
+              If the top of the pass is already bare, go lower. If the valley is still
+              green, go higher.
+            </p>
+          </div>
 
-        <p className="mt-8 bg-ln-tint px-5 py-4 text-[15px] leading-[1.7] sm:px-6 sm:py-5">
+          <div className="max-w-2xl">
+        <p className="mt-8 bg-ln-tint px-5 py-4 text-[15px] leading-[1.7] sm:px-6 sm:py-5 lg:mt-0">
           <strong className="font-semibold text-ln-dark">2026 runs early.</strong> After a
           record-low snowpack and a dry summer, the high country is expected to peak sooner
           than average — think mid-to-late September up top rather than the end of the
@@ -315,6 +378,8 @@ export default function FallGuidePage() {
             </div>
           </div>
         )}
+          </div>
+        </div>
       </article>
 
       <section className="bg-ln-dark px-5 py-16 sm:px-8 sm:py-20">
@@ -345,7 +410,7 @@ export default function FallGuidePage() {
       </section>
 
       <footer className="border-t border-ln-hair bg-ln-canvas px-5 py-10 sm:px-8">
-        <div className="mx-auto max-w-2xl text-[11px] leading-[1.75] tracking-[0.04em] text-ln-muted">
+        <div className="mx-auto max-w-2xl text-[11px] leading-[1.75] tracking-[0.04em] text-ln-muted lg:max-w-5xl">
           {footerWho && <p>{footerWho}</p>}
           {legal.length > 0 && <p>{legal.join(" · ")}</p>}
         </div>
