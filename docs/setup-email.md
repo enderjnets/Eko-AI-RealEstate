@@ -16,6 +16,33 @@ a pilot.
 > (`ekoaiautomation.com`), but the subdomain + credentials are isolated so a
 > change here can never affect the sales platform.
 
+> ## ⚠️ Order of operations for a BRAND domain (the irreversible half)
+>
+> Giving one agency its own sending identity is two separate acts, and doing
+> them in the wrong order is not a small mistake:
+>
+> 1. the domain is created in Resend and reaches **`verified`**;
+> 2. **only then** a `channel_routes` row for that org gets its
+>    `sender_override` (`POST /api/v1/platform/routes`).
+>
+> The reason is that `sender_override` is not scoped to one feature. It is
+> resolved by `resolve_outbound_identity()` for the org's **entire email
+> channel**, so every outbound mail that agency sends — visit invitations,
+> replies to leads, the new-lead notice — starts leaving from an address Resend
+> has not verified, and Resend refuses them all. The symptom therefore shows up
+> in places nobody was touching, which is why it does not get connected back to
+> the change that caused it.
+>
+> Reading the diff does not reveal this: the route row looks like a scoped
+> change and the code that consumes it lives three files away. The safe order
+> is the whole mitigation — there is no test that can catch it, because the
+> failure is in a live provider's answer, not in the code.
+>
+> Corollary for a **root** domain (`denverhomestory.com`) with receiving
+> enabled: its MX points at Resend, so **no ordinary mailbox can exist at
+> `@that-domain`** outside this product. Confirm that with the owner before
+> creating it, not after.
+
 ## 1. Add a dedicated sending domain in Resend
 
 In the [Resend dashboard](https://resend.com) → **Domains → Add Domain**:
