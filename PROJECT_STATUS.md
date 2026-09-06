@@ -345,6 +345,49 @@ es inerte para la 0.88.0).
 
 </details>
 
+
+### Consultas al advisor (motivo → decisión)
+
+1. **Arranque** — validar orden, dependencias y riesgos antes de escribir nada.
+   → ramificar desde `origin/main` **antes** de tocar `PLAN.md`; reescribir la
+   cabecera del plan, que decía «sustituye» y en este fichero era falso; no usar
+   `useSearchParams`; con dos organizaciones, el fallback de inquilino único es
+   un hallazgo **antes** de la Fase 2.
+2. **Antes de la Fase 3 [CRÍTICA]** — validar el diseño del aviso de llamada.
+   → dos lecturas obligatorias primero: que el ContextVar de organización esté
+   ligado en el sitio de llamada, y si un informe puede traer resumen **sin**
+   transcripción. Lo segundo resultó ser cierto, y por eso la guarda es
+   `summary_was_new` y no `report.summary`, que habría avisado en cada reentrega.
+   También: parchear el nombre **donde se usa** (`webhooks.voice`), no donde se
+   define, o el test pasa sin probar nada.
+3. **Cierre de auditoría** — dos hallazgos IMPORTANTE que son decisiones de
+   alcance. → arreglar el texto de `summary_was_new` en los tres sitios y llevar
+   el **mecanismo** al backlog (toca el anclaje de hilos, no es de esta fase);
+   arreglar la etiqueta `voice:<id>`, un intento; **no** usar `AliasChoices` para
+   `PANEL_URL` (el contenedor del backend nunca ve las `NEXT_PUBLIC_*`), sino la
+   línea en el `.env`; y **no empujar `main`** — el método del dueño dice «sin
+   merge sin pedírmelo» y un ff-push a `main` es un merge.
+4. **Cierre de turno** — coherencia y riesgos de despliegue. → registrar estas
+   consultas (esto); dar las órdenes que faltan **con su terminal**, no sueltas;
+   no reintentar el merge en ninguna forma tras tres bloqueos; y el tag va sobre
+   `d86c684`, el commit del bump, cuando el despliegue esté verificado.
+
+### Verificación en cuanto `/health` diga 0.89.0 (sin efectos secundarios)
+
+1. `/api/v1/health` = **0.89.0**, `alembic current` sigue en **055**, cero
+   tracebacks en 5 min.
+2. Playwright con contexto limpio: `https://inmo-demo…/leads?probe=1` debe
+   acabar en `/login?next=%2Fleads%3Fprobe%3D1` **sin spinner atascado**. Es el
+   camino de ida del guardián, la única parte que no pudo cubrir un test
+   unitario (esta suite no tiene jsdom).
+3. HTML servido de `/fall`: `<main>`=1, «Checking session»=**0**. La regresión
+   que la auditoría dio por limpia, confirmada en vivo.
+4. La comprobación externa de `/calculator` que ofreció la sesión par.
+
+La prueba de punta a punta (formulario y llamada real) **queda aparcada**: exige
+al dueño delante y reapuntar `booking_contact_email` con un `UPDATE` que puede
+estar bloqueado.
+
 ---
 
 ## `/calculator` — la calculadora renta→compra (rama `feat/calculator-design`, v0.88.0)
