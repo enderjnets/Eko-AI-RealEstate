@@ -4,6 +4,7 @@ import { ConsultForm } from "@/components/landing/ConsultForm";
 import { LandingTracker } from "@/components/landing/LandingTracker";
 import { LANDING, homeScreenName } from "@/lib/landing";
 import { BRAND_URL } from "@/lib/hosts";
+import { BANDS, type Spot } from "@/lib/fallGuide";
 
 /**
  * The fall-colour guide: the page a reel's caption promises.
@@ -55,134 +56,120 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { themeColor: "#F4F1EA" };
 
 /**
- * The bands, and why the guide is built out of them rather than out of a
- * ranked list of places.
+ * The season as an instrument, in the first screen.
  *
- * Aspens turn from the top down. A page that names "the seven best spots" is
- * wrong twice in one season: too early for the low valleys in September, and
- * pointing at bare passes in October. Elevation is the axis that keeps the
- * advice true the whole time, and it is also the single most useful thing a
- * local knows that a visitor does not.
+ * It replaces nothing — the four bands are still written out in full below —
+ * but a visitor arriving from a reel, mid-scroll, on a phone, now sees the
+ * whole idea at once instead of reading 250 words to reach it. Aspens turn
+ * downhill, so the ladder runs downhill; that is the entire argument for a
+ * vertical rail rather than a tidier two-column grid on a wide screen.
+ *
+ * Deliberately NOT headings. The bands below are the `<h2>`s, and a second set
+ * carrying the same text would give a page whose entire job is to be indexed
+ * two competing outlines. These are links into those bands, and nothing else.
  */
-type Spot = { name: string; drive: string; what: string };
-type Band = { elevation: string; when: string; note: string; spots: Spot[] };
+function ElevationLadder() {
+  return (
+    <nav
+      aria-label="The season by elevation"
+      className="mt-10 border border-ln-hair bg-ln-paper px-5 py-6 sm:px-7 sm:py-7"
+    >
+      <p className="text-[10px] font-medium uppercase tracking-[0.3em] text-ln-muted">
+        The season, top to bottom
+      </p>
+      <p className="mt-4 text-[10px] tracking-[0.08em] text-ln-faint">11,670 FT</p>
 
-const BANDS: Band[] = [
-  {
-    elevation: "Above 9,500 ft",
-    when: "Mid to late September",
-    note: "The high passes go first, and they go fast — a windy week can end it.",
-    spots: [
-      {
-        name: "Guanella Pass Scenic Byway",
-        drive: "40 miles",
-        what:
-          "Twenty-two miles of byway between Georgetown and Grant, topping out at " +
-          "11,670 ft under Mount Blue Sky and Mount Bierstadt, with thick aspen " +
-          "stands on both sides near the summit.",
-      },
-      {
-        name: "Kenosha Pass",
-        drive: "60 miles, US 285",
-        what:
-          "The classic Denver leaf drive. At about 10,000 ft the highway tops out " +
-          "and the whole South Park basin opens up in gold. The lots on both sides " +
-          "of the road fill early — this is a sunrise trip, not a lunchtime one.",
-      },
-      {
-        name: "Peak to Peak Byway",
-        drive: "CO 72 and CO 7",
-        what:
-          "Black Hawk up to Estes Park, with high aspen groves most of the way. " +
-          "The long option: it works as a loop rather than an out-and-back.",
-      },
-    ],
-  },
-  {
-    elevation: "7,000 – 9,000 ft",
-    when: "Late September to mid October",
-    note: "The widest window of the season, and the one that survives a bad forecast.",
-    spots: [
-      {
-        name: "Georgetown Loop Railroad",
-        drive: "40 miles",
-        what:
-          "A vintage steam locomotive between Georgetown and Silver Plume, " +
-          "surrounded by aspen. The one on this list that works with small " +
-          "children and with anyone who would rather not hike.",
-      },
-      {
-        name: "Mighty Argo Cable Car, Idaho Springs",
-        drive: "33 miles",
-        what:
-          "Gondolas climbing from 7,550 ft to 8,800 ft at Miners Point. Height " +
-          "without a trailhead, and the shortest drive of any real overlook here.",
-      },
-      {
-        name: "Dillon Reservoir — Frisco and Silverthorne",
-        drive: "69 miles",
-        what:
-          "An 18-mile paved path circles the lake, so you can take as much or as " +
-          "little of it as the afternoon allows.",
-      },
-    ],
-  },
-  {
-    elevation: "6,000 – 8,000 ft",
-    when: "Most of October",
-    note: "When the passes are bare and everyone assumes it is over, this is where it is.",
-    spots: [
-      {
-        name: "Golden Gate Canyon State Park",
-        drive: "Northwest of Golden",
-        what:
-          "Lower-elevation aspen groves with the mountain vistas behind them. " +
-          "Close enough to go after work.",
-      },
-      {
-        name: "Evergreen",
-        drive: "CO 74, the Lariat Loop",
-        what:
-          "Maxwell Falls and Alderfer/Three Sisters Park for walking, and the " +
-          "Lariat Loop Scenic Byway through Bergen Park and back down to Golden " +
-          "for driving.",
-      },
-      {
-        name: "Central City",
-        drive: "Oh My God Road to Idaho Springs",
-        what:
-          "Aspen around the old cemeteries above town, and a slow unpaved road " +
-          "down to Idaho Springs that is worth the hour it takes.",
-      },
-    ],
-  },
-  {
-    elevation: "Denver itself, 5,280 ft",
-    when: "October into November",
-    note: "The part people forget: the last three weeks of color happen at home.",
-    spots: [
-      {
-        name: "High Line Canal Trail",
-        drive: "City-wide",
-        what: "More than 70 miles of cottonwoods threading the whole metro area.",
-      },
-      {
-        name: "Cherry Creek and South Platte trails",
-        drive: "From downtown",
-        what:
-          "Forty-plus miles each — downtown out to Cherry Creek State Park, and " +
-          "the river down to Chatfield and Waterton Canyon.",
-      },
-      {
-        name: "Washington Park, City Park, Sloan's Lake",
-        drive: "In town",
-        what:
-          "The three that hold their color longest, and the ones you can walk " +
-          "to from a Denver neighborhood.",
-      },
-    ],
-  },
-];
+      <ol className="mt-2 border-l border-ln-line-strong pl-6">
+        {BANDS.map((band) => (
+          <li key={band.id} className="relative pb-5 last:pb-0">
+            {/* The dot sits ON the rail: 8px wide, so its centre lands at the
+                list's 24px padding minus half its width. The ring is the
+                card's own background, punching a hole in the line. */}
+            <span
+              aria-hidden="true"
+              className="absolute -left-[28px] top-[7px] h-2 w-2 bg-ln-gold ring-4 ring-ln-paper"
+            />
+            <a href={`#${band.id}`} className="group block">
+              <span className="block font-ln-serif text-[21px] leading-tight text-ln-dark transition-colors group-hover:text-ln-gold">
+                {band.elevation}
+              </span>
+              <span className="mt-1 block text-[10px] font-medium uppercase tracking-[0.16em] text-ln-gold">
+                {band.when}
+              </span>
+              <span className="mt-1.5 block text-[13px] leading-[1.55] text-ln-muted">
+                {band.note}
+              </span>
+            </a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
+/**
+ * One place, with its photograph when there is a licence-clear one of THAT
+ * place.
+ *
+ * Seven of the twelve have none, and that is the honest state of it: a stock
+ * photograph of generic aspens under the words "Kenosha Pass" is a false
+ * statement about a real place, on a page advertising a licensed brokerage.
+ * So the layout has to read as deliberate both ways — stacked on a phone,
+ * photo beside the text from `md` up, and a spot without one simply runs the
+ * full width instead of leaving a hole where a picture should be.
+ */
+function SpotEntry({ spot }: { spot: Spot }) {
+  const photo = spot.photo;
+  return (
+    <li className={photo ? "md:grid md:grid-cols-[224px_1fr] md:gap-7" : undefined}>
+      {photo && (
+        <figure className="mb-4 md:mb-0">
+          {/* eslint-disable-next-line @next/next/no-img-element -- the public
+              pages use plain <img> throughout: `sharp` is not installed, so
+              next/image would optimise nothing and only add a dependency. */}
+          <img
+            src={photo.src}
+            alt={photo.alt}
+            loading="lazy"
+            decoding="async"
+            className={`aspect-[3/2] w-full bg-ln-tint object-cover ${photo.position ?? ""}`}
+          />
+          <figcaption className="mt-2 text-[10px] leading-[1.6] tracking-[0.03em] text-ln-faint">
+            {photo.author} ·{" "}
+            <a
+              href={photo.licenseUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline decoration-ln-line underline-offset-2 hover:text-ln-gold"
+            >
+              {photo.license}
+            </a>{" "}
+            ·{" "}
+            <a
+              href={photo.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline decoration-ln-line underline-offset-2 hover:text-ln-gold"
+            >
+              {/* Non-breaking: at the 224px photo column the credit wraps, and
+                  without this it splits the source's name across two lines. */}
+              Wikimedia&nbsp;Commons
+            </a>
+          </figcaption>
+        </figure>
+      )}
+      <div>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h3 className="font-ln-serif text-[19px] text-ln-dark">{spot.name}</h3>
+          <span className="text-[12px] uppercase tracking-[0.1em] text-ln-muted">
+            {spot.drive}
+          </span>
+        </div>
+        <p className="mt-2 text-[15px] leading-[1.7]">{spot.what}</p>
+      </div>
+    </li>
+  );
+}
 
 export default function FallGuidePage() {
   const brandLine = [LANDING.brand, LANDING.advisors].filter(Boolean).join(" · ");
@@ -227,20 +214,22 @@ export default function FallGuidePage() {
           {TITLE}
         </h1>
 
-        <p className="mt-6 text-[16px] leading-[1.75]">
-          Most fall-color lists give you seven places and go stale in eight days. Aspens
-          turn from the top down, so the useful question is not <em>where</em> — it is{" "}
-          <em>how high, this week</em>. Here is the whole season, sorted by elevation.
+        <p className="mt-6 text-[16px] leading-[1.7]">
+          Aspens turn from the top down. So the useful question is not <em>where</em> — it
+          is <em>how high, this week</em>. Here is the whole season, sorted by elevation.
         </p>
 
+        <ElevationLadder />
+
         {/* The one line that makes this a guide rather than a list. It is also
-            the thing a local actually says out loud, which is why it leads. */}
-        <p className="mt-7 border-l-2 border-ln-gold pl-5 font-ln-serif text-[19px] leading-[1.55] text-ln-dark">
+            the thing a local actually says out loud, which is why it sits
+            directly under the instrument it explains how to read. */}
+        <p className="mt-8 border-l-2 border-ln-gold pl-5 font-ln-serif text-[19px] leading-[1.55] text-ln-dark sm:text-[21px]">
           If the top of the pass is already bare, go lower. If the valley is still green,
           go higher.
         </p>
 
-        <p className="mt-7 text-[15px] leading-[1.75]">
+        <p className="mt-8 bg-ln-tint px-5 py-4 text-[15px] leading-[1.7] sm:px-6 sm:py-5">
           <strong className="font-semibold text-ln-dark">2026 runs early.</strong> After a
           record-low snowpack and a dry summer, the high country is expected to peak sooner
           than average — think mid-to-late September up top rather than the end of the
@@ -250,28 +239,22 @@ export default function FallGuidePage() {
 
         <div className="mt-14 space-y-14">
           {BANDS.map((band) => (
-            <section key={band.elevation}>
-              <div className="border-b border-ln-hair pb-4">
+            <section key={band.id} id={band.id} className="scroll-mt-6">
+              {/* Elevation and window only: the note that used to sit here now
+                  leads the ladder above, and repeating it four times under an
+                  index that just said it reads as padding. */}
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-ln-hair pb-4">
                 <h2 className="font-ln-serif text-[26px] leading-tight text-ln-dark">
                   {band.elevation}
                 </h2>
-                <p className="mt-1.5 text-[13px] uppercase tracking-[0.14em] text-ln-gold">
+                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-ln-gold">
                   {band.when}
                 </p>
-                <p className="mt-2.5 text-[14px] leading-relaxed text-ln-muted">{band.note}</p>
               </div>
 
-              <ul className="mt-7 space-y-7">
+              <ul className="mt-8 space-y-10">
                 {band.spots.map((spot) => (
-                  <li key={spot.name}>
-                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                      <h3 className="font-ln-serif text-[19px] text-ln-dark">{spot.name}</h3>
-                      <span className="text-[12px] uppercase tracking-[0.1em] text-ln-muted">
-                        {spot.drive}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-[15px] leading-[1.7]">{spot.what}</p>
-                  </li>
+                  <SpotEntry key={spot.name} spot={spot} />
                 ))}
               </ul>
             </section>
@@ -303,6 +286,34 @@ export default function FallGuidePage() {
             treat every date here as a window, not an appointment.
           </p>
         </section>
+
+        {/* Who wrote it, immediately before the ask. A stranger who has just
+            read two thousand words of local knowledge should see the people
+            behind them before being asked anything — and, like the footer, it
+            renders only where the operator has actually named the advisors. */}
+        {LANDING.advisors && (
+          <div className="mt-14 flex items-center gap-4 border-t border-ln-hair pt-8">
+            {/* eslint-disable-next-line @next/next/no-img-element -- see above. */}
+            <img
+              src="/landing/natalia-robbie.jpg"
+              alt={LANDING.advisors}
+              loading="lazy"
+              decoding="async"
+              className="h-16 w-16 flex-none bg-ln-tint object-cover [object-position:50%_16%]"
+            />
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.16em] text-ln-muted">Written by</p>
+              <p className="mt-1 font-ln-serif text-[20px] leading-tight text-ln-dark">
+                {LANDING.advisors}
+              </p>
+              {LANDING.brokerage && (
+                <p className="mt-1 text-[12px] leading-[1.5] text-ln-muted">
+                  Real estate advisors · {LANDING.brokerage}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
       </article>
 
       <section className="bg-ln-dark px-5 py-16 sm:px-8 sm:py-20">

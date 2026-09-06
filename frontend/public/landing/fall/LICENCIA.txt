@@ -1,0 +1,74 @@
+Fotografías de la guía de otoño (/fall)
+Denver Home Story — descargadas y verificadas el 6-sep-2026.
+
+Las cinco son de Wikimedia Commons. De cada una se comprobó, en su página de
+archivo, que la descripción nombra EL SITIO que ilustra y que la fecha es de
+otoño. Ninguna es una foto genérica de álamos puesta bajo un topónimo: en una
+página que anuncia una correduría con licencia, decir «Kenosha Pass» bajo una
+foto que no lo es sería una afirmación falsa al consumidor.
+
+Todas se sirven SIN RECORTAR. El encuadre lo hace el CSS (`object-cover` +
+`object-position`), no un fichero recortado, y eso es deliberado: un recorte
+guardado es una obra derivada y heredaría la cláusula «compartir igual» de
+cuatro de las cinco. Mostrar el original encuadrado por hoja de estilos no lo es.
+
+El crédito va VISIBLE bajo cada foto en la página, con enlace a la licencia y al
+archivo original. Es requisito de las licencias CC BY y CC BY-SA, no cortesía.
+
+────────────────────────────────────────────────────────────────────────────
+
+guanella-pass.jpg
+  Sitio:    Guanella Pass Scenic Byway, Colorado
+  Autor:    JenFulmer
+  Fecha:    27-sep-2020
+  Licencia: CC BY-SA 4.0 — https://creativecommons.org/licenses/by-sa/4.0/
+  Original: https://commons.wikimedia.org/wiki/File:Scenic_Guanella_Pass,_Colorado.jpg
+  Nota:     vertical. El valle dorado queda hacia la mitad-baja del encuadre;
+            de ahí el `object-position` desplazado en la página.
+
+kenosha-pass.jpg
+  Sitio:    South Park visto desde Kenosha Pass (US 285), Colorado
+  Autor:    Kimon Berlin
+  Fecha:    oct-2010
+  Licencia: CC BY-SA 2.0 — https://creativecommons.org/licenses/by-sa/2.0/
+  Original: https://commons.wikimedia.org/wiki/File:South_Park_from_Kenosha_Pass.jpg
+
+peak-to-peak.jpg
+  Sitio:    Peak-to-Peak Highway, Colorado
+  Autor:    Kimon Berlin
+  Fecha:    20-sep-2009
+  Licencia: CC BY-SA 2.0 — https://creativecommons.org/licenses/by-sa/2.0/
+  Original: https://commons.wikimedia.org/wiki/File:Peak-to-Peak_Highway_(3960744912).jpg
+
+georgetown-loop.jpg
+  Sitio:    Georgetown Loop Railroad, Colorado
+  Autor:    PhotogOne
+  Fecha:    7-oct-2021
+  Licencia: CC BY-SA 4.0 — https://creativecommons.org/licenses/by-sa/4.0/
+  Original: https://commons.wikimedia.org/wiki/File:Georgetown_Loop_Railroad_in_autumn.jpg
+
+golden-gate-canyon.jpg
+  Sitio:    Golden Gate Canyon State Park, Colorado
+  Autor:    Tony Webster
+  Fecha:    23-sep-2018
+  Licencia: CC BY 2.0 — https://creativecommons.org/licenses/by/2.0/
+  Original: https://commons.wikimedia.org/wiki/File:Autumn_at_Golden_Gate_Canyon_State_Park,_Colorado_Mountains.jpg
+  Nota:     la única sin «compartir igual». Solo pide atribución.
+
+────────────────────────────────────────────────────────────────────────────
+
+LO QUE FALTA, y por qué importa
+
+De los doce sitios de la guía, solo estos cinco tienen una foto de otoño libre
+y verificable. Los otros siete —Argo Cable Car, Dillon Reservoir, Evergreen,
+Central City, High Line Canal, Cherry Creek/South Platte y los parques de
+Denver— no tienen ninguna en Commons. Se buscaron el 6-sep-2026, por categoría
+y por texto.
+
+No se rellenan con banco de imágenes de pago: ese material no puede demostrar
+que la foto sea del sitio que dice, y aquí el topónimo es la afirmación.
+
+La solución buena no es técnica. Una tarde de Natalia y Robbie con el móvil
+cubre los doce, sin licencia que citar, y convierte la guía en algo que ningún
+otro agente de Denver puede copiar. Cuando lleguen esas fotos, sustituyen a
+estas y este fichero se queda solo con las que sigan siendo de terceros.

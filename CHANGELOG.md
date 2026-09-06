@@ -2,6 +2,49 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.85.0] — 2026-09-06
+
+### Changed
+- **`/fall` opens with the season, not with a paragraph.** The page a reel's
+  caption promises used to lead with 250 words. Somebody arriving from
+  Instagram, mid-scroll, on a phone, had to read all of them before the page
+  proved it knew anything about Denver. The four elevation bands are now an
+  instrument in the first screen — a vertical rail running downhill, because
+  aspens turn from the top down, with each rung a link into its own section.
+  The reading is unchanged underneath it. The one-line note that used to sit
+  under every band header now leads the ladder instead; repeating it four
+  times under an index that just said it was padding.
+- **Twelve places, five photographs, and no invented ones.** Guanella Pass,
+  Kenosha Pass, the Peak to Peak Highway, the Georgetown Loop and Golden Gate
+  Canyon each carry a picture OF THAT PLACE, taken in autumn, with the author,
+  the licence and a link to the original file under it — CC BY / CC BY-SA
+  require the credit, and this is advertising for a licensed brokerage. The
+  other seven carry nothing. A stock photograph of generic aspens under the
+  words "Kenosha Pass" is a false statement about a real place, and no free
+  verified photo of those seven exists (searched 2026-09-06, by category and
+  by text; see `frontend/public/landing/fall/LICENCIA.txt`). The layout reads
+  as deliberate either way: stacked on a phone, photo beside the text from
+  `md` up, and a place without one simply runs the full width.
+- **The files are served uncropped.** The framing is `object-cover` plus
+  `object-position`, not a cropped file: a saved crop is a derivative work and
+  would inherit the share-alike clause four of the five carry. Displaying the
+  original framed by a stylesheet does not.
+- **The guide is signed.** The advisors' names and photograph sit immediately
+  before the consult, so a stranger who has just read two thousand words of
+  local knowledge sees who wrote them before being asked anything. Like the
+  footer's brokerage line it renders only where the operator has actually
+  configured `NEXT_PUBLIC_LANDING_ADVISORS`; an unconfigured install signs
+  nothing rather than inventing a name.
+
+### Added
+- `frontend/lib/__tests__/fallGuide.test.ts` — the three failures none of which
+  throws, logs or turns a build red: a photo whose file is not on disk (a
+  broken image and a green deploy), a credit missing its author or licence (a
+  licence breach that looks like a design choice), and a ladder rung pointing
+  at a band id that no longer exists (a link that scrolls nowhere). Each was
+  mutated and seen to go red; the fourth assertion pins the ladder's generated
+  href so the anchor check cannot quietly become a test that runs over an
+  empty list.
 ## [0.84.0] — 2026-09-06
 
 ### Changed
