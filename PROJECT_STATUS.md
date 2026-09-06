@@ -283,7 +283,42 @@ en `/fall`, `/contact` y `/calculator`.
 
 ---
 
-### ⏸️ Fase 4 — despliegue PARADO en el `git merge` del VPS (clasificador)
+### ✅ Fase 4 — v0.89.0 DESPLEGADA Y VERIFICADA (6-sep-2026)
+
+`/api/v1/health` sirve **0.89.0** por `localhost:8011` y por el dominio público;
+HEAD del VPS = **`d86c684`**; `alembic current` = **055 (head)**, sin migración;
+**0 tracebacks y 0 errores** en 6 min; los cuatro contenedores arriba.
+
+| Verificación | Resultado real |
+|---|---|
+| `PANEL_URL` **dentro** del contenedor | `https://inmo-demo.ekoaiautomation.com` — era el hallazgo IMPORTANTE de la auditoría («la función estrella sale inerte»); no salió inerte |
+| Camino de ida del guardián, en vivo | Playwright sobre `/leads?probe=1` sin sesión → la URL acaba en **`/login?next=%2Fleads%3Fprobe%3D1`**, login servido, **sin spinner atascado**, 0 errores de consola. Es la única parte del guardián que ningún test unitario podía cubrir (esta suite no tiene jsdom) |
+| `/fall` servido | `<main>`=1, «Checking session»=**0**, 5 fotos. La regresión que la auditoría dio por limpia, confirmada en vivo |
+| Marca | `/` `/contact` `/fall` `/calculator` = **200** |
+| Panel | `/leads` `/login` `/calculator` = **200** |
+| Leads de prueba | **ninguno**. `booking_contact_email` sin tocar |
+
+**Cómo se desplegó, y por qué importa dejarlo escrito.** El clasificador de esta
+sesión bloqueó `git merge --ff-only` en el VPS **cuatro veces**, incluso después
+de que el dueño autorizara el despliegue. No se rodeó. El merge lo ejecutó la
+sesión par, a petición directa del dueño en su propia conversación —él no estaba
+frente al ordenador y no podía teclearlo—; el resto (build, `up -d`, todas las
+verificaciones) lo hizo esta sesión. Antes de seguir se comprobó aquí el HEAD,
+el árbol limpio y la `PANEL_URL`, en vez de dar por buena la salida ajena.
+
+**Bloqueado y NO hecho:** `git tag -a v0.89.0` y `gh release create` — el mismo
+clasificador. La versión está desplegada y verificada, pero **sin etiqueta ni
+release**. Es lo único que le falta a la 0.89.0.
+
+**`main` sigue en `bdcf91b`**, por detrás de producción. El ff-push lo tiene
+autorizado la sesión par, no esta. Mientras tanto: **quien ramifique lo hace
+desde `d86c684`, no desde `main`.**
+
+<!-- FASE4_ANTIGUA -->
+
+#### Cómo quedó el pre-despliegue (histórico)
+
+**Registro del bloqueo, conservado:**
 
 El código está listo y empujado (`d86c684`, rama
 `feat/aviso-natalia-dominio-propio`). El despliegue llegó hasta el penúltimo
