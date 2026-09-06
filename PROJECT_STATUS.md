@@ -283,6 +283,66 @@ en `/fall`, `/contact` y `/calculator`.
 
 ---
 
+### ⏸️ Fase 4 — despliegue PARADO en el `git merge` del VPS (clasificador)
+
+El código está listo y empujado (`d86c684`, rama
+`feat/aviso-natalia-dominio-propio`). El despliegue llegó hasta el penúltimo
+paso y **el clasificador de Claude Code bloqueó `git merge --ff-only` en el
+VPS**, dos veces. No se rodeó: intentarlo con `reset --hard` o `checkout` sería
+más peligroso, no menos, y esquivaría justo la intención del bloqueo.
+
+**Lo que SÍ quedó hecho en el VPS, y es seguro tal cual:**
+
+| Paso | Estado |
+|---|---|
+| Copia del `.env` | `.env.bak.20260906_v0890`, 7802 bytes = el original |
+| `PANEL_URL` añadida | con `>>`, nunca `cat >`. `.env`: 7802 → 8004 bytes, `^PANEL_URL=https://inmo-demo.ekoaiautomation.com$` aparece **1** vez |
+| Bundle llevado | `/tmp/aviso.bundle`, 50.524 bytes, `git bundle verify` limpio, `git fetch` OK → ref `bundle/aviso` = **`d86c684`** |
+| `git merge --ff-only` | ❌ **bloqueado** |
+| HEAD del VPS | sigue en **`0760aa1`**; `/api/v1/health` sigue sirviendo **0.88.0**; los cuatro contenedores arriba |
+
+**Producción no queda frágil.** Comprobado antes de parar, no supuesto: la
+0.88.0 desplegada tiene `extra="ignore"` en `SettingsConfigDict`
+(`config.py:9`), y su `docker-compose.yml` ni siquiera pasa `PANEL_URL` al
+contenedor. La línea añadida al `.env` es **inerte** para el backend que corre
+ahora, así que un reinicio accidental no rompe nada.
+
+**Lo que falta, para el dueño — cuatro órdenes, en su terminal:**
+
+```
+cd ~/Eko-AI-RealEstate && git merge --ff-only bundle/aviso
+cd ~/Eko-AI-RealEstate && docker compose build backend frontend
+cd ~/Eko-AI-RealEstate && docker compose up -d backend frontend
+curl -s localhost:8011/api/v1/health
+```
+
+La última tiene que decir **0.89.0**. **Sin migración**: no hay esquema nuevo,
+`alembic current` se queda en 055 — no se ejecuta `alembic upgrade`.
+
+**Reversión**, si algo sale mal: `git reset --hard 0760aa16d` + `docker compose
+build backend frontend` + `up -d`. **Nunca `alembic downgrade`.** El `.env`
+vuelve con `cp .env.bak.20260906_v0890 .env` (aunque no hace falta: la variable
+es inerte para la 0.88.0).
+
+**Lo que NO se ha hecho a propósito:**
+
+- **`main` no se toca.** El método del dueño dice «sin merge ni PR sin
+  pedírmelo», y un `push` en avance rápido a `main` **es** un merge. La
+  autorización de despliegue cubre producción, no el tronco. Consecuencia
+  conocida y avisada a la sesión par: `origin/main` se queda en `bdcf91b`, por
+  detrás de lo que correrá producción, que es justo la forma que fabrica
+  colisiones. Quien ramifique después debe hacerlo desde el hash de producción,
+  no desde `main`.
+- **Ningún lead de prueba contra producción.** `booking_contact_email` de la
+  org 1 es el correo real de Natalia, y la sesión par avisó de que el dueño
+  tiene un borrador sin enviar para ella sobre este mismo asunto. La prueba de
+  punta a punta exige reapuntar ese campo antes y restaurarlo después; se hace
+  cuando el dueño esté, no en su ausencia.
+- **Fases 1 y 2 (dominio propio) sin empezar**: crear `denverhomestory.com` en
+  Resend y pegar los registros en Cloudflare son manos del dueño, y la clave de
+  Resend está tras el clasificador.
+
+
 </details>
 
 ---
