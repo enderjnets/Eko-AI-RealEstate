@@ -72,6 +72,22 @@ en `/fall`, `/contact` y `/calculator`.
 
 ## `/calculator` — la calculadora renta→compra (rama `feat/calculator`, v0.83.0)
 
+**✅ v0.86.0 EN PRODUCCIÓN — los números, anclados al mercado (6-sep-2026).** `/api/v1/health`
+sirve **0.86.0** (`4ceb58680`), sin migración (la 055 ya estaba). Los importes de un toque
+salen del mercado real de Denver: rentas **$1.500–$4.000** (de un habitación a una casa de
+cuatro) y ahorros **$20.000–$100.000**. El chip de $10.000 se retiró porque está **por
+debajo del mercado**: clavaba la respuesta en $222.222 para toda renta de $2.000 en
+adelante, y el condo mediano de Denver vale $310.000. El **suelo sube de $150.000 a
+$250.000** y deja de ser una constante de UX: antes nunca se disparaba y la página enseñaba
+precios de un mercado inexistente en **11 de 24** combinaciones de chips; ahora son **0**.
+Y una línea junto al formulario dice que comprar por encima del millón también es su
+mercado. Verificado en producción: $4.000+$100.000 → **$562.000**, $2.500+$20.000 →
+**$314.000**, $1.500+$20.000 → el mensaje del suelo; sin desbordamiento y 0 errores en
+móvil y escritorio. Copias: `.env.bak.20260906_v0860` y `eko_pre_0860.sql`.
+Reversión: `git reset --hard 5f0032d` + build + `up -d`.
+
+<details><summary>El despliegue anterior de esta rama, v0.84.0</summary>
+
 **✅ v0.84.0 EN PRODUCCIÓN — rediseño desplegado el 6-sep-2026.** `/api/v1/health` sirve
 **0.84.0** (`a6e87f9fd`), la página calcula en el navegador real ($262,000 y +$17,463 en
 iPhone 13 y en 1280) y la frase del escalón del PMI aparece donde debe
@@ -80,6 +96,8 @@ Reversión: `git reset --hard d1fd4c6` + build + `up -d`, **nunca `alembic downg
 Copias previas: `.env.bak.20260906_v0840` y `eko_pre_0840_20260906.sql` (sha256 idéntico
 en VPS y Mac). Los 2 errores de consola que se ven son del widget de Turnstile: idénticos
 en `/fall` y `/contact`, que este despliegue no toca.
+
+</details>
 
 <details><summary>El despliegue anterior, v0.83.0</summary>
 
