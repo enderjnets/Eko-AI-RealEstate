@@ -344,8 +344,27 @@ Hashes tras el rebase sobre `69214c6` (6-sep); los anteriores al rebase ya no ex
 
   **Lo que queda en pie:** el del 28-ago está archivado sin `INBOX`, que sí tiene
   forma de filtro por asunto. **Lo que queda sin explicar:** por qué los dos del
-  5 y 6-sep no están en el buzón pese a que Resend los da por `delivered`. No
-  fabrico una tercera hipótesis; se mide antes de decidir nada.
+  5 y 6-sep no están en el buzón pese a que Resend los da por `delivered`.
+
+  **Hipótesis abierta y comprobable (de la sesión par, 6-sep):** el único mecanismo
+  que hace desaparecer un correo entregado **sin pasar por la papelera** es que una
+  persona lo borre desde un cliente IMAP que expurgue — Apple Mail en el iPhone con
+  «eliminar definitivamente al expurgar». Verificado por mí con `list_labels`, no de
+  palabra: el buzón tiene `Apple Mail To Do` (4), `Deleted Messages` (0),
+  `[Imap]/Drafts` (135), `[Imap]/Outbox` (0), `Sent Messages` (4.177) — carpetas que
+  crea Apple Mail, así que hay o hubo uno conectado.
+
+  **Y un dato que la refuerza y desinfla la del filtro:** `INBOX` tiene **164.738
+  mensajes y 135.987 sin leer**. No es un buzón curado por reglas; es un buzón sin
+  gestionar. Una regla que casa un asunto y archiva es raro ahí, y el aviso del
+  28-ago **archivado y sin leer** es exactamente el gesto de deslizar-para-archivar
+  desde la notificación. Los dos que faltan se llamaban `PRUEBA …`. `TRASH` tiene
+  197 mensajes, así que la papelera se usa: si una regla los hubiera borrado,
+  estarían ahí.
+
+  **Lo zanja el dueño, no la medición**: la sesión par se lo está preguntando con
+  los asuntos y las horas. Si dice que los borró, **no hay avería**. Hasta que
+  responda, esto es una hipótesis, no un hecho.
 
   **Acción del dueño:** Gmail → Configuración → Filtros y direcciones bloqueadas,
   mirar si hay una regla que case con «New lead from the website»; y confirmar con
