@@ -313,63 +313,35 @@ Hashes tras el rebase sobre `69214c6` (6-sep); los anteriores al rebase ya no ex
   plazo de 30 años y `pi` se sigue cobrando tras amortizar (no expuesto en la
   página); un HOA que llegue como cadena se ignora → **la Fase 6a debe pasar
   `Number()` antes de calcular**.
-- ✅ **«El aviso por Resend no entrega» era FALSO. Medido el 6-sep.** El correo
-  del producto **sí entrega**: dominio `realtors.ekoaiautomation.com` verificado,
-  y los **53** correos que Resend ha procesado figuran como `delivered`, incluidos
-  **5 al correo corporativo real de Natalia** (agosto). Sonda en vivo desde el VPS
-  con el remitente del producto: llegó a la **bandeja de entrada** del dueño en
-  segundos (`labelIds` incluye `INBOX`, id `010001a0777809bc…@email.amazonses.com`).
-  Lo que sí pasa está **en el buzón del dueño, no en el producto**: el aviso del
-  28-ago está en Gmail **archivado, sin etiqueta `INBOX`** (`labelIds` =
-  `["UNREAD","IMPORTANT"]`), y los dos avisos de prueba del 5 y 6-sep no aparecen
-  en ninguna parte pese a constar entregados.
+- ✅ **CERRADO. «El aviso por Resend no entrega» era FALSO, y lo que faltaba
+  tampoco era una avería.** El correo del producto **sí entrega**: dominio
+  `realtors.ekoaiautomation.com` verificado, y los **53** correos que Resend ha
+  procesado figuran como `delivered`, incluidos **5 al correo corporativo real de
+  Natalia** (agosto). Sonda en vivo desde el VPS: llegó a la **bandeja de entrada**
+  del dueño en segundos.
 
-  **⚠️ Corrección del 6-sep, tras una objeción de la sesión par.** Escribí «el
-  patrón de un filtro de Gmail que archiva **o borra**». La mitad del «o borra»
-  no se sostiene y lo di por bueno sin comprobarlo: un filtro de Gmail no puede
-  borrar de verdad, manda a **Papelera**, y la papelera **sí** es visible a esta
-  búsqueda — en la misma consulta sale un correo de `alertas@` del 5-sep con
-  `labelIds` incluyendo `TRASH`. Los dos que faltan no están ahí.
+  **Los tres avisos «desaparecidos» los borró y archivó el dueño.** Lo confirmó él
+  mismo el 6-sep: «Sí, los borré yo», desde un cliente que elimina definitivamente
+  (el buzón tiene `Apple Mail To Do`, `Deleted Messages`, `[Imap]/Drafts`,
+  `[Imap]/Outbox` — hay o hubo un Apple Mail conectado). Entregados, borrados a
+  mano, sin rastro. El del 28-ago, archivado y sin leer, es el mismo gesto desde la
+  notificación. **No hay filtro, ni supresión, ni destinatario equivocado.** Eran
+  correos de prueba (`PRUEBA Preflight`, `PRUEBA Dos Caminos`) tratados como tales.
 
-  Lo medido, ahora sí, con `includeTrash` y por remitente:
-  - El `to` de los dos avisos ausentes es **`enderjnets@gmail.com`**, el dueño —
-    no `booking_contact_email`. (Esto descarta la hipótesis alternativa del par,
-    que hubieran ido a Natalia.)
-  - `from:realtors.ekoaiautomation.com after:2026/09/04 in:anywhere` con papelera
-    devuelve **solo la sonda** de `noreply@` (16:05 del 6-sep, **con `INBOX`**) y
-    los avisos de `alertas@`. Los dos «New lead from the website» del 5 y 6-sep
-    **no están en ninguna etiqueta**.
-  - No es bloqueo por remitente: la sonda salió del **mismo** `noreply@` catorce
-    horas después del segundo desaparecido y llegó a la bandeja.
+  **La lección, que es mía y doble.** (1) Un fallo heredado que nadie remidió se
+  copió a dos ficheros de estado como si fuera un hecho del producto. (2) Al
+  corregirlo me pasé de largo: escribí «el patrón de un filtro de Gmail que archiva
+  **o borra**» cuando solo había medido el «archiva» — y el «o borra» era una
+  conjetura con el mismo aspecto que el dato de al lado. La sesión par lo señaló
+  (un filtro no borra, manda a Papelera, y la papelera **sí** es visible: en la
+  misma consulta salía un `alertas@` con `TRASH`). Y ninguno de los dos había
+  mirado lo más simple: `INBOX` tiene **164.738 mensajes y 135.987 sin leer**. En
+  un buzón así, «una regla archivó esto» era la explicación cara; «lo borró el
+  dueño» era la barata. Pregunté a la máquina tres veces antes de que alguien
+  preguntara a la persona.
 
-  **Lo que queda en pie:** el del 28-ago está archivado sin `INBOX`, que sí tiene
-  forma de filtro por asunto. **Lo que queda sin explicar:** por qué los dos del
-  5 y 6-sep no están en el buzón pese a que Resend los da por `delivered`.
-
-  **Hipótesis abierta y comprobable (de la sesión par, 6-sep):** el único mecanismo
-  que hace desaparecer un correo entregado **sin pasar por la papelera** es que una
-  persona lo borre desde un cliente IMAP que expurgue — Apple Mail en el iPhone con
-  «eliminar definitivamente al expurgar». Verificado por mí con `list_labels`, no de
-  palabra: el buzón tiene `Apple Mail To Do` (4), `Deleted Messages` (0),
-  `[Imap]/Drafts` (135), `[Imap]/Outbox` (0), `Sent Messages` (4.177) — carpetas que
-  crea Apple Mail, así que hay o hubo uno conectado.
-
-  **Y un dato que la refuerza y desinfla la del filtro:** `INBOX` tiene **164.738
-  mensajes y 135.987 sin leer**. No es un buzón curado por reglas; es un buzón sin
-  gestionar. Una regla que casa un asunto y archiva es raro ahí, y el aviso del
-  28-ago **archivado y sin leer** es exactamente el gesto de deslizar-para-archivar
-  desde la notificación. Los dos que faltan se llamaban `PRUEBA …`. `TRASH` tiene
-  197 mensajes, así que la papelera se usa: si una regla los hubiera borrado,
-  estarían ahí.
-
-  **Lo zanja el dueño, no la medición**: la sesión par se lo está preguntando con
-  los asuntos y las horas. Si dice que los borró, **no hay avería**. Hasta que
-  responda, esto es una hipótesis, no un hecho.
-
-  **Acción del dueño:** Gmail → Configuración → Filtros y direcciones bloqueadas,
-  mirar si hay una regla que case con «New lead from the website»; y confirmar con
-  Natalia que ella los ve, porque su buzón es de `engelvoelkers.com` y lo único
-  medible desde aquí es que el transporte los aceptó.
+  **Sin acción pendiente.** (La instrucción anterior —«Gmail → Filtros, borrar la
+  regla»— queda retirada: no hay regla que borrar.)
 
 ### Decisiones
 
