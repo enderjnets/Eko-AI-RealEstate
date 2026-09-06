@@ -630,7 +630,8 @@ class TestCalculatorResult:
         rows = await _event_rows()
         assert [e["type"] for e in rows] == ["page_view", "calculator_result"]
         assert rows[1]["meta"] == {"price_k": 310, "capped": "rent", "credit": "good"}
-        # And the session row is untouched by it: no counter, no flag.
+        # On the session row it is one more event and nothing else: no
+        # dedicated counter, no flag (that is backlog I-3).
         row = await _session_row()
         assert row is not None
         assert row["event_count"] == 2

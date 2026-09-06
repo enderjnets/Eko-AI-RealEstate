@@ -37,11 +37,24 @@ const FORM_KEY = process.env.NEXT_PUBLIC_CAPTURE_FORM_KEY || undefined;
  */
 const LANDING_VARIANT = "landing";
 
-/** The sections an IntersectionObserver reports. Must match `LANDING_SECTIONS`
- *  in `backend/app/models/landing.py`: the server drops anything else. */
-const SECTIONS = ["about", "how", "markets", "consult"] as const;
+/** The sections an IntersectionObserver reports on the landing — the DEFAULT.
+ *  Another page passes its own; every name must be in `LANDING_SECTIONS` in
+ *  `backend/app/models/landing.py`, because the server drops anything else. */
+const SECTIONS: readonly string[] = ["about", "how", "markets", "consult"];
 
-export function LandingTracker({ variant = LANDING_VARIANT }: { variant?: string } = {}) {
+export function LandingTracker({
+  variant = LANDING_VARIANT,
+  sections = SECTIONS,
+}: {
+  variant?: string;
+  /** Element ids to observe; read ONCE at mount, like `variant` and `lang`
+   *  (the effect deliberately runs once, so a later change is ignored).
+   *  Without it, a page whose sections have other ids measures nothing and
+   *  says nothing — which is how `/calculator` would have reported page
+   *  views and no reading at all. Every name must be in `LANDING_SECTIONS`;
+   *  `track.test.ts` reads that tuple and checks. */
+  sections?: readonly string[];
+} = {}) {
   const { lang } = useI18n();
 
   useEffect(() => {
@@ -102,7 +115,7 @@ export function LandingTracker({ variant = LANDING_VARIANT }: { variant?: string
       },
       { threshold: Array.from({ length: 21 }, (_, i) => i / 20) },
     );
-    for (const id of SECTIONS) {
+    for (const id of sections) {
       const node = document.getElementById(id);
       if (node) observer.observe(node);
     }

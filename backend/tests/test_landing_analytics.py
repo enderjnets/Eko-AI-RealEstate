@@ -202,6 +202,20 @@ class TestFoldEvents:
         )
         assert d.sections == ["markets", "about"]
 
+    def test_the_calculators_sections_are_known_and_garbage_still_is_not(self) -> None:
+        # /calculator reports `inputs`, `result`, `compare` and the shared
+        # `consult`; a name outside the tuple is dropped exactly as before.
+        d = fold_events(
+            [
+                ("section_view", {"section": "result"}),
+                ("section_view", {"section": "inputs"}),
+                ("section_view", {"section": "compare"}),
+                ("section_view", {"section": "garbage"}),
+                ("section_view", {"section": "consult"}),
+            ]
+        )
+        assert d.sections == ["result", "inputs", "compare", "consult"]
+
     def test_an_empty_batch_folds_to_nothing(self) -> None:
         d = fold_events([])
         assert (d.events, d.cta_clicks, d.tel_clicks, d.sections) == (0, 0, 0, [])

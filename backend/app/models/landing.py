@@ -50,8 +50,9 @@ LANDING_EVENT_TYPES = frozenset(
 )
 
 # Sections of the page an IntersectionObserver can report. Also a closed set,
-# for the same reason and because the analytics reads them by name.
-LANDING_SECTIONS = ("about", "how", "markets", "consult")
+# for the same reason and because the analytics reads them by name. The last
+# three are /calculator's; `consult` is shared — it is the form on both pages.
+LANDING_SECTIONS = ("about", "how", "markets", "consult", "inputs", "result", "compare")
 
 
 class LandingSession(Base):

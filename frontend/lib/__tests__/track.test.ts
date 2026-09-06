@@ -7,7 +7,7 @@
  * gets sent, how often, what is deduplicated, and the two cases where the
  * tracker must send nothing at all.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
@@ -416,5 +416,75 @@ describe("the calculator's own funnel step", () => {
     const body = JSON.parse(sent[0]);
     expect(body.events.map((e: { t: string }) => e.t)).toEqual(["page_view", "calculator_result"]);
     expect(body.events[1].meta).toEqual({ price_k: 310, capped: "rent", credit: "good" });
+  });
+});
+
+describe("calculator_result is recorded once per tracker, whatever the page does", () => {
+  it("drops the repeats and keeps the first meta", () => {
+    const { t, sent } = tracker();
+    t.record("calculator_result", { price_k: 310, capped: "rent", credit: "good" });
+    t.record("calculator_result", { price_k: 311, capped: "rent", credit: "good" });
+    t.record("calculator_result", { price_k: 312, capped: "rent", credit: "good" });
+    expect(sent).toHaveLength(1);
+    const body = JSON.parse(sent[0]);
+    expect(body.events).toHaveLength(1);
+    expect(body.events[0].meta.price_k).toBe(310);
+    // Other immediate events are not deduplicated: two taps are two taps.
+    t.record("tel_click", { where: "hero" });
+    t.record("tel_click", { where: "hero" });
+    expect(sent).toHaveLength(3);
+  });
+});
+
+describe("every section a page reports is one the server keeps", () => {
+  // Three lists exist: the server's tuple, the tracker's default, and whatever
+  // a page passes as `sections={[...]}`. A name outside the tuple is dropped
+  // by `fold_events` with a 204 — a silent zero, the failure this file's
+  // header describes. So the tuple is read from the Python source and the
+  // other two are checked against it, the way EVENTS_MAX_PER_BATCH is above.
+  const landingPy = readFileSync(
+    join(process.cwd(), "..", "backend", "app", "models", "landing.py"),
+    "utf8",
+  );
+  const tupleMatch = landingPy.match(/LANDING_SECTIONS = \(([^)]*)\)/);
+  const names = (text: string) =>
+    text.match(/"([a-z_]+)"/g)?.map((q) => q.replace(/"/g, "")) ?? [];
+  const serverSections = new Set(names(tupleMatch?.[1] ?? ""));
+
+  it("read the tuple", () => {
+    expect(serverSections.size).toBeGreaterThanOrEqual(4);
+    expect(serverSections.has("consult")).toBe(true);
+  });
+
+  it("the tracker's default is inside it", () => {
+    const src = readFileSync(
+      join(process.cwd(), "components", "landing", "LandingTracker.tsx"),
+      "utf8",
+    );
+    const def = src.match(/const SECTIONS[^=]*=\s*\[([^\]]*)\]/);
+    const found = names(def?.[1] ?? "");
+    expect(found.length).toBeGreaterThanOrEqual(4);
+    for (const n of found) expect(serverSections.has(n), n).toBe(true);
+  });
+
+  it("every page's sections={[...]} is inside it", () => {
+    const pages: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name === "page.tsx") pages.push(full);
+      }
+    };
+    walk(join(process.cwd(), "app"));
+    expect(pages.length).toBeGreaterThan(3);
+    for (const file of pages) {
+      const src = readFileSync(file, "utf8");
+      for (const m of src.matchAll(/sections=\{\[([^\]]*)\]/g)) {
+        const found = names(m[1]);
+        expect(found.length, file).toBeGreaterThan(0);
+        for (const n of found) expect(serverSections.has(n), `${file}: ${n}`).toBe(true);
+      }
+    }
   });
 });

@@ -38,12 +38,18 @@ export type EventName =
   | "form_start"
   | "form_submit"
   | "form_error"
-  /** /calculator showed a figure. Once per page load, on the first valid result. */
+  /** /calculator showed a figure. Once per page load — enforced by `ONCE`, not by the page. */
   | "calculator_result";
 
 /** Sent the moment they happen: each one is a funnel step, and a visitor who
  *  taps "call" is on their way out of the page — a queued batch would never
  *  leave. The rest ride the next flush. */
+/** Recorded at most once per tracker, whatever the page does. A slider or a
+ *  keystroke recalculating twenty times a minute must not spend the visitor's
+ *  own beacon budget — the per-IP limit is charged per request, and an
+ *  exhausted one silently drops the `form_submit` that follows. */
+const ONCE: ReadonlySet<EventName> = new Set<EventName>(["calculator_result"]);
+
 const IMMEDIATE: ReadonlySet<EventName> = new Set<EventName>([
   "cta_click",
   "tel_click",
@@ -226,6 +232,8 @@ export class Tracker {
   private readonly opts: TrackerOptions;
   private queue: QueuedEvent[] = [];
   private readonly sections = new Set<string>();
+  /** Names in `ONCE` already recorded. */
+  private readonly once = new Set<EventName>();
   private readonly marks = new Set<number>();
   private timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -241,6 +249,10 @@ export class Tracker {
    *  a page that scrolls past 50% four times costs one event, not four. */
   record(name: EventName, meta?: Record<string, string | number>): void {
     if (!this.allowed) return;
+    if (ONCE.has(name)) {
+      if (this.once.has(name)) return;
+      this.once.add(name);
+    }
     this.queue.push(meta && Object.keys(meta).length > 0 ? { t: name, meta } : { t: name });
     if (IMMEDIATE.has(name) || this.queue.length >= MAX_PER_BATCH) {
       this.flush();

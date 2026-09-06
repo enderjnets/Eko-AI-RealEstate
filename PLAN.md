@@ -1047,3 +1047,21 @@ el diseño; cierran huecos que el texto de las fases dejaba abiertos.
   que la persona con esa dirección miró; SMS primero y calculadora después es
   el caso legítimo. Si el dueño prefiere protegerlo: `if is_new or not
   by_address` en la asignación.
+- **A-11 · Base y versión.** La sesión par desplegó **v0.82.0** (`69214c6`)
+  durante la ejecución: `feat/calculator` se rebasó sobre ese commit tras la
+  Fase 4 (sin conflictos; la línea `Calculator` del aviso verificada dentro del
+  cuerpo que ahora sale por correo y Telegram). La Fase 8 usa **0.83.0**, no
+  0.81.0: una versión menor que la de producción haría retroceder `/health`.
+  Acordado con la sesión par. La Fase 9 hereda además su regla: si un día la
+  calculadora manda algo **al lead** (Fase 10), avisar a la par antes, porque
+  entra en `SEND_EXEMPT`/opt-out y en las tablas de los barridos AST.
+- **A-12 · Hallazgo I-3, redacción.** `landing_sessions` guarda `landing_path`
+  (solo al crear la sesión) pero **no** `landing_variant` (viaja en `utm` y el
+  INSERT no lo toma; no hay columna). El único discriminador de página es
+  `landing_path`; `landing_events` no lleva `path`, así que un `section_view:
+  consult` no se atribuye a página desde los eventos, y una navegación en la
+  misma pestaña de `/` a `/calculator` conserva la sesión y mezcla secciones.
+  Todo ello queda bajo I-3 (backlog), junto con: «engaged» global podría
+  inflarse si `inputs` y `result` caben en el primer viewport; `/analytics`
+  itera un literal de 4 secciones y las tres nuevas se almacenan sin mostrarse;
+  faltarán sus etiquetas i18n cuando se muestren. Nada de esto se toca en v1.

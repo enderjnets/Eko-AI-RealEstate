@@ -6,23 +6,28 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
-## `/calculator` — la calculadora renta→compra (rama `feat/calculator`, v0.81.0 reservada)
+## `/calculator` — la calculadora renta→compra (rama `feat/calculator`, v0.83.0 reservada)
 
 **En ejecución, NO desplegada.** Plan: `PLAN.md` (con las aclaraciones del autor
-al final). Base `8ee1f31` (fast-forward desde `6f6ee2d`: un commit de docs).
+al final). Base **`69214c6`** (v0.82.0 desplegada por la sesión par; rebase el
+6-sep tras la Fase 4, sin conflictos, con la línea `Calculator` verificada a mano
+dentro del cuerpo que alimenta a los dos transportes del aviso). Antes: `8ee1f31`.
 Worktree `~/eko-calculator`, base de tests `eko_realestate_test_calculator`,
 puertos propios 8021 (API) y 3010 (web).
 
 ### Fases
 
+Hashes tras el rebase sobre `69214c6` (6-sep); los anteriores al rebase ya no existen en `origin`.
+
 | Fase | Commit | Checklist (salida real) |
 |---|---|---|
-| 0 · Aislamiento y estado base | `8bb3687` | backend **1659/1659**, cobertura **82 %**, ruff ✅ · tsc ✅ · vitest **268/268** · lint ✅ · build ✅ · prerender `/` `/contact` `/fall` `<main>`=1, spinner=0 · secretos: el diff es solo `PLAN.md` y este fichero · cobertura frontend: **no verificable** (A-4) · auditoría independiente: no aplica, sin código |
-| 1 · Aritmética TS contra la hoja de Jeff | `6b6bb5b` | vitest **301/301** (33 nuevos en `calculator.test.ts`) · tsc ✅ · lint ✅ · build ✅ · mutación obligatoria (`−`→`+` en `net`): **4 rojos** (casos 4, 9b, 10a, 10b), restaurado · secretos: ninguno · sin `console.` · cobertura frontend: no verificable (A-4); backend sin cambios · auditoría independiente: 1 importante corregido en fase (A-8), 0 bloqueantes |
-| 2 · La misma aritmética en Python | `d4f65b6` | pytest **1699/1699** antes del arreglo de auditoría y **1701/1701** después; `calculator.py` **100 %** cobertura, total 82 % · ruff ✅ · mutación de signo en `net`: **5 rojos**, restaurado · secretos: ninguno · sin `print` · frontend sin cambios · auditoría independiente: paridad TS↔Python medida en **6.006 casos** (precio, préstamo, mensualidades bit-exactos), 1 importante corregido en fase, 0 bloqueantes |
-| 3a · Migración 055 `leads.calculator_snapshot` **[CRÍTICA]** | `aecaf9c` | `alembic upgrade head` → 055, `heads`=1, `downgrade -1`+`upgrade head` limpios, columna `jsonb` nullable verificada en `information_schema` · pytest focalizado 56/56 y suite completa **1703/1703** (82 %) · ruff ✅ (alcance `app tests` + el fichero 055) · tsc ✅ · vitest 301/301 · lint ✅ · build ✅ · secretos: ninguno · `LeadDetail` sin test unitario (sin jsdom por decisión del repo): solo `tsc`, se verifica de extremo a extremo en 6b · auditoría independiente: 0 bloqueantes, 0 importantes, 3 menores aplicados (snapshot real en el test, docstring, aviso en log) |
-| 3b · El cálculo viaja con el lead | `6281bc8` | pytest focalizado **118/118** (9 nuevos: 6 captura + 2 aviso + parametrizado de 422) y suite completa **1720/1720** (82 %; `capture.py` 95 %, `lead_notify.py` 53→57 %) · ruff ✅ · tsc ✅ · vitest 301/301 · lint ✅ · build ✅ · secretos: ninguno · entrada externa: `CalculatorIn` con `extra="forbid"` y rangos; el servidor recalcula, nunca guarda lo que dice el navegador; un payload incomputable se descarta con aviso y el lead se captura igual · auditoría independiente: 0 bloqueantes; 2 importantes que eran decisiones de contrato → consulta 3 al advisor (A-10 aplicado, 7.9 registrada); 3 menores al backlog |
-| 4 · Evento `calculator_result` | el de esta entrada | sin migración (`landing_events.type` es `Text`) · pytest focalizado 79/79 y suite completa **1721/1721** (82 %) · ruff ✅ · tsc ✅ · vitest **302/302** · lint ✅ · build ✅ · secretos: ninguno · el conjunto sigue cerrado (el test de nombre inventado ya existía; **dupliqué uno contra el plan y lo retiré**) · auditoría independiente: **NO realizada** — el subagente murió por límite de sesión de la API (429, se reinicia 00:30 Denver); autorrevisión del diff (50 líneas): nadie enumera `LANDING_EVENT_TYPES`/`EventName` de forma exhaustiva fuera del modelo y el tracker (tsc y la suite lo confirmarían), `fold_events` cuenta el evento como uno más (igual que `form_error`), el tope de 25 eventos por batch y el rate limit del beacon acotan el abuso igual que para `page_view`. **Pendiente de auditor cuando el límite se reinicie** |
+| 0 · Aislamiento y estado base | `c8eab3e` | backend **1659/1659**, cobertura **82 %**, ruff ✅ · tsc ✅ · vitest **268/268** · lint ✅ · build ✅ · prerender `/` `/contact` `/fall` `<main>`=1, spinner=0 · secretos: el diff es solo `PLAN.md` y este fichero · cobertura frontend: **no verificable** (A-4) · auditoría independiente: no aplica, sin código |
+| 1 · Aritmética TS contra la hoja de Jeff | `d03df82` | vitest **301/301** (33 nuevos en `calculator.test.ts`) · tsc ✅ · lint ✅ · build ✅ · mutación obligatoria (`−`→`+` en `net`): **4 rojos** (casos 4, 9b, 10a, 10b), restaurado · secretos: ninguno · sin `console.` · cobertura frontend: no verificable (A-4); backend sin cambios · auditoría independiente: 1 importante corregido en fase (A-8), 0 bloqueantes |
+| 2 · La misma aritmética en Python | `96e35e3` | pytest **1699/1699** antes del arreglo de auditoría y **1701/1701** después; `calculator.py` **100 %** cobertura, total 82 % · ruff ✅ · mutación de signo en `net`: **5 rojos**, restaurado · secretos: ninguno · sin `print` · frontend sin cambios · auditoría independiente: paridad TS↔Python medida en **6.006 casos** (precio, préstamo, mensualidades bit-exactos), 1 importante corregido en fase, 0 bloqueantes |
+| 3a · Migración 055 `leads.calculator_snapshot` **[CRÍTICA]** | `5894bbc` | `alembic upgrade head` → 055, `heads`=1, `downgrade -1`+`upgrade head` limpios, columna `jsonb` nullable verificada en `information_schema` · pytest focalizado 56/56 y suite completa **1703/1703** (82 %) · ruff ✅ (alcance `app tests` + el fichero 055) · tsc ✅ · vitest 301/301 · lint ✅ · build ✅ · secretos: ninguno · `LeadDetail` sin test unitario (sin jsdom por decisión del repo): solo `tsc`, se verifica de extremo a extremo en 6b · auditoría independiente: 0 bloqueantes, 0 importantes, 3 menores aplicados (snapshot real en el test, docstring, aviso en log) |
+| 3b · El cálculo viaja con el lead | `cf2eeee` | pytest focalizado **118/118** (9 nuevos: 6 captura + 2 aviso + parametrizado de 422) y suite completa **1720/1720** (82 %; `capture.py` 95 %, `lead_notify.py` 53→57 %) · ruff ✅ · tsc ✅ · vitest 301/301 · lint ✅ · build ✅ · secretos: ninguno · entrada externa: `CalculatorIn` con `extra="forbid"` y rangos; el servidor recalcula, nunca guarda lo que dice el navegador; un payload incomputable se descarta con aviso y el lead se captura igual · auditoría independiente: 0 bloqueantes; 2 importantes que eran decisiones de contrato → consulta 3 al advisor (A-10 aplicado, 7.9 registrada); 3 menores al backlog |
+| 4 · Evento `calculator_result` | `7e0f838` | sin migración (`landing_events.type` es `Text`) · pytest focalizado 79/79 y suite completa **1721/1721** (82 %) · ruff ✅ · tsc ✅ · vitest **302/302** · lint ✅ · build ✅ · secretos: ninguno · el conjunto sigue cerrado (el test de nombre inventado ya existía; **dupliqué uno contra el plan y lo retiré**) · auditoría independiente: **NO realizada** — el subagente murió por límite de sesión de la API (429, se reinicia 00:30 Denver); autorrevisión del diff (50 líneas): nadie enumera `LANDING_EVENT_TYPES`/`EventName` de forma exhaustiva fuera del modelo y el tracker (tsc y la suite lo confirmarían), `fold_events` cuenta el evento como uno más (igual que `form_error`), el tope de 25 eventos por batch y el rate limit del beacon acotan el abuso igual que para `page_view`. **Auditada después, junto con la Fase 5** (ver fila 5) |
+| 5 · `LandingTracker` acepta `sections` | el de esta entrada | pytest focalizado 80/80 y suite completa **1728/1728** (82 %) · ruff ✅ · tsc ✅ · vitest 302/302 · lint ✅ · build ✅ · `/` y `/fall` no cambian (usan el default) · `LANDING_SECTIONS` += `inputs`, `result`, `compare` · secretos: ninguno · auditoría independiente (Fases 4+5 juntas): 0 bloqueantes; A1 (la promesa «una vez por carga» ahora vive en `Tracker.ONCE` con test), B1 (test de cableado: las tres listas de secciones contra `landing.py`), A2/B5 aplicados; B2/B3/B4 al backlog I-3 (A-12) |
 
 ### Consultas al advisor
 
@@ -91,6 +96,8 @@ puertos propios 8021 (API) y 3010 (web).
   0 / +0,25 / +0,75; venta 4 %; suelo $150.000; **sin despliegue**; sin prueba
   contra producción.
 - Rama única `feat/calculator`, un commit por fase, push tras cada fase.
+- **Versión 0.83.0, no 0.81.0** (A-11): producción pasó a 0.82.0 mientras se
+  ejecutaba; 0.81.0 haría retroceder `/health`. Acordado con la sesión par.
 - **A-10 (3b):** un `calculator` fuera de rango o con clave desconocida **no**
   es un 422: se descarta con aviso y el lead se captura sin snapshot. Motivo:
   la calculadora es una cortesía, el lead es el objetivo. Reversible en un hunk.
@@ -100,7 +107,7 @@ puertos propios 8021 (API) y 3010 (web).
 
 ### Siguiente paso
 
-Fase 5: `LandingTracker` acepta `sections`; `LANDING_SECTIONS` += `inputs`, `result`, `compare`.
+Fase 6a: la página `/calculator` (sin captura): `hosts.ts`, `layout.tsx`, `page.tsx`, i18n `calculator.*`, tests.
 
 <!-- hecho -->
 Fase 3b: `CalculatorIn` en `public.py`, `FormSubmission.calculator`,
