@@ -8,7 +8,7 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ## `/calculator` — la calculadora renta→compra (rama `feat/calculator`, v0.83.0)
 
-**Construida y verificada en local, NO desplegada.** Fases 0–8 cerradas; la 9 (despliegue) está **preparada** (checklist abajo) y espera la autorización del dueño en un mensaje aparte (7.7); la 10 no se ejecuta (7.1). Plan: `PLAN.md` (con las aclaraciones del autor
+**✅ DESPLEGADA en producción el 6-sep-2026.** `/api/v1/health` sirve **0.83.0**, `alembic current` = **055_calculator_snapshot**, `https://www.denverhomestory.com/calculator` responde **200** y calcula. Fases 0–9 cerradas; la 10 no se ejecuta (7.1). Plan: `PLAN.md` (con las aclaraciones del autor
 al final). Base **`69214c6`** (= producción **`6ff48d6`**, v0.82.0, más un commit de solo
 `PROJECT_STATUS.md` de la sesión par que nunca subió al VPS — lo corrigió ella el 6-sep; rebase el
 6-sep tras la Fase 4, sin conflictos, con la línea `Calculator` verificada a mano
@@ -33,7 +33,7 @@ Hashes tras el rebase sobre `69214c6` (6-sep); los anteriores al rebase ya no ex
 | 6b · La captura con el cálculo dentro | `7f5a122` | backend sin cambios (suite 1737/1737 de la 6a vigente) · tsc ✅ · vitest 309/309 · lint ✅ · build ✅ (con `INTERNAL_API_URL=http://localhost:8021` horneado para la prueba) · **extremo a extremo en local, salida real:** Playwright (iPhone 13) escribe 2100 / 15000 / good → la página muestra **$262,000** → formulario enviado («Got it — talk soon») · base: lead **6342**, `result.price=262451`, `capped_by=rent`, `inputs={rent:2100, savings:15000, credit:good}`, `lang=en` · aviso simulado en el log: `Email SIMULATED … subject='New lead from the website — Calc Probe'`, cuerpo con `Came from: landing_variant=calculator` y `Calculator: Used the rent-vs-buy calculator: … up to ~$262,000 (5-yr net vs renting: +$17,463)` · Inbox: la misma frase · panel `/leads/6342`: bloque «What they calculated» con $2,100 / $15,000 / Good / $262,451 / +$17,463 / Their rent · Telegram: `backup unavailable (TELEGRAM_BOT_TOKEN is unset)` (esperado en local) · capturas: `calc-e2e-mobile.png`, `calc-e2e-panel.png` (scratchpad, enviadas al dueño) · secretos: ninguno · auditoría independiente: 0 bloqueantes; 1 importante aplicado en fase (`6.71/100 !== 0.0671`: la página mandaba `rate` como «movido» en el 100 % de los leads → `buildPayload` en la librería con tolerancia y redondeo, con test); 1 menor aplicado (los límites del servidor `LIMITS` espejados en la página: renta ≤ 50 000, ahorro ≤ 5 M, HOA ≤ 5 000, tasa ≤ 20 %, para no enseñar nunca una cifra que el servidor descartaría) · el auditor confirmó además el caso suelo de extremo a extremo (lead con `capped_by=floor`, `net_5y=null`, Inbox «no estimate shown») · leads de prueba borrados de la base propia |
 | 7 · Móvil de verdad, medido | `4f512ec` (solo docs: no hubo que arreglar layout) | Playwright 1.63 chromium, `devices["iPhone 13"]` (390×844) y escritorio 1280×800, contra `next start -p 3010` con el build final: **iphone13: ok** precio=$262,000, overflow(carga)=390≤390, overflow(todo abierto)=390≤390, cifra y=310..354, correo y=308..356, chip.h=44, 0 errores de página · **desktop: ok** overflow 1280≤1280, cifra y=710..770, correo y=376..424, chip.h=44, 0 errores · capturas `calc-iphone13.png`, `calc-desktop.png` enviadas al dueño · webkit no instalado (I-4): emulación de iPhone en chromium, como dice el plan · auditoría independiente: no aplica (sin código) |
 | 8 · Versión 0.83.0 y estado | `646a6fa` | `APP_VERSION`, `CURRENT_VERSION` y `CHANGELOG.md` en **0.83.0** (A-11) · `test_version_is_one_number` ✅ · suite completa **1737/1737** (82 %) en la tercera pasada — la primera dio 4 rojos por el estado que dejé en la base (A-13), la segunda 1 rojo en `test_content_api.py::test_the_queue_reports_what_the_render_is_doing` que pasa aislado (35/35 ×2): interferencia de orden preexistente, no de este diff · ruff ✅ · tsc ✅ · vitest 312/312 · lint ✅ · build limpio (sin `INTERNAL_API_URL`) con las cuatro públicas prerenderizadas · **hallazgo propio (A-13):** la primera pasada dio 4 rojos en tests de Cal.com porque mi paso 0 de la 6b dejó `booking_contact_email` puesto en la base de test; restaurado a NULL, 89/89 en esos ficheros · secretos: ninguno · auditoría independiente: no aplica (versión y docs) |
-| 9 · Despliegue **[CRÍTICA]** | preparado, **NO ejecutado** (este commit) | consulta 5 al advisor (cierre, regla 5) ✅ · checklist, orden, reversión, variables y riesgos en la sección «Fase 9» de abajo · precondiciones medidas en local: `6ff48d6` (lo que corre en el VPS, según la sesión par) es ancestro de la rama, 12 commits, árbol limpio · sesión par avisada y conforme: no despliega nada · **nada tocado en el VPS** |
+| 9 · Despliegue **[CRÍTICA]** | `d1fd4c6` desplegado; este commit documenta | consulta 5 al advisor (cierre, regla 5) ✅ · checklist, orden, reversión, variables y riesgos en la sección «Fase 9» de abajo · precondiciones medidas en local: `6ff48d6` (lo que corre en el VPS, según la sesión par) es ancestro de la rama, 12 commits, árbol limpio · sesión par avisada y conforme: no despliega nada · **nada tocado en el VPS** |
 
 ### Consultas al advisor
 
@@ -133,10 +133,40 @@ Hashes tras el rebase sobre `69214c6` (6-sep); los anteriores al rebase ya no ex
   («la última gana»): un snapshot no es un permiso, es lo que miró la persona
   con esa dirección. Reversible con `if is_new or not by_address`.
 
-### Fase 9 — despliegue: preparado, NO ejecutado
+### ✅ Fase 9 — desplegada el 6-sep-2026 (autorizada por el dueño)
 
-> Solo con la autorización del dueño en un mensaje aparte (7.7). Nada de lo que
-> sigue se ha tocado en el VPS.
+> Ejecutada tal como estaba escrita abajo. Salida real de cada paso:
+
+| Paso | Resultado medido |
+|---|---|
+| Precondiciones | VPS en `6ff48d67b`, rama `feat/maquina-de-video-dhs`, árbol limpio · `alembic current` = **054_content_metrics** · `/api/v1/health` = **0.82.0** · 4 contenedores arriba |
+| Copia de la base | `eko_pre_055_20260906.sql`, **146.655 bytes**, sha256 `022f3048…c4fe` **idéntico** en VPS y Mac; contiene `CREATE TABLE public.leads` y **no** `calculator_snapshot` (correcto, pre-055) |
+| Copia del `.env` | `.env.bak.20260906_v0830`, 7.802 bytes, `cmp` idéntico |
+| Bundle + `--ff-only` | `6ff48d6..feat/calculator`, 109.366 bytes, `git bundle verify` limpio → HEAD **`d1fd4c636`**, árbol limpio |
+| `docker compose build backend frontend` | las dos construidas (exit 0) |
+| **Migración con la imagen nueva, ANTES de levantar** | `054_content_metrics -> 055_calculator_snapshot` · `alembic current` = **055** · columna `leads.calculator_snapshot` = `jsonb`, nullable **YES**, sin default |
+| Backend **viejo** (0.82.0) contra la base ya migrada | `/health` **ok**, 0 `traceback`/`UndefinedColumn` en el log — la ventana era segura, como se había escrito |
+| `up -d backend frontend` | ambos `Started`; a los 12 s `/api/v1/health` = **0.83.0**, 0 errores en el arranque |
+| Dominio de marca | `/calculator` **200** · `/` 200 · `/fall` 200 · `/contact` 200 · `/leads` **308** al panel |
+| `/calculator` servido | 21.208 bytes, `<main>`=**1**, «Checking session»=**0**, `<title>` = «What could your rent buy in Denver?», `og:title` igual, `robots` = **index, follow**, «eko» = **0** |
+| `/fall` (chequeo que pidió la sesión par) | `Guanella`=**1**, «Checking session»=**0**, `<main>`=1 — su arreglo sobrevivió al rebuild |
+| Panel | `/api/v1/leads` sin sesión = **401** · `/docs` = **404** · `/api/v1/health` = 0.83.0 |
+| **Calcula de verdad** (Playwright, iPhone 13, contra producción) | 2100 / 15000 / good → **$262,000**, neto 5 años **+$17,463** — **idénticos al local** · sin desbordamiento (390≤390) · **0 errores de página** · captura `prod-calculator.png` |
+| Embudo | `landing_events` recibió `page_view`, `section_view{inputs}` y **`calculator_result`** con `{"capped":"rent","credit":"good","price_k":262}` |
+| **Ningún lead de prueba** (7.8) | `leads` = **0** en total, 0 en las últimas 2 h, 0 con `calculator_snapshot`. El aviso a Natalia **no se disparó** |
+
+**Lo único que escribió mi verificación:** las filas de analítica de dos visitas
+mías desde el Mac (dos `page_view` + dos `calculator_result` a las 13:17 y 13:18
+UTC). Es tráfico sintético en el embudo; queda dicho para que nadie lo lea como
+un visitante real.
+
+**Reversión, si hiciera falta:** `git reset --hard 6ff48d6` + `build` + `up -d`.
+**Nunca `alembic downgrade`.** El `.env` no se toca.
+
+---
+
+<details><summary>El checklist tal como se preparó, antes de ejecutarlo</summary>
+
 
 **Lo que cambia en producción:** 12 commits (`6ff48d6..feat/calculator`: los 11
 de esta rama + el `PROJECT_STATUS.md` de la sesión par), una migración aditiva
@@ -245,9 +275,18 @@ importaría para la Fase 10, que no se ejecuta.
    negativo para muchas entradas: correcto y visible, pero el dueño debe verlo
    antes de anunciarlo en redes (7.2/7.3).
 
+</details>
+
 ### Siguiente paso
 
-**Esperar la autorización del dueño** (mensaje aparte) y su veredicto sobre los tres desvíos vetables (A-10, 7.9, A-11). Con la autorización: ejecutar la Fase 9 tal como está escrita, paso a paso, con la salida pegada. Sin ella, **no se toca el VPS**.
+Nada bloqueante. Abierto para el dueño: (a) su veredicto sobre los tres desvíos
+vetables — **A-10** (un cálculo malformado se descarta y el lead se captura),
+**7.9** (snapshot «última gana» en un lead fusionado por correo), **A-11** (0.83.0);
+(b) **7.1**, el correo automático al lead (Fase 10), que sigue sin ejecutarse;
+(c) el aviso por Resend **no entrega** en producción (avería heredada de `/fall`):
+hasta que se arregle, el cálculo llega a Natalia por el Inbox y la ficha del lead,
+no por correo. Merge de `feat/calculator` a `main` y tag `v0.83.0`: pendiente de
+pedírselo al dueño.
 
 <!-- hecho -->
 Fase 6b: `<ConsultForm variant="calculator" calculator={payload} />` (solo si las entradas son válidas) + verificación de extremo a extremo en local (`booking_contact_email` en la base de test, uvicorn :8021, `INTERNAL_API_URL` antes del build, next :3010).
