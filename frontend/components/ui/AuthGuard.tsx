@@ -6,6 +6,12 @@ import { Loader2 } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { isPublicPath } from "@/lib/hosts";
+import {
+  currentNext,
+  navigationChangesRoute,
+  rememberNext,
+  takeNext,
+} from "@/lib/nextPath";
 
 /**
  * Routes this guard must never gate — DERIVED from the brand site's own list,
@@ -45,6 +51,23 @@ export const isUngatedForTest = isUngated;
  * Gates the dashboard when AUTH_ENABLED. Calls /auth/me once per navigation; if
  * auth is on and the session is missing, redirects to /login. When auth is off
  * (dev / public demo) it's transparent. Ungated routes are never checked.
+ *
+ * It also carries the DESTINATION across the login, in both directions:
+ *
+ * * going out — the path that was refused is remembered before the bounce, so
+ *   the lead link in Natalia's mail survives a sign-in;
+ * * coming back — the Google flow does not return here, it returns to the
+ *   backend, which answers `303 /leads`. So the landing is claimed on the way
+ *   IN, by any guarded page that finds a remembered destination that is not
+ *   the one already open. `takeNext` clears as it reads, so this fires once.
+ *
+ * The two tests around that replace are not defensive noise. `router.replace`
+ * to a destination that resolves to the route already open changes no
+ * `pathname`, so an effect keyed on `pathname` never runs again and `ready`
+ * stays false — the panel spins behind "Checking session…" until somebody
+ * reloads. `next !== here` catches the identical string;
+ * `navigationChangesRoute` catches the one the string comparison cannot see,
+ * where only the query or the hash differs.
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -63,8 +86,25 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       .me()
       .then((me) => {
         if (!mounted) return;
-        if (me.auth_enabled && !me.authenticated) router.replace("/login");
-        else setReady(true);
+        const here = currentNext(pathname);
+        if (me.auth_enabled && !me.authenticated) {
+          rememberNext(here);
+          router.replace(`/login?next=${encodeURIComponent(here)}`);
+          return;
+        }
+        const next = takeNext();
+        if (next && next !== here) {
+          router.replace(next);
+          // Only WAIT for the effect to run again when the route will actually
+          // change. `usePathname` carries no query and no hash, so a
+          // destination like `/leads?utm_source=mail` is a different string and
+          // the same route: the replace fires, `pathname` does not change, this
+          // effect never runs again, and the panel sits behind "Checking
+          // session…" until somebody reloads. No attacker needed — an agent
+          // opening any tracked link to the panel while signed out is enough.
+          if (navigationChangesRoute(next, pathname)) return;
+        }
+        setReady(true);
       })
       .catch(() => mounted && setReady(true)); // never hard-lock on a transient error
     return () => {

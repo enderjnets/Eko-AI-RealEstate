@@ -58,6 +58,117 @@ primero y las 1-2 quedan preparadas para el dueño.
 
 ---
 
+### ✅ Fase 3 [CRÍTICA] — el aviso enlaza, Clara avisa, y el enlace sobrevive al login
+
+**Qué cambia, en una línea cada cosa:** el aviso de lead gana una línea
+`Open in Eko AI Realtors: <PANEL_URL>/leads/<id>`; el fin de llamada de Vapi
+manda un aviso propio (`New call answered by Clara — …`) con duración y
+resumen; y abrir ese enlace sin sesión ya no te deja en `/leads` sino en el
+lead, con los tres inicios de sesión (contraseña, cuenta y Google).
+
+| Fichero | Qué |
+|---|---|
+| `backend/app/config.py` · `.env.example` · `docker-compose.yml` | `PANEL_URL` nuevo. Vacío = sin línea de enlace, comportamiento 0.88 exacto |
+| `backend/app/services/lead_notify.py` | `origin="form"\|"call"`, `conversation_id`, `call` — todos de palabra clave, así que el llamante del formulario no cambió; `_spoken_duration`, `_panel_link` |
+| `backend/app/api/v1/webhooks/voice.py` | `_tell_the_agency`, tras el commit de la ingesta y aislado como el de `public.py` |
+| `backend/app/services/conversation.py` | `ingest_voice_call` devuelve `conversation_id` y `summary_was_new` |
+| `frontend/lib/nextPath.ts` (nuevo) | `isSafeNext` / `rememberNext` / `takeNext` / `currentNext` |
+| `frontend/components/ui/AuthGuard.tsx` · `app/login/page.tsx` | recordar el destino al salir, consumirlo al aterrizar |
+
+**Dos decisiones que no estaban en el plan, y por qué.**
+
+1. **`summary_was_new`.** El plan proponía avisar si `turns_stored > 0 or
+   report.summary`. Está mal: la idempotencia se apoya en `<call_id>#0`, una
+   fila que un informe **sin transcripción** nunca escribe, así que ese informe
+   vuelve como `"ok"` en **cada** reentrega de Vapi y Natalia habría recibido el
+   mismo aviso una y otra vez. `ingest_voice_call` es quien sabe si esta entrega
+   aprendió algo, y es lo que ahora devuelve.
+2. **`window.location.search`, no `useSearchParams`.** El App Router obliga a un
+   `<Suspense>` alrededor de cualquier componente cliente que use ese hook, y el
+   más cercano tendría que envolver `AuthGuard`, que envuelve el panel entero.
+   Leer la localización dentro de un `useEffect` da la misma garantía de
+   cliente sin esa frontera — y es el patrón que `app/login/page.tsx` ya usaba.
+
+**Un test mío que no podía fallar, encontrado por su propia mutación.** La
+guarda `status == "duplicate"` del webhook salió **verde** al quitarla: por el
+endpoint es inalcanzable, porque una reentrega también informa de cero turnos y
+ningún resumen nuevo, así que la segunda guarda ya la cubría. Eso es exactamente
+la forma de una comprobación que nadie vería romperse. En vez de borrarla —hay
+una rama de carrera en `ingest_voice_call` que devuelve `duplicate` sin las
+claves de conteo— se le puso un test que le pregunta el veredicto directamente,
+con los conteos diciendo lo contrario. La mutación repetida: roja.
+
+#### Checklist (salida real)
+
+| Paso | Resultado |
+|---|---|
+| Suite backend | **1755 passed**, 0 fallos, **0 saltados**, 4:39, base propia `eko_realestate_test_notice` migrada a 055 (baseline de la rama: **1742**) |
+| `ruff check app tests` | limpio |
+| Frontend | `tsc --noEmit` ✅ · `next lint` ✅ · `vitest` **347/347** (20 ficheros) · `next build` ✅ con las `NEXT_PUBLIC_*` reales |
+| `docker build -f backend/Dockerfile backend` | exit 0 |
+| Cobertura | TOTAL **82%** = baseline. `webhooks/voice.py` 72→**74%**, `conversation.py` 84→**85%**, `lead_notify.py` 58→**59%**. Ninguna baja. En la primera pasada `lead_notify` había caído a 57% (dos ramas nuevas de `_spoken_duration` sin cubrir); se añadieron tests unitarios de `_spoken_duration` y `_panel_link` |
+| Mutaciones (**9**) | enlace fuera → rojo · enlace con `PANEL_URL` vacío → rojo · guarda de `duplicate` fuera → **verde**, y por eso hay un test nuevo; repetida → rojo · ignorar `summary_was_new` → 2 rojos · dejar escapar el fallo del aviso → rojo · `isSafeNext` acepta `//evil.example` → 2 rojos · `takeNext` no vacía → rojo · `isSafeNext` acepta `/login` → rojo · el handle `voice:` vuelve a contar como correo → rojo · `navigationChangesRoute` siempre `true` → rojo. `md5` idéntico las 9 veces, `__pycache__` purgado en cada una |
+| Diff | sin secretos, sin `print`/`console.log`, sin endpoints internos |
+| Migración | **ninguna**; `alembic` sigue en 055 |
+| Correos de prueba | **cero**. Ningún test toca Resend, Vapi, Telegram ni Groq de verdad |
+
+#### Auditoría independiente del diff (dos subagentes, solo lectura)
+
+**Arreglado en esta misma fase:**
+
+1. 🔴 **Cuelgue eterno del panel** (frontend, IMPORTANTE). Si el destino recordado
+   resuelve al **mismo** pathname con distinta cadena —`/leads?utm_source=mail`,
+   `/leads#note-3`— el `router.replace` no cambia `pathname`, el efecto está
+   atado a `[pathname, router]` y nunca vuelve a correr: «Checking session…»
+   para siempre. **Alcanzable sin atacante**: basta abrir deslogueado cualquier
+   enlace al panel con un parámetro de seguimiento. Arreglado con
+   `navigationChangesRoute`, que compara la **ruta resuelta**, no la cadena.
+2. 🔴 **`1e400` mataba el aviso entero** (backend, IMPORTANTE). Es un número JSON
+   válido que parsea a `inf`, y `int(float("inf"))` lanza `OverflowError`, que
+   no es `ValueError`. Ocurría **antes** de cualquier transporte: se perdían el
+   correo, el respaldo por Telegram **y** la fila que registra el intento, por un
+   campo que es una cortesía.
+3. **`/leads/../login`, `/./login`, `/LOGIN` pasaban el filtro** (MENOR). La
+   cadena no es la ruta. `isSafeNext` resuelve ahora el camino antes de
+   compararlo, y compara en minúsculas.
+4. **`Email: voice:0c3a9b12-…`** (backend, IMPORTANTE). Una llamada web no trae
+   número, así que el lead se indexa por `voice:<id de llamada>`, un asa interna.
+   El aviso la imprimía bajo «Email» y la metía en el asunto, mandando al agente
+   a escribir a algo que no es una dirección.
+5. **`currentNext` perdía el `#ancla`** (MENOR).
+
+**Confirmado limpio, con evidencia:** el ContextVar de organización SÍ está
+ligado cuando el webhook de voz dispara el aviso (`set_org_id` en la línea 182,
+antes de la ingesta, misma tarea) y la lectura de `AgentSettings` va por el motor
+**con** RLS, no el de bypass; no hay inyección de cabeceras (Resend es API HTTP
+JSON, no SMTP); el POST del formulario no gana ninguna vía de excepción nueva; y
+el webhook de voz **no puede** devolver un 500 donde antes daba 200 (doble
+`except Exception`). Las rutas públicas (`/`, `/contact`, `/fall`,
+`/calculator`) no pasan por el guardián: el `return` temprano sigue **antes** del
+spinner, así que el precedente de «Checking session…» indexado no reaparece.
+
+**Al backlog, con su diagnóstico:**
+
+- **`summary_was_new` significa «primer resumen de este HILO», no «esta entrega
+  aprendió algo».** `_active_conversation_for_channel` devuelve la conversación
+  de voz **activa** del lead y nada cierra conversaciones de voz, así que
+  `conv.summary` se queda con el de la primera llamada. Consecuencia: un cliente
+  que ya llamó y vuelve a llamar, y cuya segunda llamada deja resumen y **sin**
+  transcripción, no se anuncia —y el resumen nuevo se descarta. Sigue siendo
+  estrictamente mejor que la 0.88, donde **ninguna** llamada avisaba a nadie. El
+  arreglo bueno es una fila de idempotencia **por llamada**, y toca el anclaje de
+  hilos: no es de esta fase. Los tres textos que afirmaban lo contrario
+  (`conversation.py`, `voice.py` y el `CHANGELOG`) están corregidos.
+- Carrera estrecha en el camino de solo-resumen (check-then-act sin restricción
+  que lo respalde): dos reentregas simultáneas darían dos correos.
+- `lead_notify` no valida que `conversation_id` pertenezca al lead. Hoy no es
+  explotable —lo produce `ingest_voice_call` a partir del propio lead— pero el
+  `WITH CHECK` de la RLS solo mira `org_id`, no la org del FK.
+- `/register` puede consumir un `next` abandonado de la misma pestaña.
+- `PANEL_URL` con un espacio **interior** al final da un enlace roto; no se
+  valida el esquema.
+
+
 ## `/fall` — la guía de otoño (rama `feat/fall-ladder`, v0.85.0)
 
 **✅ v0.87.0 EN PRODUCCIÓN — desplegada el 6-sep-2026.** `/api/v1/health` sirve **0.87.0**

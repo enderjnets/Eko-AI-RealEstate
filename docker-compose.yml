@@ -108,6 +108,9 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-Eko AI Realtors <noreply@realtors.ekoaiautomation.com>}
       RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
+      # The panel's own host, so the notice can link to the lead. Same value as
+      # the frontend's NEXT_PUBLIC_PANEL_URL build arg below.
+      PANEL_URL: ${PANEL_URL:-}
       # SMS (Phase 9 — Twilio) — SIMULATED by default; set TWILIO_* for real SMS.
       SMS_SIMULATED: ${SMS_SIMULATED:-true}
       CAPTURE_REQUIRE_EMAIL: ${CAPTURE_REQUIRE_EMAIL:-true}

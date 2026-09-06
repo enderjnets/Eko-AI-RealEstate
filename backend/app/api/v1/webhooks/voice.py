@@ -24,9 +24,15 @@ from app.db.base import get_db
 from app.models.channel_route import CHANNEL_VOICE
 from app.services.channel_identity import inbound_secret_or_503
 from app.services.conversation import ingest_voice_call
+from app.services.lead_notify import send_new_lead_notice
 from app.services.tenant_context import set_org_id
 from app.services.tenant_resolver import WebhookOrgUnresolved, webhook_org_or_refuse
-from app.services.voice import handle_tool_call, parse_end_of_call_report, verify_vapi_secret
+from app.services.voice import (
+    VoiceCallReport,
+    handle_tool_call,
+    parse_end_of_call_report,
+    verify_vapi_secret,
+)
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -238,7 +244,63 @@ async def voice_inbound(request: Request, db: AsyncSession = Depends(get_db)) ->
             # caller, transcript, summary — is lost otherwise, and the provider
             # is told it succeeded.
             return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+        await _tell_the_agency(result, report)
         return {"status": "ok", "result": result}
 
     log.info("Voice webhook: ignoring server message type=%s", mtype)
     return {"status": "ignored", "type": mtype}
+
+
+async def _tell_the_agency(result: dict, report: VoiceCallReport) -> None:
+    """Mail the agency about a call Clara just finished. Never raises.
+
+    Until now the end of a call was silent on the agency's side: the
+    transcript, the summary and the caller's number all landed in the panel and
+    the only way to find out was to go and look. The form has had a notice
+    since v0.79 for exactly this reason; a phone call is worth at least as much.
+
+    Two guards, both measured rather than defensive:
+
+    * `status != "duplicate"` — VAPI redelivers end-of-call reports, and
+      `ingest_voice_call` recognises the redelivery. Without this the agency is
+      mailed once per delivery attempt.
+    * `turns_stored or summary_was_new` — the redelivery guard is keyed on the
+      first transcript row, which a report with an analysis summary and NO
+      turns never writes: such a report is "ok" every single time it arrives.
+      `summary_was_new` says the summary was written on THIS delivery, and it
+      is False on every repeat. It also drops the empty case — a call that
+      produced no transcript and no summary is a hang-up, and mailing an agent
+      about a hang-up teaches them to ignore the notice.
+
+      Its exact meaning is narrower than it looks, and the gap is known: the
+      summary is written once per voice THREAD, not once per call, because a
+      lead's voice conversation stays active and is reused by their next call.
+      So a repeat caller whose second call produces a summary and no transcript
+      is not announced. Better than 0.88, where no call announced anything at
+      all; the fix is a per-call idempotency row and it is in the backlog, not
+      in this change.
+
+    Wrapped like `public.py`'s call site: the report is already committed, and a
+    notification failure must cost the notification, never the transcript or the
+    200 that stops VAPI redelivering it.
+    """
+    try:
+        if result.get("status") == "duplicate":
+            return
+        if not (result.get("turns_stored") or result.get("summary_was_new")):
+            return
+        lead_id = result.get("lead_id")
+        if not isinstance(lead_id, int):
+            return
+        await send_new_lead_notice(
+            lead_id,
+            None,
+            origin="call",
+            conversation_id=result.get("conversation_id"),
+            call={
+                "duration_seconds": report.duration_seconds,
+                "summary": report.summary,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001 — the call is already stored
+        log.error("Could not tell the agency about call %s: %s", result.get("call_id"), exc)

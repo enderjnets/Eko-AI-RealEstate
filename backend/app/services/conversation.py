@@ -656,7 +656,8 @@ async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | b
     # away until now, so "what did they want" existed only as a transcript
     # somebody had to read. `not conv.summary` because a redelivered report
     # must not overwrite a summary a person may have since edited.
-    if report.summary and not conv.summary:
+    summary_was_new = bool(report.summary and not conv.summary)
+    if summary_was_new:
         conv.summary = report.summary[:5000]
 
     await db.commit()
@@ -704,7 +705,21 @@ async def ingest_voice_call(report, db: AsyncSession) -> dict[str, int | str | b
         "status": "duplicate" if already_ingested else "ok",
         "lead_id": lead.id,
         "call_id": report.call_id,
+        "conversation_id": conv.id,
         "turns_stored": stored,
+        # Whether the summary was written on THIS delivery. The caller needs it
+        # to decide whether to tell a human, and only this function can answer
+        # it: idempotency is keyed on `<call_id>#0`, a row a transcript-less
+        # report never writes — so a report carrying an analysis summary and no
+        # turns comes back "ok" on every redelivery, and a guard that trusted
+        # `status` alone would mail the agency the same call twice.
+        #
+        # Narrower than "this delivery learned something", and the difference is
+        # a known gap: the conversation is the lead's ACTIVE voice thread, not
+        # one per call, and nothing closes it — so `conv.summary` belongs to the
+        # first call that had one and a later call's summary is neither stored
+        # nor announced. Backlogged; the fix is an idempotency row per call.
+        "summary_was_new": summary_was_new,
         "is_new_lead": is_new_lead,
     }
 

@@ -7,9 +7,21 @@ form was one channel among several; it is not fine now that the funnel is
 nobody hears about the lead, the promise on the page is false.
 
 So: one notice per captured submission, carrying everything needed to make the
-call — name, phone, email, what they said, and where they came from. No link to
-the panel: there is no panel-URL setting in the backend, and the notice is
-complete without one.
+call — name, phone, email, what they said, and where they came from, plus a
+link straight to the lead in the panel.
+
+**Two origins, one recipient, one link.** The form was the only one for a long
+time, and the phone was the hole: Clara answers a call, the transcript and the
+summary land in the panel, and nobody is told. A caller who spoke to an
+assistant and never hears back is worse off than one who reached voicemail, and
+the product had no way to know the difference. `origin="call"` is that second
+origin — same mailbox, same Telegram, a subject that says which one it was.
+
+The link (`PANEL_URL/leads/<id>`) exists because the notice used to be a dead
+end: everything needed to make the call, and no way to reach the conversation
+it is about. It is omitted entirely when `PANEL_URL` is empty rather than
+rendered as `https:///leads/12`, which is what a naive f-string produces on the
+default install.
 
 **Two transports, not one, and the reason is measured.** It went by email
 alone until a real submission on 5-Sep-2026 proved that is not enough: Resend
@@ -64,6 +76,40 @@ def _line(label: str, value: str | None) -> str:
     return f"{label}: {value}\n" if value else ""
 
 
+def _spoken_duration(seconds: float | None) -> str | None:
+    """`m:ss`, or None when the provider did not say.
+
+    None and 0 both mean "no number to show" and both must produce no line: a
+    literal "Duration: None" in a notice is the kind of detail that makes a
+    human distrust the rest of the message.
+
+    `OverflowError` is in the list because `1e400` is a valid JSON number that
+    parses to `inf`, and `int(float("inf"))` raises it — a class `ValueError`
+    does not cover. This runs before either transport, so that one field would
+    have cost the email, the Telegram backup AND the row that records the
+    attempt: the whole notice, for a number that is a courtesy.
+    """
+    try:
+        total = int(float(seconds))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if total <= 0:
+        return None
+    return f"{total // 60}:{total % 60:02d}"
+
+
+def _panel_link(lead_id: int) -> str | None:
+    """The lead's page in the panel, or None when no panel URL is configured.
+
+    Read here rather than passed in, so both origins get it by construction and
+    a third one cannot forget.
+    """
+    from app.config import get_settings
+
+    base = (get_settings().PANEL_URL or "").strip().rstrip("/")
+    return f"{base}/leads/{lead_id}" if base else None
+
+
 async def _notify_agency_by_email(
     to: str, subject: str, body: str, lead_id: int
 ) -> tuple[str | None, str | None]:
@@ -109,20 +155,49 @@ async def _notify_agency_by_telegram(subject: str, body: str, lead_id: int) -> b
         return False
 
 
-async def send_new_lead_notice(lead_id: int, message_id: int | None) -> None:
-    """Email the agency about a freshly captured form lead. Never raises.
+async def send_new_lead_notice(
+    lead_id: int,
+    message_id: int | None,
+    *,
+    origin: str = "form",
+    conversation_id: int | None = None,
+    call: dict | None = None,
+) -> None:
+    """Email the agency about a lead that just arrived. Never raises.
 
     Reads everything on its own throwaway session (org inherited from the
     request's ContextVar, the same mechanism `pick_agent_safely` relies on),
     so it cannot poison the caller's transaction and needs nothing from it.
+
+    The three extras are KEYWORD-ONLY and all default to today's behaviour, so
+    the form's call site — the funnel's only conversion point — did not have to
+    change to gain a second origin:
+
+    * `origin` — `"form"` or `"call"`; picks the subject and the body.
+    * `conversation_id` — which thread files the internal copy when there is no
+      inbound message to hang it on. A call has a transcript, not a message the
+      form posted, so `message_id` is None and this is how the note reaches the
+      voice thread instead of being dropped.
+    * `call` — `duration_seconds` and `summary` for the call body. Passed in
+      rather than re-read, because the report is the authority on what was
+      said and it is already in the webhook's hand.
     """
     try:
-        await _send_and_record(lead_id, message_id)
+        await _send_and_record(
+            lead_id, message_id, origin=origin, conversation_id=conversation_id, call=call
+        )
     except Exception as exc:  # noqa: BLE001 — the lead is already captured
         log.error("Lead %d: new-lead notice failed: %s", lead_id, exc)
 
 
-async def _send_and_record(lead_id: int, message_id: int | None) -> None:
+async def _send_and_record(
+    lead_id: int,
+    message_id: int | None,
+    *,
+    origin: str = "form",
+    conversation_id: int | None = None,
+    call: dict | None = None,
+) -> None:
     from app.db.base import get_session_factory
     from app.models import AgentSettings, Lead
     from app.models.message import (
@@ -187,23 +262,52 @@ async def _send_and_record(lead_id: int, message_id: int | None) -> None:
         # of them.
         identifier = (lead.phone or "").strip()
         phone = identifier if normalize_phone(identifier) else None
+        # A THIRD shape, and it is neither. A web call carries no caller number,
+        # so `parse_end_of_call_report` keys the lead on `voice:<call id>` — an
+        # internal handle. The fallback below was written when the identifier
+        # could only be a number or an address; left alone it printed
+        # `Email: voice:0c3a9b12-…` and put that in the subject line, telling
+        # the agent to write to a string that is not an address.
+        placeholder = identifier.startswith("voice:")
         # If the identifier IS the address, it is the contact even when the
         # column is empty — losing it would leave a notice with no way to
         # answer the person it is about.
-        email = (lead.email or "").strip() or (None if phone else identifier or None)
+        email = (lead.email or "").strip() or (
+            None if (phone or placeholder) else identifier or None
+        )
 
         who = lead.name or phone or email or f"lead {lead.id}"
-        subject = f"New lead from the website — {who}"
-        body = (
-            "A new inquiry just came in through the website.\n\n"
-            + _line("Name", lead.name)
-            + _line("Phone", phone)
-            + _line("Email", email)
-            + _line("Message", (inbound.content if inbound else None))
-            + _line("Came from", attribution)
-            + _line("Calculator", _calculator_line(lead))
-            + "\nThey are expecting a call back in the next few hours.\n"
-        )
+        facts = call if isinstance(call, dict) else {}
+        if origin == "call":
+            subject = f"New call answered by Clara — {who}"
+            body = (
+                "Clara answered a call.\n\n"
+                + _line("Name", lead.name)
+                + _line("Phone", phone)
+                + _line("Email", email)
+                + _line("Duration", _spoken_duration(facts.get("duration_seconds")))
+                + _line("Summary", (facts.get("summary") or None))
+                + _line("Came from", attribution)
+                + _line("Calculator", _calculator_line(lead))
+                + "\nThe full transcript and the recording are in the panel.\n"
+            )
+        else:
+            subject = f"New lead from the website — {who}"
+            body = (
+                "A new inquiry just came in through the website.\n\n"
+                + _line("Name", lead.name)
+                + _line("Phone", phone)
+                + _line("Email", email)
+                + _line("Message", (inbound.content if inbound else None))
+                + _line("Came from", attribution)
+                + _line("Calculator", _calculator_line(lead))
+                + "\nThey are expecting a call back in the next few hours.\n"
+            )
+        # LAST, and on its own line: it is the one thing in the mail that is
+        # clicked rather than read, and a link buried mid-paragraph on a phone
+        # is a link nobody presses.
+        if (link := _panel_link(lead.id)) is not None:
+            body += f"\nOpen in Eko AI Realtors: {link}\n"
 
         # ── Both transports, CONCURRENTLY ───────────────────────────────
         # ONE budget for the pair, not one each. This runs inside the public
@@ -257,7 +361,12 @@ async def _send_and_record(lead_id: int, message_id: int | None) -> None:
                 lead.id,
             )
 
-        if inbound is None:
+        # The thread the agency's copy is filed in. `inbound` for a form post,
+        # the voice conversation for a call: without the second, every call
+        # notice was dropped on the floor here, because a call has a transcript
+        # rather than a message the form posted.
+        thread_id = inbound.conversation_id if inbound is not None else conversation_id
+        if thread_id is None:
             return
         # Written AFTER the send (see module docstring). Internal note only —
         # it is the agency's copy, never a message to the lead, so it skips the
@@ -267,7 +376,7 @@ async def _send_and_record(lead_id: int, message_id: int | None) -> None:
         # without anybody having spoken.
         db.add(
             Message(
-                conversation_id=inbound.conversation_id,
+                conversation_id=thread_id,
                 direction=MessageDirection.OUTBOUND,
                 sender=MessageSender.AGENT,
                 content=body,

@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.88.0"
+    APP_VERSION: str = "0.89.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -129,6 +129,18 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = ""
     RESEND_FROM: str = "Eko AI Realtors <noreply@realtors.ekoaiautomation.com>"
     RESEND_WEBHOOK_SECRET: str = ""  # Svix-style HMAC secret, may start with `whsec_`
+
+    # Where the operator panel answers, so the backend can put a LINK in the
+    # mail it sends. The frontend has known this as `NEXT_PUBLIC_PANEL_URL`
+    # since v0.66; the backend never did, which is why the new-lead notice
+    # carried every fact about the lead and no way to reach it — the agent read
+    # the mail on a phone and then had to find the person in a list.
+    #
+    # Empty is the safe default and stays inert: no link line at all, rather
+    # than `https:///leads/12`. Same host as `NEXT_PUBLIC_PANEL_URL`; they are
+    # two readers of one fact, and a mismatch sends Natalia to a domain that
+    # answers nothing.
+    PANEL_URL: str = ""
 
     # ─── Calendar (Phase 5) ─────────────────────────────────────────────
     # When SIMULATED=true (dev default), list_slots returns generated weekday

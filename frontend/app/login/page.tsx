@@ -7,6 +7,7 @@ import { Loader2, Lock, Mail, Zap } from "lucide-react";
 import { GoogleOAuthProvider, GoogleLogin, type CredentialResponse } from "@react-oauth/google";
 import { authApi } from "@/lib/api";
 import { googleCanSignInHere } from "@/lib/googleOrigin";
+import { rememberNext, takeNext } from "@/lib/nextPath";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { AppleSignInButton } from "@/components/ui/AppleSignInButton";
@@ -59,6 +60,20 @@ export default function LoginPage() {
     else if (err === "google_failed") setError(t("auth.googleFailed"));
   }, [t]);
 
+  // Where the visitor was actually going. The guard already stored it before
+  // bouncing them here, so this is for the other way in: a `/login?next=…` URL
+  // opened directly. `rememberNext` validates and silently drops anything that
+  // is not a relative path of ours — the query string is attacker-supplied.
+  //
+  // `window.location.search` rather than `useSearchParams`: the App Router
+  // makes that hook require a <Suspense> boundary, and the nearest one would
+  // have to wrap the guard that wraps the whole panel. Reading the location in
+  // an effect is client-only by construction, which is the same guarantee
+  // without the boundary — and it is the pattern the effect above already uses.
+  useEffect(() => {
+    rememberNext(new URLSearchParams(window.location.search).get("next"));
+  }, []);
+
   const googleCallbackUri =
     typeof window !== "undefined"
       ? `${window.location.origin}/api/v1/auth/login/google/callback`
@@ -71,7 +86,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await authApi.login(password);
-      router.replace("/leads");
+      router.replace(takeNext() ?? "/leads");
     } catch {
       setError(t("auth.invalid"));
       setLoading(false);
@@ -85,7 +100,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await authApi.loginAccount(demoEmail.trim(), demoPw);
-      router.replace("/leads");
+      router.replace(takeNext() ?? "/leads");
     } catch {
       setError(t("auth.invalidAccount"));
       setDemoLoading(false);
@@ -101,7 +116,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await authApi.loginGoogle(resp.credential);
-      router.replace("/leads");
+      router.replace(takeNext() ?? "/leads");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       setError(msg.includes("not_in_allow_list") ? t("auth.googleDenied") : t("auth.googleFailed"));

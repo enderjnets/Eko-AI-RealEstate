@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.88.0";
+export const CURRENT_VERSION = "0.89.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.89.0",
+    date: "2026-09-06",
+    title: {
+      en: "Nobody was told when Clara answered the phone",
+      es: "Nadie se enteraba cuando Clara contestaba el telefono",
+    },
+    changes: [
+      { en: "A finished call now sends the agency an email — caller, name, how long they spoke and what the call was about — the same way the website form has since 0.79. Until now the transcript and the summary landed in the panel and nobody was informed.", es: "Una llamada terminada manda ahora un correo a la agencia: quien llamo, su nombre, cuanto hablaron y de que iba la llamada, igual que hace el formulario de la web desde la 0.79. Hasta ahora la transcripcion y el resumen entraban en el panel y no se avisaba a nadie." },
+      { en: "Every notice carries a link that opens the lead in the panel, and that link now survives the sign-in: opening it without a session takes you to the login and then back to the lead, not to the list. Password, account and Google sign-in all land in the right place.", es: "Todo aviso lleva un enlace que abre el lead en el panel, y ese enlace sobrevive ahora al inicio de sesion: abrirlo sin sesion te lleva al login y de vuelta al lead, no a la lista. Contrasena, cuenta y Google aterrizan los tres donde toca." },
+    ],
+  },
   {
     version: "0.88.0",
     date: "2026-09-06",

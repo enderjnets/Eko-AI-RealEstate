@@ -26,6 +26,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, text
 
 from app.api.v1.public import reset_rate_limits
+from app.config import get_settings
 from app.db.base import get_bypass_session_factory
 from app.main import app
 from app.services.delivery import MAX_ATTEMPTS
@@ -463,5 +464,60 @@ async def test_the_notice_has_no_calculator_line_for_everyone_else() -> None:
             status = await _post({"name": "Plain Probe", "email": "plain@notice.test", "message": "Hi"})
         assert status == 202
         assert "Calculator" not in sender.await_args.kwargs["body_text"]
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_notice_links_to_the_lead_in_the_panel() -> None:
+    """The mail used to be a dead end: every fact about the lead, and no way to
+    reach the conversation it is about. The agent read it on a phone and then
+    had to find the person in a list."""
+    sender = AsyncMock(return_value={"id": "re_notice_link"})
+    try:
+        with (
+            patch("app.services.lead_notify.send_email", sender),
+            # Trailing slash on purpose: an operator who pastes the panel URL
+            # out of a browser bar brings one, and `//leads/12` is a 404.
+            patch.object(get_settings(), "PANEL_URL", "https://panel.test/"),
+        ):
+            status = await _post(
+                {"name": "Link Probe", "email": "link@notice.test"}
+            )
+        assert status == 202
+        body = sender.await_args.kwargs["body_text"]
+        async with get_bypass_session_factory()() as db:
+            lead_id = (
+                await db.execute(
+                    text("SELECT id FROM leads WHERE email = :e"),
+                    {"e": "link@notice.test"},
+                )
+            ).scalar_one()
+        assert f"https://panel.test/leads/{lead_id}" in body
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_without_a_panel_url_there_is_no_link_at_all() -> None:
+    """Empty is the default on every install that has not been told where its
+    panel answers. The alternative a naive f-string produces is
+    `https:///leads/12` — a broken link in the one mail that has to be trusted,
+    which is worse than no link."""
+    sender = AsyncMock(return_value={"id": "re_notice_nolink"})
+    try:
+        with (
+            patch("app.services.lead_notify.send_email", sender),
+            patch.object(get_settings(), "PANEL_URL", ""),
+        ):
+            status = await _post(
+                {"name": "No Link", "email": "nolink@notice.test"}
+            )
+        assert status == 202
+        body = sender.await_args.kwargs["body_text"]
+        assert "/leads/" not in body
+        assert "Open in Eko AI Realtors" not in body
+        # And the notice is otherwise intact: no link is not no notice.
+        assert "nolink@notice.test" in body
     finally:
         await _cleanup()

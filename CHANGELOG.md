@@ -2,6 +2,39 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.89.0] — 2026-09-06
+
+### Added
+- **A phone call now tells somebody.** When Clara finishes a call, the agency
+  gets an email — caller, name, how long they spoke, the call's summary — with
+  the same subject line discipline as the web form's notice, so the two are
+  distinguishable at a glance. Until now the transcript and the summary landed
+  in the panel and nobody was informed: the only way to learn that a stranger
+  had just described the house they want to sell was to go and look.
+- **Every notice carries a link to the lead** (`PANEL_URL/leads/<id>`). The mail
+  used to be a dead end — every fact needed to make the call, and no way to
+  reach the conversation it was about. `PANEL_URL` is the new backend setting;
+  left empty, the mail simply has no link line, which is 0.88 behaviour exactly.
+- **A deep link survives the sign-in.** Opening `/leads/12` without a session
+  sent you to the login and then, whichever way you signed in — password,
+  account or Google — dropped you on `/leads`, the list. The destination is now
+  remembered in `sessionStorage` and consumed on landing, which is what the
+  Google redirect flow needs: its callback is a cross-site POST, so a
+  `SameSite=Lax` cookie never reaches it. Only same-origin relative paths are
+  accepted, and never `/login` itself.
+
+### Fixed
+- **A redelivered end-of-call report cannot nag the agency.** VAPI redelivers,
+  and the idempotency key is the first transcript row — which a report carrying
+  an analysis summary and no turns never writes, so it comes back "new" on every
+  attempt. `ingest_voice_call` now reports whether the summary was written on
+  *this* delivery, and that is what the notice is gated on. Known limit, found
+  by the audit of this change and left in the backlog: the summary is written
+  once per voice *thread*, not per call, so a repeat caller whose second call
+  leaves a summary and no transcript is not announced.
+- A call with no transcript and no summary — a hang-up — tells nobody. Mailing
+  an agent about a hang-up is how they learn to ignore the notice that matters.
+
 ## [0.88.0] — 2026-09-06
 
 ### Added
