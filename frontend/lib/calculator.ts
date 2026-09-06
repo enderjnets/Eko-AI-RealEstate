@@ -62,6 +62,8 @@ export interface Assumptions {
   years: number;
   /** Below this price the page shows no figure. UX, not market. */
   priceFloor: number;
+  /** Used only to say what a long-horizon figure is worth in today's money. */
+  inflation: number;
 }
 
 export interface Source {
@@ -87,6 +89,7 @@ export const DEFAULTS: Assumptions = {
   rentGrowth: 0.02,
   years: 5,
   priceFloor: 250_000,
+  inflation: 0.02,
 };
 
 export const SOURCES: Record<keyof Assumptions, Source> = {
@@ -159,6 +162,12 @@ export const SOURCES: Record<keyof Assumptions, Source> = {
     label: "Five years: a typical first-buyer horizon, and the hardest case for buying",
     url: "",
     asOf: "2026-09-05",
+  },
+  inflation: {
+    label:
+      "The Federal Reserve's 2% long-run target. US inflation is 3.4% today (12 months to July 2026); a nominal figure thirty years out is worth much less than it reads",
+    url: "https://www.bls.gov/opub/ted/2026/consumer-prices-up-3-5-percent-over-the-year-ended-june-2026.htm",
+    asOf: "2026-07",
   },
   priceFloor: {
     label:
@@ -397,7 +406,12 @@ function horizon(inputs: Inputs, raw: Assumptions, price: number, years: number)
     const balanceAtStart = balanceAfter(m.loan, rate, a.termMonths, 12 * (y - 1));
     // PMI drops off once the balance falls under 80% of the purchase price.
     const pmi = v > 0 && balanceAtStart / v > 0.8 ? pmiMonthly : 0;
-    const buyMonthly = m.pi + value * carry + pmi + a.hoaMonthly;
+    // The loan runs for `termMonths`. Past that month there is no payment, and
+    // charging it anyway inflated the cost of owning at every horizon longer
+    // than the term. Prorated in case the term does not land on a whole year.
+    const monthsPaid = clamp(a.termMonths - 12 * (y - 1), 0, 12);
+    const pi = (m.pi * monthsPaid) / 12;
+    const buyMonthly = pi + value * carry + pmi + a.hoaMonthly;
     const rentMonthly = rent * Math.pow(1 + a.rentGrowth, y - 1);
     rows.push({ year: y, buyMonthly, rentMonthly });
     buyTotal += 12 * buyMonthly;
@@ -423,14 +437,41 @@ export function compare(inputs: Inputs, raw: Assumptions, price: number): Compar
   const a = normalize(raw);
   const years = a.years;
   const h = horizon(inputs, a, price, years);
+  // At least ten years, and as far as the visitor is looking if that is
+  // further: with a twenty-year horizon, "renting stays cheaper" was false the
+  // moment the crossing fell in year twelve.
   let crossoverYear: number | null = null;
-  for (let n = 1; n <= 10; n++) {
+  for (let n = 1; n <= Math.max(10, years); n++) {
     if (horizon(inputs, a, price, n).net > 0) {
       crossoverYear = n;
       break;
     }
   }
   return { years, ...h, crossoverYear };
+}
+
+/**
+ * The net at every horizon from 1 to `maxYears`, for the chart. Client-side
+ * only: the server stores one figure (`net_5y`), not a curve, so there is
+ * deliberately no mirror of this in `services/calculator.py`.
+ */
+export function netCurve(
+  inputs: Inputs,
+  raw: Assumptions,
+  price: number,
+  maxYears: number,
+): Array<{ year: number; net: number }> {
+  const a = normalize(raw);
+  const last = clamp(Math.floor(maxYears), 1, MAX_YEARS);
+  const out: Array<{ year: number; net: number }> = [];
+  for (let y = 1; y <= last; y++) out.push({ year: y, net: horizon(inputs, a, price, y).net });
+  return out;
+}
+
+/** A nominal figure `years` out, in today's money. */
+export function inTodaysMoney(amount: number, inflation: number, years: number): number {
+  const r = Number.isFinite(inflation) ? inflation : DEFAULTS.inflation;
+  return amount / Math.pow(1 + r, Math.max(0, years));
 }
 
 /**

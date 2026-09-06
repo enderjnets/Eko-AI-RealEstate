@@ -8,6 +8,8 @@ import {
   balanceAfter,
   buildPayload,
   compare,
+  netCurve,
+  inTodaysMoney,
   futureValue,
   monthlyFor,
   monthlyPI,
@@ -481,5 +483,64 @@ describe("the PMI cliff", () => {
     const up = monthlyFor(r.price + 1, inputs, DEFAULTS);
     expect(up.pmi).toBeGreaterThan(100);
     expect(up.total).toBeGreaterThan(2444);
+  });
+});
+
+describe("long horizons", () => {
+  const inputs: Inputs = { rent: 2000, savings: 30_000, credit: "good" };
+  const price = solvePrice(inputs, DEFAULTS).price;
+
+  // 25. The loan is 360 months. Charging its payment in year 31 inflated the
+  // cost of owning at every horizon past the term — invisible while the page
+  // only showed five years, and wrong the moment it offers thirty.
+  it("25. the mortgage payment stops when the loan is paid off", () => {
+    const c = compare(inputs, { ...DEFAULTS, years: 35 }, price);
+    const y30 = c.rows.find((r) => r.year === 30)!;
+    const y31 = c.rows.find((r) => r.year === 31)!;
+    const y35 = c.rows.find((r) => r.year === 35)!;
+    expect(y31.buyMonthly).toBeLessThan(y30.buyMonthly);
+    // What drops out is exactly the principal and interest.
+    const pi = monthlyFor(price, inputs, DEFAULTS).pi;
+    expect(y30.buyMonthly - y31.buyMonthly).toBeGreaterThan(pi * 0.9);
+    // And past the term only the carrying costs are left, which keep rising
+    // with the home's value.
+    expect(y35.buyMonthly).toBeGreaterThan(y31.buyMonthly);
+    expect(y35.buyMonthly).toBeLessThan(pi);
+  });
+
+  // 26. The crossing was only ever searched for in years 1..10, so a visitor
+  // looking twenty years out was told "renting stays cheaper" about a horizon
+  // the page was not searching.
+  it("26. the crossing is searched as far as the visitor is looking", () => {
+    const slow: Inputs = { rent: 1600, savings: 100_000, credit: "fair" };
+    const p = solvePrice(slow, DEFAULTS).price;
+    const a = { ...DEFAULTS, appreciation: 0, rentGrowth: 0 };
+    const short = compare(slow, { ...a, years: 5 }, p);
+    const long = compare(slow, { ...a, years: 30 }, p);
+    if (short.crossoverYear === null && long.crossoverYear !== null) {
+      expect(long.crossoverYear).toBeGreaterThan(10);
+    }
+    // Whatever it finds, it never claims a crossing beyond the horizon asked for.
+    for (const c of [short, long]) {
+      if (c.crossoverYear !== null) expect(c.crossoverYear).toBeLessThanOrEqual(Math.max(10, c.years));
+    }
+  });
+
+  // 27. The curve the chart draws is the same arithmetic as the headline.
+  it("27. the chart's curve agrees with compare() at every point", () => {
+    const curve = netCurve(inputs, DEFAULTS, price, 30);
+    expect(curve).toHaveLength(30);
+    for (const year of [1, 5, 12, 30]) {
+      const fromCurve = curve.find((c) => c.year === year)!.net;
+      within(fromCurve, compare(inputs, { ...DEFAULTS, years: year }, price).net, 0.01);
+    }
+  });
+
+  // 28. A figure thirty years out is worth much less than it reads.
+  it("28. today's money discounts at the stated inflation", () => {
+    within(inTodaysMoney(1000, 0.02, 0), 1000, 0.001);
+    within(inTodaysMoney(1000, 0.02, 1), 1000 / 1.02, 0.001);
+    within(inTodaysMoney(580_971, 0.02, 30), 580_971 / Math.pow(1.02, 30), 0.01);
+    expect(inTodaysMoney(1000, Number.NaN, 10)).toBeCloseTo(1000 / Math.pow(1.02, 10), 6);
   });
 });

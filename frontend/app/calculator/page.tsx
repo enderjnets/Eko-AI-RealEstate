@@ -27,6 +27,8 @@ import {
   UPPER,
   buildPayload,
   compare,
+  inTodaysMoney,
+  netCurve,
   solvePrice,
   type Assumptions,
   type CalculatorPayload,
@@ -54,6 +56,14 @@ const SLIDER = { min: 0, max: 5, step: 0.25 };
  *  $333,333 and the top three rents all landed on that same figure. */
 const QUICK_RENT = [1500, 2000, 2500, 3000, 3500, 4000] as const;
 const QUICK_SAVINGS = [20_000, 30_000, 60_000, 100_000] as const;
+/** How long the visitor might stay. Five is the hardest case and the default;
+ *  the median US owner stays twelve years (Redfin, 2026), which 10 and 15
+ *  bracket; thirty is where the loan is paid off and the natural ceiling —
+ *  past the term there are no payments left to model. */
+const HORIZONS = [5, 10, 15, 20, 30] as const;
+/** Beyond this many years a nominal figure needs translating into today's
+ *  money to mean anything. */
+const TODAY_MONEY_FROM = 10;
 
 /** A number from a money field: digits and one dot, nothing else; never NaN;
  *  never above what the server accepts, so the figure shown is one the lead
@@ -92,6 +102,7 @@ const READ_ONLY: ReadonlyArray<{ key: keyof Assumptions; label: string }> = [
   { key: "pmi", label: "calculator.assumptions.pmi" },
   { key: "rateSpread", label: "calculator.assumptions.rateSpread" },
   { key: "minDown", label: "calculator.assumptions.minDown" },
+  { key: "inflation", label: "calculator.assumptions.inflation" },
 ];
 
 export default function CalculatorPage() {
@@ -113,6 +124,7 @@ export default function CalculatorPage() {
   const [credit, setCredit] = useState<Credit>("good");
   const [appreciationPct, setAppreciationPct] = useState(DEFAULTS.appreciation * 100);
   const [rentGrowthPct, setRentGrowthPct] = useState(DEFAULTS.rentGrowth * 100);
+  const [years, setYears] = useState<number>(DEFAULTS.years);
   const [rateRaw, setRateRaw] = useState((DEFAULTS.rate * 100).toFixed(2));
   const [hoaRaw, setHoaRaw] = useState("");
 
@@ -127,8 +139,9 @@ export default function CalculatorPage() {
       rentGrowth: rentGrowthPct / 100,
       rate: ratePct === null ? DEFAULTS.rate : ratePct / 100,
       hoaMonthly: dollars(hoaRaw, LIMITS.hoaMonthly),
+      years,
     }),
-    [appreciationPct, rentGrowthPct, ratePct, hoaRaw],
+    [appreciationPct, rentGrowthPct, ratePct, hoaRaw, years],
   );
   const inputs: Inputs = useMemo(() => ({ rent, savings, credit }), [rent, savings, credit]);
 
@@ -193,7 +206,16 @@ export default function CalculatorPage() {
       : usd.format(Math.round(result.price / 1000) * 1000)
     : null;
 
-  const rows = comparison ? comparison.rows.filter((r) => [1, 3, 5].includes(r.year)) : [];
+  // Three rows of the table, spread across whatever horizon is showing.
+  const rows = comparison
+    ? comparison.rows.filter((r) =>
+        [1, Math.max(2, Math.round(comparison.years / 2)), comparison.years].includes(r.year),
+      )
+    : [];
+  const curve = useMemo(
+    () => (result && shown ? netCurve(inputs, assumptions, result.price, HORIZONS[HORIZONS.length - 1]) : []),
+    [result, shown, inputs, assumptions],
+  );
 
   // The five parts of the five-year answer, in the order the plan lists them,
   // with the largest magnitude setting the scale for every bar.
@@ -427,11 +449,38 @@ export default function CalculatorPage() {
 
         {/* ── Compare ────────────────────────────────────────────────── */}
         <section id="compare" className="mt-12 scroll-mt-10 border-t border-ln-hair pt-10">
-          <h2 className="font-ln-serif text-[22px] text-ln-dark">{t("calculator.compare.heading")}</h2>
+          <h2 className="font-ln-serif text-[22px] text-ln-dark">
+            {t("calculator.compare.heading", { n: years })}
+          </h2>
+          <fieldset className="mt-4">
+            <legend className="text-[11px] uppercase tracking-[0.14em] text-ln-muted">
+              {t("calculator.compare.horizon")}
+            </legend>
+            <div className="mt-3 grid grid-cols-5 gap-2 sm:max-w-md">
+              {HORIZONS.map((h) => {
+                const active = years === h;
+                return (
+                  <button
+                    key={h}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setYears(h)}
+                    className={`min-h-[44px] text-[12px] transition-colors ${
+                      active
+                        ? "bg-ln-dark text-ln-cream"
+                        : "border border-ln-line-strong text-ln-body hover:border-ln-dark hover:text-ln-dark"
+                    }`}
+                  >
+                    {t("calculator.compare.years", { n: h })}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
           {comparison && (
             <>
-              <p className="mt-2 text-[11px] uppercase tracking-[0.14em] text-ln-muted">
-                {t("calculator.compare.net")}
+              <p className="mt-6 text-[11px] uppercase tracking-[0.14em] text-ln-muted">
+                {t("calculator.compare.net", { n: comparison.years })}
               </p>
               <p
                 className={`mt-2 font-ln-serif text-[36px] leading-none sm:text-[44px] ${
@@ -441,11 +490,32 @@ export default function CalculatorPage() {
                 {comparison.net >= 0 ? "+" : "−"}
                 {usd.format(Math.round(Math.abs(comparison.net)))}
               </p>
+              {/* A figure twenty or thirty years out reads bigger than it is.
+                  The reference calculators show both; so does this one, and only
+                  where the gap has grown enough to matter. */}
+              {comparison.years >= TODAY_MONEY_FROM && (
+                <p className="mt-2 text-[13px] leading-[1.7] text-ln-muted">
+                  {t("calculator.compare.today", {
+                    amount: usd.format(
+                      Math.round(inTodaysMoney(comparison.net, assumptions.inflation, comparison.years)),
+                    ),
+                    pct: pct(assumptions.inflation, 1),
+                  })}
+                </p>
+              )}
               <p className="mt-3 text-[15px] leading-[1.7]">
                 {comparison.crossoverYear === null
                   ? t("calculator.compare.noCrossover")
                   : t("calculator.compare.crossover", { n: comparison.crossoverYear })}
               </p>
+              <NetChart
+                curve={curve}
+                years={comparison.years}
+                crossover={comparison.crossoverYear}
+                usd={usd}
+                label={t("calculator.compare.chart")}
+                zeroLabel={t("calculator.compare.chartZero")}
+              />
               {/* Five signed figures in a column say which is which but not
                   which one weighs; the bars are scaled to the largest so the
                   answer's shape is readable before the numbers are. */}
@@ -699,6 +769,89 @@ function MoneyField({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The net, year by year, as one line against a zero rule. It answers the
+ * question the horizon buttons open — what happens if I stay longer — and turns
+ * the crossing year from a sentence into something you can see. Inline SVG: no
+ * library, no request, and it scales with the column.
+ */
+function NetChart({
+  curve,
+  years,
+  crossover,
+  usd,
+  label,
+  zeroLabel,
+}: {
+  curve: Array<{ year: number; net: number }>;
+  years: number;
+  crossover: number | null;
+  usd: Intl.NumberFormat;
+  label: string;
+  zeroLabel: string;
+}) {
+  if (curve.length < 2) return null;
+  const W = 640;
+  const H = 200;
+  const PAD = { top: 14, right: 8, bottom: 12, left: 8 };
+  const last = curve[curve.length - 1].year;
+  const values = curve.map((c) => c.net);
+  const hi = Math.max(0, ...values);
+  const lo = Math.min(0, ...values);
+  const span = hi - lo || 1;
+  const x = (year: number) => PAD.left + ((year - 1) / (last - 1)) * (W - PAD.left - PAD.right);
+  const y = (net: number) => PAD.top + ((hi - net) / span) * (H - PAD.top - PAD.bottom);
+  const line = curve.map((c) => `${x(c.year).toFixed(1)},${y(c.net).toFixed(1)}`).join(" ");
+  const zeroY = y(0);
+  const here = curve.find((c) => c.year === years);
+  return (
+    <figure className="mt-7">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="h-[200px] w-full"
+        role="img"
+        aria-label={label}
+        preserveAspectRatio="none"
+      >
+        <line x1={PAD.left} y1={zeroY} x2={W - PAD.right} y2={zeroY} stroke="#C9C0AF" strokeWidth="1" />
+        <polyline
+          points={line}
+          fill="none"
+          stroke="#7A5C34"
+          strokeWidth="2.5"
+          vectorEffect="non-scaling-stroke"
+        />
+        {crossover !== null && crossover <= last && (
+          <line
+            x1={x(crossover)}
+            y1={PAD.top}
+            x2={x(crossover)}
+            y2={H - PAD.bottom}
+            stroke="#8A8172"
+            strokeWidth="1"
+            strokeDasharray="3 4"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
+        {here && <circle cx={x(here.year)} cy={y(here.net)} r="4" fill="#17150F" />}
+      </svg>
+      <figcaption className="mt-2 flex flex-wrap justify-between gap-x-6 gap-y-1 text-[11px] text-ln-muted">
+        <span>
+          {zeroLabel}
+          {crossover !== null && crossover <= last ? ` · ${crossover}` : ""}
+        </span>
+        {here && (
+          <span className="text-ln-dark [font-variant-numeric:tabular-nums]">
+            {here.year} &rarr; {here.net >= 0 ? "+" : "\u2212"}
+            {usd.format(Math.round(Math.abs(here.net)))}
+          </span>
+        )}
+        <span className="[font-variant-numeric:tabular-nums]">1 &hellip; {last}</span>
+      </figcaption>
+    </figure>
   );
 }
 

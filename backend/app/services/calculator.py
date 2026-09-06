@@ -41,6 +41,7 @@ DEFAULTS: dict[str, Any] = {
     "rent_growth": 0.02,
     "years": 5,
     "price_floor": 250_000,
+    "inflation": 0.02,
 }
 
 # The only assumptions the page lets a visitor move. Anything else in an
@@ -220,7 +221,12 @@ def _horizon(inputs: dict[str, Any], a: dict[str, Any], price: float, years: int
         balance_at_start = balance_after(m["loan"], rate, a["term_months"], 12 * (y - 1))
         # PMI is keyed to the purchase price, not to a value that has since moved.
         pmi = pmi_monthly if v > 0 and balance_at_start / v > 0.8 else 0.0
-        buy_monthly = m["pi"] + value * carry + pmi + a["hoa_monthly"]
+        # El prestamo dura `term_months`. Pasado ese mes ya no se paga cuota, y
+        # cobrarla igual inflaba el coste de comprar en todo horizonte mayor que
+        # el plazo. Se prorratea por si el plazo no cae en un ano entero.
+        months_paid = min(max(a["term_months"] - 12 * (y - 1), 0), 12)
+        pi = m["pi"] * months_paid / 12
+        buy_monthly = pi + value * carry + pmi + a["hoa_monthly"]
         rent_monthly = rent * (1 + a["rent_growth"]) ** (y - 1)
         rows.append({"year": y, "buy_monthly": buy_monthly, "rent_monthly": rent_monthly})
         buy_total += 12 * buy_monthly
@@ -252,8 +258,11 @@ def compare(inputs: dict[str, Any], raw: dict[str, Any], price: float) -> dict[s
     a = _normalize(raw)
     years = a["years"]
     h = _horizon(inputs, a, price, years)
+    # Se busca al menos hasta 10 anos, y hasta donde mire el visitante si mira
+    # mas lejos: con un horizonte de 20 la frase «sigue saliendo mas barato
+    # alquilar» era falsa en cuanto el cruce caia en el ano 12.
     crossover: int | None = None
-    for n in range(1, 11):
+    for n in range(1, max(10, years) + 1):
         if _horizon(inputs, a, price, n)["net"] > 0:
             crossover = n
             break

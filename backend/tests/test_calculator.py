@@ -437,3 +437,32 @@ def test_snapshot_rounds_half_up_like_the_page():
     assert s["result"]["price"] == 195_313
     assert s["assumptions"]["pmi"] is not DEFAULTS["pmi"]
     assert s["assumptions"]["pmi"] == DEFAULTS["pmi"]
+
+
+def test_25_the_mortgage_payment_stops_when_the_loan_is_paid_off():
+    """El prestamo son 360 meses; cobrarlo en el ano 31 inflaba el coste de
+    comprar en todo horizonte mayor que el plazo. Invisible mientras la pagina
+    solo ensenaba cinco anos, y falso en cuanto ofrece treinta.
+    """
+    inputs = {"rent": 2000, "savings": 30_000, "credit": "good"}
+    price = solve_price(inputs, DEFAULTS)["price"]
+    c = compare(inputs, {**DEFAULTS, "years": 35}, price)
+    rows = {r["year"]: r["buy_monthly"] for r in c["rows"]}
+    pi = monthly_for(price, inputs, DEFAULTS)["pi"]
+    assert rows[31] < rows[30]
+    assert rows[30] - rows[31] > pi * 0.9
+    assert rows[35] > rows[31]
+    assert rows[35] < pi
+
+
+def test_26_the_crossing_is_searched_as_far_as_the_visitor_looks():
+    inputs = {"rent": 2000, "savings": 30_000, "credit": "good"}
+    price = solve_price(inputs, DEFAULTS)["price"]
+    for years in (5, 30):
+        c = compare(inputs, {**DEFAULTS, "years": years}, price)
+        if c["crossover_year"] is not None:
+            assert c["crossover_year"] <= max(10, years)
+
+
+def test_defaults_carry_an_inflation_for_todays_money():
+    assert DEFAULTS["inflation"] == 0.02
