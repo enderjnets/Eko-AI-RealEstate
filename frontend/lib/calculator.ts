@@ -280,7 +280,7 @@ export interface PriceResult {
 }
 
 /** The search ceiling. A rent no price under it can absorb returns it as-is. */
-const UPPER = 5_000_000;
+export const UPPER = 5_000_000;
 
 /**
  * The price whose monthly cost equals the rent, capped by what the savings can

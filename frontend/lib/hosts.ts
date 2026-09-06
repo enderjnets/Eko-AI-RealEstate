@@ -86,7 +86,7 @@ export const PANEL_HOST = hostOf(PANEL_URL);
  * people the campaign exists to reach, and a failure that looks like nothing at
  * all from inside the product.
  */
-export const PUBLIC_PATHS = ["/", "/contact", "/fall"];
+export const PUBLIC_PATHS = ["/", "/contact", "/fall", "/calculator"];
 
 /** `/contact` and `/contact/anything` both count; `/contactos` does not. */
 export function isPublicPath(pathname: string): boolean {

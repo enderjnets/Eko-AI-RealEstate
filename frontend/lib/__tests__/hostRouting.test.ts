@@ -70,7 +70,7 @@ describe("host routing", () => {
 
   it("leaves the public pages alone on the brand domain", async () => {
     const { middleware } = await load(BRAND, PANEL);
-    for (const p of ["/", "/contact", "/fall"]) {
+    for (const p of ["/", "/contact", "/fall", "/calculator"]) {
       expect(location(middleware(req("www.denverhomestory.com", p)))).toBeNull();
     }
   });
@@ -185,6 +185,8 @@ describe("host routing", () => {
     expect(hosts.isPublicPath("/leads")).toBe(false);
     expect(hosts.isPublicPath("/fall")).toBe(true);
     expect(hosts.isPublicPath("/fallback")).toBe(false);
+    expect(hosts.isPublicPath("/calculator")).toBe(true);
+    expect(hosts.isPublicPath("/calculators")).toBe(false);
   });
 
   it("never redirects the API, or the capture form would lose its POST", async () => {

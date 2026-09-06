@@ -80,6 +80,25 @@ describe("public pages do not leak the platform's identity", () => {
     expect(metadata.robots).toMatchObject({ index: true });
   });
 
+  it("the calculator declares its own title, description and preview card", async () => {
+    // A Short's caption promises a number; the link gets pasted into DMs.
+    const { metadata } = await import("../../app/calculator/layout");
+    expect(metadata.title).toBeTruthy();
+    expect(metadata.description).toBeTruthy();
+    expect(metadata.openGraph?.title).toBeTruthy();
+    expect(metadata.appleWebApp).toBeTruthy();
+  });
+
+  it("nothing the calculator publishes names the platform", async () => {
+    const { metadata } = await import("../../app/calculator/layout");
+    for (const s of strings(metadata)) expect(s).not.toMatch(PLATFORM);
+  });
+
+  it("the calculator is indexable", async () => {
+    const { metadata } = await import("../../app/calculator/layout");
+    expect(metadata.robots).toMatchObject({ index: true });
+  });
+
   it("both public pages set their own home-screen name", async () => {
     // The root layout's is the platform's. Metadata merges, so an undeclared
     // one is inherited and a seller's iPhone shows their agent's vendor.
