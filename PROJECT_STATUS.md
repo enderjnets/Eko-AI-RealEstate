@@ -8,8 +8,9 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ## `/calculator` — la calculadora renta→compra (rama `feat/calculator`, v0.83.0)
 
-**Construida y verificada en local, NO desplegada.** Fases 0–8 cerradas; la 9 (despliegue) espera la autorización del dueño (7.7); la 10 no se ejecuta (7.1). Plan: `PLAN.md` (con las aclaraciones del autor
-al final). Base **`69214c6`** (v0.82.0 desplegada por la sesión par; rebase el
+**Construida y verificada en local, NO desplegada.** Fases 0–8 cerradas; la 9 (despliegue) está **preparada** (checklist abajo) y espera la autorización del dueño en un mensaje aparte (7.7); la 10 no se ejecuta (7.1). Plan: `PLAN.md` (con las aclaraciones del autor
+al final). Base **`69214c6`** (= producción **`6ff48d6`**, v0.82.0, más un commit de solo
+`PROJECT_STATUS.md` de la sesión par que nunca subió al VPS — lo corrigió ella el 6-sep; rebase el
 6-sep tras la Fase 4, sin conflictos, con la línea `Calculator` verificada a mano
 dentro del cuerpo que alimenta a los dos transportes del aviso). Antes: `8ee1f31`.
 Worktree `~/eko-calculator`, base de tests `eko_realestate_test_calculator`,
@@ -31,10 +32,26 @@ Hashes tras el rebase sobre `69214c6` (6-sep); los anteriores al rebase ya no ex
 | 6a · La página `/calculator` (sin captura) | `31c2348` | `test_calculator_copy.py` **9/9** (54 claves EN + 54 ES, Fair Housing limpio, sin «eko», sin APR/NMLS) y suite completa **1737/1737** (82 %; la primera pasada cayó en colección por un escape `\u` en mi docstring, corregido) · ruff ✅ · tsc ✅ · vitest **309/309** (guarda de rutas + metadata) · lint ✅ · build ✅ con `/calculator` **○ estático** · prerender `calculator` `<main>`=1, spinner=0 · secretos: ninguno · entrada: campos numéricos saneados en la página (`dollars()`, tasa acotada 0–20 %) · **intentos: 2 consumidos por mecánica de mi script de edición** (un `rindex` sobre el delimitador equivocado; una limpieza calculada y no persistida) → consulta 4 al advisor (regla 3), tercero en verde · auditoría independiente: 0 bloqueantes; 4 importantes aplicados en fase (ahorro sin teclear ya no da «floor»; selector de idioma visible sobre fondo claro; tasa vacía → default, no 0 %; el diferencial por crédito se muestra en «Assumptions»); menores aplicados: fuentes fuera del `<label>` con `aria-describedby`, `aria-label` en ↗, «3 %» derivado de `minDown`, glosa «Enganche (down payment)»; al backlog: evento con valor intermedio si se teclea despacio, contraste de `ln-muted` a 11 px, registro «renta/alquilar», el test de copia no distingue «pre-approval» negado del afirmado |
 | 6b · La captura con el cálculo dentro | `7f5a122` | backend sin cambios (suite 1737/1737 de la 6a vigente) · tsc ✅ · vitest 309/309 · lint ✅ · build ✅ (con `INTERNAL_API_URL=http://localhost:8021` horneado para la prueba) · **extremo a extremo en local, salida real:** Playwright (iPhone 13) escribe 2100 / 15000 / good → la página muestra **$262,000** → formulario enviado («Got it — talk soon») · base: lead **6342**, `result.price=262451`, `capped_by=rent`, `inputs={rent:2100, savings:15000, credit:good}`, `lang=en` · aviso simulado en el log: `Email SIMULATED … subject='New lead from the website — Calc Probe'`, cuerpo con `Came from: landing_variant=calculator` y `Calculator: Used the rent-vs-buy calculator: … up to ~$262,000 (5-yr net vs renting: +$17,463)` · Inbox: la misma frase · panel `/leads/6342`: bloque «What they calculated» con $2,100 / $15,000 / Good / $262,451 / +$17,463 / Their rent · Telegram: `backup unavailable (TELEGRAM_BOT_TOKEN is unset)` (esperado en local) · capturas: `calc-e2e-mobile.png`, `calc-e2e-panel.png` (scratchpad, enviadas al dueño) · secretos: ninguno · auditoría independiente: 0 bloqueantes; 1 importante aplicado en fase (`6.71/100 !== 0.0671`: la página mandaba `rate` como «movido» en el 100 % de los leads → `buildPayload` en la librería con tolerancia y redondeo, con test); 1 menor aplicado (los límites del servidor `LIMITS` espejados en la página: renta ≤ 50 000, ahorro ≤ 5 M, HOA ≤ 5 000, tasa ≤ 20 %, para no enseñar nunca una cifra que el servidor descartaría) · el auditor confirmó además el caso suelo de extremo a extremo (lead con `capped_by=floor`, `net_5y=null`, Inbox «no estimate shown») · leads de prueba borrados de la base propia |
 | 7 · Móvil de verdad, medido | `4f512ec` (solo docs: no hubo que arreglar layout) | Playwright 1.63 chromium, `devices["iPhone 13"]` (390×844) y escritorio 1280×800, contra `next start -p 3010` con el build final: **iphone13: ok** precio=$262,000, overflow(carga)=390≤390, overflow(todo abierto)=390≤390, cifra y=310..354, correo y=308..356, chip.h=44, 0 errores de página · **desktop: ok** overflow 1280≤1280, cifra y=710..770, correo y=376..424, chip.h=44, 0 errores · capturas `calc-iphone13.png`, `calc-desktop.png` enviadas al dueño · webkit no instalado (I-4): emulación de iPhone en chromium, como dice el plan · auditoría independiente: no aplica (sin código) |
-| 8 · Versión 0.83.0 y estado | el de esta entrada | `APP_VERSION`, `CURRENT_VERSION` y `CHANGELOG.md` en **0.83.0** (A-11) · `test_version_is_one_number` ✅ · suite completa **1737/1737** (82 %) en la tercera pasada — la primera dio 4 rojos por el estado que dejé en la base (A-13), la segunda 1 rojo en `test_content_api.py::test_the_queue_reports_what_the_render_is_doing` que pasa aislado (35/35 ×2): interferencia de orden preexistente, no de este diff · ruff ✅ · tsc ✅ · vitest 312/312 · lint ✅ · build limpio (sin `INTERNAL_API_URL`) con las cuatro públicas prerenderizadas · **hallazgo propio (A-13):** la primera pasada dio 4 rojos en tests de Cal.com porque mi paso 0 de la 6b dejó `booking_contact_email` puesto en la base de test; restaurado a NULL, 89/89 en esos ficheros · secretos: ninguno · auditoría independiente: no aplica (versión y docs) |
+| 8 · Versión 0.83.0 y estado | `646a6fa` | `APP_VERSION`, `CURRENT_VERSION` y `CHANGELOG.md` en **0.83.0** (A-11) · `test_version_is_one_number` ✅ · suite completa **1737/1737** (82 %) en la tercera pasada — la primera dio 4 rojos por el estado que dejé en la base (A-13), la segunda 1 rojo en `test_content_api.py::test_the_queue_reports_what_the_render_is_doing` que pasa aislado (35/35 ×2): interferencia de orden preexistente, no de este diff · ruff ✅ · tsc ✅ · vitest 312/312 · lint ✅ · build limpio (sin `INTERNAL_API_URL`) con las cuatro públicas prerenderizadas · **hallazgo propio (A-13):** la primera pasada dio 4 rojos en tests de Cal.com porque mi paso 0 de la 6b dejó `booking_contact_email` puesto en la base de test; restaurado a NULL, 89/89 en esos ficheros · secretos: ninguno · auditoría independiente: no aplica (versión y docs) |
+| 9 · Despliegue **[CRÍTICA]** | preparado, **NO ejecutado** (este commit) | consulta 5 al advisor (cierre, regla 5) ✅ · checklist, orden, reversión, variables y riesgos en la sección «Fase 9» de abajo · precondiciones medidas en local: `6ff48d6` (lo que corre en el VPS, según la sesión par) es ancestro de la rama, 12 commits, árbol limpio · sesión par avisada y conforme: no despliega nada · **nada tocado en el VPS** |
 
 ### Consultas al advisor
 
+5. **Cierre (regla 5), 6-sep, antes de preparar la Fase 9.** Motivo:
+   coherencia entre fases, cabos sueltos y riesgos de despliegue. Veredicto
+   del autor: fases 0–8 coherentes (un fixture para TS y Python; la forma
+   del snapshot fijada de `build_snapshot` → JSONB → tipo TS → ficha con
+   rama «floor»; `CalculatorIn` ↔ `LIMITS` ↔ `buildPayload` con los mismos
+   límites y la misma noción de «movido»; evento y secciones con tests de
+   cableado contra el fuente Python). Nada bloquea la preparación.
+   Decisión (recogida en la sección «Fase 9»): el orden
+   migrar-con-la-imagen-nueva-ANTES-de-levantar escrito como pasos, con el
+   fallback y su ventana explícitos; reversión en una frase y una
+   prohibición (`downgrade`); los tres desvíos del plan (A-10, 7.9, A-11)
+   como puntos de veto del dueño, nombrados; 7.1 tomada por defecto. Cabos
+   sueltos: avisar a la sesión par (hecho: devolvió la corrección del
+   commit desplegado, `6ff48d6`) y guardar en la memoria persistente la
+   lección del hook de la shell (en este mismo cierre).
 4. **Fase 6a, tras el 2.º intento fallido (regla 3).** Motivo: dos intentos
    consumidos editando `i18n.tsx` por script (bloque ES insertado tras el
    último `};` del fichero, dentro de `useI18n`; y una limpieza calculada sin
@@ -116,9 +133,121 @@ Hashes tras el rebase sobre `69214c6` (6-sep); los anteriores al rebase ya no ex
   («la última gana»): un snapshot no es un permiso, es lo que miró la persona
   con esa dirección. Reversible con `if is_new or not by_address`.
 
+### Fase 9 — despliegue: preparado, NO ejecutado
+
+> Solo con la autorización del dueño en un mensaje aparte (7.7). Nada de lo que
+> sigue se ha tocado en el VPS.
+
+**Lo que cambia en producción:** 12 commits (`6ff48d6..feat/calculator`: los 11
+de esta rama + el `PROJECT_STATUS.md` de la sesión par), una migración aditiva
+(055: `leads.calculator_snapshot` JSONB nullable, sin default), una página
+pública nueva, **ninguna variable de entorno nueva**.
+
+**Precondiciones (se miden, no se asumen):**
+- [ ] Autorización del dueño en mensaje aparte.
+- [x] Sesión par avisada (6-sep). Respondió: no despliega nada; el VPS está en
+  **`6ff48d6`**, no en `69214c6` (verificado en local: `6ff48d6` es ancestro de
+  la rama; `git diff 6ff48d6 69214c6` toca solo `PROJECT_STATUS.md`).
+- [ ] VPS: `git rev-parse --short HEAD` = `6ff48d6`. Si no, **parar** y rebasar
+  sobre lo que haya (un bundle contra el commit equivocado falla; forzar, nunca).
+- [ ] VPS: `docker compose exec backend alembic current` = `054_content_metrics`
+  y `curl -s localhost:8011/api/v1/health` = `0.82.0`.
+- [ ] Copia de la base (patrón `~/eko-realtors-backups-vps/`, como el 4-sep):
+  `docker exec eko-realestate-db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > ~/eko-realtors-backups-vps/eko_pre_055_$(date +%Y%m%d).sql`
+  y `sha256sum` comparado en las dos máquinas.
+- [ ] Copia del `.env`: `cp .env .env.bak.$(date +%Y%m%d)_v0830` (no cambia; es el patrón).
+
+**Orden de pasos (el orden es la razón de que la 3a fuera crítica):**
+
+```bash
+# 1. Llevar la rama (bundle, no push directo), desde ~/eko-calculator
+git bundle create /tmp/calculator.bundle 6ff48d6..feat/calculator
+scp /tmp/calculator.bundle ender-vps:/tmp/
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && git fetch /tmp/calculator.bundle feat/calculator:refs/remotes/bundle/calc && git merge --ff-only refs/remotes/bundle/calc && git rev-parse --short HEAD'   # = HEAD de feat/calculator
+
+# 2. Construir las dos imágenes (el frontend hornea PUBLIC_PATHS y NEXT_PUBLIC_* del .env del VPS)
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && docker compose build backend frontend'
+
+# 3. MIGRAR CON LA IMAGEN NUEVA, ANTES DE LEVANTARLA. `run` toma el `environment:` del
+#    servicio (DATABASE_URL, APP_DB_PASSWORD…) y la red del compose; db y redis ya están
+#    arriba. Mismo mecanismo que la sonda del despliegue de 0.79.0.
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && docker compose run --rm -T backend alembic upgrade head'
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && docker compose run --rm -T backend alembic current'   # = 055_calculator_snapshot
+
+# 4. Levantar (backend antes que frontend: compose respeta depends_on)
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && docker compose up -d backend frontend'
+```
+
+Por qué ese orden: el contenedor **no migra al arrancar** (`Dockerfile` arranca
+`uvicorn` a secas). Si el backend nuevo arranca antes de la 055, cada `SELECT`
+del ORM sobre `leads` pide una columna que no existe: el API de leads **y los
+webhooks entrantes** (SMS, WhatsApp y email cargan `Lead`) devuelven 500 hasta
+que se migre. Al revés no hay ventana: el backend viejo contra una base que ya
+tiene la columna es seguro (SQLAlchemy solo selecciona lo declarado; nullable
+sin default, así que su `INSERT` sigue valiendo). Y frontend nuevo contra backend
+viejo también: `PublicLeadIn` de 0.82.0 no lleva `extra="forbid"` (verificado en
+`69214c6:backend/app/api/v1/public.py:279`), así que ignora la clave
+`calculator` y el lead entra sin snapshot.
+
+Si `run` fallara: `up -d backend` y **acto seguido** `exec backend alembic
+upgrade head`, aceptando una ventana de segundos con 500 en lecturas de leads y
+webhooks. No es el camino preferido.
+
+**Verificación (solo GET; ningún lead de prueba — 7.8/M-4, el aviso va al correo
+real de Natalia):**
+
+```bash
+ssh ender-vps 'curl -s localhost:8011/api/v1/health'                                   # "version": "0.83.0"
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && docker compose exec backend alembic current'  # 055_calculator_snapshot
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && docker compose logs --since 5m backend | grep -ci "traceback"'  # 0
+curl -s https://www.denverhomestory.com/calculator | grep -c '<main'                 # 1
+curl -s https://www.denverhomestory.com/calculator | grep -c 'Checking session'      # 0
+curl -s https://www.denverhomestory.com/calculator | grep -o '<title>[^<]*'          # What could your rent buy in Denver?…
+curl -s https://www.denverhomestory.com/calculator | grep -c 'og:title'              # ≥ 1
+curl -s https://www.denverhomestory.com/calculator | grep -o 'name="robots"[^>]*'    # index
+for p in /calculator / /fall /contact; do curl -s -o /dev/null -w "$p %{http_code}\n" https://www.denverhomestory.com$p; done   # 200 ×4 — /calculator hoy da 308: si tras desplegar sigue en 308, la ruta no entró en PUBLIC_PATHS y se revierte
+curl -s https://www.denverhomestory.com/fall | grep -c 'Guanella'                    # 1 — lo pide la sesión par: su arreglo de /fall sobrevive al rebuild (hoy: 1)
+curl -s https://www.denverhomestory.com/fall | grep -c 'Checking session'            # 0
+curl -s -o /dev/null -w '%{http_code}\n' https://www.denverhomestory.com/leads     # 308 (ruta de panel en el dominio de marca; hoy: 308)
+curl -s -o /dev/null -w '%{http_code}\n' https://inmo-demo.ekoaiautomation.com/api/v1/leads   # 401 sin sesión
+```
+
+Después: commit `docs(status): v0.83.0 desplegada y verificada en produccion`
+con la salida pegada.
+
+**Reversión (una frase y una prohibición):**
+
+```bash
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && git reset --hard 6ff48d6 && docker compose build backend frontend && docker compose up -d backend frontend'
+```
+
+- `/calculator` vuelve a ser una ruta no pública en el dominio de marca: **308**
+  (medido hoy, 6-sep, antes de desplegar). Esperado.
+- **Nunca `alembic downgrade`.** La columna es inocua para 0.82.0 y el
+  `downgrade` destruye todos los snapshots capturados. Se queda.
+- `.env` no se toca.
+
+**Variables de entorno:** ninguna nueva. Las que usa la página ya sirven a
+`/fall` hoy: `NEXT_PUBLIC_BRAND_URL` (canonical), `NEXT_PUBLIC_CAPTURE_FORM_KEY`,
+`NEXT_PUBLIC_TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET`, `INTERNAL_API_URL`
+(default del compose). `RESEND_FROM` sigue nombrando a la plataforma (M-1): solo
+importaría para la Fase 10, que no se ejecuta.
+
+**Riesgos de despliegue:**
+1. Backend nuevo antes de la migración → 500 en leads y webhooks. El orden de
+   arriba lo evita; el fallback lo acota a segundos.
+2. Despliegue cruzado con la sesión par. Coordinado: no despliega nada. Si
+   producción se mueve antes de la autorización, rebase y checklist desde cero.
+3. El aviso por Resend no entrega en producción (heredado de `/fall`): de los
+   tres caminos por los que el cálculo llega a Natalia, hoy entregan seguro el
+   Inbox y la ficha; el correo depende de ese arreglo ajeno.
+4. Con los supuestos conservadores (2 %/2 %) el neto a 5 años sale pequeño o
+   negativo para muchas entradas: correcto y visible, pero el dueño debe verlo
+   antes de anunciarlo en redes (7.2/7.3).
+
 ### Siguiente paso
 
-Consulta de cierre al advisor (regla 5) y preparación del despliegue (Fase 9): checklist, migración antes de levantar el backend, rollback sin `downgrade`, variables, orden. **Sin desplegar** hasta el mensaje aparte del dueño.
+**Esperar la autorización del dueño** (mensaje aparte) y su veredicto sobre los tres desvíos vetables (A-10, 7.9, A-11). Con la autorización: ejecutar la Fase 9 tal como está escrita, paso a paso, con la salida pegada. Sin ella, **no se toca el VPS**.
 
 <!-- hecho -->
 Fase 6b: `<ConsultForm variant="calculator" calculator={payload} />` (solo si las entradas son válidas) + verificación de extremo a extremo en local (`booking_contact_email` en la base de test, uvicorn :8021, `INTERNAL_API_URL` antes del build, next :3010).
