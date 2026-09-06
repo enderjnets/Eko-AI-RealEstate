@@ -43,6 +43,10 @@ const CREDITS: readonly Credit[] = ["excellent", "good", "fair"];
 const DEBOUNCE_MS = 150;
 /** Slider range for the two growth rates, in percent. */
 const SLIDER = { min: 0, max: 5, step: 0.25 };
+/** One-tap amounts. A phone keyboard is the slowest part of this page, and
+ *  these are the Denver rents and the down payments people actually type. */
+const QUICK_RENT = [1500, 2000, 2500] as const;
+const QUICK_SAVINGS = [10_000, 25_000, 50_000] as const;
 
 /** A number from a money field: digits and one dot, nothing else; never NaN;
  *  never above what the server accepts, so the figure shown is one the lead
@@ -89,6 +93,10 @@ export default function CalculatorPage() {
   const usd = useMemo(
     () =>
       new Intl.NumberFormat(locale, { style: "currency", currency: "USD", maximumFractionDigits: 0 }),
+    [locale],
+  );
+  const grouped = useMemo(
+    () => new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }),
     [locale],
   );
   const pct = (n: number, digits = 2) => `${(n * 100).toFixed(digits)}%`;
@@ -171,13 +179,31 @@ export default function CalculatorPage() {
 
   const rows = comparison ? comparison.rows.filter((r) => [1, 3, 5].includes(r.year)) : [];
 
+  // The five parts of the five-year answer, in the order the plan lists them,
+  // with the largest magnitude setting the scale for every bar.
+  const cascade = comparison
+    ? [
+        { label: "calculator.compare.appreciation", amount: comparison.appreciation },
+        { label: "calculator.compare.amortization", amount: comparison.amortization },
+        { label: "calculator.compare.cashflow", amount: comparison.cashflowDiff },
+        { label: "calculator.compare.closing", amount: -comparison.closing },
+        { label: "calculator.compare.selling", amount: -comparison.selling },
+      ]
+    : [];
+  const cascadeMax = cascade.reduce((m, c) => Math.max(m, Math.abs(c.amount)), 0);
+
   return (
     <main className="min-h-screen bg-ln-canvas text-ln-body">
       <LandingTracker variant="calculator" sections={SECTIONS} />
       {/* A band of the city under the question. Decorative — empty alt, and it
           fades into the canvas so no text ever sits on the photograph. Same
           plain <img> the landing uses. */}
-      <div className="relative h-[132px] overflow-hidden sm:h-[200px]" aria-hidden="true">
+      <div className="lg:flex lg:min-h-screen lg:items-stretch">
+      {/* The instrument: on a wide screen it stays put while the answer scrolls
+          beside it, so changing the rent never means losing sight of the
+          figure. On a phone it is simply the top of the page. */}
+      <aside className="bg-ln-paper lg:sticky lg:top-0 lg:h-screen lg:w-[452px] lg:flex-none lg:overflow-y-auto lg:border-r lg:border-ln-hair">
+      <div className="relative h-[132px] overflow-hidden lg:hidden" aria-hidden="true">
         {/* eslint-disable-next-line @next/next/no-img-element -- the public
             pages use plain <img> throughout: `sharp` is not installed, so
             next/image would optimise nothing and only add a dependency. */}
@@ -189,7 +215,7 @@ export default function CalculatorPage() {
         />
         <div className="absolute inset-0 bg-gradient-to-b from-ln-night/30 via-ln-canvas/25 to-ln-canvas" />
       </div>
-      <div className="mx-auto max-w-2xl px-5 pb-12 pt-7 sm:px-8 sm:pb-16 sm:pt-9">
+      <div className="px-5 pb-10 pt-7 sm:px-8 lg:px-11 lg:py-10">
         <div className="flex items-center justify-between gap-4">
           {brandLine ? (
             <a
@@ -209,26 +235,34 @@ export default function CalculatorPage() {
           </span>
         </div>
 
-        <h1 className="mt-5 font-ln-serif text-[34px] leading-[1.1] text-ln-ink sm:text-[50px]">
+        <h1 className="mt-5 font-ln-serif text-[34px] leading-[1.06] text-ln-ink sm:text-[44px]">
           {t("calculator.title")}
         </h1>
-        <p className="mt-5 max-w-[52ch] text-[16px] leading-[1.75]">{t("calculator.intro")}</p>
+        <p className="mt-4 max-w-[46ch] text-[15px] leading-[1.7] text-ln-muted">
+          {t("calculator.intro")}
+        </p>
 
         {/* ── Inputs ─────────────────────────────────────────────────── */}
-        <section id="inputs" className="mt-10 scroll-mt-10">
-          <h2 className="font-ln-serif text-[22px] text-ln-dark">{t("calculator.inputs.heading")}</h2>
-          <div className="mt-5 grid gap-5 sm:grid-cols-2">
+        <section id="inputs" aria-label={t("calculator.inputs.heading")} className="mt-8 scroll-mt-10">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-1">
             <MoneyField
               id="calc-rent"
               label={t("calculator.inputs.rent")}
               value={rentRaw}
               onChange={setRentRaw}
+              suffix={t("calculator.inputs.perMonth")}
+              quick={QUICK_RENT}
+              format={(n) => usd.format(n)}
+              group={(n) => grouped.format(n)}
             />
             <MoneyField
               id="calc-savings"
               label={t("calculator.inputs.savings")}
               value={savingsRaw}
               onChange={setSavingsRaw}
+              quick={QUICK_SAVINGS}
+              format={(n) => usd.format(n)}
+              group={(n) => grouped.format(n)}
             />
           </div>
           <fieldset className="mt-6">
@@ -257,22 +291,59 @@ export default function CalculatorPage() {
               })}
             </div>
           </fieldset>
+          <p className="mt-8 hidden text-[11px] leading-[1.7] text-ln-faint lg:block">
+            {t("calculator.disclaimer")}
+          </p>
         </section>
+      </div>
+      </aside>
 
+      {/* The answer, and everything that explains it. */}
+      <div className="min-w-0 flex-1 px-5 pb-14 pt-2 sm:px-8 lg:px-12 lg:py-10">
         {/* ── Result ─────────────────────────────────────────────────── */}
-        <section id="result" className="mt-12 scroll-mt-10 border-t border-ln-hair pt-10">
+        <section id="result" className="scroll-mt-10">
           {!(result && shown) && (
-            <>
+            /* The empty state wears the answer's own chrome: on a wide screen
+               the column is otherwise a void, and a visitor cannot tell what
+               typing buys them. Nothing here is a number — the dashes are
+               decoration and are hidden from screen readers. */
+            <div className="border border-ln-line bg-ln-paper/60 p-6 sm:p-9">
               <h2 className="text-[11px] uppercase tracking-[0.18em] text-ln-gold">
                 {t("calculator.result.heading")}
               </h2>
-              {!result && (
-                <p className="mt-4 text-[16px] text-ln-muted">{t("calculator.result.empty")}</p>
-              )}
-              {result && !shown && (
+              {result && !shown ? (
                 <p className="mt-4 text-[16px] leading-[1.7]">{t("calculator.result.floor")}</p>
+              ) : (
+                <>
+                  <p
+                    aria-hidden="true"
+                    className="mt-3 font-ln-serif text-[52px] leading-[0.95] text-ln-line-strong sm:text-[78px]"
+                  >
+                    $&mdash;&mdash;&mdash;
+                  </p>
+                  <p className="mt-4 text-[15px] leading-[1.7] text-ln-muted">
+                    {t("calculator.result.empty")}
+                  </p>
+                  <div
+                    aria-hidden="true"
+                    className="mt-7 flex flex-wrap gap-x-10 gap-y-5 border-t border-ln-hair pt-6"
+                  >
+                    {[
+                      t("calculator.monthly.total"),
+                      t("calculator.result.down"),
+                      t("calculator.result.loan"),
+                    ].map((label) => (
+                      <div key={label}>
+                        <p className="text-[11px] uppercase tracking-[0.14em] text-ln-faint">{label}</p>
+                        <p className="mt-1 font-ln-serif text-[20px] leading-none text-ln-line-strong">
+                          &mdash;
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
-            </>
+            </div>
           )}
           {result && shown && (
             /* The answer gets a ground of its own. Flat on the canvas it read
@@ -330,13 +401,14 @@ export default function CalculatorPage() {
               </details>
             </div>
           )}
-          <p className="mt-6 text-[12px] leading-[1.7] text-ln-muted">{t("calculator.disclaimer")}</p>
+          <p className="mt-6 text-[12px] leading-[1.7] text-ln-muted lg:hidden">
+            {t("calculator.disclaimer")}
+          </p>
         </section>
 
         {/* ── Compare ────────────────────────────────────────────────── */}
         <section id="compare" className="mt-12 scroll-mt-10 border-t border-ln-hair pt-10">
           <h2 className="font-ln-serif text-[22px] text-ln-dark">{t("calculator.compare.heading")}</h2>
-          {!comparison && <p className="mt-4 text-[15px] text-ln-muted">{t("calculator.result.empty")}</p>}
           {comparison && (
             <>
               <p className="mt-2 text-[11px] uppercase tracking-[0.14em] text-ln-muted">
@@ -355,19 +427,14 @@ export default function CalculatorPage() {
                   ? t("calculator.compare.noCrossover")
                   : t("calculator.compare.crossover", { n: comparison.crossoverYear })}
               </p>
-              <dl className="mt-6 divide-y divide-ln-hair text-[14px]">
-                <Line
-                  label={t("calculator.compare.appreciation")}
-                  value={signed(comparison.appreciation, usd)}
-                />
-                <Line
-                  label={t("calculator.compare.amortization")}
-                  value={signed(comparison.amortization, usd)}
-                />
-                <Line label={t("calculator.compare.cashflow")} value={signed(comparison.cashflowDiff, usd)} />
-                <Line label={t("calculator.compare.closing")} value={signed(-comparison.closing, usd)} />
-                <Line label={t("calculator.compare.selling")} value={signed(-comparison.selling, usd)} />
-              </dl>
+              {/* Five signed figures in a column say which is which but not
+                  which one weighs; the bars are scaled to the largest so the
+                  answer's shape is readable before the numbers are. */}
+              <div className="mt-6 flex flex-col gap-3">
+                {cascade.map((c) => (
+                  <Bar key={c.label} label={t(c.label)} amount={c.amount} max={cascadeMax} usd={usd} />
+                ))}
+              </div>
               <div className="mt-6 overflow-x-auto">
                 <table className="w-full text-left text-[14px]">
                   <thead className="text-[11px] uppercase tracking-[0.14em] text-ln-muted">
@@ -470,6 +537,7 @@ export default function CalculatorPage() {
 
         {/* ── Consult: the shared form, with the calculation riding along ── */}
       </div>
+      </div>
       <section id="consult" className="relative mt-14 scroll-mt-10 overflow-hidden bg-ln-dark">
         {/* The frame carries an MLS watermark baked along its bottom edge, and
             at this section's aspect ratio `object-position` cannot crop enough
@@ -541,22 +609,35 @@ function signed(n: number, usd: Intl.NumberFormat): string {
   return `${rounded < 0 ? "−" : "+"}${usd.format(Math.abs(rounded))}`;
 }
 
+/** A money field with a ground of its own and one-tap amounts under it. The
+ *  underline version read as decoration next to the rest of the page; this is
+ *  the only thing on the screen a visitor is meant to touch. */
 function MoneyField({
   id,
   label,
   value,
   onChange,
+  suffix,
+  quick,
+  format,
+  group,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
+  suffix?: string;
+  quick?: readonly number[];
+  format?: (n: number) => string;
+  group?: (n: number) => string;
 }) {
   return (
-    <label htmlFor={id} className="block text-[11px] uppercase tracking-[0.14em] text-ln-muted">
-      {label}
-      <div className="mt-1 flex items-baseline border-b border-ln-line-strong focus-within:border-ln-dark">
-        <span className="pr-1 text-[18px] text-ln-muted">$</span>
+    <div>
+      <label htmlFor={id} className="block text-[11px] uppercase tracking-[0.14em] text-ln-muted">
+        {label}
+      </label>
+      <div className="mt-2 flex items-baseline gap-2 border border-ln-line bg-ln-canvas px-4 py-3 focus-within:border-ln-dark">
+        <span className="text-[17px] text-ln-faint">$</span>
         <input
           id={id}
           type="text"
@@ -564,10 +645,64 @@ function MoneyField({
           autoComplete="off"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="h-12 w-full bg-transparent font-ln-serif text-[26px] text-ln-dark outline-none"
+          onBlur={() => {
+            if (!group) return;
+            const n = Number(value.replace(/[^0-9.]/g, ""));
+            if (Number.isFinite(n) && n > 0) onChange(group(n));
+          }}
+          className="w-full min-w-0 bg-transparent font-ln-serif text-[30px] leading-[1.15] text-ln-ink outline-none [font-variant-numeric:tabular-nums]"
         />
+        {suffix && <span className="flex-none text-[13px] text-ln-faint">{suffix}</span>}
       </div>
-    </label>
+      {quick && format && (
+        <div className="mt-2 flex gap-2">
+          {quick.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => onChange(group ? group(n) : String(n))}
+              aria-label={`${label}: ${format(n)}`}
+              className="min-h-[44px] flex-1 border border-ln-line-strong text-[12px] text-ln-body transition-colors hover:border-ln-dark hover:text-ln-dark"
+            >
+              {format(n)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One line of the five-year cascade: label, a bar scaled against the biggest
+ *  of the five, and the signed figure. Gains and costs read apart by colour and
+ *  by the sign, never by colour alone. */
+function Bar({
+  label,
+  amount,
+  max,
+  usd,
+}: {
+  label: string;
+  amount: number;
+  max: number;
+  usd: Intl.NumberFormat;
+}) {
+  const width = max > 0 ? Math.max(2, Math.round((Math.abs(amount) / max) * 100)) : 0;
+  return (
+    <div className="flex items-center gap-3 sm:gap-4">
+      <span className="w-[136px] flex-none text-[13px] leading-[1.4] text-ln-body sm:w-[184px]">
+        {label}
+      </span>
+      <span className="hidden h-3 flex-1 bg-ln-tint sm:block">
+        <span
+          className={`block h-3 ${amount >= 0 ? "bg-ln-bronze" : "bg-ln-line-strong"}`}
+          style={{ width: `${width}%` }}
+        />
+      </span>
+      <span className="ml-auto w-[92px] flex-none text-right text-[13px] text-ln-dark [font-variant-numeric:tabular-nums] sm:ml-0">
+        {signed(amount, usd)}
+      </span>
+    </div>
   );
 }
 
