@@ -283,6 +283,33 @@ en `/fall`, `/contact` y `/calculator`.
 
 ---
 
+### Decisiones del dueño (6-sep, preguntadas una a una)
+
+| # | Pregunta | Decisión | Qué implica |
+|---|---|---|---|
+| 1 | ¿Buzón normal en `@denverhomestory.com` alguna vez? | **No: el dominio es solo del producto** | Recepción en la **raíz**. `hello@denverhomestory.com` limpio. Puerta cerrada: no habrá Gmail/Workspace en ese dominio sin deshacer esto |
+| 2 | Nombre del remitente hacia el cliente | **`Denver Home Story <hello@denverhomestory.com>`** | Va en `sender_override` de la ruta de canal. Sin nombre de persona (criterio de Postmark) |
+| 3 | Si Natalia le da a «Responder» en su Gmail | **Que la obligue el panel** | **Ya es así, sin trabajo**: `send_email` no tiene parámetro `reply_to` — solo `in_reply_to`, que es la cabecera de hilo. Verificado en `services/email.py:352` |
+| 4 | ¿El aviso también al dueño por correo? | **Sí** | 🔨 **Trabajo nuevo, fase aparte**: `booking_contact_email` admite **una** dirección; hay que tocar el modelo, Ajustes y los tests |
+| 5 | ¿Aceptar cualquier dirección de la raíz? | **No: solo `hello@`** | 🔨 **Trabajo nuevo**: hoy el código no sabe rechazar por dirección — un `to` sin ruta cae al fallback de inquilino único |
+| 6 | Qué hacer con lo que llegue a otra dirección | **Fuera del Inbox, pero visible para el dueño** | 🔨 Ni lead ni hilo, pero **queda anotado**. Se corrigió la pregunta antes de responderla: **no se puede rebotar** — Resend acepta el correo antes de que lo veamos, así que «rechazar» solo puede significar «qué hacemos de nuestro lado» |
+
+🔴 **Consecuencia que sale de cruzar la 1 con la 3, y que no estaba en el plan.**
+Cuando el remitente del aviso pase a ser `hello@denverhomestory.com`, esa
+dirección **la recibe el propio panel**. Así que si Natalia le da a «Responder»
+—que es justo lo que la decisión 3 espera que haga y no funcione— su respuesta
+**no se pierde: entra al Inbox como un lead nuevo, con su dirección de Engel &
+Völkers**. Hoy no pasa, porque el remitente es `noreply@` de un dominio sin
+recepción. No es grave, pero ensucia el Inbox con la agencia hablando consigo
+misma, y es exactamente lo que la decisión 5 quiere evitar. **Al backlog, junto
+a la 5 y la 6**: las direcciones conocidas de la agencia se reconocen y no
+crean lead.
+
+**Orden de trabajo que sale de todo esto:** Fase 1 (dominio, bloqueada en el
+dueño) → Fase 2 (ruta de canal, con el `sender_override` de la decisión 2) →
+fase nueva con 4, 5, 6 y la consecuencia de arriba, que son todas del mismo
+sitio: **quién puede escribir al Inbox y a quién se avisa**.
+
 ### ⛔ Fase 1 — bloqueada en el dueño: la clave de Resend NO puede crear dominios
 
 Medido el 6-sep desde **dentro** del contenedor de producción, usando la clave
