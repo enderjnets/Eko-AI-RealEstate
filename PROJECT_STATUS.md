@@ -320,14 +320,37 @@ Hashes tras el rebase sobre `69214c6` (6-sep); los anteriores al rebase ya no ex
   con el remitente del producto: llegó a la **bandeja de entrada** del dueño en
   segundos (`labelIds` incluye `INBOX`, id `010001a0777809bc…@email.amazonses.com`).
   Lo que sí pasa está **en el buzón del dueño, no en el producto**: el aviso del
-  28-ago está en Gmail **archivado, sin etiqueta `INBOX`**, y los dos avisos de
-  prueba del 5 y 6-sep no aparecen en ninguna parte (`in:anywhere` cubre spam y
-  papelera) pese a constar entregados — el patrón de un **filtro de Gmail** que
-  casa con el asunto «New lead from the website» y archiva o borra. La misma
-  búsqueda sí encuentra la sonda, así que el método es bueno. **Acción del dueño:**
-  Gmail → Configuración → Filtros y direcciones bloqueadas, borrar la regla; y
-  confirmar con Natalia que ella los ve, porque su buzón es de `engelvoelkers.com`
-  y lo único medible desde aquí es que el transporte los aceptó.
+  28-ago está en Gmail **archivado, sin etiqueta `INBOX`** (`labelIds` =
+  `["UNREAD","IMPORTANT"]`), y los dos avisos de prueba del 5 y 6-sep no aparecen
+  en ninguna parte pese a constar entregados.
+
+  **⚠️ Corrección del 6-sep, tras una objeción de la sesión par.** Escribí «el
+  patrón de un filtro de Gmail que archiva **o borra**». La mitad del «o borra»
+  no se sostiene y lo di por bueno sin comprobarlo: un filtro de Gmail no puede
+  borrar de verdad, manda a **Papelera**, y la papelera **sí** es visible a esta
+  búsqueda — en la misma consulta sale un correo de `alertas@` del 5-sep con
+  `labelIds` incluyendo `TRASH`. Los dos que faltan no están ahí.
+
+  Lo medido, ahora sí, con `includeTrash` y por remitente:
+  - El `to` de los dos avisos ausentes es **`enderjnets@gmail.com`**, el dueño —
+    no `booking_contact_email`. (Esto descarta la hipótesis alternativa del par,
+    que hubieran ido a Natalia.)
+  - `from:realtors.ekoaiautomation.com after:2026/09/04 in:anywhere` con papelera
+    devuelve **solo la sonda** de `noreply@` (16:05 del 6-sep, **con `INBOX`**) y
+    los avisos de `alertas@`. Los dos «New lead from the website» del 5 y 6-sep
+    **no están en ninguna etiqueta**.
+  - No es bloqueo por remitente: la sonda salió del **mismo** `noreply@` catorce
+    horas después del segundo desaparecido y llegó a la bandeja.
+
+  **Lo que queda en pie:** el del 28-ago está archivado sin `INBOX`, que sí tiene
+  forma de filtro por asunto. **Lo que queda sin explicar:** por qué los dos del
+  5 y 6-sep no están en el buzón pese a que Resend los da por `delivered`. No
+  fabrico una tercera hipótesis; se mide antes de decidir nada.
+
+  **Acción del dueño:** Gmail → Configuración → Filtros y direcciones bloqueadas,
+  mirar si hay una regla que case con «New lead from the website»; y confirmar con
+  Natalia que ella los ve, porque su buzón es de `engelvoelkers.com` y lo único
+  medible desde aquí es que el transporte los aceptó.
 
 ### Decisiones
 
