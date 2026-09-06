@@ -8,6 +8,56 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ## `/fall` — la guía de otoño (rama `feat/fall-ladder`, v0.85.0)
 
+**✅ v0.87.0 EN PRODUCCIÓN — desplegada el 6-sep-2026.** `/api/v1/health` sirve **0.87.0**
+(`8bcbe4e17`), `alembic current` = **055** (sin migración), 0 tracebacks en 5 min, los cuatro
+contenedores arriba. Base **`69a9aa7`** (el commit de estado de la 0.86.0 de la sesión par),
+que contiene `4ceb58680` = lo que corría. Copia previa: `.env.bak.20260906_v0870`.
+Reversión: `git reset --hard 4ceb5868` + build + `up -d`, **nunca `alembic downgrade`**.
+
+**Qué trae, y por qué.**
+
+*El ancho.* Era una columna de 672 px dentro de una ventana de 1830 — el dueño lo señaló con
+una captura. Desde `lg` (1024 px) el contenedor se ensancha y se parte: la escalera de altitud
+pasa a ser un rail **fijo** a la izquierda, que acompaña al lector por las cuatro franjas, y la
+guía se lee a la derecha. La columna de lectura conserva **exactamente** la medida que tenía:
+ensanchar el texto habría llevado las líneas por encima de 100 caracteres, más ancho y peor de
+leer. El ancho ganado se va a estructura, no a longitud de línea. Por debajo de 1024 px no
+cambia nada; verificado a 390, 768 y 1024. `lg:self-start` no es adorno: sin él la celda del
+grid se estira a la altura de la fila y no queda nada dentro de lo que pegarse.
+
+*Los doce enlaces a Maps.* Una línea dorada bajo cada descripción con un alfiler dibujado en
+SVG. Son **búsquedas, no coordenadas**: tres de estas entradas son un byway de 22 millas, un
+sendero que cruza el área metropolitana y tres parques a la vez, y un pin sería un punto
+inventado sobre una carretera — el mismo fallo que una foto de banco bajo el nombre de un sitio
+real. Toda consulta nombra Colorado, y eso decide el destino: «Central City» a secas encuentra
+Kentucky y «Kenosha Pass» encuentra Wisconsin. Las tres entradas múltiples llevan un enlace por
+destino con su nombre; un solo «Open in Maps» bajo un título que dice «Washington Park, City
+Park, Sloan's Lake» sería una promesa que el enlace no cumple.
+
+**Cinco de los dieciséis enlaces, abiertos de verdad y comprobados** (no de palabra):
+Mighty Argo Cable Car → 39.7425, −105.5067 · Peak to Peak Scenic Byway → «Peak to Peak Hwy»,
+40.0510, −105.1515 · Central City, Colorado → «Central City, CO», 39.8019, −105.5142 (**no**
+Kentucky) · Alderfer/Three Sisters → búsqueda centrada en Evergreen, 39.6231, −105.3534 ·
+Sloan's Lake Park → 39.7446, −105.0455. Con esos cinco quedan cubiertos los cuatro casos de
+codificación que podían romperse: coma, barra, apóstrofo y espacio.
+
+**Checklist (salida real):** backend **1737/1737** + ruff ✅ · frontend **328/328** · tsc ✅ ·
+lint ✅ · build ✅ · prerender `fall` `calculator` `contact` `index` `<main>`=1, spinner=0 ·
+2 mutaciones nuevas en rojo (quitar el estado de una consulta; dejar un sitio sin enlace) con
+`md5` restaurado · bundle 10.707 bytes, `--ff-only` limpio → `8bcbe4e17` · HTML servido:
+32 enlaces a Maps, **32 con Colorado y 0 sin él**, alfiler presente, rail y sticky presentes,
+5 fotos con sus créditos, firma, `Equal Housing`, canonical y `robots: index, follow` ·
+`/` `/fall` `/contact` `/calculator` **200** en la marca · captura real de producción a 1440.
+
+**🔴 Un error mío, dicho entero.** Tomé la **0.86.0** sin avisar a la sesión par, que ya la
+tenía tomada por derecho (era la siguiente libre tras mi 0.85.0). Lo vi al comprobar el VPS
+antes de desplegar —estaba a mitad de su despliegue—, se lo dije y me moví a la 0.87.0. No hubo
+daño porque lo detecté antes de tocar nada, pero el acuerdo era **avisar antes de tomar
+número**, y lo cumplí solo la primera vez. La regla, escrita para la próxima: el número se
+pide, no se toma.
+
+<details><summary>El despliegue anterior, v0.85.0</summary>
+
 **✅ v0.85.0 EN PRODUCCIÓN — desplegada el 6-sep-2026.** `/api/v1/health` sirve **0.85.0**
 (`b8b71b038`), `alembic current` = **055_calculator_snapshot** (sin migración en el diff),
 0 tracebacks en 5 min. Base **`a6e87f9fd`** (lo que corría) más `909cc1e` de la sesión par,
@@ -67,6 +117,10 @@ pasaba a ser mentira. Ahora es un valor CSS en línea, con un test que lo fija.
 
 **Ruido conocido, no nuestro:** los 2 errores de consola del widget de Turnstile, idénticos
 en `/fall`, `/contact` y `/calculator`.
+
+---
+
+</details>
 
 ---
 
