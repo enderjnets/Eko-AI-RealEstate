@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.87.0";
+export const CURRENT_VERSION = "0.88.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.88.0",
+    date: "2026-09-06",
+    title: {
+      en: "/calculator: what happens if you stay longer",
+      es: "/calculator: qué pasa si te quedas más tiempo",
+    },
+    changes: [
+      { en: "The comparison can now be read at 5, 10, 15, 20 or 30 years, with a chart of what owning nets you year by year and the year buying pulls ahead marked on it. Five years was the only horizon and it is the hardest case: the median US owner stays twelve years.", es: "La comparación se puede leer ahora a 5, 10, 15, 20 o 30 años, con un gráfico de lo que te deja comprar año a año y el año en que adelanta al alquiler marcado. Cinco años era el único horizonte y es el caso más duro: la tenencia mediana en EE. UU. son doce años." },
+      { en: "Past ten years the figure is also given in today's money — $580,971 thirty years out is about $320,737 today. Fixed along the way: the mortgage payment was still being charged after the loan was paid off, and the crossing year was only ever searched for in the first ten years.", es: "A partir de diez años la cifra se da también en dinero de hoy: $580,971 dentro de treinta años son unos $320,737 actuales. Corregido de paso: la cuota del préstamo se seguía cobrando después de pagarlo, y el año de cruce solo se buscaba en los diez primeros." },
+    ],
+  },
   {
     version: "0.87.0",
     date: "2026-09-06",

@@ -2,6 +2,32 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.88.0] — 2026-09-06
+
+### Added
+- **The five-year comparison is now five horizons: 5, 10, 15, 20 and 30 years.**
+  Five was the only one on offer and it is the hardest case — the median US
+  owner stays **twelve** years (Redfin, 2026; 8 in Louisville, 20 in Los
+  Angeles). Ten and fifteen bracket that median; thirty is the natural ceiling,
+  the year the loan is paid off.
+- **A chart of the net, year by year**, against the zero line, with the crossing
+  year marked. It turns a sentence the visitor had to take on trust into
+  something they can see. Inline SVG: no library, no extra request.
+- **Past ten years, the figure is also given in today's money.** A nominal
+  +$580,971 thirty years out is about $320,737 today. This is what the New York
+  Times calculator does — nominal and real, inflation defaulted to 2% — and 2%
+  is the Federal Reserve's long-run target, listed in Assumptions with its
+  source and with today's actual 3.4% (BLS, 12 months to July 2026) named.
+
+### Fixed
+- **The mortgage payment was charged after the loan was paid off.** The loan is
+  360 months; in year 31 the balance is zero and the model still billed
+  $2,457/month where it should fall to about $1,187. Invisible while the page
+  only showed five years, and wrong the moment it offers thirty.
+- **The crossing year was only searched for in years 1–10.** With a twenty-year
+  horizon, "renting stays cheaper" was false as soon as the crossing fell in
+  year twelve. It is now searched as far as the visitor is looking.
+
 ## [0.87.0] — 2026-09-06
 
 ### Changed
