@@ -1073,3 +1073,436 @@ el diseño; cierran huecos que el texto de las fases dejaba abiertos.
   `update agent_settings set booking_contact_email=NULL where org_id=1`. Lo
   aprendí en la suite de la Fase 8 (4 rojos); restaurado, 89/89 en esos
   ficheros y suite completa relanzada.
+
+
+---
+
+## PLAN (2) — El aviso que Natalia sí recibe: dominio propio, enlace al panel, y Clara también avisa
+
+> Escrito el 6-sep-2026. **Ejecutor: Opus 5.** Se **añade** al plan de
+> `/calculator` de arriba; no lo sustituye. Aquel es de la sesión par y sus
+> secciones 1-7 se quedan intactas.
+>
+> Método: una fase cada vez, máx. 3 intentos de corrección por fase, un commit
+> convencional por fase, push, **sin merge ni PR sin pedirlo, sin desplegar sin
+> autorización en un mensaje aparte**. Advisor antes de la fase [CRÍTICA] y tras
+> el 2º intento fallido; registrar cada consulta en `PROJECT_STATUS.md`.
+>
+> Reglas de convivencia con la sesión par (`DenverHomeStory Calculator`), las
+> dos aprendidas hoy a golpes: **el número de versión se pide, no se toma**
+> (ella acaba de sacar 0.88.0; la siguiente se le pregunta antes de escribirla), y
+> **se ramifica desde lo que corre el VPS**, comprobado con `/health` y
+> `git rev-parse` en el VPS, no desde `main` de memoria. Base de tests propia:
+> `eko_realestate_test_notice`, nunca la de ella.
+
+---
+
+## Contexto — qué pidió el dueño y qué había debajo
+
+El dueño pidió tres cosas, en sus palabras: que los correos usen el dominio
+`denverhomestory.com`; que **cuando alguien llene el formulario o hable con
+Clara por teléfono** (la asistente de Vapi) Natalia reciba un correo; y que ese
+correo, además de toda la información, lleve **un enlace que abra el mensaje en
+su sesión de Eko AI Realtors**, para que toda la comunicación quede
+centralizada en el panel. Ese era el plan original del producto.
+
+Lo que hay hoy, medido en el código y en producción, no en la memoria:
+
+| Pieza | Estado real | Dónde |
+|---|---|---|
+| Aviso por formulario | ✅ existe: correo + Telegram en paralelo, fila interna en el hilo del lead | `services/lead_notify.py`, disparado en `api/v1/public.py:496` |
+| Aviso por llamada (Clara / Vapi) | ❌ **no existe**. El fin de llamada guarda transcripción y resumen y **nadie es avisado** | `webhooks/voice.py:228` → `conversation.py:ingest_voice_call`; `send_new_lead_notice` tiene un solo llamante |
+| Remitente | `Eko AI Realtors <noreply@realtors.ekoaiautomation.com>` — el de la plataforma, no el de la marca | `RESEND_FROM`; por org se sobreescribe con `channel_routes.sender_override` (`channel_identity.py:222`) |
+| Dominio `denverhomestory.com` en Resend | ❌ no existe: `dig` no devuelve SPF, DKIM, MX ni DMARC. DNS en Cloudflare (`arely`/`damian.ns.cloudflare.com`) | medido 6-sep |
+| Enlace al panel en el aviso | ❌ no hay. El backend **no sabe la URL del panel** (solo el frontend, `NEXT_PUBLIC_PANEL_URL`) | `config.py` sin `PANEL_URL` |
+| Enlace profundo sin sesión | ❌ se pierde: `AuthGuard` manda a `/login` sin recordar el destino y los tres logins hacen `router.replace("/leads")` | `components/ui/AuthGuard.tsx:66`, `app/login/page.tsx`, `auth.py:367` (callback de Google → `/leads`) |
+| Host del panel en producción | `https://inmo-demo.ekoaiautomation.com` (el 308 que da `www.denverhomestory.com/leads`) | medido 6-sep |
+| Destinatario del aviso | `AgentSettings.booking_contact_email`, un solo correo, se edita en Ajustes (`SettingsForm.tsx`) | `lead_notify.py:139` |
+
+**Y los avisos que «se comía un filtro de Gmail»: dos hipótesis caídas y un
+hueco honesto.** Lo medido entre las dos sesiones el 6-sep:
+- Los dos avisos de prueba del 5-sep 21:36 (`PRUEBA Preflight`) y 6-sep 02:53
+  (`PRUEBA Dos Caminos`) fueron **al dueño**, `enderjnets@gmail.com`, y Resend
+  los da por `delivered` (medido por la sesión par desde el VPS; verificar en
+  la Fase 0 si el clasificador lo permite, no bloquea). **No fueron a Natalia**
+  — mi hipótesis, descartada.
+- Un filtro de Gmail que «borra» manda a la **Papelera**, y la papelera **sí**
+  se ve: la misma búsqueda devuelve un `alertas@` del 5-sep con `TRASH`. Los dos
+  avisos **no están en ninguna etiqueta**, ni papelera ni spam — la hipótesis
+  del filtro que borra, descartada.
+- No es bloqueo por remitente: la sonda del 6-sep 16:05 salió del **mismo**
+  `noreply@` y llegó con `INBOX`.
+- Lo único con forma de filtro por asunto es **un** mensaje: el del 28-ago,
+  archivado sin `INBOX` y **sin leer**.
+
+**Lo que hace desaparecer un correo entregado sin dejar rastro en la papelera
+es una acción humana o un cliente IMAP que expurga**, no un filtro: el buzón
+tiene etiquetas `Apple Mail To Do`, `Deleted Messages` (0 mensajes: por ahí
+pasan y se borran), `[Imap]/Drafts`, `[Imap]/Outbox` y `Junk (Ender J Gmail)`
+— hay o hubo un Apple Mail conectado. Con «Borrar para siempre al expurgar» en
+Ajustes → Reenvío y POP/IMAP de Gmail, un correo de prueba que el dueño borra
+desde el iPhone o el Mac **desaparece del todo**. Los dos que faltan se llamaban
+`PRUEBA …`, y **el dueño confirmó el 6-sep que los borró él**. Cerrado: **no
+hay avería en Gmail ni en el producto**; hubo dos correos de prueba borrados a
+mano y uno archivado desde la notificación. El plan no busca ningún filtro;
+deja una sonda de confirmación con el asunto real (Fase 2.2) y nada más.
+
+---
+
+## Decisiones ya tomadas con el dueño (6-sep)
+
+- **Dirección:** `Denver Home Story <hello@denverhomestory.com>`. Elegida entre
+  `hello@`, `hola@`, `info@` y `team@` tras contrastar fuentes primarias
+  (Resend, Postmark, Mailjet, Brevo, 101domain). `noreply@` descartado por las
+  cuatro; nombre de persona (`natalia@`) descartado por Postmark.
+- **Dominio raíz, envía y recibe.** Las respuestas a ese correo entran al
+  Inbox del panel atribuidas al lead. Consecuencia aceptada: el MX de
+  `denverhomestory.com` apunta a Resend y **no podrá existir un buzón normal
+  (Gmail/Workspace) en `@denverhomestory.com` fuera del producto**. Hoy no hay
+  ninguno. Si mañana hay newsletter o marketing, va a un subdominio propio.
+- **Nombre del remitente:** la marca, no una persona (Postmark). Para correos
+  que ve el cliente cabe «Natalia from Denver Home Story <hello@…>»; el aviso
+  interno a Natalia va como «Denver Home Story».
+
+---
+
+## Alcance
+
+**Dentro:** dominio propio verificado en Resend con recepción; identidad de
+envío de la org DHS; el backend conoce la URL del panel; el aviso lleva enlace
+al lead; Clara avisa al terminar una llamada; un enlace profundo sobrevive al
+login (contraseña, cuenta y Google); tests y mutaciones; medir de verdad dónde
+fueron los avisos de septiembre.
+
+**Fuera, dicho en voz alta:** no se cambia el transporte por Telegram ni su
+destinatario; no se añade segundo destinatario ni copia al dueño
+(`booking_contact_email` sigue siendo uno — si se quiere, es otra fase); no se
+toca `OPS_ALERT_FROM` (alertas de operación al dueño, otro asunto); no se toca
+`/fall` ni `/calculator`; no se toca el ROG; **ningún test llama a Resend,
+Vapi, Telegram ni Groq de verdad**; **jamás un correo de prueba a
+`natalia.kanonerova@engelvoelkers.com`**.
+
+---
+
+## Lo medido, que condiciona el diseño
+
+| Hecho | Evidencia | Consecuencia |
+|---|---|---|
+| El remitente por org es `sender_override` de su ruta de canal `email`, si no, el global | `channel_identity.py:196-222`; `send_email` usa `identity.sender_override or identity.destination` (`email.py`) | El cambio de dominio es **configuración**, no código: una ruta `email` para la org DHS. Y afecta a **todos** los correos salientes de la org (invitaciones de visita, respuestas a leads), no solo al aviso |
+| Resend rechaza envíos desde un dominio no verificado | doc Resend | **Orden obligatorio:** dominio verificado → *después* la ruta. Al revés se rompen todos los correos de DHS a la vez |
+| Las rutas se crean por API de plataforma (superusuario) | `platform.py:476 POST /routes`, `:610 PATCH /routes/{id}/identity`; `RouteCreateIn` acepta `sender_override` | Sin SQL a mano. `credential_ref` en null = usa la clave global de Resend, que es lo que queremos |
+| El correo entrante se atribuye a la org por el `to` contra `channel_routes.destination` | `tenant_resolver.py:resolve_org_by_destination`; `webhooks/email.py:169-174` | `destination = hello@denverhomestory.com` en esa misma ruta es lo que hace que una respuesta caiga en el Inbox de DHS |
+| El fin de llamada ya hace commit y devuelve `{status, lead_id, …}` (y `"duplicate"` en reentregas) | `conversation.py:ingest_voice_call`, paso 5 | El aviso se dispara **después** del commit, en el webhook, y **nunca** en `status == "duplicate"` (Vapi reentrega) |
+| El aviso escribe la fila interna solo si hay `message_id` | `lead_notify.py:243 if inbound is None: return` | Para llamadas hay que pasar la conversación de voz, no un mensaje: la fila interna va al hilo `voice` |
+| Cada setting nuevo son **3 ediciones idénticas** | `test_config_example.py` + `test_compose_env.py` | `PANEL_URL` × (`config.py`, `.env.example`, bloque `backend:` de `docker-compose.yml`) |
+| El callback de Google es un **POST cross-site** desde `accounts.google.com` | `auth.py:336`, `ux_mode=redirect` | Una cookie propia con `SameSite=Lax` no llega ahí. El destino se guarda en `sessionStorage` (sobrevive a la ida y vuelta a Google en la misma pestaña) y se consume al aterrizar |
+| Un `next` sin validar es un open redirect | — | Solo rutas relativas al mismo origen: `^/(?!/)`; nunca `/login`; nunca esquemas |
+| El panel vive en `inmo-demo.ekoaiautomation.com` | 308 medido | `PANEL_URL` en el `.env` del VPS = ese host, no el de la marca |
+| Mi sesión no pudo leer el VPS (clasificador) | dos comandos bloqueados 6-sep | Las lecturas de la Fase 0 las hace Opus con permiso explícito del dueño, o el dueño con `!`. **No se rodea el bloqueo** |
+
+---
+
+## Fases
+
+Rama nueva **`feat/aviso-natalia-dominio-propio`** desde el commit que corra el
+VPS (hoy `0760aa1`, v0.88.0; `origin/main` = `bdcf91b`, sus correcciones de
+estado — ramificar desde `origin/main` **solo tras comprobar** que contiene el
+HEAD del VPS, y releer `git rev-parse origin/main` en ese momento: hoy se movió
+tres veces en una tarde). Versión: **0.89.0, concedida por la sesión par el 6-sep** («no tengo
+nada bumpeado ni en marcha»). Si al ramificar ha pasado más de un día, volver a
+preguntar.
+
+### Fase 0 — Medir antes de tocar (bloqueante, sin código)
+
+Todo esto se lee; nada se escribe. Cada dato va a `PROJECT_STATUS.md`.
+
+1. **¿A quién fueron los avisos de septiembre?** Ya medido por la sesión par:
+   `to = ['enderjnets@gmail.com']`, `delivered`, los dos. Si el clasificador lo
+   permite, confirmar con la clave leída a variable y **nunca impresa**
+   (verificar por forma: prefijo `re_`, longitud):
+   `GET https://api.resend.com/emails/96edcb61-f2ef-4177-806f-3756e503f20a`.
+   Si no lo permite, se anota «según la sesión par» y se sigue.
+1b. **¿Los borró el dueño?** Preguntado el 6-sep con los asuntos y horas exactas
+   (`PRUEBA Preflight`, 5-sep 21:36; `PRUEBA Dos Caminos`, 6-sep 02:53):
+   **«Sí, los borré yo.»** No hay nada más que mirar en Gmail.
+2. **`booking_contact_email` hoy en producción**, con `psql` de solo lectura
+   contra `eko-realestate-db` (contenedor nuestro; los `eko-*` sin
+   `realestate` no se tocan): `select org_id, booking_contact_email, updated_at
+   from agent_settings`. Si el rol `eko` no ve filas (RLS forzada, como en
+   `leads`), repetir con el rol de `DATABASE_URL_BYPASS`; «0 filas visibles»
+   no es «vacío».
+3. **Interpretación** (el dato del 1b ya llegó): no hay avería de entrega. Dos
+   correos de prueba borrados a mano en un cliente que expurga; el 28-ago
+   archivado sin leer es el mismo gesto desde la notificación. Lo único que
+   queda por leer aquí es el punto 2: si `booking_contact_email` ≠ correo de
+   Natalia, es un hueco de configuración que el dueño corrige en Ajustes antes
+   de la Fase 4; anotarlo.
+4. **Forma de los secretos del VPS** (longitud/prefijo, nunca valor):
+   `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, `VAPI_*`; y valores de
+   `EMAIL_SIMULATED` y `VOICE_SIMULATED` (deben ser `false` para que la Fase 4
+   pueda probar nada real).
+5. **Rutas de canal de la org DHS hoy**: `GET /api/v1/platform/routes` con sesión
+   de superusuario (`PLATFORM_ADMIN_EMAILS`), o `select id, org_id, channel,
+   destination, sender_override, credential_ref from channel_routes`. Saber si
+   ya hay una ruta `email` (entonces es `PATCH …/identity`, no `POST`).
+6. **¿La clave de Resend puede crear dominios?** `GET /domains` con ella: 200 →
+   sirve; 401/403 → el dominio lo crea el dueño en el panel de Resend y Opus
+   solo verifica. **¿Hay webhook de recepción?** `GET /webhooks`: anotar si
+   alguno lleva `email.received` y a qué URL apunta.
+7. **VPS HEAD** (`git rev-parse --short HEAD` en `~/Eko-AI-RealEstate`) y
+   `/api/v1/health`. Comprobar `git merge-base --is-ancestor <HEAD_VPS>
+   origin/main`. Pedir el número de versión a la sesión par.
+
+### Fase 1 — Dominio propio en Resend (dueño + Opus, sin código)
+
+1. `POST /domains` con `{"name": "denverhomestory.com", "region": "us-east-1",
+   "capabilities": {"sending": "enabled", "receiving": "enabled"}}` (o el dueño
+   en el panel, según la Fase 0.6). **Los registros DNS son los que devuelve la
+   respuesta**, no los del `docs/setup-email.md`: SPF (TXT raíz), DKIM (TXT
+   `resend._domainkey`), MX + TXT de `send.` (Return-Path) y el MX de recepción
+   en la raíz (`inbound-smtp.us-east-1.amazonaws.com`, prioridad 9 según doc).
+2. El dueño añade cada registro en Cloudflare → DNS → Records, **Proxy status =
+   DNS only (nube gris)**, como manda `docs/setup-email.md:50-52`. Además
+   `_dmarc` TXT `v=DMARC1; p=none;` (sin `rua` de momento: los informes
+   agregados entrarían por el propio webhook de recepción como correo). Se
+   escribe en `docs/setup-email.md` una sección «Dominio de marca:
+   denverhomestory.com» con los registros exactos que quedaron.
+3. `POST /domains/{id}/verify` hasta `status: verified` en `GET /domains/{id}`,
+   y `dig` de cada registro desde el Mac como segunda fuente.
+4. Recepción: si la Fase 0.6 no encontró webhook con `email.received`, crearlo
+   apuntando a `<host del backend>/api/v1/webhooks/email` con el secreto que ya
+   verifica `webhooks/email.py` (`RESEND_WEBHOOK_SECRET`). Si ya existe, nada.
+
+**Criterio de terminado:** dominio `verified` con recepción `enabled`;
+`dig` confirma SPF, DKIM, MX de `send.`, MX raíz y DMARC; anotado en
+`PROJECT_STATUS.md` con fecha.
+
+### Fase 2 — La identidad de la org (configuración, sin código)
+
+**Solo con la Fase 1 en `verified`.** Si no, esto rompe todos los correos de DHS.
+
+1. Ruta `email` para la org DHS: `POST /api/v1/platform/routes` con `{org_id,
+   channel: "email", destination: "hello@denverhomestory.com", label: "Denver
+   Home Story — correo de marca", sender_override: "Denver Home Story
+   <hello@denverhomestory.com>"}` — o `PATCH /routes/{id}/identity` si ya
+   existía. `credential_ref` en null a propósito: usa la clave global.
+2. **Sondas salientes al dueño** (`enderjnets@gmail.com`), desde el VPS y bajo
+   `org_scope` de DHS, con `send_email` del producto — **un antes y un después
+   sobre la misma pregunta** (propuesta de la sesión par, y es correcta: si se
+   cambia el remitente mientras hay un hueco sin explicar, no se podrá
+   distinguir «el dominio nuevo no está caliente» de «lo que ya pasaba»):
+   - **Antes** de crear la ruta: sonda con el remitente **viejo** y el asunto
+     real `New lead from the website — SONDA A (ignorar)`.
+   - **Después** de crear la ruta: la misma sonda con el remitente **nuevo**,
+     `SONDA B`.
+   Verificar cada una en Gmail con «Mostrar original»: `From`, `dkim=pass`
+   (la B con `d=denverhomestory.com`), `spf=pass`, y etiqueta `INBOX`. Si la A
+   no cae en `INBOX`, el problema no es del dominio y **se para** hasta
+   entenderlo; si la A sí y la B no, es el dominio nuevo.
+3. **Sonda entrante**: el dueño responde a esa sonda desde Gmail. Verificar en
+   el log del backend que `webhooks/email.py` la recibió, la atribuyó a la org
+   DHS por `destination`, y que aparece en el Inbox del panel. Borrar el lead
+   de sonda después.
+
+**Criterio de terminado:** las dos sondas verificadas con salida real pegada en
+`PROJECT_STATUS.md`. **Ningún test automático aquí**: es configuración viva.
+
+### Fase 3 [CRÍTICA] — El aviso con enlace, Clara avisa, y el enlace sobrevive al login
+
+**Objetivo verificable:** un lead por formulario **y** una llamada terminada a
+Clara producen cada uno **un** correo a `booking_contact_email` con toda la
+información de hoy más una línea `Open in Eko AI Realtors: <PANEL_URL>/leads/<id>`;
+abrir ese enlace sin sesión lleva al login y, tras cualquiera de los tres
+logins, aterriza en `/leads/<id>`, no en `/leads`.
+
+**Por qué es crítica:** toca el webhook de voz (por donde entra cada llamada de
+producción), `generate_reply` no, pero sí `lead_notify`, que corre dentro del
+POST del formulario — el único punto de conversión — y el guardián de sesión
+de todo el panel.
+
+**Archivos y cambios — backend:**
+
+- **`app/config.py` + `.env.example` + `docker-compose.yml` (bloque
+  `backend:`)**, valores idénticos en los tres: `PANEL_URL: str = ""`. En
+  `.env.example`, documentado junto a `NEXT_PUBLIC_PANEL_URL` con la frase
+  «el mismo host; el backend lo necesita para poner enlaces en los correos».
+  En compose: `PANEL_URL: ${PANEL_URL:-}`. Vacío = sin enlace, no
+  `https:///leads/N`.
+- **`app/services/lead_notify.py`**:
+  - `send_new_lead_notice` gana un origen: formulario (hoy) o **llamada**. La
+    firma que menos rompe: parámetros de palabra clave nuevos
+    (`origin="form"|"call"`, `conversation_id=None`, `call=None` con caller,
+    duración, resumen). Los seis tests actuales siguen llamando igual.
+  - Línea de enlace, al final del cuerpo, **solo si `PANEL_URL` no está vacío**:
+    `Open in Eko AI Realtors: {PANEL_URL.rstrip('/')}/leads/{lead.id}`.
+  - Cuerpo de llamada: `Clara answered a call.` + `Caller`, `Name`, `Duration`
+    (mm:ss), `Summary` (el `conv.summary`), `The transcript and the recording
+    are in the panel.` + enlace. Asunto distinguible del de formulario:
+    `New call answered by Clara — {who}`.
+  - Fila interna: para llamadas se escribe en la conversación `voice` recibida
+    (`conversation_id`), con `internal=True` como hoy. La rama
+    `if inbound is None: return` pasa a «sin conversación conocida, sin fila».
+  - Docstring del módulo: dos orígenes, un destinatario, un enlace.
+- **`app/api/v1/webhooks/voice.py`**, tras `result = await
+  ingest_voice_call(report, db)` (que ya hizo commit): disparar el aviso **si**
+  `result.get("status") != "duplicate"` **y** la llamada tiene al menos un turno
+  o un resumen. Si `ingest_voice_call` no devuelve `conversation_id`, `stored`
+  y `summary`, se añaden al dict de retorno (es nuestro). Envuelto como en
+  `public.py:495`: el aviso nunca cuesta la ingesta ni el 200 a Vapi.
+- **Barridos AST** (`test_content_gate_is_absolute.py`,
+  `test_opt_out_is_absolute.py`): no se añade ninguna función con `.post`. Si
+  al implementar apareciera una, se declara en los dos con su motivo.
+
+**Archivos y cambios — frontend:**
+
+- **`lib/nextPath.ts`** (nuevo, pequeño): `isSafeNext(s)` = empieza por `/`,
+  no por `//`, no es `/login` ni `/register`, sin espacios ni esquemas;
+  `rememberNext(s)` / `takeNext()` sobre `sessionStorage["eko.next"]`, ambos
+  en `try/catch` (el storage puede lanzar).
+- **`components/ui/AuthGuard.tsx`**: sin sesión →
+  `router.replace('/login?next=' + encodeURIComponent(pathname + search))`
+  (`useSearchParams` para `search`). Con sesión y `takeNext()` no vacío →
+  `router.replace(next)` una sola vez. Esto cubre el aterrizaje del callback de
+  Google, que llega a `/leads` por el 303 del backend.
+- **`app/login/page.tsx`**: al montar, si hay `?next=` seguro → `rememberNext`.
+  Los tres `router.replace("/leads")` pasan a `router.replace(takeNext() ??
+  "/leads")`.
+- **`lib/hosts.ts`**: nada. `/login` sigue fuera de `PUBLIC_PATHS`.
+
+**Tests** (nunca un transporte real):
+
+Backend, en `tests/test_new_lead_notice.py` (mismo patrón: ASGI real,
+`send_email` y `send_operator_telegram` parcheados):
+1. Con `PANEL_URL="https://panel.test"` el cuerpo contiene
+   `https://panel.test/leads/{id}` **exacto**.
+2. Con `PANEL_URL=""` el cuerpo **no** contiene `/leads/`.
+3. Un fin de llamada (`tests/test_voice_webhook_e2e.py`, patrón existente) con
+   turnos y resumen → `send_new_lead_notice` (parcheado con `AsyncMock`)
+   llamado **una** vez, con el `lead_id` de la llamada, y el cuerpo real
+   (segundo test sin parchear el aviso, solo el correo) lleva `Clara`,
+   la duración y el enlace.
+4. La **reentrega** del mismo informe → **cero** llamadas nuevas.
+5. Informe sin turnos y sin resumen → no avisa.
+6. El aviso de formulario sigue exactamente igual salvo la línea del enlace
+   (los seis tests existentes en verde sin cambios).
+
+Frontend (`lib/__tests__/nextPath.test.ts`):
+7. `isSafeNext`: acepta `/leads/12`, `/leads/12?tab=timeline`; rechaza
+   `https://evil.example`, `//evil.example`, `/login`, `javascript:alert(1)`,
+   `""`, `/leads/12 x`.
+8. `rememberNext` + `takeNext` devuelven una vez y vacían; con `sessionStorage`
+   que lanza, no rompen.
+
+**Mutaciones a verificar** (copiar, mutar, ver el rojo, restaurar, `md5`):
+
+| Mutación | Debe poner en rojo |
+|---|---|
+| quitar la línea del enlace | test 1 |
+| poner el enlace aunque `PANEL_URL` esté vacío | test 2 |
+| avisar también cuando `status == "duplicate"` | test 4 |
+| avisar de una llamada vacía | test 5 |
+| `isSafeNext` acepta `//evil.example` | test 7 |
+| `takeNext` no vacía el storage | test 8 |
+
+**Criterio de terminado:** suite backend completa en verde **sin saltados**
+desde `eko_realestate_test_notice`; `ruff check app tests` limpio; frontend
+`vitest` + `tsc` + `next build` en verde; `docker build -f backend/Dockerfile
+backend` OK; diff sin secretos; las seis mutaciones verificadas. Bump (el
+número pedido) en `config.py` + `frontend/lib/version.ts` + `CHANGELOG.md`, en
+el **mismo** commit que el código. Commit
+`feat(notice): el aviso enlaza al panel, Clara avisa al colgar, y el enlace sobrevive al login`.
+
+### Fase 4 — Verificación real y despliegue
+
+**Antes de pedir autorización:** `.env` del VPS gana
+`PANEL_URL=https://inmo-demo.ekoaiautomation.com` **añadida con `>>` tras
+copia** (`.env.bak.YYYYMMDD_v<versión>`), jamás con `cat >` — el 30-ago un
+instalador vació claves así.
+
+**Deploy (autorización en un mensaje aparte):** bundle desde el HEAD del VPS →
+`scp` → `git fetch && git merge --ff-only` → `docker compose build backend
+frontend` → `up -d` → `/api/v1/health` = la versión nueva. **Sin migración**
+(no hay esquema nuevo; `alembic current` sigue en 055). Reversión: `git reset
+--hard <HEAD anterior>` + rebuild; la ruta de canal de la Fase 2 no depende del
+código y se queda.
+
+**Después del deploy, lo que los tests no pueden probar**, todo con el
+destinatario **temporalmente** en el dueño y **restaurado al final** (precedente
+en `PROJECT_STATUS.md:3472`; nunca Natalia):
+1. Ajustes → `booking_contact_email` = `enderjnets@gmail.com`. Anotar el valor
+   anterior **antes** de cambiarlo.
+2. Formulario real en `/fall` → correo en Gmail: `From` de marca, `INBOX`,
+   línea `Open in Eko AI Realtors: https://inmo-demo…/leads/<id>`.
+3. Abrir ese enlace **en una ventana sin sesión** → `/login?next=/leads/<id>` →
+   entrar con Google (el flujo de redirección, el que más se rompe) → aterriza
+   en `/leads/<id>` con el hilo del lead. Repetir con contraseña.
+4. **La cadena en las dos vías, desde un lead de formulario** (lo que en junio
+   se probó fue correo↔correo desde el principio; esto no): desde el hilo de
+   ese lead en el panel, contestar con el `Composer` → el correo llega al
+   cliente de prueba (una dirección `enderjnets+cliente@gmail.com`) como
+   `Denver Home Story <hello@denverhomestory.com>` con `In-Reply-To` y
+   `References` (Mostrar original) → el cliente pulsa Responder → la respuesta
+   aparece **en el mismo hilo del panel**, atribuida a DHS, y Gmail la muestra
+   como una sola conversación. Si la primera respuesta a un lead de formulario
+   no sale por correo o abre un hilo suelto, es un hallazgo, no un detalle.
+5. **Llamada real a Clara** (la hace el dueño desde su móvil, un minuto, decir
+   nombre y que busca casa) → al colgar, correo `New call answered by Clara —
+   …` con duración, resumen y enlace; el enlace abre el hilo `voice` con la
+   transcripción.
+6. **Gmail: nada que probar aquí.** La sonda A de la Fase 2.2 ya lleva el asunto
+   real y cayó (o no) en `INBOX`; eso es todo lo que hay que anotar. Si por lo
+   que sea la A no cayó en `INBOX`, la Fase 2 ya paró y aquí no se llega.
+7. Restaurar `booking_contact_email` al valor anotado; borrar los leads de
+   prueba (`select count(*)` antes y después); comprobar que Telegram también
+   sonó en cada caso.
+8. **Lo que solo Natalia puede confirmar:** que el primer aviso real le llega y
+   que el enlace le abre el panel con su cuenta. Su buzón es de
+   `engelvoelkers.com`; desde aquí solo se mide que el transporte lo aceptó.
+9. `PROJECT_STATUS.md`: checklist con salida real; `main` + tag + release en
+   el mismo movimiento, y avisar a la sesión par con el hash final.
+
+---
+
+## Riesgos y supuestos
+
+1. **La clave de Resend del VPS podría ser de solo envío** → no crea dominios.
+   Mitigación: Fase 0.6 lo mide; el dueño crea el dominio en el panel y Opus
+   verifica. Nada de pedir otra clave por el chat.
+2. **Poner la ruta antes de verificar el dominio** rompe **todos** los correos
+   de DHS, no solo el aviso. Es un orden escrito (Fase 1 → Fase 2), no un test.
+3. **MX en la raíz**: cualquier correo a `*@denverhomestory.com` entra al
+   producto; una dirección que no coincida con ninguna ruta cae al fallback de
+   tenant único (`tenant_resolver`). Aceptado por el dueño; anotado.
+4. **`VOICE_SIMULATED=true` en producción** haría imposible la prueba de la
+   llamada. Se lee en la Fase 0.4 antes de prometer nada.
+5. **Vapi reentrega informes**: sin la guarda de `duplicate` Natalia recibiría
+   el mismo aviso varias veces. Test 4 y su mutación.
+6. **`sessionStorage` puede no existir** (navegación privada estricta, vista
+   previa). Todo va en `try/catch`; el peor caso es aterrizar en `/leads`, que es
+   lo de hoy.
+7. **El aviso corre dentro del POST del formulario**: la línea del enlace no
+   añade transporte ni tiempo; el presupuesto de 8 s de las dos vías no se toca.
+8. **Los avisos de septiembre pudieron ir a Natalia.** Si la Fase 0 lo confirma,
+   se le dice al dueño en la primera línea, no en una nota al pie.
+9. **`POST /routes` podría rechazar una ruta `email` sin refs** por
+   `_refuse_a_route_that_cannot_verify` (`platform.py`). Una ruta sin
+   `credential_ref` ni `inbound_secret_ref` **tiene** que ser válida: cada campo
+   cae al global por su cuenta (`channel_identity.py:204-222`). Si la API la
+   rechaza, se lee esa función antes de tocar nada; no se mete la fila por SQL
+   para esquivar la validación.
+
+---
+
+## Verificación (resumen ejecutable)
+
+1. Fase 0 entera anotada con salida real; interpretación escrita **antes** del
+   dato.
+2. Dominio `verified` + recepción; `dig` de cinco registros + DMARC.
+3. Sonda saliente (`dkim=pass`, `d=denverhomestory.com`, `INBOX`) y sonda
+   entrante atribuida a la org, ambas al dueño.
+4. Suite completa en verde sin saltados, `ruff`, `tsc`, `vitest`, `next build`,
+   `docker build`; seis mutaciones en rojo; `md5` restaurado.
+5. Tras el deploy: `/health` = versión nueva; formulario → correo con enlace →
+   enlace sin sesión → Google → `/leads/<id>`; llamada a Clara → correo;
+   sonda del asunto; destinatario restaurado; leads de prueba borrados.
+6. `origin/main` == HEAD del VPS; tag y release; sesión par avisada.

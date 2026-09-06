@@ -6,6 +6,58 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## Aviso a Natalia — dominio propio, enlace al panel y Clara (rama `feat/aviso-natalia-dominio-propio`)
+
+Plan añadido a `PLAN.md` como sección «PLAN (2)» (1075 → 1508 líneas, solo
+adiciones). Base **`bdcf91b`** (`origin/main`), que **contiene** el HEAD del VPS
+`0760aa16d`; producción sirve **0.88.0**, el mismo `APP_VERSION` de esa base.
+Versión asignada: **0.89.0** (concedida por la sesión par el 6-sep).
+
+### ✅ Fase 0 — medido el 6-sep-2026 (solo lecturas)
+
+| Qué | Medido | Consecuencia |
+|---|---|---|
+| HEAD del VPS | `0760aa16d`, rama `feat/maquina-de-video-dhs`; los 4 contenedores arriba | base correcta confirmada, no supuesta |
+| `/api/v1/health` | `0.88.0`, `captcha:on`, `llm_fallback:ok` | — |
+| Organizaciones | **dos**: `1 = Robbie & Natalia (client-zero)`, `2 = Demo` | el fallback de un solo inquilino **no** es inocuo: entra en juego en la Fase 2 |
+| `agent_settings` | **una** fila: org 1, `booking_contact_email = natalia.kanonerova@engelvoelkers.com`, `updated_at 2026-09-06 07:34 UTC` | 🔴 **hoy los avisos reales van a Natalia**. Ninguna prueba puede salir sin reapuntar ese campo antes y restaurarlo después |
+| `channel_routes` | **cero filas** | la Fase 2 es `POST /routes` (crear), no `PATCH …/identity` |
+| `leads`/`conversations`/`messages` | 0 filas **visibles con el rol `eko`** | no es «vacío»: la RLS forzada de `leads` ya lo escondió antes. Sin confirmar con rol de bypass (bloqueado) |
+
+**No medido, y por qué** — el clasificador de Claude Code bloqueó tres lecturas
+del VPS (`printenv` del contenedor, `grep` de `.env`, `psql -U postgres`). No se
+rodearon. Quedan pendientes y **no bloquean la Fase 3**:
+- forma (longitud/prefijo, nunca valor) de `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, `VAPI_*`;
+- valores de `EMAIL_SIMULATED` y `VOICE_SIMULATED` (condicionan la Fase 4);
+- si la clave de Resend puede crear dominios (`GET /domains`) y si existe webhook `email.received`.
+
+**Fase 0.1b, cerrada sin medir nada más:** el dueño confirmó que los dos correos
+de prueba de septiembre los **borró él**. No hay avería de entrega ni en Gmail ni
+en el producto.
+
+### Consulta al advisor (arranque, 6-sep)
+
+**Motivo:** validar orden, dependencias y riesgos antes de escribir nada.
+**Decisión:** (1) ramificar desde `origin/main` **antes** de tocar `PLAN.md` —
+si no, el append caía en `feat/fall-ladder`; (2) reescribir la cabecera del plan:
+decía «sustituye por completo al plan anterior de este fichero», falso en el repo,
+donde lo anterior es el plan `/calculator` de la sesión par — ahora dice que se
+**añade**; (3) en el frontend, **no** usar `useSearchParams` (App Router exigiría
+un `<Suspense>` alrededor de `AuthGuard`, que envuelve el panel entero): se lee
+`window.location.search` dentro de un `useEffect`, el patrón que `app/login/page.tsx`
+ya usa para `?error=`; (4) con dos organizaciones, el fallback de inquilino único
+del correo entrante es un hallazgo **antes** de la Fase 2, no después.
+
+### Orden real de ejecución (cambiado respecto al plan, y por qué)
+
+Las Fases 1 y 2 **no las puede ejecutar esta sesión**: crear el dominio en Resend
+y pegar los registros en Cloudflare son manos del dueño, y la clave de Resend está
+tras el clasificador. La Fase 3 **no depende del dominio** — `PANEL_URL`, el enlace
+y el aviso de Clara funcionan con el remitente actual. Así que se ejecuta la Fase 3
+primero y las 1-2 quedan preparadas para el dueño.
+
+---
+
 ## `/fall` — la guía de otoño (rama `feat/fall-ladder`, v0.85.0)
 
 **✅ v0.87.0 EN PRODUCCIÓN — desplegada el 6-sep-2026.** `/api/v1/health` sirve **0.87.0**
