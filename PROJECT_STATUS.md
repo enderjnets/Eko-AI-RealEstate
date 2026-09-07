@@ -5708,3 +5708,43 @@ fichero nuevo, que git no conoce, el checkout falló y **dejó la mutación
 puesta**. Lo vi porque el arnés compara `md5` antes y después y las dos líneas
 dijeron `MISMATCH`. Reconstruido y verificado; el arnés respalda con `cp`.
 La comparación de `md5` no era ceremonia: era lo único que lo delató.
+
+### ✅ v0.90.0 desplegada y verificada con correo real (7-sep, 03:5x UTC)
+
+`main` = VPS = `4ffe0ce`, tag `v0.90.0` empujado. `.env` del VPS: copia
+`.env.bak.20260906_v0.90.0` (171 líneas) y luego `>>` — nunca `cat >`; el
+fichero pasó a 176 y `RESEND_API_KEY` sigue ahí.
+
+**La lectura que faltaba desde el plan original (Fase 0.2), por fin hecha:**
+`booking_contact_email` de la org 1 es **`natalia.kanonerova@engelvoelkers.com`**
+(`updated_at` 6-sep 07:34 UTC, o sea que el ensayo de la Fase 4 sí lo restauró).
+Eso resuelve las tres incógnitas de golpe: el guardián de la dirección de la
+agencia **no es inerte**, la copia al dueño **no se deduplica**, y no había
+colisión de ensayo. Sin este dato las dos sondas de abajo habrían medido otra
+cosa.
+
+| Sonda | Salida real |
+|---|---|
+| `/health` | `"version":"0.90.0"`, `llm_fallback: ok` |
+| El ajuste llega al proceso | `docker exec … printenv OWNER_NOTICE_EMAIL` → `enderjnets@gmail.com` (dentro del contenedor, no en el `.env`) |
+| **C — dirección sin ruta** (`nothere@denverhomestory.com`, correo real desde Gmail) | `refusing inbound email — … no mapped address on denverhomestory.com` · `200 OK` (Resend no desactiva el endpoint) · **0 leads** · Telegram aceptado (`sendMessage 200`) un segundo después |
+| **D — formulario real** en `/contact`, con el navegador y su captcha | `202` · `new-lead notice sent to the agency` + `operator copy of the notice sent` |
+| Las dos llegaron, y por separado | Gmail: **dos mensajes**, mismo asunto, `INBOX`, de `hello@denverhomestory.com`, uno a `enderjnets+agency@gmail.com` y otro a `enderjnets@gmail.com`. La del operador pesa 63 bytes más: es la línea que dice a quién se avisó |
+| Limpieza | dirección de la agencia restaurada al valor exacto de Natalia; lead de sonda borrado: 1/1/2 → **0/0/0** |
+
+**Cero correos a Natalia**: la sonda D se hizo con la dirección de la agencia
+apuntada temporalmente a `enderjnets+agency@gmail.com`, anotado el valor
+anterior antes de tocarlo y restaurado en el mismo minuto.
+
+🔴 **Pendiente del dueño, un solo comando.** `gh release create` lo bloquea mi
+clasificador, igual que la vez pasada, y no lo rodeo ni se lo pido a la sesión
+par. El tag ya está; falta la nota de la release:
+
+```
+! gh release create v0.90.0 --latest --title "v0.90.0 — Only the address you published can write to the Inbox" --notes-file CHANGELOG.md
+```
+
+**El número de versión lo tomé sobre evidencia, no sobre respuesta.** Pregunté
+dos veces a la sesión par y no contestó; medí que el tag más alto era `v0.89.0`,
+que `main` era `d86c684` y que ninguna rama remota iba por encima. Si ella tenía
+algo sin empujar, la colisión es mía.
