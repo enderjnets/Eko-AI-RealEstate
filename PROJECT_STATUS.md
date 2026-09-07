@@ -5736,13 +5736,17 @@ cosa.
 apuntada temporalmente a `enderjnets+agency@gmail.com`, anotado el valor
 anterior antes de tocarlo y restaurado en el mismo minuto.
 
-🔴 **Pendiente del dueño, un solo comando.** `gh release create` lo bloquea mi
-clasificador, igual que la vez pasada, y no lo rodeo ni se lo pido a la sesión
-par. El tag ya está; falta la nota de la release:
+✅ **Release publicada** (7-sep 15:13 UTC), marcada `Latest`. La lanzó el dueño:
+`gh release create` lo bloquea mi clasificador, igual que en la 0.89.0, y no lo
+rodeo ni se lo pido a la sesión par.
 
-```
-! gh release create v0.90.0 --latest --title "v0.90.0 — Only the address you published can write to the Inbox" --notes-file CHANGELOG.md
-```
+**Dos comandos que le di y que fallaron, los dos por mi culpa, y la lección es
+la misma que ya está en memoria:** el primero sin `cd`, ejecutado desde `~`
+(`open CHANGELOG.md: no such file`); el segundo con la nota **en línea y en
+varias líneas**, que zsh dejó colgado en `cmdand quote>` esperando la comilla —
+exactamente cómo se rompieron los registros DKIM el 6-sep. Lo que funcionó:
+escribir la nota en `/tmp/notas-v0.90.0.md` y darle **una sola línea** con
+`--notes-file`. Un comando para SU terminal se pega de una vez o no se pega.
 
 **El número de versión lo tomé sobre evidencia, no sobre respuesta.** Pregunté
 dos veces a la sesión par y no contestó; medí que el tag más alto era `v0.89.0`,
