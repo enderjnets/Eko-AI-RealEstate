@@ -326,9 +326,27 @@ habilitados, sus cuatro registros en `verified`. Ruta de canal creada
 | Sonda saliente, por el camino real del producto | `from: Denver Home Story <hello@denverhomestory.com>` · `last_event: **delivered**` |
 | Webhook de entrada | ya existía desde el **1-jun**, `email.received` → nuestro endpoint. Su `signing_secret` restaurado en el `.env` |
 
-**Lo que quedó pendiente del dueño:** confirmar que la sonda cayó en **bandeja**
-(no spam) con `dkim=pass d=denverhomestory.com`, y **responderla** para probar
-la vuelta.
+**✅ PROBADO DE PUNTA A PUNTA, en las dos vías** (6-sep, 02:44-02:48 UTC):
+
+| Paso | Evidencia |
+|---|---|
+| Sale de la marca | `from: Denver Home Story <hello@denverhomestory.com>`, `last_event: delivered` |
+| Llega a bandeja | `labelIds: ["INBOX"]` — leído en Gmail, no preguntado |
+| Autenticación | `dkim=pass header.i=@denverhomestory.com header.s=resend` · `spf=pass` · **`dmarc=pass (p=REJECT sp=REJECT)`** |
+| La respuesta entra al panel | lead 1262 en `org_id=1`, mensaje `inbound` con el texto exacto |
+| El agente contesta solo | mensaje `outbound`, `delivery_status=sent`, con id de Resend y sin error |
+| **La cadena es un hilo normal** | los tres mensajes bajo el **mismo** `threadId` en Gmail; el tercero marcado `IMPORTANT` |
+| Idioma | contestó en español porque la sonda iba en español |
+| Limpieza | lead de sonda borrado: 1/1/2 → **0/0/0** |
+
+Que el DMARC pase **con la política en `reject`** es lo que confirma que cambiar
+el `v=spf1 -all` de la raíz no era un detalle: era la diferencia entre entregar
+y desaparecer.
+
+**Ya no queda nada pendiente en estas dos fases.** Lo que sigue abierto es la
+fase nueva que agrupa las decisiones 4, 5 y 6 del dueño (segundo destinatario
+del aviso, aceptar solo `hello@`, y qué hacer con lo que llegue a otra
+dirección), más la prueba de una llamada real a Clara.
 
 #### Cinco trampas de esta fase, todas medidas
 
