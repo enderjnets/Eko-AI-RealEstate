@@ -310,7 +310,63 @@ dueño) → Fase 2 (ruta de canal, con el `sender_override` de la decisión 2) �
 fase nueva con 4, 5, 6 y la consecuencia de arriba, que son todas del mismo
 sitio: **quién puede escribir al Inbox y a quién se avisa**.
 
-### ⛔ Fase 1 — el dominio se creó en la CUENTA equivocada de Resend
+### ✅ Fases 1 y 2 — dominio propio VERIFICADO y remitente de marca EN PRODUCCIÓN (6-sep)
+
+`denverhomestory.com` verificado en la cuenta **de Realtors** (id
+`ed86d331-2a9d-464c-a026-59c197b08005`), con `sending` **y `receiving`**
+habilitados, sus cuatro registros en `verified`. Ruta de canal creada
+(`channel_routes` id 1), y la sonda saliente **entregada**:
+
+| Comprobación | Salida real |
+|---|---|
+| Los seis registros DNS | verificados contra el **autoritativo** (`arely.ns.cloudflare.com`), carácter a carácter, no contra un resolutor que cachea |
+| Dominio en Resend | `status: verified`, `capabilities: {sending: enabled, receiving: enabled}` |
+| Ruta (leída en la base, no en la respuesta del navegador) | `org_id=1`, `channel=email`, `destination=hello@denverhomestory.com`, `sender_override=Denver Home Story <hello@denverhomestory.com>`, refs **vacías** a propósito |
+| Identidad que resuelve la org 1 | `Denver Home Story <hello@denverhomestory.com>` |
+| Sonda saliente, por el camino real del producto | `from: Denver Home Story <hello@denverhomestory.com>` · `last_event: **delivered**` |
+| Webhook de entrada | ya existía desde el **1-jun**, `email.received` → nuestro endpoint. Su `signing_secret` restaurado en el `.env` |
+
+**Lo que quedó pendiente del dueño:** confirmar que la sonda cayó en **bandeja**
+(no spam) con `dkim=pass d=denverhomestory.com`, y **responderla** para probar
+la vuelta.
+
+#### Cinco trampas de esta fase, todas medidas
+
+1. **`403 error code: 1010` de Resend NO es de permisos: es el User-Agent.** Su
+   borde rechaza la petición antes de llegar a la API. `urllib` de Python manda
+   uno que no acepta. Con la cabecera puesta, la **misma** clave da 200. No está
+   en su referencia de errores; está en un artículo suyo aparte. Esto costó una
+   conclusión falsa escrita como medida — ver la corrección más abajo.
+2. **Había DOS cuentas de Resend** y el dominio se creó en la de la plataforma
+   de ventas (la que tiene `biz.ekoaiautomation.com`). Su API lo dijo con
+   precisión al intentar crearlo en la correcta: *«registered to another team»*.
+   Se resolvió borrándolo allí y creándolo por API con la clave de producción,
+   que **sí** pertenece a la cuenta buena.
+3. **Un `whsec_` se quemó en el chat.** Al pegarlo dentro de un `sed`, el valor
+   llevaba `/` y `+`; `sed` interpretó parte como sintaxis suya y **el mensaje
+   de error imprimió el secreto entero**. La lección no es «usa otro
+   delimitador»: **un secreto no se mete nunca dentro de un patrón**. Lo que
+   funcionó al final fue no pegarlo en absoluto — la API devuelve el
+   `signing_secret`, así que va de la respuesta al `.env` por fichero temporal
+   con permisos 600, borrado después, sin pasar por ninguna pantalla.
+4. **`read -rs` dentro de un bloque pegado no espera**: se come la línea
+   siguiente del propio pegado. Los comandos interactivos se pegan solos.
+5. **Un salto de línea invisible rompió el DKIM tres veces.** Los bloques de
+   código se parten en la pantalla del dueño y al copiarlos el corte visual se
+   vuelve un `\n` real dentro del valor. `dig` lo delata como `\010`. Se
+   arregló tecleando a mano los diez últimos caracteres. **Para un valor largo,
+   verificar la longitud exacta, no mirarlo.**
+
+**Un registro que nadie había mirado y habría roto el envío:** el TXT de la
+raíz decía **`v=spf1 -all`** — «este dominio no manda correo, rechaza todo».
+Era correcto cuando el dominio solo servía la web; con `p=reject` en el DMARC
+habría hecho desaparecer los correos de Natalia sin rebote útil. Cambiado a
+`v=spf1 include:amazonses.com ~all`. **No estaba en el plan**: apareció al mirar
+la zona entera en vez de solo los registros que Resend pedía.
+
+---
+
+### Registro del bloqueo anterior (histórico)
 
 > 🔴 **CORRECCIÓN (6-sep, más tarde). Lo de abajo era falso y lo escribí como
 > medido.** El `403 error code: 1010` **no es de permisos**: es el borde de
