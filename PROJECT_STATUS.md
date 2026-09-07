@@ -5785,3 +5785,6 @@ No es un fallo —es el producto haciendo su trabajo— pero es la primera vez q
 un correo de este sistema llega a su bandeja sin que fuera una sonda dirigida al
 dueño. El lead 1264 sigue en el panel a propósito: es una llamada real con su
 transcripción, y borrarlo es decisión suya.
+
+El lead 1264 se borró a petición del dueño tras la verificación: 1/1/20 → **0/0/0**.
+La transcripción de la llamada sigue en Vapi, que es de donde vino.
