@@ -5752,3 +5752,28 @@ escribir la nota en `/tmp/notas-v0.90.0.md` y darle **una sola línea** con
 dos veces a la sesión par y no contestó; medí que el tag más alto era `v0.89.0`,
 que `main` era `d86c684` y que ninguna rama remota iba por encima. Si ella tenía
 algo sin empujar, la colisión es mía.
+
+### ✅ La llamada real a Clara, por fin hecha (7-sep, 15:20 UTC)
+
+Lo último que quedaba de la v0.89.0 sin probar contra el mundo real. El dueño
+llamó desde su móvil; **la cadena entera funcionó a la primera**:
+
+| Comprobación | Salida real |
+|---|---|
+| Ingesta | `Created lead id=1264 channel=voice identifier=+17205121753` · `turns_stored=19` · `intent=buy` · resumen presente · 20 mensajes en el hilo |
+| Los dos avisos | `new-lead notice sent to the agency` **y** `operator copy of the notice sent`, en el mismo segundo |
+| El correo, leído en Gmail (no supuesto) | asunto `New call answered by Clara — Ender Ocando`; `Duration: **2:49**` (el `mm:ss` de `_spoken_duration`, contra una llamada de verdad); resumen con presupuesto, zona y plazo; `INBOX` |
+| **El enlace al panel** | `Open in Eko AI Realtors: https://inmo-demo.ekoaiautomation.com/leads/1264` |
+| La copia dice a quién se avisó | `Operator copy. The agency was told at natalia.kanonerova@engelvoelkers.com.` |
+| El enlace sin sesión | navegador limpio a `/leads/1264` → **`/login?next=%2Fleads%2F1264`**, destino conservado |
+
+**Lo que NO está verificado y no lo declaro:** el aterrizaje *después* de entrar
+(`takeNext()` → `/leads/1264`). Requiere credenciales que no tengo; desde aquí
+solo se mide la ida.
+
+🔸 **Consecuencia que el dueño debe saber:** como `booking_contact_email` es la
+dirección real de Natalia, **ella recibió el aviso de esta llamada de prueba**.
+No es un fallo —es el producto haciendo su trabajo— pero es la primera vez que
+un correo de este sistema llega a su bandeja sin que fuera una sonda dirigida al
+dueño. El lead 1264 sigue en el panel a propósito: es una llamada real con su
+transcripción, y borrarlo es decisión suya.
