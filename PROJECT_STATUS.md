@@ -5587,7 +5587,7 @@ verificación de punta a punta reapunta ese campo antes, o se avisa primero.
 
 ## ✅ Fase 5 — quién puede escribir al Inbox, y a quién se avisa (6-sep)
 
-Rama `feat/inbox-cerrado`, commit **`c81ba30`**, versión **0.90.0**, apilada
+Rama `feat/inbox-cerrado`, commit **`6ff9d53`**, versión **0.90.0**, apilada
 sobre `feat/aviso-natalia-dominio-propio` (`69ef674`) para no perder el estado de las Fases 1 y 2, que sigue sin fusionar.
 Agrupa las **decisiones 4, 5 y 6** del dueño y la consecuencia de cruzar la 1
 con la 3, porque las cuatro son el mismo sitio.
