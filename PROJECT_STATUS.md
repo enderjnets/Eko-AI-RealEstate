@@ -310,7 +310,21 @@ dueño) → Fase 2 (ruta de canal, con el `sender_override` de la decisión 2) �
 fase nueva con 4, 5, 6 y la consecuencia de arriba, que son todas del mismo
 sitio: **quién puede escribir al Inbox y a quién se avisa**.
 
-### ⛔ Fase 1 — bloqueada en el dueño: la clave de Resend NO puede crear dominios
+### ⛔ Fase 1 — el dominio se creó en la CUENTA equivocada de Resend
+
+> 🔴 **CORRECCIÓN (6-sep, más tarde). Lo de abajo era falso y lo escribí como
+> medido.** El `403 error code: 1010` **no es de permisos**: es el borde de
+> Resend (Cloudflare) rechazando la petición por el **User-Agent**, antes de
+> llegar a la API. `urllib` de Python manda uno que rechazan. Añadiendo
+> `User-Agent: EkoAIRealtors/0.89.0 (…)` la **misma** clave devuelve **200** en
+> `/domains` y en `/webhooks`. Su documentación no lista el 1010; está en un
+> artículo suyo de base de conocimiento. Mi error no fue el 403 —ese lo medí
+> bien— sino **la explicación que le puse encima**: «es una clave de solo
+> envío» era una etiqueta que no verifiqué, y su propia documentación decía
+> que una clave restringida da **401**, no 403. Tenía delante el dato que la
+> desmentía. Ver [[feedback_de_donde_sale_el_numero]].
+
+
 
 Medido el 6-sep desde **dentro** del contenedor de producción, usando la clave
 donde vive y sin imprimirla nunca (solo su forma):
@@ -336,6 +350,43 @@ no he verificado.
 
 También queda sin respuesta si existe ya un webhook con `email.received`
 (mismo 403). Se comprobará desde el panel cuando el dueño entre.
+
+
+#### Lo que apareció al medir bien: DOS cuentas de Resend
+
+Con el User-Agent puesto, la clave de producción contesta 200 y enseña **su**
+cuenta, que no es la que el dueño tiene abierta en el navegador:
+
+| | Cuenta de la CLAVE de producción | Cuenta del NAVEGADOR (`enderjnets`) |
+|---|---|---|
+| Claves | «Realtors Eko AI», «Onboarding» (1-jun) | «Eko AI Email» (Full access), «Onboarding» |
+| Dominios | **solo** `realtors.ekoaiautomation.com` | `denverhomestory.com` (nuevo) y **`biz.ekoaiautomation.com`** |
+| Webhooks | uno de junio → `inmo-demo…/api/v1/webhooks/email`, `email.received`, enabled | uno → `ender-rog.tail25dc73.ts.net/api/v1/webhooks/resend` |
+
+`biz.ekoaiautomation.com` es el dominio de **Eko AI Main**, y el webhook del ROG
+es suyo también (medido: ahí `/api/v1/health` da 404 y `/api/v1/webhooks/resend`
+existe, así que **no** es este producto). Conclusión: **el dueño creó
+`denverhomestory.com` en la cuenta de la plataforma de ventas.** Producción no
+podrá enviar desde él nunca — su clave ni lo ve.
+
+**Ya existe un webhook de Realtors** apuntando a nuestro endpoint con
+`email.received`, creado el **1-jun**. Es decir: la Fase 1.4 del plan no había
+que hacerla, ya estaba. Se descubrió porque la pantalla de Webhooks del
+navegador enseña los de **otra** cuenta.
+
+**Un secreto quemado, y cómo:** al pegar el `whsec_` en un `sed`, el valor lleva
+`/` y `+` y `sed` interpretó parte como sintaxis suya; el mensaje de error lo
+imprimió entero **dentro del chat**. Hay que rotarlo. La lección no es «usa
+otro delimitador»: es que **un secreto no se mete nunca dentro de un patrón**.
+El método bueno —el que acabó funcionando— es leerlo con `read -rs` y pasarlo
+por variable de entorno a un script que lo escriba, sin interpretarlo. Y aun
+así, lo mejor de todo es **no pegarlo**: la API de Resend devuelve
+`signing_secret` al crear el webhook, así que puede ir de la respuesta al
+`.env` sin pasar por ninguna pantalla.
+
+**Otra trampa medida hoy:** `read -rs` dentro de un bloque pegado de varias
+líneas **no espera** — se come la línea siguiente del pegado. Los comandos
+interactivos se pegan solos, nunca dentro de un bloque.
 
 **Lo que tiene que hacer el dueño (Fase 1.1), y es todo lo que le pido:**
 
