@@ -5767,9 +5767,17 @@ llamó desde su móvil; **la cadena entera funcionó a la primera**:
 | La copia dice a quién se avisó | `Operator copy. The agency was told at natalia.kanonerova@engelvoelkers.com.` |
 | El enlace sin sesión | navegador limpio a `/leads/1264` → **`/login?next=%2Fleads%2F1264`**, destino conservado |
 
-**Lo que NO está verificado y no lo declaro:** el aterrizaje *después* de entrar
-(`takeNext()` → `/leads/1264`). Requiere credenciales que no tengo; desde aquí
-solo se mide la ida.
+**Y el aterrizaje también, media hora después:** el dueño entró desde el enlace
+del correo y el rastro del backend lo dice sin ambigüedad — tras `auth/me`, el
+navegador pidió `GET /api/v1/leads/1264` + `/events` + `/visits` + `/matches`,
+que es la ficha del lead cargando. Lo decisivo es lo que **no** está: en toda la
+ventana no hay ni una llamada a `GET /api/v1/leads` sin id. Si `takeNext()`
+hubiera fallado, el guardián habría aterrizado en la lista y esa llamada estaría
+ahí. Se repite dos veces, así que no es una carga afortunada.
+
+**La v0.89.0 queda cerrada de verdad**: los tres tramos —Clara avisa, el aviso
+enlaza, el enlace sobrevive al login— medidos contra producción y contra una
+llamada real, no contra la suite.
 
 🔸 **Consecuencia que el dueño debe saber:** como `booking_contact_email` es la
 dirección real de Natalia, **ella recibió el aviso de esta llamada de prueba**.
