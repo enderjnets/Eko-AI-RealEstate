@@ -5582,3 +5582,129 @@ filas (cliente + nota interna) con `external_id` reales y distintos de Resend, y
 una segunda invitación a la dirección de Natalia, porque la copia de la agencia
 sale a `booking_contact_email` aunque el lead lleve otro correo. La próxima
 verificación de punta a punta reapunta ese campo antes, o se avisa primero.
+
+---
+
+## ✅ Fase 5 — quién puede escribir al Inbox, y a quién se avisa (6-sep)
+
+Rama `feat/inbox-cerrado`, commit **`c81ba30`**, versión **0.90.0**, apilada
+sobre `feat/aviso-natalia-dominio-propio` (`69ef674`) para no perder el estado de las Fases 1 y 2, que sigue sin fusionar.
+Agrupa las **decisiones 4, 5 y 6** del dueño y la consecuencia de cruzar la 1
+con la 3, porque las cuatro son el mismo sitio.
+
+### Qué hace ahora, en una línea cada una
+
+| Decisión | Antes | Ahora |
+|---|---|---|
+| 5 — solo `hello@` | `cualquier-cosa@denverhomestory.com` **creaba un lead en la org 1** por el fallback de inquilino único | **Un dominio con ruta es un dominio cerrado.** Solo los buzones mapeados entran; los subdominios también quedan cerrados |
+| 6 — lo demás, visible | una línea de log que nadie lee | aviso al chat del dueño, deduplicado por remitente y día, con presupuesto **propio** |
+| 4 — copia al dueño | `booking_contact_email`, una dirección | `OWNER_NOTICE_EMAIL` en el entorno, **envío aparte**, y sigue llegando aunque la agencia no tenga dirección puesta |
+| La consecuencia | la respuesta de Natalia desde su correo de E&V entraba como lead nuevo | descartada como `ignored_agency_address`, y **avisada** al dueño |
+
+### Checklist de terminado, con salida real
+
+| Casilla | Resultado |
+|---|---|
+| Suite completa, sin saltados | **1777 pasados** (línea base 1755 + 22 nuevos), base `eko_realestate_test_notice` recreada |
+| `ruff check app tests` | limpio |
+| `npm run typecheck` · `npm test` | limpio · **347 pasados** |
+| `docker build -f backend/Dockerfile backend` | OK (`sha256:8db039d3…`) |
+| Cobertura, contra línea base medida **antes** de editar | `email.py` 75→**76%** · `lead_notify` 59→**61%** · `conversation` 84→84% · `tenant_resolver` **100→100%** · `unrouted_notice` 94% (nuevo) · total 81→**82%** |
+| Mutaciones | **12 de 12 en rojo**, cada una contra su test y verificado el mensaje de la aserción, no solo el rojo; `md5` restaurado en las doce |
+| Secretos en el diff | ninguno (barrido propio + auditor independiente) |
+
+### Las dos auditorías: 12 hallazgos, 10 arreglados
+
+Dos subagentes en paralelo sobre el diff ya escrito, uno de seguridad y otro de
+corrección. **Lo que encontraron y no yo:**
+
+1. 🔴 **BLOQUEANTE — la regla se esquivaba con un `To:` que no nombra a nadie.**
+   `_mailboxes` devuelve lista vacía para un BCC real (`undisclosed-recipients:;`),
+   para `a@b@dominio` y para cualquier cabecera con defectos — el parser las
+   rechaza a propósito. Sin claves no hay dominio, así que mi regla no veía nada
+   que cerrar y el mensaje caía al fallback: **lead en la org 1**. Arreglado: la
+   falta de destinatario usable es ahora una razón de rechazo por sí misma, y se
+   aplica **sola** a los canales que enrutan por dirección — un canal cuyas rutas
+   son teléfonos no produce ningún dominio y la consulta se descarta.
+2. 🔴 **BLOQUEANTE — el guardián comparaba una cabecera con una dirección.**
+   `from_identifier` es `data["from"]` tal cual, y todo cliente de correo manda
+   `Natalia Ruiz <natalia@brokerage.com>`. El guardián que escribí era inerte
+   contra el único caso para el que existía. Arreglado con `parseaddr`, y de
+   paso el guardián de auto-bucle, que tenía el mismo defecto de antes.
+3. 🔴 **BLOQUEANTE (integridad de la suite) — `conftest.py` no vaciaba
+   `OWNER_NOTICE_EMAIL`.** En cuanto el dueño la ponga en `backend/.env` —que es
+   exactamente para lo que existe— siete tests de `test_new_lead_notice.py` y
+   `test_call_notice.py` se ponen rojos o, peor, siguen verdes **asertando
+   contra la copia del dueño** en vez de contra el correo de la agencia.
+   Vaciada sin condición, junto a las de Telegram y Groq.
+4. **Un reloj para las tres patas descartaba un envío ya entregado.** Un
+   `wait_for` alrededor del `gather` cancela a todos los hijos: la agencia
+   avisada a los 2 s y la fila diciendo FALLIDO con su presupuesto de reintentos
+   gastado. Ahora hay **un reloj por pata**.
+5. **La fila mentía cuando la agencia no tenía dirección.** Telegram va al chat
+   del **dueño**, nunca a la agencia, así que triunfaba justo en ese caso y
+   escribía «email failed…; telegram carried the notice» — que se lee como un
+   fallo pasajero del proveedor, en una fila que abre la agencia en su panel.
+6. **El presupuesto de avisos podía usarse para callarme.** Doce direcciones
+   desechables compraban un día entero de silencio. Ahora el aviso que gasta el
+   último dice que es el último y **cuántos** se han rechazado.
+7. **Falsificación de líneas de log** por el remitente (un `\n` en `from`).
+   Escapado con `%r`, igual que el asunto.
+8. Subdominios (`x@mail.marca.com`) escapaban a la regla. Cerrados.
+9. El conjunto de deduplicación crecía sin tope con datos del atacante. Acotado.
+10. La normalización del lado de la base no era la misma que la de las claves
+    de entrada, pese a un comentario mío que prometía justo lo contrario.
+
+**Y un hallazgo sobre mis propios tests, que es el que más me interesa:** el que
+decía «el aviso nunca lleva el cuerpo» **no podía fallar** —la función no tiene
+parámetro de cuerpo, así que la cadena no podía estar allí hiciera lo que
+hiciera el código—. Reescrito por la ruta real, con un mensaje que **sí** trae
+cuerpo. Van al mismo saco `test_the_daily_budget…` (afirmaba el tope, no la
+independencia del presupuesto de `ops_alert`) y el de la copia duplicada (contaba
+envíos sin mirar a quién).
+
+### Lo que dejo abierto, con diagnóstico
+
+- **Un lead reenviado por la agencia no se archiva en ningún sitio.** Si Natalia
+  reenvía una consulta desde su correo de E&V, el guardián la descarta. Ahora al
+  menos **avisa al dueño**, pero el cliente sigue sin ficha: hay que crearlo
+  desde el panel. Arreglarlo de verdad es leer el remitente original del
+  reenvío, y eso es otra fase.
+- **Durante un ensayo, si `booking_contact_email` apunta al propio dueño**, sus
+  correos de prueba a `hello@` los descarta el guardián. Es visible (llega el
+  aviso), pero se lee como «el correo de entrada está roto». Anotado aquí para
+  que la próxima prueba de punta a punta no pierda media hora.
+- **Un escaneo de tabla completa por cada mensaje rechazado** (`channel_routes`
+  del canal). Trivial con un inquilino; cacheable si algún día molesta.
+- **La regla es por instalación, no por organización**: si una agencia mapea un
+  buzón en un dominio compartido, lo cierra para las demás. No alcanzable hoy
+  con un solo inquilino.
+- **`OWNER_NOTICE_EMAIL` es de plataforma**: con una segunda agencia, sus leads
+  también se copian al dueño. Es lo correcto para una red de seguridad del
+  operador, y conviene saberlo antes de ponerla.
+
+### Consulta al advisor (motivo → decisión)
+
+| Momento | Motivo | Decisión |
+|---|---|---|
+| Antes de escribir (fase [CRÍTICA]) | validar dónde vive la regla, la superficie del aviso y la forma del ajuste del dueño | Confirmó el diseño y añadió cinco cosas que hice: medir la línea base de cobertura **antes** de editar, escribir la Fase 5 en `PLAN.md` antes del código, declarar las funciones nuevas en los dos barridos AST, pedir el número de versión a la sesión par, y ramificar desde `69ef674` para no perder el estado |
+
+**Divergí en un punto, y con evidencia:** el advisor propuso meter la regla en
+`resolve_org_by_destination` para no tocar `webhook_org_or_refuse`. Al medir,
+esa función tiene **tres llamantes más** —`channel_identity.py:478` elige con
+ella el secreto que verifica la firma, y `email.py:177` convierte cualquier
+excepción en «no es nuestro»—, así que levantar una excepción ahí cambiaría la
+elección de secreto y el permiso de descarga de un mensaje. La regla vive en
+`webhook_org_or_refuse`, que es el punto de decisión de la atribución de entrada
+y nada más. El auditor de seguridad recorrió los tres llamantes y confirmó que
+la identidad de firma y la de salida quedan intactas.
+
+### Un fallo mío, propio, y lo que costó
+
+Mi arnés de mutaciones restauraba el fichero con `git checkout -- <fichero>`. El
+código de esta fase **no estaba commiteado**, así que el primer «restaurado»
+devolvió `tenant_resolver.py` a HEAD y **borró el cambio entero**; y en el
+fichero nuevo, que git no conoce, el checkout falló y **dejó la mutación
+puesta**. Lo vi porque el arnés compara `md5` antes y después y las dos líneas
+dijeron `MISMATCH`. Reconstruido y verificado; el arnés respalda con `cp`.
+La comparación de `md5` no era ceremonia: era lo único que lo delató.

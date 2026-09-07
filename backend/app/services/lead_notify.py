@@ -10,6 +10,15 @@ So: one notice per captured submission, carrying everything needed to make the
 call — name, phone, email, what they said, and where they came from, plus a
 link straight to the lead in the panel.
 
+**Two origins, one link, and — since 6-Sep-2026 — a second reader.** The mail
+goes to the agency's `booking_contact_email` as it always has; when
+`OWNER_NOTICE_EMAIL` is set, the person who OPERATES the install gets their own
+copy of the same message. Two sends, never two recipients on one: the agency's
+notice must not carry the operator's address in its header, where a "Reply all"
+would find it. The setting lives in the environment rather than in Settings
+because Settings is the agency's to edit, and a safety net the watched party
+can delete is not one.
+
 **Two origins, one recipient, one link.** The form was the only one for a long
 time, and the phone was the hole: Clara answers a call, the transcript and the
 summary land in the panel, and nobody is told. A caller who spoke to an
@@ -57,6 +66,11 @@ from app.services.email import send_email
 from app.services.telegram_notify import send_operator_telegram, undeliverable_reason
 
 log = logging.getLogger("app.lead_notify")
+
+# Per transport, not for the three together — see the gather below. Named
+# rather than inlined so a test can shorten it: proving that a stalled leg
+# cannot bury a delivered one should not cost the suite eight seconds.
+NOTICE_TIMEOUT_SECONDS = 8.0
 
 
 def _calculator_line(lead: object) -> str | None:
@@ -136,6 +150,50 @@ async def _notify_agency_by_email(
     except Exception as exc:  # noqa: BLE001
         log.error("Lead %d: new-lead notice failed to send: %s", lead_id, exc)
         return None, str(exc)[:500]
+
+
+async def _notify_owner_by_email(
+    to: str, subject: str, body: str, lead_id: int, agency_to: str | None
+) -> bool:
+    """The operator's own copy of the notice. Never raises, never blocks.
+
+    A SEPARATE message rather than a second recipient on the agency's, and that
+    is not a stylistic choice: `to: [natalia, owner]` puts the operator's
+    personal address in the header of every notice the agency receives, and a
+    "Reply all" from them would then write to it. The agency's mail is theirs
+    alone; this one is a copy that exists beside it.
+
+    Its own function, with its own name, because both AST sweeps list what may
+    send — a copy dispatched from inside `_notify_agency_by_email` would ride
+    that function's exemption and be invisible to them.
+    """
+    try:
+        note = (
+            f"\n—\nOperator copy. The agency was told at {agency_to}.\n"
+            if agency_to
+            else "\n—\nOperator copy. The agency has no contact address set in "
+            "Settings, so NOBODY at the agency was told.\n"
+        )
+        result = await send_email(to=to, subject=subject, body_text=body + note)
+        if (result or {}).get("id"):
+            log.info("Lead %d: operator copy of the notice sent", lead_id)
+            return True
+        log.error("Lead %d: operator copy accepted with no id", lead_id)
+        return False
+    except Exception as exc:  # noqa: BLE001 — a copy may never cost the original
+        log.error("Lead %d: operator copy failed to send: %s", lead_id, exc)
+        return False
+
+
+async def _not_attempted(value):
+    """A leg of the gather below that was never configured.
+
+    Keeps the arity of `asyncio.gather` fixed, so the three transports are read
+    positionally in one place instead of being assembled by a list whose length
+    depends on configuration — which is how the wrong result gets unpacked into
+    the wrong variable on the day somebody adds a fourth.
+    """
+    return value
 
 
 async def _notify_agency_by_telegram(subject: str, body: str, lead_id: int) -> bool:
@@ -223,7 +281,18 @@ async def _send_and_record(
             )
         ).scalar_one_or_none()
         to = ((getattr(cfg, "booking_contact_email", None) or "").strip()) or None
-        if not to:
+        # The operator's copy. Read from the environment, never from Settings:
+        # the agency edits Settings, and a safety net the watched party can
+        # remove is not one.
+        from app.config import get_settings as _settings
+
+        owner = ((_settings().OWNER_NOTICE_EMAIL or "").strip()) or None
+        if owner and to and owner.casefold() == to.casefold():
+            # The same person twice. Reachable and not hypothetical: the owner
+            # pointed `booking_contact_email` at himself for the Fase 4
+            # rehearsal, and every rehearsal after this one will do it again.
+            owner = None
+        if not to and not owner:
             # Same posture as visit_invite: an empty contact address is a
             # configuration gap somebody has to fix, not a silent no-op.
             log.warning(
@@ -232,6 +301,15 @@ async def _send_and_record(
                 lead_id,
             )
             return
+        if not to:
+            # The net doing its job. Worth its own line, because the agency
+            # silently not being told is the failure this module exists to
+            # prevent and it must not be hidden by the copy that succeeded.
+            log.warning(
+                "Lead %d: booking_contact_email is empty in Settings — only the "
+                "operator's copy will go out",
+                lead_id,
+            )
 
         inbound = None
         if message_id is not None:
@@ -324,35 +402,78 @@ async def _send_and_record(
         external_id: str | None = None
         failure: str | None = None
         telegram_ok = False
+        owner_ok = False
         try:
             # `return_exceptions=True` on top of the per-transport handlers: a
             # raise escaping here would cost the whole notice AND leave the row
             # unwritten, which is worse than either transport failing.
-            results = await asyncio.wait_for(
-                asyncio.gather(
+            #
+            # The operator's copy rides the SAME budget rather than adding its
+            # own: it is concurrent with the other two, so it costs no extra
+            # wall-clock inside the form's POST.
+            #
+            # The budget is PER LEG, not one clock around the three. A single
+            # `wait_for` over the gather cancels every child when it fires, so a
+            # slow leg discarded the result of one that had already succeeded:
+            # the agency was told at two seconds, the operator's copy stalled,
+            # and the row said FAILED — with `send_attempts` spent — about a
+            # mail that went out. They run concurrently, so three eight-second
+            # budgets are still eight seconds of wall-clock.
+            mail_result, telegram_result, owner_result = await asyncio.gather(
+                asyncio.wait_for(
                     _notify_agency_by_email(to, subject, body, lead.id),
+                    timeout=NOTICE_TIMEOUT_SECONDS,
+                )
+                if to
+                else _not_attempted((None, "no booking_contact_email in Settings")),
+                asyncio.wait_for(
                     _notify_agency_by_telegram(subject, body, lead.id),
-                    return_exceptions=True,
+                    timeout=NOTICE_TIMEOUT_SECONDS,
                 ),
-                timeout=8.0,
+                asyncio.wait_for(
+                    _notify_owner_by_email(owner, subject, body, lead.id, to),
+                    timeout=NOTICE_TIMEOUT_SECONDS,
+                )
+                if owner
+                else _not_attempted(False),
+                return_exceptions=True,
             )
-            mail_result, telegram_result = results
             if isinstance(mail_result, tuple):
                 external_id, failure = mail_result
+            elif isinstance(mail_result, TimeoutError):
+                failure = "the email provider did not answer within 8s"
+                log.error("Lead %d: the agency's mail timed out", lead.id)
             else:
                 failure = str(mail_result)[:500]
             telegram_ok = telegram_result is True
-        except TimeoutError:
-            failure = "no transport answered within 8s"
-            log.error("Lead %d: notice transports timed out", lead.id)
+            owner_ok = owner_result is True
+        except Exception as exc:  # noqa: BLE001 — the row must still be written
+            failure = f"the notice transports raised: {exc}"[:500]
+            log.error("Lead %d: notice transports raised: %s", lead.id, exc)
 
         # The row states whether a human was reachable AT ALL, not whether the
         # mail worked. Recording FAILED while Telegram carried the notice would
         # send somebody chasing an outage that did not happen; recording SENT
         # when neither arrived is the lie this whole module exists to prevent.
-        delivered = bool(external_id) or telegram_ok
-        if failure and telegram_ok:
+        delivered = bool(external_id) or telegram_ok or owner_ok
+        if not to:
+            # FIRST, ahead of the transport branches below. Telegram goes to the
+            # OPERATOR's chat, never to the agency, so it succeeds in exactly
+            # this case and used to overwrite the reason with "telegram carried
+            # the notice" — which reads as a provider hiccup on a row the agency
+            # opens in their own panel, about a message that was never addressed
+            # to them at all.
+            failure = (
+                "NOBODY at the agency was told: booking_contact_email is empty "
+                "in Settings"
+                + ("; the operator's copy went out" if owner_ok else "")
+            )
+        elif failure and telegram_ok:
             failure = f"email failed ({failure}); telegram carried the notice"
+        elif failure and owner_ok:
+            # Said plainly, because it is the one shape a human must not read as
+            # "sent": somebody was told, and it was not the agency.
+            failure = f"the agency was NOT reached ({failure}); the operator's copy went out"
         elif not delivered and not failure:
             failure = "no transport could deliver the notice"
         if not delivered:

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.89.0";
+export const CURRENT_VERSION = "0.90.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.90.0",
+    date: "2026-09-06",
+    title: {
+      en: "Only the address you published can write to the Inbox",
+      es: "Solo la direccion que publicaste puede escribir al Inbox",
+    },
+    changes: [
+      { en: "The brand domain receives mail on its root, so until now ANY address at it — a typo, a scraper's probe, admin@ — became a lead with a thread the assistant then answered. From now on a domain that has a mapped mailbox is a closed domain: only the addresses you mapped get in, sub-domains included. A domain nobody has mapped is untouched, so a fresh install is unaffected.", es: "El dominio de la marca recibe correo en su raiz, asi que hasta ahora CUALQUIER direccion suya —una errata, el sondeo de un rastreador, admin@— se convertia en un lead con un hilo que el asistente contestaba. A partir de ahora, un dominio con un buzon mapeado es un dominio cerrado: solo entran las direcciones que mapeaste, subdominios incluidos. Un dominio que nadie ha mapeado no cambia, asi que una instalacion nueva no se ve afectada." },
+      { en: "Mail that does not become a lead is no longer invisible. Each refusal is one line in the log and one message on the operator's own phone — who sent it, which mailbox it named, its subject, never its body. Deduplicated per sender per day and capped, with its own budget: the alarm that watches the LLM safety net cannot be spent by a stranger emailing the domain.", es: "El correo que no se convierte en lead ya no es invisible. Cada rechazo es una linea en el log y un mensaje en el telefono del operador: quien lo mando, a que buzon, su asunto, nunca su cuerpo. Deduplicado por remitente y dia, con tope y con presupuesto propio: la alarma que vigila la red de seguridad del LLM no la puede gastar un desconocido escribiendo al dominio." },
+      { en: "The operator can now receive their own copy of every new-lead notice (OWNER_NOTICE_EMAIL). It goes out as its own message, never as a second recipient, so the agency never sees that address in the header of their mail — and it still arrives when the agency has no contact address set, which is exactly when a safety net is worth having.", es: "El operador puede recibir ahora su propia copia de cada aviso de lead nuevo (OWNER_NOTICE_EMAIL). Sale como mensaje aparte, nunca como segundo destinatario, asi que la agencia no ve esa direccion en la cabecera de su correo; y sigue llegando cuando la agencia no tiene direccion de contacto puesta, que es justo cuando una red de seguridad sirve para algo." },
+      { en: "The agency replying from their own inbox is no longer a new lead. Since the notice started arriving from an address the product itself receives, pressing Reply in a mail client filed the realtor as a stranger — a lead named after her, carrying her brokerage address, which the assistant then answered. It is dropped now, and the operator is told, because a forwarded inquiry lands on the same path and a lead dropped in silence is a lead lost.", es: "Que la agencia conteste desde su propio buzon ya no crea un lead. Desde que el aviso llega de una direccion que el producto recibe, darle a Responder en el cliente de correo archivaba a la agente como una desconocida: un lead con su nombre y la direccion de su corredora, que el asistente contestaba. Ahora se descarta y se avisa al operador, porque una consulta reenviada cae por el mismo camino y un lead descartado en silencio es un lead perdido." },
+    ],
+  },
   {
     version: "0.89.0",
     date: "2026-09-06",

@@ -205,6 +205,111 @@ def routable_candidates(orgs: dict[int, str]) -> list[int]:
 Destination = str | Sequence[str] | None
 
 
+def destination_keys(destination: Destination) -> set[str]:
+    """The routing keys one inbound message carries, normalised.
+
+    Extracted so the lookup below and the closed-domain rule in
+    `webhook_org_or_refuse` cannot drift apart. If they ever built their keys
+    differently, the rule could refuse an address the matcher would have
+    matched — a mailbox that is mapped and still bounces, which is the one
+    failure worse than the one the rule exists to prevent.
+    """
+    from app.models.channel_route import normalize_destination
+
+    candidates = [destination] if isinstance(destination, str) else list(destination or [])
+    keys = {normalize_destination(c) for c in candidates}
+    keys.discard("")
+    return keys
+
+
+def _mail_domain(key: str) -> str:
+    """The domain half of an address key, or "" for anything that is not one.
+
+    Phone numbers and provider ids reach here too — they carry no `@`, so they
+    can never make a domain and can never be closed by the rule below.
+    """
+    if "@" not in key:
+        return ""
+    return key.rsplit("@", 1)[1].strip()
+
+
+async def _closed_reason(channel: str, keys: set[str]) -> str | None:
+    """Why this message may not reach the fallback, or None to let it.
+
+    **A domain that has a route is a closed domain.** Once an agency maps
+    `hello@their-domain.com`, mail to any *other* mailbox at that domain is not
+    theirs to receive: the mapping is the statement of which addresses exist.
+    Without this the single-tenant fallback took over — a domain whose MX points
+    at the product receives everything, so every typo, every scrape and every
+    `admin@` probe became a lead in the only agency there is.
+
+    Two shapes of "not mapped", and the second is the one that was missed:
+
+    * an address at a routed domain that names no route — the obvious case;
+    * a message that names **no usable recipient at all**. `_mailboxes` returns
+      nothing for several real shapes: a genuine BCC delivery, whose header is
+      the literal `undisclosed-recipients:;`, and any header the parser reports
+      defects on. Those keys are empty, so the first rule sees no domain, and
+      the message sailed into the fallback — a lead in org 1 from mail addressed
+      to nobody we know. The recipient list is written by the SENDER unless the
+      provider hands us an envelope, so this was reachable on purpose, not by
+      accident.
+
+    Deliberately narrow, and the query decides the scope by itself: a channel
+    whose routes are phone numbers produces no routed domain, so neither rule
+    can fire there and SMS, WhatsApp, voice and the web form are untouched. So
+    is a fresh install with no routes at all, where the fallback is the whole
+    routing story. The rule closes what an operator has explicitly opened.
+
+    Sub-domains count as the same domain (`x@mail.brand.com` against a route at
+    `brand.com`): the rule is about a zone whose mail we receive, and a wildcard
+    or a `mail.` MX would otherwise be an open side door. The reverse does not
+    hold — a route at `mail.brand.com` does not close `brand.com`.
+
+    NOT scoped to routable organizations, on purpose: a suspended agency's
+    domain must stay closed. The alternative is that offboarding an agency
+    re-opens their mailbox into whichever tenant is left.
+
+    Read only when nothing matched: the hot path keeps its single query.
+    """
+    from sqlalchemy import select
+
+    from app.db.base import get_bypass_session_factory
+    from app.models.channel_route import ChannelRoute, normalize_destination
+
+    async with get_bypass_session_factory()() as db:
+        known = (
+            await db.execute(
+                select(ChannelRoute.destination)
+                .where(ChannelRoute.channel == channel)
+                .distinct()
+            )
+        ).scalars()
+    # Normalised the SAME way the inbound keys are. A route inserted by hand
+    # with a trailing space would otherwise produce a domain that matches
+    # nothing, and the rule would be quietly inert for that agency.
+    routed = {d for d in (_mail_domain(normalize_destination(k)) for k in known) if d}
+    if not routed:
+        return None
+
+    domains = {d for d in (_mail_domain(k) for k in keys) if d}
+    if not domains:
+        return (
+            "it names no usable recipient, and this install routes mail by "
+            "address — so there is nothing to attribute it to"
+        )
+    for domain in sorted(domains):
+        for route in routed:
+            if domain == route or domain.endswith("." + route):
+                return (
+                    f"no mapped address on {route}, which is a domain this "
+                    "install already routes. The mapped mailboxes are the ones "
+                    "that exist; map this address in channel_routes if it "
+                    "should receive"
+                )
+    return None
+
+
 async def resolve_org_by_destination(
     channel: str, destination: Destination
 ) -> int | None:
@@ -227,11 +332,9 @@ async def resolve_org_by_destination(
     from sqlalchemy import select
 
     from app.db.base import get_bypass_session_factory
-    from app.models.channel_route import ChannelRoute, normalize_destination
+    from app.models.channel_route import ChannelRoute
 
-    candidates = [destination] if isinstance(destination, str) else list(destination or [])
-    keys = {normalize_destination(c) for c in candidates}
-    keys.discard("")
+    keys = destination_keys(destination)
     if not keys:
         return None
 
@@ -360,6 +463,14 @@ async def webhook_org_or_refuse(
             f"{channel} destination {destination!r} matches no channel_route, "
             "and this caller named one explicitly — refusing rather than "
             "guessing the only remaining agency"
+        )
+
+    # After the flag above, not before: those callers already refuse, so asking
+    # the database why would be a round-trip that changes no outcome.
+    closed = await _closed_reason(channel, destination_keys(destination))
+    if closed is not None:
+        raise WebhookOrgUnresolved(
+            f"inbound {channel} to {destination!r} is refused — {closed}."
         )
 
     candidates = routable_candidates(orgs)

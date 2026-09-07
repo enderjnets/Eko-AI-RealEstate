@@ -60,6 +60,21 @@ os.environ["GROQ_API_KEY"] = ""
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 os.environ["TELEGRAM_CHAT_ID"] = ""
 
+# Same reasoning one step further, and this one is not about spending a
+# credential — it is about the suite describing reality.
+#
+# `OWNER_NOTICE_EMAIL` makes every new-lead notice go out TWICE, to two
+# different addresses. Seven tests in `test_new_lead_notice.py` and
+# `test_call_notice.py` assert `await_count == 1` and read `await_args`, which
+# is the LAST call — so on a machine where this is set in `backend/.env` (which
+# is exactly where the operator will set it, because that is the whole point of
+# the setting) those tests either go red or, worse, keep passing while
+# asserting against the operator's copy instead of the agency's.
+#
+# Blanked unconditionally. A test about the operator's copy sets it itself with
+# `patch.object(get_settings(), ...)`, next to the assertion that needs it.
+os.environ["OWNER_NOTICE_EMAIL"] = ""
+
 
 import pytest  # noqa: E402 — must follow the environment default above
 

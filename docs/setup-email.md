@@ -127,6 +127,28 @@ Watch it happen:
 docker compose logs -f backend | grep -iE "email|resend|turn done"
 ```
 
+## Mapping a mailbox CLOSES its domain (v0.90, and it surprises people)
+
+Since v0.90 the rule for inbound is: **a domain that has a route is a closed
+domain.** The moment one `channel_routes` row exists with an address at
+`example.com`, mail to any *other* mailbox at `example.com` is refused — no
+lead, no thread, no reply — and the operator gets one Telegram line about it.
+
+Two things follow, and both bite the day you onboard someone:
+
+* **Adding a second mailbox at a domain you already route is a code-free change
+  and a mandatory one.** `sales@` will not start working because the MX
+  delivers it; it starts working when you add its route. Until then it is
+  refused, silently as far as the sender is concerned.
+* **A domain with NO route at all is untouched.** A fresh single-customer
+  install still falls back to its only tenant, exactly as before. The rule
+  closes what an operator has explicitly opened, and nothing else.
+
+This exists because a receiving domain has its MX on the ROOT: it receives
+every address anyone cares to invent. Without the rule, `admin@`, a typo, or a
+scraper's probe became a lead in the only agency there is — with a thread the
+assistant then answered.
+
 ## How it works (for reference)
 
 - **Outbound**: `app/services/email.py::send_email` POSTs to

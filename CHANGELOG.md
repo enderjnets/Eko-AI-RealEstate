@@ -2,6 +2,62 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.90.0] — 2026-09-06
+
+### Added
+- **A domain that has a route is a closed domain.** The brand domain receives on
+  its ROOT, so every address anyone cares to invent arrives at the product.
+  Until now an address matching no route fell through to the single-tenant
+  fallback — one agency, so it was always "theirs" — and a typo, a scrape or an
+  `admin@` probe became a lead with a thread the assistant answered. Only mapped
+  mailboxes get in now, sub-domains included. A domain with NO route is
+  untouched: a fresh single-customer install, where the fallback is the whole
+  routing story, behaves exactly as before.
+- **A refusal is visible.** Every refused message is one `log.error` line and
+  one Telegram nudge to the operator: sender, mailbox, subject — never the body,
+  which at that point in the webhook has deliberately not been fetched.
+  Deduplicated per sender per UTC day and capped, with a budget of its own:
+  `ops_alert` allows three alerts a day across every subject and is what the LLM
+  safety-net monitor spends to reach a human, so sharing it would let anyone who
+  knows the domain silence the alarm that watches the product. The message that
+  spends the last of the budget says so, and says how many were refused.
+- **`OWNER_NOTICE_EMAIL`** — the operator's own copy of every new-lead notice,
+  sent as a SEPARATE message rather than a second recipient, so the agency never
+  sees that address in the header of theirs. In the environment and not in
+  Settings, because Settings is the agency's to edit and a safety net the
+  watched party can delete is not one. Empty is inert; equal to the agency's own
+  address is inert too. It still goes out when `booking_contact_email` is empty,
+  which is precisely when it earns its keep. Platform-wide: with a second agency
+  onboarded, their leads copy here too.
+
+### Fixed
+- **The agency replying from their own inbox is not a new lead.** Since the
+  notice began arriving from an address the product itself receives, pressing
+  Reply in a mail client filed the realtor as a stranger: a lead named after
+  her, carrying her brokerage address, answered by the assistant. Dropped now —
+  and the operator is told, because a forwarded inquiry lands on the same path
+  and a lead dropped in silence is a lead lost.
+- **A message that names no usable recipient is refused too.** `undisclosed-
+  recipients:;` — the header of a genuine BCC delivery — and any header the
+  address parser reports defects on both yield no recipients at all, so a rule
+  that only looked at domains saw nothing to close and the message walked into
+  the fallback. The recipient list is written by the SENDER unless the provider
+  supplies an envelope, so this was reachable on purpose.
+- **The inbound guards compare an ADDRESS, not a header.** `From` arrives as
+  `Natalia Ruiz <natalia@brokerage.com>` from every real mail client, and both
+  the self-loop guard and the new agency-address guard were comparing that
+  string against a bare address — inert against every message a human sends.
+- **One clock per transport, not one around all three.** A single `wait_for`
+  over the notice's `asyncio.gather` cancels every child when it fires, so a
+  stalled leg discarded the result of one that had already succeeded: the agency
+  told at two seconds and the thread row saying FAILED, retry budget spent,
+  about a mail that went out.
+- **The thread row no longer mislabels "nobody at the agency was told".**
+  Telegram goes to the operator's chat, never to the agency, so with an empty
+  `booking_contact_email` it succeeded and overwrote the reason with "telegram
+  carried the notice" — which reads as a provider hiccup on a row the agency
+  opens in their own panel.
+
 ## [0.89.0] — 2026-09-06
 
 ### Added

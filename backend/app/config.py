@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.89.0"
+    APP_VERSION: str = "0.90.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -141,6 +141,24 @@ class Settings(BaseSettings):
     # two readers of one fact, and a mismatch sends Natalia to a domain that
     # answers nothing.
     PANEL_URL: str = ""
+
+    # A second copy of every new-lead notice, to the person who OPERATES the
+    # install rather than the agency that receives the lead.
+    #
+    # Deliberately here and not in Settings, and the distinction is the whole
+    # reason it exists: `booking_contact_email` belongs to the agency and the
+    # agency edits it, so a copy configured there is a copy the agency can
+    # remove — or lose by typing over it. This one is the operator's, it is not
+    # in any UI, and it survives whatever Settings says.
+    #
+    # It is PLATFORM-WIDE: with a second agency onboarded, their leads would
+    # copy this address too. That is correct for an operator's safety net and
+    # worth knowing before it is set.
+    #
+    # Empty is inert. Equal to the agency's own address is inert too — the
+    # owner pointed `booking_contact_email` at himself during the Fase 4
+    # rehearsal, and that will happen again; one mail, not two.
+    OWNER_NOTICE_EMAIL: str = ""
 
     # ─── Calendar (Phase 5) ─────────────────────────────────────────────
     # When SIMULATED=true (dev default), list_slots returns generated weekday

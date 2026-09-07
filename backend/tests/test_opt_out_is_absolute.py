@@ -183,6 +183,13 @@ SEND_EXEMPT = {
     # something this sweep can no longer see — and would silently cover a send
     # added back into it later. Name what the sweep sees.
     "app/services/lead_notify.py::_notify_agency_by_email",
+    # The same notice, copied to whoever OPERATES the install
+    # (`OWNER_NOTICE_EMAIL`), as its own message rather than a second recipient
+    # on the agency's. Same two-way reasoning as the line above, and one more
+    # of its own: the copy exists precisely for the case where the agency's own
+    # address is missing or wrong, so a gate that could silence it would remove
+    # the only remaining reader.
+    "app/services/lead_notify.py::_notify_owner_by_email",
 }
 
 APP = pathlib.Path(__file__).resolve().parents[1] / "app"
@@ -511,6 +518,18 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
             " number must never land in that lead's inbox. The person here"
             " ASKED to be contacted; this message is not the contact, it is the"
             " instruction to make it",
+        "app/services/lead_notify.py::_notify_owner_by_email":
+            "the operator's own copy of that same notice, addressed to"
+            " OWNER_NOTICE_EMAIL — the person running the install, never a"
+            " lead. Same two-way reasoning, plus one of its own: this copy is"
+            " what remains when the agency's address is missing or wrong, so a"
+            " gate able to silence it would remove the last reader",
+        "app/services/unrouted_notice.py::tell_the_owner_about_unrouted":
+            "tells the owner's own chat that a piece of mail was REFUSED before"
+            " it could become a lead: who sent it, which mailbox it named, and"
+            " the subject — never the body, which at that point in the webhook"
+            " has deliberately not been fetched. It addresses the operator, and"
+            " the one person it structurally cannot address is the sender",
         "app/services/lead_notify.py::_notify_agency_by_telegram":
             "the backup transport of that same notice, to the owner's own chat."
             " Identical grounds — and the redundancy is the point: the incident"

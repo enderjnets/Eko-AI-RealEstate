@@ -111,6 +111,9 @@ services:
       # The panel's own host, so the notice can link to the lead. Same value as
       # the frontend's NEXT_PUBLIC_PANEL_URL build arg below.
       PANEL_URL: ${PANEL_URL:-}
+      # The operator's own copy of every new-lead notice. Not in any UI, so the
+      # agency cannot remove it by editing Settings. Empty = no copy.
+      OWNER_NOTICE_EMAIL: ${OWNER_NOTICE_EMAIL:-}
       # SMS (Phase 9 — Twilio) — SIMULATED by default; set TWILIO_* for real SMS.
       SMS_SIMULATED: ${SMS_SIMULATED:-true}
       CAPTURE_REQUIRE_EMAIL: ${CAPTURE_REQUIRE_EMAIL:-true}

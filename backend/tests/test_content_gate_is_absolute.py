@@ -463,6 +463,13 @@ def test_every_wire_touching_function_is_declared_or_exempt() -> None:
             "the mail half of the same operator alert, split out when a second"
             " transport was added. Identical grounds: a status word and a"
             " remedy to PLATFORM_ADMIN_EMAILS, never a content piece",
+        "app/services/unrouted_notice.py::tell_the_owner_about_unrouted":
+            "tells the owner's OWN chat (TELEGRAM_CHAT_ID) that a piece of mail"
+            " was refused before it became a lead: a sender, a mailbox and a"
+            " subject line — never a content piece, so there is no approval"
+            " gate for it to skip, and never an audience. It cannot carry a"
+            " body: at that point in the webhook the message has deliberately"
+            " not been fetched",
         "app/services/lead_notify.py::_notify_agency_by_telegram":
             "the backup transport of the new-lead notice, added after a"
             " measured incident: the mail provider reported delivered and the"

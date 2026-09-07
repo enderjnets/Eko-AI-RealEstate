@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from email.policy import default as _email_policy
+from email.utils import parseaddr
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -17,6 +18,7 @@ from app.services.conversation import handle_inbound_message
 from app.services.email import fetch_inbound_email, parse_inbound_email, verify_resend_signature
 from app.services.tenant_context import set_org_id
 from app.services.tenant_resolver import WebhookOrgUnresolved, webhook_org_or_refuse
+from app.services.unrouted_notice import tell_the_owner_about_unrouted
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -84,6 +86,21 @@ async def email_inbound(
         # written either way; the error log is the signal, and the operator
         # fixes it by mapping the address.
         log.error("refusing inbound email — %s", exc)
+        # And the owner hears about it. The refusal is the easy half; the
+        # decision of 6-Sep-2026 was that mail which does not become a lead
+        # still has to be VISIBLE to the owner — out of the Inbox, not out of
+        # sight. Guarded on its own: a notification that raised would cost the
+        # 200 above, and a provider that keeps seeing failures disables the
+        # endpoint for every tenant.
+        try:
+            await tell_the_owner_about_unrouted(
+                sender=_sender(payload),
+                mailboxes=_mailboxes(payload),
+                subject=_subject(payload),
+                reason=str(exc),
+            )
+        except Exception:  # noqa: BLE001
+            log.exception("could not tell the owner about the refused mail")
         return {"status": "unrouted"}
 
     # Real Resend `email.received` webhooks are METADATA-ONLY (no body/headers).
@@ -135,6 +152,29 @@ async def email_inbound(
             log.exception("Error processing email %s: %s", parsed.external_id, exc)
             results.append({"status": "error", "external_id": parsed.external_id, "error": str(exc)})
 
+    # A message the orchestrator dropped on purpose is still a message that did
+    # not become a lead, so it gets the same visibility a refusal gets. The one
+    # that matters is `ignored_agency_address`: the realtor forwarding an
+    # inquiry from her own brokerage inbox to `hello@` is a plausible — even
+    # encouraged — workflow, and without this it would vanish with nothing but a
+    # log line. The self-loop drop is deliberately NOT reported: it is our own
+    # bounce coming home and there is nothing for a human to do about it.
+    for result in results:
+        if result.get("status") == "ignored_agency_address":
+            try:
+                await tell_the_owner_about_unrouted(
+                    sender=_sender(payload),
+                    mailboxes=_mailboxes(payload),
+                    subject=_subject(payload),
+                    reason=(
+                        "it came from the agency's own contact address, so it "
+                        "was not filed as a lead. If it was a forwarded "
+                        "inquiry, the client has to be added from the panel."
+                    ),
+                )
+            except Exception:  # noqa: BLE001
+                log.exception("could not tell the owner about the dropped mail")
+
     if failed:
         # 500 so Resend redelivers. Duplicates return normally from
         # handle_inbound_message, so reaching here means nothing was stored.
@@ -184,6 +224,33 @@ def _mailboxes(payload: dict) -> list[str]:
                 if isinstance(addr, str) and addr.strip():
                     found.extend(_addresses_in(addr))
     return found
+
+
+def _sender(payload: dict) -> str:
+    """Who sent it, for the owner's notice only — never for routing.
+
+    Deliberately forgiving where `_addresses_in` is strict, and the asymmetry is
+    the point: a routing key decides which agency owns a message and must
+    refuse anything a sender can bend, while this only names a stranger in a
+    line of text the owner reads. Getting it wrong costs a confusing nudge;
+    getting a routing key wrong costs a cross-tenant write.
+    """
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return ""
+    raw: object = data.get("from")
+    if isinstance(raw, list):
+        raw = raw[0] if raw else ""
+    if isinstance(raw, dict):
+        raw = raw.get("email") or raw.get("address") or ""
+    text = str(raw or "").strip()
+    return parseaddr(text)[1] or text
+
+
+def _subject(payload: dict) -> str:
+    """The subject line, or "". Untrusted text; the caller trims it."""
+    data = payload.get("data") if isinstance(payload, dict) else None
+    return str(data.get("subject") or "") if isinstance(data, dict) else ""
 
 
 def _addresses_in(value: str) -> list[str]:

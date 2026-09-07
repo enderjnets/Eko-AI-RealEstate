@@ -1506,3 +1506,133 @@ en `PROJECT_STATUS.md:3472`; nunca Natalia):
    enlace sin sesión → Google → `/leads/<id>`; llamada a Clara → correo;
    sonda del asunto; destinatario restaurado; leads de prueba borrados.
 6. `origin/main` == HEAD del VPS; tag y release; sesión par avisada.
+
+---
+
+# FASE 5 [CRÍTICA] — Quién puede escribir al Inbox, y a quién se avisa
+
+> Escrito el 6-sep-2026, **después** de cerrar las Fases 1 y 2 (dominio propio
+> verificado y `Denver Home Story <hello@denverhomestory.com>` en producción,
+> probado de punta a punta en las dos vías). Agrupa las decisiones **4, 5 y 6**
+> del dueño y la consecuencia que salió de cruzar la 1 con la 3, porque las
+> cuatro son el mismo sitio: **quién puede crear un lead y a quién se le avisa
+> de lo que no lo crea**.
+>
+> Rama `feat/inbox-cerrado`, desde `69ef674` (la punta de
+> `feat/aviso-natalia-dominio-propio`, que lleva seis commits de estado sin
+> fusionar). Se apila a propósito: ramificar desde `origin/main` perdería el
+> `PROJECT_STATUS.md` de las Fases 1 y 2. Versión: **pedida a la sesión par**,
+> no tomada.
+
+## Por qué es crítica
+
+Toca el webhook de entrada de correo — por donde entra cada respuesta de cada
+cliente, en producción, desde el 1 de junio — y `lead_notify`, que corre dentro
+del POST del formulario, el único punto de conversión del embudo. Un fallo aquí
+no se ve: se ve **la ausencia** de un lead.
+
+## Lo medido antes de diseñar
+
+| Hecho | Evidencia | Consecuencia |
+|---|---|---|
+| Hoy `cualquier-cosa@denverhomestory.com` **crea un lead en la org 1** | `webhook_org_or_refuse`: ninguna ruta casa → `routable_candidates` = [1] (la demo, id 2, está excluida) → la ruta no tiene `inbound_secret_ref` ni `credential_ref`, así que `_verifies_with_its_own_secret` es False → devuelve 1 | Es exactamente lo que la decisión 5 prohíbe. Y el MX está en la **raíz**, así que la puerta está abierta de par en par |
+| `resolve_org_by_destination` tiene **tres llamantes más** | `channel_identity.py:478` (elige el secreto que verifica la firma), `email.py:177` (`_message_is_ours`, que convierte cualquier excepción en «no es nuestro»), `tenant_resolver.py:333` | **La regla nueva NO va ahí.** Levantar una excepción en un buscador cambiaría la elección de secreto y el permiso de descarga de un mensaje. Va en `webhook_org_or_refuse`, que es el punto de decisión de la atribución de entrada y nada más |
+| El guardián de auto-bucle **ya existe** | `conversation.py:1226-1240`: descarta lo que venga de la propia dirección de envío de la org | `hello@` ya está tapado. Lo que falta es la dirección **propia de la agencia** (la de Engel & Völkers) |
+| `ops_alert` tiene un tope de **3 avisos al día para todos los asuntos** | `MAX_ALERTS_PER_DAY = 3`, gastado por `llm_monitor` y `fair_housing_watch` | **El aviso de correo rechazado no puede usarlo**: un spam a `x@denverhomestory.com` apagaría la alarma que vigila la red de seguridad del LLM. Presupuesto propio |
+| `send_email` resuelve la identidad **de la org que actúa** | `services/email.py:375` | En el momento del rechazo **no hay org asignada** (`set_org_id` no ha corrido): el aviso del dueño no puede salir por ahí. Va por Telegram, que no necesita identidad y ya es el chat del dueño |
+| `booking_contact_email` admite **una** dirección | `models/agent_settings.py:50`, `String(255)` | La copia al dueño no cabe ahí sin migración — y no debe: la agencia edita Ajustes y podría quitársela |
+
+## Decisiones de diseño (y por qué, no solo qué)
+
+1. **«Un dominio con ruta es un dominio cerrado».** Si ninguna clave casa una
+   ruta **pero el dominio de alguna clave es el dominio de una ruta existente
+   de ese canal**, se rechaza — sin llegar al fallback de inquilino único. Así
+   `hello@denverhomestory.com` entra y `cualquier-otra@denverhomestory.com` no,
+   mientras que un instalador nuevo **sin ninguna ruta** conserva el
+   comportamiento de hoy. Es la regla que menos superficie mueve: cero churn en
+   los tests existentes (ninguno manda a un dominio que él mismo haya enrutado)
+   y cero regresión en el arranque de un cliente nuevo.
+2. **El dueño se entera por Telegram, no por `ops_alert`.** Presupuesto propio
+   (tope diario) y **deduplicado por remitente y día**: sin eso, quien conozca
+   el dominio puede convertir el chat del dueño en un altavoz. Lo que se manda
+   son **hechos de sobre** — de quién, a qué dirección, qué asunto — nunca el
+   cuerpo: en ese punto del webhook el cuerpo **no se ha descargado**, y está
+   bien que así sea.
+3. **`OWNER_NOTICE_EMAIL` es del operador, no de la agencia.** Va en el trío
+   (`config.py` + `.env.example` + `docker-compose.yml`), vacío = inerte. Se
+   manda en un **envío aparte**, nunca como segundo destinatario: Natalia no
+   tiene por qué ver la dirección del dueño en la cabecera de su aviso. Se
+   **salta** cuando coincide con `booking_contact_email` (el dueño se la puso a
+   sí mismo durante las pruebas de la Fase 4, y volverá a pasar), y se manda
+   **aunque el correo de la agencia esté vacío** — ahí es exactamente cuando
+   hace de red.
+4. **La dirección de la agencia no crea leads.** Paso 0 de
+   `handle_inbound_message`, al lado del guardián de auto-bucle. Si esto queda
+   inerte porque `booking_contact_email` en producción no es la dirección de
+   Natalia, **se dice**, no se declara arreglado.
+
+## Archivos y cambios
+
+**Backend:**
+
+- **`app/services/tenant_resolver.py`** — en `webhook_org_or_refuse`, antes del
+  fallback: si alguna clave tiene `@` y su dominio es el de una ruta existente
+  del canal, `raise WebhookOrgUnresolved` nombrando el dominio y la salida
+  («mapea la dirección o se queda fuera»). Una consulta extra **solo en el
+  camino del fallo**; el camino caliente no se toca.
+- **`app/services/unrouted_notice.py`** (nuevo) — `tell_the_owner(...)`: dedup
+  por remitente y día UTC, tope diario propio, Telegram + `log.error`. En
+  memoria del proceso: un reinicio lo olvida, y para un aviso de cortesía eso
+  es correcto — lo que **no** se pierde es la línea de log.
+- **`app/api/v1/webhooks/email.py`** — en el `except WebhookOrgUnresolved`,
+  además del log, avisar al dueño. Envuelto: un fallo del aviso no puede
+  costar el 200 que evita que Resend desactive el endpoint.
+- **`app/services/conversation.py`** — paso 0: si el remitente es la dirección
+  de contacto de la agencia, `{"status": "ignored_agency_address"}`, sin lead y
+  sin hilo.
+- **`app/config.py` + `.env.example` + `docker-compose.yml`** — `OWNER_NOTICE_EMAIL`.
+- **`app/services/lead_notify.py`** — `_notify_owner_by_email`, tercera pata
+  del mismo `asyncio.gather` (mismo presupuesto de 8 s, sin latencia añadida).
+- **Barridos AST** (`test_content_gate_is_absolute.py`, `test_opt_out_is_absolute.py`)
+  — declarar `_notify_owner_by_email` con su motivo.
+
+## Tests
+
+1. `x@denverhomestory.com` con una ruta en `hello@denverhomestory.com` →
+   **ningún lead**, respuesta `unrouted`.
+2. `hello@denverhomestory.com` sigue entrando y creando el lead.
+3. `otro@dominio-sin-ruta.test` en un instalador de un solo inquilino → **sigue
+   entrando** (la no-regresión, en verde).
+4. El rechazo avisa al dueño **una vez**; el mismo remitente otra vez el mismo
+   día, **cero** avisos nuevos.
+5. Un remitente distinto sí avisa; pasado el tope, no.
+6. El aviso del dueño **no** lleva cuerpo del correo.
+7. `OWNER_NOTICE_EMAIL` puesto → dos envíos, con **destinatarios distintos**.
+8. La cabecera del aviso de la agencia **no** contiene la dirección del dueño.
+9. `OWNER_NOTICE_EMAIL` vacío → un solo envío, como hoy.
+10. `OWNER_NOTICE_EMAIL == booking_contact_email` → un solo envío.
+11. `booking_contact_email` vacío y `OWNER_NOTICE_EMAIL` puesto → el dueño se
+    entera igual.
+12. Un entrante desde `booking_contact_email` → `ignored_agency_address`, sin
+    lead nuevo.
+
+## Mutaciones (copiar, mutar, ver el rojo, restaurar, `md5`)
+
+| Mutación | Debe poner en rojo |
+|---|---|
+| quitar la regla del dominio cerrado | test 1 |
+| aplicar la regla también a dominios sin ruta | test 3 |
+| quitar el dedup del aviso | test 4 |
+| mandar la copia al dueño con `OWNER_NOTICE_EMAIL` vacío | test 9 |
+| mandar la copia como segundo destinatario del envío de la agencia | test 8 |
+| quitar el guardián de la dirección de la agencia | test 12 |
+
+## Criterio de terminado
+
+Suite completa en verde **sin saltados** desde `eko_realestate_test_notice`;
+`ruff check app tests` limpio; `npm run typecheck` y `npm test` en verde;
+`docker build -f backend/Dockerfile backend` OK; cobertura de los cuatro
+módulos tocados **no baja** respecto de la línea base medida antes de editar;
+diff sin secretos; las seis mutaciones verificadas. Bump (el número **pedido** a
+la sesión par) en `config.py` + `frontend/lib/version.ts` + `CHANGELOG.md`, en el
+**mismo** commit.

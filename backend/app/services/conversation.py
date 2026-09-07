@@ -1209,6 +1209,25 @@ async def _optout_language(
     return pick_supported_language(detect_language(parsed.content or ""), ("en", "es"))
 
 
+async def _agency_contact_address(db: AsyncSession) -> str | None:
+    """The acting agency's own inbox, case-folded, or None.
+
+    Read on the caller's session on purpose: RLS already scopes it to the org
+    this message was attributed to, so there is nothing here that needs the
+    bypass role — and reaching for it would remove the tenant boundary from a
+    lookup that has no business crossing one.
+    """
+    row = (
+        await db.execute(
+            select(AgentSettings.booking_contact_email).where(
+                AgentSettings.org_id == _acting_org()
+            )
+        )
+    ).scalar_one_or_none()
+    address = parseaddr((row or "").strip())[1] or (row or "").strip()
+    return address.casefold() or None
+
+
 async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dict[str, int | str | bool]:
     """Process one inbound message (any channel) end-to-end. Returns a small status dict.
 
@@ -1232,12 +1251,47 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         from app.models.channel_route import CHANNEL_EMAIL
         from app.services.channel_identity import resolve_outbound_identity
 
+        # The ADDRESS, not the header. `from_identifier` is `data["from"]`
+        # verbatim, and a real mail client sends `Natalia Ruiz <n@brokerage.com>`
+        # — so comparing the raw string against a bare address is a guard that
+        # is inert against every message a human actually sends. Both guards
+        # below share this, because both were written against the same field.
+        sender_address = (
+            parseaddr(parsed.from_identifier)[1] or parsed.from_identifier
+        ).strip().casefold()
+
         identity = await resolve_outbound_identity(CHANNEL_EMAIL)
         own = parseaddr(identity.sender_override or identity.destination or "")[1]
         own = own.strip().lower()
-        if own and parsed.from_identifier.strip().lower() == own:
+        if own and sender_address == own:
             log.warning("Inbound from our own address %s — ignored (self-loop guard)", own)
             return {"status": "ignored_self_loop", "from": parsed.from_identifier}
+
+        # ── 0b. The AGENCY's own address is not a lead ──────────────────
+        # A different address from the one above and a different failure. The
+        # guard above catches the mailbox we SEND FROM; this one catches the
+        # realtor's own inbox, at their brokerage, which the product never
+        # sends from and therefore never recognised.
+        #
+        # It became reachable the moment the notice started arriving from
+        # `hello@denverhomestory.com` — an address the product itself receives.
+        # The agent presses Reply in their own mail client, as anyone would,
+        # and their answer arrives here as a stranger: a new lead, named after
+        # them, carrying their brokerage address, which the assistant then
+        # answers. The agency talking to itself, in front of the agency.
+        #
+        # Dropped rather than filed anywhere: there is no thread it belongs to.
+        # The reply is about a lead, but a mail client's Reply carries no way
+        # to say WHICH — that is exactly what the panel is for, and decision 3
+        # of 6-Sep was that the panel is where the agency answers.
+        contact = await _agency_contact_address(db)
+        if contact and sender_address == contact:
+            log.warning(
+                "Inbound from the agency's own contact address %s — ignored "
+                "(it is not a lead; answers belong in the panel)",
+                contact,
+            )
+            return {"status": "ignored_agency_address", "from": parsed.from_identifier}
 
     # ── 1. Lead upsert ──────────────────────────────────────────────────
     # By identifier, and also by a matching email address. Leads are keyed on
