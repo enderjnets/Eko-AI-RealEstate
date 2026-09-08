@@ -6,7 +6,41 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
-## v0.93.0 — dos huecos al día, imágenes honestas, y `/fall` medible (sin desplegar)
+## v0.93.0 — dos huecos al día, imágenes honestas, y `/fall` medible
+
+**✅ DESPLEGADA Y VERIFICADA EN PRODUCCIÓN el 8-sep-2026**, con autorización del
+dueño en su propia sesión (un mensaje entre sesiones **no** sirvió como
+autorización, y así se le dijo). VPS en `1c88cad` por `--ff-only` desde bundle;
+ROG actualizado por `tar` + `systemctl --user restart`, **sin ejecutar el
+instalador**. Copias previas: `.env.bak.20260908_v0930` (8.249 bytes),
+`eko_pre_1c88cad_20260908.sql` (sha256 `1fec78d7b6a21a81…`) y
+`~/eko-render/worker.bak.20260908` en el ROG.
+
+### Salida real de la verificación
+
+| Comprobación | Resultado |
+|---|---|
+| `/api/v1/health` | `{"status":"ok","version":"0.93.0","env":"production","llm_fallback":"ok"}` |
+| `alembic current` | `055_calculator_snapshot (head)` — **sin migración**, como estaba previsto |
+| Tracebacks en 5 min | **0** |
+| Marca: `/` `/fall` `/contact` `/calculator` | **200** las cuatro |
+| `/fall/1..4` | **307** con `utm_content=band1..4` — ver nota abajo |
+| HTML servido de `/fall` | `id="consult"` ×1, `href="#consult"` ×1, `/calculator` ×1, `Equal Housing` ×2, `<main>`=1, «Checking session»=**0** |
+| ROG · `md5` de los tres módulos | idénticos a la rama (`ac656fd4…`, `78755d8f…`, `eb8bd0c8…`) |
+| ROG · claves | `FAL_KEY` 69, `PEXELS` 56, `MINIMAX` 125 — **intactas** |
+| ROG · módulo cargado | `_stock_allowed()` → **False**, `daily_cap()` → **30**, y `pictures.fetch` aparece **antes** que `tts.narrate` en el fuente de `produce()` |
+
+**Corrección factual: son 307, no 302.** Next emite `307 Temporary Redirect`
+para `permanent: false`, no 302. Los dos son temporales y conservan el método;
+`bioLinks.test.ts` comprueba `permanent === false`, que sigue siendo lo
+correcto. Donde este repo diga «302» para esas rutas, léase 307.
+
+**El `.env` del VPS no se tocó**, como estaba decidido: sigue sin ninguna línea
+`CONTENT_SLOT_*` y rigen los defaults del código.
+
+---
+
+## v0.93.0 — detalle (por qué y qué trae)
 
 Rama `feat/otono-2026`, nacida de `98c9182` (lo que corría en producción) y con
 `origin/main` fusionado (`9d12f20`) para que el `--ff-only` del despliegue
