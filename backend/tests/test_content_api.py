@@ -12,13 +12,13 @@ import os
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 import app.main as main_module
 from app.config import get_settings
 from app.db.base import get_bypass_session_factory
 from app.main import app
-from app.models import ContentStatus
+from app.models import ContentKind, ContentPiece, ContentStatus
 
 
 @pytest.fixture
@@ -603,6 +603,109 @@ async def test_a_clip_arrives_even_with_no_brokerage_line(
         await _cleanup()
         await _set_brokerage(previous)
 
+
+@pytest.mark.asyncio
+async def test_a_finished_video_can_be_uploaded_as_generated(
+    database_url: str, tmp_path, monkeypatch
+) -> None:
+    """A video assembled outside this system, filed for what it is.
+
+    Three things have to be true at once, and each one is load-bearing:
+
+    * `kind=generated` is what declares synthetic material to TikTok and
+      YouTube. Filing it as RECORDED would be a false declaration.
+    * `scenes` stays NULL, so lane B does not claim it — there is no plan to
+      render, and inventing one would overwrite the finished film.
+    * and because it is GENERATED, lane A does not claim it either. Lane A
+      takes RECORDED rows with a `media_path`, which is precisely the shape
+      this row would have had under the old hardcoded kind: the video would
+      have been re-rendered, watermark and end card on top of a finished one.
+
+    Mutation: drop the `kind` parameter and hardcode RECORDED again → the
+    lane-A assertion goes red.
+    """
+    monkeypatch.setattr(get_settings(), "CONTENT_MEDIA_DIR", str(tmp_path))
+    try:
+        async with _client() as client:
+            r = await client.post(
+                "/api/v1/content/upload"
+                "?filename=fall-band-1.mp4&language=en&kind=generated",
+                content=b"four clips and one line of text",
+            )
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["kind"] == "generated"
+        assert body["status"] == "draft"
+        assert body["media_path"].endswith(".mp4")
+
+        async with get_bypass_session_factory()() as db:
+            piece = (
+                await db.execute(
+                    select(ContentPiece).where(ContentPiece.id == body["id"])
+                )
+            ).scalar_one()
+            assert piece.scenes is None, piece.scenes
+
+            # Neither lane may claim it. Asked of the real queries, not of a
+            # remembered rule: `render_pending` takes RECORDED rows that have
+            # a media_path, and `enqueue_generated` takes GENERATED rows that
+            # have scenes and no media_path.
+            lane_a = (
+                await db.execute(
+                    select(ContentPiece.id).where(
+                        ContentPiece.kind == ContentKind.RECORDED,
+                        ContentPiece.media_path.is_not(None),
+                        ContentPiece.rendered_at.is_(None),
+                    )
+                )
+            ).scalars().all()
+            assert body["id"] not in lane_a, lane_a
+
+            lane_b = (
+                await db.execute(
+                    select(ContentPiece.id).where(
+                        ContentPiece.kind == ContentKind.GENERATED,
+                        ContentPiece.scenes.is_not(None),
+                        ContentPiece.media_path.is_(None),
+                    )
+                )
+            ).scalars().all()
+            assert body["id"] not in lane_b, lane_b
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_upload_that_names_no_kind_is_still_a_filmed_clip(
+    database_url: str, tmp_path, monkeypatch
+) -> None:
+    """The console sends no `kind`, and it must keep meaning RECORDED.
+
+    The default is the compatibility promise: every existing caller of this
+    route is a person uploading something they filmed.
+    """
+    monkeypatch.setattr(get_settings(), "CONTENT_MEDIA_DIR", str(tmp_path))
+    try:
+        async with _client() as client:
+            r = await client.post(
+                "/api/v1/content/upload?filename=phone.mov&language=en",
+                content=b"bytes from a phone",
+            )
+        assert r.status_code == 201, r.text
+        assert r.json()["kind"] == "recorded"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_kind_that_does_not_exist_is_refused(database_url: str) -> None:
+    """422 from the enum, not a row filed under a word nobody defined."""
+    async with _client() as client:
+        r = await client.post(
+            "/api/v1/content/upload?filename=x.mp4&language=en&kind=borrowed",
+            content=b"bytes",
+        )
+    assert r.status_code == 422, r.text
 
 @pytest.mark.asyncio
 async def test_a_file_that_is_not_a_video_is_named_as_such(database_url: str) -> None:

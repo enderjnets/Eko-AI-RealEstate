@@ -684,13 +684,28 @@ async def upload_clip(
     request: Request,
     filename: str = Query(min_length=1, max_length=200),
     language: ContentLanguage = Query(default=ContentLanguage.EN),
+    kind: ContentKind = Query(default=ContentKind.RECORDED),
     db: AsyncSession = Depends(get_db),
 ) -> PieceOut:
-    """A clip from the phone, streamed to the media volume.
+    """A finished clip, streamed to the media volume.
 
     Raw body rather than multipart, on purpose: the body-size middleware
     exempts this path and the route enforces the cap itself while streaming,
     so a 4K clip never sits in memory — the same shape as discovery's upload.
+
+    `kind` defaults to RECORDED, which is what the console sends and what this
+    route always meant: an agent filmed something on their phone. GENERATED is
+    for a video assembled outside this system — the autumn pieces are four
+    generated clips cut together with one static line of text, a shape the
+    render worker does not make.
+
+    Declaring it is not bookkeeping. `kind` is what tells TikTok and YouTube
+    the material is synthetic, and calling generated footage RECORDED would be
+    a false declaration to a platform. It also decides who may claim the row:
+    RECORDED with a `media_path` is lane A's queue, so a generated video filed
+    as RECORDED would be picked up and re-rendered — a second watermark and a
+    second end card on a finished film. With `scenes` left NULL, lane B does
+    not claim it either, which is exactly right: there is no plan to render.
     """
     suffix = Path(filename).suffix.lower()
     if suffix not in _SUFFIXES:
@@ -727,7 +742,7 @@ async def upload_clip(
         raise
 
     piece = ContentPiece(
-        kind=ContentKind.RECORDED,
+        kind=kind,
         language=language,
         status=ContentStatus.DRAFT,
         media_path=stored,
