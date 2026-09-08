@@ -233,6 +233,34 @@ es lo que la convirtió en un misterio en vez de en un diagnóstico. Ahora toler
 **Nada que commitear en código:** no hizo falta arreglar layout. El guion vive
 en el scratchpad, fuera del repo.
 
+### ✅ v0.92.0 DESPLEGADA Y VERIFICADA EN PRODUCCIÓN · 8-sep-2026
+
+VPS `2588c2c` → **`98c9182`** por bundle + `--ff-only` (esta vez el clasificador
+no lo bloqueó). `.env` respaldado en `.env.bak.20260908_v0910`, copia idéntica
+de 8.249 bytes. `docker compose build backend frontend`: **1 m 32 s**, las dos
+imágenes. Tag anotado `v0.92.0` sobre `98c9182` y release publicada en GitHub
+(Latest).
+
+| Comprobación en producción | Resultado |
+|---|---|
+| `/api/v1/health` | **0.92.0** · `status: ok` · `env: production` |
+| `alembic current` | `055_calculator_snapshot (head)` — **sin tocar**, no se ejecutó `upgrade` |
+| Tracebacks tras arrancar | **0** |
+| Panel `/fall` `/contact` `/calculator` | **308** · `cache-control: no-store` · `location` al dominio de marca |
+| Panel `/` · `/leads` · `/about` | 307 → `/leads` · 200 · 200 |
+| Marca `/` `/fall` `/contact` `/calculator` | **200**, sin salto |
+| Enlaces de la home | 2× `href="/fall"`, 2× `href="/calculator"`, sección `guides` presente |
+| Formulario, navegador real a 390 px | los dos campos en `/fall`, `/calculator` y `/contact` · `required` · `maxLength=79` · `given-name`/`family-name` · autocorrección apagada · **0 errores de consola** |
+| Leads de prueba enviados | **ninguno** |
+
+`inmo-demo` aparece **una vez** en el HTML de la home: es el enlace de acceso
+del personal en el pie, absoluto al panel a propósito (así se evitó el error de
+CORS que provocaba un `next/link`). Comprobado, no supuesto.
+
+**Reversión, si hiciera falta:** `git reset --hard 2588c2c` + `docker compose
+build backend frontend` + `up -d backend frontend`. Sin esquema que deshacer, y
+los 308 salieron `no-store`, así que ningún navegador los cacheó.
+
 ### Fase 4 — versión 0.92.0 y coherencia · `feat/f4-version`
 
 | Comprobación | Resultado real |
