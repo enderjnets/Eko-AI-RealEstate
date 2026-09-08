@@ -61,13 +61,28 @@ the product, used in README / landing / marketing copy, is **"Eko AI Realtors"**
    The one-second check that exposes it: **`wc -l` against what `cat` printed.**
    To read or count, use the `Read` tool, `sed -n`, or `python3`.
 
-   *An earlier draft of this note cited 68 and 119 — numbers taken from a
-   different session's report of an earlier state of the file, never
-   re-measured. In a note whose point is that unverified numbers mislead, that
-   was the error it warns about. It also claimed `grep CONTENT_SLOT
-   docker-compose.yml` returned only `.env.example` matches; that one does not
-   reproduce — compose declares them at lines 173-175 — so it is gone. The
-   phenomenon above is measured here; the rest was hearsay.*
+   **`grep` over SEVERAL files reports only the first file that matches**, and
+   labels it as if that were the whole answer. Measured the same day; both
+   files hold three matches each, six in total:
+
+   ```
+   grep -n CONTENT_SLOT .env.example docker-compose.yml  -> "3 in 1F", only .env.example
+   grep -n CONTENT_SLOT docker-compose.yml .env.example  -> "3 in 1F", only compose
+   grep -n CONTENT_SLOT docker-compose.yml               -> the 3, correct
+   ```
+
+   One file is fine, and so is `grep -l`. Several files is where it lies — and
+   it is the shape you reach for when asking "is this declared anywhere?", so
+   the wrong answer arrives exactly when it costs most.
+
+   *Two corrections this note has already needed, both worth keeping. It first
+   cited 68 and 119 lines — numbers taken from another session's report of an
+   earlier state of the file, never re-measured. In a note whose point is that
+   unverified numbers mislead, that was the error it warns about. It then said
+   the `grep` case "does not reproduce", because it was retried with ONE file:
+   a rule written without its condition cannot be reproduced by the next
+   person, and the honest failure to reproduce it nearly deleted a real bug
+   from the one file everybody reads.*
 
 1. **NEVER touch `~/Eko-AI-Bussinnes-Automation/` or `~/Eko-AI-main/`** from
    sessions working in this repo. Those are the sales platform; modifying them
