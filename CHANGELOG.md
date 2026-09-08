@@ -2,6 +2,30 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.91.0] — 2026-09-07
+
+### Added
+- **"Guides" on the brand's home page.** A section between the markets and the
+  form listing the fall-color guide (`/fall`) and the rent-vs-buy calculator
+  (`/calculator`) with their real titles, a "Guides" entry in the desktop
+  navigation and in the phone menu, and both pieces in the footer. Measured on
+  the live site on 7-sep, the home linked to neither page: only a visitor with
+  the link from a reel's caption could reach them. The list lives in
+  `frontend/lib/guides.ts` and is the single source for the section, the footer
+  and the tests; a piece whose route is not in `PUBLIC_PATHS` fails
+  `guides.test.ts`, because on the brand host the middleware would send every
+  tap on it to the panel's login screen.
+
+### Changed
+- `LANDING_SECTIONS` (backend) and the tracker's `SECTIONS` gain `guides`, so
+  reaching the new section is recorded like the other four instead of being
+  dropped with a silent 204, and the panel's "How far they read" card lists
+  it. Taps on the two links are not events of their own: a visit to `/fall`
+  or `/calculator` from the home shows up as that page's own `page_view`
+  under the same session.
+- The phone menu scrolls when it is taller than the screen (landscape), now
+  that it has five entries.
+
 ## [0.90.0] — 2026-09-06
 
 ### Added

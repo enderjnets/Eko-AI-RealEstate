@@ -50,9 +50,18 @@ LANDING_EVENT_TYPES = frozenset(
 )
 
 # Sections of the page an IntersectionObserver can report. Also a closed set,
-# for the same reason and because the analytics reads them by name. The last
-# three are /calculator's; `consult` is shared — it is the form on both pages.
-LANDING_SECTIONS = ("about", "how", "markets", "consult", "inputs", "result", "compare")
+# for the same reason and because the analytics reads them by name. `guides`
+# (v0.91.0) is the home's guides-and-tools section; the last three are
+# /calculator's; `consult` is shared — it is the form on both pages.
+#
+# Two literals, deliberately, and `test_analytics.py` checks one is inside the
+# other. `HOME_SECTIONS` is what the panel's "How far they read" card lists, in
+# page order; it used to be a second literal INSIDE `analytics.py`, which is
+# how `guides` got stored for every visitor and shown to nobody until an audit
+# read both files. `LANDING_SECTIONS` stays a literal because
+# `track.test.ts` reads it out of this source with a regex.
+HOME_SECTIONS = ("about", "how", "markets", "guides", "consult")
+LANDING_SECTIONS = ("about", "how", "markets", "guides", "consult", "inputs", "result", "compare")
 
 
 class LandingSession(Base):

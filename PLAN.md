@@ -1636,3 +1636,114 @@ módulos tocados **no baja** respecto de la línea base medida antes de editar;
 diff sin secretos; las seis mutaciones verificadas. Bump (el número **pedido** a
 la sesión par) en `config.py` + `frontend/lib/version.ts` + `CHANGELOG.md`, en el
 **mismo** commit.
+
+---
+
+# PLAN — «Guides» en la home: la puerta que faltaba a /fall y /calculator
+
+> Escrito el 7-sep-2026, tras la decisión del dueño («vamos con la opción B»).
+> **Ejecutor: Opus 5.** Rama `feat/guides-en-la-home` desde `origin/main`
+> (`8de9654`, que contiene el HEAD del VPS `4ffe0ce`, v0.90.0 — comprobado con
+> `merge-base --is-ancestor`). Versión: **pedida a la sesión par el 7-sep**,
+> propuesta 0.91.0; no se escribe hasta que conteste.
+
+## Contexto — lo medido
+
+`https://www.denverhomestory.com/` enlaza a `#about`, `#markets`, `#consult`,
+tres redes, el teléfono y el login del staff. **Ni `/fall` ni `/calculator`
+aparecen en la home** (curl del 7-sep, lista completa de `href`). Las dos
+páginas existen solo para quien tiene el enlace de un reel. El pie no las
+enlaza porque, según su propio comentario, «no enlaza a nada que no exista» —
+cuando se escribió, no existían.
+
+La investigación (NN/g «Avoid format-based primary navigation»; Search Engine
+Land, topic clusters; Redfin `/guides` + `/blog`) y las tres direcciones
+dibujadas en el lienzo `Guides Denver Home Story` llevaron a la **opción B**:
+una sola entrada «Guides» en el menú, ordenada por la pregunta del visitante
+(comprar, vender, vivir en Colorado), donde guías, herramientas y artículos
+del blog conviven dentro de cada tema. El blog **no** es una sección aparte
+del menú; que sus URL sean `/blog/…` es SEO, no navegación.
+
+## Alcance
+
+**Fase A (esta):** entrada «Guides» en el menú de escritorio y en el
+hamburger; sección `#guides` en la home entre Markets y el formulario, con las
+dos piezas reales; los dos enlaces en el pie. «Guides» apunta a la sección,
+como ya hacen Markets y About — **cero rutas nuevas**, cero cambios en
+`PUBLIC_PATHS`, cero `metadata` nueva.
+
+**Fase B (cuando haya 4+ piezas, otra fase):** la página `/guides` por tema.
+Hoy sería una página con huecos. Cuando llegue: entra en `PUBLIC_PATHS`, lleva
+su `robots: index`, y el enlace del menú pasa de `#guides` a `/guides`.
+
+**Fuera:** `/fall` y `/calculator` no se tocan; el blog no se construye; no se
+añade `data-track` a los enlaces de guía (el test `labels every anchor` cuenta
+solo `#consult` y `tel:`, y un `data-track` extra lo rompe sin ganar nada).
+
+## Lo que la lectura del código cambió del plan
+
+| Hecho | Evidencia | Consecuencia |
+|---|---|---|
+| Una sección de la home se mide por `id` con un IntersectionObserver, y el servidor **descarta** con un 204 cualquier nombre fuera de `LANDING_SECTIONS` | `backend/app/models/landing.py:55`; `lib/__tests__/track.test.ts:438-490` lee la tupla del Python y comprueba `SECTIONS` del tracker contra ella | «Solo frontend» era falso: `guides` entra en la tupla del backend **y** en `SECTIONS` de `LandingTracker.tsx`. Sin esquema nuevo: la tupla es un filtro, no un enum de BD |
+| El repo decidió **no** tener jsdom ni testing-library (`vitest.config.ts`) | comentario explícito | Los tests son de forma sobre el fuente (como `i18nParity`, `landingConfigWiring`) más una lista **pura** `lib/guides.ts` que sí se puede testear de verdad |
+| El test de paridad solo ve claves literales `t("…")`; las de plantilla (`t(\`landing.markets.${key}.title\`)`) no | `i18nParity.test.ts:52` | `guides.test.ts` comprueba por su cuenta que cada pieza de `GUIDES` tiene `title`, `body` y `cta` en EN **y** ES |
+| El middleware manda al login del panel cualquier ruta del host de marca que no esté en `PUBLIC_PATHS` | `middleware.ts` | `guides.test.ts`: cada `href` de `GUIDES` pasa `isPublicPath`. Una guía nueva con ruta no pública **no compila el test** |
+| El menú móvil es una lista `items` con `href`/label | `Landing.tsx:225-230` | Una entrada más; el número de orden (`04`) lo pone el índice |
+
+## Archivos y cambios
+
+- **`frontend/lib/guides.ts`** (nuevo, puro): `GUIDES` — `{ key, href, kind: "guide"|"tool", topic: "buying"|"selling"|"colorado" }` para `fall` y `calculator`. La lista es la única fuente: sección, pie y tests la leen.
+- **`frontend/lib/i18n.tsx`**: EN y ES — `landing.nav.guides`, `landing.menu.guides`, `landing.guides.{eyebrow,titleA,titleItalic,intro}`, `landing.guides.kind.{guide,tool}`, `landing.guides.topic.{buying,selling,colorado}`, `landing.guides.{fall,calculator}.{title,body,cta}`. Los títulos y descripciones de `fall` y `calculator` son los **reales** de sus páginas; nada inventado.
+- **`frontend/components/landing/Landing.tsx`**: enlace «Guides» en `LandingNav` (entre Markets y About); entrada en `MobileMenu.items`; sección `Guides()` entre `<Markets />` y `<Consult />` con la anatomía de `HowWeWork` (Eyebrow + SplitTitle + intro + cards con `border-t`); pie: fila de enlaces a cada guía, `inline-flex min-h-[44px]` como el del staff.
+- **`frontend/components/landing/LandingTracker.tsx`**: `SECTIONS` gana `"guides"`.
+- **`backend/app/models/landing.py`**: `LANDING_SECTIONS` gana `"guides"`, con el comentario al día.
+- **Bump** en `backend/app/config.py` + `frontend/lib/version.ts` + `CHANGELOG.md`, mismo commit.
+
+## Tests
+
+`frontend/lib/__tests__/guides.test.ts`:
+1. cada `href` de `GUIDES` pasa `isPublicPath` (mutación: `/guias` → rojo);
+2. claves únicas, `kind` y `topic` dentro de sus uniones;
+3. cada pieza tiene `landing.guides.<key>.title|body|cta` en EN y ES;
+4. `Landing.tsx` enlaza `#guides` en el nav **y** en el menú móvil (dos apariciones de `href="#guides"`), tiene `id="guides"`, e itera `GUIDES` en la sección y en el pie;
+5. `LandingTracker.tsx` declara `"guides"` en `SECTIONS` y `landing.py` en `LANDING_SECTIONS` (el test existente de `track.test.ts` ya garantiza que todo lo del tracker está en la tupla; este asegura que `guides` está en los dos).
+
+Backend: `tests/test_landing_analytics.py` y la suite completa desde
+`eko_realestate_test_notice`.
+
+## Mutaciones (copiar, mutar, ver el rojo, restaurar, `md5`)
+
+| Mutación | Debe poner en rojo |
+|---|---|
+| quitar el enlace del nav de escritorio | test 4 |
+| quitar la entrada del menú móvil | test 4 |
+| `id="guides"` → `id="guide"` | test 4 |
+| `href: "/calculator"` → `"/calculadora"` | test 1 |
+| borrar `landing.guides.fall.cta` de ES | test 3 (y paridad) |
+| quitar `"guides"` de `SECTIONS` del tracker | test 5 |
+
+## Lo que la auditoría añadió (dos auditores, tras escribir el código)
+
+| Hallazgo | Evidencia | Qué se hizo |
+|---|---|---|
+| `guides` se guardaba y el panel nunca lo mostraba: `analytics.py` iteraba su **propia** tupla literal de cuatro nombres | `services/analytics.py:160`; sin `section.guides` en i18n | `HOME_SECTIONS` en `models/landing.py`, `analytics.py` la importa; `section.guides` EN/ES; test en `test_analytics.py` (fila con `guides` → aparece en el informe) y en `test_landing_analytics.py` (`HOME_SECTIONS` es prefijo de `LANDING_SECTIONS`) |
+| Mutación verde que no debía: la tarjeta podía escribir `href={\`/guide/${key}\`}` y el test seguía verde | `guides.test.ts` validaba el dato, no el render | test 6: exactamente un `href={href}` en la sección y uno en el pie |
+| `indexOf("<main>")` caía en un comentario; regex del nav frágil al orden de atributos | `Landing.tsx:165` (prosa); `guides.test.ts:95` | `lastIndexOf`; regex `<a\b[^>]*href="#guides"[^>]*>`; mutación de control M10 (reordenar atributos) debe seguir verde |
+| Menú móvil de cinco entradas sin `overflow-y-auto`: en apaisado el quinto ítem queda fuera de alcance | aritmética ~525 px vs <430 px | `overflow-y-auto` en el contenedor del menú |
+| `/fall` es solo en inglés y el visitante en español lo leía en el cuerpo, no donde decide | `app/fall/page.tsx:26` | `lang: "en"` en la entrada → `hrefLang` en los dos enlaces; CTA ES «Leer la guía (en inglés)»; el aviso sale del cuerpo |
+| Dos enlaces por tarjeta al mismo destino (título + CTA): dos tab-stops, sin afordancia en táctil | `Landing.tsx` sección | el título deja de ser enlace; queda el CTA de 44 px |
+| `landing.guides.topic.selling` era una clave muerta | ninguna fila la usa | eliminada; el test exige la clave cuando aparezca la primera pieza de venta |
+| Dejado a propósito | — | los `<nav>` de cabecera y menú siguen sin `aria-label` (preexistente); el comentario «the four real sections» de `track.test.ts:396` está rancio pero el test es correcto; los clics en las guías no son eventos propios (se infieren del `page_view` de la página destino) |
+
+Diez mutaciones en total (las seis del plan más M7 backend, M8/M8b render del `href`, M9 `section.guides`) y una de control.
+
+## Criterio de terminado
+
+`npm test`, `npm run typecheck`, `npm run lint` y `next build` en verde;
+suite backend completa en verde **sin saltados**; `ruff check app tests`
+limpio; `docker compose build frontend` **en el VPS** es el criterio de build
+Docker; diff sin secretos; las diez mutaciones verificadas con `md5`
+restaurado. Tras el deploy: `curl` de
+`https://www.denverhomestory.com/` contiene `href="/fall"`, `href="/calculator"`
+y `href="#guides"`; `/api/v1/health` = versión nueva; una vista de la home a
+390 px de ancho con el menú abierto muestra «Guides».

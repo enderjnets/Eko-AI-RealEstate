@@ -38,6 +38,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowRight, Building2, CalendarCheck, Clock, Menu, Phone, Ruler, Users, X } from "lucide-react";
 import { LANDING, dialable } from "@/lib/landing";
 import { STAFF_LOGIN_HREF } from "@/lib/hosts";
+import { GUIDES } from "@/lib/guides";
 import { LandingEffects } from "@/components/landing/LandingEffects";
 import { LandingTracker } from "@/components/landing/LandingTracker";
 import { useI18n } from "@/lib/i18n";
@@ -128,6 +129,9 @@ function LandingNav({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: (
           </a>
           <a href="#markets" className={link}>
             {t("landing.nav.markets")}
+          </a>
+          <a href="#guides" className={link}>
+            {t("landing.nav.guides")}
           </a>
           <a href="#about" className={link}>
             {t("landing.nav.about")}
@@ -226,6 +230,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
     { href: "#about", label: t("landing.menu.about"), italic: false },
     { href: "#how", label: t("landing.menu.how"), italic: false },
     { href: "#markets", label: t("landing.menu.markets"), italic: false },
+    { href: "#guides", label: t("landing.menu.guides"), italic: false },
     { href: "#consult", label: t("landing.nav.book"), italic: true },
   ];
 
@@ -236,7 +241,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
       role="dialog"
       aria-modal="true"
       aria-label={t("landing.menu.title")}
-      className="fixed inset-0 z-50 flex flex-col bg-ln-night px-[22px] pb-[calc(30px+env(safe-area-inset-bottom,0px))] pt-[calc(14px+env(safe-area-inset-top,0px))] text-ln-canvas md:hidden"
+      className="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-ln-night px-[22px] pb-[calc(30px+env(safe-area-inset-bottom,0px))] pt-[calc(14px+env(safe-area-inset-top,0px))] text-ln-canvas md:hidden"
     >
       <div className="-mr-2 flex items-start justify-between">
         <Wordmark compact />
@@ -622,6 +627,65 @@ function Markets() {
   );
 }
 
+/**
+ * The guides and tools, on the one page every video sends people to.
+ *
+ * Same anatomy as HowWeWork on purpose — eyebrow, split title, an intro on
+ * the right, cards on a top rule — so it reads as the page's own vocabulary
+ * and not as a widget bolted on. The list is `lib/guides.ts`; the section
+ * knows nothing about which pieces exist.
+ *
+ * No `data-track` on these links, deliberately: `track.test.ts` labels the
+ * anchors the tracker reports on (`#consult` and `tel:`) and counts them
+ * against the labels, so a label here would fail that test while measuring
+ * nothing the section-view observer does not already record via `id`.
+ */
+function Guides() {
+  const { t } = useI18n();
+  return (
+    <section id="guides" className="scroll-mt-10 bg-ln-stone">
+      <div className="px-5 py-16 sm:px-10 lg:px-14 lg:py-28">
+        <div data-reveal="up" data-drift="34" className="mb-14 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between lg:gap-16">
+          <div>
+            <Eyebrow>{t("landing.guides.eyebrow")}</Eyebrow>
+            <div className="mt-6">
+              <SplitTitle a={t("landing.guides.titleA")} italic={t("landing.guides.titleItalic")} />
+            </div>
+          </div>
+          <p className="max-w-[340px] text-[15px] leading-[1.8] text-ln-body">
+            {t("landing.guides.intro")}
+          </p>
+        </div>
+        <div className="grid gap-10 sm:grid-cols-2 lg:gap-11">
+          {GUIDES.map(({ key, href, kind, topic, lang }) => (
+            <article key={key} data-reveal="up" className="flex flex-col border-t border-ln-line-strong pt-6">
+              <p className="text-[10px] font-medium uppercase tracking-[0.3em] text-ln-gold">
+                {t(`landing.guides.topic.${topic}`)} · {t(`landing.guides.kind.${kind}`)}
+              </p>
+              <h3 className="mb-3 mt-6 font-ln-serif text-[26px] leading-[1.2] text-ln-ink">
+                {t(`landing.guides.${key}.title`)}
+              </h3>
+              <p className="max-w-[460px] text-sm leading-[1.75] text-ln-body">
+                {t(`landing.guides.${key}.body`)}
+              </p>
+              {/* inline-flex + min-height so the tap target reaches 44px on
+                  a phone, the same reason the footer's staff link has it. */}
+              <a
+                href={href}
+                hrefLang={lang}
+                className="mt-6 inline-flex min-h-[44px] items-center gap-2 self-start text-[11px] font-medium uppercase tracking-[0.18em] text-ln-bronze hover:text-ln-gold"
+              >
+                {t(`landing.guides.${key}.cta`)}
+                <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.5} />
+              </a>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Consult() {
   const { t } = useI18n();
   return (
@@ -721,6 +785,21 @@ function LandingFooter() {
           )}
           {legal.length > 0 && <p>{legal.join(" · ")}</p>}
         </div>
+        {/* The guides, again, where a visitor who scrolled past the section
+            looks for them last. Same list as the section, so the footer can
+            never name a page the section does not. */}
+        <nav aria-label={t("landing.guides.eyebrow")} className="flex flex-wrap items-center gap-x-6">
+          {GUIDES.map(({ key, href, lang }) => (
+            <a
+              key={key}
+              href={href}
+              hrefLang={lang}
+              className="inline-flex min-h-[44px] items-center whitespace-nowrap text-[11px] tracking-[0.04em] text-ln-muted underline underline-offset-4 hover:text-ln-gold"
+            >
+              {t(`landing.guides.${key}.title`)}
+            </a>
+          ))}
+        </nav>
         <div className="flex items-center gap-6">
           {/* The videos send people here; this is the way back. Each icon
               exists only if its URL was configured — an empty row of dead
@@ -775,6 +854,7 @@ export function Landing() {
         <TwoOfUs />
         <HowWeWork />
         <Markets />
+        <Guides />
         <Consult />
       </main>
       <LandingFooter />

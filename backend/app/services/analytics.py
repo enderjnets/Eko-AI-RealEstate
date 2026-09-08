@@ -43,6 +43,7 @@ from app.models import (
     Visit,
     VisitStatus,
 )
+from app.models.landing import HOME_SECTIONS
 from app.services import video_metrics
 
 # The office's day, when the agency has not said otherwise. Denver because that
@@ -157,7 +158,7 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
         ]
 
     sections = {}
-    for name in ("about", "how", "markets", "consult"):
+    for name in HOME_SECTIONS:
         sections[name] = await _scalar(
             db,
             select(func.count()).where(

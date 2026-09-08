@@ -282,6 +282,39 @@ async def test_a_visit_is_counted_where_it_was_read() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_guides_section_is_reported_not_only_stored() -> None:
+    """`fold_events` stored `guides` from v0.91.0; this checks the panel sees it.
+
+    The report used to iterate its own literal of four names, so a section the
+    tracker recorded reached `sections_viewed` and no further — the "How far
+    they read" card had no row for it and nothing said so.
+    """
+    await _fresh()
+    now = datetime.now(UTC)
+    async with get_bypass_session_factory()() as db:
+        db.add(
+            LandingSession(
+                org_id=ORG,
+                session_key="analytics-" + "g" * 22,
+                first_seen_at=now,
+                last_seen_at=now,
+                source="instagram",
+                device="phone",
+                max_scroll_pct=80,
+                sections_viewed=["markets", "guides"],
+                event_count=4,
+            )
+        )
+        await db.commit()
+    try:
+        sections = (await _get())["traffic"]["sections"]
+        assert sections["guides"] >= 1
+        assert list(sections) == ["about", "how", "markets", "guides", "consult"]
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
 async def test_every_day_in_the_range_appears_even_when_nothing_happened() -> None:
     """A chart drawn from the rows alone closes up empty days, which turns a
     week with two dead days into a smooth line that never happened.

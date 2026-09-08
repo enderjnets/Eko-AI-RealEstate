@@ -275,3 +275,14 @@ class TestRawRows:
 
     def test_empty_metadata_is_stored_as_null(self) -> None:
         assert new_events(1, 7, [("page_view", {})], NOW)[0].meta is None
+
+
+def test_the_home_sections_are_a_prefix_of_what_the_server_keeps() -> None:
+    """Two literals on purpose (`track.test.ts` parses one by regex); this is
+    what stops them drifting. A home section the report lists but the server
+    drops is a 204 for every visitor; one the server keeps but the report
+    skips is stored for everyone and shown to nobody — both have shipped."""
+    from app.models.landing import HOME_SECTIONS, LANDING_SECTIONS
+
+    assert LANDING_SECTIONS[: len(HOME_SECTIONS)] == HOME_SECTIONS
+    assert "guides" in HOME_SECTIONS

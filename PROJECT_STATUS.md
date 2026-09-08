@@ -5788,3 +5788,93 @@ transcripción, y borrarlo es decisión suya.
 
 El lead 1264 se borró a petición del dueño tras la verificación: 1/1/20 → **0/0/0**.
 La transcripción de la llamada sigue en Vapi, que es de donde vino.
+
+---
+
+# Fase «Guides en la home» — v0.91.0 (7/8-sep-2026)
+
+**Qué:** la home pública no enlazaba a `/fall` ni a `/calculator` (medido con
+`curl`: los `href` de `/` eran `#about`, `#markets`, `#consult`, tres redes,
+el teléfono y el login del staff). Ahora hay una entrada «Guides» en el nav de
+escritorio y en el menú del teléfono, una sección `#guides` entre Markets y el
+formulario con las dos piezas y su copia real, y los dos enlaces en el pie.
+Opción B del lienzo `Guides Denver Home Story` (una puerta por tema, no por
+formato), elegida por el dueño el 7-sep.
+
+**Fase B, no construida a propósito:** la página `/guides` por tema llega
+cuando haya 4+ piezas. Hoy sería una página con huecos.
+
+## Checklist (salida real)
+
+| Criterio | Resultado |
+|---|---|
+| `npm test` | **357 passed** (21 ficheros), 0 saltados |
+| `npm run typecheck` / `npm run lint` | limpio / «No ESLint warnings or errors» |
+| `next build` | exit 0, 0 avisos (el primer intento dio **254**: corrió en `backend/`; el arnés lo reportó como 0 porque el rc era del `echo` final — ver memoria) |
+| suite backend (`eko_realestate_test_notice`, recreada **y migrada**) | **1779 passed**, 0 saltados, 6:44 |
+| `ruff check app tests` | «All checks passed!» |
+| cobertura vs `main` (worktree en `8de9654`, mismos dos ficheros de test) | `models/landing.py` 96→**97 %**, `services/analytics.py` 86→**86 %**, total 89→89 % |
+| mutaciones | **10 en rojo** con la aserción correcta + control M10 en verde, `md5` restaurado en todas (M9 con el literal `í`, que es como está escrito en el fichero) |
+| secretos / debug en el diff | 0 (grep de `re_`, `whsec_`, `sk-`, `token=`, `password`; `console.log`, `print(`, `debugger`) |
+| build Docker | el criterio es `docker compose build backend frontend` **en el VPS** (abajo) |
+
+## Falsos arranques (los dos míos)
+
+1. Creé la base de tests con `CREATE DATABASE` y lancé la suite: alfombra de
+   `F` en `test_auth`, `test_consent_gate`, `test_console_api`… `relation
+   "organizations" does not exist`. La suite no crea el esquema. Receta
+   corregida en memoria: `alembic upgrade head` antes de `pytest`.
+2. `npm run build` lanzado desde `backend/` en segundo plano: el log decía
+   `exit=254` y el arnés «exit code 0». Releído el log, repetido desde
+   `frontend/`.
+
+## Auditoría (dos auditores, solo lectura) → qué se hizo
+
+- **IMPORTANTE, los dos lo vieron:** `guides` se guardaba en `sections_viewed`
+  y el panel nunca lo mostraba — `analytics.py:160` iteraba su propia tupla
+  literal de cuatro nombres. Hecho: `HOME_SECTIONS` en `models/landing.py`
+  (prefijo de `LANDING_SECTIONS`, que sigue siendo literal porque
+  `track.test.ts` la parsea con regex), `analytics.py` la importa,
+  `section.guides` EN/ES, dos tests nuevos (`test_analytics.py`: una sesión con
+  `guides` aparece en `traffic.sections` en orden; `test_landing_analytics.py`:
+  `HOME_SECTIONS` es prefijo). Mutación M7 (quitar `guides` de
+  `HOME_SECTIONS`) → los dos en rojo.
+- **IMPORTANTE:** mutación verde que no debía — la tarjeta con
+  `href={\`/guide/${key}\`}` iteraba `GUIDES` y pasaba. Hecho: test que exige
+  exactamente un `href={href}` en la sección y uno en el pie (M8, M8b en rojo).
+- **IMPORTANTE (proceso):** `guides.ts` y `guides.test.ts` estaban sin
+  trackear. Hecho: `git add` por nombre; nunca `-a`.
+- MENORES hechos: `lastIndexOf("<main>")` (un docblock decía `<main>` en
+  prosa); regex del nav tolerante al orden de atributos (M10 de control);
+  `overflow-y-auto` en el menú móvil (cinco entradas no caben en apaisado);
+  `hrefLang="en"` en los enlaces a `/fall` y el aviso «(en inglés)» en el CTA
+  ES, no en el cuerpo; el título de la tarjeta deja de ser un segundo enlace
+  al mismo destino; `landing.guides.topic.selling` eliminada (clave muerta).
+- Dejado a propósito: los `<nav>` de cabecera y menú sin `aria-label`
+  (preexistente); el comentario «the four real sections» de `track.test.ts`
+  rancio pero el test correcto; los clics en las guías no son eventos propios
+  (se infieren del `page_view` de la página destino, y el CHANGELOG lo dice
+  así); `GuideTopic` conserva `"selling"` sin cadena hasta la primera pieza de
+  venta (el test la exigirá entonces).
+
+## Advisor (dos consultas)
+
+1. **Antes de recomendar y dibujar** — motivo: cerrar la pregunta «¿juntar
+   blog y guías?» con la investigación en mano. Decisión: la puerta se
+   ordena por tema (NN/g), la URL por SEO; tres opciones, recomendar B; dos
+   plazos (esta semana enlazar lo que existe; `/guides` con 4+ piezas);
+   restricciones a señalar sin codificar (`PUBLIC_PATHS`, `robots`, i18n,
+   `/about` fuera).
+2. **Cierre, antes del deploy** — motivo: regla 5. Decisión: repetir las
+   mutaciones contra el test final (hecho: 10 rojas + control); barrido de
+   debug (hecho, 0); `git add` por nombre; el plan debe decir lo que se
+   embarca (tabla «Lo que la auditoría añadió» en `PLAN.md`); atribución del
+   commit según el último aviso del sistema; deploy con build de backend y
+   frontend encadenados con `&&`; verificación con `cf-cache-status` a la vista
+   y Playwright a 390×844 y 844×390.
+
+## Versión
+
+0.91.0, **pedida y concedida** por la sesión par el 7-sep («0.91.0 está
+libre, tómala»; recorrió las 34 ramas remotas: máximo 0.90.0). Bump en
+`config.py` + `version.ts` + `CHANGELOG.md`, mismo commit.

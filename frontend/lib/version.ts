@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.90.0";
+export const CURRENT_VERSION = "0.91.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.91.0",
+    date: "2026-09-07",
+    title: {
+      en: "The home page now leads to the guides and the calculator",
+      es: "La pagina principal ahora lleva a las guias y a la calculadora",
+    },
+    changes: [
+      { en: "A \"Guides\" section on the brand's home page, between the markets and the form, listing the fall-color guide and the rent-vs-buy calculator with their real titles. Until now neither page was linked from anywhere on the site: only whoever had the link from a reel could reach them.", es: "Una seccion \"Guias\" en la pagina principal de la marca, entre los mercados y el formulario, con la guia de los colores del otono y la calculadora de renta frente a compra con sus titulos reales. Hasta ahora ninguna de las dos estaba enlazada desde el sitio: solo llegaba quien tenia el enlace de un reel." },
+      { en: "\"Guides\" in the desktop navigation and in the phone menu, and both pieces in the footer. One list drives the section, the footer and the tests, and a piece whose route is not public cannot be added to it.", es: "\"Guias\" en el menu de escritorio y en el menu del telefono, y las dos piezas en el pie. Una sola lista alimenta la seccion, el pie y los tests, y no se puede anadir una pieza cuya ruta no sea publica." },
+      { en: "Reaching the new section is recorded like the other four, and the panel's \"How far they read\" card lists it. Taps on the two links are not separate events: a visit to the guide or the calculator shows up as that page's own view under the same session.", es: "Llegar a la seccion nueva se registra como las otras cuatro, y la tarjeta \"Hasta donde leyeron\" del panel la muestra. Los toques en los dos enlaces no son eventos aparte: una visita a la guia o a la calculadora aparece como la vista de esa pagina en la misma sesion." },
+    ],
+  },
   {
     version: "0.90.0",
     date: "2026-09-06",

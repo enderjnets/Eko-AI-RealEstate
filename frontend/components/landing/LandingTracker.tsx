@@ -40,7 +40,7 @@ const LANDING_VARIANT = "landing";
 /** The sections an IntersectionObserver reports on the landing — the DEFAULT.
  *  Another page passes its own; every name must be in `LANDING_SECTIONS` in
  *  `backend/app/models/landing.py`, because the server drops anything else. */
-const SECTIONS: readonly string[] = ["about", "how", "markets", "consult"];
+const SECTIONS: readonly string[] = ["about", "how", "markets", "guides", "consult"];
 
 export function LandingTracker({
   variant = LANDING_VARIANT,
