@@ -26,6 +26,7 @@ import { Loader2 } from "lucide-react";
 import { submitPublicLead, type CaptureOutcome } from "@/lib/api";
 import { collectAttribution } from "@/lib/capture";
 import { useI18n } from "@/lib/i18n";
+import { NAME_FIELD_MAX, fullName } from "@/lib/leadName";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { TURNSTILE_SITE_KEY, Turnstile } from "@/components/ui/Turnstile";
 
@@ -37,6 +38,7 @@ function ContactForm() {
 
   const [f, setF] = useState({
     name: "",
+    lastName: "",
     email: "",
     phone: "",
     message: "",
@@ -88,7 +90,7 @@ function ContactForm() {
 
     const outcome: CaptureOutcome = await submitPublicLead({
       form: FORM_KEY,
-      name: f.name.trim() || undefined,
+      name: fullName(f.name, f.lastName) || undefined,
       email: f.email.trim() || undefined,
       phone: f.phone.trim() || undefined,
       message: f.message.trim() || undefined,
@@ -146,12 +148,29 @@ function ContactForm() {
       </p>
 
       <div className="mt-6 space-y-4">
+        {/* Two fields, both required in the markup, and capped so the two of
+            them plus a space cannot exceed the single 160-character `name`
+            the API takes. `autoComplete` changes from "name" to the two
+            halves so a phone fills each box with the right one. */}
         <Field
           id="name"
           label={t("contact.name")}
           value={f.name}
           onChange={set("name")}
-          autoComplete="name"
+          autoComplete="given-name"
+          maxLength={NAME_FIELD_MAX}
+          isName
+          required
+        />
+        <Field
+          id="lastName"
+          label={t("contact.lastname")}
+          value={f.lastName}
+          onChange={set("lastName")}
+          autoComplete="family-name"
+          maxLength={NAME_FIELD_MAX}
+          isName
+          required
         />
         <Field
           id="email"
@@ -250,6 +269,9 @@ function Field({
   onChange,
   type = "text",
   autoComplete,
+  required,
+  maxLength,
+  isName = false,
 }: {
   id: string;
   label: string;
@@ -257,6 +279,10 @@ function Field({
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   type?: string;
   autoComplete?: string;
+  required?: boolean;
+  maxLength?: number;
+  /** A person's name: iOS autocorrect rewrites surnames it does not know. */
+  isName?: boolean;
 }) {
   return (
     <div>
@@ -272,6 +298,20 @@ function Field({
         value={value}
         onChange={onChange}
         autoComplete={autoComplete}
+        required={required}
+        maxLength={maxLength}
+        {...(isName
+          ? // A space passes `required`: `validity.valueMissing` is false for
+            // " ", measured. Without this the form promises two fields and can
+            // send neither — `fullName` trims both to nothing, `name` goes as
+            // undefined, and the visitor sees success while the lead arrives
+            // nameless. `pattern` makes the browser refuse it in place, with
+            // its own bubble, so this costs no new wording in either language.
+            { pattern: ".*\\S.*" }
+          : {})}
+        {...(isName
+          ? { autoCorrect: "off", autoCapitalize: "words", spellCheck: false }
+          : {})}
         className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
       />
     </div>

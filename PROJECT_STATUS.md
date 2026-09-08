@@ -116,6 +116,92 @@ confirmado. `test_version_is_one_number.py` no puede atrapar la ausencia de un
 bump (solo cruza que los tres ficheros concuerden), así que la garantía es la
 fase, no el test.
 
+### Fase 2 — nombre y apellido, obligatorios, en los cuatro formularios · `feat/f2-apellido`
+
+Campo nuevo en `ConsultForm` (`/`, `/fall`, `/calculator`) y en el formulario
+propio de `/contact`. Los dos se unen en el cliente (`lib/leadName.ts`) en el
+único campo `name` que acepta la API: **sin migración y sin cambio de backend**.
+`required` vive solo en el marcado, porque el mismo endpoint atiende a otro
+tenant y exigirlo en `PublicLeadIn` lo rompería.
+
+| Comprobación | Resultado real |
+|---|---|
+| `pytest` backend | ✅ **1779 passed** — idéntico a la referencia, sin regresión |
+| `npx vitest run` | ✅ **379/379** en 23 ficheros (361 → +18) |
+| `npx tsc --noEmit` | ✅ limpio |
+| `npx next lint` | ✅ «No ESLint warnings or errors» |
+| `npx next build` + prerender | ✅ compilado; `<main>`=1, «Checking»=0 en las cuatro |
+| **Navegador real** (Playwright, iPhone 13, las 4 páginas) | dos campos · `required` · `maxLength=79` · `given-name`/`family-name` · `autocorrect=off` · etiquetas **«First name»/«Last name»** y, en español, **«Nombre»/«Apellido»** (`/fall` no tiene selector: es solo inglés por diseño) |
+| **Extremo a extremo**, POST interceptado | `"  Ana "` + `" Perez de la Rosa  "` → **`"Ana Perez de la Rosa"`** · solo espacios → `checkValidity()=false` · 300 caracteres inyectados en el input → **se envían 160** |
+| Cobertura | No medible (sin instrumentación de frontend). Sustituto: **7 mutaciones, 7 en rojo** |
+| Secretos / `console.log` / «eko» en cadenas nuevas | ninguno |
+
+**Auditoría independiente (2 agentes).** Un bloqueante y ocho hallazgos; los
+cinco que producían dato malo o cegaban un fallo real, corregidos aquí:
+
+1. 🔴 **BLOQUEANTE — `/contact` pedía «Tu nombre» junto a «Apellido».** Las
+   claves `contact.name` seguían diciendo «Your name»/«Tu nombre» (el landing ya
+   decía «First name»/«Nombre» y por eso se salvó). Quien lo lee escribe el
+   nombre completo en la primera caja: `fullName` une sin deduplicar y llega
+   **«María Pérez de la Rosa Pérez de la Rosa»** al Inbox y al **asunto** del
+   aviso. Justo el dato que este cambio existe para conseguir. Corregido.
+2. **Un `name` de más de 160 no se recorta: tira el lead entero.**
+   `PublicLeadIn.name` tiene `max_length=MAX_NAME`, que pydantic **rechaza** —
+   422 que se lleva email, teléfono, consentimiento TCPA y el snapshot de la
+   calculadora, y el visitante lee «algo salió mal». Medido por el auditor:
+   `maxLength` frena tecleo, pegado y autorrelleno, **pero no** a un gestor de
+   contraseñas asignando `input.value`, y ahí `validity.tooLong` sigue siendo
+   falso. `fullName` ahora recorta a 160. Verificado en navegador.
+3. **Mis tests seguían verdes con el bug.** Atar el apellido a `f.name`, o
+   llamar `fullName(f.name, f.name)`, pasaba las 374 pruebas: el apellido nunca
+   se capturaba y `id`, `required`, `maxLength` y `autoComplete` seguían
+   correctos. Ahora se afirma el cableado **por campo** (`value={f.lastName}`,
+   `onChange={set("lastName")}`) y la llamada con **los dos** argumentos. Las
+   dos mutaciones que el auditor midió en verde ahora fallan.
+4. **iOS reescribe apellidos que no conoce.** `type="text"` es el único tipo que
+   autocorrige (`email` y `tel` están exentos, por eso no había hecho falta
+   antes); «Uriostegui» se sustituye en silencio y el agente llama a alguien
+   cuyo apellido no casa con su identificación. Añadidos `autoCorrect="off"`,
+   `spellCheck={false}` y `autoCapitalize="words"` a los cuatro campos de nombre.
+5. **Un espacio pasaba `required`** (`validity.valueMissing` es falso para `" "`):
+   la forma prometía dos campos y no enviaba ninguno, con éxito aparente.
+   Cerrado con `pattern=".*\S.*"`, que usa el globo nativo y no añade copia.
+
+Corregidos además dos defectos de mi propia redacción: el test copiaba el 160 en
+un literal en vez de **leerlo de `capture.py`** (ahora lo cruza, y bajar
+`MAX_NAME` a 120 pone el frontend en rojo — comprobado), y el docstring de
+`leadName.ts` justificaba el `trim` con algo que el servidor desmiente
+(`capture.py` ya colapsa los espacios dobles).
+
+**Al backlog, con evidencia:**
+
+- 🔴 **El abandono que las dos puertas nuevas producen es invisible.** La
+  validación nativa aborta el submit **antes** de `handleSubmit`, así que
+  `getTracker()?.record("form_error")` no se dispara nunca por ese camino. El
+  repo construyó `track.ts` justo para responder qué pasa en el embudo, y el
+  efecto de este cambio sobre la conversión es lo único que no puede medir. **Es
+  decisión de producto sin instrumentación: si la conversión cae, los datos no
+  dirán por qué.** Para el dueño.
+- **Los leads que ya existen no se rellenan.** `capture.py:346` es
+  `if name and not lead.name`: el primer nombre gana, así que alguien registrado
+  como «Ana» que reenvíe con «Ana Pérez» conserva «Ana». Solo los nuevos traerán
+  apellido. Cambiarlo podría pisar un nombre bueno de WhatsApp con una errata.
+- `trim()` no quita `U+200B`, `U+200D`, `U+00AD` ni `U+180E`, y Python tampoco
+  los considera espacio: un nombre invisible es posible pegando. Sin camino de
+  usuario real.
+- Tres campos obligatorios sin ninguna marca visual (antes 1 en el landing, 0 en
+  `/contact`); el usuario solo descubre cuál falta cuando el navegador le
+  bloquea. Y el placeholder de `/` cae a ~2,4:1 de contraste sobre fotogramas
+  claros del vídeo, que es lo único que distingue dos cajas gemelas.
+- `/contact` tiene 38 px de altura táctil (< 44). Preexistente; el tráfico de
+  reels va a `/`, `/fall` y `/calculator`, que usan `h-12` = 48 px.
+
+**«Apellido», singular, es correcto** y no se cambia: la Spanish del sector
+público estadounidense (SSA, IRS, USCIS) usa singular porque el registro
+subyacente es un solo campo; «Apellidos» es convención de España. La población
+hispana de Denver opera aquí con un único apellido legal, y este formulario
+acaba casando con un documento estadounidense.
+
 ### Consultas al advisor
 
 | Motivo | Decisión |
@@ -125,8 +211,7 @@ fase, no el test.
 
 **Hallazgos abiertos:** ninguno.
 
-**Siguiente paso:** Fase 2 — nombre y apellido obligatorios en los cuatro
-formularios públicos, en `feat/f2-apellido`.
+**Siguiente paso:** Fase 3 — móvil medido y capturas al dueño.
 
 **Coordinación entre sesiones (7-sep).** Cuatro sesiones locales vivas.
 `Eko Ai Realtors`: concede la 0.92.0, no toca estos ficheros. `Viral Videos DHS`:

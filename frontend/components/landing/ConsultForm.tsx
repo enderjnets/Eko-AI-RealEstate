@@ -20,6 +20,7 @@ import { submitPublicLead, type CalculatorPayload, type CaptureOutcome } from "@
 import { collectAttribution } from "@/lib/capture";
 import { getTracker, sessionKey, storedAttribution } from "@/lib/track";
 import { useI18n } from "@/lib/i18n";
+import { NAME_FIELD_MAX, fullName } from "@/lib/leadName";
 import { ArrowRight } from "lucide-react";
 import { Turnstile, TURNSTILE_SITE_KEY } from "@/components/ui/Turnstile";
 
@@ -52,7 +53,7 @@ function ConsultFormInner({
   const { t } = useI18n();
   const params = useSearchParams();
 
-  const [f, setF] = useState({ name: "", phone: "", email: "", website: "" });
+  const [f, setF] = useState({ name: "", lastName: "", phone: "", email: "", website: "" });
   const [goal, setGoal] = useState<Goal | null>(null);
   const [consent, setConsent] = useState(false);
   const [utm, setUtm] = useState<Record<string, string>>({});
@@ -94,8 +95,12 @@ function ConsultFormInner({
     getTracker()?.record("form_start");
   };
 
+  // Keyed off the state itself rather than a hand-written union: the union was
+  // a second list of the same field names, and adding `lastName` to the state
+  // left it behind — `tsc` caught it, which is the good outcome, but the next
+  // field would cost the same edit twice. Derived, it cannot fall out of step.
   const set =
-    (k: "name" | "phone" | "email" | "website") =>
+    (k: keyof typeof f) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
       setF((p) => ({ ...p, [k]: e.target.value }));
 
@@ -145,7 +150,11 @@ function ConsultFormInner({
 
     const outcome: CaptureOutcome = await submitPublicLead({
       form: FORM_KEY,
-      name: f.name.trim() || undefined,
+      // `required` lives in the markup only: this same endpoint serves the
+      // other tenant's forms, so demanding a name server-side would break
+      // them. A submission that arrives without one — a bot, or JS off — is
+      // still captured. The lead is the point; the field is courtesy.
+      name: fullName(f.name, f.lastName) || undefined,
       email: f.email.trim() || undefined,
       phone: f.phone.trim() || undefined,
       message,
@@ -201,6 +210,12 @@ function ConsultFormInner({
     // alone would under-report exactly the device most of this traffic uses.
     <form onSubmit={handleSubmit} onFocusCapture={onFirstTouch}>
       <div className="space-y-4">
+        {/* Both halves of the name share the row, and the phone moves down to
+            its own. Required in the markup for the same reason the email is:
+            the browser saying so in place beats a round-trip, and an agent
+            calling a seller needs more than a first name to look them up.
+            `maxLength` is not decoration — the server takes ONE `name` field
+            capped at 160, and 79 + 1 + 79 is 159. */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <LandingField
             id="ln-name"
@@ -208,16 +223,29 @@ function ConsultFormInner({
             value={f.name}
             onChange={set("name")}
             autoComplete="given-name"
+            maxLength={NAME_FIELD_MAX}
+            name
+            required
           />
           <LandingField
-            id="ln-phone"
-            label={t("landing.form.phone")}
-            type="tel"
-            value={f.phone}
-            onChange={set("phone")}
-            autoComplete="tel"
+            id="ln-lastname"
+            label={t("landing.form.lastname")}
+            value={f.lastName}
+            onChange={set("lastName")}
+            autoComplete="family-name"
+            maxLength={NAME_FIELD_MAX}
+            name
+            required
           />
         </div>
+        <LandingField
+          id="ln-phone"
+          label={t("landing.form.phone")}
+          type="tel"
+          value={f.phone}
+          onChange={set("phone")}
+          autoComplete="tel"
+        />
         {/* Required in the markup too: the backend refuses a lead without an
             address while SMS is parked (CAPTURE_REQUIRE_EMAIL), and the
             browser saying so first beats a round-trip to learn the same. */}
@@ -324,6 +352,8 @@ function LandingField({
   type = "text",
   autoComplete,
   required,
+  maxLength,
+  name = false,
 }: {
   id: string;
   label: string;
@@ -332,6 +362,9 @@ function LandingField({
   type?: string;
   autoComplete?: string;
   required?: boolean;
+  maxLength?: number;
+  /** A person's name: turn iOS autocorrect off for it. See below. */
+  name?: boolean;
 }) {
   // The design draws inputs as underlined rules on the dark panel; the label
   // rides inside as a placeholder would, but stays a real <label> for a11y.
@@ -347,6 +380,30 @@ function LandingField({
         onChange={onChange}
         autoComplete={autoComplete}
         required={required}
+        maxLength={maxLength}
+        {...(name
+          ? // A space passes `required`: `validity.valueMissing` is false for
+            // " ", measured. Without this the form promises two fields and can
+            // send neither — `fullName` trims both to nothing, `name` goes as
+            // undefined, and the visitor sees success while the lead arrives
+            // nameless. `pattern` makes the browser refuse it in place, with
+            // its own bubble, so this costs no new wording in either language.
+            { pattern: ".*\\S.*" }
+          : {})}
+        {...(name
+          ? // `type="text"` is the one input type iOS autocorrects hard —
+            // `email` and `tel` are exempt, which is why the fields that were
+            // here before never needed this. On a surname it rewrites what the
+            // visitor typed at the moment they hit space or submit, silently:
+            // "Uriostegui" becomes a word iOS prefers, and the agent then calls
+            // someone whose surname does not match their ID. Capitalising words
+            // is kept, because a name is capitalised.
+            {
+              autoCorrect: "off",
+              autoCapitalize: "words",
+              spellCheck: false,
+            }
+          : {})}
         placeholder={label}
         className="h-12 w-full border-b border-ln-cream/35 bg-transparent text-[14px] text-ln-cream outline-none placeholder:text-ln-canvas/55 focus:border-ln-cream/80"
       />
