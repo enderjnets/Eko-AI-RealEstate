@@ -39,6 +39,83 @@ comí el recuento**. Exit 0 probaba que pasó, no cuántos. Se repitió sin `tai
 filtrando por `passed|failed|error`. La regla que ya estaba en el plan para el
 `rc` vale igual para la salida: no encadenar `tail` a algo cuyo número necesito.
 
+### Fase 1 — el host del panel deja de servir las páginas públicas · `feat/f1-host-panel`
+
+Tercera regla en `middleware.ts`: host del panel + ruta pública ≠ `/` → **308** a
+`${BRAND_URL}${pathname}${search}`, con `Cache-Control: no-store`. Se reescribió
+el comentario `:61-63`, que decía que `/contact` se quedaba accesible ahí.
+
+| Comprobación | Resultado real |
+|---|---|
+| `npx vitest run` | ✅ **361/361** en 21 ficheros (357 de referencia + 4 nuevos) |
+| `npx tsc --noEmit` | ✅ limpio |
+| `npx next lint` | ✅ «No ESLint warnings or errors» |
+| `npx next build` | ✅ compilado, Middleware 26,7 kB |
+| Prerender | ✅ `<main>`=1, «Checking session»=0 en las cuatro públicas |
+| **HTTP real** (build con las dos variables + `next start -p 3010`) | panel `/fall` `/contact` `/calculator` → **308** + `cache-control: no-store` + `location` al dominio de marca · panel `/` → **307** a `/leads` · panel `/leads` → **200** · marca `/fall` `/contact` → **200** · marca `/leads` → **308** al panel |
+| Cobertura | **No medible** (sin instrumentación de frontend en el repo). Sustituto: 4 mutaciones, 3 en rojo |
+| Secretos / `console.log` en el diff | ninguno |
+
+**Mutaciones.** `BRAND_URL`→`PANEL_URL` → rojo. `308`→`307` → rojo. Quitar
+`Cache-Control: no-store` → rojo. **Quitar `pathname !== "/"` → verde**, y se
+deja escrito: esa guarda es redundante con el orden de las reglas, ningún test
+puede distinguirla, y se mantiene como defensa ante un reordenado. El comentario
+del código lo dice; antes afirmaba lo contrario y era falso.
+
+**Auditoría independiente (2 agentes, sobre el diff).** Cero bloqueantes. Cero
+hallazgos de seguridad: descartados con prueba el open redirect
+(`${BRAND_URL}` cierra la autoridad antes de concatenar), el bypass por cabecera
+`Host` (los destinos salen de constantes, no de la cabecera) y los bucles en
+toda configuración (la guarda de `:29` y los predicados complementarios).
+Verificado además que ninguna pantalla del panel enlaza a una ruta pública, que
+el único enlace del correo saliente es `PANEL_URL/leads/<id>`, que el matcher
+excluye `/api` (el POST del formulario no puede redirigirse) y que la site key
+de Turnstile ya incluye el dominio de marca.
+
+Corregidos en esta misma fase los cuatro hallazgos importantes que eran míos o
+del cambio:
+
+1. `CLAUDE.md:268,270` mandaba al operador a `inmo-demo…/` y a
+   `inmo-demo…/contact` como landing y formulario públicos — las dos URL que
+   este cambio convierte en redirección. Corregidas al dominio de marca, con una
+   fila nueva que explica que los dos hostnames no son intercambiables.
+2. `hostRouting.test.ts` usaba `realtors.ekoaiautomation.com` como host del
+   panel, cuando producción usa `inmo-demo` desde la v0.89.0, **y** tenía un
+   test que trataba `inmo-demo` como «otro hostname cualquiera, intacto». El
+   fichero se leía como el inverso exacto de producción. Unificado al host real;
+   el test del hostname ajeno usa ahora un tercer nombre.
+3. El test «front door» que añadí no podía fallar (la regla de `/` retorna
+   antes): poder de detección cero. Sustituido por uno que sí lo tiene — la
+   regla nueva es un no-op con las dos variables sin configurar, que es el
+   estado en que se despliega.
+4. El 308 salía **sin `Cache-Control`** — medido con `curl -I` contra un build
+   local, no supuesto. Un 308 sin directiva es cacheable por defecto, así que un
+   `BRAND_URL` mal puesto sería irreversible para quien ya lo recibió. Ahora va
+   `no-store`, con test y mutación.
+
+**Al backlog (no bloquean, con evidencia):**
+
+- `middleware.ts:62` (`/` → `/leads`, preexistente, no tocada) **descarta
+  `search`**, a dos líneas de la regla nueva que sí lo conserva. Importa porque
+  `next.config.js:19-33` genera seis enlaces de bio (`/yt /tt /ig /youtube
+  /tiktok /instagram`) que redirigen a `/?utm_source=…&utm_medium=bio` con
+  destino **relativo**: si el host pegado en algún perfil es el del panel, el
+  visitante de campaña acaba en el login y la atribución se pierde en silencio.
+  **Hay que comprobar qué hostname está pegado hoy en los tres perfiles.**
+- `new URL(BRAND_URL)` **lanza** en `app/page.tsx:54`, `contact/layout.tsx:58`,
+  `fall/page.tsx:52` y `calculator/layout.tsx:28`. El middleware trata una URL
+  mal formada como no configurada; el render, no.
+- `BRAND_URL` con path (`https://brand.com/es`) se concatena sin validar →
+  rebote, no bucle. Preexistente e idéntico para `PANEL_URL`.
+- `PROJECT_STATUS.md:317` («Panel: `/fall` `/contact` `/calculator` 200») queda
+  obsoleta. **No se edita**: es una medición fechada del 6-sep y reescribirla
+  sería falsificarla. Esta sección es la que dice qué cambió.
+
+**Sin bump de versión todavía, y es deliberado:** va en la Fase 4, con el número
+confirmado. `test_version_is_one_number.py` no puede atrapar la ausencia de un
+bump (solo cruza que los tres ficheros concuerden), así que la garantía es la
+fase, no el test.
+
 ### Consultas al advisor
 
 | Motivo | Decisión |
@@ -48,9 +125,17 @@ filtrando por `passed|failed|error`. La regla que ya estaba en el plan para el
 
 **Hallazgos abiertos:** ninguno.
 
-**Siguiente paso:** Fase 1 — la tercera regla del middleware en
-`feat/f1-host-panel`, con el test que hoy falta sobre `/contact` en el host del
-panel.
+**Siguiente paso:** Fase 2 — nombre y apellido obligatorios en los cuatro
+formularios públicos, en `feat/f2-apellido`.
+
+**Coordinación entre sesiones (7-sep).** Cuatro sesiones locales vivas.
+`Eko Ai Realtors`: concede la 0.92.0, no toca estos ficheros. `Viral Videos DHS`:
+contenido y publicación de Instagram sobre `~/Eko-AI-RealEstate`, solo lecturas
+contra producción, sin puertos ni base de tests; reserva la **0.93.0** para el
+segundo pase diario de publicación (`_slot_for`/`_day_is_taken`); verificó que
+ninguna pieza publicada cita `inmo-demo`, así que el 308 no rompe contenido.
+Pidió rutas cortas `/fall/1..4` → `/fall?utm_content=bandN`: **no se asume**, es
+alcance que solo el dueño puede ampliar, y queda elevado a él.
 
 ---
 

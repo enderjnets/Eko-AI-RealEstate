@@ -265,9 +265,10 @@ agency, so its admins would have inherited it.
 
 | What | URL |
 |---|---|
-| **Public landing** (the root is the marketing page since v0.44.0) | **https://inmo-demo.ekoaiautomation.com** |
+| **Public landing** (the root is the marketing page since v0.44.0) | **https://www.denverhomestory.com** |
 | **Dashboard — sign in here** | **https://inmo-demo.ekoaiautomation.com/login** |
-| **Public capture form** (no login — this is the point) | **https://inmo-demo.ekoaiautomation.com/contact** |
+| **Public capture form** (no login — this is the point) | **https://www.denverhomestory.com/contact** |
+| The panel hostname and the public one are not interchangeable | Since v0.92.0 the panel host answers every public page with a **308** to the brand domain. Reaching for `inmo-demo.…/contact` still lands on the form, one hop later — but it is not the address to publish, to test against, or to paste into a caption. The panel host serves `/login`, `/leads` and the rest of the work. |
 | Backend OpenAPI | `http://localhost:8011/docs` — **loopback only**, see below |
 | Backend health | `http://localhost:8011/api/v1/health` (same) |
 | Frontend, direct | `http://localhost:3004` (same). Google sign-in cannot work from a raw IP, which is why the tunnel hostname is the real entrance |

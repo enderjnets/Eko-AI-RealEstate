@@ -17,7 +17,15 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
  */
 
 const BRAND = "https://www.denverhomestory.com";
-const PANEL = "https://realtors.ekoaiautomation.com";
+/**
+ * The panel hostname production actually uses. It was `realtors.…` here while
+ * that name was the plan; the `.env` on the VPS says `inmo-demo.…` and has
+ * since v0.89.0. The literal matters: with the old value this file read
+ * "realtors is the panel, redirected; inmo-demo is untouched", which is the
+ * exact inverse of production — and the next person auditing "does /contact
+ * still work on the panel?" would have read it and concluded yes.
+ */
+const PANEL = "https://inmo-demo.ekoaiautomation.com";
 
 async function load(brand: string, panel: string) {
   vi.resetModules();
@@ -135,7 +143,7 @@ describe("host routing", () => {
     // it from CLIENTS, not delete it: it is still how the product is explained
     // internally. Nothing asserted this, so deleting the page would have passed.
     const { middleware } = await load(BRAND, PANEL);
-    expect(location(middleware(req("realtors.ekoaiautomation.com", "/about")))).toBeNull();
+    expect(location(middleware(req("inmo-demo.ekoaiautomation.com", "/about")))).toBeNull();
   });
 
   it("stays inert when both hostnames are the same, instead of looping forever", async () => {
@@ -148,7 +156,7 @@ describe("host routing", () => {
 
   it("sends the panel's front door to the work, not the marketing page", async () => {
     const { middleware } = await load(BRAND, PANEL);
-    const front = middleware(req("realtors.ekoaiautomation.com", "/"));
+    const front = middleware(req("inmo-demo.ekoaiautomation.com", "/"));
     expect(location(front)).toBe(`${PANEL}/leads`);
     // 307, not 308: the panel's front door is a convenience, not a statement
     // that `/` has permanently moved. Asserted because the destination alone
@@ -156,11 +164,79 @@ describe("host routing", () => {
     expect(front.status).toBe(307);
   });
 
-  it("leaves any other hostname untouched", async () => {
-    // inmo-demo keeps working through the transition; nothing here assumes the
-    // old hostname is retired on the same day the new one arrives.
+  it("sends the public pages on the panel domain to the brand, keeping the query", async () => {
+    // The other direction of the split, and the reason it was added: measured
+    // on the live site, the panel hostname answered `/fall` and `/calculator`
+    // with the same bytes as the brand one. One page, two addresses, and only
+    // a canonical tag — a hint, not a rule — asking Google which to keep.
     const { middleware } = await load(BRAND, PANEL);
-    expect(location(middleware(req("inmo-demo.ekoaiautomation.com", "/leads")))).toBeNull();
+    for (const p of ["/fall", "/calculator"]) {
+      const res = middleware(req("inmo-demo.ekoaiautomation.com", p));
+      expect(location(res)).toBe(`${BRAND}${p}`);
+      expect(res.status).toBe(308);
+    }
+    // With the query, which is how every real visit to `/fall` arrives.
+    expect(
+      location(middleware(req("inmo-demo.ekoaiautomation.com", "/fall", "?utm_source=instagram"))),
+    ).toBe(`${BRAND}/fall?utm_source=instagram`);
+  });
+
+  it("does not let a browser cache the redirect, so a bad brand host is reversible", async () => {
+    // A 308 with no `Cache-Control` is cacheable by default, and that was what
+    // this sent until it was measured (`curl -I` against a local build: status
+    // 308, no cache header). The failure it guards against is concrete: set
+    // `NEXT_PUBLIC_BRAND_URL` to a hostname that does not resolve yet, deploy,
+    // and every visitor who touched a landing has the redirect pinned —
+    // unsetting the variable does not reach them. The crawler still reads 308.
+    const { middleware } = await load(BRAND, PANEL);
+    const res = middleware(req("inmo-demo.ekoaiautomation.com", "/calculator"));
+    expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("sends `/contact` on the panel domain to the brand too, reversing an earlier decision", async () => {
+    // Named on its own because it is a CHANGE, not a consequence. The rule it
+    // replaced kept `/contact` reachable on the panel host "so an operator
+    // following a link from an email is not bounced across hostnames", and
+    // nothing asserted it — so flipping the behaviour would have gone green
+    // and silent. It was flipped deliberately: no mail this system sends
+    // carries a `/contact` URL (the only one is `PANEL_URL/leads/<id>`), and a
+    // saved bookmark still lands on the same page, on the public address.
+    // If that decision is ever revisited, this is the test that has to change
+    // with it.
+    const { middleware } = await load(BRAND, PANEL);
+    const res = middleware(req("inmo-demo.ekoaiautomation.com", "/contact"));
+    expect(location(res)).toBe(`${BRAND}/contact`);
+    expect(res.status).toBe(308);
+    // Sub-paths travel with it: `isPublicPath` matches `/contact/thanks`.
+    expect(location(middleware(req("inmo-demo.ekoaiautomation.com", "/contact/thanks")))).toBe(
+      `${BRAND}/contact/thanks`,
+    );
+  });
+
+  it("does not touch the public pages on the panel host while unconfigured", async () => {
+    // The first test in this file covers `/leads` and `/` unconfigured; the
+    // rule that redirects public pages was not covered by either, and that is
+    // the state this ships in until the two variables are set. A refactor that
+    // hoisted it above the guard would otherwise 308 every live landing to an
+    // empty string.
+    const { middleware } = await load("", "");
+    for (const p of ["/fall", "/contact", "/calculator"]) {
+      expect(location(middleware(req("inmo-demo.ekoaiautomation.com", p)))).toBeNull();
+    }
+  });
+
+  it("leaves a hostname that is neither brand nor panel untouched", async () => {
+    // A third name reaches this app during a migration — the old tunnel
+    // hostname, a preview deployment, an IP. It is neither half of the split,
+    // so it keeps serving whatever it served: bouncing it would take down a
+    // route nobody has finished moving yet.
+    //
+    // This used to use `inmo-demo…` as the stranger. That name IS the panel in
+    // production, so the assertion read as "the panel is untouched" — the
+    // opposite of what this file now enforces.
+    const { middleware } = await load(BRAND, PANEL);
+    expect(location(middleware(req("old-tunnel.ekoaiautomation.com", "/leads")))).toBeNull();
+    expect(location(middleware(req("old-tunnel.ekoaiautomation.com", "/fall")))).toBeNull();
   });
 
   it("ignores the port in the host header", async () => {

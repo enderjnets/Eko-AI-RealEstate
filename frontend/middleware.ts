@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { BRAND_HOST, PANEL_HOST, PANEL_URL, isPublicPath } from "@/lib/hosts";
+import { BRAND_HOST, BRAND_URL, PANEL_HOST, PANEL_URL, isPublicPath } from "@/lib/hosts";
 
 /**
  * Send each hostname to the half of the app it is meant to serve.
@@ -58,11 +58,46 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(`${PANEL_URL}${pathname}${search}`, 308);
   }
 
-  // And the panel's front door is the work, not the marketing page. Only `/`
-  // moves: `/contact` stays reachable there so an operator following a link
-  // from an email is not bounced across hostnames.
+  // And the panel's front door is the work, not the marketing page.
   if (host === PANEL_HOST && pathname === "/") {
     return NextResponse.redirect(`${PANEL_URL}/leads`, 307);
+  }
+
+  // Every other public page belongs to the brand domain, and only there.
+  //
+  // Measured on the live site before this existed: the panel hostname answered
+  // `/fall`, `/contact` and `/calculator` with the SAME bytes as the brand one
+  // — one page, two addresses. The canonical tag asked Google to prefer the
+  // brand, but a canonical is a hint, and the robots.txt Cloudflare serves on
+  // both hostnames rewrites to `Allow: /` for every crawler, so nothing except
+  // that hint kept the domain the funnel points at from competing with a copy
+  // of itself.
+  //
+  // This replaces an earlier decision that kept `/contact` reachable here "so
+  // an operator following a link from an email is not bounced across
+  // hostnames". That link is not one this system sends: the only URL any
+  // outgoing mail carries is `PANEL_URL/leads/<id>` (`lead_notify.py`), and no
+  // panel screen links to a public path. A hand-saved bookmark still works —
+  // it arrives at the same page on the address the public is meant to see.
+  //
+  // `/` is excluded twice over, and neither is redundant with the other: the
+  // rule above returns first, AND the guard here is false for it. Belt and
+  // braces, because each covers the other's failure — a reorder that moves
+  // this rule up, or a guard someone deletes as "dead". No test can tell them
+  // apart (removing either one alone stays green, measured), so this comment is
+  // the only place that says the duplication is deliberate.
+  if (host === PANEL_HOST && pathname !== "/" && isPublicPath(pathname)) {
+    const res = NextResponse.redirect(`${BRAND_URL}${pathname}${search}`, 308);
+    // 308 for crawlers, uncached for people. Measured before adding this: the
+    // redirect went out with no `Cache-Control` at all, and a 308 with no
+    // directive is cacheable by default (RFC 7538) — a browser that saw it once
+    // would keep redirecting without asking again. That makes the one failure
+    // that matters irreversible: point `NEXT_PUBLIC_BRAND_URL` at a hostname
+    // that does not resolve, deploy, and unsetting the variable does NOT bring
+    // those visitors back. Consolidation is unaffected: Google decides from the
+    // status code, not from this header.
+    res.headers.set("Cache-Control", "no-store");
+    return res;
   }
 
   return NextResponse.next();
