@@ -57,8 +57,16 @@ class Piece:
     #: Held for the entire video. One or two short lines; ffmpeg draws the
     #: newlines as written.
     text: str
-    #: `denverhomestory.com/fall` — where the caption also points. One call to
-    #: action, in both places, so they cannot compete.
+    #: `denverhomestory.com/fall`, drawn under the brand line from
+    #: `BRAND_FROM_SECONDS`. **May be empty**, and empty is the better choice
+    #: when `text` already carries the ask.
+    #:
+    #: Showing the address is not the same as asking for anything. The first
+    #: cut of these pieces displayed the URL and nothing else, and a viewer
+    #: reading a headline about elevation has no reason to read a line of small
+    #: type at the bottom as an offer. When the ask lives in the held text —
+    #: "Free guide → denverhomestory.com/fall" — repeating the address below it
+    #: is noise, and two places to look is worse than one.
     domain: str
     #: The organisation's own line. Colorado requires advertising to identify
     #: the brokerage.
@@ -125,20 +133,28 @@ def build_command(
         f":x=(w-text_w)/2:y=(h-text_h)/2[titled];"
     )
 
-    # The identification, from BRAND_FROM_SECONDS to the end. The domain leads
-    # and the brokerage follows: these videos exist to send people to the site,
-    # so the line that says where to go cannot be the least legible thing in
-    # the frame.
+    # The identification, from BRAND_FROM_SECONDS to the end. Colorado requires
+    # advertising to identify the brokerage; it does not require it to compete
+    # with the ask. When `domain` is empty the address is already in the held
+    # text and only the legal line is drawn here.
+    last = "titled"
+    if piece.domain:
+        graph += (
+            f"[{last}]drawtext=textfile='{escape_path(str(domain_file))}'"
+            f"{font_clause}:fontcolor=white:fontsize={_DOMAIN_SIZE}"
+            f":box=1:boxcolor=black@0.55:boxborderw=18"
+            f":x=(w-text_w)/2:y=h*0.82"
+            f":enable='gte(t,{BRAND_FROM_SECONDS:.2f})'[domained];"
+        )
+        last = "domained"
+        brokerage_y = f"h*0.82+{_DOMAIN_SIZE + _BOX_PAD + 22}"
+    else:
+        brokerage_y = "h*0.86"
     graph += (
-        f"[titled]drawtext=textfile='{escape_path(str(domain_file))}'"
-        f"{font_clause}:fontcolor=white:fontsize={_DOMAIN_SIZE}"
-        f":box=1:boxcolor=black@0.55:boxborderw=18"
-        f":x=(w-text_w)/2:y=h*0.82"
-        f":enable='gte(t,{BRAND_FROM_SECONDS:.2f})'[domained];"
-        f"[domained]drawtext=textfile='{escape_path(str(brokerage_file))}'"
+        f"[{last}]drawtext=textfile='{escape_path(str(brokerage_file))}'"
         f"{font_clause}:fontcolor=white:fontsize={_BROKERAGE_SIZE}"
         f":borderw=4:bordercolor=black@0.9"
-        f":x=(w-text_w)/2:y=h*0.82+{_DOMAIN_SIZE + _BOX_PAD + 22}"
+        f":x=(w-text_w)/2:y={brokerage_y}"
         f":enable='gte(t,{BRAND_FROM_SECONDS:.2f})'[out]"
     )
 

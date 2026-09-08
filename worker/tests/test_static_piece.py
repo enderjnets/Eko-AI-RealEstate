@@ -101,6 +101,39 @@ def test_the_brand_block_waits_and_the_promise_does_not(tmp_path: Path) -> None:
     assert "domain.txt" in gated
 
 
+def test_with_the_ask_in_the_text_the_address_is_not_drawn_twice(
+    tmp_path: Path,
+) -> None:
+    """An empty `domain` means the held text already carries the ask.
+
+    Showing an address is not asking for anything. The first cut of these
+    pieces displayed `denverhomestory.com/fall` in small type at the bottom and
+    nothing anywhere said what it was for — a viewer reading a headline about
+    elevation has no reason to read that as an offer. The fix is to put the ask
+    in the line that is on screen the whole time; repeating the address below
+    it just gives the eye two places to go.
+
+    The legal line still gets drawn. Colorado requires advertising to identify
+    the brokerage, and that requirement does not depend on where the ask is.
+
+    Mutation: draw the domain regardless of whether it is set → red.
+    """
+    piece = Piece(
+        clips=[tmp_path / "a.mp4"],
+        text="12 places near Denver, sorted by elevation.\nFree guide -> denverhomestory.com/fall",
+        domain="",
+        brokerage_line=BROKERAGE,
+    )
+    argv = static_piece.build_command(
+        piece, tmp_path, tmp_path / "o.mp4", font=None, music=None
+    )
+    graph = argv[argv.index("-filter_complex") + 1]
+    assert "domain.txt" not in graph
+    assert "brokerage.txt" in graph
+    # One gated overlay now, not two.
+    assert graph.count(f"gte(t,{static_piece.BRAND_FROM_SECONDS:.2f})") == 1
+
+
 def test_a_piece_with_no_clips_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="no clips"):
         static_piece.build_command(

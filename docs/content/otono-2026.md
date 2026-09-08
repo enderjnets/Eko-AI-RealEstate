@@ -16,7 +16,8 @@ within 90 minutes of Denver»; `@yourdenverrealtorco` 676 K con 2,9 K seguidores
 | Bloque de marca | desde el **segundo 6**: el enlace, y debajo la línea de la correduría leída de la organización |
 | Montaje | `worker/static_piece.py`. **No pasa por el obrero**, que añadiría voz y subtítulos |
 | Alta | `POST /api/v1/content/upload?kind=generated` → `PATCH` → `submit` → **aprueba Natalia** |
-| CTA | **uno solo**, el mismo en pantalla y en caption |
+| CTA | **uno solo por pieza.** Nueve piden comentario, nueve dan el enlace — ver abajo |
+| Modelo de vídeo | `fal-ai/bytedance/seedance/v1/lite/text-to-video`, 720p 9:16, **$0,036/s** |
 
 **La regla que no se rompe:** mientras el metraje sea generado, **ninguna pieza
 nombra un sitio real en pantalla**. Es la misma regla que `frontend/lib/fallGuide.ts`
@@ -162,6 +163,57 @@ distancia de este documento está inventada.
 **Primer párrafo:** Six weeks, four bands, twelve places. This is the whole season in one list, and it stays up for next year.
 
 ---
+
+
+## El CTA va partido en TRES, y por qué
+
+**Seis piezas dan el enlace, seis piden un comentario, seis piden un reenvío.**
+Rotando (F1 enlace, F2 comentario, F3 reenvío, F4 enlace…), no en bloques: así
+el clima de la semana y la franja de altitud afectan igual a los tres grupos, y
+a los quince días la diferencia de alcance y de leads se puede leer.
+
+**Por qué tres y no dos.** Instagram publicó cuáles son sus señales de
+ranking, y no coinciden con la intuición. Las tres que Mosseri nombra como más
+importantes en 2026 son **tiempo de visionado**, **`sends per reach`** y likes;
+en sus palabras, «piensa en crear algo que la gente quiera **enviar a un
+amigo**». Un envío por DM pesa **3-5× más que un like** para llegar a quien no
+te sigue. **Los comentarios cuentan, pero van terceros**, y solo si son más que
+un emoji.
+
+Y hay una distinción que se confunde en casi todo lo que se lee: «sends» es un
+**espectador reenviando el reel a otra persona**, no el DM que la marca le
+manda a él. La mecánica del comentario sube la señal nº 3; lo que sube la nº 1
+es que la pieza sea *reenviable*. Una guía de dónde ver los álamos lo es por
+naturaleza —se manda a la persona con la que irías el sábado—, así que el
+trabajo no es forzarlo sino no estorbarlo.
+
+| Grupo | Piezas | Última línea del texto |
+|---|---|---|
+| **Enlace** | F1, F4, F7, F10, F13, F16 | `Free guide → denverhomestory.com/fall/N` |
+| **Comentario** | F2, F5, F8, F11, F14, F17 | `Comment FALL and I'll send you the guide` |
+| **Reenvío** | F3, F6, F9, F12, F15, F18 | `Send this to whoever you'd go with` + el enlace |
+
+**Regla dura del grupo «comentario»: el enlace NO aparece en ninguna parte** —
+ni en pantalla, ni en la caption. Ya se probó al revés y dio 0 %: el reel de
+otoño llevaba «Comment FALL for the guide» **y** el enlace en su propia
+caption. Cuatro comentarios, ninguno escribió FALL. Nadie pide lo que ya tiene
+delante. Una sola puerta o la mecánica no existe.
+
+**Regla del grupo «reenvío»: el dato tiene que merecer el reenvío.** Una fecha
+concreta, una distancia, «una semana de viento lo acaba». Nadie manda a un
+amigo un paisaje bonito; manda un plan.
+
+🔴 **Lo que bloquea el grupo «comentario» a escala.** La automatización
+comentario→DM es legítima y va por la API oficial de Meta, pero exige una
+**cuenta Business enlazada a una página de Facebook**, y según el estado del
+proyecto eso sigue **pendiente desde el 25-ago-2026**. Sin esa página, cada
+comentario lo contesta una persona el mismo día — una promesa de enlace que
+tarda dos días es peor que no haberla hecho. Con ella, es instantáneo.
+
+**Lo que se gana igualmente:** un comentario es un nombre al que Natalia ya
+está escribiendo, y el enlace que le mande puede ser
+`denverhomestory.com/fall/N`, así que **la atribución por pieza se conserva**
+aunque vaya por mensaje privado.
 
 ## Parte 2 — Calculadora (18 piezas, 3 por semana, permanente)
 
