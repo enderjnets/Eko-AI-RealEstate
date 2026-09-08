@@ -6,6 +6,54 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## v0.92.0 — apellido obligatorio y una sola dirección por página pública (en curso)
+
+Plan: `PLAN.md` de esta rama. Una rama por fase, encadenadas.
+
+### Fase 0 — rama, entorno y verde de referencia · `feat/f0-plan`
+
+| Comprobación | Resultado real |
+|---|---|
+| Rama | `feat/f0-plan` desde `origin/main` **`ab6b442`**; árbol limpio antes de ramificar |
+| Deriva de entorno | `git diff bdcf91b..ab6b442 --stat` sobre `package-lock.json`, `package.json`, `requirements.txt`, `migrations` → **vacío**. Venv y `node_modules` del worktree valen tal cual |
+| `pytest -q -p no:cacheprovider` | ✅ **1779 passed**, 39 avisos, 264,96 s |
+| `ruff check app tests` | ✅ «All checks passed!» |
+| `npx tsc --noEmit` | ✅ limpio |
+| `npx vitest run` | ✅ **357/357** en 21 ficheros (el plan decía 301: cifra del histórico, corregida) |
+| `npx next lint` | ✅ 0 errores, 0 avisos |
+| `npx next build` + prerender | ✅ `<main>`=1 y «Checking session»=0 en `calculator`, `fall`, `contact`, `index` |
+| Cobertura | **No medible**: el repo no instrumenta cobertura de frontend (vitest sin `--coverage`, nunca instalado) y todo el código de las Fases 1-2 es frontend. No se declara. Sustituto por fase: cada línea nueva ejecutada por un test y vista en rojo con una mutación |
+| Secretos en el diff | ninguno (solo `PLAN.md` y este fichero) |
+| Sesión par | avisada; **0.92.0 concedido** (no tiene nada por encima de 0.91.0 ni toca estos ficheros) |
+
+**Premisas de la Fase 1 verificadas antes de escribir código:** `GUIDES` solo se
+renderiza en `Landing.tsx` (`:660`, `:792`) — ninguna pantalla del panel enlaza
+a una ruta pública, así que el 308 nuevo no fabrica el `Failed to fetch RSC
+payload` que ya se arregló una vez. `landingConfigWiring.test.ts` solo recolecta
+`process.env.NEXT_PUBLIC_*` al recorrer `frontend/lib`, así que `leadName.ts` no
+lo altera.
+
+**Un fallo propio de método.** Lancé la suite de backend con `| tail -6` en
+segundo plano; las seis últimas líneas fueron avisos de tareas asyncio y **me
+comí el recuento**. Exit 0 probaba que pasó, no cuántos. Se repitió sin `tail`,
+filtrando por `passed|failed|error`. La regla que ya estaba en el plan para el
+`rc` vale igual para la salida: no encadenar `tail` a algo cuyo número necesito.
+
+### Consultas al advisor
+
+| Motivo | Decisión |
+|---|---|
+| Arranque: validar lectura del plan | Una rama por fase (lo manda el goal, no el plan); `PROJECT_STATUS.md` al cierre de **cada** fase; la cobertura del frontend **no es medible** y se declara como tal |
+| `/contact` en el host del panel: la regla de la Fase 1 revierte una decisión escrita en `middleware.ts:61-63` | Confirmado como defecto del plan. Medido antes de elevar: ningún correo del sistema emite una URL `/contact` (`grep` en `backend/app/services` y `api` → vacío; el único enlace es `PANEL_URL/leads/<id>`). Elevado al dueño con dos opciones → **eligió redirigir también `/contact`** y reescribir ese comentario |
+
+**Hallazgos abiertos:** ninguno.
+
+**Siguiente paso:** Fase 1 — la tercera regla del middleware en
+`feat/f1-host-panel`, con el test que hoy falta sobre `/contact` en el host del
+panel.
+
+---
+
 ## Aviso a Natalia — dominio propio, enlace al panel y Clara (rama `feat/aviso-natalia-dominio-propio`)
 
 Plan añadido a `PLAN.md` como sección «PLAN (2)» (1075 → 1508 líneas, solo
