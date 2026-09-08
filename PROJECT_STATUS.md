@@ -6,6 +6,86 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## v0.95.0 — el prompt de imagen llega al modelo en inglés, y tres puertas lo comprueban
+
+**✅ DESPLEGADA Y VERIFICADA EN PRODUCCIÓN el 8-sep-2026**, con autorización del
+dueño. VPS `0daaaf3` → **`28953e8`** por bundle + `--ff-only` (el clasificador no
+lo bloqueó esta vez). Solo backend + frontend: el `worker/pictures.py` cambió un
+docstring y **no se re-subió al ROG**, así que el md5 del obrero ya NO coincide
+con la rama — se re-sube fuera de ventana de render (horas 13,15,16,17,21,23,1,2
+MDT). Copias previas: `.env.bak.20260908_v0950` (8.249 bytes, `cmp` idéntico) y
+`~/backup_eko_20260908_v0950.sql.gz` (sha256 `54f0d326defa3be5…`).
+
+### La avería
+
+fal.ai no valida el idioma de un prompt. Uno en español no da error: devuelve
+**200 con la imagen de otra cosa**, el vídeo se monta encima, todas las
+comprobaciones de duración y tamaño pasan, y la imagen equivocada se publica
+bajo la firma de Engel & Völkers. Medido en la pieza 20: «un sobre **cerrado**»
+dibujó una puerta con un cartel de *cerrado*; «documentos de contrato
+inmobiliario» dibujó el **Château de Chantilly**.
+
+Duró dos meses porque **un comentario ocupaba el sitio de una comprobación**.
+`worker/pictures.py:_fal_image` afirmaba el invariante —*«every visual_prompt
+this worker receives is written in English upstream, and this note is why it
+must stay that way»*— mientras el prompt de sistema en español de
+`content_writer` pedía el JSON entero en español, `visual_prompt` incluido.
+
+### Tres puertas, porque una no bastó y se demostró en vivo
+
+| Puerta | Camino que cubre | Por qué hace falta |
+|---|---|---|
+| `content_writer._all_violations` | El borrador recién devuelto por el modelo | Donde se escriben los prompts |
+| `content_render.enqueue_generated` | El barrido que CREA trabajos de render | Los prompts ya guardados: una pieza escrita hace meses no pasa por el escritor |
+| `content.rebuild_piece` | El botón «Rehacer el vídeo» | **No pasa por el barrido**: reinicia a `QUEUED` el trabajo existente, y `claim_job` reparte cualquier trabajo en cola sin mirar la pieza |
+
+La tercera se descubrió en producción: la segunda se escribió, y quince minutos
+después el dueño pulsó «Rehacer el vídeo» en la pieza 20 y los prompts en
+español fueron a fal igual. **Dos veces el mismo error de ubicación en una
+tarde** — la puerta donde los prompts se ESCRIBEN en vez de donde se USAN, y
+luego donde el trabajo se CREA en vez de donde se REPARTE.
+
+Criterio único en `lang_guard.not_english_prompt`, usado por las tres, para que
+no puedan discrepar. Juzga los prompts **juntos**: uno solo tiene nueve palabras
+y `wrong_language` se niega a adivinar por debajo de veinticinco — esa base es
+lo que impide rechazar trabajo correcto. Y como cuatro frases nominales escuetas
+suman veinticuatro palabras y **pasaban** (medido), hay una segunda pregunta:
+evidencia positiva de otro idioma y **cero** palabras función inglesas. El caso
+que no debe disparar es el que este repo sí se encuentra — Colorado está lleno
+de topónimos españoles y «Del Norte» ya aporta un marcador.
+
+### Salida real de la verificación
+
+| Comprobación en producción | Resultado |
+|---|---|
+| `/api/v1/health` | **0.95.0** · `status: ok` · `env: production` |
+| `alembic current` | `055_calculator_snapshot (head)` — sin tocar, no se ejecutó `upgrade` |
+| Tracebacks tras arrancar | **0** |
+| `/` `/fall` `/contact` `/calculator` | 200, 200, 200, 200 |
+| `/fall/1` | **307** → `location: /fall?utm_source=instagram&utm_medium=social&utm_campaign=fall2026&utm_content=band1` |
+| Las tres puertas **en el proceso vivo** (`docker exec … python -c`) | `True`, `True`, `True` — y el proceso juzga los prompts reales de la pieza 20 como «no en function words in 29 words» |
+| Suites | backend **1798 passed** · frontend **383/383** · worker **94/94** |
+
+Verificado el proceso, no el fichero: `docker exec` importando los tres módulos
+del contenedor, porque un fichero correcto en disco y un servicio arriba son dos
+hechos, no una conclusión.
+
+### Lo que este episodio dejó anotado
+
+1. **Un despliegue no alcanza a la cola.** Apagar el stock se desplegó a las
+   09:44 y no tocó las cuatro piezas ya renderizadas, una de las cuales salió en
+   TikTok a las 08:34. Al cambiar una regla de render hay que listar el
+   inventario completo y comparar `rendered_at` contra la hora del despliegue.
+2. **La pieza 17.** `approved` desde hacía dos días, duplicado del reel de otoño,
+   con `caption` y `hook` en NULL. No había salido solo porque el tope de 4
+   piezas/día la dejaba cuarta en la cola. Rechazada. Un tope no descarta
+   trabajo: lo **aplaza**, e invisible.
+3. **Un test trivial puede tapar al bueno.** `assert FOREIGN_EVIDENCE == 3`
+   falló primero bajo mutación y la única aserción que medía algo nunca se
+   ejecutó. Quitado.
+
+---
+
 ## v0.93.0 — dos huecos al día, imágenes honestas, y `/fall` medible
 
 **✅ DESPLEGADA Y VERIFICADA EN PRODUCCIÓN el 8-sep-2026**, con autorización del
