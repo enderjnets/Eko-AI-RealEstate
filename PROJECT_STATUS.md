@@ -236,7 +236,10 @@ en el scratchpad, fuera del repo.
 ### ✅ v0.92.0 DESPLEGADA Y VERIFICADA EN PRODUCCIÓN · 8-sep-2026
 
 VPS `2588c2c` → **`98c9182`** por bundle + `--ff-only` (esta vez el clasificador
-no lo bloqueó). `.env` respaldado en `.env.bak.20260908_v0910`, copia idéntica
+no lo bloqueó). **La rama del VPS sigue siendo `feat/maquina-de-video-dhs`**: el
+`--ff-only` avanza la rama que ya estaba activa allí, no crea la mía —
+`feat/f4-version` no existe en el VPS, solo la ref `bundle/v092`. Lo señaló la
+sesión par tras comprobarlo por su cuenta; yo lo había escrito mal. `.env` respaldado en `.env.bak.20260908_v0910`, copia idéntica
 de 8.249 bytes. `docker compose build backend frontend`: **1 m 32 s**, las dos
 imágenes. Tag anotado `v0.92.0` sobre `98c9182` y release publicada en GitHub
 (Latest).
