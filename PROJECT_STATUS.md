@@ -10,11 +10,25 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 **✅ DESPLEGADA Y VERIFICADA EN PRODUCCIÓN el 8-sep-2026**, con autorización del
 dueño. VPS `0daaaf3` → **`28953e8`** por bundle + `--ff-only` (el clasificador no
-lo bloqueó esta vez). Solo backend + frontend: el `worker/pictures.py` cambió un
-docstring y **no se re-subió al ROG**, así que el md5 del obrero ya NO coincide
-con la rama — se re-sube fuera de ventana de render (horas 13,15,16,17,21,23,1,2
-MDT). Copias previas: `.env.bak.20260908_v0950` (8.249 bytes, `cmp` idéntico) y
-`~/backup_eko_20260908_v0950.sql.gz` (sha256 `54f0d326defa3be5…`).
+lo bloqueó esta vez). Copias previas: `.env.bak.20260908_v0950` (8.249 bytes,
+`cmp` idéntico) y `~/backup_eko_20260908_v0950.sql.gz` (sha256
+`54f0d326defa3be5…`).
+
+**El obrero del ROG también, a las 16:55 MDT**, por `tar` + `systemctl --user
+restart` — **sin ejecutar el instalador**. Se hizo dentro de una ventana de
+render (la de las 16) tras comprobar que no cortaba nada: 0 trabajos en
+`queued`/`claimed` y 0 piezas que el barrido pudiera encolar. Copia previa en
+`~/eko-render/worker.bak.20260908_v0950`. md5 de `pictures.py` y `produce.py`
+coincidiendo con la rama, y `~/.eko-render.env` intacto en 1.529 bytes.
+
+**Verificado en el ENTORNO DEL PROCESO, y la primera comprobación no valía.**
+Corrí el chequeo por SSH normal y dio `daily_cap() = 8`, que es el valor por
+defecto — un shell SSH no carga `~/.eko-render.env`, que el servicio sí carga
+por `EnvironmentFile`. Peor: `_stock_allowed()` devolvía `False`, que también es
+el defecto, así que **coincidía con lo correcto por casualidad y no probaba
+nada**. Lo que sí prueba es leer `/proc/<MainPID>/environ` del proceso vivo:
+`RENDER_STOCK_FALLBACK=false`, `RENDER_KLING_IMAGES_PER_DAY=30`, `FAL_KEY`
+presente (len 69) y las dos claves de Kling en **len 0**, vacías a propósito.
 
 ### La avería
 
