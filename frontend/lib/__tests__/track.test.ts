@@ -343,6 +343,71 @@ describe("wiring", () => {
     expect(labelled.length).toBe(anchors.length);
   });
 
+  /**
+   * Every public page that carries the form can be reached from inside it.
+   *
+   * The test above guards the landing and only the landing, and that is how
+   * `/calculator` shipped with `id="consult"` and not one anchor pointing at
+   * it: `LandingTracker` emits `cta_click` on `href="#consult"`, so the page
+   * could record "reached the form" and never "asked to go" — and the visitor
+   * who had just been shown a price had no way down to it. A guard that reads
+   * one named file cannot fail for the file it does not read, and a page with
+   * zero anchors passes an "all anchors are labelled" check by having nothing
+   * to check.
+   *
+   * So this walks `app/` instead of naming files. Naming them would repeat the
+   * original mistake one directory higher: the page added next month is the
+   * one nobody remembers to add to the list.
+   */
+  const pagesUnder = (dir: string): string[] => {
+    const out: string[] = [];
+    for (const entry of readdirSync(join(process.cwd(), dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) {
+        if (entry.name !== "__tests__" && entry.name !== "node_modules") out.push(...pagesUnder(rel));
+      } else if (entry.name === "page.tsx") {
+        out.push(rel);
+      }
+    }
+    return out;
+  };
+
+  /**
+   * One anchor tag, read as a tag. The first draft matched from `<a` all the
+   * way to a later `href="#consult"`, and an auditor reproduced what that
+   * allows: a `<Link href="#consult">` right after a labelled `tel:` anchor
+   * made the match span both, so the unlabelled CTA passed wearing the phone
+   * link's `data-track`. Matching the tag and then looking INSIDE it cannot do
+   * that, and it also catches `<Link>` and any component that renders an
+   * anchor — which the previous shape silently ignored.
+   */
+  const consultTags = (src: string): string[] =>
+    (src.match(/<(?:a|Link|[A-Z][A-Za-z]*)\b[^>]*>/g) ?? []).filter((tag) =>
+      /href=(?:"#consult"|\{"#consult"\}|\{`#consult`\})/.test(tag),
+    );
+
+  it("gives every public page that mounts the form a labelled way into it", () => {
+    const pages = pagesUnder("app").filter((f) => {
+      const src = read(f);
+      // The condition that matters is "this page carries the form", not "this
+      // page happens to declare an id". `/fall` is exactly why: it mounts
+      // ConsultForm and declared no `id="consult"` at all, so a check keyed on
+      // the id skipped the one page in the repo with the same bug.
+      return src.includes("<ConsultForm");
+    });
+    expect(pages.length, "no page mounts ConsultForm — this test proves nothing").toBeGreaterThanOrEqual(2);
+
+    for (const file of pages) {
+      const src = read(file);
+      expect(src, `${file} mounts the form with no id="consult" to aim at`).toContain('id="consult"');
+      const tags = consultTags(src);
+      expect(tags.length, `${file} carries the form and nothing links to it`).toBeGreaterThanOrEqual(1);
+      for (const tag of tags) {
+        expect(tag, `${file} has an unlabelled #consult link`).toMatch(/data-track="/);
+      }
+    }
+  });
+
   it("sends the session id with the lead, so the visit joins the funnel", () => {
     const src = read("components/landing/ConsultForm.tsx");
     expect(src).toMatch(/session_id:\s*sessionId/);

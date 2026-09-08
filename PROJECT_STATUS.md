@@ -75,7 +75,7 @@ Medido el 8-sep sobre la cuenta y sobre producción, no estimado:
    compraba una narración MiniMax. Ahora la pregunta barata va primero: los
    reintentos se conservan y la caída **cuesta cero**.
 4. **`/fall` medible**: `id="consult"`, un enlace etiquetado al formulario, un
-   enlace a `/calculator`, y `/fall/1..4` → 302 con `utm_content=bandN`.
+   enlace a `/calculator`, y `/fall/1..4` → **307** con `utm_content=bandN` (Next emite 307 para `permanent: false`; escribí 302 y medí 307 en producción).
 5. **`POST /content/upload?kind=generated`** y `worker/static_piece.py`, el
    montador del formato que funcionó (4 clips, un texto estático, sin voz).
 6. **`install-on-rog.sh` deja de truncar `~/.eko-render.env`.**
@@ -495,6 +495,84 @@ segundo pase diario de publicación (`_slot_for`/`_day_is_taken`); verificó que
 ninguna pieza publicada cita `inmo-demo`, así que el 308 no rompe contenido.
 Pidió rutas cortas `/fall/1..4` → `/fall?utm_content=bandN`: **no se asume**, es
 alcance que solo el dueño puede ampliar, y queda elevado a él.
+
+---
+
+## v0.94.0 — el CTA que faltaba en `/calculator` (lista, sin desplegar)
+
+Rama `feat/f1-cta-calculator`, rebasada sobre `2fad1b2` (la punta de la 0.93.0
+ya desplegada). **Solo local**: arrastraba commits de la otra sesión sin
+empujar, y publicar mi rama habría publicado su trabajo por ella.
+
+### El defecto, medido antes de tocar nada
+
+`/calculator` declaraba `id="consult"` y llevaba el formulario, pero **ninguna
+ancla apuntaba ahí**. Medido con `python3` sobre `main`, no con `grep`:
+
+| Fichero | `id="consult"` | `href="#consult"` | `data-track` |
+|---|---|---|---|
+| `app/calculator/page.tsx` | 1 | **0** | **0** |
+| `components/landing/Landing.tsx` | 1 | 3 | 5 |
+
+`LandingTracker.tsx:143` emite `cta_click` **solo** con `href === "#consult"`.
+Sin ancla el evento era inalcanzable **y** el visitante que acababa de ver su
+precio no tenía forma de bajar al formulario: la página medía «llegó» y nunca
+«pidió ir».
+
+**Por qué nadie lo vio:** `track.test.ts` exigía `data-track` a cada ancla, pero
+**leía solo `Landing.tsx`**. Una página sin ninguna ancla aprobaba por no tener
+nada que comprobar.
+
+### Checklist
+
+| Comprobación | Resultado |
+|---|---|
+| `npx vitest run` | ✅ **383/383** (379 base + guarda nueva + las suyas) |
+| `tsc` / `next lint` / `next build` / prerender | ✅ los cuatro limpios |
+| `pytest` backend | ✅ 1779 sobre `main`; la suite de versión verde tras el bump |
+| Navegador real (móvil y escritorio) | sin cifra → **sin CTA** · con cifra → 52 px · al pulsar llega a `#consult` · **emite `{"t":"cta_click","meta":{"where":"result"}}`** |
+| Versión | 0.94.0 en los cuatro sitios, histórico `0.94.0 · 0.93.0 · 0.92.0` |
+| Secretos / `console.log` | ninguno |
+
+### Auditoría y cuatro defectos propios corregidos
+
+1. **La primera regex de la guarda empezaba en el primer `<a>` del fichero** y se
+   tragaba los intermedios: podía dar por etiquetado un CTA con el `data-track`
+   de otro enlace. Lo vi porque una mutación falló **con el mensaje equivocado**
+   —señalaba `<a href="/">`—, no porque estuviera roja. Un auditor reprodujo
+   luego el caso exacto con `<Link href="#consult">` detrás de un `tel:`.
+2. **La guarda estaba atada al síntoma.** Un auditor señaló que la condición no
+   es «declara `id="consult"`» sino **«esta página monta el formulario»**.
+   Cambiada, destapó **la misma avería en `/fall`** — que la otra sesión ya
+   arreglaba en su rama. El dueño decidió esperar a la suya antes que
+   debilitarla.
+3. **La nota de método que añadí a `CLAUDE.md` citaba números que no medí** (68 y
+   119 líneas), tomados del informe de otra sesión sobre un estado anterior del
+   fichero. En una nota cuyo argumento es que los números sin verificar engañan,
+   ese era el error del que avisa. Medido: **127 reales, 77 imprime `cat`**. Y el
+   ejemplo del `grep` **no reproduce** —compose sí declara esas líneas—, fuera.
+4. **Resolviendo el conflicto de `version.ts` me comí el cierre de mi entrada** y
+   dejé el fichero roto. Vitest pasó igual (no comprueba tipos); lo cazó `tsc`.
+
+**Y un fallo de método:** hice `git stash -u` con trabajo sin guardar, que mi
+propia norma prohíbe en este repo. Me salvó el `pop`; lo primero después fue
+commitear.
+
+### Coordinación
+
+Tres sesiones vivas, y **cada una encontró un error de otra**: la de vídeos me
+señaló que repartí un número de versión que no era mío; `Eko Ai Realtors`
+detectó que su rama dejaría `main` por detrás de producción; la de vídeos midió
+el `.env` del VPS y desmintió a `Eko Ai Realtors` sobre unas «variables nuevas»
+que ya existían. Ninguna se creyó a la otra de palabra.
+
+**Orden acordado y ejecutado:** 0.93.0 primero (VPS + ROG, por su autora), 0.94.0
+detrás. Verifiqué su despliegue yo mismo antes de salir: `/health` = `0.93.0`,
+y `/fall` sirve `id="consult"` ×1 y `href="#consult"` ×1 — la precondición de mi
+guarda, cumplida en producción.
+
+**Siguiente paso:** empujar la rama (ya se puede: su trabajo está desplegado),
+bundle y despliegue. **No se despliega sin autorización del dueño.**
 
 ---
 
