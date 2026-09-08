@@ -202,6 +202,34 @@ subyacente es un solo campo; «Apellidos» es convención de España. La poblaci
 hispana de Denver opera aquí con un único apellido legal, y este formulario
 acaba casando con un documento estadounidense.
 
+### Fase 3 — móvil medido, capturas al dueño · `feat/f3-movil`
+
+Guion `scratchpad/pw/forms-mobile.mjs` (fuera del repo): iPhone 13 (390×844) y
+escritorio (1280×800), sobre `/`, `/fall`, `/calculator` y `/contact`.
+
+| Comprobación | Resultado real |
+|---|---|
+| Desbordamiento horizontal | ninguno: `scrollWidth` = `innerWidth` en las 8 combinaciones |
+| Los dos campos de nombre y el email | visibles enteros en el viewport tras desplazar, en las 8 |
+| Altura táctil (móvil, páginas de marca) | ≥ 44 px (`h-12` = 48) |
+| Botón de envío | dentro del viewport en las 8 |
+| Errores de consola / `pageerror` | **0** |
+| Resultado | **TODO OK** |
+| Capturas | 4 enviadas al dueño (2 móvil, 2 escritorio) |
+
+**Dos fallos de mi guion, no del producto, y costaron dos intentos.** El primero
+reportó «botón fuera del viewport» en `/calculator` de escritorio. Supuse que
+era el `scroll-behavior: smooth` de `globals.css:32` y añadí una espera: **seguía
+fallando, así que mi teoría era falsa**. Midiendo en el contexto exacto salió el
+número: `y=743.78 + h=56.5 = 800.28` sobre un viewport de 800 — se pasaba por
+**0,28 px**, un artefacto de redondeo de `scrollIntoViewIfNeeded`, invisible para
+una persona. La aserción no tenía tolerancia **y no imprimía los números**, que
+es lo que la convirtió en un misterio en vez de en un diagnóstico. Ahora tolera
+1 px y el mensaje lleva `y`, `h` y `vh`.
+
+**Nada que commitear en código:** no hizo falta arreglar layout. El guion vive
+en el scratchpad, fuera del repo.
+
 ### Consultas al advisor
 
 | Motivo | Decisión |
@@ -211,7 +239,7 @@ acaba casando con un documento estadounidense.
 
 **Hallazgos abiertos:** ninguno.
 
-**Siguiente paso:** Fase 3 — móvil medido y capturas al dueño.
+**Siguiente paso:** Fase 4 — versión 0.92.0 (concedida por la sesión par), CHANGELOG y estado.
 
 **Coordinación entre sesiones (7-sep).** Cuatro sesiones locales vivas.
 `Eko Ai Realtors`: concede la 0.92.0, no toca estos ficheros. `Viral Videos DHS`:
