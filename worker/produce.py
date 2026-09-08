@@ -334,9 +334,9 @@ def produce(
             )
         except pictures.NoBalance as exc:
             if not reported_no_balance:
-                # Once. Kling is asked per scene, so an empty account would
+                # Once. The supplier is asked per scene, so an empty account would
                 # otherwise produce six identical alarms per video.
-                log.error("KLING OUT OF BALANCE: %s", exc)
+                log.error("IMAGE PROVIDER OUT OF BALANCE: %s", exc)
                 reported_no_balance = True
             provider = "none"
         if provider == "none":
@@ -358,8 +358,8 @@ def produce(
     if all(shot.image is None for shot in shots):
         raise ValueError(
             "no image provider produced a single picture: the video would be "
-            "text on a plain background. Set PEXELS_API_KEY (free) or the "
-            "Kling keys on the render machine."
+            "text on a plain background. Set FAL_KEY, or PEXELS_API_KEY "
+            "(free), on the render machine."
         )
 
     # 3. The picture track, then the words, then the identification.
