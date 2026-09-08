@@ -17,7 +17,7 @@ within 90 minutes of Denver»; `@yourdenverrealtorco` 676 K con 2,9 K seguidores
 | Montaje | `worker/static_piece.py`. **No pasa por el obrero**, que añadiría voz y subtítulos |
 | Alta | `POST /api/v1/content/upload?kind=generated` → `PATCH` → `submit` → **aprueba Natalia** |
 | CTA | **uno solo por pieza.** Nueve piden comentario, nueve dan el enlace — ver abajo |
-| Modelo de vídeo | `fal-ai/bytedance/seedance/v1/lite/text-to-video`, 720p 9:16, **$0,036/s** |
+| Modelo de vídeo | `fal-ai/bytedance/seedance/v1/pro/fast/text-to-video`, 720p 9:16, 4 s por clip. El `…/v1/lite/…` que decía este documento está **retirado** y fal lo redirige en silencio a este mismo modelo: se llama por su nombre, nunca por el desvío. Precio por la fórmula de fal (`h × w × fps × s / 1024` tokens, $1/M fuera de 1080p), comprobada contra su precio publicado de 1080p: **≈ $0,08 por clip de 4 s a 704×1248**, ~$0,33 la pieza |
 
 **La regla que no se rompe:** mientras el metraje sea generado, **ninguna pieza
 nombra un sitio real en pantalla**. Es la misma regla que `frontend/lib/fallGuide.ts`
@@ -27,6 +27,29 @@ nombran, porque llevan la **foto con licencia de ese sitio**
 
 Los `visual_prompt` van **en inglés**: un prompt en español no da error, devuelve
 otra imagen. Sin personas, sin carteles, sin texto legible.
+
+**Y van por imagen, no por texto.** Medido el 8-sep generando F1: pedirle el
+clip directamente al modelo de vídeo da un otoño **europeo**. Cuatro tomas de
+texto→vídeo dieron un abedular con hoja de arce, un pico alpino afilado con
+alerces dorados y un mar de nubes carpático; el prior de «montaña en otoño» de
+ese modelo no es Colorado. Añadir «no birch, no larch» **no lo arregla**: los
+modelos de difusión ignoran las negaciones — se probó y volvió a dar abedul.
+
+Lo que sí funciona es cambiar de modelo para la parte que falla. `flux/schnell`
+($0,003) sí distingue el álamo temblón del abedul y el pico redondeado del
+cuerno alpino. Así que el mecanismo de cada clip es:
+
+1. `fal-gen image "<escena, nombrando Colorado y la especie>" --size portrait_16_9`
+   → **mirar la imagen**; si el bioma está mal, se repite aquí, donde cuesta 3 milésimas.
+2. Sacar la URL alojada del JSON (`images[0].url`) y pasarla **en el mismo minuto**
+   a `fal-gen video --model fal-ai/bytedance/seedance/v1/pro/fast/image-to-video
+   --image <url> --duration 4`. El prompt del vídeo describe **solo el
+   movimiento** («slow drift», «leaves trembling»), nunca el contenido: el
+   contenido ya lo fija la imagen.
+3. Verificar el fichero (`ffprobe`: existe, 4,04 s, 704×1248) antes de montar.
+
+Efecto colateral bueno: las cuatro tomas de una pieza comparten el look porque
+las cuatro salen del mismo modelo de imagen.
 
 ---
 
