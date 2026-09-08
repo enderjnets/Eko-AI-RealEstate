@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import text
 
 from app.config import get_settings
@@ -778,11 +779,13 @@ def test_the_post_does_not_wait_in_buffers_own_approval_queue() -> None:
     assert built["needsApproval"] is False
 
 
-# ── The queue: one slot a day per channel ────────────────────────────────
+# ── The queue: declared slots per channel, per local day ─────────────────
 #
 # The owner's rule, in his words: "se publican 1 por bloque de mejor horario,
-# nunca dos a la vez". Everything below holds that to account, and each test
-# names the mutation that reddens it.
+# nunca dos a la vez". Two slots a day are two blocks, hours apart — the rule
+# that retires here is "one a DAY", never "never two at once". Everything
+# below holds that to account, and each test names the mutation that reddens
+# it.
 
 DENVER = "America/Denver"
 
@@ -791,9 +794,9 @@ DENVER = "America/Denver"
 def queue_on(monkeypatch: pytest.MonkeyPatch) -> None:
     s = get_settings()
     monkeypatch.setattr(s, "CONTENT_SCHEDULE_ENABLED", True, raising=False)
-    monkeypatch.setattr(s, "CONTENT_SLOT_YOUTUBE", "20:30", raising=False)
-    monkeypatch.setattr(s, "CONTENT_SLOT_INSTAGRAM", "18:30", raising=False)
-    monkeypatch.setattr(s, "CONTENT_SLOT_TIKTOK", "08:30", raising=False)
+    monkeypatch.setattr(s, "CONTENT_SLOT_YOUTUBE", "12:30,20:30", raising=False)
+    monkeypatch.setattr(s, "CONTENT_SLOT_INSTAGRAM", "11:30,18:30", raising=False)
+    monkeypatch.setattr(s, "CONTENT_SLOT_TIKTOK", "08:30,17:30", raising=False)
     monkeypatch.setattr(s, "CONTENT_SCHEDULE_LEAD_MINUTES", 20, raising=False)
 
 
@@ -827,10 +830,16 @@ def _local_day(moment: datetime) -> str:
 async def test_one_slot_a_day_per_channel(
     database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Two approved pieces never share a channel's day. THE owner's rule.
+    """Two approved pieces never share a channel's SLOT. THE owner's rule.
 
-    Mutation: drop the "while the day is taken" loop in `next_free_slot` and
-    both pieces land on the same evening.
+    They may now share a local day — that is the point of the second slot —
+    but never the same instant, and every instant they get must be one of the
+    hours the channel actually declares. A scheduler that ignored the booked
+    row would hand out the same hour twice; one that invented an hour would
+    post outside the block the owner chose.
+
+    Mutation: make `_free_slots` return every slot regardless of what is
+    booked, and both pieces land on the same instant.
     """
     await _cleanup()
     await _brokerage()
@@ -845,34 +854,48 @@ async def test_one_slot_a_day_per_channel(
 
     a, b = await _sched(first), await _sched(second)
     assert set(a) == {"youtube", "tiktok", "instagram"}, a
+    zone = ZoneInfo(DENVER)
+    declared = {
+        "youtube": {time(12, 30), time(20, 30)},
+        "instagram": {time(11, 30), time(18, 30)},
+        "tiktok": {time(8, 30), time(17, 30)},
+    }
     for platform in a:
         assert a[platform][0] == "scheduled", a[platform]
         assert b[platform][0] == "scheduled", b[platform]
-        assert _local_day(a[platform][1]) != _local_day(b[platform][1]), (
-            f"{platform}: both pieces landed on the same local day — "
-            f"{a[platform][1]} and {b[platform][1]}"
+        assert a[platform][1] != b[platform][1], (
+            f"{platform}: both pieces landed on the same instant — "
+            f"{a[platform][1]}"
         )
+        for row in (a[platform], b[platform]):
+            assert row[1].astimezone(zone).time() in declared[platform], (
+                f"{platform}: {row[1]} is not one of the declared slots "
+                f"{sorted(declared[platform])}"
+            )
 
 
-async def test_a_post_already_out_today_spends_todays_slot(
-    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+async def test_a_post_already_out_today_spends_one_slot_not_the_day(
+    database_url: str, queue_on: None
 ) -> None:
-    """A `published_at` today spends the day, not only a `scheduled_at`.
+    """A `published_at` today spends ONE slot, not the whole day.
 
-    This is the state production was actually left in: on 3-sep all three
-    channels published with shareNow, so the first piece to enter the queue has
-    to go to TOMORROW. Looking only at `scheduled_at` would find the day empty
-    and book that same evening — two posts on one channel in one day, the one
-    thing the rule forbids.
+    Two halves, and both have cost something. A row already published has to
+    count at all — that is the state production was left in on 3-sep, all
+    three channels published with shareNow and nothing scheduled anywhere;
+    reading only `scheduled_at` would find the day empty and book it again.
+    But it occupies no particular hour, so under two slots it must spend the
+    earliest one and leave the later one usable. Closing the whole day would
+    throw away capacity that exists.
 
-    Mutation: drop the `published_at` half of `_day_is_taken` → red.
+    Mutations, both red here: drop the `published_at` half of `_free_slots`
+    (the answer becomes today 12:30); or go back to closing the day (the
+    answer becomes tomorrow).
     """
     await _cleanup()
     await _brokerage()
     await _set_timezone()
-    monkeypatch.setattr(buffer_publisher, "_graphql", _Recorder())
     zone = ZoneInfo(DENVER)
-    today = datetime.now(UTC).astimezone(zone).date()
+    day = datetime(2026, 9, 10).date()
 
     old_piece = await _approved_piece()
     async with get_bypass_session_factory()() as db:
@@ -883,26 +906,26 @@ async def test_a_post_already_out_today_spends_todays_slot(
                 platform=PublicationPlatform.YOUTUBE,
                 status=PublicationStatus.PUBLISHED,
                 external_id="already-out",
-                # Noon local: unambiguously inside the local day and far from
-                # any UTC boundary.
+                # Noon local: inside the local day, far from any UTC boundary,
+                # and NOT one of the declared slots — a shareNow post keeps no
+                # appointment.
                 published_at=datetime.combine(
-                    today, time(12, 0), tzinfo=zone
+                    day, time(12, 0), tzinfo=zone
                 ).astimezone(UTC),
             )
         )
         await db.commit()
 
-    fresh = await _approved_piece()
     with org_scope(ORG):
         async with get_session_factory()() as db:
-            await publish_piece(db, fresh)
+            dawn = datetime.combine(day, time(6, 0), tzinfo=zone).astimezone(UTC)
+            got = await buffer_publisher.next_free_slot(
+                db, PublicationPlatform.YOUTUBE, zone, dawn
+            )
 
-    rows = await _sched(fresh)
-    assert rows["youtube"][0] == "scheduled", rows
-    assert _local_day(rows["youtube"][1]) != today.isoformat(), (
-        f"YouTube already published today; the queue booked it again on "
-        f"{rows['youtube'][1]}"
-    )
+    # 12:30 is eaten by the post that already went out; 20:30 is still today's.
+    assert _local_day(got) == day.isoformat(), got
+    assert got.astimezone(zone).time() == time(20, 30), got
 
 
 async def test_the_lead_time_pushes_a_slot_that_is_too_close(
@@ -921,13 +944,17 @@ async def test_the_lead_time_pushes_a_slot_that_is_too_close(
 
     with org_scope(ORG):
         async with get_session_factory()() as db:
-            # 20:20 local against a 20:30 slot with 20 minutes of lead: the
-            # edge, and the edge belongs to tomorrow.
+            # 20:20 local against the LAST slot of the day with 20 minutes of
+            # lead: the edge, and the edge belongs to tomorrow.
             close = datetime.combine(day, time(20, 20), tzinfo=zone).astimezone(UTC)
             got = await buffer_publisher.next_free_slot(
                 db, PublicationPlatform.YOUTUBE, zone, close
             )
             assert _local_day(got) == (day + timedelta(days=1)).isoformat(), got
+            # And tomorrow means tomorrow's FIRST slot, not tomorrow at the
+            # same hour. Under one slot a day those were the same sentence;
+            # they are not any more, and only this line tells them apart.
+            assert got.astimezone(zone).time() == time(12, 30), got
 
             # 19:00 local is ninety minutes of warning: today.
             early = datetime.combine(day, time(19, 0), tzinfo=zone).astimezone(UTC)
@@ -937,15 +964,38 @@ async def test_the_lead_time_pushes_a_slot_that_is_too_close(
             assert _local_day(got) == day.isoformat(), got
             assert got.astimezone(zone).time() == time(20, 30)
 
+            # The lead is applied PER SLOT. At 12:20 the 12:30 slot is inside
+            # the window and unusable, but this EVENING is still a better
+            # answer than tomorrow morning. The one-slot code jumped the whole
+            # day here; that is the mutation this line reddens.
+            noonish = datetime.combine(day, time(12, 20), tzinfo=zone).astimezone(UTC)
+            got = await buffer_publisher.next_free_slot(
+                db, PublicationPlatform.YOUTUBE, zone, noonish
+            )
+            assert _local_day(got) == day.isoformat(), got
+            assert got.astimezone(zone).time() == time(20, 30), got
+
+            # And with room to spare, the EARLIEST slot wins, not the last.
+            dawn = datetime.combine(day, time(6, 0), tzinfo=zone).astimezone(UTC)
+            got = await buffer_publisher.next_free_slot(
+                db, PublicationPlatform.YOUTUBE, zone, dawn
+            )
+            assert got.astimezone(zone).time() == time(12, 30), got
+
 
 async def test_a_denver_evening_is_the_next_utc_day(
     database_url: str, queue_on: None
 ) -> None:
     """The case a UTC-day comparison gets wrong, and it is not exotic.
 
-    20:30 in Denver is 02:30 UTC the following day. A `_day_is_taken` written
-    against UTC dates would file a Thursday evening post under Friday and
-    happily book Thursday evening a second time.
+    20:30 in Denver is 02:30 UTC the following day. A `_free_slots` written
+    against UTC dates would file a Thursday evening post under Friday, find
+    Thursday's evening slot free, and book it a second time.
+
+    The clock here is 19:00 local on purpose: the morning slot has already
+    passed, so the evening one is the only thing standing between this and
+    tomorrow. That is what makes the UTC-day bug visible instead of hidden
+    behind a slot the test never needed.
     """
     await _cleanup()
     await _brokerage()
@@ -959,17 +1009,137 @@ async def test_a_denver_evening_is_the_next_utc_day(
     # the table the function under suspicion is never consulted at all and the
     # test passes on arithmetic that has nothing to do with the bug — measured:
     # it survived the mutation its own docstring describes.
-    taken = await _approved_piece()
+    # Two rows, and each one has a job. This evening's 20:30 is the one the
+    # UTC-day bug misfiles. Tomorrow's 12:30 is booked so the answer has to be
+    # tomorrow EVENING — which is the following UTC date, the arithmetic this
+    # test is named after. Without it the answer would be tomorrow at 12:30,
+    # an 18:30-UTC instant on the same UTC day, and the test would pass while
+    # proving nothing about the boundary.
+    for offset, at, marker in (
+        (0, time(20, 30), "already-booked-tonight"),
+        (1, time(12, 30), "already-booked-tomorrow-midday"),
+    ):
+        taken = await _approved_piece()
+        async with get_bypass_session_factory()() as db:
+            db.add(
+                ContentPublication(
+                    org_id=ORG,
+                    piece_id=taken,
+                    platform=PublicationPlatform.YOUTUBE,
+                    status=PublicationStatus.SCHEDULED,
+                    external_id=marker,
+                    scheduled_at=datetime.combine(
+                        day + timedelta(days=offset), at, tzinfo=zone
+                    ).astimezone(UTC),
+                )
+            )
+            await db.commit()
+
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            evening = datetime.combine(day, time(19, 0), tzinfo=zone).astimezone(UTC)
+            slot = await buffer_publisher.next_free_slot(
+                db, PublicationPlatform.YOUTUBE, zone, evening
+            )
+
+    # This evening is spent and this morning has passed, so the answer must be
+    # the NEXT local day — and a UTC-day reading of the booked row would have
+    # said this evening was free and handed it out at 19:00 with lead to spare.
+    assert _local_day(slot) == (day + timedelta(days=1)).isoformat(), slot
+    assert slot.date().isoformat() == (day + timedelta(days=2)).isoformat(), slot
+    assert slot.astimezone(zone).time() == time(20, 30)
+
+
+async def test_both_slots_of_a_day_go_before_tomorrow(
+    database_url: str, queue_on: None
+) -> None:
+    """A day's capacity is spent in order, and only then does the day turn.
+
+    Three answers from one channel, each measured after booking the previous
+    one, because that is the sequence the publisher actually walks. The old
+    rule would have given three different days.
+
+    Mutation: have `_free_slots` return only the first slot → the second
+    answer becomes tomorrow, red.
+    """
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    zone = ZoneInfo(DENVER)
+    day = datetime(2026, 9, 10).date()
+    dawn = datetime.combine(day, time(6, 0), tzinfo=zone).astimezone(UTC)
+
+    async def book(when: datetime, external_id: str) -> None:
+        piece = await _approved_piece()
+        async with get_bypass_session_factory()() as db:
+            db.add(
+                ContentPublication(
+                    org_id=ORG,
+                    piece_id=piece,
+                    platform=PublicationPlatform.YOUTUBE,
+                    status=PublicationStatus.SCHEDULED,
+                    external_id=external_id,
+                    scheduled_at=when,
+                )
+            )
+            await db.commit()
+
+    async def ask() -> datetime:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                return await buffer_publisher.next_free_slot(
+                    db, PublicationPlatform.YOUTUBE, zone, dawn
+                )
+
+    first = await ask()
+    assert (_local_day(first), first.astimezone(zone).time()) == (
+        day.isoformat(),
+        time(12, 30),
+    ), first
+    await book(first, "slot-one")
+
+    second = await ask()
+    assert (_local_day(second), second.astimezone(zone).time()) == (
+        day.isoformat(),
+        time(20, 30),
+    ), second
+    await book(second, "slot-two")
+
+    third = await ask()
+    assert (_local_day(third), third.astimezone(zone).time()) == (
+        (day + timedelta(days=1)).isoformat(),
+        time(12, 30),
+    ), third
+
+
+async def test_a_booking_at_no_declared_hour_spends_no_slot(
+    database_url: str, queue_on: None
+) -> None:
+    """A row scheduled at an hour this channel does not use frees nothing.
+
+    It happens when the slots are changed under a queue that already has
+    dates: yesterday's 18:30 booking is history, not a claim on today's 12:30.
+    Matching by instant rather than by count is what makes that true; a
+    counting implementation would read "one row, one slot gone" and silently
+    lose a slot every time the schedule is edited.
+    """
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    zone = ZoneInfo(DENVER)
+    day = datetime(2026, 9, 10).date()
+
+    stale = await _approved_piece()
     async with get_bypass_session_factory()() as db:
         db.add(
             ContentPublication(
                 org_id=ORG,
-                piece_id=taken,
+                piece_id=stale,
                 platform=PublicationPlatform.YOUTUBE,
                 status=PublicationStatus.SCHEDULED,
-                external_id="already-booked",
+                external_id="an-hour-we-no-longer-use",
                 scheduled_at=datetime.combine(
-                    day, time(20, 30), tzinfo=zone
+                    day, time(15, 0), tzinfo=zone
                 ).astimezone(UTC),
             )
         )
@@ -977,16 +1147,30 @@ async def test_a_denver_evening_is_the_next_utc_day(
 
     with org_scope(ORG):
         async with get_session_factory()() as db:
-            noon = datetime.combine(day, time(12, 0), tzinfo=zone).astimezone(UTC)
-            slot = await buffer_publisher.next_free_slot(
-                db, PublicationPlatform.YOUTUBE, zone, noon
+            free = await buffer_publisher._free_slots(
+                db, PublicationPlatform.YOUTUBE, day, zone
             )
+    assert free == [time(12, 30), time(20, 30)], free
 
-    # That evening is spent, so the answer must be the NEXT local day — and a
-    # UTC-day reading of the booked row would have said this evening was free.
-    assert _local_day(slot) == (day + timedelta(days=1)).isoformat(), slot
-    assert slot.date().isoformat() == (day + timedelta(days=2)).isoformat(), slot
-    assert slot.astimezone(zone).time() == time(20, 30)
+
+def test_a_slot_list_out_of_order_or_repeated_fails_at_startup() -> None:
+    """The order is a contract, not a preference.
+
+    `next_free_slot` hands out the earliest free slot; with "18:30,11:30" the
+    word "earliest" would mean 18:30 and the queue would post in the wrong
+    order all day without a single error. A repeat is the same fault wearing
+    another hat: the second one can never be free.
+
+    Mutation: drop the increasing-order check → both halves red.
+    """
+    from app.config import Settings
+
+    for good in ("18:30", "11:30,18:30", "08:30,12:30,17:30"):
+        assert Settings(CONTENT_SLOT_INSTAGRAM=good).CONTENT_SLOT_INSTAGRAM == good
+
+    for bad in ("18:30,11:30", "11:30,11:30", "8:30", "11:30,", "", "11:30,25:00"):
+        with pytest.raises(ValidationError):
+            Settings(CONTENT_SLOT_INSTAGRAM=bad)
 
 
 async def test_pieces_are_queued_in_the_order_they_were_approved(

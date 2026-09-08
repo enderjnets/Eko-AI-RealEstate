@@ -265,9 +265,14 @@ tests es propia, y los números de §1.1 se vuelven a medir.
 - Crear `eko_realestate_test_otono`; correr §2 completo. Anotar aquí los
   números reales (backend `N passed / 0 skipped`, obrero `N`, frontend `N/N`).
   Si difieren del baseline, **anótalo, no lo arregles**.
-- Volver a medir: `vidiq_ig_profile_reels("denverhomestory")` (reproducciones
-  de `Dc_eGJtxy8E`), la consulta de `landing_sessions` de §1.1, y
-  `ssh pcrug 'grep -ac "no balance" ~/eko-render/worker.log'`.
+- ✅ **Vuelto a medir el 8-sep, 20:0x.** `Dc_eGJtxy8E`: **485** reproducciones
+  (era 425), **13** likes, **4** comentarios — sigue siendo el **63 %** del
+  alcance total (773) y ~**81×** la mediana de los otros nueve, que sigue en
+  **6**. La pieza del 8-sep (`DdAZwW2jtLz`, educativa) lleva **6** en su primer
+  día completo. `landing_sessions` desde el 5-sep: **1** sesión de Instagram a
+  `/fall`, **0 CTA en todo el sitio, 0 leads** (69 sesiones). Obrero: **16 fal
+  / 140 pexels** y **2** eventos `no balance`. Los números del §1.1 se
+  confirman; ninguno mejora solo.
 - `SendMessage` a «DenverHomeStory Calculator»: rama, base, 0.93.0, ficheros
   que toca este plan (lista de §1.5 + `backend/app/config.py`,
   `backend/app/services/buffer_publisher.py`, `backend/tests/test_buffer_publisher.py`,
@@ -407,10 +412,16 @@ siempre **otra** pieza: sin migración.
    - Cabecera `:463-472` («One slot a day per channel»): reescribir con la
      regla nueva; la cita del dueño «nunca dos a la vez» sigue siendo cierta.
 3. `.env.example:198-205` y `docker-compose.yml:172-176` — defaults nuevos y
-   comentario. **Defaults propuestos** (D-1): `CONTENT_SLOT_TIKTOK="08:30,17:30"`,
+   comentario. **Defaults (D-1 ✅):** `CONTENT_SLOT_TIKTOK="08:30,17:30"`,
    `CONTENT_SLOT_INSTAGRAM="11:30,18:30"`, `CONTENT_SLOT_YOUTUBE="12:30,20:30"`.
    `test_compose_env.py` y `test_config_example.py` exigen que los tres sitios
    coincidan con los defaults de `Settings`.
+   ⚠️ **En compose los valores van entre comillas**: `"${CONTENT_SLOT_YOUTUBE:-12:30,20:30}"`.
+   Y un aviso de método: un `grep CONTENT_SLOT docker-compose.yml` bajo el hook
+   `rtk` **devolvió solo `.env.example`** y me hizo creer que compose no las
+   declaraba; quien las encontró fue `test_compose_env.py`. Para contar o
+   localizar en este repo, `python3`/`sed`, nunca `grep` a secas
+   ([[feedback_mi_contador_no_casaba]]).
 4. `frontend/components/content/ContentQueue.tsx:366-372` **no cambia**.
 
 **Tests (`backend/tests/test_buffer_publisher.py`; la fixture `queue_on`
@@ -441,6 +452,20 @@ rojo en (c). Una mutación que no pone nada en rojo = falta un test.
 **Terminado:** publicador en verde con `0 skipped`, suite completa en verde,
 ruff limpio, 4 mutaciones en rojo con `md5` restaurado, commit
 `feat(publisher): dos huecos por canal y día local`.
+
+✅ **Hecho el 8-sep.** `tests/test_buffer_publisher.py` **57 passed**;
+`test_config_example.py` + `test_compose_env.py` + publicador = **62 passed**;
+ruff **All checks passed**. Las cuatro mutaciones, **las cuatro en rojo** y con
+`md5` restaurado en las dos: (1) `_free_slots` devuelve todo → 1 failed;
+(2) el margen salta el día → 1 failed; (3) el validador acepta desordenado →
+1 failed; (4) sin restar las filas sin hueco → 1 failed.
+Suite completa: **1782 passed, 0 skipped, 5:00** — el baseline era **1779**, y
+los tres de más son exactamente los tres tests nuevos.
+Un fallo propio, encontrado y arreglado: reescribí el *docstring* de
+`test_a_denver_evening_is_the_next_utc_day` para decir «19:00» y dejé el cuerpo
+en mediodía — el test cayó en la primera corrida. Ahora siembra **dos** filas
+(esta tarde 20:30 y mañana 12:30) para que la respuesta siga siendo un instante
+del **día UTC siguiente**, que es lo que el test se llama.
 
 ---
 

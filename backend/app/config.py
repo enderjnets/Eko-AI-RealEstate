@@ -559,14 +559,22 @@ class Settings(BaseSettings):
     # it can be tested. Turning this off restores the old behaviour without a
     # redeploy, which is the way back if the queue ever misbehaves.
     CONTENT_SCHEDULE_ENABLED: bool = True
-    # Local time at the agency, `HH:MM`. One slot a day per channel, at an hour
-    # that suits that channel: Buffer's own computed slots for these three sit
-    # in the evening for YouTube and Instagram and in the morning for TikTok,
-    # so the same video goes out at three different times of day — "never two
-    # at once" holds across channels too, not just within one.
-    CONTENT_SLOT_YOUTUBE: str = "20:30"
-    CONTENT_SLOT_INSTAGRAM: str = "18:30"
-    CONTENT_SLOT_TIKTOK: str = "08:30"
+    # Local time at the agency: one or more `HH:MM` separated by commas, in
+    # increasing order. Each is a slot, at an hour that suits that channel:
+    # Buffer's own computed slots for these three sit in the evening for
+    # YouTube and Instagram and in the morning for TikTok, so the same video
+    # goes out at three different times of day — "never two at once" holds
+    # across channels too, not just within one.
+    #
+    # A SECOND slot per channel arrived with the autumn campaign: seven
+    # educational pieces a week plus three of autumn and three of the
+    # calculator do not fit in seven evenings. Two slots do not weaken the
+    # owner's rule — "nunca dos a la vez" — because the two hours are hours
+    # apart; what they retire is "one a DAY", which was never the point.
+    # A single value is still valid and still means one slot.
+    CONTENT_SLOT_YOUTUBE: str = "12:30,20:30"
+    CONTENT_SLOT_INSTAGRAM: str = "11:30,18:30"
+    CONTENT_SLOT_TIKTOK: str = "08:30,17:30"
     # How much warning Buffer needs. A slot closer than this is not used today;
     # the piece goes to tomorrow's. Buffer fetches the video when the post goes
     # out, and a fetch that starts after the hour has passed is a post that
@@ -586,18 +594,44 @@ class Settings(BaseSettings):
         Without this, `CONTENT_SLOT_YOUTUBE="8:30pm"` boots a healthy-looking
         container and the fault surfaces days later as "the video never got a
         date", inside a background loop nobody is watching.
+
+        With more than one slot the order is part of the contract, not a
+        preference: the scheduler hands out the earliest free slot of a day,
+        and `"18:30,11:30"` would make "earliest" mean 18:30. Rejecting an
+        unsorted list at startup is cheaper than a queue that quietly posts in
+        the wrong order. Duplicates are rejected by the same rule — two equal
+        hours are one slot pretending to be two, and the second would never be
+        free.
         """
         try:
-            hour, minute = v.split(":")
-            if not (0 <= int(hour) <= 23 and 0 <= int(minute) <= 59):
-                raise ValueError
-            if len(hour) != 2 or len(minute) != 2:
-                raise ValueError
-        except (ValueError, AttributeError):
+            chunks = [c.strip() for c in v.split(",")]
+        except AttributeError:
             raise ValueError(
-                f"expected a 24-hour local time as HH:MM, got {v!r}"
+                f"expected one or more 24-hour local times as HH:MM, got {v!r}"
             ) from None
-        return v
+        if not chunks or any(not c for c in chunks):
+            raise ValueError(
+                f"expected one or more 24-hour local times as HH:MM, got {v!r}"
+            )
+        minutes: list[int] = []
+        for chunk in chunks:
+            try:
+                hour, minute = chunk.split(":")
+                if not (0 <= int(hour) <= 23 and 0 <= int(minute) <= 59):
+                    raise ValueError
+                if len(hour) != 2 or len(minute) != 2:
+                    raise ValueError
+            except (ValueError, AttributeError):
+                raise ValueError(
+                    f"expected a 24-hour local time as HH:MM, got {chunk!r} "
+                    f"in {v!r}"
+                ) from None
+            minutes.append(int(hour) * 60 + int(minute))
+        if any(b <= a for a, b in zip(minutes, minutes[1:], strict=False)):
+            raise ValueError(
+                f"slots must be in increasing order and all different, got {v!r}"
+            )
+        return ",".join(chunks)
 
     @property
     def cors_origins_list(self) -> list[str]:

@@ -462,8 +462,10 @@ async def _send(
 
 # ─── The queue ──────────────────────────────────────────────────────────────
 #
-# One slot a day per channel, in the agency's local time. The owner's rule, in
-# his words: "se publican 1 por bloque de mejor horario, nunca dos a la vez".
+# One or more slots a day per channel, in the agency's local time, hours apart.
+# The owner's rule holds and is the reason the hours are declared rather than
+# derived: "se publican 1 por bloque de mejor horario, nunca dos a la vez" —
+# two slots are two blocks, never the same instant.
 #
 # The schedule lives here rather than in Buffer because Buffer has no mutation
 # for a channel's posting schedule — measured by introspecting its mutation
@@ -472,16 +474,25 @@ async def _send(
 # code, where a test can hold it to account.
 
 
-def _slot_for(platform: PublicationPlatform) -> time:
-    """The local wall-clock time this channel posts at. Validated at startup."""
+def _slots_for(platform: PublicationPlatform) -> list[time]:
+    """The local wall-clock times this channel posts at, earliest first.
+
+    Always at least one. `Settings._valid_clock_time` has already refused an
+    unsorted or duplicated list at startup, so this can trust the order rather
+    than re-sorting: sorting here would hide a misconfiguration that the
+    validator exists to surface.
+    """
     s = get_settings()
     raw = {
         PublicationPlatform.YOUTUBE: s.CONTENT_SLOT_YOUTUBE,
         PublicationPlatform.INSTAGRAM: s.CONTENT_SLOT_INSTAGRAM,
         PublicationPlatform.TIKTOK: s.CONTENT_SLOT_TIKTOK,
     }[platform]
-    hour, minute = raw.split(":")
-    return time(int(hour), int(minute))
+    slots = []
+    for chunk in raw.split(","):
+        hour, minute = chunk.strip().split(":")
+        slots.append(time(int(hour), int(minute)))
+    return slots
 
 
 async def agency_zone(db: AsyncSession) -> ZoneInfo | None:
@@ -518,24 +529,37 @@ _HOLDS_A_SLOT = (
 )
 
 
-async def _day_is_taken(
+async def _free_slots(
     db: AsyncSession, platform: PublicationPlatform, day: date_cls, zone: ZoneInfo
-) -> bool:
-    """Does this channel already have something on this local day?
+) -> list[time]:
+    """Which of this channel's slots this local day still has, earliest first.
 
-    Two ways it can, and the second one is the half that is easy to forget:
-    a row **scheduled** into that day, or a row **already published** in it.
-    Without the second, the first piece queued on a day when something went out
-    with `shareNow` would be given that same evening — which is exactly the
-    state production was left in on 3-sep, with all three channels published
-    and nothing scheduled anywhere.
+    Not a count. Counting and then indexing gives the wrong answer the moment
+    the spent slot is not the first one: with 11:30 free and 18:30 booked,
+    "one of two taken" would hand out 18:30 again. A slot is spent when a row
+    holding it sits at *that instant*, so the answer is a set difference.
+
+    Two ways a day loses capacity, and the second one is the half that is easy
+    to forget:
+
+    * A row **scheduled** at one of the slots — that slot, and only that one.
+    * A row **already published** in the day that never held a slot (a
+      `shareNow` post, or one scheduled on some other day). It occupies no
+      particular hour, so it spends the earliest slot still free. Without this,
+      the first piece queued on a day when something already went out would be
+      given that same evening — the state production was left in on 3-sep,
+      with all three channels published and nothing scheduled anywhere. Under
+      the old one-slot rule such a row closed the whole day; with two slots
+      closing the day would throw away capacity that exists.
     """
     start, end = _local_day_bounds(day, zone)
-    taken = (
+    rows = (
         await db.execute(
-            select(func.count())
-            .select_from(ContentPublication)
-            .where(
+            select(
+                ContentPublication.scheduled_at,
+                ContentPublication.published_at,
+                ContentPublication.status,
+            ).where(
                 ContentPublication.platform == platform,
                 or_(
                     and_(
@@ -550,8 +574,35 @@ async def _day_is_taken(
                 ),
             )
         )
-    ).scalar_one()
-    return taken > 0
+    ).all()
+
+    def key(moment: datetime) -> datetime:
+        # Compare on the instant, normalised: the stored value and the one
+        # computed here are both ours and minute-precise, but a stray
+        # microsecond would silently free a slot that is taken.
+        return moment.astimezone(UTC).replace(microsecond=0)
+
+    occupied: set[datetime] = set()
+    slotless = 0
+    for scheduled_at, published_at, status in rows:
+        holds = (
+            scheduled_at is not None
+            and start <= scheduled_at < end
+            and status in _HOLDS_A_SLOT
+        )
+        if holds:
+            occupied.add(key(scheduled_at))
+        elif published_at is not None and start <= published_at < end:
+            slotless += 1
+
+    free = [
+        slot
+        for slot in _slots_for(platform)
+        if key(datetime.combine(day, slot, tzinfo=zone)) not in occupied
+    ]
+    # The slotless rows eat from the front, which is the conservative end: it
+    # never hands out an hour earlier than the capacity that is actually left.
+    return free[slotless:]
 
 
 async def next_free_slot(
@@ -560,26 +611,26 @@ async def next_free_slot(
     zone: ZoneInfo,
     now: datetime,
 ) -> datetime:
-    """The first local day whose slot this channel has not spent yet.
+    """The first slot, on the first local day, this channel has not spent yet.
 
     Returns UTC, which is what the column stores and what Buffer wants.
     """
-    slot = _slot_for(platform)
     lead = timedelta(minutes=get_settings().CONTENT_SCHEDULE_LEAD_MINUTES)
-
     day = now.astimezone(zone).date()
-    # Too close to be useful: Buffer fetches the video when the post goes out,
-    # and a fetch that starts after the hour has passed is a post that misses
-    # it. Tomorrow's slot is late; today's missed slot is never.
-    if datetime.combine(day, slot, tzinfo=zone) < now + lead:
-        day += timedelta(days=1)
 
     # A day at a time, in local days. The bound is not arithmetic caution —
     # every iteration is a query, and a bug that made every day look taken
     # would otherwise loop until the request timed out.
     for _ in range(370):
-        if not await _day_is_taken(db, platform, day, zone):
-            return datetime.combine(day, slot, tzinfo=zone).astimezone(UTC)
+        for slot in await _free_slots(db, platform, day, zone):
+            when = datetime.combine(day, slot, tzinfo=zone)
+            # Too close to be useful: Buffer fetches the video when the post
+            # goes out, and a fetch that starts after the hour has passed is a
+            # post that misses it. The lead is applied PER SLOT, not per day:
+            # with the morning slot already gone, this evening is still a
+            # better answer than tomorrow morning.
+            if when >= now + lead:
+                return when.astimezone(UTC)
         day += timedelta(days=1)
     raise RuntimeError(
         f"no free {platform.value} slot within a year of {now.isoformat()}"
