@@ -22,6 +22,30 @@ const nextConfig = {
         `/?utm_source=${network.source}&utm_medium=bio&utm_campaign=profile`,
       permanent: false,
     });
+
+    // One short path per band of the autumn guide, so four Instagram pieces
+    // that all send people to the same page can still be told apart.
+    //
+    // A caption is not a link: on Instagram the URL has to be TYPED, so a
+    // tagged one is unusable and `/fall/1` is the whole trick. Written as a
+    // redirect and not as a real `/fall/[n]` segment, which would publish four
+    // indexable URLs carrying the same guide.
+    //
+    // The destination is relative, and that is safe HERE for a reason worth
+    // naming rather than assuming: `/fall` is a public path, so no middleware
+    // rule rewrites it and the query survives. `bio()` above points at `/`,
+    // which on the panel host IS rewritten — to `/leads`, dropping the query
+    // — so a bio link pasted with the panel hostname loses its attribution.
+    // If a destination ever stops being a public path, it has to become
+    // absolute to the brand domain.
+    const fall = (band) => ({
+      source: `/fall/${band}`,
+      destination:
+        `/fall?utm_source=instagram&utm_medium=social` +
+        `&utm_campaign=fall2026&utm_content=band${band}`,
+      permanent: false,
+    });
+
     return [
       bio({ short: "yt", source: "youtube" }),
       bio({ short: "tt", source: "tiktok" }),
@@ -30,6 +54,10 @@ const nextConfig = {
       bio({ short: "youtube", source: "youtube" }),
       bio({ short: "tiktok", source: "tiktok" }),
       bio({ short: "instagram", source: "instagram" }),
+      fall(1),
+      fall(2),
+      fall(3),
+      fall(4),
     ];
   },
   async rewrites() {

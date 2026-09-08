@@ -358,9 +358,28 @@ guía enlaza a la calculadora, y cada pieza de Instagram aterriza con su
   `Landing.tsx`**: no afecta.
 - `publicMetadata.test.ts:64-131`: no cambia (metadata intacta).
 
-**Mutaciones:** quitar el `id="consult"` → ningún test rojo hoy (**hallazgo**:
-añade un caso en `fallGuide.test.ts` que exija `id="consult"` en la página);
-`permanent: true` en `fall(1)` → rojo en `bioLinks`.
+✅ **Hecho el 8-sep.** `tsc` limpio, `next lint` **0 errores 0 avisos**,
+`next build` OK, vitest **382 passed** (eran 379; +3 tests nuevos), prerender
+`fall` `calculator` `contact` `index` con `<main>=1` y `Checking session=0`.
+En el HTML servido de `/fall`: `id="consult"` ×1, `href="#consult"` ×1,
+`href="/calculator"` ×1.
+
+**El hallazgo se confirmó y está tapado:** quitar el `id="consult"` no ponía
+nada en rojo. Ahora hay un caso, `the consult section carries the id the
+tracker looks for`, que exige **las tres cosas a la vez** — el `id`, el `href`
+y el `<ConsultForm`: cada una sola es decoración (un ancla sin destino no
+lleva a ningún sitio; un destino sin ancla es un clic que nadie puede contar).
+
+**Mutaciones, las cuatro en rojo con `md5` restaurado:** (1) sin el
+`id="consult"`; (2) el enlace apunta a `#band-1` en vez de `#consult`;
+(3) `permanent: true`; (4) los cuatro tramos comparten `utm_content=band1`.
+
+⚠️ **Dos ceros del prerender que NO son regresión, comprobados por
+comparación:** `<form` sale **0 en las tres páginas públicas**, incluidas
+`/calculator` y `/contact`, que llevan el formulario desde siempre — es una
+isla de cliente dentro de `Suspense`. Y `Equal Housing` sale 0 porque el pie
+lee `NEXT_PUBLIC_LANDING_BROKERAGE`, que no está puesta en el build local. En
+producción sí aparece. Medir uno solo habría dado un falso positivo.
 
 **Terminado:** vitest verde, `next build` verde, prerender `fall` `<main>=1`
 `Checking=0`, **`curl -sI https://www.denverhomestory.com/fall/1` → 302 con

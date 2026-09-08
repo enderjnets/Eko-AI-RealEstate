@@ -273,6 +273,20 @@ export default function FallGuidePage() {
           Aspens turn from the top down. So the useful question is not <em>where</em> — it
           is <em>how high, this week</em>. Here is the whole season, sorted by elevation.
         </p>
+
+        {/* The only link on this page the tracker can count: `cta_click` fires
+            on the literal href "#consult" and on nothing else. One line, under
+            the guide's own promise, so the reader who wants us can find us
+            without the guide turning into a pitch. */}
+        <p className="mt-5 text-[15px]">
+          <a
+            href="#consult"
+            data-track="fall-intro"
+            className="border-b border-ln-gold pb-0.5 font-medium text-ln-dark hover:border-ln-dark"
+          >
+            Thinking about selling before spring? Talk to us
+          </a>
+        </p>
         </header>
 
         <div className="mt-10 lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start lg:gap-14">
@@ -324,6 +338,25 @@ export default function FallGuidePage() {
             </section>
           ))}
         </div>
+
+        {/* The one page on this site that answers a money question, offered
+            where somebody has just finished reading about driving up there.
+            It records no event — the tracker counts `tel:` and `#consult` and
+            nothing else — but the first-touch attribution in sessionStorage
+            survives the hop, so a lead that starts here still reads as this
+            page's. Measuring the click itself is backlog B-2. */}
+        <p className="mt-12 border-t border-ln-hair pt-8 text-[15px] leading-[1.7]">
+          Somewhere on the drive, most people ask the same question about the towns
+          they pass through.{" "}
+          <a
+            href="/calculator"
+            data-track="fall-to-calculator"
+            className="border-b border-ln-gold pb-0.5 font-medium text-ln-dark hover:border-ln-dark"
+          >
+            What your rent would buy up here
+          </a>{" "}
+          — the arithmetic, with the assumptions on the page and nothing to fill in.
+        </p>
 
         <section className="mt-14 border-t border-ln-hair pt-10">
           <h2 className="font-ln-serif text-[22px] text-ln-dark">Three things worth knowing</h2>
@@ -382,7 +415,14 @@ export default function FallGuidePage() {
         </div>
       </article>
 
-      <section className="bg-ln-dark px-5 py-16 sm:px-8 sm:py-20">
+      {/* `id` and `scroll-mt` on the section, as on /calculator. Without the
+          id the tracker's own default section list contains "consult" and
+          finds nothing to observe, so the one part of this page that can
+          produce a lead was the one part never measured. */}
+      <section
+        id="consult"
+        className="scroll-mt-10 bg-ln-dark px-5 py-16 sm:px-8 sm:py-20"
+      >
         <div className="mx-auto max-w-2xl">
           <h2 className="font-ln-serif text-[28px] leading-tight text-ln-cream sm:text-[34px]">
             While you are out looking at the neighborhoods

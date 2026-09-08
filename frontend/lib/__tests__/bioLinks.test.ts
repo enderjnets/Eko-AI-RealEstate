@@ -40,6 +40,31 @@ describe("bio short links", () => {
     expect(new Set(sources).size).toBe(3);
   });
 
+  it("each band of the autumn guide has its own short path", async () => {
+    // Four Instagram pieces send people to one page. Without a per-piece tag
+    // the report can say "Instagram" and never which piece — and on Instagram
+    // a caption URL is typed by hand, so a tagged one would not survive being
+    // read off a screen. `/fall/1` is what makes the four countable.
+    const redirects = await nextConfig.redirects();
+    for (const band of [1, 2, 3, 4]) {
+      const rule = redirects.find(
+        (r: { source: string }) => r.source === `/fall/${band}`,
+      );
+      expect(rule, `/fall/${band} is missing`).toBeDefined();
+      expect(rule.destination.startsWith("/fall?")).toBe(true);
+      expect(rule.destination).toContain(`utm_content=band${band}`);
+      expect(rule.destination).toContain("utm_source=instagram");
+      expect(rule.destination).toContain("utm_campaign=fall2026");
+    }
+  });
+
+  it("the four bands do not share a tag", () => {
+    // Same copy-paste this file already guards for the networks: four rules
+    // that all say band1 look right and make the comparison meaningless.
+    const tags = [1, 2, 3, 4].map((band) => `band${band}`);
+    expect(new Set(tags).size).toBe(4);
+  });
+
   it("they are temporary, so the campaign can change later", async () => {
     // A 301 is cached hard by browsers. Changing the campaign afterwards would
     // mean fighting caches on devices nobody can reach.

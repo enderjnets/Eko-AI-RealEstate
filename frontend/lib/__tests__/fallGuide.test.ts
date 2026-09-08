@@ -156,10 +156,27 @@ describe("the elevation ladder and the bands it points at", () => {
     expect(source).toContain("href={`#${band.id}`}");
 
     const literals = [...source.matchAll(/href="#([a-z0-9-]+)"/g)].map((m) => m[1]);
-    const ids = new Set(BANDS_FOR_TEST.map((band) => band.id));
+    // `consult` is the one hand-typed anchor this page is allowed, and it is
+    // allowed because the tracker recognises that exact string and no other
+    // (`LandingTracker.tsx`: `href === "#consult"`). Every other literal `#…`
+    // still has to be a band, which is what stops the ladder from drifting
+    // into typed ids.
+    const ids = new Set([...BANDS_FOR_TEST.map((band) => band.id), "consult"]);
     for (const href of literals) {
       expect(ids.has(href), `#${href} is not a band on this page`).toBe(true);
     }
+  });
+
+  it("the consult section carries the id the tracker looks for", () => {
+    // Both halves, because either one alone is decoration: the anchor with no
+    // target scrolls nowhere, and the target with no anchor is a section the
+    // tracker observes and a click it can never count. This page shipped with
+    // the form and without both, so the only part of it that can produce a
+    // lead was the only part never measured.
+    const source = readFileSync(PAGE, "utf8");
+    expect(source).toContain('id="consult"');
+    expect(source).toContain('href="#consult"');
+    expect(source).toContain("<ConsultForm");
   });
 
   it("the bands run downhill, because that is the whole idea", () => {
