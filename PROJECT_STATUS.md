@@ -293,8 +293,33 @@ censurado. Usar la herramienta `Read`.
   la dirección segura». Con la regla nueva hay un segundo consumidor de
   polaridad opuesta: olvidarla también deja la página servida en el panel.
 
-**Siguiente paso:** pre-despliegue preparado; **no se despliega** sin
-autorización del dueño en mensaje aparte.
+**Siguiente paso:** pre-despliegue preparado y **autorizado por el dueño**
+(8-sep). El bundle está en el VPS como `refs/remotes/bundle/v092` = `8a2d188`,
+`HEAD` intacto en `2588c2c`, `--ff-only` verificado como limpio. El merge y la
+construcción los ejecuta el dueño en su terminal: el clasificador ha bloqueado
+`git merge --ff-only` en ese VPS cuatro veces y no se rodea.
+
+Precondición crítica descargada antes de mandar nada: `NEXT_PUBLIC_BRAND_URL` y
+`NEXT_PUBLIC_PANEL_URL` existen **una sola vez cada una** en el `.env` del VPS y
+con los valores correctos. Vacías o mal escritas, todo el cambio de host se
+desplegaría como **no-op silencioso** —sin error, sin log— y `/health` diría
+`0.92.0` igualmente.
+
+**Reparto con las otras sesiones (decidido por el dueño, 8-sep).** El frontend
+de `/fall` —incluidas las rutas cortas `/fall/1..4` → `/fall?utm_content=bandN`—
+**es de la sesión `Viral Videos DHS`**, no de esta. Sus cuatro ficheros
+(`app/fall/page.tsx`, `next.config.js`, `fallGuide.test.ts`, `bioLinks.test.ts`)
+quedan fuera de mi lista; rebasa sobre `8a2d188`. La **0.93.0** está reservada
+para su segundo pase diario de publicación. Se le pidió confirmación **al dueño
+directamente**: un mensaje entre pares no cuenta como decisión suya.
+
+Dos avisos que le pasé y que aceptó con un argumento mejor que el mío: sus
+rutas cortas darán **dos saltos** en el host del panel (los `redirects()` de
+`next.config.js` corren antes que el middleware), y el ayudante `bio()` que va a
+copiar tiene un defecto —destino relativo más la regla `/` → `/leads` que
+descarta la query—. Mantiene el destino relativo a propósito, porque las
+captions llevan siempre el dominio de marca y hacerlo absoluto acoplaría
+`next.config.js` a `NEXT_PUBLIC_BRAND_URL` en tiempo de build.
 
 ### Consultas al advisor
 
