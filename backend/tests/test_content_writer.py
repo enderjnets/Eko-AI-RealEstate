@@ -362,3 +362,110 @@ def test_the_spoken_domain_cannot_drift_from_the_real_one() -> None:
     for language, spoken in cw._SPOKEN_DOMAIN.items():
         said = spoken.lower().replace(" dot ", ".").replace(" punto ", ".")
         assert said.replace(" ", "") == "denverhomestory.com", (language, spoken)
+
+
+# ── The shot list is machine input, and the machine reads English ────────
+
+
+# Verbatim from piece 20 in production (2026-09-08), a Spanish educational
+# piece whose six `visual_prompt`s were all Spanish. Synthetic strings would
+# have let me pick words that make the guard look good; these are what the
+# model actually wrote.
+_REAL_SPANISH_PROMPTS = [
+    "Un cartel de se vende frente a una casa en Denver",
+    "Un sobre cerrado y unas llaves sobre una mesa de madera",
+    "Documentos de contrato inmobiliario sobre una mesa",
+    "Un formulario con casillas de verificación de contingencias",
+    "Una puerta principal con cerradura y unas llaves en la mano",
+    "Un escritorio con documentos y un teléfono sobre la mesa",
+]
+
+# Verbatim from piece 19, the English piece rendered the same night.
+_REAL_ENGLISH_PROMPTS = [
+    "A residential contract document on a kitchen counter, pen nearby",
+    "A brick home with a for-sale sign in front, autumn light",
+    "A laptop screen showing an email inbox with pending messages",
+    "A stack of closing documents next to a set of house keys",
+    "A calendar page showing circled dates and handwritten notes",
+    "A phone screen displaying text messages with an agent",
+]
+
+_SPANISH_SCRIPT = (
+    "El depósito de seriedad es un cheque que entregas al abrir una "
+    "transacción para demostrar que vas en serio. Lo maneja una compañía de "
+    "título o tu corredor, y se aplica a tu cierre. Si la compra se cae sin "
+    "una contingencia activa, ese dinero puede quedarse del otro lado."
+)
+
+
+def _scenes(prompts):
+    from app.services.content_writer import Scene
+
+    return [
+        Scene(visual_prompt=prompt, on_screen_text=f"Escena {index}")
+        for index, prompt in enumerate(prompts, start=1)
+    ]
+
+
+def test_a_spanish_shot_list_is_a_violation_even_on_a_spanish_piece() -> None:
+    """The defect this closes ran for two months and cost real money.
+
+    The Spanish system prompt asked for the whole JSON in Spanish, so every
+    Spanish piece sent Spanish `visual_prompt`s to fal.ai. fal does not refuse
+    those — it answers 200 with a picture of something else. The video renders,
+    the length checks pass, and the wrong image goes out under a licensed
+    brokerage's name. There is no error anywhere to notice.
+
+    The piece stays a DRAFT with the reason on the row, which is the right
+    severity: nothing is lost, no narration and no images are bought, and a
+    person sees why.
+
+    Mutation: delete the `wrong_language(prompts, "en")` block in
+    `_all_violations` → green with the exact data that shipped the bug.
+    """
+    from app.services import content_writer as cw
+
+    draft = _drafted(script=_SPANISH_SCRIPT, scenes=_scenes(_REAL_SPANISH_PROMPTS))
+    found = cw._all_violations(draft, ContentLanguage.ES)
+
+    scenes_language = [
+        v for v in found if v.get("where") == "scenes" and v["category"] == "language"
+    ]
+    assert scenes_language, found
+
+
+def test_an_english_shot_list_on_a_spanish_piece_is_exactly_right() -> None:
+    """The other half, and the one that stops the fix being "reject Spanish".
+
+    A Spanish piece with English `visual_prompt`s is the CORRECT shape: the
+    words a viewer reads stay Spanish, and the words an image model reads are
+    English. If this went red the guard would be rejecting the thing it exists
+    to produce.
+
+    The Fair Housing filter does not weaken by the switch, and that is checked
+    rather than assumed: `find_violations` takes a `language` and ignores it on
+    purpose, and `PEOPLE_IN_PICTURES` lists both languages' terms.
+    """
+    from app.services import content_writer as cw
+
+    draft = _drafted(script=_SPANISH_SCRIPT, scenes=_scenes(_REAL_ENGLISH_PROMPTS))
+    found = cw._all_violations(draft, ContentLanguage.ES)
+
+    assert not [v for v in found if v.get("where") == "scenes"], found
+
+
+def test_the_english_denylist_still_bites_under_a_spanish_piece() -> None:
+    """An English prompt under an ES piece must not slip the picture filter.
+
+    This is the regression the switch could plausibly have caused — English
+    words checked against a Spanish list — and the reason it does not is worth
+    pinning: both lists always run, whatever `language` says.
+    """
+    from app.services import content_writer as cw
+
+    prompts = list(_REAL_ENGLISH_PROMPTS)
+    prompts[0] = "A family smiling on the porch of a brick home"
+    draft = _drafted(script=_SPANISH_SCRIPT, scenes=_scenes(prompts))
+    found = cw._all_violations(draft, ContentLanguage.ES)
+
+    assert any(v["category"] == "people_in_pictures" for v in found), found

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.94.0";
+export const CURRENT_VERSION = "0.95.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.95.0",
+    date: "2026-09-08",
+    title: {
+      en: "Spanish videos stop illustrating themselves with the wrong pictures",
+      es: "Los videos en espanol dejan de ilustrarse con la imagen equivocada",
+    },
+    changes: [
+      { en: "A Spanish piece asked the image service for its pictures in Spanish, and that service only reads English. It never refused: it returned a picture of something else, and the video was built around it. One asked for a closed envelope and got a door with a CERRADO sign; another asked for real estate contract documents and got a French chateau. Every prompt is now written in English whatever language the video is in, and a piece whose shot list is not in English waits with the reason on it instead of being made.", es: "Una pieza en espanol le pedia las imagenes al servicio en espanol, y ese servicio solo lee ingles. Nunca decia que no: devolvia una imagen de otra cosa, y el video se montaba encima. Una pedia un sobre cerrado y salio una puerta con un cartel de CERRADO; otra pedia documentos de contrato inmobiliario y salio un castillo frances. Ahora todo prompt se escribe en ingles sea cual sea el idioma del video, y una pieza cuyo plan de planos no este en ingles espera con el motivo escrito en vez de fabricarse." },
+      { en: "The check runs where the pictures are bought, not only where the text is written. Pressing \"Rebuild the video\" on an older piece skips the writer entirely, so a rule enforced only at writing time would have been enforced on nothing.", es: "La comprobacion corre donde se compran las imagenes, no solo donde se escribe el texto. Pulsar \"Rehacer el video\" en una pieza vieja se salta al escritor por completo, asi que una regla aplicada solo al escribir no habria protegido nada." },
+    ],
+  },
   {
     version: "0.94.0",
     date: "2026-09-08",

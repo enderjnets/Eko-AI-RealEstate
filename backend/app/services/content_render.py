@@ -469,7 +469,76 @@ async def enqueue_generated(db: AsyncSession) -> int:
         .scalars()
         .all()
     )
+
+    rows = await _english_shot_lists_only(db, rows)
     return await _enqueue(db, rows, RenderJobKind.PRODUCE_B) if rows else 0
+
+
+def stored_shot_list_language(piece: ContentPiece) -> str | None:
+    """Why this piece's stored `visual_prompt`s are not English, or None.
+
+    The image model only reads English, and a Spanish prompt does not fail: fal
+    answers 200 with a picture of something else. `content_writer` asks for
+    English and checks what the model returned — but that check runs when a
+    DRAFT is WRITTEN, and it is not the only way a piece reaches this queue.
+
+    **Rebuild is the way round it, and it is not hypothetical.** A piece written
+    before that rule existed keeps its Spanish prompts in `scenes` for ever;
+    pressing "Rebuild the video" clears `media_path` and puts it straight back
+    here with no writer involved. That happened in production the same
+    afternoon the writer gate was added, on piece 20, minutes before the render
+    window opened.
+
+    So the gate belongs where the prompts are USED, not only where they are
+    written. Judged together, because one prompt is nine words and
+    `wrong_language` refuses to guess under twenty-five.
+    """
+    from app.services.lang_guard import not_english_prompt
+
+    plan = piece.scenes or {}
+    prompts = " ".join(
+        str(scene.get("visual_prompt") or "")
+        for scene in (plan.get("scenes") or [])
+        if isinstance(scene, dict)
+    )
+    return not_english_prompt(prompts)
+
+
+async def _english_shot_lists_only(
+    db: AsyncSession, pieces: list[ContentPiece]
+) -> list[ContentPiece]:
+    """The pieces whose shot list an image model can read. The rest are marked.
+
+    Marked rather than merely skipped: `violations` is what the console shows a
+    person, and it is also what keeps the next sweep from asking the same
+    question every fifteen minutes for ever. Nothing is deleted and no money is
+    spent — the piece waits with its reason on it.
+    """
+    keep: list[ContentPiece] = []
+    marked = 0
+    for piece in pieces:
+        reason = stored_shot_list_language(piece)
+        if reason is None:
+            keep.append(piece)
+            continue
+        piece.violations = [
+            {
+                "phrase": reason,
+                "category": "language",
+                "where": "scenes",
+            }
+        ]
+        marked += 1
+        log.warning(
+            "Piece %s is not queued for render: its shot list is not English "
+            "(%s). An image model answers 200 and draws something else, so "
+            "this waits for a person instead of being paid for.",
+            piece.id,
+            reason,
+        )
+    if marked:
+        await db.commit()
+    return keep
 
 
 async def _enqueue_pending(db: AsyncSession, pieces: list[ContentPiece]) -> int:

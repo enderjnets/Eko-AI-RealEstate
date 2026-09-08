@@ -140,8 +140,15 @@ def _fal_image(prompt: str, destination: Path) -> bool:
     **The prompt has to reach the model in English.** That is not a style
     preference. The same request written in Spanish came back as a different
     animal entirely, with a success code on it — the failure mode is a wrong
-    picture, not an error. Every `visual_prompt` this worker receives is
-    written in English upstream, and this note is why it must stay that way.
+    picture, not an error.
+
+    That was written as an assumption and was false for two months: the
+    writer's Spanish system prompt asked for the whole JSON in Spanish,
+    `visual_prompt` included, so every Spanish piece posted Spanish here. It is
+    now enforced upstream rather than assumed — `content_writer._all_violations`
+    runs the shot list through `wrong_language(..., "en")` and a piece that
+    fails it stays a DRAFT with the reason on the row, so nothing reaches this
+    function to be silently mis-drawn.
     """
     key = _fal_key()
     if not key:

@@ -2,6 +2,34 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.95.0] — 2026-09-08
+
+### Fixed
+- **The shot list goes to the image model in English, whatever language the
+  piece is in — and something checks.** `worker/pictures.py:_fal_image`
+  documented the invariant ("every `visual_prompt` this worker receives is
+  written in English upstream, and this note is why it must stay that way")
+  while `content_writer`'s Spanish system prompt asked for the whole JSON in
+  Spanish, `visual_prompt` included. Two months. fal.ai does not refuse a
+  Spanish prompt: it answers 200 with a picture of something else, the video
+  renders, every length check passes, and the wrong image publishes under a
+  licensed brokerage's name. Measured on piece 20: "un sobre **cerrado**" drew
+  a door with a *cerrado* sign, "documentos de contrato inmobiliario" drew the
+  Château de Chantilly. A docstring asserting an invariant with no gate behind
+  it is a comment — and one that stops the next reader looking.
+- **The gate sits where the prompts are used, not only where they are written.**
+  `content_writer._all_violations` checks a draft the model just returned;
+  `content_render.enqueue_generated` now checks the prompts already stored,
+  because "Rebuild the video" clears `media_path` and re-queues a piece written
+  months ago with no writer involved. That route was exercised in production
+  fifteen minutes after the first half shipped, on piece 20, minutes before a
+  render window. A piece that fails is not queued and not paid for: the reason
+  is written to `violations`, where the console shows it.
+- Both checks judge the prompts **together**. One prompt is nine words and
+  `lang_guard.wrong_language` refuses to guess under twenty-five — the floor
+  that keeps it from rejecting correct work. Joined, four to six clear it. The
+  hole this leaves is small and stated: six prompts of "Una casa" pass.
+
 ## [0.94.0] — 2026-09-08
 
 ### Added

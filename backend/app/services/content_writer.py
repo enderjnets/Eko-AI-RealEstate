@@ -39,7 +39,7 @@ from app.models import (
 )
 from app.services.content_studio import advance, not_our_rail, text_violations
 from app.services.content_topics import Topic, next_topic, rotation_index
-from app.services.lang_guard import wrong_language
+from app.services.lang_guard import not_english_prompt, wrong_language
 from app.services.llm import generate_reply
 
 log = logging.getLogger(__name__)
@@ -56,6 +56,8 @@ class Scene(BaseModel):
     could edit.
     """
 
+    #: **Always English, even when the piece is in Spanish.** Nobody reads it:
+    #: it is posted to an image model. `_all_violations` enforces it.
     visual_prompt: str = Field(min_length=1, max_length=200)
     on_screen_text: str = Field(min_length=1, max_length=60)
 
@@ -114,7 +116,11 @@ _SYSTEM = {
         "palabras, caption de 1-2 frases sin hashtags, más \"scenes\": de 4 a 6 objetos "
         "con \"visual_prompt\" y \"on_screen_text\". Un visual_prompt describe un "
         "LUGAR o un OBJETO — una casa, una calle, las montañas, unas llaves, un "
-        "documento, un cartel de se vende. NUNCA describas personas: ni "
+        "documento, un cartel de se vende. El visual_prompt va SIEMPRE EN "
+        "INGLÉS, aunque el resto del JSON vaya en español: no lo lee una "
+        "persona, lo lee un modelo de imagen que solo entiende inglés y "
+        "que ante un prompt en español devuelve otra cosa sin dar error. "
+        "El on_screen_text sí va en español. NUNCA describas personas: ni "
         "familias, ni parejas, ni niños, ni profesionales, ni jubilados, ni el "
         "aspecto ni el origen de nadie. Nunca escribas una dirección web ni un "
         "teléfono en ningún campo."
@@ -316,6 +322,32 @@ def _all_violations(
     reason = wrong_language(spoken, language.value)
     if reason is not None:
         found.append({"phrase": reason, "category": "language"})
+
+    # The shot list is checked against ENGLISH, whatever language the piece is
+    # in, because a `visual_prompt` is not read by a person — it is posted to
+    # an image model, and that model only understands English.
+    #
+    # This is not a style rule. `worker/pictures.py:_fal_image` documented the
+    # invariant ("every visual_prompt this worker receives is written in
+    # English upstream") and nothing enforced it, so every Spanish piece sent
+    # Spanish prompts to fal. The failure mode is the expensive kind: fal
+    # answers 200 with a picture of something else, the video renders, and the
+    # wrong image goes out under a licensed brokerage's name. A Spanish request
+    # for "un zorro rojo" came back a horse, next door, with exit 0.
+    #
+    # The prompts are judged TOGETHER: one of them is nine words and
+    # `wrong_language` refuses to guess under 25, which is right — that floor
+    # is what keeps it from rejecting correct work. Joined, four to six of them
+    # clear it. The hole this leaves is honest and small: six prompts of "Una
+    # casa" is eight words and passes. Lowering MIN_WORDS to close it would
+    # weaken the narration check that shares it, which is the more expensive
+    # guard of the two.
+    prompts = " ".join(scene.visual_prompt for scene in draft.scenes)
+    reason = not_english_prompt(prompts)
+    if reason is not None:
+        found.append(
+            {"phrase": reason, "category": "language", "where": "scenes"}
+        )
     return found
 
 

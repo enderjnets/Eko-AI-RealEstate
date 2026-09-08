@@ -516,3 +516,108 @@ async def test_nothing_is_queued_without_a_worker(
                 assert await enqueue_generated(db) == 0
     finally:
         await _cleanup()
+
+
+# ── The shot list an image model can actually read ───────────────────────
+
+# Verbatim from piece 20 in production. The writer gate added the same
+# afternoon checks a draft as it is WRITTEN; this piece was written weeks
+# earlier and reached the render queue by a route with no writer in it.
+_SPANISH_SHOT_LIST = {
+    "narration": "El depósito de seriedad es un cheque que entregas al abrir.",
+    "scenes": [
+        {"visual_prompt": "Un cartel de se vende frente a una casa en Denver",
+         "on_screen_text": "¿Qué es el depósito de seriedad?"},
+        {"visual_prompt": "Un sobre cerrado y unas llaves sobre una mesa de madera",
+         "on_screen_text": "Intención real de compra"},
+        {"visual_prompt": "Documentos de contrato inmobiliario sobre una mesa",
+         "on_screen_text": "Lo maneja una compañía de título"},
+        {"visual_prompt": "Un formulario con casillas de verificación de contingencias",
+         "on_screen_text": "Sin contingencias, hay riesgo"},
+        {"visual_prompt": "Una puerta principal con cerradura y unas llaves puestas",
+         "on_screen_text": "Inspección, financiamiento y título"},
+        {"visual_prompt": "Un escritorio con documentos y un teléfono sobre la mesa",
+         "on_screen_text": "Tu agente con licencia explica"},
+    ],
+}
+
+
+@pytest.mark.asyncio
+async def test_a_spanish_shot_list_is_never_paid_for(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gate has to sit where the prompts are USED, not only where written.
+
+    `content_writer._all_violations` checks a draft the model just returned.
+    That is the right place and it is not the only door: "Rebuild the video"
+    clears `media_path` on a piece stored months ago and puts it straight into
+    this queue with no writer involved. Production did exactly that, on piece
+    20, minutes before a render window — a piece whose six `visual_prompt`s
+    were Spanish.
+
+    What that costs if it goes through is not an error anybody sees: fal
+    answers 200 with a picture of something else, the video renders, the length
+    checks pass, and the wrong image publishes under a licensed brokerage's
+    name. So: not queued, no narration bought, and the reason written where a
+    person reads it.
+
+    Mutation: drop the `_english_shot_lists_only` call in `enqueue_generated`
+    → green, with the exact data that shipped the bug.
+    """
+    from app.services.content_render import enqueue_generated
+
+    monkeypatch.setattr(get_settings(), "RENDER_WORKER_ENABLED", True, raising=False)
+    await _brokerage()
+    try:
+        piece_id = await _generated(
+            ContentStatus.NEEDS_APPROVAL, scenes=_SPANISH_SHOT_LIST
+        )
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                assert await enqueue_generated(db) == 0
+
+        async with get_bypass_session_factory()() as db:
+            jobs = (
+                await db.execute(
+                    text("SELECT count(*) FROM render_jobs WHERE piece_id=:p"),
+                    {"p": piece_id},
+                )
+            ).scalar_one()
+            violations = (
+                await db.execute(
+                    text("SELECT violations FROM content_pieces WHERE id=:p"),
+                    {"p": piece_id},
+                )
+            ).scalar_one()
+        # Nothing queued and nothing charged...
+        assert jobs == 0
+        # ...and the piece says why, because a skip nobody can see is a piece
+        # that silently never renders again.
+        assert violations, "the piece was skipped with no reason recorded"
+        assert violations[0]["where"] == "scenes"
+        assert violations[0]["category"] == "language"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_english_shot_list_still_queues(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The half that stops the fix from being "never render anything".
+
+    `_generated` builds a one-scene plan of three words, which is under
+    `wrong_language`'s twenty-five-word floor and is therefore unjudgeable —
+    exactly the case that must pass rather than be rejected on a guess.
+    """
+    from app.services.content_render import enqueue_generated
+
+    monkeypatch.setattr(get_settings(), "RENDER_WORKER_ENABLED", True, raising=False)
+    await _brokerage()
+    try:
+        await _generated(ContentStatus.NEEDS_APPROVAL)
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                assert await enqueue_generated(db) == 1
+    finally:
+        await _cleanup()
