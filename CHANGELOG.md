@@ -20,7 +20,7 @@ All notable changes to **Eko AI Realtors**.
   no captions, piano — the shape of the only piece on the account that worked.
   Deliberately outside the render worker, whose queue would add the voice and
   captions being avoided.
-- **`/fall/1` to `/fall/4`**, 302 redirects carrying `utm_content=bandN`. On
+- **`/fall/1` to `/fall/4`**, 307 redirects carrying `utm_content=bandN`. On
   Instagram a caption URL is typed by hand, so a tagged one is unusable.
 
 ### Fixed
