@@ -43,6 +43,32 @@ the product, used in README / landing / marketing copy, is **"Eko AI Realtors"**
 
 ## CRITICAL Anti-patterns — read every time
 
+0. **NEVER count or conclude from `cat`, `grep` or `git diff` in this repo.**
+   The `rtk` proxy rewrites their output without saying so. Measured on
+   2026-09-08, on an unmodified file:
+
+   ```
+   wc -l < frontend/middleware.ts        ->  127
+   cat -n frontend/middleware.ts | wc -l ->   77
+   ```
+
+   It drops the comment blocks. That is not cosmetic here: half the design
+   decisions in this repo live in comments, and the v0.92.0 closing audit found
+   six false statements — `.env.example` still saying "LEAVE BOTH EMPTY" about
+   variables production has set since v0.64.0 — **all inside comments**. A
+   review done through `cat` audits a file that does not exist.
+
+   The one-second check that exposes it: **`wc -l` against what `cat` printed.**
+   To read or count, use the `Read` tool, `sed -n`, or `python3`.
+
+   *An earlier draft of this note cited 68 and 119 — numbers taken from a
+   different session's report of an earlier state of the file, never
+   re-measured. In a note whose point is that unverified numbers mislead, that
+   was the error it warns about. It also claimed `grep CONTENT_SLOT
+   docker-compose.yml` returned only `.env.example` matches; that one does not
+   reproduce — compose declares them at lines 173-175 — so it is gone. The
+   phenomenon above is measured here; the rest was hearsay.*
+
 1. **NEVER touch `~/Eko-AI-Bussinnes-Automation/` or `~/Eko-AI-main/`** from
    sessions working in this repo. Those are the sales platform; modifying them
    here would clobber the other session's work and risk production.

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.93.0";
+export const CURRENT_VERSION = "0.94.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.94.0",
+    date: "2026-09-08",
+    title: {
+      en: "The calculator now offers a way to talk about your number",
+      es: "La calculadora ya ofrece como hablar de tu cifra",
+    },
+    changes: [
+      { en: "Once the calculator shows a price, a button under it takes you straight to the form. The page had the form and no way to reach it from the result: someone who had just been shown what their rent could buy had to scroll and find it. It only appears when there is a figure to talk about.", es: "En cuanto la calculadora ensena un precio, un boton debajo lleva directo al formulario. La pagina tenia el formulario y ninguna forma de llegar desde el resultado: quien acababa de ver lo que su renta podia comprar tenia que buscarlo desplazandose. Solo aparece cuando hay una cifra de la que hablar." },
+      { en: "That tap is now counted, and it could not be before. The funnel could tell that somebody reached the form and never that they asked to go there, so the calculator looked like a page nobody wanted to act on.", es: "Ese toque ya se cuenta, y antes no podia contarse. El embudo sabia que alguien llegaba al formulario y nunca que hubiera pedido ir, asi que la calculadora parecia una pagina en la que nadie queria dar el paso." },
+    ],
+  },
   {
     version: "0.93.0",
     date: "2026-09-08",

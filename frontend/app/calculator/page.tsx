@@ -440,6 +440,25 @@ export default function CalculatorPage() {
                 />
               </dl>
               </details>
+              {/* The only way down to the form from here, and the only thing on
+                  this page that can emit `cta_click`: `LandingTracker` fires it
+                  on `href === "#consult"` and labels it with `data-track`, so
+                  without an anchor the page could measure "reached the form"
+                  and never "asked to go". It shipped that way — the guard in
+                  `track.test.ts` only read the landing, so a page with no
+                  anchor at all passed by having nothing to check.
+
+                  Inside the `result && shown` branch on purpose: an invitation
+                  to talk about "this" needs a "this". With no number, or below
+                  the floor, the empty state says its own thing and this is not
+                  rendered. */}
+              <a
+                href="#consult"
+                data-track="result"
+                className="mt-7 inline-flex min-h-[52px] items-center justify-center gap-3 rounded-full bg-ln-ink px-8 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-ln-canvas hover:opacity-90"
+              >
+                {t("calculator.result.cta")}
+              </a>
             </div>
           )}
           <p className="mt-6 text-[12px] leading-[1.7] text-ln-muted lg:hidden">

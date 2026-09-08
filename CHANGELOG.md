@@ -2,6 +2,29 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.94.0] — 2026-09-08
+
+### Added
+- **A way into the form from the calculator's result, and the click that proves
+  it.** `/calculator` declared `id="consult"` and carried the form, but not one
+  anchor pointed at it: `LandingTracker` emits `cta_click` only on
+  `href="#consult"`, so the page could record "reached the form" and never
+  "asked to go" — and a visitor who had just been shown a price had to hunt for
+  it. The anchor lives inside the branch that only renders with a figure and
+  above the floor: an invitation to talk about "this" needs a "this".
+
+### Fixed
+- **The guard that let it ship.** `track.test.ts` required every `#consult`
+  anchor to carry `data-track`, but read `Landing.tsx` and nothing else — a page
+  with zero anchors passed by having nothing to check. It now walks the public
+  pages, and any page declaring `id="consult"` must offer at least one labelled
+  way into it. Its pattern is bounded so a match cannot swallow the anchors in
+  between and borrow their `data-track`.
+- `CLAUDE.md` gains an anti-pattern: **do not count or conclude from `cat`,
+  `grep` or `git diff` here.** The `rtk` proxy rewrites their output — measured
+  the same day on an unmodified file, `wc -l < frontend/middleware.ts` says
+  **127** and `cat -n frontend/middleware.ts | wc -l` says **77**, because it
+  drops the comment blocks where half this repo's design decisions live.
 ## [0.93.0] — 2026-09-08
 
 ### Added
