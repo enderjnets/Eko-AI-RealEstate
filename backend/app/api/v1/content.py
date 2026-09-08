@@ -608,6 +608,7 @@ async def rebuild_piece(piece_id: int, db: AsyncSession = Depends(get_db)) -> Pi
     charge is real.
     """
     from app.models import RenderJob, RenderJobStatus
+    from app.services.content_render import stored_shot_list_language
 
     piece = await db.get(ContentPiece, piece_id)
     if piece is None:
@@ -639,6 +640,33 @@ async def rebuild_piece(piece_id: int, db: AsyncSession = Depends(get_db)) -> Pi
             detail=(
                 "this piece is queued for publishing; rebuilding would remove "
                 "the video the platform is waiting to fetch"
+            ),
+        )
+
+    # The prompts have to be English before a rebuild is worth starting, and
+    # this is the door that needed it most.
+    #
+    # `enqueue_generated` checks the same thing, and checking there was not
+    # enough: this endpoint does not go through it. It RESETS the piece's
+    # existing job to QUEUED (below), and `claim_job` hands out any queued job
+    # without ever looking at the piece. So a rebuild is a straight line from
+    # this button to a worker buying six pictures, with no sweep in between.
+    #
+    # Found the way these things are found: the gate went into the sweep, and
+    # fifteen minutes later a person pressed this button on piece 20 and the
+    # Spanish prompts went to fal anyway.
+    #
+    # A refusal rather than a silent skip, because somebody is standing here
+    # waiting for a video and deserves to be told why there will not be one.
+    shot_list = stored_shot_list_language(piece)
+    if shot_list is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "this piece's shot list is not in English, and the image "
+                f"service does not refuse those — it draws something else "
+                f"({shot_list}). Rewrite every visual_prompt in English "
+                "first; the words on screen and the narration stay as they are"
             ),
         )
 

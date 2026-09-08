@@ -802,6 +802,7 @@ async def _seeded(
     scenes: bool = False,
     media: bool = False,
     kind_recorded: bool = False,
+    scenes_payload: dict | None = None,
 ) -> int:
     """A piece sitting in `status`, for the tests that start from one."""
     async with get_bypass_session_factory()() as db:
@@ -816,9 +817,13 @@ async def _seeded(
             approved_by="someone@example.com",
             media_path="0123456789abcdef0123456789abcdef.mp4" if media else None,
             scenes=(
-                {"narration": "A line.", "scenes": [{"visual_prompt": "a house"}]}
-                if scenes
-                else None
+                scenes_payload
+                if scenes_payload is not None
+                else (
+                    {"narration": "A line.", "scenes": [{"visual_prompt": "a house"}]}
+                    if scenes
+                    else None
+                )
             ),
         )
         db.add(piece)
@@ -901,6 +906,67 @@ async def test_a_generated_piece_can_be_made_again(database_url: str) -> None:
         # gate refuses it meanwhile, which is the same invariant from v0.67.6.
         assert resp.json()["media_path"] is None
         assert resp.json()["status"] == "needs_approval"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_rebuild_with_a_spanish_shot_list_is_refused(
+    database_url: str,
+) -> None:
+    """The door the first version of this gate did not cover.
+
+    `enqueue_generated` checks the same thing, and it is not on this path.
+    Rebuild RESETS the piece's existing render job to QUEUED, and `claim_job`
+    hands out any queued job without looking at the piece — so this button is a
+    straight line to a worker buying six pictures, with no sweep in between.
+
+    Discovered the way these are discovered: the sweep gate shipped, and
+    fifteen minutes later a person pressed Rebuild on piece 20 and its Spanish
+    prompts went to fal.ai anyway. fal answered 200 six times and drew six
+    pictures of other things.
+
+    The second assertion says the piece keeps the video it already had: a
+    refusal must not take one away and give nothing back.
+
+    I first wrote that it guards the ORDER of the check against
+    `piece.media_path = None`, and ran the mutation to prove it. The mutation
+    PASSED. The order is not what protects the file — `media_path = None` is an
+    in-memory ORM change and the `commit` comes after the `raise`, so nothing
+    reaches the database either way. What the assertion actually guards is a
+    guard placed after a commit, which is a real way to write this wrong and
+    not the one I had in mind.
+
+    Mutation that does kill it: delete the `raise` and let the rebuild proceed
+    → 409 becomes 200 and the video is gone.
+    """
+    spanish = {
+        "narration": "El deposito de seriedad es un cheque que entregas.",
+        "scenes": [
+            {"visual_prompt": "Un cartel de se vende frente a una casa en Denver"},
+            {"visual_prompt": "Un sobre cerrado y unas llaves sobre una mesa"},
+            {"visual_prompt": "Documentos de contrato inmobiliario sobre una mesa"},
+            {"visual_prompt": "Un escritorio con documentos y un telefono"},
+        ],
+    }
+    try:
+        piece_id = await _seeded(
+            ContentStatus.NEEDS_APPROVAL, media=True, scenes_payload=spanish
+        )
+        async with _client() as client:
+            resp = await client.post(f"/api/v1/content/{piece_id}/rebuild")
+        assert resp.status_code == 409
+        assert "not in English" in resp.json()["detail"]
+
+        # The video it already had is still there.
+        async with get_bypass_session_factory()() as db:
+            still = (
+                await db.execute(
+                    text("SELECT media_path FROM content_pieces WHERE id=:p"),
+                    {"p": piece_id},
+                )
+            ).scalar_one()
+        assert still is not None
     finally:
         await _cleanup()
 
