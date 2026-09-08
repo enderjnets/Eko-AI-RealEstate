@@ -5878,3 +5878,29 @@ cuando haya 4+ piezas. Hoy sería una página con huecos.
 0.91.0, **pedida y concedida** por la sesión par el 7-sep («0.91.0 está
 libre, tómala»; recorrió las 34 ramas remotas: máximo 0.90.0). Bump en
 `config.py` + `version.ts` + `CHANGELOG.md`, mismo commit.
+
+## Deploy y verificación real (8-sep-2026, 01:50 UTC)
+
+Commit de la fase: **`2588c2c`** (`feat(home): "Guides" in the nav…`), rama
+`feat/guides-en-la-home`, empujada. Bundle `4ffe0ce..2588c2c` → VPS →
+`git merge --ff-only` (HEAD del VPS = `2588c2c`) → `docker compose build
+backend frontend` (los dos «Built»; este es el criterio de build Docker) →
+`up -d`. Sin migración: `alembic current` sigue en `055_calculator_snapshot`.
+
+| Comprobación | Salida real |
+|---|---|
+| `/api/v1/health` | `{"status":"ok","version":"0.91.0","env":"production","captcha":"on","llm_fallback":"ok"}` |
+| `logs --since 5m backend \| grep -ci traceback` | **0** |
+| `curl -sI https://www.denverhomestory.com/` | `HTTP/2 200`, `cf-cache-status: DYNAMIC` (no es caché) |
+| HTML público | `href="/calculator"` ×2, `href="/fall"` ×2, `href="#guides"` ×1 (el del menú móvil es `href:` en JS), `id="guides"` ×1, `hrefLang="en"` ×2 |
+| Playwright 390×844, menú abierto | cinco entradas, todas dentro del viewport; «Guides & tools 04» en 448–525 px |
+| Playwright 667×375 (iPhone SE apaisado), menú abierto | `scrollHeight` 527 > `clientHeight` 375, `overflow-y: auto`; tras desplazar, la quinta entrada queda en 214–292 px: **alcanzable** (la aritmética del auditor, convertida en medida) |
+| ES en producción (switcher → Español) | `html[lang=es]`; «Guías y herramientas», nav «Guías», CTA «Leer la guía (en inglés)», «Probar la calculadora», pie con los dos títulos en español |
+| Consola | 2 «errores» y 5 avisos: **todos del iframe de Turnstile** (`challenges.cloudflare.com`, ruido propio de sus sondas) salvo uno preexistente y ajeno a la fase: `apple-mobile-web-app-capable` deprecado |
+
+**Lo que no se puede verificar hoy:** que la tarjeta «How far they read» del
+panel muestre la fila `guides` — necesita sesiones reales que lleguen a la
+sección. El test lo cubre; la pantalla, el tiempo.
+
+**Siguiente paso:** Fase B — la página `/guides` por tema — cuando haya 4+
+piezas. Hoy hay dos. El dueño lanza `gh release create` (bloqueado para mí).
