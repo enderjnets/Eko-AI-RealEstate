@@ -86,8 +86,11 @@ del cambio:
    el test del hostname ajeno usa ahora un tercer nombre.
 3. El test «front door» que añadí no podía fallar (la regla de `/` retorna
    antes): poder de detección cero. Sustituido por uno que sí lo tiene — la
-   regla nueva es un no-op con las dos variables sin configurar, que es el
-   estado en que se despliega.
+   regla nueva es un no-op con las dos variables sin configurar. **Escribí que
+   ese era «el estado en que se despliega» y es falso**: el VPS las tiene
+   puestas desde la v0.64.0, y yo mismo lo había medido antes en `PLAN.md`. Es
+   el estado de un clon nuevo, no el de producción. Corregido en la Fase 4,
+   junto con los otros cinco sitios del repo que decían lo mismo.
 4. El 308 salía **sin `Cache-Control`** — medido con `curl -I` contra un build
    local, no supuesto. Un 308 sin directiva es cacheable por defecto, así que un
    `BRAND_URL` mal puesto sería irreversible para quien ya lo recibió. Ahora va
@@ -230,6 +233,69 @@ es lo que la convirtió en un misterio en vez de en un diagnóstico. Ahora toler
 **Nada que commitear en código:** no hizo falta arreglar layout. El guion vive
 en el scratchpad, fuera del repo.
 
+### Fase 4 — versión 0.92.0 y coherencia · `feat/f4-version`
+
+| Comprobación | Resultado real |
+|---|---|
+| `pytest` backend | ✅ **1779 passed** · `ruff` «All checks passed!» |
+| `npx vitest run` | ✅ **379/379** · `tsc` limpio · lint sin avisos · build OK · prerender correcto |
+| Versión, cuatro sitios | `config.py`, `version.ts`, su entrada de CHANGELOG y `CHANGELOG.md` → **0.92.0**, fecha **2026-09-08** |
+| Test de versión única | verde, **y visto en rojo**: desalinear `version.ts` a 0.93.0 lo rompe por dos aserciones |
+| `0.91.0` rezagado | ninguno vivo; 15 apariciones, todas históricas o del propio plan |
+| Secretos / `console.log` en el diff | ninguno |
+
+**El día cambió a mitad del trabajo:** la versión llevaba fecha del 7-sep y se
+cerró el 8. Corregido en los dos changelogs antes de commitear.
+
+**Auditoría de cierre (1 agente, sobre las cuatro fases juntas).** Cero
+bloqueantes. Cuatro importantes, todos corregidos aquí, y **dos eran errores
+míos que contradecían lo que yo mismo había medido**:
+
+1. **Seis sitios del repo afirmaban que las variables de host están sin
+   configurar** («el dominio sigue aparcado en GoDaddy»). Producción las tiene
+   puestas **desde la v0.64.0**, y yo lo había medido y escrito en `PLAN.md`
+   días antes. El peor era `.env.example`, que decía **«LEAVE BOTH EMPTY»**: un
+   operador siguiéndolo al pie de la letra apaga el reparto de hosts —el panel
+   vuelve a servir las páginas públicas y desaparecen los canonical— **sin
+   error y sin línea de log**. Corregidos `middleware.ts`, `lib/hosts.ts`,
+   `app/layout.tsx`, `Dockerfile`, `.env.example`, la cabecera de
+   `hostRouting.test.ts` y mi propio comentario de test, que repetía la
+   afirmación falsa.
+2. **El hostname del panel seguía mal en el fuente.** La Fase 1 corrigió
+   `realtors.…` → `inmo-demo.…` en el test y en `CLAUDE.md`, pero dejó
+   `middleware.ts:8` y `hosts.ts:28` nombrando el que **nunca fue un ingress**
+   (solo existe como remitente de correo en `RESEND_FROM`). Es exactamente el
+   defecto que esa fase decía haber cerrado.
+3. **`PLAN.md` afirmaba lo contrario de lo que hace el código:** decía que el
+   308 se cachea, cuando la Fase 1 lo envía `no-store`. Es el documento que se
+   lee antes de decidir una reversión, y exageraba su coste.
+4. **La lista de verificación en producción se saltaba `/contact`** —la única
+   ruta cuyo comportamiento invierte esta versión— y usaba `-w '%{http_code}'`,
+   que **no imprime cabeceras**, así que el `no-store` no se comprobaba. Ahora
+   usa `curl -sI` y cubre las tres rutas.
+
+**Advertencia de método del auditor, que afecta a cualquier revisión futura
+aquí:** `rtk` **quita los bloques de comentarios** de la salida de `cat` y
+`git diff` en este shell. Un `cat -n middleware.ts` imprimió 68 líneas donde
+`wc -l` dice 119. Casi todos los hallazgos de arriba viven en comentarios: una
+revisión hecha por `cat`/`git diff` en este entorno está leyendo un fichero
+censurado. Usar la herramienta `Read`.
+
+**Al backlog:**
+
+- La regla hermana marca→panel (`middleware.ts:57-59`, preexistente) **sigue
+  sin cabecera de caché**. Tras la Fase 1 es el único 308 sin proteger del
+  fichero, y el razonamiento escrito al lado se le aplica igual.
+- `deploy/cloudflared/config.example.yml` lista **un solo** hostname de ingress;
+  producción sirve **tres** en un único túnel. Reconstruir el túnel desde ese
+  ejemplo dejaría el 308 apuntando a un hostname que el túnel no atiende.
+- `hosts.ts:70-74` dice que olvidar añadir una ruta a `PUBLIC_PATHS` falla «en
+  la dirección segura». Con la regla nueva hay un segundo consumidor de
+  polaridad opuesta: olvidarla también deja la página servida en el panel.
+
+**Siguiente paso:** pre-despliegue preparado; **no se despliega** sin
+autorización del dueño en mensaje aparte.
+
 ### Consultas al advisor
 
 | Motivo | Decisión |
@@ -239,7 +305,7 @@ en el scratchpad, fuera del repo.
 
 **Hallazgos abiertos:** ninguno.
 
-**Siguiente paso:** Fase 4 — versión 0.92.0 (concedida por la sesión par), CHANGELOG y estado.
+**Siguiente paso:** ver la sección de la Fase 4.
 
 **Coordinación entre sesiones (7-sep).** Cuatro sesiones locales vivas.
 `Eko Ai Realtors`: concede la 0.92.0, no toca estos ficheros. `Viral Videos DHS`:

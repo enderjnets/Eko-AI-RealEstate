@@ -15,17 +15,22 @@
  * `middleware.ts` and the page metadata do with the values below.
  *
  * ── Everything here is inert until configured, and that is deliberate ────────
- * The domain is still parked at GoDaddy; the nameserver move to Cloudflare
- * happens later and takes hours to propagate. A middleware that redirected the
- * panel to a hostname that does not resolve yet would take production down, and
- * a canonical tag pointing at a dead domain would deindex the page that is
- * live today. So an unset variable means "do nothing", never "guess".
+ * An unset variable means "do nothing", never "guess": a middleware that
+ * redirected the panel to a hostname that does not resolve would take
+ * production down, and a canonical pointing at a dead domain would deindex the
+ * page that is live.
+ *
+ * That was written while the domain sat at GoDaddy. **It has been configured on
+ * production since v0.64.0** — both variables are set in the VPS `.env` — so
+ * the inert branch is what a fresh clone and a half-finished install get, not
+ * what is deployed. Read as "still parked", it says the host split is dormant
+ * when it is load-bearing.
  */
 
-/** Public brand site, e.g. `https://www.denverhomestory.com`. Empty until DNS moves. */
+/** Public brand site. Production: `https://www.denverhomestory.com`. Empty = inert. */
 export const BRAND_URL = (process.env.NEXT_PUBLIC_BRAND_URL || "").trim().replace(/\/$/, "");
 
-/** Operator panel, e.g. `https://realtors.ekoaiautomation.com`. Empty until DNS moves. */
+/** Operator panel. Production: `https://inmo-demo.ekoaiautomation.com`. Empty = inert. */
 export const PANEL_URL = (process.env.NEXT_PUBLIC_PANEL_URL || "").trim().replace(/\/$/, "");
 
 /**

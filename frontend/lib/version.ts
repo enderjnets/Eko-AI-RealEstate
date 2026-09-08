@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.91.0";
+export const CURRENT_VERSION = "0.92.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.92.0",
+    date: "2026-09-08",
+    title: {
+      en: "Last name on every public form, and one address per public page",
+      es: "Apellido en todos los formularios publicos, y una sola direccion por pagina publica",
+    },
+    changes: [
+      { en: "The four public forms now ask for a last name as well as a first, and both are required. Until now they asked for one field, \"First name\", so a seller arrived in the Inbox as \"Ana\" and there was nothing to look them up by. The two halves are stored in the name field that already exists, the way a name arriving from WhatsApp always has.", es: "Los cuatro formularios publicos piden ya apellido ademas de nombre, y los dos son obligatorios. Hasta ahora pedian un solo campo, \"Nombre\", asi que un vendedor llegaba al Inbox como \"Ana\" y no habia por donde buscarlo. Las dos mitades se guardan en el campo de nombre que ya existia, igual que un nombre que llega por WhatsApp." },
+      { en: "A submission with no name at all is still captured. The requirement lives in the browser, not in the API, because the same entry point serves other forms; a bot or a browser with scripting off files a lead as it always did, and a name longer than the server accepts is shortened instead of losing the whole submission.", es: "Un envio sin nombre se sigue capturando. La obligacion vive en el navegador, no en la API, porque la misma entrada atiende a otros formularios; un bot o un navegador sin scripts registra el lead como siempre, y un nombre mas largo de lo que el servidor acepta se acorta en vez de perderse el envio entero." },
+      { en: "The panel's hostname stops serving the public pages. The fall guide, the calculator and the contact form answered on both addresses with identical pages, which left the domain the campaigns point at competing against a copy of itself; they now send visitors to the brand domain, carrying the campaign tags so attribution survives the hop. The panel keeps opening on the work.", es: "El nombre del panel deja de servir las paginas publicas. La guia de otono, la calculadora y el formulario de contacto respondian en las dos direcciones con paginas identicas, lo que dejaba al dominio al que apuntan las campanas compitiendo contra una copia de si mismo; ahora mandan al visitante al dominio de la marca, con las etiquetas de campana intactas. El panel sigue abriendo en el trabajo." },
+    ],
+  },
   {
     version: "0.91.0",
     date: "2026-09-07",

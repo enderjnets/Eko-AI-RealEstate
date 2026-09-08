@@ -9,11 +9,11 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
  * mutated `process.env` afterwards would be testing nothing: the constants are
  * already frozen by then.
  *
- * The case that matters most is the FIRST one. The domain is still parked at
- * GoDaddy and the nameserver move happens later, so this code ships to
- * production with both variables empty. If it redirected anyway, the panel
- * would bounce every request to a hostname that does not resolve — the whole
- * product, down, on deploy.
+ * The FIRST case guards the unconfigured install: with both variables empty
+ * nothing redirects, so a fresh clone and a half-finished deployment behave
+ * exactly as a single-hostname app. It was written when that WAS production —
+ * the domain parked at GoDaddy — and said so; production has set both since
+ * v0.64.0, and every other case in this file describes what is live.
  */
 
 const BRAND = "https://www.denverhomestory.com";
@@ -215,9 +215,11 @@ describe("host routing", () => {
 
   it("does not touch the public pages on the panel host while unconfigured", async () => {
     // The first test in this file covers `/leads` and `/` unconfigured; the
-    // rule that redirects public pages was not covered by either, and that is
-    // the state this ships in until the two variables are set. A refactor that
-    // hoisted it above the guard would otherwise 308 every live landing to an
+    // rule that redirects public pages was covered by neither. NOT the state
+    // production is in — the VPS sets both, and has since v0.64.0; an earlier
+    // version of this comment said the opposite and was wrong. It is the state
+    // of a fresh clone and of a half-finished install, and a refactor that
+    // hoisted the rule above the guard would 308 every landing there to an
     // empty string.
     const { middleware } = await load("", "");
     for (const p of ["/fall", "/contact", "/calculator"]) {

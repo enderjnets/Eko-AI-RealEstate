@@ -451,8 +451,13 @@ La última tiene que decir **0.92.0**.
 
 **Terminado (todo medido en producción, salida pegada en `PROJECT_STATUS.md`):**
 ```bash
-curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://inmo-demo.ekoaiautomation.com/calculator   # 308 https://www.denverhomestory.com/calculator
-curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://inmo-demo.ekoaiautomation.com/fall         # 308 …/fall
+# -I y no -w: la cabecera `Cache-Control: no-store` es lo unico que hace
+# reversible un BRAND_URL mal puesto, y `-w '%{http_code}'` no la imprime.
+curl -sI https://inmo-demo.ekoaiautomation.com/calculator | grep -iE 'HTTP|location|cache-control'   # 308 · no-store · …/calculator
+curl -sI https://inmo-demo.ekoaiautomation.com/fall       | grep -iE 'HTTP|location|cache-control'   # 308 · no-store · …/fall
+# /contact es LA ruta que esta version invierte: si falta aqui, no se comprueba
+# lo unico que cambia de comportamiento respecto a una decision anterior.
+curl -sI https://inmo-demo.ekoaiautomation.com/contact    | grep -iE 'HTTP|location|cache-control'   # 308 · no-store · …/contact
 curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://inmo-demo.ekoaiautomation.com/             # 307 …/leads
 curl -s -o /dev/null -w '%{http_code}\n' https://inmo-demo.ekoaiautomation.com/leads                        # 200 — el panel intacto
 for p in / /fall /contact /calculator; do curl -s -o /dev/null -w "$p %{http_code}\n" "https://www.denverhomestory.com$p"; done   # 200 ×4
@@ -480,8 +485,11 @@ enviado a producción.** Commit
   Short en el móvil cuestan conversión**, y el que abandona no aparece en
   ningún informe. El dueño lo decidió con el dato delante; queda escrito
   para poder revisarlo con números si el ritmo de leads cae.
-- El 308 lo cachea el navegador: una pública en el host del panel deja de
-  verse hasta vaciar caché.
+- ~~El 308 lo cachea el navegador~~ — **ya no**: la Fase 1 lo envía con
+  `Cache-Control: no-store` (medido: sin esa cabecera salía sin ninguna
+  directiva, y un 308 sin directiva es permanente para el navegador). Eso es lo
+  que hace barata la reversión. La regla hermana marca→panel, preexistente y no
+  tocada aquí, **sigue sin cabecera de caché**: al backlog.
 - `origin/main` puede moverse entre la Fase 0 y la 5 (la sesión par trabaja
   en el mismo repo). Antes del bundle, `git fetch` y comprobar que
   `2588c2c` sigue siendo el HEAD del VPS y que la rama contiene lo que haya

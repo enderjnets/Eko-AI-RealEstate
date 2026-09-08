@@ -5,8 +5,10 @@ import { BRAND_HOST, BRAND_URL, PANEL_HOST, PANEL_URL, isPublicPath } from "@/li
  * Send each hostname to the half of the app it is meant to serve.
  *
  * One Next app, two audiences: `www.denverhomestory.com` is where people who
- * watched a video land, and `realtors.ekoaiautomation.com` is where Natalia and
- * Robbie log in to work. Without this, both hostnames serve both halves — the
+ * watched a video land, and `inmo-demo.ekoaiautomation.com` is where Natalia
+ * and Robbie log in to work. (`realtors.…` was the name this was written for
+ * and never became an ingress; it survives only as the mail sender in
+ * `RESEND_FROM`. Naming it here described the inverse of production.) Without this, both hostnames serve both halves — the
  * brand domain would answer `/leads` with an internal login screen, and the
  * panel domain would answer `/` with the marketing page.
  *
@@ -16,13 +18,19 @@ import { BRAND_HOST, BRAND_URL, PANEL_HOST, PANEL_URL, isPublicPath } from "@/li
  * product; and Next has no `basePath` here, so serving the app under a path
  * would rewrite every asset, link and redirect in it.
  *
- * ── Inert until configured ──────────────────────────────────────────────────
- * With `NEXT_PUBLIC_BRAND_URL` / `NEXT_PUBLIC_PANEL_URL` unset — which is the
- * state today, with the domain still parked at GoDaddy — this returns
- * `next()` for everything and the app behaves exactly as it does now. That is
- * not a fallback, it is the requirement: the DNS move happens later and takes
- * hours to propagate, so a middleware that started redirecting to a hostname
- * that does not resolve yet would take production down on deploy.
+ * ── Inert until configured, and production is NOT that state ────────────────
+ * With `NEXT_PUBLIC_BRAND_URL` / `NEXT_PUBLIC_PANEL_URL` unset this returns
+ * `next()` for everything. That was written while the domain was parked at
+ * GoDaddy and both were empty; **since v0.64.0 production sets both**, and
+ * every rule in here is live. The paragraph said otherwise until v0.92.0,
+ * which is worse than saying nothing: the next reader concludes the redirects
+ * are dead code on production and skips verifying them.
+ *
+ * The inert branch still matters — it is what makes a half-configured install
+ * safe, and what a fresh clone gets — but it is the exception now, not the
+ * state of the deployment. If both are empty on the VPS, this whole file is a
+ * no-op with no error and no log line, so the deploy checklist greps the
+ * `.env` for them before building.
  */
 export function middleware(req: NextRequest) {
   // Both must be known before either redirect is safe. Knowing only the brand

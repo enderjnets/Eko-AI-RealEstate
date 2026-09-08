@@ -40,8 +40,10 @@ export const metadata: Metadata = {
    *
    * This is not belt-and-braces with `middleware.ts`, it covers a different
    * failure: the middleware only redirects once the hostnames are configured,
-   * and today they are not, so `inmo-demo.ekoaiautomation.com/leads` is a
-   * crawlable login screen. Measured on production, not assumed.
+   * so on an install where they are not, `inmo-demo.ekoaiautomation.com/leads`
+   * is a crawlable login screen. (This said "and today they are not" until
+   * v0.92.0; production has set both since v0.64.0. The measurement was right
+   * when it was taken and then quietly stopped being true.)
    *
    * And it is deliberately NOT a robots.txt: Cloudflare prepends its own
    * `Allow: /` and Google honours the least restrictive rule — that has

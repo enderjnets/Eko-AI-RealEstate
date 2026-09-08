@@ -2,6 +2,42 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.92.0] — 2026-09-08
+
+### Added
+- **Last name on the four public forms, both halves required.** `ConsultForm`
+  (used by `/`, `/fall` and `/calculator`) and `/contact`'s own form asked for a
+  single "First name" field, so a seller reached the Inbox as "Ana" and the
+  agent had nothing to look them up by. The two halves are joined in
+  `frontend/lib/leadName.ts` into the single `name` the API takes — no
+  migration: `leads.name` already receives whole names from the other channels
+  (`services/conversation.py` fills it from a WhatsApp profile's `from_name`)
+  and every consumer treats it as a label for a person.
+- The requirement lives **in the markup only**. The same `/api/v1/public/leads`
+  serves another tenant's forms, so demanding a name in `PublicLeadIn` would
+  break them; a submission with no name — a bot, scripting off — is still
+  captured. A name longer than `MAX_NAME` is shortened client-side rather than
+  rejected: pydantic refuses an over-long `name` with a 422 that would take the
+  email, the phone, the TCPA consent and the calculator snapshot with it.
+
+### Changed
+- **The panel hostname stops serving the public pages.** Measured on the live
+  site: `inmo-demo.ekoaiautomation.com` answered `/fall`, `/contact` and
+  `/calculator` with the same HTML byte for byte as the brand domain — one page,
+  two addresses, with a canonical tag as the only thing asking Google which to
+  keep, against a robots.txt Cloudflare rewrites to `Allow: /`. The middleware
+  now answers those with a 308 to the brand domain, carrying path and query so
+  campaign attribution survives. `/` still opens the panel on `/leads`, and
+  `/about` is still served there. The redirect is sent `no-store`: a 308 with no
+  cache directive is permanent in the browser, which would make a misconfigured
+  brand host irreversible for anyone who had already been redirected.
+- This reverses a decision recorded in the middleware itself, which kept
+  `/contact` reachable on the panel host "so an operator following a link from an
+  email is not bounced across hostnames". No mail this system sends carries that
+  URL — the only one is `PANEL_URL/leads/<id>` — and no panel screen links to a
+  public path. `CLAUDE.md`'s operational URLs, which did point there, are
+  corrected.
+
 ## [0.91.0] — 2026-09-07
 
 ### Added

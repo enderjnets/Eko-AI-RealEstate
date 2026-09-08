@@ -63,8 +63,10 @@ ENV NEXT_PUBLIC_LANDING_BOOKING_URL=$NEXT_PUBLIC_LANDING_BOOKING_URL
 ARG NEXT_PUBLIC_LANDING_TESTIMONIALS
 ENV NEXT_PUBLIC_LANDING_TESTIMONIALS=$NEXT_PUBLIC_LANDING_TESTIMONIALS
 # Host split: which hostname serves the brand site and which serves the panel.
-# Both empty until the domain moves to Cloudflare, and empty means the
-# middleware and the canonical tags do nothing — see frontend/lib/hosts.ts.
+# Empty means the middleware and the canonical tags do nothing — see
+# frontend/lib/hosts.ts. Production sets both since v0.64.0; this line said
+# "both empty until the domain moves" until v0.92.0, which read as if the host
+# split were still dormant.
 # Build-time like the rest: `middleware.ts` reads them through the same
 # NEXT_PUBLIC_ inlining, so setting them only at runtime leaves a deployment
 # where the .env looks configured and both hostnames still serve both halves.
