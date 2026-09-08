@@ -508,35 +508,39 @@ solución barata y correcta es **quitar a Pexels de la ruta generada**.
   `RENDER_STOCK_FALLBACK` (default **`false`**). Con `false`, tras fal y Kling
   `fetch` devuelve `"none"` sin llamar a Pexels. Con `true`, comportamiento de
   hoy (queda para lane A o emergencias, decisión del dueño).
-- `worker/produce.py:318-323` ya falla el trabajo si **todas** las escenas son
-  tarjeta. Con Pexels fuera, un 403 de fal + Kling sin claves ⇒ todas tarjeta
-  ⇒ `ValueError` **no terminal** ⇒ 3 intentos, **cada uno pagando una
-  narración MiniMax** (`render_jobs.py:414-422` documenta ese incidente). Y
-  una «comprobación previa» no vale: `_spent_today()` está vacío hasta que la
-  primera llamada del día recibe el 403, así que el primer trabajo pagaría la
-  narración igual. Por eso, dos cambios: (1) **reordenar `produce()`: las
-  fotos antes que la voz.** `pictures.fetch` solo necesita `visual_prompt` y
-  `people_words` (los `scenes` vienen de la pieza, no de la narración; la
-  narración solo aporta los *tiempos*), así que el bucle de `:289-309` puede ir
-  antes de `tts.narrate` (`:270-272`) sin tocar `plan_shots`. (2) Con
-  `RENDER_STOCK_FALLBACK=false`, el 403 de fal (y el `1102` de Kling) lanzan
-  desde `fetch` una excepción **terminal** propia (`NoPictureSupplier`) en vez
-  de devolver `False`. Terminal ⇒ `render_jobs.py:433-435` marca el job
-  `FAILED` **una sola vez**, con el motivo en `content_pieces.render_error`, y
-  `_ring_the_bell` avisa por Telegram — **cero narraciones pagadas** en un día
-  sin saldo.
-- El motivo en `render_error` tiene que decir **qué hacer**: «fal.ai sin saldo
-  desde HH:MM y Kling sin claves: recarga o pon claves; nada se publica hasta
-  entonces» ([[feedback_disenar_una_alarma_que_se_escuche]]).
+- 🔴 **Corrección al diseño de este plan, hecha al leer el código fusionado.**
+  Yo escribí que el fallo pasara a ser **terminal**. Está mal, y el propio
+  repo lo dice: `worker/main.py:311-320` razona a propósito lo contrario —
+  «"no image provider produced a single picture" IS a provider outage, and
+  burning the piece's only attempt on it would turn an hour of Kling downtime
+  into a dead piece». Tenía razón quien lo escribió: el reintento se queda.
+- **Lo que se arregla es el orden, no el contrato de error.** El coste real
+  eran las narraciones: con las imágenes secas, cada uno de los 3 intentos
+  compraba una narración MiniMax para llegar a la misma respuesta. `produce()`
+  pedía la voz primero. Ahora **las fotos van antes que la voz** y la guarda de
+  «ninguna imagen» salta antes de `tts.narrate`: la caída de proveedor conserva
+  sus reintentos y **cuesta cero**. `pictures.fetch` solo necesita
+  `visual_prompt` y `people_words`; los tramos siguen saliendo de la
+  transcripción y se aplican después, al cortar los `Shot`.
+- ✅ **La exclusión de Kling (D-8) ya estaba en el código, no hubo que
+  escribirla**: `fetch` consulta Kling solo `if _fal_key() is None`. Con
+  `FAL_KEY` puesta en el ROG, el obrero de DHS **nunca** toca el plan que
+  gasta The Power Unleashed.
 
 **Tests (`worker/tests/test_lane_b.py`, con los stubs que ya usa esa rama):**
-(a) con `RENDER_STOCK_FALLBACK=false` y fal a 403, `fetch` devuelve `"none"` y
-Pexels **no se llama** (contador del stub = 0); (b) con `true`, se llama; (c)
-`produce()` con fal a 403 y Kling sin claves lanza `NoPictureSupplier` y **el
-stub de `tts.narrate` no se ha llamado** (es la prueba del reorden); (d) el
-mensaje contiene «recarga». **Mutaciones:** devolver el orden viejo (voz antes
-que fotos) → (c) rojo (TTS llamado); ignorar la variable → (a) rojo; convertir
-la excepción en `return False` → (c) rojo (no se lanza).
+✅ **Hecho el 8-sep, `worker/tests` 87 passed** (eran 75 antes de la fusión,
+85 después, +2 nuevos). (a) `test_by_default_an_empty_account_does_not_reach_for_stock`:
+con fal a 403 y sin la variable, `fetch` devuelve `"none"` y `_pexels` **ni se
+llama** (el stub `_never` reventaría); (b) los dos tests que ya existían sobre
+stock declaran ahora `RENDER_STOCK_FALLBACK=true` — es la precondición que
+antes era el default, no un parche para que pasen; (c)
+`test_no_pictures_means_no_narration_is_ever_bought`: con todas las escenas a
+`"none"`, `produce()` lanza `ValueError` y **ni `tts.narrate` ni
+`subtitles.transcribe` llegan a llamarse**.
+
+**Mutaciones, las tres en rojo y con `md5` restaurado:** (1) `_stock_allowed`
+devuelve siempre `True` → 1 failed; (2) comprar la narración antes de las
+fotos → 1 failed; (3) quitar la guarda de «ninguna imagen» → 2 failed.
 
 #### 3c — Los cuatro reels *(dueño, en la app de Instagram)*
 
@@ -555,9 +559,11 @@ historia. Anotar en `PROJECT_STATUS.md` (Fase 5) cuáles se borraron y cuándo.
 #### 3d — El instalador no vuelve a borrar claves
 
 `worker/install-on-rog.sh` hace `cat > ~/.eko-render.env <<EOF` (**sobrescribe**).
-Cambio mínimo: si `~/.eko-render.env` existe, **no reescribirlo** — solo
-actualizar el tar del código y reiniciar el servicio; imprimir «env existente
-conservado». Y el despliegue del obrero (Fase 6) usa **solo** ese camino:
+✅ **Hecho el 8-sep**: si `~/.eko-render.env` existe, el bloque no se ejecuta e
+imprime «configuración existente CONSERVADA (no se toca)»; el `mkdir` de los
+directorios sí sigue corriendo siempre. Los valores por defecto del bloque
+pasan a `RENDER_KLING_IMAGES_PER_DAY=30` (D-4) y `RENDER_STOCK_FALLBACK=false`,
+con el porqué escrito al lado. `bash -n` limpio. Y el despliegue del obrero (Fase 6) usa **solo** ese camino:
 `tar` + `systemctl --user restart eko-render-worker`, con `md5sum` del
 `pictures.py` remoto antes y después.
 

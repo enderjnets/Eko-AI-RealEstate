@@ -176,6 +176,9 @@ def test_stock_photos_are_not_cached(monkeypatch, tmp_path: Path) -> None:
     """Caching a free result would freeze one photo onto a phrase for every
     future video."""
     monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    # Stock is off by default now, so a test about what stock does has to say
+    # so. The precondition was always there; it used to be the default.
+    monkeypatch.setenv("RENDER_STOCK_FALLBACK", "true")
     monkeypatch.delenv("FAL_KEY", raising=False)
     monkeypatch.setattr(pictures, "_kling_image", lambda p, d: False)
 
@@ -294,11 +297,16 @@ def test_an_empty_fal_account_is_loud_but_does_not_stop_the_video(
     assert pictures._spent_today() >= pictures.daily_cap()
 
 
-def test_after_a_403_the_day_asks_nobody_and_stock_carries_the_video(
+def test_after_a_403_the_day_asks_nobody_and_stock_may_carry_the_video(
     monkeypatch, tmp_path: Path
 ) -> None:
-    """One 403 per day, not one per scene — and the video still comes out."""
+    """One 403 per day, not one per scene — and with stock ALLOWED it comes out.
+
+    The second half is now opt-in. See the sibling below for what the same
+    situation does with the default.
+    """
     monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("RENDER_STOCK_FALLBACK", "true")
     monkeypatch.setenv("FAL_KEY", "id:secret")
     monkeypatch.setattr(pictures.httpx, "post", lambda *a, **k: _FalAnswer(403))
     assert pictures._fal_image("a house", tmp_path / "first.jpg") is False
@@ -311,6 +319,64 @@ def test_after_a_403_the_day_asks_nobody_and_stock_carries_the_video(
 
     monkeypatch.setattr(pictures, "_pexels", _stock)
     assert pictures.fetch("a barn", tmp_path / "second.jpg") == "pexels"
+
+
+def test_by_default_an_empty_account_does_not_reach_for_stock(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """With no balance and no flag, the answer is "none" — and Pexels is not
+    even asked.
+
+    This is the whole point of the default. The reels that went out with a
+    HOME INSURANCE POLICY under a script about earnest money, and with an
+    October 2021 calendar reading "Check Breasts", were Pexels quietly
+    carrying a video after fal answered 403. A gap in the calendar is
+    recoverable; a licensed agent's account claiming things it did not mean is
+    not.
+
+    Mutation: drop the `_stock_allowed()` guard in `fetch` → `_never` fires.
+    """
+    monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("RENDER_STOCK_FALLBACK", raising=False)
+    monkeypatch.setenv("FAL_KEY", "id:secret")
+    monkeypatch.setattr(pictures.httpx, "post", lambda *a, **k: _FalAnswer(403))
+    assert pictures._fal_image("a house", tmp_path / "first.jpg") is False
+
+    monkeypatch.setattr(pictures, "_pexels", _never)
+    assert pictures.fetch("a barn", tmp_path / "second.jpg") == "none"
+
+
+def test_no_pictures_means_no_narration_is_ever_bought(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A dry image account must not cost a single second of TTS.
+
+    The failure it raises is deliberately NOT terminal — `worker/main.py` says
+    why: an hour of provider downtime should not kill the piece. But that
+    generosity used to be paid for, three narrations per outage, because the
+    voice was bought before anyone asked for a picture. Asking the cheap
+    question first keeps the retries and drops the bill to zero.
+
+    Mutation: move the picture loop back below `tts.narrate` → `_never` fires.
+    """
+    monkeypatch.setenv("RENDER_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("RENDER_STOCK_FALLBACK", raising=False)
+    monkeypatch.setattr(produce.pictures, "fetch", lambda *a, **k: "none")
+    monkeypatch.setattr(produce.tts, "narrate", _never)
+    monkeypatch.setattr(produce.subtitles, "transcribe", _never)
+
+    spec = {
+        "scenes": {
+            "narration": "A sentence somebody would have had to pay to record.",
+            "scenes": [
+                {"visual_prompt": "a quiet street", "on_screen_text": "one"},
+                {"visual_prompt": "a golden hillside", "on_screen_text": "two"},
+            ],
+        },
+        "language": "en",
+    }
+    with pytest.raises(ValueError, match="no image provider"):
+        produce.produce(spec, tmp_path, font=None, mark=None, music=None)
 
 
 def test_a_request_fal_refused_costs_nothing(monkeypatch, tmp_path: Path) -> None:

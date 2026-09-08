@@ -384,12 +384,41 @@ def _pexels(prompt: str, destination: Path, people_words: list[str] | None = Non
         return False
 
 
+def _stock_allowed() -> bool:
+    """May a stock library stand in when nothing could draw the scene?
+
+    Off by default, and the default is the lesson. Stock is chosen by the first
+    four words of the prompt and by whether its own alt text mentions people —
+    nothing checks that the photograph has anything to do with the scene. On a
+    licensed agent's account that produced, published, a form headed HOME
+    INSURANCE POLICY under a script about earnest money, an October 2021
+    calendar reading "Check Breasts", and houses that are visibly not in
+    Denver. A missing video is a gap in a calendar; a wrong one is a claim.
+
+    It stays switchable because lane A and a rescue render may still want it,
+    and because turning it back on has to be one variable and not a deploy.
+    """
+    return os.environ.get("RENDER_STOCK_FALLBACK", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def fetch(prompt: str, destination: Path, people_words: list[str] | None = None) -> str:
     """An image for this prompt. Returns which provider gave it.
 
     `"none"` means neither did, and the caller draws a branded card instead —
     a plain frame under the words rather than a job that failed because a
     stock library had no photo of a street.
+
+    The ladder is cache → fal → Kling → stock, and the last rung is off by
+    default (`_stock_allowed`). Kling is only consulted on a machine with no
+    fal credential at all, so an installation with both never pays two
+    accounts for one picture — which is also why Denver Home Story's worker,
+    which has `FAL_KEY`, never touches the Kling plan that another project
+    is spending.
     """
     cached = _cache_dir() / f"{cache_key(prompt)}.jpg"
     if cached.is_file():
@@ -413,7 +442,7 @@ def fetch(prompt: str, destination: Path, people_words: list[str] | None = None)
             daily_cap(),
         )
 
-    if _pexels(prompt, destination, people_words):
+    if _stock_allowed() and _pexels(prompt, destination, people_words):
         # Not cached: stock results are free and change, and caching them would
         # freeze one photo onto a phrase for every future video.
         return "pexels"

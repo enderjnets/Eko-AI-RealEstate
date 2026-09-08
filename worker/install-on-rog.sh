@@ -76,6 +76,20 @@ ssh "$ROG" '
   set -e
   TOK=$(cat /tmp/.tok); MM=$(cat /tmp/.mm); rm -f /tmp/.tok /tmp/.mm
   umask 077
+  # Un fichero que ya existe NO se reescribe.
+  #
+  # `cat >` lo trunca, y este bloque escribe FAL_KEY, KLING_* y PEXELS_API_KEY
+  # vacias: correr el instalador para actualizar el codigo dejaba al obrero sin
+  # ninguna credencial de imagen, en silencio, y la unica copia de esas claves
+  # estaba en el fichero que se acababa de truncar. Ya paso una vez.
+  #
+  # Para cambiar UNA variable, `sed -i` sobre una copia previa:
+  #   cp ~/.eko-render.env ~/.eko-render.env.bak.$(date +%Y%m%d)
+  #   sed -i "s|^FAL_KEY=.*|FAL_KEY=...|" ~/.eko-render.env
+  # y comprobar con longitudes, nunca imprimiendo el valor.
+  if [ -f ~/.eko-render.env ]; then
+    echo "configuración existente CONSERVADA (no se toca)"
+  else
   cat > ~/.eko-render.env <<EOF
 # Denver Home Story — obrero de render. NO commitear, NO imprimir.
 EKO_API_BASE=https://inmo-demo.ekoaiautomation.com
@@ -103,11 +117,16 @@ FAL_KEY=
 KLING_ACCESS_KEY=
 KLING_SECRET_KEY=
 PEXELS_API_KEY=
-RENDER_KLING_IMAGES_PER_DAY=8
+RENDER_KLING_IMAGES_PER_DAY=30
+# El stock (Pexels) NO entra en la ruta generada: se elige por las cuatro
+# primeras palabras del prompt y nada comprueba que la foto tenga que ver con
+# la escena. Ponerlo a true es una decision por pieza, no un valor por defecto.
+RENDER_STOCK_FALLBACK=false
 EOF
   chmod 600 ~/.eko-render.env
-  mkdir -p ~/eko-render/tmp ~/eko-render/cache
-  echo "configuración escrita (600)"'
+  echo "configuración escrita (600)"
+  fi
+  mkdir -p ~/eko-render/tmp ~/eko-render/cache'
 
 say "6/7 · el servicio (unidad de USUARIO, nunca cron)"
 ssh "$ROG" "

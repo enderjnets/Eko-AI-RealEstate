@@ -306,27 +306,20 @@ def produce(
     if not scenes:
         raise ValueError("this piece has no scene plan; nothing to build")
 
-    # 1. The voice, first, because everything is cut to it.
-    say("narrating", 10)
-    narration = spoken.for_the_voice(plan.get("narration") or spec.get("script") or "")
-    voice = tts.narrate(narration, workdir / "voice.mp3")
-
-    say("transcribing", 25)
-    words = subtitles.transcribe(voice, language=spec.get("language", "en"))
-    # Every later length is derived from this one. The last WORD rather than the
-    # file, because MiniMax leaves a little silence at the end and the tail is
-    # measured from where the voice stops, not where the file does — but never
-    # shorter than the file, or the mix would cut audio that is still playing.
-    spoken_until = words[-1].end if words else _seconds(voice)
-    total = max(spoken_until + TAIL_SECONDS, _seconds(voice))
-
-    # 2. A picture per scene. A prompt that nothing can draw becomes a branded
-    # card, never a failed job.
+    # 1. The pictures, FIRST — before a single second of narration is bought.
+    #
+    # They used to come after the voice, and that ordering had a price nobody
+    # could see: with the image suppliers dry, every scene fell back to a card,
+    # the guard below raised, the failure was (rightly) not terminal, and the
+    # three attempts bought THREE narrations to reach the same answer. Nothing
+    # here needs the voice — `pictures.fetch` takes a prompt and the people
+    # denylist — so asking the cheap question first turns a provider outage
+    # from a bill into a log line. The timings still come from the voice; they
+    # are applied further down, where the shots are cut.
     reported_no_balance = False
-    shots: list[Shot] = []
-    spans = plan_shots(scenes, words, total)
-    say("pictures", 35)
-    for index, (scene, (start, end)) in enumerate(zip(scenes, spans, strict=True)):
+    images: list[Path | None] = []
+    say("pictures", 10)
+    for index, scene in enumerate(scenes):
         image: Path | None = workdir / f"pic-{index}.jpg"
         try:
             provider = pictures.fetch(
@@ -343,10 +336,8 @@ def produce(
             image = None
         else:
             log.info("scene %d: %s", index + 1, provider)
-        shots.append(
-            Shot(image=image, text=scene.get("on_screen_text", ""), start=start, end=end)
-        )
-        say("pictures", 35 + int(30 * (index + 1) / max(1, len(scenes))))
+        images.append(image)
+        say("pictures", 10 + int(30 * (index + 1) / max(1, len(scenes))))
 
     # A card standing in for ONE scene is a fallback. A card standing in for
     # EVERY scene is not a video: it is half a minute of a flat colour with a
@@ -354,15 +345,38 @@ def produce(
     # exactly what happened to the first generated piece, after a person sat
     # through it to find out. Fail here instead, with the reason where the
     # console shows it, so nobody has to watch to learn that no image provider
-    # is configured.
-    if all(shot.image is None for shot in shots):
+    # is configured. Raised BEFORE the voice, so the retries this failure
+    # deliberately keeps cost nothing.
+    if all(image is None for image in images):
         raise ValueError(
             "no image provider produced a single picture: the video would be "
-            "text on a plain background. Set FAL_KEY, or PEXELS_API_KEY "
-            "(free), on the render machine."
+            "text on a plain background. Set FAL_KEY on the render machine, "
+            "or top it up — and if stock photographs are acceptable for this "
+            "piece, RENDER_STOCK_FALLBACK=true."
         )
 
-    # 3. The picture track, then the words, then the identification.
+    # 2. The voice, which everything is cut to.
+    say("narrating", 45)
+    narration = spoken.for_the_voice(plan.get("narration") or spec.get("script") or "")
+    voice = tts.narrate(narration, workdir / "voice.mp3")
+
+    say("transcribing", 55)
+    words = subtitles.transcribe(voice, language=spec.get("language", "en"))
+    # Every later length is derived from this one. The last WORD rather than the
+    # file, because MiniMax leaves a little silence at the end and the tail is
+    # measured from where the voice stops, not where the file does — but never
+    # shorter than the file, or the mix would cut audio that is still playing.
+    spoken_until = words[-1].end if words else _seconds(voice)
+    total = max(spoken_until + TAIL_SECONDS, _seconds(voice))
+
+    # 3. The shots: each picture cut to the words it belongs to.
+    spans = plan_shots(scenes, words, total)
+    shots = [
+        Shot(image=image, text=scene.get("on_screen_text", ""), start=start, end=end)
+        for scene, image, (start, end) in zip(scenes, images, spans, strict=True)
+    ]
+
+    # 4. The picture track, then the words, then the identification.
     say("assembling", 70)
     scene_video = build_scene_video(shots, workdir, font)
     with_voice = workdir / "voiced.mp4"
