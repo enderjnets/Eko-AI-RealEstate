@@ -2,6 +2,48 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.93.0] — 2026-09-08
+
+### Added
+- **A second posting slot per channel, per local day.** `CONTENT_SLOT_*` now
+  take one or more `HH:MM` separated by commas, in increasing order; a single
+  value still means one slot. The owner's rule holds — "se publican 1 por
+  bloque de mejor horario, nunca dos a la vez" — because two slots are two
+  blocks hours apart. What is retired is "one a DAY", which was never the
+  point: seven educational pieces a week plus three of autumn and three of the
+  calculator do not fit in seven evenings.
+- **`POST /content/upload?kind=generated`** for a video assembled outside this
+  system. `kind` is what declares synthetic material to TikTok and YouTube, and
+  it also keeps the row out of lane A, which would otherwise re-render a
+  finished film with a second watermark and end card.
+- **`worker/static_piece.py`**: four clips, one static line of text, no voice,
+  no captions, piano — the shape of the only piece on the account that worked.
+  Deliberately outside the render worker, whose queue would add the voice and
+  captions being avoided.
+- **`/fall/1` to `/fall/4`**, 302 redirects carrying `utm_content=bandN`. On
+  Instagram a caption URL is typed by hand, so a tagged one is unusable.
+
+### Fixed
+- **`/fall` could not be contacted or counted.** The page already rendered the
+  enquiry form, but the section had no `id="consult"` and nothing linked to it,
+  and `LandingTracker` records `cta_click` only for that exact href — so the
+  one part of the page that can produce a lead was the one part never measured.
+- **The render worker no longer falls back to stock photographs in silence.**
+  `RENDER_STOCK_FALLBACK` defaults to false. Stock is picked from the first
+  four words of a prompt with no check that the photograph matches the scene;
+  with fal.ai out of balance since 6 September the worker quietly degraded and
+  kept publishing, which is how a `HOME INSURANCE POLICY` form appeared under a
+  script about earnest money, and an October 2021 calendar reading
+  "Check Breasts" under one about days on market.
+- **Pictures are now fetched before the narration is bought.** The failure when
+  no image provider answers stays non-terminal on purpose — an hour of provider
+  downtime must not kill a piece — but each of its three attempts used to buy a
+  MiniMax narration to reach the same answer. The cheap question goes first.
+- **`worker/install-on-rog.sh` stops truncating `~/.eko-render.env`.** It wrote
+  `FAL_KEY`, `KLING_*` and `PEXELS_API_KEY` empty, so running the installer to
+  update code left the worker with no image credentials, silently. It happened
+  once.
+
 ## [0.92.0] — 2026-09-08
 
 ### Added

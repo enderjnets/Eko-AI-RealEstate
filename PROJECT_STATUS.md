@@ -6,6 +6,96 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## v0.93.0 — dos huecos al día, imágenes honestas, y `/fall` medible (sin desplegar)
+
+Rama `feat/otono-2026`, nacida de `98c9182` (lo que corría en producción) y con
+`origin/main` fusionado (`9d12f20`) para que el `--ff-only` del despliegue
+funcione. **Merge y no rebase a propósito**: `247f015` ya estaba en `origin` y
+la sesión de la calculadora había verificado contra esa punta; reescribirla
+para ahorrar un commit de merge es riesgo gratis.
+
+### Por qué existe esta versión
+
+Medido el 8-sep sobre la cuenta y sobre producción, no estimado:
+
+| Hecho | Dato |
+|---|---|
+| El reel de otoño `Dc_eGJtxy8E` es el único que funcionó | **485** reproducciones; mediana de los otros nueve: **6**. El 63 % del alcance total (773) |
+| No convirtió | **1** sesión en `/fall` desde Instagram; **0 leads** en todo el sitio (69 sesiones) |
+| `/fall` tenía el formulario y **no** cómo llamarlo | `<ConsultForm variant="fall" />` presente; la sección sin `id="consult"` y ningún `href="#consult"` → `cta_click` inalcanzable (`LandingTracker.tsx:143` exige el literal) |
+| De dónde salían las fotos malas | `worker.log` del ROG: **700 pexels / 70 fal**. fal a `403 no balance` desde el 6-sep; el obrero degradaba a stock **en silencio** y seguía publicando |
+| Qué gastó el saldo de fal | CSV de fal: **$12,48**, de los cuales **$12,27 en vídeo el 6-sep** — 76 s en **seis** modelos distintos. El obrero gastó $0,05 |
+| Un hueco por canal y día | `_slot_for` devolvía una sola hora; `_day_is_taken` cerraba el día entero |
+
+### Qué trae
+
+1. **Segundo hueco por canal y día local.** `_slot_for → _slots_for` (lista),
+   `_day_is_taken → _free_slots` (**diferencia de conjuntos por instante**, no
+   un contador: contar e indexar devuelve la hora equivocada en cuanto el hueco
+   gastado no es el primero). Una fila publicada sin cita gasta **un** hueco,
+   no el día. El margen de Buffer se aplica **por hueco**.
+2. **El stock deja de entrar solo.** `RENDER_STOCK_FALLBACK=false` por defecto.
+3. **Las fotos, antes que la voz.** El fallo por «ninguna imagen» **sigue sin
+   ser terminal** — `main.py:311-320` razona que una caída del proveedor no
+   debe matar la pieza, y tiene razón — pero cada uno de sus 3 intentos
+   compraba una narración MiniMax. Ahora la pregunta barata va primero: los
+   reintentos se conservan y la caída **cuesta cero**.
+4. **`/fall` medible**: `id="consult"`, un enlace etiquetado al formulario, un
+   enlace a `/calculator`, y `/fall/1..4` → 302 con `utm_content=bandN`.
+5. **`POST /content/upload?kind=generated`** y `worker/static_piece.py`, el
+   montador del formato que funcionó (4 clips, un texto estático, sin voz).
+6. **`install-on-rog.sh` deja de truncar `~/.eko-render.env`.**
+
+### Verificación (salida real)
+
+| Bloque | Resultado |
+|---|---|
+| Backend | **1785 passed, 0 skipped** — baseline de la rama: 1779 |
+| Obrero | **93 passed** (75 antes de fusionar `fix/imagenes-fal`) |
+| Frontend | vitest **382/382** (23 ficheros) · `tsc` rc=0 · `next lint` **0/0** · `next build` rc=0 |
+| Prerender | `calculator` `fall` `contact` `index`: `<main>`=1, «Checking session»=**0** |
+| ruff | `All checks passed!` |
+| Mutaciones | **17**, todas en rojo, `md5` restaurado en cada una |
+| Migración | **ninguna**. `backend/migrations` sin cambios; `alembic current` se queda en `055` |
+| compose | **6 líneas**, solo los tres defaults de slot. **0** que toquen db, redis, volúmenes o puertos |
+
+### Lo que el despliegue NO debe hacer
+
+🔴 **No añadir `CONTENT_SLOT_*` al `.env` del VPS.** Medido: ese `.env` tiene 9
+líneas `CONTENT_` y **ninguna** de slots, así que rigen los defaults del código
+y el segundo pase entra solo. Añadirlas copiando un valor viejo de un hueco
+(`CONTENT_SLOT_INSTAGRAM=18:30`) es válido para el validador —un valor es un
+hueco— y **desactivaría el segundo pase en silencio, sin error y sin log**.
+
+🔴 **No ejecutar `worker/install-on-rog.sh` de una rama anterior.** Truncaba el
+`.env` del obrero. El ROG se actualiza con `tar` + `systemctl --user restart
+eko-render-worker`, comprobando el `md5` de `pictures.py` antes y después.
+
+### Lo ya encolado no se mueve
+
+Las tres franjas programadas (9 y 10-sep: IG 18:30, YT 20:30, TikTok 08:30
+Denver) **están dentro de las listas nuevas**, así que `_free_slots` las
+reconoce por coincidencia exacta de instante. El código nunca reescribe
+`scheduled_at`; `uq_content_publication (piece_id, platform)` y el salto de
+`publish_piece` sobre `PUBLISHED/SCHEDULED/PUBLISHING/FAILED` impiden duplicar.
+Lo único que cambia: esos días queda libre **el otro** hueco.
+
+### Dos correcciones de método, pagadas en esta rama
+
+- **El hook `rtk` OMITE salida.** `grep CONTENT_SLOT docker-compose.yml`
+  devolvió vacío tres veces con seis líneas presentes; lo desmintió
+  `test_compose_env.py`. La sesión par midió la otra cara: `cat` borra los
+  bloques de comentarios (68 líneas donde `wc -l` decía 119). **En este repo no
+  se cuenta ni se concluye con `grep` o `cat` a secas** — `sed`, `python3` o
+  `Read`. Contraste barato: `wc -l` contra lo que imprimió `cat`.
+- **Una suite lanzada sobre un árbol que se está editando miente.** La corrida
+  del bump dio `1 failed` en `test_version_is_one_number`: había leído
+  `config.py` ya bumpeado y `version.ts` todavía no. Los tres ficheros
+  coinciden y el test da 2 passed. **La cifra que se reporta sale de una
+  corrida sobre un árbol quieto.**
+
+---
+
 ## v0.92.0 — apellido obligatorio y una sola dirección por página pública (en curso)
 
 Plan: `PLAN.md` de esta rama. Una rama por fase, encadenadas.

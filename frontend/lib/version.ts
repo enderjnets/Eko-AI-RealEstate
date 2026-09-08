@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.92.0";
+export const CURRENT_VERSION = "0.93.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.93.0",
+    date: "2026-09-08",
+    title: {
+      en: "Two posting slots a day, honest pictures, and the fall guide can be contacted",
+      es: "Dos huecos de publicacion al dia, imagenes honestas, y la guia de otono se puede contestar",
+    },
+    changes: [
+      { en: "Each channel can now publish twice a day instead of once, at two hours set hours apart. Seven educational pieces a week plus the autumn campaign did not fit in seven evenings. Nothing already scheduled moves: a booked hour stays booked, and the second slot is simply the other hour of the same day.", es: "Cada canal puede publicar dos veces al dia en vez de una, a dos horas separadas entre si. Siete piezas educativas por semana mas la campana de otono no caben en siete tardes. Nada de lo ya programado se mueve: una hora reservada sigue reservada, y el segundo hueco es simplemente la otra hora del mismo dia." },
+      { en: "The render worker stops falling back to stock photographs on its own. Stock is chosen from the first four words of a prompt and nothing checks that the photograph matches the script, which is how published videos ended up showing an insurance form under a script about earnest money and an October 2021 calendar. When the image supplier has no balance the worker now stops and says so, instead of publishing the wrong picture.", es: "El obrero de render deja de recurrir a fotos de stock por su cuenta. El stock se elige con las cuatro primeras palabras del prompt y nada comprueba que la foto corresponda al guion, que es como salieron publicados un formulario de seguros bajo un guion sobre el deposito y un calendario de octubre de 2021. Cuando el proveedor de imagenes no tiene saldo, el obrero para y lo dice, en vez de publicar la foto equivocada." },
+      { en: "The fall guide gets a way to reach the advisors, and each Instagram piece its own short link. The page already carried the enquiry form, but nothing linked to it and no click could be counted; now a line under the opening points at it, a link mid-page offers the calculator, and denverhomestory.com/fall/1 to /4 tell the four pieces apart in the report.", es: "La guia de otono gana una forma de contactar con los asesores, y cada pieza de Instagram su propio enlace corto. La pagina ya llevaba el formulario, pero nada enlazaba a el y ningun clic se podia contar; ahora una linea bajo la entradilla apunta a el, un enlace a media pagina ofrece la calculadora, y denverhomestory.com/fall/1 a /4 distinguen las cuatro piezas en el informe." },
+      { en: "A finished video made outside the system can be filed as what it is. Videos assembled elsewhere are declared as generated, which is what tells TikTok and YouTube the material is synthetic, and they are no longer re-rendered with a second watermark on top.", es: "Un video terminado fuera del sistema se puede dar de alta por lo que es. Los videos montados aparte se declaran como generados, que es lo que le dice a TikTok y a YouTube que el material es sintetico, y ya no se vuelven a renderizar con una segunda marca de agua encima." },
+    ],
+  },
   {
     version: "0.92.0",
     date: "2026-09-08",
