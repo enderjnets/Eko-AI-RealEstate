@@ -77,9 +77,11 @@ distancia de este documento está inventada.
 >
 > #colorado #denver #coloradofall #fall
 
-### F1 — La escalera · `/fall/1` · 15-sep
+### F1 — La escalera · **sin enlace** (grupo comentario) · 15-sep
 
-**Pantalla:** `12 places near Denver, sorted by elevation.` / `The ones above 9,500 ft go first.`
+**Pantalla:** `12 places near Denver, sorted by elevation.` / `The ones above 9,500 ft go first.` / `Comment FALL and I'll send you the free guide`
+**Caption:** la común, **menos la línea del enlace**. Ni `denverhomestory.com/fall/1` ni ninguna otra URL: una sola puerta o la mecánica no existe.
+🔴 **Alguien contesta los comentarios a mano el mismo día** hasta que la página de Facebook esté enlazada.
 **Clips:** aerial over a range of yellow aspen slopes among conifers, low cloud, late light · narrow mountain road climbing between golden aspens, no vehicles or signs · low angle up white aspen trunks, yellow leaves backlit · high ridge with first snow above and yellow just below treeline.
 **Primer párrafo:** Aspens turn from the top down, so fall here isn't one weekend — it's six weeks moving downhill. Above 9,500 ft: mid to late September. The high passes go first, and they go fast — a windy week can end it.
 
@@ -212,9 +214,15 @@ trabajo no es forzarlo sino no estorbarlo.
 
 | Grupo | Piezas | Última línea del texto |
 |---|---|---|
-| **Enlace** | F1, F4, F7, F10, F13, F16 | `Free guide → denverhomestory.com/fall/N` |
-| **Comentario** | F2, F5, F8, F11, F14, F17 | `Comment FALL and I'll send you the guide` |
+| **Enlace** | F2, F4, F7, F10, F13, F16 | `Free guide → denverhomestory.com/fall/N` |
+| **Comentario** | F1, F5, F8, F11, F14, F17 | `Comment FALL and I'll send you the free guide` |
 | **Reenvío** | F3, F6, F9, F12, F15, F18 | `Send this to whoever you'd go with` + el enlace |
+
+**F1 y F2 van intercambiadas respecto al orden natural** (decisión del dueño,
+8-sep, viendo la pieza montada): **F1 pide comentario** y F2 da el enlace. La
+consecuencia se acepta a sabiendas: la primera pieza de la campaña **no
+alimenta `/fall/1`**, así que la atribución por pieza empieza a medirse con F2,
+el 17-sep.
 
 **Regla dura del grupo «comentario»: el enlace NO aparece en ninguna parte** —
 ni en pantalla, ni en la caption. Ya se probó al revés y dio 0 %: el reel de
