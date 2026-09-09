@@ -65,6 +65,36 @@ cuerno alpino. Así que el mecanismo de cada clip es:
 Efecto colateral bueno: las cuatro tomas de una pieza comparten el look porque
 las cuatro salen del mismo modelo de imagen.
 
+**El anclaje va en CADA toma, no una vez por pieza.** Medido montando las 17 el
+8-sep: tres piezas salieron fuera de Colorado con el bioma escrito en el prompt
+común y solo la escena en el particular.
+
+| Pieza | Lo que salió | Qué lo causaba |
+|---|---|---|
+| F14 «un pueblo, no un sendero» | una acera de barrio residencial con un coche rojo | anclaje de roble y granito, que para un pueblo no dice nada |
+| F15 «las últimas tres semanas a 5.280 ft» | un canal de ladrillo con farolas de gas: Brujas | «canal path» arrastra al canal europeo. El High Line es una **acequia** estrecha con camino de tierra al lado |
+| las cuatro primeras de F1 | abedul, alerce y mar de nubes carpático | texto→vídeo sin imagen de partida |
+
+Las tres se arreglaron nombrando lo concreto en la toma —«1880s wooden
+false-front storefronts», «a narrow open irrigation ditch»— no añadiendo
+negaciones. **Y las tres habrían salido con `exit 0`**: el fichero existe, dura
+12,80 s y mide 1080×1920. Lo único que las caza es mirar un fotograma de cada
+toma antes de dar la pieza por buena.
+
+Lo que sigue sin resolverse y se acepta: en calles de pueblo el modelo dibuja
+**rótulos con letras que no son palabras** («GNTZAROS», «CRTEB MANE») y alguna
+figura humana lejana. A tamaño de reel no se leen, y una calle principal sin
+gente ni rótulos se ve igual de falsa por el otro lado.
+
+🔴 **Un bucle `while read` con `ssh` o `scp` dentro copia UNA fila y sale con
+éxito.** El comando remoto consume la entrada estándar del bucle. Pasó dos
+veces el 8-sep: primero generando clips (paró en el 3 de 4) y después subiendo
+las 17 piezas, donde **copió 2 y escribió «COPIAS HECHAS» con `exit 0`** —
+quince filas habrían quedado apuntando a ficheros inexistentes. Se arregla con
+`</dev/null` en cada comando remoto, y **se comprueba contando**: el recuento
+de ficheros presentes en el volumen es la única prueba, nunca el código de
+salida del bucle.
+
 ---
 
 ## Parte 1 — Otoño (18 piezas, 3 por semana, 15-sep → 26-oct)
