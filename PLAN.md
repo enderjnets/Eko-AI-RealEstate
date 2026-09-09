@@ -484,3 +484,68 @@ Criterio: `tsc`, `vitest` (≥ referencia + nuevos; `i18nParity` y
   antes y después; `docker logs eko-realestate-backend --since 1h` con líneas
   `Recovered`; en el siguiente `snapshot_youtube`, `content_metrics` de
   YouTube para las piezas 3-8 deja de ser 0.
+
+---
+
+# PLAN — Idioma de los vídeos, una cifra de 48 h por vídeo y la tarjeta a 390 px
+
+> Escrito el 9-sep-2026, tras desplegar v0.97.0. Mismo método que el plan
+> anterior (§0): una fase cada vez, máx. 3 intentos, un commit por fase, el
+> bump en el último, **sin merge ni despliegue sin pedirlo aparte**. Advisor al
+> arrancar y al cierre; cada consulta en `PROJECT_STATUS.md`. Base de tests
+> propia `eko_realestate_test_videos`, `alembic upgrade head` antes de `pytest`.
+
+## Contexto (medido en producción, solo lectura, 9-sep)
+
+| Hecho | Dónde |
+|---|---|
+| El borrador diario alternaba sobre `AgentSettings.languages`, la lista en la que el **chat** responde | `content_writer.py:_language_for` |
+| La agencia viva tiene `languages = ["en","es"]`: uno de cada dos borradores salía en español | `agent_settings` id 1 |
+| Piezas generadas: 50 `en`, 3 `es` (ids 13, 15, 20) — **las tres `rejected`** por el dueño los días 6, 7 y 8. Ninguna se publicó | `content_pieces` |
+| Las 18 piezas 40-57 se crearon en bloque por la API a las 02:20 del 9-sep, en inglés explícito: no pasan por `_language_for` | `content_pieces`, `api/v1/content.py:create_draft` |
+| Con 57 piezas generadas (impar), el **siguiente** borrador diario con el código viejo habría salido en español | `count % len(configured)` |
+| La cifra de 48 h se calculaba **por publicación**: una visita en el solape de dos ventanas (las plataformas salen 12 h aparte) contaba en las dos filas | `analytics.py:content()` |
+| `leads_tagged` ya era por pieza (la etiqueta nombra la pieza) pero se pintaba por fila | `ContentTable.tsx` |
+| A 390 px la línea `plataforma · hora · enlace` se partía en tres renglones | captura `tarjeta-390px.png` |
+
+## Decisiones del dueño (8/9-sep)
+
+1. El español sigue siendo posible, **por agencia y desde Ajustes**.
+2. Una agencia puede marcar **varios idiomas y alternan**.
+3. Solo inglés por defecto.
+4. **Una** cifra de 48 h por vídeo (acordado tras desplegar v0.97.0).
+
+## Fases
+
+**Fase 1 — idioma de los vídeos.** Columna `content_languages` (JSON, NOT NULL,
+`["en"]`, migración `057_content_languages` con `server_default` porque hay
+fila viva). `_language_for` alterna sobre esa lista; inglés en los dos
+fallbacks. `PUT /settings` acepta solo `en`/`es` (400 al resto, 422 a la lista
+vacía). Ajustes: sección «Idiomas de los vídeos» con su propia lista (no
+`KNOWN_LANGS`, que trae `pt`/`fr` sin prompt). Tests: escritor (3), API (3),
+agencia nueva (1), forma del formulario (2). `visual_prompt` sigue en inglés
+por `not_english_prompt`, sin cambios.
+
+**Fase 2 — una cifra por vídeo y la tarjeta.** `content()` calcula la
+asociación por pieza sobre la **unión** de las ventanas de 48 h de sus
+publicaciones en rango (`_within_any`: OR de intervalos, no un tramo del primer
+post al último) y la estampa idéntica en cada fila: el payload no cambia de
+forma. Dos consultas por vídeo en vez de dos por publicación. Tarjeta: cifra y
+`leads_tagged` una vez junto al título; cada plataforma en dos renglones
+(`plataforma · hora` / enlace). Rótulo: «48h after each post» / «48 h tras cada
+publicación». Tests: backend (1, tres piezas: solape, una sola, días aparte),
+forma (3). Captura a 390 px y escritorio con los 30 registros reales.
+
+**Fase 3 — versión (se pide), `version.ts` EN/ES, `CHANGELOG.md`,
+`PROJECT_STATUS.md`, push. Merge y despliegue: pedirlos.** El despliegue **sí
+lleva migración**: el contenedor arranca `uvicorn` a secas, así que tras
+`up -d --build` hay que correr `docker compose exec backend alembic upgrade
+head` y comprobar `alembic current` = 057 y `content_languages = ["en"]` en la
+fila viva.
+
+## Fuera de alcance (anotado)
+
+- El índice de alternancia cuenta **todas** las piezas generadas, incluidas las
+  creadas en bloque por la API: `["en","es"]` no alterna limpio en una agencia
+  que además crea en bloque.
+- Las tres piezas rechazadas en español no se tocan.
