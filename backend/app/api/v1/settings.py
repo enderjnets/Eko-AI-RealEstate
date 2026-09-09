@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1._validators import trimmed, trimmed_or_none
 from app.db.base import get_db
-from app.models import AgentSettings
+from app.models import AgentSettings, ContentLanguage
 from app.services.tenant_context import get_org_id
 from app.services.timezones import resolve_zone
 
@@ -44,6 +44,10 @@ class SettingsOut(BaseModel):
     agent_persona: str
     greeting_template: str
     languages: list[str]
+    # What the daily video is written in, taking turns. Not the chat list
+    # above: the live agency answers Spanish speakers in Spanish and wants
+    # every video in English.
+    content_languages: list[str]
     timezone: str
     business_hours: dict
     created_at: datetime
@@ -72,6 +76,7 @@ class SettingsPatch(BaseModel):
     agent_persona: str | None = Field(default=None, min_length=1)
     greeting_template: str | None = Field(default=None, min_length=1)
     languages: list[str] | None = Field(default=None, min_length=1)
+    content_languages: list[str] | None = Field(default=None, min_length=1)
     timezone: str | None = Field(default=None, min_length=1, max_length=64)
     business_hours: dict | None = None
 
@@ -124,6 +129,22 @@ class SettingsPatch(BaseModel):
         one and stands on its own.)
         """
         return trimmed_or_none(value)
+
+
+def _language_codes(values: list) -> list[str]:
+    """Lowercase codes, blanks and duplicates dropped, order kept.
+
+    Shared by both language lists: the same normalisation written twice is
+    how one of them stops trimming.
+    """
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for code in values:
+        c = str(code).strip().lower()
+        if c and c not in seen:
+            seen.add(c)
+            cleaned.append(c)
+    return cleaned
 
 
 @lru_cache(maxsize=1)
@@ -195,17 +216,32 @@ async def update_settings(
         )
 
     if "languages" in updates:
-        # Normalize to lowercase 2-letter codes, drop blanks + dupes (order-stable).
-        seen: set[str] = set()
-        cleaned: list[str] = []
-        for code in updates["languages"]:
-            c = str(code).strip().lower()
-            if c and c not in seen:
-                seen.add(c)
-                cleaned.append(c)
+        cleaned = _language_codes(updates["languages"])
         if not cleaned:
             raise HTTPException(status_code=400, detail="`languages` cannot be empty")
         updates["languages"] = cleaned
+
+    if "content_languages" in updates:
+        # Only what the writer can write. The chat list takes any code because
+        # the model answers in whatever it is asked; the video writer has one
+        # prompt per language, and a code without a prompt is a draft that
+        # never comes — accepted here, it would fail silently every morning.
+        cleaned = _language_codes(updates["content_languages"])
+        writable = sorted(lang.value for lang in ContentLanguage)
+        unknown = sorted(set(cleaned) - set(writable))
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"`content_languages` can only hold {', '.join(writable)}; "
+                    f"got {', '.join(unknown)}"
+                ),
+            )
+        if not cleaned:
+            raise HTTPException(
+                status_code=400, detail="`content_languages` cannot be empty"
+            )
+        updates["content_languages"] = cleaned
 
     if "timezone" in updates:
         # No `.strip()`: the schema validator already trimmed it, and the guard

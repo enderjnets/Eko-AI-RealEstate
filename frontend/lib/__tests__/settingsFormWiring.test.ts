@@ -50,6 +50,30 @@ function savedFields(): Set<string> {
   return new Set([...body.matchAll(/^\s{8}([a-z_]+):/gm)].map((m) => m[1]));
 }
 
+describe("the video languages are their own list", () => {
+  it("offers only the languages the writer has a prompt for", () => {
+    // The chat list can offer four because the model answers in whatever it
+    // is asked. A video language without a prompt is a draft that never
+    // comes, and the API refuses it — so the form must not offer one.
+    const start = source.indexOf("const CONTENT_LANGS");
+    expect(start, "CONTENT_LANGS not found").toBeGreaterThan(-1);
+    const body = source.slice(start, source.indexOf("];", start));
+    const codes = [...body.matchAll(/code: "([a-z]+)"/g)].map((m) => m[1]).sort();
+    expect(codes).toEqual(["en", "es"]);
+  });
+
+  it("toggles content_languages, never the chat list", () => {
+    // Wired to the wrong field, the section would look right and silently
+    // change which languages the chat agent answers in.
+    const fn = source.indexOf("function toggleContentLang");
+    expect(fn, "toggleContentLang not found").toBeGreaterThan(-1);
+    const body = source.slice(fn, source.indexOf("\n  }\n", fn));
+    expect(body).toContain('set("content_languages"');
+    expect(body).not.toContain("data.languages");
+    expect(source).toContain("CONTENT_LANGS.map(");
+  });
+});
+
 describe("the Settings form saves everything it lets you edit", () => {
   it("reads a plausible number of fields — otherwise this test proves nothing", () => {
     // Guards against a regex that silently stops matching after a refactor:

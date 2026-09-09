@@ -84,6 +84,20 @@ class AgentSettings(Base):
     # phase1 baseline migration), so this literal is the only thing deciding it.
     languages: Mapped[list] = mapped_column(JSON, default=lambda: ["en", "es"], nullable=False)
 
+    # The languages the DAILY VIDEO is written in, taking turns. A different
+    # list from `languages` on purpose: that one is what the chat agent ANSWERS
+    # in, and the two questions have different answers for the live agency —
+    # it answers Spanish-speaking clients in Spanish and wants every video in
+    # English. The writer used to alternate over `languages`, so every other
+    # draft came out Spanish and the owner rejected each one by hand.
+    #
+    # English only by default. This column DOES carry a server_default, unlike
+    # `languages`: migration 057 had a live row to backfill, and `["en"]` is
+    # also the right answer for any row that reaches it without the ORM.
+    content_languages: Mapped[list] = mapped_column(
+        JSON, default=lambda: ["en"], server_default='["en"]', nullable=False
+    )
+
     # IANA timezone of the office (e.g. "America/Denver"). Used to interpret the
     # times the voice agent hears ("2 PM" → 2 PM local, not UTC) and to display
     # visits. Default UTC; the Settings page auto-detects the browser tz on load.

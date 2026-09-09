@@ -17,7 +17,8 @@ from app.main import app
 # value behind for whatever ran next.
 _RESTORABLE = (
     "agency_name", "brokerage_line", "agency_phone", "booking_contact_email",
-    "agent_persona", "greeting_template", "languages", "timezone", "business_hours",
+    "agent_persona", "greeting_template", "languages", "content_languages",
+    "timezone", "business_hours",
 )
 
 
@@ -207,6 +208,62 @@ async def test_put_empty_languages_422(_needs_db: None) -> None:
     async with await _client() as c:
         r = await c.put("/api/v1/settings", json={"languages": []})
     assert r.status_code == 422
+
+
+# ── The video's languages, apart from the chat's ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_put_content_languages_round_trip(_needs_db: None) -> None:
+    """Normalised like the chat list, and stored on its own: writing the video
+    list must leave the chat list exactly as it was."""
+    original = await _snapshot()
+    try:
+        async with await _client() as c:
+            r = await c.put(
+                "/api/v1/settings", json={"content_languages": ["ES", " en ", "es"]}
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["content_languages"] == ["es", "en"]
+            assert r.json()["languages"] == original["languages"]
+            r = await c.get("/api/v1/settings")
+        assert r.json()["content_languages"] == ["es", "en"]
+    finally:
+        await _restore(original)
+
+
+@pytest.mark.asyncio
+async def test_a_video_language_the_writer_cannot_write_is_refused(
+    _needs_db: None,
+) -> None:
+    """The chat list takes any code; this one only takes what the writer has a
+    prompt for. Accepted, "pt" would be a draft that never comes, every
+    morning, with nothing in the log but a missing piece."""
+    original = await _snapshot()
+    try:
+        async with await _client() as c:
+            r = await c.put("/api/v1/settings", json={"content_languages": ["en", "pt"]})
+            assert r.status_code == 400, r.text
+            assert "pt" in r.json()["detail"]
+            r = await c.get("/api/v1/settings")
+        assert r.json()["content_languages"] == original["content_languages"], (
+            "a refused write still changed the row"
+        )
+    finally:
+        await _restore(original)
+
+
+@pytest.mark.asyncio
+async def test_put_empty_content_languages_is_refused(_needs_db: None) -> None:
+    """Both spellings of empty: `[]` is refused by the schema, `[" "]` by the
+    normaliser. Either one stored would leave the writer with no language and
+    the fallback deciding, which is a Settings box that says one thing while
+    the videos do another."""
+    async with await _client() as c:
+        r = await c.put("/api/v1/settings", json={"content_languages": []})
+        assert r.status_code == 422, r.text
+        r = await c.put("/api/v1/settings", json={"content_languages": [" "]})
+        assert r.status_code == 400, r.text
 
 
 @pytest.mark.asyncio

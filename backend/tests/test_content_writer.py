@@ -220,9 +220,72 @@ async def test_a_provider_outage_is_a_quiet_none(database_url: str) -> None:
                 assert await generate_draft(db) is None
 
 
+# ── Which language the video comes out in ───────────────────────────────
+
+
+async def _set_languages(
+    content: list[str], chat: list[str] | None = None
+) -> tuple[list[str], list[str]]:
+    """Write the org's two language lists and return what was there.
+
+    Through the bypass session, because this is the test wearing the owner's
+    hat rather than the API's: in a fresh database the row may not exist yet,
+    and `_get_or_create` lives in the router. The caller restores in a
+    `finally` with the pair this returns — left behind, a `["en", "es"]` from
+    one test makes the next one alternate depending on file order.
+    """
+    from app.models import AgentSettings
+
+    async with get_bypass_session_factory()() as db:
+        row = (
+            await db.execute(select(AgentSettings).where(AgentSettings.org_id == ORG))
+        ).scalar_one_or_none()
+        if row is None:
+            row = AgentSettings(org_id=ORG)
+            db.add(row)
+            await db.flush()
+        before = (list(row.content_languages), list(row.languages))
+        row.content_languages = content
+        if chat is not None:
+            row.languages = chat
+        await db.commit()
+        return before
+
+
 @pytest.mark.asyncio
-async def test_languages_alternate_and_topics_rotate(database_url: str) -> None:
+async def test_the_video_language_is_not_the_chat_language(database_url: str) -> None:
+    """Measured in production: the agency answers Spanish speakers in Spanish
+    (`languages` = ["en", "es"]) and wants every video in English. The writer
+    took turns over the CHAT list, so every other daily draft came out Spanish
+    and the owner rejected all three by hand — pieces 13, 15 and 20, each a
+    generation paid for a decision.
+    """
     model = AsyncMock(return_value=_reply(CLEAN))
+    before = await _set_languages(["en"], chat=["en", "es"])
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                with patch("app.services.content_writer.generate_reply", model):
+                    first = await generate_draft(db)
+                    second = await generate_draft(db)
+        assert first is not None and second is not None
+        assert (first.language, second.language) == (
+            ContentLanguage.EN,
+            ContentLanguage.EN,
+        ), "a draft came out in a language the agency only answers chat in"
+        briefs = [c.args[0][0]["content"] for c in model.await_args_list]
+        assert briefs[0] != briefs[1], "the topic did not rotate"
+    finally:
+        await _set_languages(*before)
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_agency_that_asks_for_two_languages_gets_them_in_turns(
+    database_url: str,
+) -> None:
+    model = AsyncMock(return_value=_reply(CLEAN))
+    before = await _set_languages(["en", "es"])
     try:
         with org_scope(ORG):
             async with get_session_factory()() as db:
@@ -234,10 +297,53 @@ async def test_languages_alternate_and_topics_rotate(database_url: str) -> None:
             ContentLanguage.EN,
             ContentLanguage.ES,
         }, "two consecutive drafts came out in the same language"
-        briefs = [c.args[0][0]["content"] for c in model.await_args_list]
-        assert briefs[0] != briefs[1], "the topic did not rotate"
     finally:
+        await _set_languages(*before)
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_agency_that_never_opened_settings_gets_english(
+    database_url: str,
+) -> None:
+    """The fallback literal in `_language_for` IS the language for a tenant
+    with no settings row, so it is asserted on its own — and through a SECOND
+    call, because the old fallback `["en", "es"]` also answers English to the
+    first one and only shows its hand on the next.
+    """
+    from app.models.organization import STATUS_ACTIVE, Organization
+    from app.services.content_writer import _language_for
+
+    slug = "content-language-probe"
+    async with get_bypass_session_factory()() as db:
+        await db.execute(text("DELETE FROM organizations WHERE slug = :s"), {"s": slug})
+        org = Organization(name="Content Language Probe", slug=slug, status=STATUS_ACTIVE)
+        db.add(org)
+        await db.commit()
+        org_id = org.id
+    try:
+        with org_scope(org_id):
+            async with get_session_factory()() as db:
+                assert await _language_for(db) is ContentLanguage.EN
+                db.add(
+                    ContentPiece(
+                        kind=ContentKind.GENERATED,
+                        language=ContentLanguage.EN,
+                        status=ContentStatus.DRAFT,
+                    )
+                )
+                await db.commit()
+                assert await _language_for(db) is ContentLanguage.EN, (
+                    "with one English piece already made, the next draft "
+                    "switched language for an agency that never asked for two"
+                )
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM content_pieces WHERE org_id = :o"), {"o": org_id}
+            )
+            await db.execute(text("DELETE FROM organizations WHERE slug = :s"), {"s": slug})
+            await db.commit()
 
 
 # ── The spoken sign-off ──────────────────────────────────────────────────

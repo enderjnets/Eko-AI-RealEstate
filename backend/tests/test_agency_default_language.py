@@ -79,6 +79,14 @@ async def test_a_new_agency_starts_in_english(_needs_db: None) -> None:
                     f"{row.languages[0]!r}; the head of this list is the language "
                     "they read"
                 )
+                # The videos too, and ONLY English: the chat list carries
+                # Spanish so a Spanish-speaking lead is answered, and the
+                # writer taking turns over that list is how the live agency
+                # got a Spanish draft every other day.
+                assert row.content_languages == ["en"], (
+                    "a brand-new agency would make videos in "
+                    f"{row.content_languages!r} without anyone asking for it"
+                )
     finally:
         await _cleanup()
 

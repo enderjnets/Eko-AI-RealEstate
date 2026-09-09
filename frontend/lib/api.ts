@@ -776,6 +776,10 @@ export interface AgencySettings {
   agent_persona: string;
   greeting_template: string;
   languages: string[];
+  /** What the daily video is written in, taking turns. Not `languages`: that
+   *  is what the chat agent answers in, and the live agency answers Spanish
+   *  speakers in Spanish while wanting every video in English. */
+  content_languages: string[];
   timezone: string;
   business_hours: Record<string, { open: string; close: string } | null>;
   created_at: string;
@@ -790,6 +794,7 @@ export interface AgencySettingsPatch {
   agent_persona?: string;
   greeting_template?: string;
   languages?: string[];
+  content_languages?: string[];
   timezone?: string;
   business_hours?: Record<string, { open: string; close: string } | null>;
 }

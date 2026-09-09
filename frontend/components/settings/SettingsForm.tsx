@@ -14,6 +14,14 @@ const KNOWN_LANGS: { code: string; label: string }[] = [
   { code: "fr", label: "Français" },
 ];
 
+// Only what the video writer has a prompt for. The chat list above can offer
+// four because the model answers in whatever it is asked; a video language
+// without a prompt is a draft that never comes, and the API refuses it.
+const CONTENT_LANGS: { code: string; label: string }[] = [
+  { code: "en", label: "English" },
+  { code: "es", label: "Español" },
+];
+
 const BROWSER_TZ =
   typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
 
@@ -69,6 +77,16 @@ export function SettingsForm() {
     set("languages", next);
   }
 
+  function toggleContentLang(code: string) {
+    if (!data) return;
+    const has = data.content_languages.includes(code);
+    const next = has
+      ? data.content_languages.filter((l) => l !== code)
+      : [...data.content_languages, code];
+    if (next.length === 0) return; // a video has to be in some language
+    set("content_languages", next);
+  }
+
   function setDay(day: string, value: { open: string; close: string } | null) {
     if (!data) return;
     set("business_hours", { ...(data.business_hours as Hours), [day]: value });
@@ -87,6 +105,7 @@ export function SettingsForm() {
         agent_persona: data.agent_persona,
         greeting_template: data.greeting_template,
         languages: data.languages,
+        content_languages: data.content_languages,
         timezone: data.timezone,
         business_hours: data.business_hours,
       });
@@ -217,6 +236,34 @@ export function SettingsForm() {
                 key={code}
                 type="button"
                 onClick={() => toggleLang(code)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  on
+                    ? "bg-eko-violet/15 text-eko-violet border-eko-violet/40"
+                    : "bg-white/[0.03] text-gray-400 border-white/10 hover:border-white/20"
+                }`}
+              >
+                {on && <Check className="w-3 h-3 inline mr-1" />}
+                {label} <span className="text-gray-600">·{code}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Idiomas de los vídeos — una lista aparte de la del chat */}
+      <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+        <h2 className="text-sm font-semibold text-white mb-1">{t("settings.contentLanguages")}</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          {t("settings.contentLanguagesHint")}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {CONTENT_LANGS.map(({ code, label }) => {
+            const on = data.content_languages.includes(code);
+            return (
+              <button
+                key={code}
+                type="button"
+                onClick={() => toggleContentLang(code)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                   on
                     ? "bg-eko-violet/15 text-eko-violet border-eko-violet/40"

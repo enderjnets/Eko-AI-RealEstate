@@ -387,14 +387,26 @@ async def _generated_today(db: AsyncSession) -> int:
 
 
 async def _language_for(db: AsyncSession) -> ContentLanguage:
-    """Alternate through the languages the agency actually works in."""
+    """Take turns through the languages the agency wants its VIDEOS in.
+
+    `AgentSettings.content_languages`, not `languages`. The second is what the
+    chat agent answers in, and this used to alternate over it: the live agency
+    answers Spanish-speaking clients in Spanish and wants every video in
+    English, so every other daily draft came out Spanish and the owner
+    rejected each one by hand.
+
+    English in BOTH fallbacks — no row, or a row whose list holds nothing the
+    writer can write — because that literal is what decides the language for
+    a tenant that never opened Settings.
+    """
     settings_row = (
         await db.execute(select(AgentSettings))
     ).scalars().first()
+    writable = {lang.value for lang in ContentLanguage}
     configured = [
-        lang for lang in (settings_row.languages if settings_row else [])
-        if lang in ("en", "es")
-    ] or ["en", "es"]
+        lang for lang in (settings_row.content_languages if settings_row else [])
+        if lang in writable
+    ] or [ContentLanguage.EN.value]
     count = (
         await db.execute(
             select(func.count())
