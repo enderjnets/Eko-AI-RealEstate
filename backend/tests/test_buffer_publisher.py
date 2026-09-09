@@ -17,7 +17,7 @@ The invariants these hold, in the order they matter:
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -1945,3 +1945,153 @@ async def test_the_three_posts_leave_with_three_different_sources(
         assert all(f"utm_content=piece-{piece_id}" in t for t in texts)
     finally:
         await _cleanup()
+
+
+async def _piece_with_window(window: date | None) -> ContentPiece:
+    """Una pieza que dice CUANDO va, o que no lo dice."""
+    async with get_bypass_session_factory()() as db:
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.APPROVED,
+            hook="Twelve places near Denver, sorted by elevation.",
+            script="Twelve places near Denver, sorted by elevation.",
+            caption="Twelve places near Denver, sorted by elevation.",
+            media_path="b" * 32 + ".mp4",
+            approved_by="office",
+            publish_window_start=window,
+        )
+        db.add(piece)
+        await db.commit()
+        await db.refresh(piece)
+        return piece
+
+
+async def test_a_piece_with_a_window_is_scheduled_on_its_own_date(
+    database_url: str, queue_on: None
+) -> None:
+    """El orden de aprobacion era el unico calendario de este carril, y eso
+    fundia dos decisiones que no tienen que ver: "esto se puede publicar" y
+    "esto va antes que aquello".
+
+    Medido en produccion el 9-sep-2026: el panel lista las piezas de mas nueva
+    a mas vieja, asi que aprobar dieciocho de arriba abajo publicaba la
+    temporada al reves — la del 26 de octubre la segunda, la del 17 de
+    septiembre la ultima. Paso DOS veces la misma noche y nada aviso.
+
+    Con ventana, la busqueda empieza en esa fecha y no en `now`.
+
+    Mutacion: devolver `now` en `_from_when` -> rojo, la franja cae hoy.
+    """
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    zone = ZoneInfo(DENVER)
+    lejos = (datetime.now(zone) + timedelta(days=30)).date()
+    piece = await _piece_with_window(lejos)
+
+    desde = buffer_publisher._from_when(piece, zone)
+    assert desde.astimezone(zone).date() == lejos, desde
+
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            slot = await buffer_publisher.next_free_slot(
+                db, PublicationPlatform.YOUTUBE, zone, desde
+            )
+    assert slot.astimezone(zone).date() == lejos, slot
+    assert slot.astimezone(zone).time() == time(12, 30), slot
+
+
+async def test_without_a_window_the_search_still_starts_now(
+    database_url: str, queue_on: None
+) -> None:
+    """Las piezas de calculadora son permanentes: no tienen fecha y tienen que
+    comportarse EXACTAMENTE como antes de que esto existiera. Es la mitad que
+    un cambio asi rompe en silencio."""
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    zone = ZoneInfo(DENVER)
+    piece = await _piece_with_window(None)
+
+    antes = datetime.now(UTC)
+    desde = buffer_publisher._from_when(piece, zone)
+    assert antes <= desde <= datetime.now(UTC), desde
+
+
+async def test_a_window_already_open_never_looks_backwards(
+    database_url: str, queue_on: None
+) -> None:
+    """Una fecha ya pasada significa "en cuanto haya hueco", no "publica en el
+    pasado". Buffer rechaza un `dueAt` pasado, y la pieza se quedaria reclamada
+    y sin enviar sin nada que dijera por que.
+
+    Mutacion: devolver `opens` en vez de `max(now, opens)` -> rojo.
+    """
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    zone = ZoneInfo(DENVER)
+    hace_mucho = (datetime.now(zone) - timedelta(days=40)).date()
+    piece = await _piece_with_window(hace_mucho)
+
+    desde = buffer_publisher._from_when(piece, zone)
+    assert desde >= datetime.now(UTC) - timedelta(seconds=5), desde
+    assert desde.astimezone(zone).date() != hace_mucho, desde
+
+
+async def test_the_publisher_actually_uses_the_window(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Que `_from_when` sea correcta no prueba que nadie la llame.
+
+    Las tres pruebas de arriba miden el ayudante en aislamiento: revertir el
+    sitio de llamada a `datetime.now(UTC)` las deja las tres en verde y la
+    temporada vuelve a salir al reves. Esta mira el `dueAt` que sale HACIA
+    Buffer, que es el unico sitio donde el efecto es real.
+
+    Mutacion: en `publish_approved`, `next_free_slot(..., datetime.now(UTC))`
+    -> rojo aqui, y SOLO aqui.
+    """
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    zone = ZoneInfo(DENVER)
+    lejos = (datetime.now(zone) + timedelta(days=25)).date()
+    piece = await _piece_with_window(lejos)
+
+    vistos: list[datetime | None] = []
+
+    async def _fake_send(
+        _piece: ContentPiece,
+        platform: PublicationPlatform,
+        _channel: str,
+        due_at: datetime | None = None,
+    ) -> str:
+        vistos.append(due_at)
+        return f"stub-{platform.value}"
+
+    async def _sin_red() -> None:
+        return None
+
+    # `verify_organization` es una llamada de red por tic, y sin doblarla el
+    # tic muere en un 401 antes de llegar al reparto. No es andamiaje: es el
+    # guardia que impide publicar en la cuenta de otra organizacion.
+    monkeypatch.setattr(buffer_publisher, "verify_organization", _sin_red)
+    monkeypatch.setattr(buffer_publisher, "reconcile_scheduled", lambda _db: _sin_red())
+    monkeypatch.setattr(buffer_publisher, "_send", _fake_send)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            assert await buffer_publisher.publish_approved(db) == 1
+
+    assert vistos, "no se envio nada, la prueba no midio el camino"
+    for due in vistos:
+        assert due is not None
+        assert due.astimezone(zone).date() == lejos, (
+            f"el publicador programo para {due.astimezone(zone).date()} "
+            f"y la ventana de la pieza dice {lejos}"
+        )
+    # Y la fila guardada dice lo mismo que se mando.
+    for _plataforma, fila in (await _sched(piece.id)).items():
+        assert fila[1].astimezone(zone).date() == lejos, fila

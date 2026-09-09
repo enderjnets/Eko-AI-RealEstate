@@ -6,6 +6,389 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## v0.96.0 — una pieza que llega a su semana ya no espera en silencio
+
+**✅ DESPLEGADA Y VERIFICADA EN PRODUCCIÓN el 9-sep-2026**, con autorización del
+dueño. VPS `28953e8` → **`f4ab5eb`** por bundle + `--ff-only`. Copias previas:
+`.env.bak.20260909_v0960` (8.249 bytes, `cmp` idéntico) y
+`~/backup_eko_20260909_pre_v0960.sql.gz` (sha256 `05f9441bce9a8b1b24a7cd39…`,
+comprobada por dentro: 24 tablas con datos, no solo por tamaño).
+
+Orden correcto y no obvio: el código va **horneado** en la imagen, así que la
+migración se corrió con la imagen **nueva** (`docker compose run --rm --no-deps
+backend alembic upgrade head`) DESPUÉS de construir y ANTES de `up -d`. Correrla
+con `exec` sobre el contenedor vivo habría usado el código viejo, que no tiene
+la 056.
+
+Salida real en producción:
+
+```
+/api/v1/health   {"version":"0.96.0","env":"production","status":"ok"}
+alembic current  056_publish_window (head)
+arranque         [INFO] app.main: Content window alert started (every 3600s)
+tracebacks       0
+ventanas puestas 18   (contadas; y 0 piezas de otoño sin ventana)
+tic manual       antelacion=3 dias, activo=True, piezas avisadas=0 — primer aviso 14-sep
+marca            / /fall /calculator /contact → 200
+panel            /fall /calculator → 308 · /leads → 200
+```
+
+🔴 **Y al verificar apareció el problema de verdad de la noche: la escalera
+salía al revés.** El dueño había aprobado las 17 en el panel **de la 39 hacia
+abajo**, y el orden de publicación es el de `approved_at`: la 39 (ventana
+**26-oct**) habría salido la segunda y la 23 (ventana **17-sep**) la última. A
+una pieza por día, la banda con caducidad dura —una semana de viento la deja
+sin objeto— habría salido a finales de mes.
+
+Elegido por el dueño: **volver a las tandas**. Las piezas 23-28 y 30-39 vuelven
+a `needs_approval`, con `approved_by` y `approved_at` **limpiados** (una pieza
+pendiente que conserva sello de aprobación es una contradicción que engaña al
+que mire). La **21 no se toca**: ya está en la cola y su orden es correcto.
+
+**No se re-selló ninguna fecha de aprobación**, y esa es la parte que casi hago
+mal: al ofrecer la opción escribí «no falsifica nada», y ordenar la banda 1
+re-sellando `approved_at` **sí** habría sido reescribir cuándo aprobó una
+persona. Devolverlas a pendiente hace que la fecha diga la verdad cuando se
+aprueben en su semana, y el orden sale bien solo.
+
+Efecto secundario que importa: **con las 17 aprobadas el aviso habría quedado
+mudo toda la temporada** —solo mira piezas sin aprobar—, cosa que se le dijo al
+dueño antes de que eligiera. Ahora sí dispara.
+
+*(Antes del despliegue esta sección decía:)* **CONSTRUIDA Y EN VERDE. NO DESPLEGADA.** El dueño autorizó construirla; el
+despliegue lo pide él en un mensaje aparte. Rama `feat/aviso-ventana-bandas`,
+nacida de `origin/main` (`06ab140`). Versión **0.96.0 concedida por el dueño**.
+
+### El problema, medido
+
+El repartidor no sabe de calendario: `next_free_slot` busca el siguiente día
+libre y el orden de publicación es el de `approved_at`. La escalera de otoño
+(`frontend/lib/fallGuide.ts`) son cuatro franjas de altitud en seis semanas —
+por encima de 9.500 ft es *mid to late September*, Denver a 5.280 ft es
+*October into November*. Con 18 piezas aprobadas de golpe saldrían en orden de
+aprobación, sin relación con la banda que esté en su punto. **Aprobar en la
+semana correcta es la única palanca de calendario que existe**, y una palanca
+que hay que acordarse de usar no es una palanca.
+
+Se descubrió al preguntar por qué la pieza 21 no se programaba: el tic de las
+00:26 corrió y la saltó. No era avería. `publish_approved` coge piezas en
+`APPROVED` **o** `PUBLISHING` ordenadas por `approved_at`, con
+`limit(MAX_PER_DAY - claimed)`. La cola era `14, 16, 18, 19` (las cuatro en
+`publishing`) y la 21 quinta; con la 19 reclamada ese día el límite era 3 y el
+corte caía en la 18. **Cuatro piezas atascadas en PUBLISHING se comen el cupo
+diario entero**, así que el segundo pase diario no dobla el ritmo: amplía las
+franjas, pero `MAX_PER_DAY` cuenta piezas, no huecos.
+
+### Lo que se hizo
+
+Migración **`056_publish_window`**: `publish_window_start`,
+`publish_window_end` y `window_alerted_at` en `content_pieces`. Las tres
+nullable y sin defecto — una pieza sin ventana se comporta igual que hoy y no
+se menciona nunca, y el código anterior sigue funcionando contra una base ya
+migrada.
+
+`app/services/content_window_alert.py`, en su propio bucle horario **fuera** de
+`if CONTENT_PUBLISH_ENABLED`: con la publicación apagada es cuando más falta
+hace saber que la cola entró en ventana sin aprobar.
+
+**Nada del reparto cambia.** `buffer_publisher` no se toca.
+
+Las ventanas se guardan **por pieza**, no copiando las cuatro bandas de
+`fallGuide.ts` a Python: dos fuentes de la misma verdad se separan en cuanto
+alguien toca una, y la que se quedaría atrás sería justo la que decide cuándo
+avisar.
+
+### El aviso llega ANTES de la fecha, y esa corrección vino de fuera
+
+Lo diseñé para disparar el día del `start`. La sesión «Viral Videos DHS» señaló
+que **aprobar no es publicar**: una pieza aprobada entra en la cola y compite
+por el cupo con las que siguen en `publishing`. Tenía razón, y lo incómodo es
+que **yo mismo lo había medido una hora antes** —la pieza 21 aprobada a las
+00:14 y sin reclamar horas después, franja estimada a dos días— y aun así
+diseñé el aviso para el día justo. Habría llegado puntual e inútil.
+
+`CONTENT_WINDOW_ALERT_LEAD_DAYS`, por defecto **3**. Mutación: volver a comparar
+con `hoy` en vez de con el límite → rojo en
+`test_avisa_con_antelacion_porque_aprobar_no_es_publicar`.
+
+### Las dos reglas heredadas de `ops_alert`, y una propia
+
+1. **Avisar de un cambio, nunca de un estado** — `window_alerted_at` impide la
+   repetición horaria que convierte una alarma en ruido.
+2. **Ver y decir son dos hechos** — el sello se pone **solo** si un transporte
+   aceptó. `send_operator_alert` nunca lanza: devuelve `False`, y entonces las
+   piezas quedan sin sellar para que el próximo tic reintente.
+3. **Un aviso por tic, no por pieza** — las seis de la banda alta entran el
+   mismo día; seis correos serían seis sextas partes de un cupo compartido con
+   las averías de verdad.
+
+### Salida real
+
+```
+tests/test_content_window_alert.py .....                      5 passed
+vitest                                                        PASS (383) FAIL (0)
+npx tsc --noEmit                                              TypeScript compilation completed
+npx next lint                                                 Errors: 0 | Warnings: 0
+npx next build                                                ✓ Compiled successfully (20/20)
+ruff check app tests                                          All checks passed!
+alembic upgrade head    055_calculator_snapshot -> 056_publish_window
+```
+
+**Mutaciones, cada una vista en rojo y en el test que le toca**, restaurando con
+`cp` y `md5` idéntico (`caca84392a308ad30a5e1a3117ce818c`), nunca con
+`git checkout -- .`:
+
+| Mutación | Rojo |
+|---|---|
+| Quitar el filtro `window_alerted_at IS NULL` | `test_avisa_una_vez_y_no_se_repite` |
+| Sellar **antes** de comprobar el envío | `test_si_no_se_pudo_avisar_no_se_sella_y_se_reintenta` |
+| Comparar con `hoy` en vez de con el límite de antelación | `test_avisa_con_antelacion_porque_aprobar_no_es_publicar` |
+
+**Un rojo propio, y era el guardián haciendo su trabajo:**
+`test_config_example.py::test_every_setting_is_documented` cayó porque añadí dos
+ajustes a `config.py` sin documentarlos en `.env.example`. Arreglado.
+
+🔴 **Y la referencia de verde de partida no vale, por culpa mía.** Lancé la
+suite base contra `origin/main` y, con ella a mitad, corrí `alembic upgrade` a
+la 056 **sobre esa misma base**. Sus «4 failed» son contaminación mía, no el
+estado de `main`. Queda escrito para que nadie los lea como una regresión de
+`main`.
+
+### Pendiente al desplegar (no hecho)
+
+- **Rellenar las ventanas de las piezas que ya existen.** El aviso solo mira
+  piezas **con ventana puesta**; las 18 de otoño se subieron antes de que la
+  columna existiera y hoy la tienen a NULL, así que **no dispararían nada**. El
+  mapa de bandas lo tiene la sesión «Viral Videos DHS»: banda 1 (+9.500 ft) son
+  las piezas 21, 23, 24, 25, 26 y 27; banda 2 las 28-31; banda 3 las 32-35;
+  banda 4 las 36-39. Fechas exactas decididas por esa sesión a partir de la
+  **prosa** de `fallGuide.ts` (que no tiene fechas: dice «Mid to late
+  September»), así que si alguien cambia ese texto **nada avisará** de que estas
+  fechas se quedaron atrás. `start` = la fecha de la pieza en el guion, `end` =
+  el fin de su banda: banda 1 → 30-sep, banda 2 → 17-oct, banda 3 → 31-oct,
+  banda 4 → 15-nov. Las de calculadora, si suben, van **sin ventana** a
+  propósito: son permanentes.
+- **Al correr ese `UPDATE`, no leer el `UPDATE n` que imprime.** Contar las filas
+  con ventana no nula y compararlas con **18** (6+4+4+4, no 20: lo escribí mal la primera vez y una comprobación con el número equivocado no comprueba nada). La sesión par tuvo esta noche un
+  bucle que copió 2 ficheros de 17 y terminó con `exit 0` y mensaje de éxito;
+  lo único que lo cazó fue contar al otro lado.
+- Reconstruir backend y frontend, y `alembic upgrade head` **antes** de arrancar
+  el código que conoce las columnas.
+
+---
+
+## El calendario deja de ser el orden de aprobación — desplegado 9-sep
+
+`buffer_publisher` reparte ahora desde `publish_window_start` de la pieza, no
+desde `now`. Un ayudante, `_from_when(piece, zone)`, y **un solo sitio de
+llamada**. Sin ventana devuelve `now` (las 18 de calculadora son permanentes y
+no cambian de comportamiento); con ventana pasada devuelve `now` y nunca el
+pasado — Buffer rechaza un `dueAt` pasado y la pieza se quedaría reclamada y
+muda.
+
+**Por qué.** El orden de aprobación era el único calendario del carril, y eso
+fundía dos decisiones sin relación: «esto se puede publicar» y «esto va antes
+que aquello». El panel lista de más nueva a más vieja (`content.py:320`), así
+que aprobar dieciocho de arriba abajo publicaba la temporada **al revés**: la
+del 26-oct la segunda, la del 17-sep la última. **Pasó dos veces la misma
+noche** y nada avisó ninguna de las dos.
+
+**La prueba que casi no escribo.** Las tres primeras medían `_from_when` en
+aislamiento. Con el sitio de llamada revertido a `datetime.now(UTC)`, **las
+tres seguían verdes** mientras la temporada volvía a salir invertida. La cuarta
+mira el `dueAt` que sale hacia Buffer, y esa mutación la pone roja **solo a
+ella**. Tres mutaciones corridas, cada una roja donde le toca.
+
+Desplegado y verificado: código presente en el proceso vivo (no en la imagen
+—se comprobaron los dos—), health `0.96.0`, alembic en `056` sin migración
+nueva, 0 tracebacks. Copias en `backup_eko_20260909_pre_ventana.sql.gz` y
+`.env.bak.20260909_ventana`.
+
+Efecto inmediato: **F1 (pieza 21) pasa de salir el 10-11 de septiembre a salir
+el 15**, que es su ventana.
+
+---
+
+## Otoño 2026 — las 18 piezas montadas y en el panel
+
+**8-sep-2026.** Las dieciocho existen. F1 es la pieza **21**, aprobada por el
+dueño. Las diecisiete restantes son las **23 a 39**, todas en `needs_approval`.
+
+| Banda | Piezas (id) | Fechas del guion |
+|---|---|---|
+| 1 · +9.500 ft · `/fall/1` | 21, 23, 24, 25, 26, 27 | 15, 17, 19, 22, 24 y 26 de septiembre |
+| 2 · 7.000–9.000 ft · `/fall/2` | 28, 29, 30, 31 | 29-sep, 1, 3 y 6 de octubre |
+| 3 · 6.000–8.000 ft · `/fall/3` | 32, 33, 34, 35 | 8, 10, 13 y 15 de octubre |
+| 4 · Denver 5.280 ft · `/fall/4` | 36, 37, 38, 39 | 17, 20, 22 y 26 de octubre |
+
+**Se aprueban por tandas, por decisión del dueño**, porque `next_free_slot` no
+sabe de calendarios: reparte al siguiente día libre y el orden de publicación
+es el orden de `approved_at`. Aprobarlas todas hoy sacaría la pieza de Denver
+—«las últimas tres semanas de color pasan a 5.280 ft»— a finales de
+septiembre, diciendo algo que aún no es cierto.
+
+Verificado tras subir: 17 en `needs_approval`, 0 con `scenes`, 0 con
+`violations`, 0 en `render_jobs`, 0 `recorded`, 0 aprobadas, y **las 17
+apuntando a un fichero que existe**, comprobado con `test -s` dentro del
+contenedor. Copia previa `~/backup_eko_20260908_pre_17.sql.gz`
+(sha256 `ff4f2bef6b429c35…`). Coste en fal: ~$5 las 13 con metraje generado.
+
+### 🔴 Un `while read` con `ssh` dentro no recorre la lista
+
+Dos veces en una hora, las dos con `exit 0`. Primero el comando remoto **se
+comió la entrada estándar del bucle**: copió 2 de 17 e imprimió «COPIAS
+HECHAS». Arreglado con `</dev/null`, el bucle **se dejó la 17ª**, porque el
+fichero de la lista no acababa en `\n` y `while read` descarta una última línea
+sin salto. Quince filas habrían apuntado a vídeos inexistentes: la pieza sale
+en el panel, se aprueba, y el fallo aparece en Buffer tres días después.
+
+**Lo único que los cazó fue contar lo que había al otro lado.** El código de
+salida de un bucle no prueba que el bucle recorriera la lista.
+
+### El bioma hay que anclarlo en CADA toma
+
+Tres piezas salieron fuera de Colorado con el anclaje solo en el prompt común:
+F14 dio una acera de barrio en vez de un pueblo de montaña, F15 un canal de
+ladrillo con farolas de gas —Brujas, no el High Line— y las cuatro primeras de
+F1 dieron abedul y alerce. **Las tres habrían salido con `exit 0`**: fichero
+correcto, 12,80 s, 1080×1920. Solo las caza mirar un fotograma de cada toma.
+
+---
+
+## Otoño 2026 — las piezas, y un defecto que salió bien por tres minutos
+
+**Estado el 8-sep-2026, 18:4x MDT.** F1 (pieza 21) aprobada por el dueño y
+esperando el tic del publicador. Las 17 restantes montándose: F2, F3, F7, F8 y
+las cinco de sitio con nombre (F4, F5, F6, F9, F12) ya terminadas.
+
+### 🔴 Sustituir el vídeo bajo el mismo `media_path` no deja rastro
+
+Subí la pieza 21 a las **00:02:48 UTC**, el dueño pidió cambios de tipografía,
+y sustituí el fichero **en el mismo nombre** a las **00:11:18**. La fila de
+`content_pieces` no cambió: mismo `media_path`, y nada —ni el panel, ni
+`updated_at`— dice que el vídeo es otro. El dueño aprobó a las **00:14:54**, o
+sea la versión buena, **por tres minutos y medio y por casualidad**. Aprobar a
+las 00:05 habría aprobado otro vídeo bajo la misma fila, sin forma de saberlo.
+
+Lo detectó la sesión «denverhomestory.com» al medir contraste sobre su copia y
+comparar `stat` con `approved_at`. Regla adoptada: **una pieza se sube
+terminada y no se sustituye el fichero**; si hay que cambiar el vídeo, va con
+`media_path` nuevo. Para verificar, **md5 contra hora de aprobación**, nunca
+`media_path`.
+
+### Se duplicó F1 entre dos sesiones
+
+Dos sesiones montaron la misma banda a la vez: pieza 21 (00:02:48) y pieza 22
+(00:12:54), y el dueño aprobó las dos. La 22 quedó en `rejected` antes del tic
+del publicador, con **0 filas en `content_publications`** en ambas: nada llegó
+a Buffer. Norma acordada: **avisar por `SendMessage` de qué banda se ocupa
+ANTES de crear**, no después.
+
+### Contraste del texto sin caja, medido
+
+24 muestras cada 0,5 s sobre el fichero vivo: **peor 5,4:1, mediana 6,9:1**,
+contra el mínimo de 4,5:1. La serifa sin recuadro se lee. Medido por la otra
+sesión, que además documentó el error que casi lo invalida: su primer umbral
+(«glifo ≥ 235 de gris») dejaba pasar el blanco y descartaba el crema, así que
+5 de 24 muestras comparaban fondo contra fondo. **Un umbral que descarta justo
+lo que debe medir da un veredicto con apariencia de medición.**
+
+---
+
+## v0.95.0 — el prompt de imagen llega al modelo en inglés, y tres puertas lo comprueban
+
+**✅ DESPLEGADA Y VERIFICADA EN PRODUCCIÓN el 8-sep-2026**, con autorización del
+dueño. VPS `0daaaf3` → **`28953e8`** por bundle + `--ff-only` (el clasificador no
+lo bloqueó esta vez). Copias previas: `.env.bak.20260908_v0950` (8.249 bytes,
+`cmp` idéntico) y `~/backup_eko_20260908_v0950.sql.gz` (sha256
+`54f0d326defa3be5…`).
+
+**El obrero del ROG también, a las 16:55 MDT**, por `tar` + `systemctl --user
+restart` — **sin ejecutar el instalador**. Se hizo dentro de una ventana de
+render (la de las 16) tras comprobar que no cortaba nada: 0 trabajos en
+`queued`/`claimed` y 0 piezas que el barrido pudiera encolar. Copia previa en
+`~/eko-render/worker.bak.20260908_v0950`. md5 de `pictures.py` y `produce.py`
+coincidiendo con la rama, y `~/.eko-render.env` intacto en 1.529 bytes.
+
+**Verificado en el ENTORNO DEL PROCESO, y la primera comprobación no valía.**
+Corrí el chequeo por SSH normal y dio `daily_cap() = 8`, que es el valor por
+defecto — un shell SSH no carga `~/.eko-render.env`, que el servicio sí carga
+por `EnvironmentFile`. Peor: `_stock_allowed()` devolvía `False`, que también es
+el defecto, así que **coincidía con lo correcto por casualidad y no probaba
+nada**. Lo que sí prueba es leer `/proc/<MainPID>/environ` del proceso vivo:
+`RENDER_STOCK_FALLBACK=false`, `RENDER_KLING_IMAGES_PER_DAY=30`, `FAL_KEY`
+presente (len 69) y las dos claves de Kling en **len 0**, vacías a propósito.
+
+### La avería
+
+fal.ai no valida el idioma de un prompt. Uno en español no da error: devuelve
+**200 con la imagen de otra cosa**, el vídeo se monta encima, todas las
+comprobaciones de duración y tamaño pasan, y la imagen equivocada se publica
+bajo la firma de Engel & Völkers. Medido en la pieza 20: «un sobre **cerrado**»
+dibujó una puerta con un cartel de *cerrado*; «documentos de contrato
+inmobiliario» dibujó el **Château de Chantilly**.
+
+Duró dos meses porque **un comentario ocupaba el sitio de una comprobación**.
+`worker/pictures.py:_fal_image` afirmaba el invariante —*«every visual_prompt
+this worker receives is written in English upstream, and this note is why it
+must stay that way»*— mientras el prompt de sistema en español de
+`content_writer` pedía el JSON entero en español, `visual_prompt` incluido.
+
+### Tres puertas, porque una no bastó y se demostró en vivo
+
+| Puerta | Camino que cubre | Por qué hace falta |
+|---|---|---|
+| `content_writer._all_violations` | El borrador recién devuelto por el modelo | Donde se escriben los prompts |
+| `content_render.enqueue_generated` | El barrido que CREA trabajos de render | Los prompts ya guardados: una pieza escrita hace meses no pasa por el escritor |
+| `content.rebuild_piece` | El botón «Rehacer el vídeo» | **No pasa por el barrido**: reinicia a `QUEUED` el trabajo existente, y `claim_job` reparte cualquier trabajo en cola sin mirar la pieza |
+
+La tercera se descubrió en producción: la segunda se escribió, y quince minutos
+después el dueño pulsó «Rehacer el vídeo» en la pieza 20 y los prompts en
+español fueron a fal igual. **Dos veces el mismo error de ubicación en una
+tarde** — la puerta donde los prompts se ESCRIBEN en vez de donde se USAN, y
+luego donde el trabajo se CREA en vez de donde se REPARTE.
+
+Criterio único en `lang_guard.not_english_prompt`, usado por las tres, para que
+no puedan discrepar. Juzga los prompts **juntos**: uno solo tiene nueve palabras
+y `wrong_language` se niega a adivinar por debajo de veinticinco — esa base es
+lo que impide rechazar trabajo correcto. Y como cuatro frases nominales escuetas
+suman veinticuatro palabras y **pasaban** (medido), hay una segunda pregunta:
+evidencia positiva de otro idioma y **cero** palabras función inglesas. El caso
+que no debe disparar es el que este repo sí se encuentra — Colorado está lleno
+de topónimos españoles y «Del Norte» ya aporta un marcador.
+
+### Salida real de la verificación
+
+| Comprobación en producción | Resultado |
+|---|---|
+| `/api/v1/health` | **0.95.0** · `status: ok` · `env: production` |
+| `alembic current` | `055_calculator_snapshot (head)` — sin tocar, no se ejecutó `upgrade` |
+| Tracebacks tras arrancar | **0** |
+| `/` `/fall` `/contact` `/calculator` | 200, 200, 200, 200 |
+| `/fall/1` | **307** → `location: /fall?utm_source=instagram&utm_medium=social&utm_campaign=fall2026&utm_content=band1` |
+| Las tres puertas **en el proceso vivo** (`docker exec … python -c`) | `True`, `True`, `True` — y el proceso juzga los prompts reales de la pieza 20 como «no en function words in 29 words» |
+| Suites | backend **1798 passed** · frontend **383/383** · worker **94/94** |
+
+Verificado el proceso, no el fichero: `docker exec` importando los tres módulos
+del contenedor, porque un fichero correcto en disco y un servicio arriba son dos
+hechos, no una conclusión.
+
+### Lo que este episodio dejó anotado
+
+1. **Un despliegue no alcanza a la cola.** Apagar el stock se desplegó a las
+   09:44 y no tocó las cuatro piezas ya renderizadas, una de las cuales salió en
+   TikTok a las 08:34. Al cambiar una regla de render hay que listar el
+   inventario completo y comparar `rendered_at` contra la hora del despliegue.
+2. **La pieza 17.** `approved` desde hacía dos días, duplicado del reel de otoño,
+   con `caption` y `hook` en NULL. No había salido solo porque el tope de 4
+   piezas/día la dejaba cuarta en la cola. Rechazada. Un tope no descarta
+   trabajo: lo **aplaza**, e invisible.
+3. **Un test trivial puede tapar al bueno.** `assert FOREIGN_EVIDENCE == 3`
+   falló primero bajo mutación y la única aserción que medía algo nunca se
+   ejecutó. Quitado.
+
+---
+
 ## v0.93.0 — dos huecos al día, imágenes honestas, y `/fall` medible
 
 **✅ DESPLEGADA Y VERIFICADA EN PRODUCCIÓN el 8-sep-2026**, con autorización del

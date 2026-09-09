@@ -12,12 +12,26 @@ within 90 minutes of Denver»; `@yourdenverrealtorco` 676 K con 2,9 K seguidores
 | Duración | **12–13 s**, cuatro clips de ~3,2 s |
 | Voz | **ninguna** |
 | Texto | **un bloque estático**, sostenido los 12 s. Nunca subtítulos karaoke |
-| Música | `worker/assets/bgm/01-piano.mp3` |
-| Bloque de marca | desde el **segundo 6**: el enlace, y debajo la línea de la correduría leída de la organización |
+| Música | **Las cuatro de `worker/assets/bgm/`, rotando por pieza**: `01-piano`, `02-realty-firm`, `03-commercial`, `04-luxury`. Este documento fijaba solo la primera y era un estrechamiento: el dueño bajó **las cuatro** de Pixabay el 30-ago, y nadie descarga cuatro para usar una. Lo notó él viendo las 18 seguidas — dieciocho reels con el mismo piano se oyen como un solo anuncio repetido. **Las 18 de otoño se quedan con el piano**, porque ya estaban subidas y F1 aprobada: cambiar el vídeo bajo una aprobación es la trampa documentada más abajo |
+| Bloque de marca | desde el **segundo 6**, una sola línea a 28 px: **`DenverHomeStory.com`**. Decisión del dueño el 8-sep, tomada tras advertirle por escrito de las dos consecuencias: (a) el anuncio sale **sin la identificación de la correduría** que el resto del sistema trata como obligatoria en publicidad inmobiliaria de Colorado — `brokerage_line` en ajustes, el aviso del panel y el texto quemado existen solo para eso; conviene confirmarlo con la correduría; (b) en las piezas del grupo «comentario» el dominio es **una segunda puerta** y debilita el «Comment FALL». El tamaño se deja en 28 px a propósito: discreto frente al CTA |
 | Montaje | `worker/static_piece.py`. **No pasa por el obrero**, que añadiría voz y subtítulos |
 | Alta | `POST /api/v1/content/upload?kind=generated` → `PATCH` → `submit` → **aprueba Natalia** |
 | CTA | **uno solo por pieza.** Nueve piden comentario, nueve dan el enlace — ver abajo |
-| Modelo de vídeo | `fal-ai/bytedance/seedance/v1/lite/text-to-video`, 720p 9:16, **$0,036/s** |
+| Modelo de vídeo | `fal-ai/bytedance/seedance/v1/pro/fast/text-to-video`, 720p 9:16, 4 s por clip. El `…/v1/lite/…` que decía este documento está **retirado** y fal lo redirige en silencio a este mismo modelo: se llama por su nombre, nunca por el desvío. Precio por la fórmula de fal (`h × w × fps × s / 1024` tokens, $1/M fuera de 1080p), comprobada contra su precio publicado de 1080p: **≈ $0,08 por clip de 4 s a 704×1248**, ~$0,33 la pieza |
+
+🔴 **Las cinco ★ se publican bajo CC BY-SA, y es una decisión, no un descuido.**
+Cuatro de las cinco fotos (Guanella, Kenosha, Peak to Peak, Georgetown) son
+**CC BY-SA**: «compartir igual». En la web eso no aplica —la foto se muestra
+entera y el encuadre lo hace el CSS, que es *enseñarla*, no derivarla— y el
+`LICENCIA.txt` ya lo razonó. **En un vídeo sí aplica**: hay zoom, recorte al
+vertical, texto encima y montaje con música, y eso es inequívocamente obra
+derivada. Consecuencia: esos cuatro reels quedan bajo CC BY-SA y cualquiera
+puede republicarlos o remezclarlos citando la licencia. No es un riesgo legal;
+es regalar el vídeo. El dueño lo eligió el 8-sep tras leerlo por escrito.
+Golden Gate Canyon (F12) es **CC BY**, solo atribución, y no arrastra nada.
+El crédito va quemado en el fotograma en las cinco, que es lo que ambas
+licencias sí exigen. La salida buena sigue siendo una tarde de Natalia y
+Robbie con el móvil: cubre los doce sitios y no hay licencia que citar.
 
 **La regla que no se rompe:** mientras el metraje sea generado, **ninguna pieza
 nombra un sitio real en pantalla**. Es la misma regla que `frontend/lib/fallGuide.ts`
@@ -27,6 +41,65 @@ nombran, porque llevan la **foto con licencia de ese sitio**
 
 Los `visual_prompt` van **en inglés**: un prompt en español no da error, devuelve
 otra imagen. Sin personas, sin carteles, sin texto legible.
+
+**Y van por imagen, no por texto.** Medido el 8-sep generando F1: pedirle el
+clip directamente al modelo de vídeo da un otoño **europeo**. Cuatro tomas de
+texto→vídeo dieron un abedular con hoja de arce, un pico alpino afilado con
+alerces dorados y un mar de nubes carpático; el prior de «montaña en otoño» de
+ese modelo no es Colorado. Añadir «no birch, no larch» **no lo arregla**: los
+modelos de difusión ignoran las negaciones — se probó y volvió a dar abedul.
+
+Lo que sí funciona es cambiar de modelo para la parte que falla. `flux/schnell`
+($0,003) sí distingue el álamo temblón del abedul y el pico redondeado del
+cuerno alpino. Así que el mecanismo de cada clip es:
+
+1. `fal-gen image "<escena, nombrando Colorado y la especie>" --size portrait_16_9`
+   → **mirar la imagen**; si el bioma está mal, se repite aquí, donde cuesta 3 milésimas.
+2. Sacar la URL alojada del JSON (`images[0].url`) y pasarla **en el mismo minuto**
+   a `fal-gen video --model fal-ai/bytedance/seedance/v1/pro/fast/image-to-video
+   --image <url> --duration 4`. El prompt del vídeo describe **solo el
+   movimiento** («slow drift», «leaves trembling»), nunca el contenido: el
+   contenido ya lo fija la imagen.
+3. Verificar el fichero (`ffprobe`: existe, 4,04 s, 704×1248) antes de montar.
+
+Efecto colateral bueno: las cuatro tomas de una pieza comparten el look porque
+las cuatro salen del mismo modelo de imagen.
+
+**El anclaje va en CADA toma, no una vez por pieza.** Medido montando las 17 el
+8-sep: tres piezas salieron fuera de Colorado con el bioma escrito en el prompt
+común y solo la escena en el particular.
+
+| Pieza | Lo que salió | Qué lo causaba |
+|---|---|---|
+| F14 «un pueblo, no un sendero» | una acera de barrio residencial con un coche rojo | anclaje de roble y granito, que para un pueblo no dice nada |
+| F15 «las últimas tres semanas a 5.280 ft» | un canal de ladrillo con farolas de gas: Brujas | «canal path» arrastra al canal europeo. El High Line es una **acequia** estrecha con camino de tierra al lado |
+| las cuatro primeras de F1 | abedul, alerce y mar de nubes carpático | texto→vídeo sin imagen de partida |
+
+Las tres se arreglaron nombrando lo concreto en la toma —«1880s wooden
+false-front storefronts», «a narrow open irrigation ditch»— no añadiendo
+negaciones. **Y las tres habrían salido con `exit 0`**: el fichero existe, dura
+12,80 s y mide 1080×1920. Lo único que las caza es mirar un fotograma de cada
+toma antes de dar la pieza por buena.
+
+Lo que sigue sin resolverse y se acepta: en calles de pueblo el modelo dibuja
+**rótulos con letras que no son palabras** («GNTZAROS», «CRTEB MANE») y alguna
+figura humana lejana. A tamaño de reel no se leen, y una calle principal sin
+gente ni rótulos se ve igual de falsa por el otro lado.
+
+🔴 **Un bucle `while read` con `ssh` o `scp` dentro copia UNA fila y sale con
+éxito.** El comando remoto consume la entrada estándar del bucle. Pasó dos
+veces el 8-sep: primero generando clips (paró en el 3 de 4) y después subiendo
+las 17 piezas, donde **copió 2 y escribió «COPIAS HECHAS» con `exit 0`** —
+quince filas habrían quedado apuntando a ficheros inexistentes. Se arregla con
+`</dev/null` en cada comando remoto, y **se comprueba contando**: el recuento
+de ficheros presentes en el volumen es la única prueba, nunca el código de
+salida del bucle.
+
+Y el mismo bucle, ya arreglado, **se dejó la última de las 17**: el fichero de
+la lista no terminaba en salto de línea, y `while read` descarta en silencio
+una última línea sin `\n`. Dos defectos distintos del mismo bucle en una hora,
+los dos con `exit 0`. El recuento los cazó los dos; el código de salida,
+ninguno. Al generar una lista para un bucle, terminarla en `\n`.
 
 ---
 
@@ -54,9 +127,11 @@ distancia de este documento está inventada.
 >
 > #colorado #denver #coloradofall #fall
 
-### F1 — La escalera · `/fall/1` · 15-sep
+### F1 — La escalera · **sin enlace** (grupo comentario) · 15-sep
 
-**Pantalla:** `12 places near Denver, sorted by elevation.` / `The ones above 9,500 ft go first.`
+**Pantalla:** `12 places near Denver, sorted by elevation.` / `The ones above 9,500 ft go first.` / `Comment FALL and I'll send you the free guide`
+**Caption:** la común, **menos la línea del enlace**. Ni `denverhomestory.com/fall/1` ni ninguna otra URL: una sola puerta o la mecánica no existe.
+🔴 **Alguien contesta los comentarios a mano el mismo día** hasta que la página de Facebook esté enlazada.
 **Clips:** aerial over a range of yellow aspen slopes among conifers, low cloud, late light · narrow mountain road climbing between golden aspens, no vehicles or signs · low angle up white aspen trunks, yellow leaves backlit · high ridge with first snow above and yellow just below treeline.
 **Primer párrafo:** Aspens turn from the top down, so fall here isn't one weekend — it's six weeks moving downhill. Above 9,500 ft: mid to late September. The high passes go first, and they go fast — a windy week can end it.
 
@@ -189,9 +264,15 @@ trabajo no es forzarlo sino no estorbarlo.
 
 | Grupo | Piezas | Última línea del texto |
 |---|---|---|
-| **Enlace** | F1, F4, F7, F10, F13, F16 | `Free guide → denverhomestory.com/fall/N` |
-| **Comentario** | F2, F5, F8, F11, F14, F17 | `Comment FALL and I'll send you the guide` |
+| **Enlace** | F2, F4, F7, F10, F13, F16 | `Free guide → denverhomestory.com/fall/N` |
+| **Comentario** | F1, F5, F8, F11, F14, F17 | `Comment FALL and I'll send you the free guide` |
 | **Reenvío** | F3, F6, F9, F12, F15, F18 | `Send this to whoever you'd go with` + el enlace |
+
+**F1 y F2 van intercambiadas respecto al orden natural** (decisión del dueño,
+8-sep, viendo la pieza montada): **F1 pide comentario** y F2 da el enlace. La
+consecuencia se acepta a sabiendas: la primera pieza de la campaña **no
+alimenta `/fall/1`**, así que la atribución por pieza empieza a medirse con F2,
+el 17-sep.
 
 **Regla dura del grupo «comentario»: el enlace NO aparece en ninguna parte** —
 ni en pantalla, ni en la caption. Ya se probó al revés y dio 0 %: el reel de
@@ -218,7 +299,13 @@ aunque vaya por mensaje privado.
 ## Parte 2 — Calculadora (18 piezas, 3 por semana, permanente)
 
 **Los números salen de `frontend/lib/calculator.ts`** ejecutada con `DEFAULTS`,
-crédito `good`. No hay ni una cifra inventada. Los supuestos —tasa, apreciación,
+crédito `good`. No hay ni una cifra inventada. **Recalculados el 8-sep** desde
+otra sesión, ejecutando `solvePrice` y `compare` de verdad contra `DEFAULTS`:
+las nueve cifras de las dos tablas de abajo coinciden **exactamente**. No es
+que se heredaran de un documento —dos fuentes que coinciden pueden ser una—,
+es que se volvieron a obtener del código. Cualquier cambio en `DEFAULTS` (la
+tasa está en 6,71 %) invalida las 18 piezas: **antes de reutilizarlas otra
+temporada, volver a correr el cálculo, no releer esta tabla.** Los supuestos —tasa, apreciación,
 impuestos, seguro— están **a la vista y son editables en la página**, y cada
 caption lo dice.
 
@@ -250,6 +337,22 @@ Efecto del ahorro, con la renta fija en $2,600: **$40,000 → $343,475** ·
 bungalows, morning light · front door and porch of a brick home, no numbers
 visible · kitchen window with light across a counter · wide view of a Denver
 neighbourhood with the Front Range behind.
+
+🔴 **El texto de pantalla tiene que entenderse SIN la caption.** La primera
+versión de estas 18 decía «$4,000 a month in rent — buys up to $527,000», y el
+dueño la paró al verlas seguidas: no dice **de qué**. Ni casa, ni Denver. Quien
+llega scrolleando lee dos cifras sueltas. La serie B estaba peor —«mueve el
+techo $35.000», ¿el techo de qué?— y la C también —«unos $21.700 por delante»,
+¿por delante de qué?—.
+
+Reescritas para que cada frase se sostenga sola: **nombra la cosa (una casa),
+nombra el sitio (Denver) y nombra la comparación (frente a alquilar)**. Y se
+conserva **«up to»** en la serie A a propósito: el número es un techo que sale
+de unos supuestos, no un precio, y «compra una casa de $279.000» sería una
+afirmación más fuerte de la que sostiene el cálculo.
+
+La caption explica; la pantalla tiene que bastarse. Nadie lee la caption antes
+de decidir si sigue mirando.
 
 ### Serie A — «esa renta compra hasta» (6 piezas: C1–C6)
 

@@ -2,6 +2,48 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.96.0] — 2026-09-09
+
+### Added
+- **A piece can carry the window it was written for, and something says so when
+  that window arrives with the piece still unapproved.** The fall ladder is four
+  altitude bands across six weeks (`frontend/lib/fallGuide.ts`): above 9,500 ft
+  is mid-to-late September, Denver at 5,280 ft is October into November. The
+  publisher knows none of that — `next_free_slot` takes the next free day and
+  the running order is `approved_at` — so **approving in the right week is the
+  only calendar lever there is**, and a lever somebody has to remember is not
+  one. Migration `056_publish_window` adds `publish_window_start`,
+  `publish_window_end` and `window_alerted_at` to `content_pieces`, all nullable
+  and with no default: a piece without a window behaves exactly as before and is
+  never mentioned.
+- **The warning arrives before the date, not on it — because approving is not
+  publishing.** An approved piece does not go out that day: it joins the queue
+  and competes for `CONTENT_PUBLISH_MAX_PER_DAY` against pieces still in
+  `publishing`. Measured on 9-sep-2026: piece 21 was approved at 00:14 and was
+  still unclaimed hours later, with slots estimated two days out. Warning on the
+  `start` date would land every piece two or three days late, and the band a
+  windy week can end is the one that notices most.
+  `CONTENT_WINDOW_ALERT_LEAD_DAYS` defaults to 3.
+- The windows live **per piece in the database**, not as a copy of the four
+  bands in Python. Two sources of one truth drift apart the moment somebody
+  edits one, and the copy that fell behind would be the one deciding when to
+  warn.
+
+### Changed
+- Nothing in the publishing path. `buffer_publisher` is untouched: same order,
+  same slots, same daily cap.
+
+### Notes
+- The alert reuses the operator channel (`ops_alert`: email **and** Telegram,
+  capped per day) and obeys its two rules — fire on a change, never on a state;
+  and mark it said only once a transport accepted it, because a stamp written
+  before the send is how a failed delivery silences a real warning for good.
+- One message per tick, not per piece: six pieces entering a window together
+  would otherwise spend six-sixths of a budget shared with real incidents.
+- Dates are compared in the agency's own zone. This rail already lives with two
+  calendars (`_claimed_today` counts by UTC day, free slots by local day); a
+  third one out of step would warn a day early or late and nobody would notice.
+
 ## [0.95.0] — 2026-09-08
 
 ### Fixed

@@ -148,6 +148,28 @@ class ContentPiece(Base):
     )
     rejected_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Cuando DEBERIA salir esta pieza. No lo usa el repartidor: `next_free_slot`
+    # sigue buscando el siguiente dia libre y el orden de publicacion sigue
+    # siendo el de `approved_at`. Esto existe para AVISAR de que una pieza
+    # entro en su ventana sin que nadie la aprobara.
+    #
+    # Se guarda por pieza en vez de copiar las cuatro bandas de altitud de
+    # `frontend/lib/fallGuide.ts` a Python: dos fuentes de la misma verdad se
+    # separan en cuanto alguien toca una, y la que se quedaria atras seria
+    # justo la que decide cuando avisar.
+    publish_window_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    publish_window_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # Cuando se AVISO, no cuando se vio. Separado de la ventana por la misma
+    # razon por la que `monitor_state` separa `state` de `alerted_state`: ver y
+    # decir son dos hechos distintos. Se sella solo si un transporte acepto el
+    # aviso; si el envio falla la pieza sigue sin sellar y el proximo tic
+    # reintenta. Colapsarlos es como un envio fallido marca algo como
+    # reportado y lo silencia para siempre.
+    window_alerted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # NULL means "not rendered yet" and nothing else does. Set together with
     # `render_error` it means "tried, failed, not worth retrying until the
     # file changes" — the loop skips it and a person reads the reason.
