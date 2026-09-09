@@ -6,6 +6,46 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## Otoño 2026 — las piezas, y un defecto que salió bien por tres minutos
+
+**Estado el 8-sep-2026, 18:4x MDT.** F1 (pieza 21) aprobada por el dueño y
+esperando el tic del publicador. Las 17 restantes montándose: F2, F3, F7, F8 y
+las cinco de sitio con nombre (F4, F5, F6, F9, F12) ya terminadas.
+
+### 🔴 Sustituir el vídeo bajo el mismo `media_path` no deja rastro
+
+Subí la pieza 21 a las **00:02:48 UTC**, el dueño pidió cambios de tipografía,
+y sustituí el fichero **en el mismo nombre** a las **00:11:18**. La fila de
+`content_pieces` no cambió: mismo `media_path`, y nada —ni el panel, ni
+`updated_at`— dice que el vídeo es otro. El dueño aprobó a las **00:14:54**, o
+sea la versión buena, **por tres minutos y medio y por casualidad**. Aprobar a
+las 00:05 habría aprobado otro vídeo bajo la misma fila, sin forma de saberlo.
+
+Lo detectó la sesión «denverhomestory.com» al medir contraste sobre su copia y
+comparar `stat` con `approved_at`. Regla adoptada: **una pieza se sube
+terminada y no se sustituye el fichero**; si hay que cambiar el vídeo, va con
+`media_path` nuevo. Para verificar, **md5 contra hora de aprobación**, nunca
+`media_path`.
+
+### Se duplicó F1 entre dos sesiones
+
+Dos sesiones montaron la misma banda a la vez: pieza 21 (00:02:48) y pieza 22
+(00:12:54), y el dueño aprobó las dos. La 22 quedó en `rejected` antes del tic
+del publicador, con **0 filas en `content_publications`** en ambas: nada llegó
+a Buffer. Norma acordada: **avisar por `SendMessage` de qué banda se ocupa
+ANTES de crear**, no después.
+
+### Contraste del texto sin caja, medido
+
+24 muestras cada 0,5 s sobre el fichero vivo: **peor 5,4:1, mediana 6,9:1**,
+contra el mínimo de 4,5:1. La serifa sin recuadro se lee. Medido por la otra
+sesión, que además documentó el error que casi lo invalida: su primer umbral
+(«glifo ≥ 235 de gris») dejaba pasar el blanco y descartaba el crema, así que
+5 de 24 muestras comparaban fondo contra fondo. **Un umbral que descarta justo
+lo que debe medir da un veredicto con apariencia de medición.**
+
+---
+
 ## v0.95.0 — el prompt de imagen llega al modelo en inglés, y tres puertas lo comprueban
 
 **✅ DESPLEGADA Y VERIFICADA EN PRODUCCIÓN el 8-sep-2026**, con autorización del
