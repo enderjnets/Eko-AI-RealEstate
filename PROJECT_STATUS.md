@@ -128,21 +128,28 @@ que dice «tras cada publicación». Es lo mismo que hacía antes por fila y lo
 que dice `PLAN.md` («publicaciones en rango»), pero el rótulo lee más ancho que
 la consulta.
 
-### Pendiente — solo con autorización del dueño, en mensaje aparte
+### Desplegada — v0.98.0 en producción, 9-sep 19:55 UTC · `1505326`
 
-Merge a `main`, tag `v0.98.0`, release, y el despliegue **en este orden**:
-bundle → VPS, `git merge --ff-only`, `docker compose build backend frontend`,
-**`docker compose run --rm --no-deps backend alembic upgrade head`** (imagen
-nueva, servicio viejo sirviendo), `alembic current` = `057_content_languages`,
-fila viva `content_languages = ["en"]` con `languages` intacto, y solo entonces
-`docker compose up -d backend frontend`. Después: `/health` = 0.98.0, cero
-tracebacks, `GET /api/v1/settings` devuelve `content_languages: ["en"]` y la
-página de Ajustes pinta la sección nueva (el formulario hace
-`data.content_languages.includes` sin guarda: contra un backend viejo dejaría
-Ajustes en blanco). El siguiente borrador diario sale en `en` **ya**, no al día
-siguiente: con `["en"]` el índice es `57 % 1 = 0`. Vuelta atrás: `git reset
---hard 5243c16` (lo que corre hoy, `a749cf2`, más su documentación) y rebuild;
-la columna 057 puede quedarse — el código viejo la ignora.
+Autorizaciones del dueño, cada una en su mensaje: merge + tag + release
+(«Sí, fusiona y publica v0.98.0»), y después el despliegue («Sí, despliega
+ahora»). `main` fast-forward a `1505326`, tag `v0.98.0`, release *Latest*.
+
+| Paso | Resultado real |
+|---|---|
+| Foto previa VPS | `HEAD a749cf2`, rama `feat/maquina-de-video-dhs`, árbol limpio, `/health` 0.97.0, `alembic` 056, `agent_settings` id 1 `languages ["en","es"]`, columna `content_languages` **ausente**; piezas generadas 50 `en` / 3 `es` = **53** |
+| Copias | `.env` → `~/eko-backups/.env.bak.20260909_v0.98.0` (`cmp` idéntico); `pg_dump` → `~/eko-backups/eko_realestate_pre_v0.98.0.sql`, sha256 `78deca5e…`, 24 tablas, 257.673 bytes |
+| Bundle | `a749cf2..origin/main` (el `main` local del worktree estaba en `a19b243` y daba «empty bundle»); verificado en el VPS, cabeza `1505326` |
+| Fast-forward | `git merge --ff-only bundle/v0980` → `HEAD 1505326`; `version.ts` = 0.98.0 leído **antes** de construir (la lección de v0.56.0) |
+| Build | `docker compose build backend frontend`: ambas imágenes Built, contenedores viejos intactos |
+| **Migración antes de arrancar** | `docker compose run --rm --no-deps backend alembic upgrade head`: `056 → 057_content_languages`; `alembic_version` = 057; fila viva `["en","es"] / ["en"]`; default `'["en"]'::json`, NOT NULL; el servicio viejo seguía contestando `0.97.0 ok` |
+| Arranque | `up -d backend frontend`: `/health` = **0.98.0 ok a los 6 s**, `/login` 200 |
+| Código en el contenedor | `SettingsOut`/`SettingsPatch` con `content_languages` = True, `APP_VERSION 0.98.0`, `alembic current` = 057 (head); el bundle del frontend contiene `contentLanguagesHint` (2 ficheros) |
+| Logs a los 5 min | **0 tracebacks**; workers arrancados (follow-ups 300 s, enrichment 120 s, content studio 3600 s cap 2/día, render 900 s) |
+| Siguiente borrador | 53 piezas generadas, `53 % 1 = 0` → **inglés**, ya |
+| No comprobado | `GET /api/v1/settings` y la página de Ajustes **con sesión** (exigen login; el token de producción no se acuña desde aquí). Lo que sí: el esquema cargado en el proceso y el bundle servido. `openapi.json` da 404 en loopback (docs apagados), normal |
+
+Vuelta atrás si hiciera falta: `git reset --hard a749cf2` + build + `up -d`; la
+columna 057 se queda, el código viejo la ignora.
 
 ---
 
