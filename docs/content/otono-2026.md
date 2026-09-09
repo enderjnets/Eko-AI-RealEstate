@@ -338,6 +338,22 @@ bungalows, morning light · front door and porch of a brick home, no numbers
 visible · kitchen window with light across a counter · wide view of a Denver
 neighbourhood with the Front Range behind.
 
+🔴 **El texto de pantalla tiene que entenderse SIN la caption.** La primera
+versión de estas 18 decía «$4,000 a month in rent — buys up to $527,000», y el
+dueño la paró al verlas seguidas: no dice **de qué**. Ni casa, ni Denver. Quien
+llega scrolleando lee dos cifras sueltas. La serie B estaba peor —«mueve el
+techo $35.000», ¿el techo de qué?— y la C también —«unos $21.700 por delante»,
+¿por delante de qué?—.
+
+Reescritas para que cada frase se sostenga sola: **nombra la cosa (una casa),
+nombra el sitio (Denver) y nombra la comparación (frente a alquilar)**. Y se
+conserva **«up to»** en la serie A a propósito: el número es un techo que sale
+de unos supuestos, no un precio, y «compra una casa de $279.000» sería una
+afirmación más fuerte de la que sostiene el cálculo.
+
+La caption explica; la pantalla tiene que bastarse. Nadie lee la caption antes
+de decidir si sigue mirando.
+
 ### Serie A — «esa renta compra hasta» (6 piezas: C1–C6)
 
 Pantalla, una por renta:
