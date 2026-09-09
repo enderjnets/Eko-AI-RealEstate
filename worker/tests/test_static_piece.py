@@ -156,7 +156,7 @@ def test_the_ask_is_drawn_smaller_and_below_the_promise(tmp_path: Path) -> None:
         piece, tmp_path, tmp_path / "o.mp4", font=None, music=None
     )
     graph = argv[argv.index("-filter_complex") + 1]
-    ask = [d for d in graph.split("drawtext=")[1:] if "cta.txt" in d]
+    ask = [d for d in graph.split("drawtext=")[1:] if "cta0.txt" in d]
     assert len(ask) == 1
     assert f"fontsize={static_piece._CTA_SIZE}" in ask[0]
     assert static_piece._CTA_SIZE < static_piece._TEXT_SIZE
@@ -177,8 +177,8 @@ def test_without_an_ask_nothing_is_drawn_for_it(tmp_path: Path) -> None:
         font=None, music=None,
     )
     graph = argv[argv.index("-filter_complex") + 1]
-    assert "cta.txt" not in graph
-    assert not (tmp_path / "cta.txt").exists()
+    assert "cta0.txt" not in graph
+    assert not (tmp_path / "cta0.txt").exists()
 
 
 def test_with_the_ask_in_the_text_the_address_is_not_drawn_twice(
@@ -263,3 +263,32 @@ def test_a_video_that_came_out_short_is_rejected_not_delivered(
             font=None,
             music=None,
         )
+
+
+def test_a_two_line_ask_is_centred_line_by_line_too(tmp_path: Path) -> None:
+    """Six of the eighteen autumn pieces ask for a share, and that ask is two
+    lines: what to do, then where it leads.
+
+    Drawn as one overlay it would range left inside its own block — the exact
+    fault the promise was fixed for, reappearing in the half of the frame nobody
+    was looking at. Both go through the same helper so neither can regress alone.
+
+    Mutation: draw the cta as a single overlay → red.
+    """
+    piece = _piece(
+        [tmp_path / "a.mp4"],
+        cta="Send this to whoever you'd go with\ndenverhomestory.com/fall/2",
+    )
+    argv = static_piece.build_command(
+        piece, tmp_path, tmp_path / "o.mp4", font=None, music=None
+    )
+    graph = argv[argv.index("-filter_complex") + 1]
+    ask = [
+        d for d in graph.split("drawtext=")[1:]
+        if "cta0.txt" in d or "cta1.txt" in d
+    ]
+    assert len(ask) == 2, "one overlay per line of the ask"
+    assert all("x=(w-text_w)/2" in d for d in ask)
+    assert (tmp_path / "cta1.txt").read_text(encoding="utf-8") == (
+        "denverhomestory.com/fall/2"
+    )

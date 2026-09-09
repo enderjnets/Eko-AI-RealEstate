@@ -110,6 +110,43 @@ def _write(path: Path, body: str) -> Path:
     return path
 
 
+def _centred_lines(
+    *,
+    workdir: Path,
+    name: str,
+    text: str,
+    size: int,
+    below: int,
+    font_clause: str,
+    source: str,
+) -> tuple[str, str, int]:
+    """One overlay per line, each centred against its own width.
+
+    Handed a multi-line textfile, drawtext centres the *block* and ranges the
+    lines left inside it, so a short line above a long one reads as indented.
+    `x=(w-text_w)/2` is per-overlay, so the only way to centre every line is to
+    give every line an overlay.
+
+    Returns the filtergraph fragment, the label the next filter should read
+    from, and how tall the block is in pixels — the caller needs that last one
+    because the filtergraph cannot ask one drawtext how tall another was.
+    """
+    fragment = ""
+    last = source
+    step = size + _LINE_SPACING
+    lines = text.split("\n")
+    for index, line in enumerate(lines):
+        line_file = _write(workdir / f"{name}{index}.txt", line)
+        label = f"{name}{index}"
+        fragment += (
+            f"[{last}]drawtext=textfile='{escape_path(str(line_file))}'"
+            f"{font_clause}:fontcolor=white:fontsize={size}{_SHADOW}"
+            f":x=(w-text_w)/2:y=h*{_TEXT_TOP}+{below + index * step}[{label}];"
+        )
+        last = label
+    return fragment, last, len(lines) * step
+
+
 def build_command(
     piece: Piece,
     workdir: Path,
@@ -168,31 +205,27 @@ def build_command(
     # block, because the ask is drawn underneath: a block centred on itself would
     # push the pair below the middle of the frame.
     lines = piece.text.split("\n")
-    step = _TEXT_SIZE + _LINE_SPACING
-    last_title = "joined"
-    for index, line in enumerate(lines):
-        line_file = _write(workdir / f"line{index}.txt", line)
-        label = f"line{index}"
-        graph += (
-            f"[{last_title}]drawtext=textfile='{escape_path(str(line_file))}'"
-            f"{font_clause}:fontcolor=white:fontsize={_TEXT_SIZE}{_SHADOW}"
-            f":x=(w-text_w)/2:y=h*{_TEXT_TOP}+{index * step}[{label}];"
-        )
-        last_title = label
+    fragment, last_title, tall = _centred_lines(
+        workdir=workdir, name="line", text=piece.text, size=_TEXT_SIZE,
+        below=0, font_clause=font_clause, source="joined",
+    )
+    graph += fragment
 
     # The ask, smaller, under the last line of the promise. ffmpeg cannot read
     # one drawtext's height from another, so the offset is arithmetic here: the
     # promise is as tall as its own line count, which Python can count and the
     # filtergraph cannot.
+    #
+    # It goes through the same helper because the "send this to whoever you'd
+    # go with" pieces put two lines in the ask, and a two-line ask drawn as one
+    # overlay would range left inside its own block — the very fault the promise
+    # was just fixed for.
     if piece.cta:
-        cta_file = _write(workdir / "cta.txt", piece.cta)
-        below = len(lines) * step + _CTA_GAP
-        graph += (
-            f"[{last_title}]drawtext=textfile='{escape_path(str(cta_file))}'"
-            f"{font_clause}:fontcolor=white:fontsize={_CTA_SIZE}{_SHADOW}"
-            f":x=(w-text_w)/2:y=h*{_TEXT_TOP}+{below}[asked];"
+        fragment, last_title, _ = _centred_lines(
+            workdir=workdir, name="cta", text=piece.cta, size=_CTA_SIZE,
+            below=tall + _CTA_GAP, font_clause=font_clause, source=last_title,
         )
-        last_title = "asked"
+        graph += fragment
 
     # The identification, from BRAND_FROM_SECONDS to the end. Colorado requires
     # advertising to identify the brokerage; it does not require it to compete
