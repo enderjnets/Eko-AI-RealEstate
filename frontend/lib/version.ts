@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.96.0";
+export const CURRENT_VERSION = "0.97.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.97.0",
+    date: "2026-09-09",
+    title: {
+      en: "Every video on the analytics card now has its name, its hour and its link",
+      es: "Cada video de la tarjeta de estadisticas lleva ya su nombre, su hora y su enlace",
+    },
+    changes: [
+      { en: "The card after each video used to say \"#14 \u00b7 TikTok\" and a bare date, which names nothing anybody recognises. Each video is now one card headed by its own title, with a line per platform underneath. This card exists to decide what to make more of, and a decision cannot be made about a number.", es: "La tarjeta de despues de cada video decia \"#14 \u00b7 TikTok\" y una fecha suelta, que no nombra nada que nadie reconozca. Ahora cada video es una tarjeta encabezada por su propio titulo, con una linea por plataforma debajo. Esta tarjeta existe para decidir de que hacer mas, y sobre un numero no se decide." },
+      { en: "Each platform line carries the exact hour in the agency\u2019s timezone, not the reader\u2019s, and links to the post itself in a new tab. The hour is not decoration: the same video goes out to the three platforms up to half a day apart, and every figure on that line is counted from the moment shown beside it.", es: "Cada linea de plataforma lleva la hora exacta en la zona de la agencia, no en la del lector, y enlaza al post en una pestana nueva. La hora no es adorno: el mismo video sale a las tres plataformas hasta con medio dia de diferencia, y cada cifra de esa linea se cuenta desde el momento que tiene al lado." },
+      { en: "Fifteen posts that went out before the queue existed were published without their link ever being saved, and nothing ever went back for them. The publisher now asks Buffer for those links once per round and writes only the link \u2014 never the status, never the hour. Recovering a YouTube link also lets the automatic view counter start reading that video, which it was skipping for as long as there was no link.", es: "Quince publicaciones que salieron antes de que existiera la cola se enviaron sin que se guardara su enlace, y nadie volvia luego a por ellas. El publicador pide ahora esos enlaces a Buffer una vez por ronda y escribe solo el enlace: nunca el estado, nunca la hora. Recuperar un enlace de YouTube deja ademas que el contador automatico de visitas empiece a leer ese video, que se saltaba mientras no hubiera enlace." },
+      { en: "The two 48-hour figures used to render as a bare \"1 \u00b7 0\", which needs the caption read and then remembered in the right order; they are now labelled where they are shown. They remain association and not attribution: those visits happened after the video, and that is all anyone can prove.", es: "Las dos cifras de 48 horas se pintaban como un \"1 \u00b7 0\" pelado, que exige leer el pie y luego recordar el orden; ahora van etiquetadas donde se muestran. Siguen siendo asociacion y no atribucion: esas visitas ocurrieron despues del video, y eso es todo lo que se puede demostrar." },
+    ],
+  },
   {
     version: "0.96.0",
     date: "2026-09-09",

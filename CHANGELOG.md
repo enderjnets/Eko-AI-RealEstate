@@ -2,6 +2,34 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.97.0] — 2026-09-09
+
+### Added
+- **Every video on the `/analytics` card now has a name, an hour and a link.**
+  The card listed one row per publication labelled `#14 · TikTok` with a bare
+  date, and nobody recognises a piece id. Rows are grouped into one card per
+  video headed by the piece's own hook; each platform underneath carries the
+  exact hour in the agency's timezone (`exactTime`, not `toLocaleDateString`,
+  which had neither a zone nor a time of day) and a link to the post in a new
+  tab. `content()` now joins `content_pieces` and emits `hook` and
+  `publication_id`, and its `limit` counts **videos** rather than publications
+  so no card is ever cut between platforms.
+- **The links of the posts that went out before the queue existed are recovered
+  from Buffer.** Fifteen `published` rows carried `external_id` but no
+  `external_url`: `shareNow` published without one and only the scheduled-post
+  reconciler ever wrote links, so nothing went back for them. `backfill_links`
+  asks Buffer once per publishing round — 20 rows per tick, 60-day lookback,
+  skipped under `BUFFER_SIMULATED` — and writes **only** `external_url`, never
+  the status, the hour or the error. It shares one `_post_states` helper with
+  the reconciler, so both read Buffer the same way. Recovering a YouTube link
+  also enrols that video in `snapshot_youtube`, which skips rows without a URL.
+
+### Changed
+- The two 48-hour figures are labelled where they are shown ("visits", "leads")
+  instead of rendering as a bare `1 · 0` that needs the caption remembered in
+  the right order. They are still association, not attribution.
+
+
 ## [0.96.0] — 2026-09-09
 
 ### Added
