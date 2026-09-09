@@ -6,6 +6,83 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## «Después de cada vídeo» con nombre, enlace y hora — Fase 0 medida
+
+Rama `feat/videos-con-nombre`. Plan: `PLAN.md` de esta rama. **En curso, nada
+desplegado.**
+
+**El plan nació desfasado y se corrigió antes de escribir código.** Decía base
+`28953e8` y «producción por delante de `main`». Medido el 9-sep: el VPS corre
+**`7bc62d5`** (`/health` = **0.96.0**), `origin/main` = `a19b243` y **sí**
+contiene producción. La rama estaba 23 commits por detrás, y dos de ellos tocan
+`buffer_publisher.py` y `test_buffer_publisher.py`, que son los ficheros de la
+Fase 2. Se fusionó `origin/main` (merge `77abc3f`, no rebase, para no dejar
+huérfano a nadie). Consecuencias: `alembic` ya no es 055 sino **056**
+(`publish_window`, vino de `main`, no de esta fase — esta fase **no** añade
+migración), y los números de línea del plan para `buffer_publisher.py` se
+desplazan +30 (`reconcile_scheduled` 876, `_close_touched` 1081,
+`publish_approved` 1100).
+
+🔴 **La versión del plan ya no sirve: `v0.96.0` existe, está tagueada y
+desplegada.** La Fase 4 necesita un número nuevo. **Pendiente de decisión del
+dueño.**
+
+| Comprobación (Fase 0) | Resultado real |
+|---|---|
+| Imports resuelven al worktree, no al checkout ajeno | `app.__file__` = `/Users/enderj/eko-videos-con-nombre/backend/app/__init__.py` |
+| `alembic upgrade head` en base propia `eko_realestate_test_videos` | 56 revisiones, `056_publish_window (head)` |
+| Backend `pytest -q` | ✅ **1808 passed**, **0 skipped**, 286,71 s |
+| `ruff check app tests` | ✅ «All checks passed!» |
+| Frontend `npx vitest run` | ✅ **383 passed** en 23 ficheros |
+| `npx tsc --noEmit` | ✅ limpio |
+| `npx next lint` | ✅ «No ESLint warnings or errors» |
+
+**Un fallo propio de método, y su lección.** El primer baseline se lanzó en
+segundo plano y se **fusionó `main` a mitad de la corrida**; al matarla dejó la
+base a medias y la segunda corrida dio **135 rojos** encabezados por
+`503 tenant routing unavailable` en ficheros que nadie había tocado. No era el
+código: era el estado. Se recreó la base con la receta documentada (drop →
+create → `alembic upgrade head`) y salió el 1808 limpio. **Un árbol que cambia
+bajo una suite en marcha invalida la suite**, y el primer error se lee antes
+que el propio diff.
+
+**Sonda de Buffer (0.4), que era la que decidía si la Fase 2 existe.** Lectura
+pura, dentro del contenedor de producción, con el `_graphql` y el `_POST_STATE`
+del propio módulo; el token nunca salió del proceso. Contra los `external_id`
+de las filas `published` sin `external_url`:
+
+| Sonda | Resultado |
+|---|---|
+| 3 alias (youtube, tiktok, instagram) | `status='sent'` y **`externalLink` presente en los tres**, 0 errores |
+| 20 alias | `data_keys=20`, **0 errores** → el batch de 20 del plan es válido |
+
+Conclusión: **el backfill sí recupera los enlaces viejos**; la Fase 2 procede
+con `_BACKFILL_BATCH = 20`. En producción son **15 filas** sin enlace (5 por
+plataforma), todas publicadas el 3-sep, dentro del lookback de 60 días.
+
+**Convivencia:** las dos sesiones par (`DenverHomeStory Calculator`, `Viral
+Videos DHS`) **ya no existen** — `ListAgents` no las lista. No hay a quién
+avisar ni a quién pedir número; la versión la decide el dueño. Sus worktrees
+siguen en disco y no se tocan.
+
+**Advisor, consulta 1 (arranque).** Motivo: validar orden, dependencias y
+riesgos. Decisión: orden 0→1→2→3→4 confirmado; se adoptaron sus tres avisos —
+rutas absolutas al worktree (el transcript ya había leído el checkout ajeno),
+verificar `app.__file__` antes de fiarse del verde, y la forma correcta del
+`psql`/`python` por stdin en el VPS (la del plan se expandía en el shell
+equivocado). Dijo también que la versión no bloquea hasta la Fase 4: por eso se
+sigue.
+
+**Cobertura (criterio 4 del dueño):** el frontend **no está instrumentado** en
+este repo (`vitest` sin `--coverage`, nunca instalado) y el plan no lo añade. No
+se declara un número que no se puede medir; el sustituto por fase es la
+mutación vista en rojo, como prescribe el plan.
+
+**Siguiente paso:** Fase 1 — el payload de analytics nombra al vídeo
+(`hook`, `publication_id`, límite por vídeo).
+
+---
+
 ## v0.96.0 — una pieza que llega a su semana ya no espera en silencio
 
 **✅ DESPLEGADA Y VERIFICADA EN PRODUCCIÓN el 9-sep-2026**, con autorización del
