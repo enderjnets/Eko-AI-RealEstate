@@ -605,6 +605,36 @@ async def _free_slots(
     return free[slotless:]
 
 
+def _from_when(piece: ContentPiece, zone: ZoneInfo) -> datetime:
+    """When to start looking for a slot: the piece's own date, or now.
+
+    Approval order was the only calendar this rail had, and that made two
+    unrelated things the same decision: "this is fit to publish" and "this goes
+    out before that one". Approving eighteen autumn pieces from the top of a
+    panel that lists newest first published the season backwards — the piece for
+    late October second, the one for mid September last. It happened twice in
+    one night, and neither time did anything warn.
+
+    A piece with `publish_window_start` says when it is *about*. Looking from
+    that date instead of from now makes the two decisions separate again: the
+    owner approves whenever, and the calendar comes from the piece.
+
+    Never earlier than now — a window that has already opened does not mean
+    "publish in the past", it means "as soon as there is a slot". And a piece
+    with no window (the calculator ones are permanent) behaves exactly as
+    before, which is why they need no window at all.
+    """
+    now = datetime.now(UTC)
+    start = piece.publish_window_start
+    if start is None:
+        return now
+    # The window is a local date; the search wants an instant. Midnight local,
+    # so `next_free_slot` finds that day's first free slot rather than skipping
+    # to the next day.
+    opens = datetime.combine(start, time.min, tzinfo=zone).astimezone(UTC)
+    return max(now, opens)
+
+
 async def next_free_slot(
     db: AsyncSession,
     platform: PublicationPlatform,
@@ -794,7 +824,7 @@ async def publish_piece(db: AsyncSession, piece_id: int) -> None:
         await db.commit()
 
         due_at = (
-            await next_free_slot(db, platform, zone, datetime.now(UTC))
+            await next_free_slot(db, platform, zone, _from_when(piece, zone))
             if zone is not None
             else None
         )
