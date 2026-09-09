@@ -2,6 +2,38 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.98.0] — 2026-09-09
+
+### Added
+- **Video languages are the agency's own setting.** The daily draft took turns
+  over `AgentSettings.languages`, which is the list the chat agent answers in
+  and rightly holds Spanish; every other draft came out in Spanish and the
+  owner refused each one by hand (pieces 13, 15 and 20 — none was published).
+  New column `agent_settings.content_languages` (migration
+  `057_content_languages`, `["en"]` by default, with a `server_default` for
+  the live row); `_language_for` takes turns over it, English in both
+  fallbacks; `PUT /settings` accepts only the codes the writer has a prompt
+  for (`en`, `es`), 400 otherwise and 422 for an empty list; a "Video
+  languages" section under Settings, apart from the chat list.
+
+### Changed
+- **One 48-hour figure per video on the `/analytics` card.** `content()`
+  counted sessions and leads per publication; the three platforms post the
+  same video half a day apart, so a visit in the overlap of two windows sat on
+  both rows and adding the rows up gave people who never existed. The figure
+  is now counted once per video over the union of its posts' 48-hour windows
+  (an OR of intervals, not a span from the first post to the last) and
+  stamped identically on every row, so the payload keeps its shape; two
+  queries per video instead of two per post. `leads_tagged` was already per
+  piece and is shown once. Caption: "48h after each post".
+- **The platform line fits a phone.** Platform and hour on one row, the link
+  on the next; at 390 px the single wrapping line broke into three.
+
+### Deploy
+- Carries a migration. The backend container starts `uvicorn` only, so after
+  `up -d --build` run `docker compose exec backend alembic upgrade head` and
+  check `alembic current` = `057_content_languages`.
+
 ## [0.97.0] — 2026-09-09
 
 ### Added

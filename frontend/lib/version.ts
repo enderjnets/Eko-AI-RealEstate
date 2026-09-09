@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.97.0";
+export const CURRENT_VERSION = "0.98.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.98.0",
+    date: "2026-09-09",
+    title: {
+      en: "Videos come out in the languages the agency chooses, and the card counts each video once",
+      es: "Los videos salen en los idiomas que la agencia elige, y la tarjeta cuenta cada video una vez",
+    },
+    changes: [
+      { en: "The daily video was taking turns between English and Spanish because it read the list of languages the chat agent answers in — and that list rightly holds Spanish, so Spanish-speaking clients are answered in Spanish. Every other draft came out in Spanish and had to be refused by hand. Videos now follow their own list, under Settings, Video languages: English only by default, and an agency that wants Spanish videos too turns it on there and the two take turns.", es: "El video diario alternaba entre ingles y espanol porque leia la lista de idiomas en la que responde el agente de chat, y esa lista lleva espanol con razon: a quien escribe en espanol se le contesta en espanol. Uno de cada dos borradores salia en espanol y habia que rechazarlo a mano. Los videos siguen ahora su propia lista, en Ajustes, Idiomas de los videos: solo ingles por defecto, y una agencia que tambien quiera videos en espanol lo marca ahi y los dos se turnan." },
+      { en: "The 48-hour figure on the analytics card is now one per video rather than one per platform. The three platforms post the same video half a day apart, so their windows overlap almost entirely and a visit in the overlap was counted on two lines; adding the lines up gave people who never existed. Each visit now counts once per video, over the 48 hours after any of its posts.", es: "La cifra de 48 horas de la tarjeta de estadisticas es ahora una por video y no una por plataforma. Las tres plataformas publican el mismo video con medio dia de diferencia, asi que sus ventanas se solapan casi enteras y una visita en el solape se contaba en dos lineas; sumar las lineas daba personas que nunca existieron. Cada visita cuenta ahora una vez por video, en las 48 horas siguientes a cualquiera de sus publicaciones." },
+      { en: "On a phone, each platform line reads on two rows — platform and hour, then the link — instead of breaking wherever it happened to wrap.", es: "En el movil, cada linea de plataforma se lee en dos renglones —plataforma y hora, y debajo el enlace— en vez de partirse donde cayera." },
+    ],
+  },
   {
     version: "0.97.0",
     date: "2026-09-09",

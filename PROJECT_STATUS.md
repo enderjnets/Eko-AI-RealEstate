@@ -6,6 +6,120 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## Idioma de los vídeos, una cifra de 48 h por vídeo y la tarjeta a 390 px
+
+Rama `feat/idioma-y-cifra-48h` desde `origin/main` `5243c16` (v0.97.0
+desplegada + su documentación). Plan: la última sección de `PLAN.md`
+(commit `1ee9258`). **En curso: nada fusionado ni desplegado.**
+
+Convivencia: `ListAgents` al arrancar — ninguna otra sesión de Eko AI Realtors
+activa (la `9975e8` está offline); el checkout principal `~/Eko-AI-RealEstate`
+sigue en `main` `a19b243`, limpio. Nadie a quien avisar.
+
+**Corrección a lo dicho al dueño al cerrar v0.97.0:** los tres vídeos en
+español (piezas 13, 15 y 20) están **`rejected`**, los rechazó él los días 6, 7
+y 8. Ninguno se publicó: la cola de aprobación aguantó. El arreglo evita que se
+**redacten**, no que se publiquen. Con 57 piezas generadas (impar), el siguiente
+borrador diario con el código viejo habría salido en español.
+
+### Advisor (1) — antes de escribir
+
+Motivo: diseño de los tres puntos. Decisión: seguir el diseño que el dueño ya
+había decidido, sin re-preguntar; `content_languages` con `server_default`
+(hay fila viva); añadir el campo a `_RESTORABLE`; los tests del escritor fijan y
+restauran la fila ellos mismos; probar el fallback con una **segunda** llamada
+(el fallback viejo también contesta inglés a la primera); la cifra por vídeo
+conserva la clave `association`; revisar el rótulo «48h after»; comprobar dónde
+corre `alembic` en el despliegue — **no corre solo**: el `Dockerfile` arranca
+`uvicorn` a secas, el paso es `docker compose exec backend alembic upgrade head`
+(`docs/install.md:149`).
+
+### Fase 1 — idioma de los vídeos · commit `25f926d`
+
+| Comprobación | Resultado real |
+|---|---|
+| `alembic upgrade head` en `eko_realestate_test_videos` | `056_publish_window → 057_content_languages (head)`; la fila existente quedó `content_languages = ["en"]` con `languages = ["en","es"]` intacto |
+| `ruff check app tests` | All checks passed |
+| `pytest -q` completo | **1825 passed**, 0 failed, 0 skipped, 273 s (referencia 1820: −1 test viejo de alternancia, +3 escritor, +3 API) |
+| `tsc --noEmit` | 0 errores (tras borrar `.next/types/…/preview-tarjeta`, resto de la página temporal de v0.97.0 que hacía fallar a `tsc`) |
+| `vitest run` | **403 passed** (referencia 401, +2) |
+| `next lint` | limpio |
+
+Mutaciones, una a una, restauradas con `cp` y md5 idéntico:
+
+| # | Mutación | Rojo en |
+|---|---|---|
+| M1 | fallback `["en","es"]` | `test_an_agency_that_never_opened_settings_gets_english` |
+| M2 | `_language_for` lee `languages` (el chat) | `test_the_video_language_is_not_the_chat_language` |
+| M3 | ignora el ajuste | `test_an_agency_that_asks_for_two_languages_gets_them_in_turns` |
+| M4 | `PUT` acepta `pt` | `test_a_video_language_the_writer_cannot_write_is_refused` |
+| M5 | defecto del modelo `["en","es"]` | `test_a_new_agency_starts_in_english` |
+| M6 | `pt` en `CONTENT_LANGS` | `offers only the languages the writer has a prompt for` |
+| M7 | `content_languages` fuera del payload de guardado | `has no editable field that is silently discarded on save` |
+
+Lección: dos `Bash` lanzados en paralelo comparten el directorio de trabajo. El
+segundo lote de mutaciones corrió desde `frontend/` contra rutas de `backend/`,
+no tocó nada y aun así imprimió «restored md5 ok» (dos md5 vacíos son iguales).
+Se repitió con `cd` absoluto en cada llamada y el rojo de cada mutación se leyó
+por **nombre de test**, no por recuento.
+
+### Fase 2 — una cifra por vídeo y la tarjeta · commit `d33822c`
+
+| Comprobación | Resultado real |
+|---|---|
+| `ruff check app tests` | All checks passed |
+| `pytest tests/test_analytics.py` | 16 passed |
+| `pytest -q` completo | **1826 passed**, 0 failed, 0 skipped, 302 s (1825 + el test de la unión) |
+| `tsc` / `vitest` / `next lint` | 0 errores / **406 passed** (+3) / limpio |
+| Navegador 390×844 con los 30 registros reales (página temporal bajo `/calculator/`, borrada; árbol limpio) | `scrollWidth 379 = clientWidth 379`, sin scroll horizontal; 11 tarjetas; cada línea de plataforma en **2 renglones** de 41-42 px; cabecera «título · 3 visits · 0 leads / 48h after each post» |
+| Escritorio 1280×900 | capturas `tarjeta-390px-v2.png` y `tarjeta-escritorio-v2.png` en el scratchpad |
+
+Mutaciones:
+
+| # | Mutación | Rojo en |
+|---|---|---|
+| MB1 | `or_` → `and_` (intersección de ventanas) | `test_a_visit_after_two_posts_of_one_video_is_counted_once` (`[1, 1] != [2, 2]`) |
+| MB2 | tramo del primer post al último | el mismo test (`5 != 1` en la pieza con posts a días de distancia) |
+| MF1 | segunda lectura de `association` dentro de `rows.map` | `reads the association once per video, above the platform lines` |
+| MF2 | rótulo ES viejo «48 h despues» | `says the window is counted from each post, in both languages` |
+| MF3 | hora y enlace en la misma línea | `keeps platform and hour on one line and the link on the next` |
+
+Hallazgo de paso: `leads_tagged` ya era por pieza (la etiqueta nombra la pieza,
+no el post) y se pintaba en cada línea de plataforma — el mismo número tres
+veces. Ahora una vez, junto a la cifra de 48 h.
+
+Efecto colateral: las consultas por carga de `/analytics` bajan de 2 por
+publicación a 2 por vídeo (el backlog «~44→~124» de v0.97.0 queda en ~2/3).
+
+### Fase 3 — la versión: **0.98.0** (la eligió el dueño entre 0.98.0 y 0.97.1)
+
+Bump en `config.py`, `version.ts` (`CURRENT_VERSION` + entrada EN/ES, ES sin
+acentos como el resto del fichero) y `CHANGELOG.md` (`Added`: idiomas de los
+vídeos; `Changed`: cifra por vídeo, línea a 390 px; `Deploy`: la migración no
+corre sola).
+
+| Comprobación | Resultado real |
+|---|---|
+| `pytest tests/test_version_is_one_number.py` | 2 passed (`APP_VERSION` = `CURRENT_VERSION` = `## [0.98.0]`) |
+| `ruff check app tests` | All checks passed |
+| `tsc --noEmit` / `vitest run` / `next lint` | 0 errores / **406 passed** / limpio |
+| `next build` | ✓ Compiled successfully, 20/20 páginas |
+| Diff sin secretos ni `print`/`console.log` | comprobado en los tres commits de código |
+| Árbol tras cada fase | limpio (la página temporal de la captura, borrada antes del commit) |
+
+### Pendiente — solo con autorización del dueño, en mensaje aparte
+
+Merge a `main`, tag `v0.98.0`, release, y el despliegue: bundle → VPS,
+`git merge --ff-only`, `up -d --build backend frontend`, **`docker compose exec
+backend alembic upgrade head`** (el contenedor arranca `uvicorn` a secas),
+`alembic current` = `057_content_languages`, fila viva `content_languages =
+["en"]` con `languages` intacto, `/health` = 0.98.0, cero tracebacks; al día
+siguiente, el borrador diario sale en `en`. Vuelta atrás: `git reset --hard
+5243c16` (lo que corre hoy, `a749cf2`, más su documentación) y rebuild; la
+columna 057 puede quedarse — el código viejo la ignora.
+
+---
+
 ## «Después de cada vídeo» con nombre, enlace y hora — Fase 0 medida
 
 Rama `feat/videos-con-nombre`. Plan: `PLAN.md` de esta rama. **En curso, nada
