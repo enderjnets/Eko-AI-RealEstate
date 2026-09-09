@@ -91,7 +91,7 @@ veces. Ahora una vez, junto a la cifra de 48 h.
 Efecto colateral: las consultas por carga de `/analytics` bajan de 2 por
 publicación a 2 por vídeo (el backlog «~44→~124» de v0.97.0 queda en ~2/3).
 
-### Fase 3 — la versión: **0.98.0** (la eligió el dueño entre 0.98.0 y 0.97.1)
+### Fase 3 — la versión: **0.98.0** (la eligió el dueño entre 0.98.0 y 0.97.1) · commit `c3c2656`
 
 Bump en `config.py`, `version.ts` (`CURRENT_VERSION` + entrada EN/ES, ES sin
 acentos como el resto del fichero) y `CHANGELOG.md` (`Added`: idiomas de los
@@ -107,16 +107,42 @@ corre sola).
 | Diff sin secretos ni `print`/`console.log` | comprobado en los tres commits de código |
 | Árbol tras cada fase | limpio (la página temporal de la captura, borrada antes del commit) |
 
+### Advisor (2) — al cierre, antes de declarar terminado
+
+Motivo: revisión de cierre. Decisión: **el orden de despliegue que había
+escrito estaba al revés** (`up -d --build` y luego `alembic upgrade`): el
+código 0.98.0 nombra `content_languages` en cada lectura de la fila de ajustes,
+así que contra el esquema 056 `/settings` y cada mensaje entrante habrían
+contestado 500 hasta que existiera la columna. Corregido en `CHANGELOG.md` y
+aquí: **migrar primero, arrancar después**, como ya se hizo con 056 en v0.96.0
+(`docker compose run --rm --no-deps backend alembic upgrade head` con la
+imagen nueva, tras construir y antes de `up -d`; el VPS sigue hoy en
+`056_publish_window (head)`, `a749cf2`, los cuatro contenedores arriba).
+Además: dos comprobaciones post-despliegue que faltaban (abajo) y una nota al
+backlog sobre el rango.
+
+Backlog (sin tocar código): la unión solo abarca las publicaciones **dentro del
+rango** de la consulta. Un vídeo con YouTube hace 8 días y TikTok hace 6, en el
+rango de 7 días, muestra la cifra de la ventana de TikTok sola bajo un rótulo
+que dice «tras cada publicación». Es lo mismo que hacía antes por fila y lo
+que dice `PLAN.md` («publicaciones en rango»), pero el rótulo lee más ancho que
+la consulta.
+
 ### Pendiente — solo con autorización del dueño, en mensaje aparte
 
-Merge a `main`, tag `v0.98.0`, release, y el despliegue: bundle → VPS,
-`git merge --ff-only`, `up -d --build backend frontend`, **`docker compose exec
-backend alembic upgrade head`** (el contenedor arranca `uvicorn` a secas),
-`alembic current` = `057_content_languages`, fila viva `content_languages =
-["en"]` con `languages` intacto, `/health` = 0.98.0, cero tracebacks; al día
-siguiente, el borrador diario sale en `en`. Vuelta atrás: `git reset --hard
-5243c16` (lo que corre hoy, `a749cf2`, más su documentación) y rebuild; la
-columna 057 puede quedarse — el código viejo la ignora.
+Merge a `main`, tag `v0.98.0`, release, y el despliegue **en este orden**:
+bundle → VPS, `git merge --ff-only`, `docker compose build backend frontend`,
+**`docker compose run --rm --no-deps backend alembic upgrade head`** (imagen
+nueva, servicio viejo sirviendo), `alembic current` = `057_content_languages`,
+fila viva `content_languages = ["en"]` con `languages` intacto, y solo entonces
+`docker compose up -d backend frontend`. Después: `/health` = 0.98.0, cero
+tracebacks, `GET /api/v1/settings` devuelve `content_languages: ["en"]` y la
+página de Ajustes pinta la sección nueva (el formulario hace
+`data.content_languages.includes` sin guarda: contra un backend viejo dejaría
+Ajustes en blanco). El siguiente borrador diario sale en `en` **ya**, no al día
+siguiente: con `["en"]` el índice es `57 % 1 = 0`. Vuelta atrás: `git reset
+--hard 5243c16` (lo que corre hoy, `a749cf2`, más su documentación) y rebuild;
+la columna 057 puede quedarse — el código viejo la ignora.
 
 ---
 

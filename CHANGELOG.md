@@ -30,9 +30,15 @@ All notable changes to **Eko AI Realtors**.
   on the next; at 390 px the single wrapping line broke into three.
 
 ### Deploy
-- Carries a migration. The backend container starts `uvicorn` only, so after
-  `up -d --build` run `docker compose exec backend alembic upgrade head` and
-  check `alembic current` = `057_content_languages`.
+- Carries a migration, and the order matters: **migrate first, start after.**
+  The new code names `content_languages` in every read of the settings row, so
+  0.98.0 running against the 056 schema answers 500 on `/settings` and on every
+  inbound message until the column exists; the old code ignores the column,
+  so the other direction is safe. The backend container starts `uvicorn` only.
+  Sequence: `docker compose build backend frontend` → `docker compose run
+  --rm backend alembic upgrade head` (the new image as a one-off, the old
+  service still serving; `docs/install.md`) → `alembic current` =
+  `057_content_languages` → `docker compose up -d backend frontend`.
 
 ## [0.97.0] — 2026-09-09
 
