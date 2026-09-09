@@ -41,10 +41,32 @@ DEFAULT_SECONDS = 12.8
 #: early enough that half the video carries the address.
 BRAND_FROM_SECONDS = 6.0
 
-_TEXT_SIZE = 52
+#: The winning piece drew its words as a light serif straight onto the
+#: landscape — no slab of colour behind them. A box is the safe choice when you
+#: cannot see the footage; here the footage is chosen with the words in mind, and
+#: the box was reading as a caption pasted over a stock photo. Legibility comes
+#: from a shadow instead, which costs nothing and hides in the grain.
+_TEXT_SIZE = 58
+_CTA_SIZE = 42
 _DOMAIN_SIZE = 40
 _BROKERAGE_SIZE = 28
 _BOX_PAD = 22
+_LINE_SPACING = 18
+
+#: Where the held text starts, as a fraction of frame height. Not centred: the
+#: ask sits below it, and a block centred on its own would push the pair low.
+_TEXT_TOP = 0.44
+#: Between the last line of the promise and the ask.
+_CTA_GAP = 40
+#: Drawn under every word on the landscape, since there is no box to sit on.
+#: A shadow alone was not enough: measured on F1, the last shot is a snowfield
+#: and white-on-white swallowed the first line. The thin dark outline is what
+#: rescues it — invisible against a dark slope, and the only thing holding the
+#: words up against snow or a bright sky.
+_SHADOW = (
+    ":shadowcolor=black@0.7:shadowx=2:shadowy=2"
+    ":borderw=2:bordercolor=black@0.45"
+)
 
 
 class Rejected(Exception):
@@ -71,12 +93,58 @@ class Piece:
     #: The organisation's own line. Colorado requires advertising to identify
     #: the brokerage.
     brokerage_line: str
+    #: The ask, drawn smaller directly under the promise. Separate from `text`
+    #: because it is a different size, not a different sentence: one voice says
+    #: what this is, a quieter one says what to do about it. Empty when the
+    #: piece carries no ask of its own.
+    #:
+    #: It goes after `brokerage_line` because it has a default and that one does
+    #: not — a dataclass refuses the other order, and the refusal is right: the
+    #: identification is never optional.
+    cta: str = ""
     seconds: float = DEFAULT_SECONDS
 
 
 def _write(path: Path, body: str) -> Path:
     path.write_text(body, encoding="utf-8")
     return path
+
+
+def _centred_lines(
+    *,
+    workdir: Path,
+    name: str,
+    text: str,
+    size: int,
+    below: int,
+    font_clause: str,
+    source: str,
+) -> tuple[str, str, int]:
+    """One overlay per line, each centred against its own width.
+
+    Handed a multi-line textfile, drawtext centres the *block* and ranges the
+    lines left inside it, so a short line above a long one reads as indented.
+    `x=(w-text_w)/2` is per-overlay, so the only way to centre every line is to
+    give every line an overlay.
+
+    Returns the filtergraph fragment, the label the next filter should read
+    from, and how tall the block is in pixels — the caller needs that last one
+    because the filtergraph cannot ask one drawtext how tall another was.
+    """
+    fragment = ""
+    last = source
+    step = size + _LINE_SPACING
+    lines = text.split("\n")
+    for index, line in enumerate(lines):
+        line_file = _write(workdir / f"{name}{index}.txt", line)
+        label = f"{name}{index}"
+        fragment += (
+            f"[{last}]drawtext=textfile='{escape_path(str(line_file))}'"
+            f"{font_clause}:fontcolor=white:fontsize={size}{_SHADOW}"
+            f":x=(w-text_w)/2:y=h*{_TEXT_TOP}+{below + index * step}[{label}];"
+        )
+        last = label
+    return fragment, last, len(lines) * step
 
 
 def build_command(
@@ -120,24 +188,50 @@ def build_command(
     graph += "".join(f"[seg{i}]" for i in range(len(piece.clips)))
     graph += f"concat=n={len(piece.clips)}:v=1:a=0[joined];"
 
-    text_file = _write(workdir / "line.txt", piece.text)
     domain_file = _write(workdir / "domain.txt", piece.domain)
     brokerage_file = _write(workdir / "brokerage.txt", piece.brokerage_line)
 
-    # The promise, held for the whole video. Centred and boxed because it sits
-    # over landscape that changes four times underneath it.
-    graph += (
-        f"[joined]drawtext=textfile='{escape_path(str(text_file))}'"
-        f"{font_clause}:fontcolor=white:fontsize={_TEXT_SIZE}"
-        f":line_spacing=14:box=1:boxcolor=black@0.35:boxborderw={_BOX_PAD}"
-        f":x=(w-text_w)/2:y=(h-text_h)/2[titled];"
+    # The promise, held for the whole video: a light serif straight on the
+    # landscape, no slab behind it.
+    #
+    # ONE DRAWTEXT PER LINE, on purpose. Handed a multi-line textfile, drawtext
+    # centres the *block* and ranges the lines left inside it, so a short line
+    # above a long one reads as indented rather than centred. Each line gets its
+    # own `x=(w-text_w)/2` instead, which is the only way to centre every one of
+    # them — and it means the filtergraph, not the copywriter, is responsible for
+    # the shape.
+    #
+    # Vertical position is a fraction of the height rather than centred on the
+    # block, because the ask is drawn underneath: a block centred on itself would
+    # push the pair below the middle of the frame.
+    lines = piece.text.split("\n")
+    fragment, last_title, tall = _centred_lines(
+        workdir=workdir, name="line", text=piece.text, size=_TEXT_SIZE,
+        below=0, font_clause=font_clause, source="joined",
     )
+    graph += fragment
+
+    # The ask, smaller, under the last line of the promise. ffmpeg cannot read
+    # one drawtext's height from another, so the offset is arithmetic here: the
+    # promise is as tall as its own line count, which Python can count and the
+    # filtergraph cannot.
+    #
+    # It goes through the same helper because the "send this to whoever you'd
+    # go with" pieces put two lines in the ask, and a two-line ask drawn as one
+    # overlay would range left inside its own block — the very fault the promise
+    # was just fixed for.
+    if piece.cta:
+        fragment, last_title, _ = _centred_lines(
+            workdir=workdir, name="cta", text=piece.cta, size=_CTA_SIZE,
+            below=tall + _CTA_GAP, font_clause=font_clause, source=last_title,
+        )
+        graph += fragment
 
     # The identification, from BRAND_FROM_SECONDS to the end. Colorado requires
     # advertising to identify the brokerage; it does not require it to compete
     # with the ask. When `domain` is empty the address is already in the held
     # text and only the legal line is drawn here.
-    last = "titled"
+    last = last_title
     if piece.domain:
         graph += (
             f"[{last}]drawtext=textfile='{escape_path(str(domain_file))}'"

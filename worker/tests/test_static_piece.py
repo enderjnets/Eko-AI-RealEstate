@@ -95,10 +95,90 @@ def test_the_brand_block_waits_and_the_promise_does_not(tmp_path: Path) -> None:
         font=None, music=None,
     )
     graph = argv[argv.index("-filter_complex") + 1]
-    held, gated = graph.split("[titled]", 1)
-    assert "enable=" not in held.split("[joined]", 1)[1]
+    # By what each drawtext DRAWS, not by the label it writes to. The promise
+    # used to be one overlay called `[titled]`; it is now one per line, and a
+    # test that reached for that label went red on a change that was purely
+    # about centring.
+    draws = graph.split("drawtext=")[1:]
+    promise = [d for d in draws if "line0.txt" in d or "line1.txt" in d]
+    brand = [d for d in draws if "domain.txt" in d or "brokerage.txt" in d]
+    assert len(promise) == 2, "one overlay per line of the promise"
+    assert all("enable=" not in d for d in promise), "the promise never waits"
+    assert len(brand) == 2
+    assert all("enable=" in d for d in brand), "the brand block always waits"
     assert graph.count(f"gte(t,{static_piece.BRAND_FROM_SECONDS:.2f})") == 2
-    assert "domain.txt" in gated
+
+
+def test_every_line_of_the_promise_is_centred_on_its_own(tmp_path: Path) -> None:
+    """Handed a multi-line textfile, drawtext centres the block and ranges the
+    lines left inside it — so a short line above a long one reads as indented.
+
+    Measured on F1: "12 places near Denver," sat visibly left of "The ones above
+    9,500 ft go first." underneath it. The fix is one overlay per line, each
+    with its own `x=(w-text_w)/2`, which is the only expression that can centre
+    a line against its own width.
+
+    Mutation: write the lines to a single textfile and draw them once → red,
+    because there is then one overlay for two lines.
+    """
+    piece = _piece([tmp_path / "a.mp4"])
+    argv = static_piece.build_command(
+        piece, tmp_path, tmp_path / "o.mp4", font=None, music=None
+    )
+    graph = argv[argv.index("-filter_complex") + 1]
+    lines = piece.text.split("\n")
+    assert len(lines) == 2
+    for index in range(len(lines)):
+        assert (tmp_path / f"line{index}.txt").read_text(encoding="utf-8") == lines[index]
+    # By the exact filename. Matching on `"line" in d` also matched the tmp_path
+    # of this very test — pytest names the directory after the function — and
+    # counted the brand overlays as lines of the promise.
+    names = [f"line{index}.txt" for index in range(len(lines))]
+    drawn = [
+        d for d in graph.split("drawtext=")[1:]
+        if any(name in d for name in names)
+    ]
+    assert len(drawn) == len(lines)
+    assert all("x=(w-text_w)/2" in d for d in drawn)
+    # No slab behind the words: the shadow carries legibility instead.
+    assert all("box=1" not in d for d in drawn)
+
+
+def test_the_ask_is_drawn_smaller_and_below_the_promise(tmp_path: Path) -> None:
+    """The ask is a different size, not a different sentence, so it cannot ride
+    in `text`: one voice says what this is, a quieter one says what to do.
+
+    Mutation: draw the cta at `_TEXT_SIZE` → red. Mutation: draw it at the same
+    `y` as the first line of the promise → red.
+    """
+    piece = _piece([tmp_path / "a.mp4"], cta="Comment FALL for the guide")
+    argv = static_piece.build_command(
+        piece, tmp_path, tmp_path / "o.mp4", font=None, music=None
+    )
+    graph = argv[argv.index("-filter_complex") + 1]
+    ask = [d for d in graph.split("drawtext=")[1:] if "cta0.txt" in d]
+    assert len(ask) == 1
+    assert f"fontsize={static_piece._CTA_SIZE}" in ask[0]
+    assert static_piece._CTA_SIZE < static_piece._TEXT_SIZE
+    # Below every line of the promise, not level with the first one.
+    offset = len(piece.text.split("\n")) * (
+        static_piece._TEXT_SIZE + static_piece._LINE_SPACING
+    ) + static_piece._CTA_GAP
+    assert f"y=h*{static_piece._TEXT_TOP}+{offset}" in ask[0]
+    assert "enable=" not in ask[0], "the ask is on screen as long as the promise"
+
+
+def test_without_an_ask_nothing_is_drawn_for_it(tmp_path: Path) -> None:
+    """`cta` defaults to empty, and empty means no overlay at all — not an
+    overlay of nothing, which would still cost a pass and could still shift the
+    layout underneath it."""
+    argv = static_piece.build_command(
+        _piece([tmp_path / "a.mp4"]), tmp_path, tmp_path / "o.mp4",
+        font=None, music=None,
+    )
+    graph = argv[argv.index("-filter_complex") + 1]
+    assert "cta0.txt" not in graph
+    assert not (tmp_path / "cta0.txt").exists()
 
 
 def test_with_the_ask_in_the_text_the_address_is_not_drawn_twice(
@@ -183,3 +263,32 @@ def test_a_video_that_came_out_short_is_rejected_not_delivered(
             font=None,
             music=None,
         )
+
+
+def test_a_two_line_ask_is_centred_line_by_line_too(tmp_path: Path) -> None:
+    """Six of the eighteen autumn pieces ask for a share, and that ask is two
+    lines: what to do, then where it leads.
+
+    Drawn as one overlay it would range left inside its own block — the exact
+    fault the promise was fixed for, reappearing in the half of the frame nobody
+    was looking at. Both go through the same helper so neither can regress alone.
+
+    Mutation: draw the cta as a single overlay → red.
+    """
+    piece = _piece(
+        [tmp_path / "a.mp4"],
+        cta="Send this to whoever you'd go with\ndenverhomestory.com/fall/2",
+    )
+    argv = static_piece.build_command(
+        piece, tmp_path, tmp_path / "o.mp4", font=None, music=None
+    )
+    graph = argv[argv.index("-filter_complex") + 1]
+    ask = [
+        d for d in graph.split("drawtext=")[1:]
+        if "cta0.txt" in d or "cta1.txt" in d
+    ]
+    assert len(ask) == 2, "one overlay per line of the ask"
+    assert all("x=(w-text_w)/2" in d for d in ask)
+    assert (tmp_path / "cta1.txt").read_text(encoding="utf-8") == (
+        "denverhomestory.com/fall/2"
+    )

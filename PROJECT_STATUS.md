@@ -127,6 +127,89 @@ estado de `main`. Queda escrito para que nadie los lea como una regresión de
   lo único que lo cazó fue contar al otro lado.
 - Reconstruir backend y frontend, y `alembic upgrade head` **antes** de arrancar
   el código que conoce las columnas.
+## Otoño 2026 — las 18 piezas montadas y en el panel
+
+**8-sep-2026.** Las dieciocho existen. F1 es la pieza **21**, aprobada por el
+dueño. Las diecisiete restantes son las **23 a 39**, todas en `needs_approval`.
+
+| Banda | Piezas (id) | Fechas del guion |
+|---|---|---|
+| 1 · +9.500 ft · `/fall/1` | 21, 23, 24, 25, 26, 27 | 15, 17, 19, 22, 24 y 26 de septiembre |
+| 2 · 7.000–9.000 ft · `/fall/2` | 28, 29, 30, 31 | 29-sep, 1, 3 y 6 de octubre |
+| 3 · 6.000–8.000 ft · `/fall/3` | 32, 33, 34, 35 | 8, 10, 13 y 15 de octubre |
+| 4 · Denver 5.280 ft · `/fall/4` | 36, 37, 38, 39 | 17, 20, 22 y 26 de octubre |
+
+**Se aprueban por tandas, por decisión del dueño**, porque `next_free_slot` no
+sabe de calendarios: reparte al siguiente día libre y el orden de publicación
+es el orden de `approved_at`. Aprobarlas todas hoy sacaría la pieza de Denver
+—«las últimas tres semanas de color pasan a 5.280 ft»— a finales de
+septiembre, diciendo algo que aún no es cierto.
+
+Verificado tras subir: 17 en `needs_approval`, 0 con `scenes`, 0 con
+`violations`, 0 en `render_jobs`, 0 `recorded`, 0 aprobadas, y **las 17
+apuntando a un fichero que existe**, comprobado con `test -s` dentro del
+contenedor. Copia previa `~/backup_eko_20260908_pre_17.sql.gz`
+(sha256 `ff4f2bef6b429c35…`). Coste en fal: ~$5 las 13 con metraje generado.
+
+### 🔴 Un `while read` con `ssh` dentro no recorre la lista
+
+Dos veces en una hora, las dos con `exit 0`. Primero el comando remoto **se
+comió la entrada estándar del bucle**: copió 2 de 17 e imprimió «COPIAS
+HECHAS». Arreglado con `</dev/null`, el bucle **se dejó la 17ª**, porque el
+fichero de la lista no acababa en `\n` y `while read` descarta una última línea
+sin salto. Quince filas habrían apuntado a vídeos inexistentes: la pieza sale
+en el panel, se aprueba, y el fallo aparece en Buffer tres días después.
+
+**Lo único que los cazó fue contar lo que había al otro lado.** El código de
+salida de un bucle no prueba que el bucle recorriera la lista.
+
+### El bioma hay que anclarlo en CADA toma
+
+Tres piezas salieron fuera de Colorado con el anclaje solo en el prompt común:
+F14 dio una acera de barrio en vez de un pueblo de montaña, F15 un canal de
+ladrillo con farolas de gas —Brujas, no el High Line— y las cuatro primeras de
+F1 dieron abedul y alerce. **Las tres habrían salido con `exit 0`**: fichero
+correcto, 12,80 s, 1080×1920. Solo las caza mirar un fotograma de cada toma.
+
+---
+
+## Otoño 2026 — las piezas, y un defecto que salió bien por tres minutos
+
+**Estado el 8-sep-2026, 18:4x MDT.** F1 (pieza 21) aprobada por el dueño y
+esperando el tic del publicador. Las 17 restantes montándose: F2, F3, F7, F8 y
+las cinco de sitio con nombre (F4, F5, F6, F9, F12) ya terminadas.
+
+### 🔴 Sustituir el vídeo bajo el mismo `media_path` no deja rastro
+
+Subí la pieza 21 a las **00:02:48 UTC**, el dueño pidió cambios de tipografía,
+y sustituí el fichero **en el mismo nombre** a las **00:11:18**. La fila de
+`content_pieces` no cambió: mismo `media_path`, y nada —ni el panel, ni
+`updated_at`— dice que el vídeo es otro. El dueño aprobó a las **00:14:54**, o
+sea la versión buena, **por tres minutos y medio y por casualidad**. Aprobar a
+las 00:05 habría aprobado otro vídeo bajo la misma fila, sin forma de saberlo.
+
+Lo detectó la sesión «denverhomestory.com» al medir contraste sobre su copia y
+comparar `stat` con `approved_at`. Regla adoptada: **una pieza se sube
+terminada y no se sustituye el fichero**; si hay que cambiar el vídeo, va con
+`media_path` nuevo. Para verificar, **md5 contra hora de aprobación**, nunca
+`media_path`.
+
+### Se duplicó F1 entre dos sesiones
+
+Dos sesiones montaron la misma banda a la vez: pieza 21 (00:02:48) y pieza 22
+(00:12:54), y el dueño aprobó las dos. La 22 quedó en `rejected` antes del tic
+del publicador, con **0 filas en `content_publications`** en ambas: nada llegó
+a Buffer. Norma acordada: **avisar por `SendMessage` de qué banda se ocupa
+ANTES de crear**, no después.
+
+### Contraste del texto sin caja, medido
+
+24 muestras cada 0,5 s sobre el fichero vivo: **peor 5,4:1, mediana 6,9:1**,
+contra el mínimo de 4,5:1. La serifa sin recuadro se lee. Medido por la otra
+sesión, que además documentó el error que casi lo invalida: su primer umbral
+(«glifo ≥ 235 de gris») dejaba pasar el blanco y descartaba el crema, así que
+5 de 24 muestras comparaban fondo contra fondo. **Un umbral que descarta justo
+lo que debe medir da un veredicto con apariencia de medición.**
 
 ---
 
