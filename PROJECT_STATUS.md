@@ -229,6 +229,94 @@ del límite de inquilino.
 3. El backfill llega a Buffer antes de `verify_organization()`, igual que el
    reconciliador. Preexistente; el backfill solo lee.
 
+### Fase 3 — la tarjeta: un vídeo, su hora y su enlace · commit `PENDIENTE`
+
+`ContentTable` pasa de una lista plana de publicaciones a **una tarjeta por
+vídeo**: el título arriba y, debajo, una línea por plataforma con su hora en la
+zona de la agencia, el enlace al post, el lápiz de vistas intacto y las cifras
+de 48 h **etiquetadas** («12 visitas · 2 leads» en vez de «12 · 0»). La
+agrupación vive en `lib/videosByPiece.ts`, un módulo puro, porque el árbol de
+componentes no tiene arnés de test — el mismo motivo que `latestWins.ts`.
+
+| Comprobación | Resultado real |
+|---|---|
+| `npx vitest run` | ✅ **401 passed** en 24 ficheros (referencia 383 en 23) |
+| `npx tsc --noEmit` | ✅ limpio |
+| `npx next lint` | ✅ «No ESLint warnings or errors» |
+| `npx next build` | ✅ «Compiled successfully» |
+| `line-clamp-2` real, no un no-op | ✅ Tailwind 3.4.19 lo trae de serie y aparece en el CSS compilado |
+| Diff sin secretos ni `console.log` | ✅ 334 líneas añadidas, 0 coincidencias |
+| Cobertura | **No medible**: el frontend no está instrumentado en este repo |
+
+**Mutaciones — 12, cada una en rojo en su test, `md5` restaurado:**
+
+| Mutación | Test en rojo |
+|---|---|
+| Quitar el orden de plataformas | «reads the platforms in the same order» |
+| Ordenar los vídeos de viejo a nuevo | «shows the most recently published video first» |
+| `??` en vez de `||` sobre el hook recortado | «treats a hook of only spaces as no hook» |
+| Ordenar un vídeo por su publicación más antigua | «ranks a video by its newest platform» |
+| Volver a `#{piece_id}` como identidad | «identifies a row by the video's title» |
+| Fecha sin zona ni hora | «shows the hour in the agency's zone» |
+| Enlace sin `rel="noopener noreferrer"` | «links to the post, in a new tab that cannot reach back» |
+| Quitar la etiqueta «visitas» | «labels the two 48h numbers» |
+| Quitar la prop de zona de la tarjeta | «shows the hour in the agency's zone» |
+| Borrar la clave ES `noLink` | ese test **y** `i18nParity` |
+| Quitar el `title` completo del encabezado | «keeps the whole title reachable» |
+| Calcular el título por segunda vez en el componente | «identifies a row by the video's title» |
+
+**Tres mutaciones salieron verdes primero, y las tres eran tests débiles míos:**
+
+- `timezone={data.range.timezone}` **aparece dos veces** en `AnalyticsView`: el
+  selector de rango la recibe 150 líneas antes. Un `toContain` pasaba con la
+  prop de la tarjeta borrada. Ahora la aserción exige el atributo **en el
+  elemento `<ContentTable>`**.
+- La clave ES vive escrita como `sin enlace todav\u00eda`; mi patrón buscaba la
+  `í` literal y no encontraba nada. **La mutación que no se aplica no es una
+  mutación verde, es una mutación que no ocurrió** — hay que leer el error.
+- `toContain("{video.title}")` lo satisfacía el atributo `title={video.title}`,
+  no el texto renderizado. Ahora además se exige que el componente **no** llame
+  a `videoTitle(`: el título sale de la agrupación y solo de ahí.
+
+🔴 **Lo que NO se pudo verificar: la vista a 390 px.** No hay backend local
+levantado ni sesión de panel, y `/analytics` está tras `AuthGuard`; montar la
+pila entera para una captura no estaba en el alcance. Lo que sí se comprobó:
+compila, `line-clamp-2` existe de verdad en el CSS, no hay `whitespace-nowrap`,
+ni `overflow-x`, ni anchos fijos, y la línea es `flex flex-wrap` con `min-w-0
+flex-1` en el hijo de texto. **Queda por mirar en el móvil del dueño tras
+desplegar**, y se dice así en vez de darlo por bueno.
+
+**Auditoría independiente (1 subagente, solo lectura, sin advisor).** Cero
+bloqueantes. Descartó con evidencia: los dos hooks de una pieza no pueden
+discrepar (salen del mismo join), las claves de React son únicas por la
+restricción `UNIQUE(piece_id, platform)`, `newest()` no puede recibir lista
+vacía ni fecha inválida, `range.timezone` siempre llega válida, el renombrado
+de `platform_` en el callback **era necesario** (con el nombre viejo habría
+escrito la clave `7-YouTube` y leído `7-youtube`, perdiendo la cifra tecleada),
+y a 390 px no hay desbordamiento lateral.
+
+Dos hallazgos importantes: uno corregido, otro al backlog.
+
+- ✅ **Un comentario que decía lo contrario del código.** Escribí «nunca
+  truncado» sobre un `line-clamp-2`, que **es** una truncación. En este repo un
+  comentario falso es un defecto que se envía (regla 0 de `CLAUDE.md`).
+  Corregido, y el título completo queda recuperable en `title=`.
+- 🔴 **Backlog, y merece decisión del dueño:** las cifras de 48 h se repiten en
+  cada línea de la tarjeta, y las tres ventanas se solapan casi entera porque
+  las plataformas publican con medio día de diferencia. Antes las filas estaban
+  sueltas; ahora, bajo un título, invitan a sumarlas — y la suma sería falsa.
+  El arreglo honesto es **una sola cifra por vídeo sobre la ventana unión**, y
+  eso es una consulta nueva en el backend.
+
+**Backlog (menores):** `external_url` llega al `href` sin lista blanca de
+esquema; React 18 no bloquea `javascript:`. **Exposición idéntica a la que ya
+se envía** (`ContentQueue` pinta el mismo campo igual), así que no se abre aquí:
+el arreglo es un `safeHref()` compartido en los dos sitios.
+
+**Siguiente paso: Fase 4, el bump — bloqueada.** `v0.96.0` ya existe, está
+tagueada y desplegada, así que el número del plan no sirve. **Hace falta que el
+dueño diga la versión.**
+
 ---
 
 ## v0.96.0 — una pieza que llega a su semana ya no espera en silencio

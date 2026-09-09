@@ -186,3 +186,72 @@ describe("view counts, and where they came from", () => {
     expect(api()).toMatch(/setMetrics[\s\S]{0,400}method: "PUT"/);
   });
 });
+
+describe("the card names the video", () => {
+  const table = () => read("components/analytics/ContentTable.tsx");
+
+  it("identifies a row by the video's title, not by a piece id", () => {
+    // `#41 · YouTube` is not something anybody recognises, and the owner reads
+    // this card to decide what to make more of.
+    const source = table();
+    expect(source).toContain("groupByPiece(");
+    // The title the card renders is the one the grouping computed, not a
+    // second call that could drift from it.
+    // The title comes from the grouping and only from there: a second call
+    // here would be a copy that can drift from the one the test pins.
+    expect(source).toContain("{video.title}");
+    expect(source).not.toContain("videoTitle(");
+    expect(read("lib/videosByPiece.ts")).toContain("videoTitle(");
+  });
+
+  it("keeps the whole title reachable even though the card clips it", () => {
+    // `line-clamp-2` is a truncation: a 300-character hook loses its tail with
+    // no way back unless the full string is carried somewhere.
+    expect(table()).toContain("title={video.title}");
+  });
+
+  it("shows the hour in the agency's zone, not the reader's", () => {
+    // The three platforms post the same video half a day apart, and every
+    // number on the line is counted from the moment shown beside it. The old
+    // `toLocaleDateString` had no timezone and no time of day at all, so it
+    // read as one date for three different publications.
+    const source = table();
+    expect(source).toMatch(/exactTime\([^)]*timezone\)/);
+    expect(source).not.toContain("toLocaleDateString");
+    // Named on the ContentTable element itself: the range picker is handed the
+    // same value two hundred lines up, so merely finding the string in the file
+    // would still pass with the card's prop deleted.
+    expect(view()).toMatch(/<ContentTable[^>]*timezone=\{data\.range\.timezone\}/);
+  });
+
+  it("links to the post, in a new tab that cannot reach back", () => {
+    // `external_url` was already in the payload and simply never rendered.
+    // `rel` is not decoration: without it the opened tab can rewrite this one.
+    const source = table();
+    expect(source).toContain("href={r.external_url}");
+    expect(source).toContain('rel="noopener noreferrer"');
+    expect(source).toContain("content.watchOn");
+  });
+
+  it("says so when a post has no link rather than showing nothing", () => {
+    expect(table()).toContain("analytics.noLink");
+    for (const dict of [EN, ES]) expect(dict["analytics.noLink"]).toBeTruthy();
+  });
+
+  it("labels the two 48h numbers instead of printing a bare pair", () => {
+    // They used to render as "1 · 0", which needs the caption to be read and
+    // then remembered in the right order.
+    const source = table();
+    expect(source).toContain("analytics.visitsAfter");
+    expect(source).toContain("analytics.leadsAfter");
+    for (const dict of [EN, ES]) {
+      expect(dict["analytics.visitsAfter"]).toBeTruthy();
+      expect(dict["analytics.leadsAfter"]).toBeTruthy();
+      expect(dict["analytics.visitsAfter"]).not.toBe(dict["analytics.leadsAfter"]);
+    }
+  });
+
+  it("carries the title and the publication id from the server", () => {
+    expect(read("lib/api.ts")).toMatch(/publication_id: number;[\s\S]{0,200}hook: string \| null;/);
+  });
+});

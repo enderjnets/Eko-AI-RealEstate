@@ -1206,6 +1206,10 @@ export interface Analytics {
   };
   content: {
     piece_id: number;
+    publication_id: number;
+    /** The piece's hook — what the video is called in the console. Null for a
+     *  clip filmed on a phone, which need not have been written one. */
+    hook: string | null;
     platform: string;
     published_at: string;
     external_url: string | null;

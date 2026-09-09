@@ -24,7 +24,9 @@
 import { useState } from "react";
 import { Pencil } from "lucide-react";
 import { type Analytics, contentApi } from "@/lib/api";
+import { exactTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import { groupByPiece } from "@/lib/videosByPiece";
 import { Empty } from "./parts";
 
 /** Platforms whose counters no machine of ours can read. */
@@ -121,70 +123,110 @@ function Views({
   );
 }
 
-export function ContentTable({ rows }: { rows: Analytics["content"] }) {
+export function ContentTable({
+  rows,
+  timezone,
+}: {
+  rows: Analytics["content"];
+  timezone: string;
+}) {
   const { t, lang } = useI18n();
   // Local, because the page fetches on a range change and re-typing a number to
   // see it appear is the kind of small dishonesty that makes people stop typing.
   const [typed, setTyped] = useState<Record<string, number>>({});
   if (rows.length === 0) return <Empty>{t("analytics.empty.content")}</Empty>;
 
-  const when = (iso: string) =>
-    new Date(iso).toLocaleDateString(lang === "es" ? "es-ES" : "en-US", {
-      month: "short",
-      day: "numeric",
-    });
-
   return (
-    <div className="space-y-2">
-      {rows.map((r) => {
-        const key = `${r.piece_id}-${r.platform}`;
-        const withTyped =
-          typed[key] === undefined
-            ? r
-            : {
-                ...r,
-                views: {
-                  count: typed[key],
-                  captured_on: new Date().toISOString().slice(0, 10),
-                  source: "manual",
-                },
-              };
-        return (
-          <div
-            key={key}
-            className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 flex items-center gap-3"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="text-xs text-white truncate">
-                #{r.piece_id} · {t(`platform.${r.platform}`)}
-              </div>
-              <div className="text-[10px] text-gray-500">{when(r.published_at)}</div>
-            </div>
-            <div className="shrink-0 text-right">
-              <Views
-                row={withTyped}
-                onSaved={(piece, platform, views) =>
-                  setTyped((prev) => ({ ...prev, [`${piece}-${platform}`]: views }))
-                }
-              />
-            </div>
-            <div className="text-right shrink-0">
-              <div className="text-xs tabular-nums text-gray-300">
-                {r.association.sessions} · {r.association.leads}
-              </div>
-              <div className="text-[10px] text-gray-600">{t("analytics.assoc48")}</div>
-            </div>
-            {r.leads_tagged > 0 && (
-              <div className="text-right shrink-0">
-                <div className="text-xs tabular-nums text-eko-green">
-                  {r.leads_tagged}
-                </div>
-                <div className="text-[10px] text-gray-600">{t("analytics.tagged")}</div>
-              </div>
-            )}
+    <div className="space-y-3">
+      {groupByPiece(rows).map((video) => (
+        <div
+          key={video.piece_id}
+          className="rounded-lg border border-white/5 bg-white/[0.02] p-3 space-y-2"
+        >
+          {/* Two lines, then clipped — a hook runs to 300 characters and a
+              card that grows to fit one buries the rest of the report. It IS
+              a truncation, so the whole title stays reachable in `title`
+              rather than being lost. */}
+          <div className="text-sm text-white leading-snug line-clamp-2" title={video.title}>
+            {video.title}
           </div>
-        );
-      })}
+          {video.rows.map((r) => {
+            const key = `${r.piece_id}-${r.platform}`;
+            const withTyped =
+              typed[key] === undefined
+                ? r
+                : {
+                    ...r,
+                    views: {
+                      count: typed[key],
+                      captured_on: new Date().toISOString().slice(0, 10),
+                      source: "manual",
+                    },
+                  };
+            const platform = t(`platform.${r.platform}`);
+            return (
+              <div
+                key={r.publication_id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-white/5 pt-2"
+              >
+                <div className="min-w-0 flex-1 text-xs text-gray-300">
+                  <span className="text-white">{platform}</span>
+                  {" · "}
+                  {/* The agency's hour, not the reader's: each platform posts
+                      the same video half a day apart, and every number on this
+                      line is counted from the moment shown here. */}
+                  <span className="text-gray-500">
+                    {exactTime(r.published_at, lang, timezone)}
+                  </span>
+                  {r.external_url ? (
+                    <>
+                      {" · "}
+                      <a
+                        href={r.external_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-eko-violet hover:underline"
+                      >
+                        {t("content.watchOn", { platform })}
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      {" · "}
+                      <span className="text-gray-600">{t("analytics.noLink")}</span>
+                    </>
+                  )}
+                </div>
+                <div className="shrink-0 text-right">
+                  <Views
+                    row={withTyped}
+                    onSaved={(piece, platform_, views) =>
+                      setTyped((prev) => ({ ...prev, [`${piece}-${platform_}`]: views }))
+                    }
+                  />
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-xs tabular-nums text-gray-300">
+                    {r.association.sessions} {t("analytics.visitsAfter")} ·{" "}
+                    {r.association.leads} {t("analytics.leadsAfter")}
+                  </div>
+                  <div className="text-[10px] text-gray-600">{t("analytics.assoc48")}</div>
+                </div>
+                {r.leads_tagged > 0 && (
+                  <div className="text-right shrink-0">
+                    <div className="text-xs tabular-nums text-eko-green">
+                      {r.leads_tagged}
+                    </div>
+                    <div className="text-[10px] text-gray-600">
+                      {t("analytics.tagged")}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }

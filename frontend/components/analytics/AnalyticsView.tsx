@@ -257,7 +257,7 @@ export function AnalyticsView() {
         </Card>
 
         <Card title={t("analytics.content")} hint={t("analytics.contentHint")}>
-          <ContentTable rows={data.content} />
+          <ContentTable rows={data.content} timezone={data.range.timezone} />
         </Card>
 
         <Card title={t("analytics.byAgent")}>
