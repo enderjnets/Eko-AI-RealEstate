@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.95.0"
+    APP_VERSION: str = "0.96.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -397,6 +397,22 @@ class Settings(BaseSettings):
     BUFFER_CHANNEL_INSTAGRAM: str = ""
     CONTENT_PUBLISH_ENABLED: bool = False
     CONTENT_PUBLISH_INTERVAL_SECONDS: int = 900
+    # Avisar cuando una pieza entra en su ventana editorial y sigue sin
+    # aprobar. Encendido por defecto y sin credenciales propias: reutiliza el
+    # canal de operador (`ops_alert`), que ya tiene su tope diario. Una hora
+    # basta de sobra para una comparacion de FECHAS; mas a menudo solo gastaria
+    # consultas para preguntar lo mismo.
+    CONTENT_WINDOW_ALERT_ENABLED: bool = True
+    CONTENT_WINDOW_ALERT_INTERVAL_SECONDS: int = 3600
+    # Cuantos dias ANTES del inicio de la ventana se avisa. No es un margen de
+    # cortesia: **aprobar no es publicar**. Una pieza aprobada entra en la cola
+    # y compite por `CONTENT_PUBLISH_MAX_PER_DAY` con las que siguen en
+    # `publishing`; medido el 9-sep-2026, la pieza 21 se aprobo a las 00:14 y
+    # seguia sin reclamar horas despues, con franja estimada dos dias mas
+    # tarde. Avisar el mismo dia del `start` es avisar tarde: la pieza saldria
+    # dos o tres dias pasada su fecha, y la banda alta —la que una semana de
+    # viento deja sin objeto— es la que mas lo nota.
+    CONTENT_WINDOW_ALERT_LEAD_DAYS: int = 3
     # How many people actually watched. A public API key (no OAuth): the
     # counters on a published video are public data, so nothing here needs a
     # channel owner's consent, and `videos.list` costs ONE unit per call of up

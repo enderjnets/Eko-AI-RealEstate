@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.95.0";
+export const CURRENT_VERSION = "0.96.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.96.0",
+    date: "2026-09-09",
+    title: {
+      en: "A piece that reaches the week it was written for no longer waits in silence",
+      es: "Una pieza que llega a la semana para la que se escribio ya no espera en silencio",
+    },
+    changes: [
+      { en: "Pieces can now carry the window they were written for, and the system says something when one reaches that window still unapproved. This matters because the order pieces publish in is the order they are approved in — the scheduler looks for the next free day and knows nothing about calendars — so approving on time is the only lever there is, and a lever you have to remember to pull is not a lever. The fall guide is four altitude bands over six weeks: the passes above 9,500 ft turn in late September and Denver itself turns in November, and a piece about bare aspens arriving in October is worse than no piece.", es: "Una pieza puede llevar ahora la ventana para la que se escribio, y el sistema avisa cuando llega a esa ventana sin aprobar. Importa porque el orden en que se publica es el orden en que se aprueba —el repartidor busca el siguiente dia libre y no sabe nada de calendarios—, asi que aprobar a tiempo es la unica palanca que hay, y una palanca que hay que acordarse de usar no es una palanca. La guia de otono son cuatro franjas de altitud en seis semanas: los puertos de mas de 9.500 ft cambian a finales de septiembre y Denver en noviembre, y una pieza sobre alamos pelados que llega en octubre es peor que ninguna pieza." },
+      { en: "The warning arrives once per piece, not once per hour. Six pieces entering their window on the same day are one message, not six: an alarm that repeats on a schedule stops being read, and then it looks like coverage without being it. It is also only marked as sent once a channel has actually accepted it — if the message could not be delivered, the next round tries again rather than recording a warning nobody received.", es: "El aviso llega una vez por pieza, no una vez por hora. Seis piezas que entran en su ventana el mismo dia son un mensaje, no seis: una alarma que se repite en bucle deja de leerse, y entonces parece cobertura sin serlo. Y solo se da por dicho cuando un canal lo ha aceptado de verdad: si no se pudo entregar, la siguiente ronda lo reintenta en vez de anotar un aviso que nadie recibio." },
+      { en: "Nothing about publishing changed. The scheduler still picks the next free day and still publishes in approval order; a piece with no window set behaves exactly as it always has and is never mentioned.", es: "Nada del reparto cambia. El repartidor sigue cogiendo el siguiente dia libre y sigue publicando en orden de aprobacion; una pieza sin ventana se comporta exactamente como siempre y no se menciona nunca." },
+    ],
+  },
   {
     version: "0.95.0",
     date: "2026-09-08",
