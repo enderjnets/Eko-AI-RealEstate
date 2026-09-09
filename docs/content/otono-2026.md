@@ -12,7 +12,7 @@ within 90 minutes of Denver»; `@yourdenverrealtorco` 676 K con 2,9 K seguidores
 | Duración | **12–13 s**, cuatro clips de ~3,2 s |
 | Voz | **ninguna** |
 | Texto | **un bloque estático**, sostenido los 12 s. Nunca subtítulos karaoke |
-| Música | `worker/assets/bgm/01-piano.mp3` |
+| Música | **Las cuatro de `worker/assets/bgm/`, rotando por pieza**: `01-piano`, `02-realty-firm`, `03-commercial`, `04-luxury`. Este documento fijaba solo la primera y era un estrechamiento: el dueño bajó **las cuatro** de Pixabay el 30-ago, y nadie descarga cuatro para usar una. Lo notó él viendo las 18 seguidas — dieciocho reels con el mismo piano se oyen como un solo anuncio repetido. **Las 18 de otoño se quedan con el piano**, porque ya estaban subidas y F1 aprobada: cambiar el vídeo bajo una aprobación es la trampa documentada más abajo |
 | Bloque de marca | desde el **segundo 6**, una sola línea a 28 px: **`DenverHomeStory.com`**. Decisión del dueño el 8-sep, tomada tras advertirle por escrito de las dos consecuencias: (a) el anuncio sale **sin la identificación de la correduría** que el resto del sistema trata como obligatoria en publicidad inmobiliaria de Colorado — `brokerage_line` en ajustes, el aviso del panel y el texto quemado existen solo para eso; conviene confirmarlo con la correduría; (b) en las piezas del grupo «comentario» el dominio es **una segunda puerta** y debilita el «Comment FALL». El tamaño se deja en 28 px a propósito: discreto frente al CTA |
 | Montaje | `worker/static_piece.py`. **No pasa por el obrero**, que añadiría voz y subtítulos |
 | Alta | `POST /api/v1/content/upload?kind=generated` → `PATCH` → `submit` → **aprueba Natalia** |
