@@ -19,6 +19,20 @@ within 90 minutes of Denver»; `@yourdenverrealtorco` 676 K con 2,9 K seguidores
 | CTA | **uno solo por pieza.** Nueve piden comentario, nueve dan el enlace — ver abajo |
 | Modelo de vídeo | `fal-ai/bytedance/seedance/v1/pro/fast/text-to-video`, 720p 9:16, 4 s por clip. El `…/v1/lite/…` que decía este documento está **retirado** y fal lo redirige en silencio a este mismo modelo: se llama por su nombre, nunca por el desvío. Precio por la fórmula de fal (`h × w × fps × s / 1024` tokens, $1/M fuera de 1080p), comprobada contra su precio publicado de 1080p: **≈ $0,08 por clip de 4 s a 704×1248**, ~$0,33 la pieza |
 
+🔴 **Las cinco ★ se publican bajo CC BY-SA, y es una decisión, no un descuido.**
+Cuatro de las cinco fotos (Guanella, Kenosha, Peak to Peak, Georgetown) son
+**CC BY-SA**: «compartir igual». En la web eso no aplica —la foto se muestra
+entera y el encuadre lo hace el CSS, que es *enseñarla*, no derivarla— y el
+`LICENCIA.txt` ya lo razonó. **En un vídeo sí aplica**: hay zoom, recorte al
+vertical, texto encima y montaje con música, y eso es inequívocamente obra
+derivada. Consecuencia: esos cuatro reels quedan bajo CC BY-SA y cualquiera
+puede republicarlos o remezclarlos citando la licencia. No es un riesgo legal;
+es regalar el vídeo. El dueño lo eligió el 8-sep tras leerlo por escrito.
+Golden Gate Canyon (F12) es **CC BY**, solo atribución, y no arrastra nada.
+El crédito va quemado en el fotograma en las cinco, que es lo que ambas
+licencias sí exigen. La salida buena sigue siendo una tarde de Natalia y
+Robbie con el móvil: cubre los doce sitios y no hay licencia que citar.
+
 **La regla que no se rompe:** mientras el metraje sea generado, **ninguna pieza
 nombra un sitio real en pantalla**. Es la misma regla que `frontend/lib/fallGuide.ts`
 ya defiende para las fotos de la página. Las cinco piezas marcadas ★ sí lo
