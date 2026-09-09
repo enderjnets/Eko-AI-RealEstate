@@ -81,7 +81,7 @@ mutación vista en rojo, como prescribe el plan.
 **Siguiente paso:** Fase 1 — el payload de analytics nombra al vídeo
 (`hook`, `publication_id`, límite por vídeo).
 
-### Fase 1 — el payload nombra al vídeo · commit `82af656`
+### Fase 1 — el payload nombra al vídeo · commit `81eb278`
 
 `analytics.content()` une `ContentPiece` para llevar el `hook`, emite
 `publication_id` (que ya leía y tiraba) y el `limit` pasa a **contar vídeos**:
