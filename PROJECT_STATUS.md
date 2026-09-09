@@ -127,6 +127,9 @@ estado de `main`. Queda escrito para que nadie los lea como una regresión de
   lo único que lo cazó fue contar al otro lado.
 - Reconstruir backend y frontend, y `alembic upgrade head` **antes** de arrancar
   el código que conoce las columnas.
+
+---
+
 ## Otoño 2026 — las 18 piezas montadas y en el panel
 
 **8-sep-2026.** Las dieciocho existen. F1 es la pieza **21**, aprobada por el
