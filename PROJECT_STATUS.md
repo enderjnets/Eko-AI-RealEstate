@@ -317,6 +317,43 @@ el arreglo es un `safeHref()` compartido en los dos sitios.
 tagueada y desplegada, así que el número del plan no sirve. **Hace falta que el
 dueño diga la versión.**
 
+### Desplegada — v0.97.0 en producción, 9-sep 14:06 UTC · `a749cf2`
+
+Autorizada por el dueño. `main` avanzado a `a749cf2` (13 commits, `--ff-only`),
+tag `v0.97.0` y release publicada.
+
+🔴 **El `origin` del VPS no es GitHub, y por poco despliego v0.56.0.**
+`git remote -v` en `~/Eko-AI-RealEstate` del VPS devuelve **`/tmp/eko.bundle`**,
+un fichero; su `main` está congelado en **v0.56.0** y nadie lo mueve. Producción
+no corre `main`: corre una rama de funcionalidad (`feat/maquina-de-video-dhs`).
+Hice el gesto obvio —`git checkout main`— y **puse el árbol de producción en
+código de v0.56.0**. Lo cazó el `head -1 frontend/lib/version.ts` del checklist,
+**antes** de reconstruir: los contenedores nunca se tocaron, `/health` sirvió
+0.96.0 sin interrupción y se revirtió con un `checkout` de vuelta. El camino
+real lo dice el `reflog`, donde cada versión entró como
+`merge bundle/<algo>: Fast-forward`: `git bundle` en el Mac → `scp` a `/tmp` →
+`git fetch <bundle>` → `git merge --ff-only`. Anotado en memoria.
+
+| Comprobación post-despliegue | Resultado real |
+|---|---|
+| `/health` | ✅ `"version":"0.97.0"`, `env` production, `llm_fallback` ok |
+| `alembic current` antes y después | `056_publish_window (head)` — **idéntico, no se corrió ninguna migración** |
+| Contenedores | los 4 arriba; solo `backend` y `frontend` reconstruidos |
+| Tracebacks / ERROR desde el arranque | **0** |
+| Primer tick del publicador (14:06 UTC, 15 min tras arrancar) | `Recovered 15 publication link(s) from Buffer` |
+| Publicadas sin enlace: antes → después | **15 → 0** |
+| Cobertura por plataforma | youtube 10/10, tiktok 10/10, instagram 10/10, con URLs reales de cada plataforma |
+| `published_at` y `platform` de las 15 filas | **0 cambios**, comparadas fila a fila contra la foto previa |
+| Copias | `.env.bak.20260909_v0.97.0` idéntica por `cmp`; volcado `sha256 6e7422ca…`, 24 tablas dentro |
+
+**Efecto secundario buscado y avisado:** al ganar enlace, esas 5 publicaciones
+de YouTube entran en `snapshot_youtube` (cada 21600 s), que las saltaba. Sus
+visitas empezarán a leerse solas — **y con ello sube el gasto de cuota de la API
+de YouTube**.
+
+**Pendiente para el dueño:** mirar la tarjeta a 390 px en su móvil. Y la fase
+acordada: **una sola cifra de 48 h por vídeo** sobre la ventana unión.
+
 ### Fase 4 — la versión: **0.97.0** · commit `b0eed09`
 
 El dueño dio el número el 9-sep: **0.97.0** (el siguiente menor libre; `v0.96.0`
