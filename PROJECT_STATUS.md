@@ -317,6 +317,46 @@ el arreglo es un `safeHref()` compartido en los dos sitios.
 tagueada y desplegada, así que el número del plan no sirve. **Hace falta que el
 dueño diga la versión.**
 
+### Fase 4 — la versión: **0.97.0** · commit `b0eed09`
+
+El dueño dio el número el 9-sep: **0.97.0** (el siguiente menor libre; `v0.96.0`
+está tagueada y desplegada). Los tres ficheros en el **mismo commit**, que es
+justo lo que comprueba `test_version_is_one_number`: `APP_VERSION` en
+`backend/app/config.py`, `CURRENT_VERSION` más la entrada EN/ES de cuatro
+cambios en `frontend/lib/version.ts`, y `## [0.97.0] — 2026-09-09` en
+`CHANGELOG.md`.
+
+| Comprobación | Resultado real |
+|---|---|
+| `pytest tests/test_version_is_one_number.py` | ✅ 2 passed (el que caza un bump a medias) |
+| Backend `pytest -q` completo | ✅ **1820 passed**, **0 skipped**, 286,42 s |
+| `ruff check app tests` | ✅ «All checks passed!» |
+| Frontend `npx vitest run` | ✅ **401 passed** en 24 ficheros |
+| `npx tsc --noEmit` / `next lint` / `next build` | ✅ limpios |
+| Barrido del diff del bump | 44 líneas añadidas, **0** sospechosas |
+| `merge-base --is-ancestor 7bc62d5 HEAD` | ✅ la rama contiene producción: avance `--ff-only` |
+| Migraciones nuevas frente a producción | **0** |
+
+🔴 **32 rojos que fueron míos, no del bump, y la lección.** La primera pasada
+dio `32 failed`. **Leí el primer error, no mi diff**: era
+`test_app_role_is_not_a_superuser`, y con él los 31 restantes, todos de
+aislamiento entre inquilinos. Causa: apunté `DATABASE_URL_APP` al rol **dueño**
+(`eko`) en vez de a `eko_app`. `CLAUDE.md` avisa de la variante peligrosa —
+apuntarlo al dueño hace que los tests de aislamiento **pasen** sin aislar nada;
+aquí se manifestó al revés, en rojo, porque esos tests comprueban que el rol
+**no** puede saltarse la RLS. La receta correcta está en
+`docs/plan-analitica-embudo.md:156`: el rol de aplicación es `eko_app`. Con él,
+1820 en verde. Ningún fichero de producto se tocó para arreglarlo.
+
+**Segunda decisión del dueño, tomada el 9-sep: desplegar ya y arreglarlo
+después.** Las tres cifras de 48 h se solapan y bajo un título común invitan a
+sumarse. Queda **como fase aparte** (una sola cifra por vídeo sobre la ventana
+unión, consulta nueva en el backend), no como nota de backlog.
+
+**Estado: la rama está lista y detenida en el pre-despliegue.** `b0eed09`
+empujado. **No fusionada, no tagueada, no desplegada** — la autorización la da
+el dueño en un mensaje aparte.
+
 ### Cierre — auditoría transversal, advisor y pre-despliegue (sin desplegar)
 
 **Cuarta auditoría independiente (solo lectura, sobre el diff completo de las
