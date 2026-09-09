@@ -229,7 +229,7 @@ del límite de inquilino.
 3. El backfill llega a Buffer antes de `verify_organization()`, igual que el
    reconciliador. Preexistente; el backfill solo lee.
 
-### Fase 3 — la tarjeta: un vídeo, su hora y su enlace · commit `PENDIENTE`
+### Fase 3 — la tarjeta: un vídeo, su hora y su enlace · commit `bb3457c`
 
 `ContentTable` pasa de una lista plana de publicaciones a **una tarjeta por
 vídeo**: el título arriba y, debajo, una línea por plataforma con su hora en la
