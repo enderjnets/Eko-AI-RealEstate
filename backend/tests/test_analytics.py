@@ -362,6 +362,15 @@ async def test_one_agency_never_reads_anothers_numbers() -> None:
     because a wrong number looks exactly like a right one and no row is ever
     displayed with somebody else's name on it.
     """
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+    )
     from app.services.tenant_context import org_scope
 
     await _fresh()
@@ -382,7 +391,30 @@ async def test_one_agency_never_reads_anothers_numbers() -> None:
                 event_count=3,
             )
         )
+        # `content` grew a join to `content_pieces` to carry the title, which
+        # puts a second tenant-owned table inside this boundary. A join reads
+        # through the same session, so RLS covers it — but "should" is what an
+        # isolation test exists to replace.
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook="isolation check",
+        )
+        db.add(piece)
+        await db.flush()
+        db.add(
+            ContentPublication(
+                org_id=ORG,
+                piece_id=piece.id,
+                platform=PublicationPlatform.YOUTUBE,
+                status=PublicationStatus.PUBLISHED,
+                published_at=now - timedelta(hours=2),
+            )
+        )
         await db.commit()
+        piece_id = piece.id
     try:
         from app.services import analytics as svc
 
@@ -398,12 +430,19 @@ async def test_one_agency_never_reads_anothers_numbers() -> None:
                 assert (await svc.funnel(db, window, await svc.traffic(db, window)))[0][
                     "count"
                 ] == 0
+                assert await svc.content(db, window) == []
 
         with org_scope(ORG):
             async with get_session_factory()() as db:
                 assert (await svc.leads(db, window))["total"] == 1
                 assert (await svc.traffic(db, window))["sessions"] == 1
+                assert len(await svc.content(db, window)) == 1
     finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM content_pieces WHERE id = :i"), {"i": piece_id}
+            )
+            await db.commit()
         await _cleanup()
 
 
@@ -472,3 +511,194 @@ async def test_a_range_does_not_reach_back_to_older_publications() -> None:
 # zero. The router adds one query of its own — `_agency_zone`, reading
 # `AgentSettings` — and it uses the same session, so it is inside the same
 # boundary as everything it precedes.
+
+
+@pytest.mark.asyncio
+async def test_each_row_names_its_video_and_its_own_publication() -> None:
+    """A row said `#41 · YouTube` and nothing else.
+
+    The owner reads this card to decide what to make more of, and a piece id is
+    not something anybody recognises. The title is the piece's `hook`, which
+    needs a join the query did not have; `publication_id` was already being read
+    to fetch the view counts and simply never emitted, so the page had to
+    address a publication by the pair it happened to know.
+    """
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+    )
+
+    await _fresh()
+    now = datetime.now(UTC)
+    async with get_bypass_session_factory()() as db:
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook="analytics range check",
+        )
+        db.add(piece)
+        await db.flush()
+        watched = ContentPublication(
+            org_id=ORG,
+            piece_id=piece.id,
+            platform=PublicationPlatform.YOUTUBE,
+            status=PublicationStatus.PUBLISHED,
+            published_at=now - timedelta(days=1),
+            external_url="https://youtube.com/shorts/abc",
+        )
+        unlinked = ContentPublication(
+            org_id=ORG,
+            piece_id=piece.id,
+            platform=PublicationPlatform.TIKTOK,
+            status=PublicationStatus.PUBLISHED,
+            published_at=now - timedelta(days=2),
+        )
+        db.add_all([watched, unlinked])
+        await db.commit()
+        piece_id, watched_id, unlinked_id = piece.id, watched.id, unlinked.id
+    try:
+        rows = (await _get("?range=7d"))["content"]
+        assert len(rows) == 2, rows
+        assert {r["hook"] for r in rows} == {"analytics range check"}
+        # Two publications, two ids. Emitting `piece_id` here would collapse
+        # this to one value, which is the whole point of asking for the set.
+        assert {r["publication_id"] for r in rows} == {watched_id, unlinked_id}
+        by_platform = {r["platform"]: r for r in rows}
+        assert by_platform["youtube"]["external_url"] == "https://youtube.com/shorts/abc"
+        assert by_platform["tiktok"]["external_url"] is None
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM content_pieces WHERE id = :i"), {"i": piece_id}
+            )
+            await db.commit()
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_limit_counts_videos_not_posts() -> None:
+    """The card groups by video, so a limit counting posts cuts one in half.
+
+    With three platforms per video, a limit of twenty publications ends the list
+    somewhere inside the seventh video — showing YouTube and Instagram for it
+    and silently dropping TikTok, which reads as "we never posted it there".
+    """
+    from app.db.base import get_session_factory
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+    )
+    from app.services import analytics as svc
+    from app.services.tenant_context import org_scope
+
+    await _fresh()
+    now = datetime.now(UTC)
+    made: list[int] = []
+    async with get_bypass_session_factory()() as db:
+        for label, days in (("older video", 5), ("newer video", 1)):
+            piece = ContentPiece(
+                org_id=ORG,
+                kind=ContentKind.GENERATED,
+                language=ContentLanguage.EN,
+                status=ContentStatus.PUBLISHED,
+                hook=label,
+            )
+            db.add(piece)
+            await db.flush()
+            for platform in (PublicationPlatform.YOUTUBE, PublicationPlatform.TIKTOK):
+                db.add(
+                    ContentPublication(
+                        org_id=ORG,
+                        piece_id=piece.id,
+                        platform=platform,
+                        status=PublicationStatus.PUBLISHED,
+                        published_at=now - timedelta(days=days),
+                    )
+                )
+            made.append(piece.id)
+        await db.commit()
+    try:
+        window = svc.Window(
+            start=now - timedelta(days=10), end=now + timedelta(days=1), tz=svc.DEFAULT_TZ
+        )
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                rows = await svc.content(db, window, limit=1)
+        assert len(rows) == 2, "one video, and it keeps both of its platforms"
+        assert {r["piece_id"] for r in rows} == {made[1]}
+        assert {r["hook"] for r in rows} == {"newer video"}
+    finally:
+        async with get_bypass_session_factory()() as db:
+            for piece_id in made:
+                await db.execute(
+                    text("DELETE FROM content_pieces WHERE id = :i"), {"i": piece_id}
+                )
+            await db.commit()
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_video_written_without_a_hook_still_has_a_row() -> None:
+    """`hook` is nullable and a clip filmed on a phone need not have one.
+
+    The card falls back to the piece id for a title, which only works if the
+    row arrives at all: an inner join or a non-null assumption here would make
+    a published video disappear from the report instead of being unnamed.
+    """
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+    )
+
+    await _fresh()
+    now = datetime.now(UTC)
+    async with get_bypass_session_factory()() as db:
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.RECORDED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook=None,
+        )
+        db.add(piece)
+        await db.flush()
+        db.add(
+            ContentPublication(
+                org_id=ORG,
+                piece_id=piece.id,
+                platform=PublicationPlatform.INSTAGRAM,
+                status=PublicationStatus.PUBLISHED,
+                published_at=now - timedelta(hours=3),
+            )
+        )
+        await db.commit()
+        piece_id = piece.id
+    try:
+        rows = (await _get("?range=7d"))["content"]
+        assert len(rows) == 1, rows
+        assert rows[0]["hook"] is None
+        assert rows[0]["piece_id"] == piece_id
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("DELETE FROM content_pieces WHERE id = :i"), {"i": piece_id}
+            )
+            await db.commit()
+        await _cleanup()

@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
     CallLog,
+    ContentPiece,
     ContentPublication,
     Conversation,
     LandingSession,
@@ -543,7 +544,24 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
     Anchored on `published_at`, never `scheduled_at`: a post still queued has
     not been seen by anybody, and a window starting at its scheduled time would
     hand it visits that happened before it existed.
+
+    `limit` counts videos rather than posts, because the page groups by video:
+    counting posts ends the list inside a video and drops the platforms that
+    did not fit, which reads as "we never posted it there".
     """
+    recent = (
+        select(ContentPublication.piece_id)
+        .where(
+            ContentPublication.published_at.is_not(None),
+            w.within(ContentPublication.published_at),
+        )
+        .group_by(ContentPublication.piece_id)
+        .order_by(
+            func.max(ContentPublication.published_at).desc(),
+            ContentPublication.piece_id.desc(),
+        )
+        .limit(limit)
+    )
     rows = (
         await db.execute(
             select(
@@ -552,13 +570,17 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
                 ContentPublication.platform,
                 ContentPublication.published_at,
                 ContentPublication.external_url,
+                ContentPiece.hook,
             )
+            .join(ContentPiece, ContentPiece.id == ContentPublication.piece_id)
             .where(
                 ContentPublication.published_at.is_not(None),
                 w.within(ContentPublication.published_at),
+                ContentPublication.piece_id.in_(recent),
             )
-            .order_by(ContentPublication.published_at.desc())
-            .limit(limit)
+            .order_by(
+                ContentPublication.published_at.desc(), ContentPublication.id.desc()
+            )
         )
     ).all()
 
@@ -576,7 +598,7 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
     newest = await video_metrics.latest_metrics(db, [row[0] for row in rows])
 
     out: list[dict] = []
-    for publication_id, piece_id, platform, published_at, url in rows:
+    for publication_id, piece_id, platform, published_at, url, hook in rows:
         until = published_at + timedelta(hours=48)
         sessions = await _scalar(
             db,
@@ -603,6 +625,10 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
         out.append(
             {
                 "piece_id": piece_id,
+                "publication_id": publication_id,
+                # The video's name in the console. A row identified only by a
+                # piece id is a number nobody recognises.
+                "hook": hook,
                 "platform": platform.value if hasattr(platform, "value") else str(platform),
                 "published_at": published_at.isoformat(),
                 "external_url": url,

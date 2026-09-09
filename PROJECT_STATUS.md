@@ -81,6 +81,67 @@ mutación vista en rojo, como prescribe el plan.
 **Siguiente paso:** Fase 1 — el payload de analytics nombra al vídeo
 (`hook`, `publication_id`, límite por vídeo).
 
+### Fase 1 — el payload nombra al vídeo · commit `82af656`
+
+`analytics.content()` une `ContentPiece` para llevar el `hook`, emite
+`publication_id` (que ya leía y tiraba) y el `limit` pasa a **contar vídeos**:
+una subconsulta toma las `limit` piezas más recientes por `max(published_at)` y
+el select principal devuelve **todas** sus publicaciones en ventana. Con tres
+plataformas por vídeo, un límite que contaba publicaciones terminaba la lista
+dentro de un vídeo y se dejaba fuera las plataformas que no cabían, que en
+pantalla se lee como «ahí no lo publicamos».
+
+| Comprobación | Resultado real |
+|---|---|
+| `pytest tests/test_analytics.py` | ✅ 15 passed (12 antes + 3 nuevos) |
+| Suite backend completa | ✅ **1811 passed, 0 skipped** (referencia 1808) |
+| `ruff check app tests` | ✅ «All checks passed!» |
+| `test_video_metrics` + los dos barridos AST | ✅ 114 passed juntos con analytics |
+| Diff sin secretos ni `print`/`console.log` | ✅ 259 líneas añadidas, 0 coincidencias |
+| Cobertura | **No medible** en frontend (sin instrumentar); en backend el sustituto es la mutación |
+
+**Mutaciones — cada test visto en rojo, `md5` restaurado idéntico:**
+
+| Mutación | Test que se puso en rojo |
+|---|---|
+| Quitar `"hook": hook` del dict | `test_each_row_names_its_video_and_its_own_publication` |
+| Emitir `piece_id` como `publication_id` | el mismo (dos publicaciones colapsan a un id) |
+| Mover `.limit(limit)` al select de publicaciones | `test_the_limit_counts_videos_not_posts` |
+| Leer la aserción de org 2 con sesión bypass | `test_one_agency_never_reads_anothers_numbers` |
+
+**Auditoría independiente (1 subagente, solo lectura, sin acceso al advisor).**
+Cero bloqueantes. Seguridad **descartada con evidencia**: `content_pieces`
+lleva RLS forzada (`20260819_1500_content_rail.py:135`), el rol de la app es
+`NOBYPASSRLS`, y la FK es **compuesta** — `(piece_id, org_id) → (id, org_id)`,
+comprobada en la base real — así que una publicación no puede referenciar la
+pieza de otra agencia ni a nivel de motor. Sin superficie de inyección: todo va
+por parámetros ligados.
+
+Dos hallazgos menores atendidos, uno **rechazado con motivo**:
+
+- ✅ **`hook` nulo sin cubrir.** Es legítimo (una pieza `RECORDED` filmada con
+  el móvil no tiene por qué llevarlo) y la Fase 3 lo va a pintar. Test nuevo
+  `test_a_video_written_without_a_hook_still_has_a_row`.
+- ❌ **«Calificar el join por `org_id`».** Se escribió y se **revirtió**: la FK
+  compuesta hace ese predicado siempre cierto por construcción, así que ningún
+  test puede ponerlo en rojo y ninguna consulta puede cambiar de resultado. Es
+  exactamente el código que este repo prohíbe — el que no puede fallar. Se
+  documenta aquí en vez de dejarlo en el fuente.
+
+**Backlog (no bloquean, no se tocan en esta fase):**
+
+1. **Rendimiento, el más serio.** Con el límite contando vídeos, 20 vídeos ×
+   3 plataformas = hasta **60 filas** y **120 consultas secuenciales**
+   (`sessions` + `leads_after` por fila), donde antes eran 40. Además `tagged`
+   recorre *todos* los leads de la ventana una vez por fila: O(filas × leads)
+   en el bucle de eventos. El plan lo aceptó como coste conocido; la auditoría
+   lo mide peor de lo escrito. Arreglo natural: resolver `sessions`/`leads`
+   en una sola consulta agregada.
+2. El orden emitido es plano (`published_at desc`), así que las filas de un
+   mismo vídeo no llegan adyacentes; la Fase 3 agrupa en el cliente, que es
+   donde el plan lo puso.
+3. La tarjeta puede crecer a 60 filas sin límite visual ni virtualización.
+
 ---
 
 ## v0.96.0 — una pieza que llega a su semana ya no espera en silencio
