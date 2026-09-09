@@ -138,95 +138,104 @@ export function ContentTable({
 
   return (
     <div className="space-y-3">
-      {groupByPiece(rows).map((video) => (
-        <div
-          key={video.piece_id}
-          className="rounded-lg border border-white/5 bg-white/[0.02] p-3 space-y-2"
-        >
-          {/* Two lines, then clipped — a hook runs to 300 characters and a
-              card that grows to fit one buries the rest of the report. It IS
-              a truncation, so the whole title stays reachable in `title`
-              rather than being lost. */}
-          <div className="text-sm text-white leading-snug line-clamp-2" title={video.title}>
-            {video.title}
-          </div>
-          {video.rows.map((r) => {
-            const key = `${r.piece_id}-${r.platform}`;
-            const withTyped =
-              typed[key] === undefined
-                ? r
-                : {
-                    ...r,
-                    views: {
-                      count: typed[key],
-                      captured_on: new Date().toISOString().slice(0, 10),
-                      source: "manual",
-                    },
-                  };
-            const platform = t(`platform.${r.platform}`);
-            return (
+      {groupByPiece(rows).map((video) => {
+        // Per video, not per post. The server counts the 48 hours after EACH
+        // of the video's posts as one window, so a visit that fell inside two
+        // of them is one person, not two — and it stamps the same block on
+        // every row of the video. Shown once, beside the title: repeated on
+        // three platform lines it read as three times the people.
+        const after = video.rows[0].association;
+        const tagged = video.rows[0].leads_tagged;
+        return (
+          <div
+            key={video.piece_id}
+            className="rounded-lg border border-white/5 bg-white/[0.02] p-3 space-y-2"
+          >
+            <div className="flex items-start justify-between gap-3">
+              {/* Two lines, then clipped — a hook runs to 300 characters and
+                  a card that grows to fit one buries the rest of the report.
+                  It IS a truncation, so the whole title stays reachable in
+                  `title` rather than being lost. */}
               <div
-                key={r.publication_id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-white/5 pt-2"
+                className="min-w-0 flex-1 text-sm text-white leading-snug line-clamp-2"
+                title={video.title}
               >
-                <div className="min-w-0 flex-1 text-xs text-gray-300">
-                  <span className="text-white">{platform}</span>
-                  {" · "}
-                  {/* The agency's hour, not the reader's: each platform posts
-                      the same video half a day apart, and every number on this
-                      line is counted from the moment shown here. */}
-                  <span className="text-gray-500">
-                    {exactTime(r.published_at, lang, timezone)}
-                  </span>
-                  {r.external_url ? (
-                    <>
-                      {" · "}
-                      <a
-                        href={r.external_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-eko-violet hover:underline"
-                      >
-                        {t("content.watchOn", { platform })}
-                      </a>
-                    </>
-                  ) : (
-                    <>
-                      {" · "}
-                      <span className="text-gray-600">{t("analytics.noLink")}</span>
-                    </>
-                  )}
+                {video.title}
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-xs tabular-nums text-gray-300">
+                  {after.sessions} {t("analytics.visitsAfter")} ·{" "}
+                  {after.leads} {t("analytics.leadsAfter")}
                 </div>
-                <div className="shrink-0 text-right">
-                  <Views
-                    row={withTyped}
-                    onSaved={(piece, platform_, views) =>
-                      setTyped((prev) => ({ ...prev, [`${piece}-${platform_}`]: views }))
-                    }
-                  />
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="text-xs tabular-nums text-gray-300">
-                    {r.association.sessions} {t("analytics.visitsAfter")} ·{" "}
-                    {r.association.leads} {t("analytics.leadsAfter")}
-                  </div>
-                  <div className="text-[10px] text-gray-600">{t("analytics.assoc48")}</div>
-                </div>
-                {r.leads_tagged > 0 && (
-                  <div className="text-right shrink-0">
-                    <div className="text-xs tabular-nums text-eko-green">
-                      {r.leads_tagged}
-                    </div>
-                    <div className="text-[10px] text-gray-600">
-                      {t("analytics.tagged")}
-                    </div>
+                <div className="text-[10px] text-gray-600">{t("analytics.assoc48")}</div>
+                {tagged > 0 && (
+                  <div className="text-[10px] tabular-nums text-eko-green">
+                    {tagged} {t("analytics.tagged")}
                   </div>
                 )}
               </div>
-            );
-          })}
-        </div>
-      ))}
+            </div>
+            {video.rows.map((r) => {
+              const key = `${r.piece_id}-${r.platform}`;
+              const withTyped =
+                typed[key] === undefined
+                  ? r
+                  : {
+                      ...r,
+                      views: {
+                        count: typed[key],
+                        captured_on: new Date().toISOString().slice(0, 10),
+                        source: "manual",
+                      },
+                    };
+              const platform = t(`platform.${r.platform}`);
+              return (
+                <div
+                  key={r.publication_id}
+                  className="flex items-center gap-3 border-t border-white/5 pt-2"
+                >
+                  {/* Two lines on purpose, not one that wraps: at 390px the
+                      hour and the link broke across three, with the link
+                      landing wherever the break fell. */}
+                  <div className="min-w-0 flex-1 text-xs text-gray-300">
+                    <div>
+                      <span className="text-white">{platform}</span>
+                      {" · "}
+                      {/* The agency's hour, not the reader's: each platform
+                          posts the same video half a day apart. */}
+                      <span className="text-gray-500">
+                        {exactTime(r.published_at, lang, timezone)}
+                      </span>
+                    </div>
+                    <div>
+                      {r.external_url ? (
+                        <a
+                          href={r.external_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-eko-violet hover:underline"
+                        >
+                          {t("content.watchOn", { platform })}
+                        </a>
+                      ) : (
+                        <span className="text-gray-600">{t("analytics.noLink")}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <Views
+                      row={withTyped}
+                      onSaved={(piece, platform_, views) =>
+                        setTyped((prev) => ({ ...prev, [`${piece}-${platform_}`]: views }))
+                      }
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }

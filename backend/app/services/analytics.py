@@ -530,6 +530,18 @@ async def deals(db: AsyncSession, w: Window, *, with_value: bool) -> dict:
 # ── Content: what each published piece was followed by ───────────────────
 
 
+def _within_any(column, starts: list[datetime], hours: int = 48):
+    """`column` falls inside at least one of the windows opening at `starts`.
+
+    An OR of intervals, not a span from the first start to the last end: two
+    posts three days apart would otherwise claim the day between them, when
+    nobody had just seen either.
+    """
+    return or_(
+        *[and_(column >= start, column < start + timedelta(hours=hours)) for start in starts]
+    )
+
+
 async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
     """Recent publications and what happened in the two days after each.
 
@@ -548,6 +560,13 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
     `limit` counts videos rather than posts, because the page groups by video:
     counting posts ends the list inside a video and drops the platforms that
     did not fit, which reads as "we never posted it there".
+
+    **The association is per VIDEO, over the union of its posts' windows.**
+    The platforms of one video go out half a day apart, so their 48-hour
+    windows overlap for most of their length; counted per post, a visit in the
+    overlap sat on both rows and the owner adding the rows up got a number of
+    people that never existed. Every row of a video carries the same block, so
+    the payload keeps its shape and the card shows it once.
     """
     recent = (
         select(ContentPublication.piece_id)
@@ -597,31 +616,48 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
     # the whole list; `None` for anything nobody has read yet.
     newest = await video_metrics.latest_metrics(db, [row[0] for row in rows])
 
-    out: list[dict] = []
-    for publication_id, piece_id, platform, published_at, url, hook in rows:
-        until = published_at + timedelta(hours=48)
+    starts_by_piece: dict[int, list[datetime]] = {}
+    for _publication_id, piece_id, _platform, published_at, _url, _hook in rows:
+        starts_by_piece.setdefault(piece_id, []).append(published_at)
+
+    # Two queries per video rather than two per post — the same visit was
+    # being counted by every row whose window held it.
+    by_piece: dict[int, dict] = {}
+    for piece_id, starts in starts_by_piece.items():
         sessions = await _scalar(
             db,
             select(func.count()).where(
-                LandingSession.first_seen_at >= published_at,
-                LandingSession.first_seen_at < until,
+                _within_any(LandingSession.first_seen_at, starts)
             ),
         )
         leads_after = await _scalar(
             db,
             select(func.count())
             .select_from(Lead)
-            .where(Lead.created_at >= published_at, Lead.created_at < until),
+            .where(_within_any(Lead.created_at, starts)),
         )
-        # The one honest number in the row: a lead that carried this piece's own
-        # tag. Zero for anything published before the tagging existed, which is
-        # most of them today, and that zero is the truth rather than a gap.
+        # The one honest number on the card: a lead that carried this piece's
+        # own tag. Zero for anything published before the tagging existed,
+        # which is most of them today, and that zero is the truth rather than
+        # a gap. Per piece by construction — the tag names the piece, not the
+        # post — so it too is stamped on every row and shown once.
         tagged = sum(
             1
             for meta in all_metas
             if ((meta or {}).get("attribution") or {}).get("utm_content")
             == f"piece-{piece_id}"
         )
+        by_piece[piece_id] = {
+            "association": {
+                "window_hours": 48,
+                "sessions": sessions,
+                "leads": leads_after,
+            },
+            "leads_tagged": tagged,
+        }
+
+    out: list[dict] = []
+    for publication_id, piece_id, platform, published_at, url, hook in rows:
         out.append(
             {
                 "piece_id": piece_id,
@@ -632,12 +668,7 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
                 "platform": platform.value if hasattr(platform, "value") else str(platform),
                 "published_at": published_at.isoformat(),
                 "external_url": url,
-                "association": {
-                    "window_hours": 48,
-                    "sessions": sessions,
-                    "leads": leads_after,
-                },
-                "leads_tagged": tagged,
+                **by_piece[piece_id],
                 "views": (
                     {
                         "count": snapshot.views,

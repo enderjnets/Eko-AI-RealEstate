@@ -140,9 +140,10 @@ describe("view counts, and where they came from", () => {
     // are only association. Folding them into one figure would launder one into
     // the other, and a number with the wrong standing is worse than none.
     const source = table();
-    expect(source).toContain("r.association.sessions");
+    expect(source).toContain("after.sessions");
     expect(source).toContain("row.views?.count");
     expect(source).not.toMatch(/association\.sessions \+/);
+    expect(source).not.toMatch(/after\.sessions \+/);
   });
 
   it("says whether a number was read or typed", () => {
@@ -253,5 +254,38 @@ describe("the card names the video", () => {
 
   it("carries the title and the publication id from the server", () => {
     expect(read("lib/api.ts")).toMatch(/publication_id: number;[\s\S]{0,200}hook: string \| null;/);
+  });
+});
+
+describe("one 48h figure per video", () => {
+  const table = () => read("components/analytics/ContentTable.tsx");
+
+  it("reads the association once per video, above the platform lines", () => {
+    // The server counts the union of the video's windows and stamps the same
+    // block on every row. Rendered per platform line it read as three times
+    // the people; rendered per row it also invited adding the rows up.
+    const source = table();
+    const reads = [...source.matchAll(/\.association\b/g)];
+    expect(reads.map((m) => m.index)).toHaveLength(1);
+    expect(source).toContain("video.rows[0].association");
+    expect(reads[0].index).toBeLessThan(source.indexOf("video.rows.map("));
+    // The tag names the piece, not the post: once per video as well.
+    expect([...source.matchAll(/\.leads_tagged\b/g)]).toHaveLength(1);
+    expect(source.indexOf(".leads_tagged")).toBeLessThan(source.indexOf("video.rows.map("));
+  });
+
+  it("says the window is counted from each post, in both languages", () => {
+    // The figure spans the union of every post's 48 hours, so "48h after"
+    // alone would understate it for a video posted three times.
+    for (const dict of [EN, ES]) {
+      expect(dict["analytics.assoc48"].toLowerCase()).toMatch(/each post|cada publicaci/);
+    }
+  });
+
+  it("keeps platform and hour on one line and the link on the next", () => {
+    // At 390px the old single wrapping line broke into three, with the link
+    // landing wherever the break fell. The hour's span now closes its line
+    // before the link block opens.
+    expect(table()).toMatch(/exactTime\([^)]*\)\}\s*<\/span>\s*<\/div>/);
   });
 });

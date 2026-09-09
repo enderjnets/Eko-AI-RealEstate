@@ -708,3 +708,113 @@ async def test_a_video_written_without_a_hook_still_has_a_row() -> None:
             )
             await db.commit()
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_visit_after_two_posts_of_one_video_is_counted_once() -> None:
+    """One figure per video, over the union of its posts' windows.
+
+    The platforms of one video go out half a day apart, so their 48-hour
+    windows overlap for most of their length. Counted per post, a visit in the
+    overlap sat on both rows — and the owner reading the card and adding the
+    rows up got a number of people that never existed. A visit that followed
+    only the FIRST post still belongs to the video (the union, not the
+    intersection), and a visit between two posts days apart belongs to
+    neither (the union, not the span).
+    """
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+    )
+
+    await _fresh()
+    now = datetime.now(UTC)
+
+    def piece(hook: str) -> ContentPiece:
+        return ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook=hook,
+        )
+
+    def post(piece_id: int, platform: PublicationPlatform, hours_ago: int) -> ContentPublication:
+        return ContentPublication(
+            org_id=ORG,
+            piece_id=piece_id,
+            platform=platform,
+            status=PublicationStatus.PUBLISHED,
+            published_at=now - timedelta(hours=hours_ago),
+        )
+
+    def visit(key: str, hours_ago: int) -> LandingSession:
+        at = now - timedelta(hours=hours_ago)
+        return LandingSession(
+            org_id=ORG,
+            session_key=f"assoc-{key}".ljust(32, "x"),
+            first_seen_at=at,
+            last_seen_at=at,
+            source="direct",
+            device="phone",
+            max_scroll_pct=10,
+            sections_viewed=[],
+            tel_clicks=0,
+            event_count=1,
+        )
+
+    def lead(suffix: str, hours_ago: int) -> Lead:
+        return Lead(
+            org_id=ORG,
+            phone=f"{MARKER}{suffix}",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=now - timedelta(hours=hours_ago),
+        )
+
+    async with get_bypass_session_factory()() as db:
+        video, other, gapped = piece("union of windows"), piece("one post"), piece("days apart")
+        db.add_all([video, other, gapped])
+        await db.flush()
+        db.add_all(
+            [
+                post(video.id, PublicationPlatform.YOUTUBE, 30),
+                post(video.id, PublicationPlatform.TIKTOK, 18),
+                post(other.id, PublicationPlatform.INSTAGRAM, 100),
+                post(gapped.id, PublicationPlatform.YOUTUBE, 150),
+                post(gapped.id, PublicationPlatform.TIKTOK, 20),
+                visit("first-only", 29),   # after the first post, before the second
+                visit("overlap", 10),      # inside BOTH of the video's windows
+                visit("before", 31),       # before either post: nobody had seen it
+                visit("other", 60),        # the other video's window, and only its
+                visit("gap", 40),          # between two posts days apart: neither's
+                lead("0201", 10),
+                lead("0202", 60),
+            ]
+        )
+        await db.commit()
+        ids = {"video": video.id, "other": other.id, "gapped": gapped.id}
+    try:
+        rows = (await _get("?range=7d"))["content"]
+
+        def of(name: str, field: str) -> list[int]:
+            return [r["association"][field] for r in rows if r["piece_id"] == ids[name]]
+
+        # Two people followed this video: the one after the first post and the
+        # one in the overlap. Per post it read 2 on one row and 1 on the other,
+        # which adds up to a third person who does not exist.
+        assert of("video", "sessions") == [2, 2]
+        assert of("video", "leads") == [1, 1]
+        assert of("other", "sessions") == [1]
+        assert of("other", "leads") == [1]
+        # The visit at -40h is not in either 48-hour window. A span from the
+        # first post to the last would have claimed it, and four others.
+        assert of("gapped", "sessions") == [1, 1], "the -20h post's window holds the -10h visit"
+        assert of("gapped", "leads") == [1, 1]
+    finally:
+        await _cleanup()

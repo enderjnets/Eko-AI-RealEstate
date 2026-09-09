@@ -1221,8 +1221,13 @@ export interface Analytics {
     /** **Association, not attribution.** What happened in the 48 hours after
      *  this went out. A Shorts description link is not clickable and Instagram
      *  strips the referrer, so most viewers arrive indistinguishable from
-     *  anyone else. The page must never label this "attribution". */
+     *  anyone else. The page must never label this "attribution".
+     *
+     *  **Per video, not per post**: counted once over the union of the 48 h
+     *  windows of every post of this video, and identical on every row of
+     *  the video. Adding the rows up multiplies the same people. */
     association: { window_hours: number; sessions: number; leads: number };
+    /** Also per video — the tag names the piece, not the post. */
     leads_tagged: number;
     /** How many people actually watched. This one IS a measurement — it is the
      *  platform's own counter — which is why it sits apart from `association`.
