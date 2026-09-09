@@ -292,3 +292,47 @@ def test_a_two_line_ask_is_centred_line_by_line_too(tmp_path: Path) -> None:
     assert (tmp_path / "cta1.txt").read_text(encoding="utf-8") == (
         "denverhomestory.com/fall/2"
     )
+
+
+def test_the_mark_is_drawn_last_and_top_right(tmp_path: Path) -> None:
+    """La marca va encima de todo y con los MISMOS numeros que la cinta
+    narrada. Si este formato la pusiera a otro tamano, el perfil se leeria como
+    dos cuentas distintas.
+
+    Y el indice del audio tiene que correrse: la marca ocupa `len(clips)`, asi
+    que con `len(clips)` a secas el audio saldria del PNG del logo.
+
+    Mutacion: dejar `music_index = len(piece.clips)` -> rojo aqui.
+    """
+    marca = tmp_path / "mark.png"
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+         "-i", "color=c=red:s=600x262:d=1", "-frames:v", "1", str(marca)],
+        check=True, capture_output=True, timeout=120,
+    )
+    piece = _piece([tmp_path / "a.mp4", tmp_path / "b.mp4"])
+    argv = static_piece.build_command(
+        piece, tmp_path, tmp_path / "o.mp4",
+        font=None, music=tmp_path / "bgm.mp3", mark=marca,
+    )
+    graph = argv[argv.index("-filter_complex") + 1]
+    assert f"scale={static_piece._MARK_WIDTH}:-1[markscaled]" in graph
+    assert f"overlay=W-w-{static_piece._MARK_MARGIN}:{static_piece._MARK_MARGIN}" in graph
+    # Encima del texto: el overlay lee de [out], que es la ultima capa de letras.
+    assert "[out][markscaled]overlay=" in graph
+    assert argv[argv.index("-map") + 1] == "[marked]"
+    # El audio, del fichero de musica y no del PNG.
+    assert f"[{len(piece.clips) + 1}:a]volume=" in graph
+
+
+def test_without_a_mark_the_map_and_the_audio_index_stay_put(tmp_path: Path) -> None:
+    """Sin marca nada se corre: el mapa sale de `[out]` y el audio de
+    `len(clips)`. Es el caso que las 36 primeras piezas usaron."""
+    piece = _piece([tmp_path / "a.mp4", tmp_path / "b.mp4"])
+    argv = static_piece.build_command(
+        piece, tmp_path, tmp_path / "o.mp4", font=None, music=tmp_path / "bgm.mp3"
+    )
+    graph = argv[argv.index("-filter_complex") + 1]
+    assert "markscaled" not in graph
+    assert argv[argv.index("-map") + 1] == "[out]"
+    assert f"[{len(piece.clips)}:a]volume=" in graph

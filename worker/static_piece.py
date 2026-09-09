@@ -68,6 +68,14 @@ _SHADOW = (
     ":borderw=2:bordercolor=black@0.45"
 )
 
+#: La marca, arriba a la derecha. Los MISMOS numeros que `assemble.py` usa en
+#: la cinta narrada, y a proposito: dos formatos con el logo a distinto tamano
+#: en el mismo perfil se leen como dos cuentas. `verify.brand_is_present` mide
+#: con estos valores por defecto, asi que cambiarlos aqui sin cambiarlos alli
+#: haria que la comprobacion buscase donde no esta.
+_MARK_WIDTH = 190
+_MARK_MARGIN = 44
+
 
 class Rejected(Exception):
     """The file was built and is not what was asked for."""
@@ -154,6 +162,7 @@ def build_command(
     *,
     font: str | None,
     music: Path | None,
+    mark: Path | None = None,
 ) -> list[str]:
     """The whole render as one ffmpeg invocation, pure enough for a test.
 
@@ -252,11 +261,24 @@ def build_command(
         f":enable='gte(t,{BRAND_FROM_SECONDS:.2f})'[out]"
     )
 
+    # La marca va la ULTIMA, encima de todo: si fuese antes del texto, una
+    # linea larga podria cruzarla.
+    if mark is not None:
+        mark_index = len(piece.clips)
+        inputs += ["-i", str(mark)]
+        graph += (
+            f";[{mark_index}:v]scale={_MARK_WIDTH}:-1[markscaled]"
+            f";[out][markscaled]overlay=W-w-{_MARK_MARGIN}:{_MARK_MARGIN}[marked]"
+        )
+
     argv = ["ffmpeg", "-y", "-v", "error", *inputs]
-    maps = ["-map", "[out]"]
+    maps = ["-map", "[marked]" if mark is not None else "[out]"]
     if music is not None:
         argv += ["-i", str(music)]
-        music_index = len(piece.clips)
+        # DESPUES de la marca, que ya ocupa `len(clips)` cuando la hay. Con
+        # `len(clips)` a secas los dos apuntaban al mismo indice y el audio
+        # salia del PNG del logo.
+        music_index = len(piece.clips) + (1 if mark is not None else 0)
         # `apad` and an explicit `-t`, the same rule as the narrated lane: the
         # audio is stretched to the video's declared length, never the other
         # way round. A bed shorter than the piece would otherwise end it early.
@@ -302,6 +324,7 @@ def render(
     *,
     font: str | None = None,
     music: Path | None = None,
+    mark: Path | None = None,
     tolerance: float = 0.25,
 ) -> Path:
     """Build it, then measure it.
@@ -311,7 +334,7 @@ def render(
     video missing its end card, and it must fail here rather than be published.
     """
     workdir.mkdir(parents=True, exist_ok=True)
-    argv = build_command(piece, workdir, output, font=font, music=music)
+    argv = build_command(piece, workdir, output, font=font, music=music, mark=mark)
     done = subprocess.run(argv, capture_output=True, text=True, timeout=1800)
     if done.returncode != 0:
         raise Rejected(f"ffmpeg refused this piece: {done.stderr.strip()[:400]}")
@@ -321,5 +344,14 @@ def render(
         raise Rejected(
             f"asked for {piece.seconds:.2f}s and got {made:.2f}s — the length "
             f"was derived from the inputs somewhere instead of declared"
+        )
+    # El mismo guardia que la cinta narrada: mirar los PIXELES, no el comando.
+    # Un overlay puede quedarse fuera del encuadre, taparse o escalar a nada, y
+    # el comando se ve idéntico. Sin Pillow no se puede medir, y entonces se
+    # dice — un aviso silenciado es peor que no tener comprobación.
+    if mark is not None:
+        from worker import verify
+        verify.brand_is_present(
+            output, mark, workdir, mark_width=_MARK_WIDTH, margin=_MARK_MARGIN
         )
     return output
