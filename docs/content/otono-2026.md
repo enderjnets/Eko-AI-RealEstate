@@ -95,6 +95,12 @@ quince filas habrían quedado apuntando a ficheros inexistentes. Se arregla con
 de ficheros presentes en el volumen es la única prueba, nunca el código de
 salida del bucle.
 
+Y el mismo bucle, ya arreglado, **se dejó la última de las 17**: el fichero de
+la lista no terminaba en salto de línea, y `while read` descarta en silencio
+una última línea sin `\n`. Dos defectos distintos del mismo bucle en una hora,
+los dos con `exit 0`. El recuento los cazó los dos; el código de salida,
+ninguno. Al generar una lista para un bucle, terminarla en `\n`.
+
 ---
 
 ## Parte 1 — Otoño (18 piezas, 3 por semana, 15-sep → 26-oct)
