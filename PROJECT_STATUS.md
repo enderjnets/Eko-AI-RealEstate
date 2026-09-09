@@ -177,6 +177,38 @@ estado de `main`. Queda escrito para que nadie los lea como una regresión de
 
 ---
 
+## El calendario deja de ser el orden de aprobación — desplegado 9-sep
+
+`buffer_publisher` reparte ahora desde `publish_window_start` de la pieza, no
+desde `now`. Un ayudante, `_from_when(piece, zone)`, y **un solo sitio de
+llamada**. Sin ventana devuelve `now` (las 18 de calculadora son permanentes y
+no cambian de comportamiento); con ventana pasada devuelve `now` y nunca el
+pasado — Buffer rechaza un `dueAt` pasado y la pieza se quedaría reclamada y
+muda.
+
+**Por qué.** El orden de aprobación era el único calendario del carril, y eso
+fundía dos decisiones sin relación: «esto se puede publicar» y «esto va antes
+que aquello». El panel lista de más nueva a más vieja (`content.py:320`), así
+que aprobar dieciocho de arriba abajo publicaba la temporada **al revés**: la
+del 26-oct la segunda, la del 17-sep la última. **Pasó dos veces la misma
+noche** y nada avisó ninguna de las dos.
+
+**La prueba que casi no escribo.** Las tres primeras medían `_from_when` en
+aislamiento. Con el sitio de llamada revertido a `datetime.now(UTC)`, **las
+tres seguían verdes** mientras la temporada volvía a salir invertida. La cuarta
+mira el `dueAt` que sale hacia Buffer, y esa mutación la pone roja **solo a
+ella**. Tres mutaciones corridas, cada una roja donde le toca.
+
+Desplegado y verificado: código presente en el proceso vivo (no en la imagen
+—se comprobaron los dos—), health `0.96.0`, alembic en `056` sin migración
+nueva, 0 tracebacks. Copias en `backup_eko_20260909_pre_ventana.sql.gz` y
+`.env.bak.20260909_ventana`.
+
+Efecto inmediato: **F1 (pieza 21) pasa de salir el 10-11 de septiembre a salir
+el 15**, que es su ventana.
+
+---
+
 ## Otoño 2026 — las 18 piezas montadas y en el panel
 
 **8-sep-2026.** Las dieciocho existen. F1 es la pieza **21**, aprobada por el
