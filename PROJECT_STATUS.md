@@ -8,7 +8,54 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ## v0.96.0 — una pieza que llega a su semana ya no espera en silencio
 
-**CONSTRUIDA Y EN VERDE. NO DESPLEGADA.** El dueño autorizó construirla; el
+**✅ DESPLEGADA Y VERIFICADA EN PRODUCCIÓN el 9-sep-2026**, con autorización del
+dueño. VPS `28953e8` → **`f4ab5eb`** por bundle + `--ff-only`. Copias previas:
+`.env.bak.20260909_v0960` (8.249 bytes, `cmp` idéntico) y
+`~/backup_eko_20260909_pre_v0960.sql.gz` (sha256 `05f9441bce9a8b1b24a7cd39…`,
+comprobada por dentro: 24 tablas con datos, no solo por tamaño).
+
+Orden correcto y no obvio: el código va **horneado** en la imagen, así que la
+migración se corrió con la imagen **nueva** (`docker compose run --rm --no-deps
+backend alembic upgrade head`) DESPUÉS de construir y ANTES de `up -d`. Correrla
+con `exec` sobre el contenedor vivo habría usado el código viejo, que no tiene
+la 056.
+
+Salida real en producción:
+
+```
+/api/v1/health   {"version":"0.96.0","env":"production","status":"ok"}
+alembic current  056_publish_window (head)
+arranque         [INFO] app.main: Content window alert started (every 3600s)
+tracebacks       0
+ventanas puestas 18   (contadas; y 0 piezas de otoño sin ventana)
+tic manual       antelacion=3 dias, activo=True, piezas avisadas=0 — primer aviso 14-sep
+marca            / /fall /calculator /contact → 200
+panel            /fall /calculator → 308 · /leads → 200
+```
+
+🔴 **Y al verificar apareció el problema de verdad de la noche: la escalera
+salía al revés.** El dueño había aprobado las 17 en el panel **de la 39 hacia
+abajo**, y el orden de publicación es el de `approved_at`: la 39 (ventana
+**26-oct**) habría salido la segunda y la 23 (ventana **17-sep**) la última. A
+una pieza por día, la banda con caducidad dura —una semana de viento la deja
+sin objeto— habría salido a finales de mes.
+
+Elegido por el dueño: **volver a las tandas**. Las piezas 23-28 y 30-39 vuelven
+a `needs_approval`, con `approved_by` y `approved_at` **limpiados** (una pieza
+pendiente que conserva sello de aprobación es una contradicción que engaña al
+que mire). La **21 no se toca**: ya está en la cola y su orden es correcto.
+
+**No se re-selló ninguna fecha de aprobación**, y esa es la parte que casi hago
+mal: al ofrecer la opción escribí «no falsifica nada», y ordenar la banda 1
+re-sellando `approved_at` **sí** habría sido reescribir cuándo aprobó una
+persona. Devolverlas a pendiente hace que la fecha diga la verdad cuando se
+aprueben en su semana, y el orden sale bien solo.
+
+Efecto secundario que importa: **con las 17 aprobadas el aviso habría quedado
+mudo toda la temporada** —solo mira piezas sin aprobar—, cosa que se le dijo al
+dueño antes de que eligiera. Ahora sí dispara.
+
+*(Antes del despliegue esta sección decía:)* **CONSTRUIDA Y EN VERDE. NO DESPLEGADA.** El dueño autorizó construirla; el
 despliegue lo pide él en un mensaje aparte. Rama `feat/aviso-ventana-bandas`,
 nacida de `origin/main` (`06ab140`). Versión **0.96.0 concedida por el dueño**.
 
@@ -122,7 +169,7 @@ estado de `main`. Queda escrito para que nadie los lea como una regresión de
   banda 4 → 15-nov. Las de calculadora, si suben, van **sin ventana** a
   propósito: son permanentes.
 - **Al correr ese `UPDATE`, no leer el `UPDATE n` que imprime.** Contar las filas
-  con ventana no nula y compararlas con 20. La sesión par tuvo esta noche un
+  con ventana no nula y compararlas con **18** (6+4+4+4, no 20: lo escribí mal la primera vez y una comprobación con el número equivocado no comprueba nada). La sesión par tuvo esta noche un
   bucle que copió 2 ficheros de 17 y terminó con `exit 0` y mensaje de éxito;
   lo único que lo cazó fue contar al otro lado.
 - Reconstruir backend y frontend, y `alembic upgrade head` **antes** de arrancar
