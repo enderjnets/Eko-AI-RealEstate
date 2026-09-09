@@ -317,6 +317,68 @@ el arreglo es un `safeHref()` compartido en los dos sitios.
 tagueada y desplegada, así que el número del plan no sirve. **Hace falta que el
 dueño diga la versión.**
 
+### Cierre — auditoría transversal, advisor y pre-despliegue (sin desplegar)
+
+**Cuarta auditoría independiente (solo lectura, sobre el diff completo de las
+tres fases contra `origin/main`).** Encargo: coherencia entre fases y riesgo de
+despliegue. Lo que confirmó sano: el contrato extremo a extremo cuadra en las
+**diez** claves del payload (`AnalyticsOut.content` es `list[dict]`, así que
+Pydantic no tira `hook` ni `publication_id`); **esta rama no añade migración**
+(`056_publish_window` ya está en producción); **no toca `.env.example`,
+`docker-compose.yml` ni `config.py`**; el primer tick tras desplegar hace **1-2
+peticiones a Buffer** y escribe **solo** `external_url`.
+
+| Hallazgo | Clase | Decisión |
+|---|---|---|
+| Las tres fases cambian lo que ve el cliente **sin bump ni CHANGELOG**; `CURRENT_VERSION` sigue en `0.96.0`, igual que producción | 🔴 Bloqueante | Es exactamente la Fase 4. **Bloqueada: el número lo da el dueño.** |
+| Las idas y vueltas del endpoint pasan de ~44 a hasta ~124 por petición | Importante | Backlog. Riesgo 3 del plan, aceptado por escrito antes de empezar; se mide en producción con `range=90d`. |
+| Las tres ventanas de 48 h se solapan y, bajo un título, invitan a sumarse | Importante | **Sube a decisión del dueño**, no a nota: dos auditorías independientes la marcaron y el arreglo honesto (una cifra por vídeo sobre la ventana unión) es una consulta nueva, o sea cambio de plan. |
+| `backfill_links` no converge si el reconciliador vuelve a crear filas publicadas sin enlace; y con más de 20, bloqueo de cabeza de cola | Importante | Backlog. Hoy son 15 filas, todas dentro de la ventana; no aplica en esta puesta. |
+| `external_url` llega al `href` sin lista blanca de esquema | Menor | Backlog (ya anotado en la Fase 3: exposición idéntica a la que ya se envía). |
+| Las claves de React usan `publication_id` y el editor de vistas `pieza+plataforma` | Menor | **Descartado**: `UNIQUE(piece_id, platform)` hace imposible que dos filas compartan esa pareja. |
+| El primer backfill da de alta esas piezas en la cuota de métricas de YouTube | Menor | **Se dice en el pre-despliegue**, no se arregla: es el efecto buscado (`snapshot_youtube` salta las filas sin enlace). |
+| El valor de retorno de `backfill_links` se descarta | Menor | **Descartado**: lo cubre `log.info("Recovered %s publication link(s)…")`. |
+
+**Consulta al advisor nº 5 (cierre, antes del pre-despliegue).** Motivo: regla 5
+del método — coherencia entre fases, cabos sueltos y riesgo de despliegue.
+Decisión: no hay cabo suelto que impida preparar el despliegue; los dos
+descartes de arriba se confirman; la lectura aditiva de las 48 h **sube al
+cierre de turno como decisión del dueño**, junto al número de versión; y la
+Fase 4, cuando llegue el número, escribe los tres ficheros **antes** de lanzar
+ningún test y **no toca el cuerpo de `PLAN.md`** (modificar el plan es del
+dueño; las correcciones viven aquí).
+
+**Foto previa de producción, tomada hoy** (`psql` de solo lectura, guardada en
+fichero fuera del repo): **15** filas `published` sin `external_url`,
+`alembic_version` = `056_publish_window`. Es lo que permitirá afirmar después
+que `published_at` no se movió.
+
+**Pre-despliegue (preparado, NO ejecutado — falta el bump y la autorización).**
+
+1. **Base.** El VPS corre `7bc62d5`; la rama lo contiene, así que el avance es
+   `--ff-only`. Comprobar con `merge-base` contra el commit de release final.
+2. **Sin migración.** `alembic current` = `056_publish_window` **antes y
+   después**; **no** correr `alembic upgrade`. **Sin cambios en `.env`** ni en
+   compose. Reconstruir **solo** `backend` y `frontend`.
+3. **Copias, como en el precedente de v0.96.0.** `.env.bak.<fecha>_v<versión>`
+   verificado con `cmp`, y volcado `backup_eko_*.sql.gz` con su sha256 y las 24
+   tablas comprobadas por dentro.
+4. **Después:** `/health` = versión nueva; el payload de analytics trae `hook` y
+   `publication_id`; el primer tick hace 1-2 peticiones a Buffer y escribe solo
+   `external_url`; tras dos ticks (~30 min) las 15 filas pasan a **0** sin
+   enlace y aparece `Recovered` en `docker logs`; `content_metrics` de YouTube
+   para las piezas 3-8 empieza a subir en el siguiente `snapshot_youtube` —
+   **y con ello sube el gasto de cuota de YouTube**; medir el tiempo de
+   `GET /api/v1/analytics?range=90d`.
+5. **Lo que yo no puedo comprobar:** la tarjeta a 390 px la mira el dueño en su
+   móvil.
+6. **Rollback:** `git reset --hard 7bc62d5` + reconstruir. Los enlaces
+   recuperados y el alta en `snapshot_youtube` **persisten** (son datos, no
+   código) y el código viejo los lee bien.
+
+**Convivencia:** hoy no hay sesiones par vivas, así que no hubo a quién avisar
+del hash final.
+
 ---
 
 ## v0.96.0 — una pieza que llega a su semana ya no espera en silencio
