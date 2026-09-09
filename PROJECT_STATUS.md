@@ -142,7 +142,7 @@ Dos hallazgos menores atendidos, uno **rechazado con motivo**:
    donde el plan lo puso.
 3. La tarjeta puede crecer a 60 filas sin límite visual ni virtualización.
 
-### Fase 2 [CRÍTICA] — Buffer devuelve el enlace que no guardamos · commit `PENDIENTE`
+### Fase 2 [CRÍTICA] — Buffer devuelve el enlace que no guardamos · commit `da52ac5`
 
 Dos pasos, con dos verdes, porque el riesgo no era el backfill sino tocar el
 camino vivo por donde sale cada publicación:
