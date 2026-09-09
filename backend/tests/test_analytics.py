@@ -52,6 +52,12 @@ async def _cleanup() -> None:
     async with get_bypass_session_factory()() as db:
         await db.execute(text("DELETE FROM leads"))
         await db.execute(text("DELETE FROM landing_sessions"))
+        # Content too, since `content` began asserting how many rows come back
+        # and which video each one names. The publisher's tests seed published
+        # pieces and leave them, so without this the count here is whatever ran
+        # earlier — which is a green that depends on file order. Publications
+        # go with the piece: the foreign key cascades.
+        await db.execute(text("DELETE FROM content_pieces"))
         await db.commit()
 
 

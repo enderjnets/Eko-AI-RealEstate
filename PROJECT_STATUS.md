@@ -142,6 +142,93 @@ Dos hallazgos menores atendidos, uno **rechazado con motivo**:
    donde el plan lo puso.
 3. La tarjeta puede crecer a 60 filas sin límite visual ni virtualización.
 
+### Fase 2 [CRÍTICA] — Buffer devuelve el enlace que no guardamos · commit `PENDIENTE`
+
+Dos pasos, con dos verdes, porque el riesgo no era el backfill sino tocar el
+camino vivo por donde sale cada publicación:
+
+1. **Extracción.** La lectura aliasada de Buffer sale de `reconcile_scheduled` a
+   `_post_states(rows, what)`, que devuelve `(alias, fila, post, error)` por fila
+   o `None` si la pregunta no se pudo hacer. **El fichero del reconciliador dio
+   61 passed antes y 61 después**: la extracción no cambió nada. Se conserva el
+   `alias` en la tupla porque los dos avisos del reconciliador lo nombran.
+2. **`backfill_links(db)`**, llamado en `publish_approved` tras el reconciliador.
+   Escribe **solo** `external_url`: nunca `status`, `published_at`,
+   `last_error`, ni cierra pieza. Un `NOT_FOUND` sobre una fila ya publicada no
+   escribe nada — que Buffer olvide un post no dice nada sobre un post que salió.
+
+| Comprobación | Resultado real |
+|---|---|
+| `tests/test_buffer_publisher.py` | ✅ **70 passed** (61 de base + 9 nuevos) |
+| Suite backend completa, base recreada | ✅ **1820 passed, 0 skipped** (referencia 1808) |
+| `ruff check app tests` | ✅ «All checks passed!» |
+| Barridos AST (`content_gate`, `opt_out`) | ✅ ninguna función nueva llega al cable; `_graphql` sigue siendo la única señalada |
+
+**Mutaciones — 11, todas en rojo en el test que les toca, `md5` restaurado:**
+
+| Mutación | Test en rojo |
+|---|---|
+| Escribir `published_at` desde `sentAt` | `..._went_out_without_a_link_gets_one...` |
+| No asignar `external_url` | el mismo |
+| Copiar la rama FAILED del reconciliador **y contarla** | `..._holds_no_link_for_is_left_exactly...` |
+| Quitar el filtro `external_url IS NULL` | `..._asks_only_about_published_rows...` |
+| Quitar el filtro de estado `PUBLISHED` | el mismo |
+| Quitar `.limit(_BACKFILL_BATCH)` | `..._is_bounded_per_tick` |
+| Quitar la cláusula del lookback | `..._older_than_the_lookback...` |
+| Quitar la guarda `BUFFER_SIMULATED` | `..._simulation_asks_buffer_nothing...` |
+| Borrar la llamada en `publish_approved` | `..._tick_recovers_links_after_reconciling` |
+| Quitar la guarda de lote vacío | `..._an_empty_batch_never_becomes_a_query` |
+
+**Dos mutaciones salieron verdes primero, y las dos enseñaron algo:**
+
+- **«Copiar la rama FAILED» no se veía** porque mi mutación escribía `status` sin
+  contar nada, y sin `linked` no hay `commit`: la base no cambiaba. Rehecha con
+  `linked += 1` — la forma en que un humano cometería ese error — el test la ve.
+  **Una mutación que no llega a la base no prueba nada.**
+- **«Quitar el filtro de estado» no se veía** porque la cláusula del lookback ya
+  excluía la fila `SCHEDULED` (tiene `scheduled_at`, no `published_at`). Medido:
+  hoy `published_at` no nulo equivale a `published`, en las tres escrituras del
+  código y en las 30 filas de producción. El filtro era un predicado que ningún
+  test podía falsificar. Se sembró en el test una fila `FAILED` **con**
+  `published_at` — el estado para el que el filtro existe — y ahora sí lo ve.
+
+**Un rojo cruzado que no era del código.** La suite completa dio 5 fallos en
+`test_analytics.py` (`assert 4 == 1`). No era la Fase 2: mis corridas sueltas del
+fichero del reconciliador dejaron piezas publicadas en la base, y el `_cleanup`
+de analytics solo borraba leads y sesiones aunque su docstring prometía «todo».
+Ahora borra también `content_pieces` (las publicaciones caen por la FK).
+Verificado en los dos órdenes: reconciliador→analytics 69+15, y juntos 84.
+Ese verde dependía del orden de los ficheros; ya no.
+
+**Auditoría independiente (1 subagente, solo lectura, sin advisor).** Cero
+bloqueantes. Verificó la extracción línea a línea contra `81eb278`: `unread` y
+`unknown` se construyen con los mismos valores, ambos `return 0` viejos se
+mapean de vuelta desde `None`, y **0 líneas de comentario perdidas** (lo
+comprobó programáticamente). Confirmó que el backfill no puede escribir nada más
+que el enlace, que el `commit` no puede dejar media escritura, y que corre dentro
+del límite de inquilino.
+
+- ❌ **«El lookback puede excluir justo las 15 filas»** — descartado con dato:
+  en producción, **15 dentro** de la ventana de 60 días y **0 fuera**.
+- ✅ Guarda de lote vacío en `_post_states` (ya es un ayudante compartido) y el
+  `or None` muerto, los dos con test y mutación.
+
+**Backlog de la Fase 2:**
+
+1. 🔴 **El backfill puede no terminarse nunca.** Si Buffer contesta `sent` con
+   `externalLink` nulo, el reconciliador crea exactamente la fila que el
+   backfill busca, así que la pregunta se repite cada tick durante 60 días
+   (~96 lecturas/día/org de más). **Mi sonda de la Fase 0 dice que hoy no
+   pasa** — las tres plataformas devolvieron enlace — pero es latente. El
+   arreglo real necesita recordar «preguntado, sin enlace», y eso es una
+   columna nueva, fuera del alcance de esta fase.
+2. El aviso del ayudante dice «Could not reconcile … published posts without a
+   link»: «reconcile» no es la palabra en el camino del backfill. No se cambió
+   para no tocar una cadena de log operativa dentro de la fase que toca el
+   camino de publicación.
+3. El backfill llega a Buffer antes de `verify_organization()`, igual que el
+   reconciliador. Preexistente; el backfill solo lee.
+
 ---
 
 ## v0.96.0 — una pieza que llega a su semana ya no espera en silencio

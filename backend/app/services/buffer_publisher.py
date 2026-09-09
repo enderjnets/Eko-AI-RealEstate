@@ -873,6 +873,102 @@ async def publish_piece(db: AsyncSession, piece_id: int) -> None:
 
 
 
+async def _post_states(
+    rows: list[ContentPublication], what: str
+) -> list[tuple[str, ContentPublication, dict[str, Any] | None, dict[str, Any] | None]] | None:
+    """One aliased read for a whole batch: `(alias, row, post, error)` per row.
+
+    `None` means the question could not be asked at all — a distinction the
+    callers depend on, because "no answer" and "the answer is no" lead to
+    opposite writes.
+    """
+    if not rows:
+        # Both callers check first, so this is belt and braces — but an empty
+        # batch builds `query () {\n\n}`, which Buffer rejects, and a third
+        # caller would find that out in production rather than here.
+        return []
+    # Ids travel as GraphQL VARIABLES, never interpolated into the query. Two
+    # reasons, both measured rather than imagined. A quote in one id used to
+    # invalidate the whole batch string, Buffer answered 400, and every other
+    # row in that batch went unreconciled on every tick from then on — a
+    # permanent, silent stall behind one bad value. And an id carrying
+    # `") { id } evil: organization(input: { id: "` appended a second field to
+    # our own query. These ids come from Buffer's own answers, so the attacker
+    # would have to be Buffer or somebody between us — but a parameterised
+    # query costs nothing and closes both.
+    aliases = {f"p{i}": row for i, row in enumerate(rows)}
+    query = (
+        "query ("
+        + ", ".join(f"${alias}: PostId!" for alias in aliases)
+        + ") {\n"
+        + "\n".join(
+            f"  {alias}: post(input: {{id: ${alias}}}) {_POST_STATE}"
+            for alias in aliases
+        )
+        + "\n}"
+    )
+    variables = {alias: row.external_id for alias, row in aliases.items()}
+
+    try:
+        # `_graphql` returns the whole GraphQL envelope, so the aliases live one
+        # level down under "data". Reading them from the envelope found nothing
+        # for every alias and marked all three posts "no longer exists" —
+        # retiring live posts on a successful read. The test that caught it
+        # asserts the three labels separately, which is why it could.
+        payload = await _graphql(query, variables)
+    except (BufferRefused, httpx.HTTPError) as exc:
+        # Nothing is written. A question we could not ask is not an answer, and
+        # marking these FAILED would retire posts that are very likely live.
+        log.warning("Could not reconcile %s %s: %s", len(rows), what, exc)
+        return None
+
+    # A 200 carrying `errors` is not a verdict on every post in it. GraphQL
+    # answers 200 and puts application errors in the body — the same thing
+    # `parse_create_post` already knows about writes — and each entry names the
+    # alias it belongs to in its `path`. Read as a blanket failure it marked a
+    # LIVE post "no longer exists", the piece closed FAILED, FAILED is the one
+    # status that offers a person Retry, and a re-approved piece re-sends its
+    # failed rows: a transient read error ended in a second public post.
+    #
+    # **Measured against the real API, because the shape decides the code.**
+    # Asking for one real id and one well-formed id that does not exist:
+    #
+    #   {"errors":[{"message":"Post not found for id: 0000…",
+    #               "path":["p1"],"extensions":{"code":"NOT_FOUND"}}],
+    #    "data":null}
+    #
+    # Two things follow, and both contradict what this was first written to do.
+    # Buffer does NOT return a clean `null` for a post somebody deleted — it
+    # returns an error — so the "alias is null means gone" branch was
+    # unreachable. And one bad id nulls `data` for the WHOLE batch, so a single
+    # deleted post would have stalled every other row on every tick for ever.
+    #
+    # So: errors are matched to their alias by `path`. NOT_FOUND is a real
+    # answer about that one post; anything else is a read that failed. The rows
+    # we could not read keep their status and come back on the next tick — by
+    # which time the NOT_FOUND ones are recorded and out of the batch.
+    by_alias: dict[str, dict[str, Any]] = {}
+    for err in payload.get("errors") or []:
+        path = err.get("path") or []
+        if path and isinstance(path[0], str):
+            by_alias[path[0]] = err
+
+    data = payload.get("data") or {}
+    if not data and not by_alias:
+        # No answers and nothing to explain why: a question we did not get an
+        # answer to, not an answer of "none of these exist".
+        log.warning(
+            "Buffer answered with no data for %s %s: %s",
+            len(rows), what, str(payload)[:300],
+        )
+        return None
+
+    return [
+        (alias, row, data.get(alias), by_alias.get(alias))
+        for alias, row in aliases.items()
+    ]
+
+
 async def reconcile_scheduled(db: AsyncSession) -> int:
     """Ask Buffer what happened to the posts whose hour has come.
 
@@ -928,87 +1024,14 @@ async def reconcile_scheduled(db: AsyncSession) -> int:
         await _close_touched(db, due)
         return len(due)
 
-    # Ids travel as GraphQL VARIABLES, never interpolated into the query. Two
-    # reasons, both measured rather than imagined. A quote in one id used to
-    # invalidate the whole batch string, Buffer answered 400, and every other
-    # row in that batch went unreconciled on every tick from then on — a
-    # permanent, silent stall behind one bad value. And an id carrying
-    # `") { id } evil: organization(input: { id: "` appended a second field to
-    # our own query. These ids come from Buffer's own answers, so the attacker
-    # would have to be Buffer or somebody between us — but a parameterised
-    # query costs nothing and closes both.
-    aliases = {f"p{i}": row for i, row in enumerate(due)}
-    query = (
-        "query ("
-        + ", ".join(f"${alias}: PostId!" for alias in aliases)
-        + ") {\n"
-        + "\n".join(
-            f"  {alias}: post(input: {{id: ${alias}}}) {_POST_STATE}"
-            for alias in aliases
-        )
-        + "\n}"
-    )
-    variables = {alias: row.external_id for alias, row in aliases.items()}
-
-    try:
-        # `_graphql` returns the whole GraphQL envelope, so the aliases live one
-        # level down under "data". Reading them from the envelope found nothing
-        # for every alias and marked all three posts "no longer exists" —
-        # retiring live posts on a successful read. The test that caught it
-        # asserts the three labels separately, which is why it could.
-        payload = await _graphql(query, variables)
-    except (BufferRefused, httpx.HTTPError) as exc:
-        # Nothing is written. A question we could not ask is not an answer, and
-        # marking these FAILED would retire posts that are very likely live.
-        log.warning("Could not reconcile %s scheduled posts: %s", len(due), exc)
-        return 0
-
-    # A 200 carrying `errors` is not a verdict on every post in it. GraphQL
-    # answers 200 and puts application errors in the body — the same thing
-    # `parse_create_post` already knows about writes — and each entry names the
-    # alias it belongs to in its `path`. Read as a blanket failure it marked a
-    # LIVE post "no longer exists", the piece closed FAILED, FAILED is the one
-    # status that offers a person Retry, and a re-approved piece re-sends its
-    # failed rows: a transient read error ended in a second public post.
-    #
-    # **Measured against the real API, because the shape decides the code.**
-    # Asking for one real id and one well-formed id that does not exist:
-    #
-    #   {"errors":[{"message":"Post not found for id: 0000…",
-    #               "path":["p1"],"extensions":{"code":"NOT_FOUND"}}],
-    #    "data":null}
-    #
-    # Two things follow, and both contradict what this was first written to do.
-    # Buffer does NOT return a clean `null` for a post somebody deleted — it
-    # returns an error — so the "alias is null means gone" branch was
-    # unreachable. And one bad id nulls `data` for the WHOLE batch, so a single
-    # deleted post would have stalled every other row on every tick for ever.
-    #
-    # So: errors are matched to their alias by `path`. NOT_FOUND is a real
-    # answer about that one post; anything else is a read that failed. The rows
-    # we could not read keep their status and come back on the next tick — by
-    # which time the NOT_FOUND ones are recorded and out of the batch.
-    by_alias: dict[str, dict[str, Any]] = {}
-    for err in payload.get("errors") or []:
-        path = err.get("path") or []
-        if path and isinstance(path[0], str):
-            by_alias[path[0]] = err
-
-    data = payload.get("data") or {}
-    if not data and not by_alias:
-        # No answers and nothing to explain why: a question we did not get an
-        # answer to, not an answer of "none of these exist".
-        log.warning(
-            "Buffer answered with no data for %s scheduled posts: %s",
-            len(due), str(payload)[:300],
-        )
+    answers = await _post_states(due, "scheduled posts")
+    if answers is None:
         return 0
 
     resolved = 0
     unknown: list[tuple[int, str, str]] = []
     unread: list[str] = []
-    for alias, row in aliases.items():
-        err = by_alias.get(alias)
+    for alias, row, post, err in answers:
         if err is not None:
             code = str((err.get("extensions") or {}).get("code") or "").upper()
             message = str(err.get("message") or "")
@@ -1026,7 +1049,6 @@ async def reconcile_scheduled(db: AsyncSession) -> int:
                 unread.append(f"{alias}={code or message[:60]}")
             continue
 
-        post = data.get(alias)
         if post is None:
             # No answer and no error naming it — `data` was nulled wholesale by
             # a sibling's error. Silence is not a verdict.
@@ -1086,6 +1108,74 @@ async def _close_touched(db: AsyncSession, rows: list[ContentPublication]) -> No
             await _close_piece(db, piece)
 
 
+_BACKFILL_BATCH = 20
+
+# A row Buffer never answers for would otherwise cost one request every tick
+# for ever, and a real backlog behind it would never get its turn. Anything
+# older than this keeps whatever it has; nothing is lost, it just is not
+# chased automatically.
+_BACKFILL_LOOKBACK = timedelta(days=60)
+
+
+async def backfill_links(db: AsyncSession) -> int:
+    """Give a published post the address Buffer never told us about.
+
+    Posts sent through the immediate path were never asked for `externalLink`,
+    and the reconciler only revisits SCHEDULED rows — so those posts are live
+    with nothing to click in the console, and the YouTube view counter, which
+    finds its video id in that address, skips them for ever.
+
+    Writes `external_url` and nothing else. A post that already went out is not
+    up for re-judgement here: no status, no `published_at`, no `last_error`,
+    and no piece is closed. In particular a NOT_FOUND is not a verdict — the
+    reconciler may retire a SCHEDULED post on it, but Buffer forgetting a post
+    that is already public says nothing about the post.
+    """
+    if get_settings().BUFFER_SIMULATED:
+        return 0
+
+    missing = (
+        (
+            await db.execute(
+                select(ContentPublication)
+                .where(
+                    ContentPublication.status == PublicationStatus.PUBLISHED,
+                    ContentPublication.external_url.is_(None),
+                    ContentPublication.external_id.is_not(None),
+                    ContentPublication.published_at
+                    >= datetime.now(UTC) - _BACKFILL_LOOKBACK,
+                )
+                .order_by(ContentPublication.id.asc())
+                .limit(_BACKFILL_BATCH)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not missing:
+        return 0
+
+    answers = await _post_states(list(missing), "published posts without a link")
+    if answers is None:
+        return 0
+
+    linked = 0
+    for _alias, row, post, err in answers:
+        if err is not None or post is None:
+            continue
+        if (post.get("status") or "").lower() != _BUFFER_SENT:
+            continue
+        link = post.get("externalLink")
+        if link:
+            row.external_url = link
+            linked += 1
+
+    if linked:
+        await db.commit()
+        log.info("Recovered %s publication link(s) from Buffer", linked)
+    return linked
+
+
 def _parse_dt(raw: object) -> datetime | None:
     """Buffer's ISO timestamps, or None. A bad one must not lose the row."""
     if not isinstance(raw, str) or not raw:
@@ -1125,6 +1215,9 @@ async def publish_approved(db: AsyncSession) -> int:
     # failed — is to ask. Done first so a piece whose last platform landed this
     # minute is closed before the tick decides what is still owed.
     await reconcile_scheduled(db)
+
+    # And what went out before the queue existed, which nothing else revisits.
+    await backfill_links(db)
 
     claimed = await _claimed_today(db)
     if claimed >= settings.CONTENT_PUBLISH_MAX_PER_DAY:

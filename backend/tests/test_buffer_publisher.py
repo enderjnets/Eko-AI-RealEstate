@@ -2095,3 +2095,324 @@ async def test_the_publisher_actually_uses_the_window(
     # Y la fila guardada dice lo mismo que se mando.
     for _plataforma, fila in (await _sched(piece.id)).items():
         assert fila[1].astimezone(zone).date() == lejos, fila
+
+
+# ── The backfill: links for posts that went out before the queue ─────────
+
+
+async def _published_row(
+    piece_id: int,
+    platform: PublicationPlatform,
+    external_id: str,
+    *,
+    url: str | None = None,
+    age: timedelta = timedelta(hours=1),
+) -> datetime:
+    """A row that already went out. Returns the exact `published_at` written."""
+    when = datetime.now(UTC) - age
+    async with get_bypass_session_factory()() as db:
+        db.add(
+            ContentPublication(
+                org_id=ORG,
+                piece_id=piece_id,
+                platform=platform,
+                status=PublicationStatus.PUBLISHED,
+                external_id=external_id,
+                external_url=url,
+                published_at=when,
+            )
+        )
+        await db.commit()
+    return when
+
+
+async def _published_at(piece_id: int, platform: str) -> datetime:
+    async with get_bypass_session_factory()() as db:
+        return (
+            await db.execute(
+                text(
+                    "SELECT published_at FROM content_publications "
+                    "WHERE piece_id=:p AND platform=:pl"
+                ),
+                {"p": piece_id, "pl": platform},
+            )
+        ).scalar_one()
+
+
+async def test_a_post_that_went_out_without_a_link_gets_one_from_buffer(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fifteen live posts have no address stored, and the console cannot link
+    to them. They went out through the immediate path, which never asked Buffer
+    for `externalLink`, and the reconciler only ever revisits SCHEDULED rows —
+    so nothing was ever going to fill them in.
+
+    The one thing this must not do is re-decide anything else about a post that
+    already went out: `published_at` is Buffer's own `sentAt` from the day it
+    published, and rewriting it from today's answer would move a video's date.
+    """
+    await _cleanup()
+    await _brokerage()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    piece = await _approved_piece()
+    before = await _published_row(piece, PublicationPlatform.YOUTUBE, "yt-old")
+
+    recorder = _Recorder()
+    recorder.reads = {
+        "yt-old": {
+            "status": "sent",
+            "sentAt": "2026-08-20T10:00:00Z",
+            "externalLink": "https://youtube.com/shorts/old",
+            "error": None,
+        },
+    }
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            assert await buffer_publisher.backfill_links(db) == 1
+
+    rows = await _sched(piece)
+    assert rows["youtube"][0] == "published"
+    assert rows["youtube"][2] == "https://youtube.com/shorts/old"
+    assert await _published_at(piece, "youtube") == before
+
+
+async def test_a_post_buffer_holds_no_link_for_is_left_exactly_as_it_was(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two silences that are not answers, and neither may retire a live post.
+
+    Buffer answering `sent` with no `externalLink` means it has no address to
+    give, not that the post is gone. NOT_FOUND means Buffer has forgotten the
+    post — which for a SCHEDULED row is a real verdict, and the reconciler
+    marks it FAILED. Here it is not: this post already went out. Copying that
+    branch would fail a video that is live and offer a person Retry on it.
+    """
+    await _cleanup()
+    await _brokerage()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    piece = await _approved_piece()
+    await _published_row(piece, PublicationPlatform.TIKTOK, "tt-old")
+    await _published_row(piece, PublicationPlatform.INSTAGRAM, "ig-old")
+
+    recorder = _Recorder()
+    recorder.reads = {
+        "tt-old": {"status": "sent", "sentAt": "2026-08-20T10:00:00Z",
+                   "externalLink": None, "error": None},
+    }
+    recorder.envelope = {
+        "errors": [
+            {
+                "message": "Post not found for id: ig-old",
+                "path": ["p1"],
+                "extensions": {"code": "NOT_FOUND"},
+            }
+        ]
+    }
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            assert await buffer_publisher.backfill_links(db) == 0
+
+    rows = await _sched(piece)
+    for platform in ("tiktok", "instagram"):
+        assert rows[platform][0] == "published", platform
+        assert rows[platform][2] is None, platform
+        assert rows[platform][3] is None, platform
+
+
+async def test_the_backfill_asks_only_about_published_rows_without_a_link(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One alias, for the only row that is missing anything.
+
+    Asking about rows that already have their link burns Buffer's quota for an
+    answer nobody uses; asking about a SCHEDULED row would hand the reconciler's
+    job to a function that does not know how to close a piece.
+    """
+    await _cleanup()
+    await _brokerage()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    piece = await _approved_piece()
+    await _published_row(
+        piece, PublicationPlatform.YOUTUBE, "yt-has", url="https://youtube.com/shorts/x"
+    )
+    await _scheduled_row(piece, PublicationPlatform.TIKTOK, "tt-due", due_minutes=-5)
+    await _published_row(piece, PublicationPlatform.INSTAGRAM, "ig-none")
+
+    # A second piece carrying the state the status filter exists for: a row
+    # with a `published_at` that is NOT published. Today nothing writes that
+    # combination — every `published_at` in the code and all 30 in production
+    # sit on a PUBLISHED row — so without seeding it here the filter would be
+    # a predicate no test could ever falsify, which is worse than not having it.
+    other = await _approved_piece()
+    async with get_bypass_session_factory()() as db:
+        db.add(
+            ContentPublication(
+                org_id=ORG,
+                piece_id=other,
+                platform=PublicationPlatform.YOUTUBE,
+                status=PublicationStatus.FAILED,
+                external_id="yt-retracted",
+                published_at=datetime.now(UTC) - timedelta(hours=2),
+            )
+        )
+        await db.commit()
+
+    recorder = _Recorder()
+    recorder.reads = {
+        "ig-none": {"status": "sent", "sentAt": "2026-08-20T10:00:00Z",
+                    "externalLink": "https://instagram.com/reel/old", "error": None},
+    }
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            assert await buffer_publisher.backfill_links(db) == 1
+
+    assert len(recorder.queries) == 1
+    assert recorder.queries[0].count("post(input:") == 1
+    assert (await _sched(piece))["tiktok"][0] == "scheduled"
+
+
+async def test_the_backfill_is_bounded_per_tick(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A backlog is asked about a batch at a time, not all at once."""
+    await _cleanup()
+    await _brokerage()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+    monkeypatch.setattr(buffer_publisher, "_BACKFILL_BATCH", 2, raising=False)
+
+    piece = await _approved_piece()
+    for platform, ext in (
+        (PublicationPlatform.YOUTUBE, "yt-a"),
+        (PublicationPlatform.TIKTOK, "tt-a"),
+        (PublicationPlatform.INSTAGRAM, "ig-a"),
+    ):
+        await _published_row(piece, platform, ext)
+
+    recorder = _Recorder()
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            await buffer_publisher.backfill_links(db)
+
+    assert len(recorder.queries) == 1
+    assert recorder.queries[0].count("post(input:") == 2
+
+
+async def test_a_link_older_than_the_lookback_is_not_asked_for(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A row Buffer will never answer for cannot cost a request every tick.
+
+    Without the window, the same handful of ancient posts would be asked about
+    every fifteen minutes for ever, and a real backlog behind them would never
+    get its turn.
+    """
+    await _cleanup()
+    await _brokerage()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    piece = await _approved_piece()
+    await _published_row(
+        piece, PublicationPlatform.YOUTUBE, "yt-ancient", age=timedelta(days=61)
+    )
+
+    recorder = _Recorder()
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            assert await buffer_publisher.backfill_links(db) == 0
+
+    assert recorder.queries == []
+
+
+async def test_the_backfill_is_silent_when_buffer_cannot_answer(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A question we could not ask writes nothing at all."""
+    await _cleanup()
+    await _brokerage()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    piece = await _approved_piece()
+    await _published_row(piece, PublicationPlatform.YOUTUBE, "yt-old")
+
+    async def _boom(query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        raise httpx.ConnectError("no route to host")
+
+    monkeypatch.setattr(buffer_publisher, "_graphql", _boom)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            assert await buffer_publisher.backfill_links(db) == 0
+
+    rows = await _sched(piece)
+    assert rows["youtube"][0] == "published"
+    assert rows["youtube"][2] is None
+
+
+async def test_simulation_asks_buffer_nothing_for_links(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Simulated mode is the whole queue exercisable with nothing leaving the
+    box; a backfill that reached the wire anyway would break that promise."""
+    await _cleanup()
+    await _brokerage()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", True, raising=False)
+
+    piece = await _approved_piece()
+    await _published_row(piece, PublicationPlatform.YOUTUBE, "yt-old")
+
+    recorder = _Recorder()
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            assert await buffer_publisher.backfill_links(db) == 0
+
+    assert recorder.queries == []
+
+
+async def test_the_tick_recovers_links_after_reconciling(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Wired into the tick, not left as a function nobody calls.
+
+    It runs after the reconciler and inside the same gates: a tick that is not
+    allowed to publish is not allowed to ask Buffer anything either.
+    """
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    piece = await _approved_piece()
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text("UPDATE content_pieces SET status='published' WHERE id=:i"),
+            {"i": piece},
+        )
+        await db.commit()
+    await _published_row(piece, PublicationPlatform.YOUTUBE, "yt-old")
+
+    recorder = _Recorder()
+    recorder.reads = {
+        "yt-old": {"status": "sent", "sentAt": "2026-08-20T10:00:00Z",
+                   "externalLink": "https://youtube.com/shorts/old", "error": None},
+    }
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            await buffer_publisher.publish_approved(db)
+
+    assert (await _sched(piece))["youtube"][2] == "https://youtube.com/shorts/old"
+
+
+async def test_an_empty_batch_never_becomes_a_query() -> None:
+    """The aliased read is shared now, so it answers for nothing without
+    building `query () {}` — which Buffer rejects, and which a third caller
+    would otherwise discover in production."""
+    assert await buffer_publisher._post_states([], "nothing at all") == []
