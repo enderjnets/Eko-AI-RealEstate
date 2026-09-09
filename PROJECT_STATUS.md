@@ -6,6 +6,52 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## Otoño 2026 — las 18 piezas montadas y en el panel
+
+**8-sep-2026.** Las dieciocho existen. F1 es la pieza **21**, aprobada por el
+dueño. Las diecisiete restantes son las **23 a 39**, todas en `needs_approval`.
+
+| Banda | Piezas (id) | Fechas del guion |
+|---|---|---|
+| 1 · +9.500 ft · `/fall/1` | 21, 23, 24, 25, 26, 27 | 15, 17, 19, 22, 24 y 26 de septiembre |
+| 2 · 7.000–9.000 ft · `/fall/2` | 28, 29, 30, 31 | 29-sep, 1, 3 y 6 de octubre |
+| 3 · 6.000–8.000 ft · `/fall/3` | 32, 33, 34, 35 | 8, 10, 13 y 15 de octubre |
+| 4 · Denver 5.280 ft · `/fall/4` | 36, 37, 38, 39 | 17, 20, 22 y 26 de octubre |
+
+**Se aprueban por tandas, por decisión del dueño**, porque `next_free_slot` no
+sabe de calendarios: reparte al siguiente día libre y el orden de publicación
+es el orden de `approved_at`. Aprobarlas todas hoy sacaría la pieza de Denver
+—«las últimas tres semanas de color pasan a 5.280 ft»— a finales de
+septiembre, diciendo algo que aún no es cierto.
+
+Verificado tras subir: 17 en `needs_approval`, 0 con `scenes`, 0 con
+`violations`, 0 en `render_jobs`, 0 `recorded`, 0 aprobadas, y **las 17
+apuntando a un fichero que existe**, comprobado con `test -s` dentro del
+contenedor. Copia previa `~/backup_eko_20260908_pre_17.sql.gz`
+(sha256 `ff4f2bef6b429c35…`). Coste en fal: ~$5 las 13 con metraje generado.
+
+### 🔴 Un `while read` con `ssh` dentro no recorre la lista
+
+Dos veces en una hora, las dos con `exit 0`. Primero el comando remoto **se
+comió la entrada estándar del bucle**: copió 2 de 17 e imprimió «COPIAS
+HECHAS». Arreglado con `</dev/null`, el bucle **se dejó la 17ª**, porque el
+fichero de la lista no acababa en `\n` y `while read` descarta una última línea
+sin salto. Quince filas habrían apuntado a vídeos inexistentes: la pieza sale
+en el panel, se aprueba, y el fallo aparece en Buffer tres días después.
+
+**Lo único que los cazó fue contar lo que había al otro lado.** El código de
+salida de un bucle no prueba que el bucle recorriera la lista.
+
+### El bioma hay que anclarlo en CADA toma
+
+Tres piezas salieron fuera de Colorado con el anclaje solo en el prompt común:
+F14 dio una acera de barrio en vez de un pueblo de montaña, F15 un canal de
+ladrillo con farolas de gas —Brujas, no el High Line— y las cuatro primeras de
+F1 dieron abedul y alerce. **Las tres habrían salido con `exit 0`**: fichero
+correcto, 12,80 s, 1080×1920. Solo las caza mirar un fotograma de cada toma.
+
+---
+
 ## Otoño 2026 — las piezas, y un defecto que salió bien por tres minutos
 
 **Estado el 8-sep-2026, 18:4x MDT.** F1 (pieza 21) aprobada por el dueño y
