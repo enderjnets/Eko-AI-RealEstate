@@ -442,6 +442,7 @@ _enrichment_task: asyncio.Task | None = None
 _content_studio_task: asyncio.Task | None = None
 _content_render_task: asyncio.Task | None = None
 _content_publish_task: asyncio.Task | None = None
+_content_window_task: asyncio.Task | None = None
 _content_metrics_task: asyncio.Task | None = None
 _delivery_retry_task: asyncio.Task | None = None
 _listings_sync_task: asyncio.Task | None = None
@@ -582,6 +583,28 @@ async def _content_publish_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.error("Content publish tick failed: %s", exc)
+
+
+async def _content_window_loop() -> None:
+    """Background worker: piezas que entraron en su ventana sin aprobar (v0.96).
+
+    Su propio bucle y no un anadido al de publicacion: aquel se para en seco
+    cuando `CONTENT_PUBLISH_ENABLED` esta apagado o falta una credencial, y es
+    precisamente entonces cuando mas falta hace saber que la cola se quedo sin
+    aprobar. Horario porque compara FECHAS.
+    """
+    from app.services.content_window_alert import alert_due_windows
+    from app.services.tenant_context import run_for_every_org
+
+    interval = max(300, settings.CONTENT_WINDOW_ALERT_INTERVAL_SECONDS)
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await run_for_every_org(alert_due_windows)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Content window tick failed: %s", exc)
 
 
 async def _content_metrics_loop() -> None:
@@ -1313,6 +1336,17 @@ async def _startup() -> None:
             settings.BUFFER_SIMULATED,
         )
 
+    # Fuera del `if CONTENT_PUBLISH_ENABLED` a proposito: con la publicacion
+    # apagada es cuando mas falta hace que alguien sepa que la cola entro en
+    # ventana sin aprobar.
+    if settings.CONTENT_WINDOW_ALERT_ENABLED:
+        global _content_window_task
+        _content_window_task = asyncio.create_task(_content_window_loop())
+        logger.info(
+            "Content window alert started (every %ds)",
+            settings.CONTENT_WINDOW_ALERT_INTERVAL_SECONDS,
+        )
+
     if settings.CONTENT_METRICS_ENABLED:
         global _content_metrics_task
         _content_metrics_task = asyncio.create_task(_content_metrics_loop())
@@ -1346,7 +1380,7 @@ async def _startup() -> None:
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task, _content_studio_task, _content_render_task, _content_publish_task, _content_metrics_task, _llm_monitor_task):
+    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task, _content_studio_task, _content_render_task, _content_publish_task, _content_window_task, _content_metrics_task, _llm_monitor_task):
         if task is not None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

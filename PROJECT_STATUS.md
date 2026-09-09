@@ -6,6 +6,130 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+## v0.96.0 — una pieza que llega a su semana ya no espera en silencio
+
+**CONSTRUIDA Y EN VERDE. NO DESPLEGADA.** El dueño autorizó construirla; el
+despliegue lo pide él en un mensaje aparte. Rama `feat/aviso-ventana-bandas`,
+nacida de `origin/main` (`06ab140`). Versión **0.96.0 concedida por el dueño**.
+
+### El problema, medido
+
+El repartidor no sabe de calendario: `next_free_slot` busca el siguiente día
+libre y el orden de publicación es el de `approved_at`. La escalera de otoño
+(`frontend/lib/fallGuide.ts`) son cuatro franjas de altitud en seis semanas —
+por encima de 9.500 ft es *mid to late September*, Denver a 5.280 ft es
+*October into November*. Con 18 piezas aprobadas de golpe saldrían en orden de
+aprobación, sin relación con la banda que esté en su punto. **Aprobar en la
+semana correcta es la única palanca de calendario que existe**, y una palanca
+que hay que acordarse de usar no es una palanca.
+
+Se descubrió al preguntar por qué la pieza 21 no se programaba: el tic de las
+00:26 corrió y la saltó. No era avería. `publish_approved` coge piezas en
+`APPROVED` **o** `PUBLISHING` ordenadas por `approved_at`, con
+`limit(MAX_PER_DAY - claimed)`. La cola era `14, 16, 18, 19` (las cuatro en
+`publishing`) y la 21 quinta; con la 19 reclamada ese día el límite era 3 y el
+corte caía en la 18. **Cuatro piezas atascadas en PUBLISHING se comen el cupo
+diario entero**, así que el segundo pase diario no dobla el ritmo: amplía las
+franjas, pero `MAX_PER_DAY` cuenta piezas, no huecos.
+
+### Lo que se hizo
+
+Migración **`056_publish_window`**: `publish_window_start`,
+`publish_window_end` y `window_alerted_at` en `content_pieces`. Las tres
+nullable y sin defecto — una pieza sin ventana se comporta igual que hoy y no
+se menciona nunca, y el código anterior sigue funcionando contra una base ya
+migrada.
+
+`app/services/content_window_alert.py`, en su propio bucle horario **fuera** de
+`if CONTENT_PUBLISH_ENABLED`: con la publicación apagada es cuando más falta
+hace saber que la cola entró en ventana sin aprobar.
+
+**Nada del reparto cambia.** `buffer_publisher` no se toca.
+
+Las ventanas se guardan **por pieza**, no copiando las cuatro bandas de
+`fallGuide.ts` a Python: dos fuentes de la misma verdad se separan en cuanto
+alguien toca una, y la que se quedaría atrás sería justo la que decide cuándo
+avisar.
+
+### El aviso llega ANTES de la fecha, y esa corrección vino de fuera
+
+Lo diseñé para disparar el día del `start`. La sesión «Viral Videos DHS» señaló
+que **aprobar no es publicar**: una pieza aprobada entra en la cola y compite
+por el cupo con las que siguen en `publishing`. Tenía razón, y lo incómodo es
+que **yo mismo lo había medido una hora antes** —la pieza 21 aprobada a las
+00:14 y sin reclamar horas después, franja estimada a dos días— y aun así
+diseñé el aviso para el día justo. Habría llegado puntual e inútil.
+
+`CONTENT_WINDOW_ALERT_LEAD_DAYS`, por defecto **3**. Mutación: volver a comparar
+con `hoy` en vez de con el límite → rojo en
+`test_avisa_con_antelacion_porque_aprobar_no_es_publicar`.
+
+### Las dos reglas heredadas de `ops_alert`, y una propia
+
+1. **Avisar de un cambio, nunca de un estado** — `window_alerted_at` impide la
+   repetición horaria que convierte una alarma en ruido.
+2. **Ver y decir son dos hechos** — el sello se pone **solo** si un transporte
+   aceptó. `send_operator_alert` nunca lanza: devuelve `False`, y entonces las
+   piezas quedan sin sellar para que el próximo tic reintente.
+3. **Un aviso por tic, no por pieza** — las seis de la banda alta entran el
+   mismo día; seis correos serían seis sextas partes de un cupo compartido con
+   las averías de verdad.
+
+### Salida real
+
+```
+tests/test_content_window_alert.py .....                      5 passed
+vitest                                                        PASS (383) FAIL (0)
+npx tsc --noEmit                                              TypeScript compilation completed
+npx next lint                                                 Errors: 0 | Warnings: 0
+npx next build                                                ✓ Compiled successfully (20/20)
+ruff check app tests                                          All checks passed!
+alembic upgrade head    055_calculator_snapshot -> 056_publish_window
+```
+
+**Mutaciones, cada una vista en rojo y en el test que le toca**, restaurando con
+`cp` y `md5` idéntico (`caca84392a308ad30a5e1a3117ce818c`), nunca con
+`git checkout -- .`:
+
+| Mutación | Rojo |
+|---|---|
+| Quitar el filtro `window_alerted_at IS NULL` | `test_avisa_una_vez_y_no_se_repite` |
+| Sellar **antes** de comprobar el envío | `test_si_no_se_pudo_avisar_no_se_sella_y_se_reintenta` |
+| Comparar con `hoy` en vez de con el límite de antelación | `test_avisa_con_antelacion_porque_aprobar_no_es_publicar` |
+
+**Un rojo propio, y era el guardián haciendo su trabajo:**
+`test_config_example.py::test_every_setting_is_documented` cayó porque añadí dos
+ajustes a `config.py` sin documentarlos en `.env.example`. Arreglado.
+
+🔴 **Y la referencia de verde de partida no vale, por culpa mía.** Lancé la
+suite base contra `origin/main` y, con ella a mitad, corrí `alembic upgrade` a
+la 056 **sobre esa misma base**. Sus «4 failed» son contaminación mía, no el
+estado de `main`. Queda escrito para que nadie los lea como una regresión de
+`main`.
+
+### Pendiente al desplegar (no hecho)
+
+- **Rellenar las ventanas de las piezas que ya existen.** El aviso solo mira
+  piezas **con ventana puesta**; las 18 de otoño se subieron antes de que la
+  columna existiera y hoy la tienen a NULL, así que **no dispararían nada**. El
+  mapa de bandas lo tiene la sesión «Viral Videos DHS»: banda 1 (+9.500 ft) son
+  las piezas 21, 23, 24, 25, 26 y 27; banda 2 las 28-31; banda 3 las 32-35;
+  banda 4 las 36-39. Fechas exactas decididas por esa sesión a partir de la
+  **prosa** de `fallGuide.ts` (que no tiene fechas: dice «Mid to late
+  September»), así que si alguien cambia ese texto **nada avisará** de que estas
+  fechas se quedaron atrás. `start` = la fecha de la pieza en el guion, `end` =
+  el fin de su banda: banda 1 → 30-sep, banda 2 → 17-oct, banda 3 → 31-oct,
+  banda 4 → 15-nov. Las de calculadora, si suben, van **sin ventana** a
+  propósito: son permanentes.
+- **Al correr ese `UPDATE`, no leer el `UPDATE n` que imprime.** Contar las filas
+  con ventana no nula y compararlas con 20. La sesión par tuvo esta noche un
+  bucle que copió 2 ficheros de 17 y terminó con `exit 0` y mensaje de éxito;
+  lo único que lo cazó fue contar al otro lado.
+- Reconstruir backend y frontend, y `alembic upgrade head` **antes** de arrancar
+  el código que conoce las columnas.
+
+---
+
 ## v0.95.0 — el prompt de imagen llega al modelo en inglés, y tres puertas lo comprueban
 
 **✅ DESPLEGADA Y VERIFICADA EN PRODUCCIÓN el 8-sep-2026**, con autorización del
