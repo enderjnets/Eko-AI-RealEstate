@@ -299,7 +299,13 @@ aunque vaya por mensaje privado.
 ## Parte 2 — Calculadora (18 piezas, 3 por semana, permanente)
 
 **Los números salen de `frontend/lib/calculator.ts`** ejecutada con `DEFAULTS`,
-crédito `good`. No hay ni una cifra inventada. Los supuestos —tasa, apreciación,
+crédito `good`. No hay ni una cifra inventada. **Recalculados el 8-sep** desde
+otra sesión, ejecutando `solvePrice` y `compare` de verdad contra `DEFAULTS`:
+las nueve cifras de las dos tablas de abajo coinciden **exactamente**. No es
+que se heredaran de un documento —dos fuentes que coinciden pueden ser una—,
+es que se volvieron a obtener del código. Cualquier cambio en `DEFAULTS` (la
+tasa está en 6,71 %) invalida las 18 piezas: **antes de reutilizarlas otra
+temporada, volver a correr el cálculo, no releer esta tabla.** Los supuestos —tasa, apreciación,
 impuestos, seguro— están **a la vista y son editables en la página**, y cada
 caption lo dice.
 
