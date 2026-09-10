@@ -128,6 +128,18 @@ que dice «tras cada publicación». Es lo mismo que hacía antes por fila y lo
 que dice `PLAN.md` («publicaciones en rango»), pero el rótulo lee más ancho que
 la consulta.
 
+### Desplegada — v0.99.0 en producción, 10-sep 18:49 UTC · `2abbb3a`
+
+| Paso | Resultado |
+|---|---|
+| Qué cambia | El obrero de render puede encargar el video al motor de BitTrader (`RENDER_ENGINE=bittrader`, `worker/produce_bittrader.py`, `worker/config.py`, `main.do_produce_job`). Backend y frontend solo llevan el número; sin migración. |
+| Pruebas | Suite del obrero en el ROG con sus dependencias reales: 112 pasan (12 nuevos, `test_engine_bittrader.py`); 3 mutantes muertos. CI de `main` (run 34515894585): frontend ✅; backend 1.806 pasan y **1 falla preexistente** (`test_a_result_that_is_not_a_video_is_refused`: el runner no tiene `ffprobe`; falló igual el 9-sep antes de este cambio); el paso «Tests (render worker)» quedó `skipped` en CI por ese fallo previo. |
+| Bundle | `1505326..main` → `/tmp/v0990.bundle`; `git merge --ff-only refs/remotes/bundle/v0990` → `HEAD 2abbb3a`; `version.ts` y `config.py` = 0.99.0 leídos antes de construir; `.env.bak.20260910_v0990` |
+| Build / arranque | `docker compose build backend frontend` (Built); `up -d backend frontend`; `/api/v1/health` → `version 0.99.0`, `llm_fallback ok` |
+| Obrero (ROG) | Código instalado a mano (sin `install-on-rog.sh`: su paso 7 reescribe el `.env` del VPS y reinicia el backend), env conservado, `RENDER_ENGINE=bittrader` desde las 12:40 MDT; latidos 200 tras el redespliegue. Render en solitario 12:30: 1080×1920, 22,3 s, marca DHS corr 0,856. |
+| No comprobado | La primera pieza real por el motor: no había trabajos en cola (últimos `done` 01:10/02:10); llegará con la próxima aprobación, en horas del obrero. |
+
+
 ### Desplegada — v0.98.0 en producción, 9-sep 19:55 UTC · `1505326`
 
 Autorizaciones del dueño, cada una en su mensaje: merge + tag + release
