@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.98.0";
+export const CURRENT_VERSION = "0.99.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.99.0",
+    date: "2026-09-10",
+    title: {
+      en: "The render worker can hand the video to the BitTrader engine, and nothing else changes",
+      es: "El obrero de render puede encargar el video al motor de BitTrader, y nada mas cambia",
+    },
+    changes: [
+      { en: "The worker on the shared machine now has a second way to build a video. With RENDER_ENGINE=bittrader it hands the approved script to the BitTrader engine installed next to it, with a Denver Home Story profile of its own (English voice, real-estate photography prompts, the DHS mark, no people in the pictures), and delivers what comes back. Writing, the Fair Housing filter, approval and publishing stay exactly where they were; only the making moves. Unset, the worker builds as before.", es: "El obrero de la maquina compartida tiene ahora una segunda forma de fabricar el video. Con RENDER_ENGINE=bittrader encarga el guion aprobado al motor de BitTrader instalado al lado, con un perfil propio de Denver Home Story (voz en ingles, prompts de fotografia inmobiliaria, la marca DHS, sin personas en las imagenes), y entrega lo que vuelve. Escribir, el filtro de Fair Housing, aprobar y publicar siguen exactamente donde estaban; solo se mueve la fabricacion. Sin la variable, el obrero fabrica como antes." },
+      { en: "The engine refuses to run for a channel that publishes on its own, so a wrong channel name cannot put a Denver video in another channel's upload queue; and a video whose DHS mark the engine could not confirm is refused, not delivered.", es: "El motor se niega a trabajar para un canal que publica por su cuenta, asi que un nombre de canal equivocado no puede meter un video de Denver en la cola de subida de otro canal; y un video cuya marca DHS el motor no pudo confirmar se rechaza, no se entrega." },
+      { en: "Known limit, stated rather than hidden: the engine's stock-footage fallback has no people filter of its own. The scene prompts are screened with the same person-descriptor list before any image is requested, and the approval in the Content Studio remains the last gate.", es: "Limite conocido, dicho en vez de escondido: el respaldo de metraje de archivo del motor no tiene filtro de personas propio. Los prompts de escena se criban con la misma lista de descriptores de personas antes de pedir imagen alguna, y la aprobacion en el Content Studio sigue siendo la ultima puerta." },
+    ],
+  },
   {
     version: "0.98.0",
     date: "2026-09-09",

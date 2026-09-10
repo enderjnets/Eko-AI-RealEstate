@@ -28,7 +28,7 @@ from pathlib import Path
 
 import httpx
 
-from worker import assemble, config, produce, subtitles, tts, verify
+from worker import assemble, config, produce, produce_bittrader, subtitles, tts, verify
 
 logging.basicConfig(
     level=logging.INFO,
@@ -264,6 +264,25 @@ def do_produce_job(
     """Lane B: a written script becomes a video with a voice."""
     workdir = cfg.workdir / f"job-{job['id']}"
     workdir.mkdir(parents=True, exist_ok=True)
+
+    if cfg.engine == "bittrader":
+        # v0.99.0: the other project's engine builds it; we verify and deliver.
+        # The brand mark is confirmed by that engine against the same PNG (its
+        # own watermark rule) — the crop-based check below would refuse a mark
+        # it did not place itself.
+        video = produce_bittrader.produce(
+            spec,
+            workdir,
+            cfg=cfg,
+            report=(
+                (lambda stage, pct: panel.progress(job["id"], stage, pct))
+                if panel is not None
+                else None
+            ),
+        )
+        verify.check(video, expect_audio=True)
+        log.info("job %s: built by the BitTrader engine", job["id"])
+        return video
 
     video = produce.produce(
         spec,

@@ -2,6 +2,35 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.99.0] — 2026-09-10
+
+### Added
+- **The render worker can hand lane B to the BitTrader engine.** Owner's
+  decision D6b (9-sep): one manufacturer for the three channels on the shared
+  machine. With `RENDER_ENGINE=bittrader` (`worker/config.py`), `do_produce_job`
+  writes the job's spec to the workdir and runs `render_externo.py` from the
+  BitTrader agents dir under the BitTrader virtualenv with `BITTRADER_CHANNEL`
+  in the child's environment (`worker/produce_bittrader.py`); the result JSON
+  names the mp4, its duration and the engine's own watermark check. Writing,
+  the Fair Housing filter, approval and publishing do not move. Unset or
+  `eko`, the worker builds with `produce.py` as before — that is the fallback
+  the owner asked for.
+- **Two refusals, on purpose.** The engine aborts for a channel whose profile
+  is not `entrega_externa` (a wrong channel would enqueue a Denver video in a
+  crypto channel's YouTube queue); and a result without a confirmed DHS mark is
+  `verify.Rejected` — terminal — because `verify.brand_is_present` crops the
+  rectangle *our* assembler composites into and cannot judge a mark the other
+  engine placed elsewhere; its REGLA #2 against the same PNG is the check we
+  trust.
+- **Stated limit.** BitTrader's Pexels fallback has no `shows_people`
+  equivalent. Scene prompts are screened with `people_words` before any image
+  is requested; the Content Studio approval remains the last gate on pictures.
+
+### Verification
+- `worker/tests/test_engine_bittrader.py`: config parsing and refusals, the
+  hand-over (command, cwd, channel in the child env, result handling, the four
+  failure shapes), and the dispatch in `do_produce_job`.
+
 ## [0.98.0] — 2026-09-09
 
 ### Added
