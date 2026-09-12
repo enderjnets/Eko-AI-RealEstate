@@ -13,13 +13,67 @@ import type { FunnelStep } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { Empty } from "./parts";
 
-export function FunnelSteps({ steps }: { steps: FunnelStep[] }) {
+/**
+ * The two ways a visitor tries to reach the agency and nothing arrives.
+ *
+ * Both facts were already in the database and read by nothing. `form_error` was
+ * stored from the day the tracker shipped; the lost-lead combination
+ * (`form_submitted_at` set, `lead_id` null) is described in the code that
+ * writes it — "pressed send and no lead ever arrived" — and no query ever asked
+ * it. A funnel that goes quiet between "tapped" and "became a lead" cannot say
+ * whether nobody tried or whether something ate them, and those need opposite
+ * responses.
+ *
+ * Rendered only when non-zero: a row that always reads "0 lost" is furniture,
+ * and furniture is what people stop seeing.
+ */
+function SilentLosses({
+  lost,
+  errors,
+  people,
+}: {
+  lost: number;
+  errors: number;
+  people: number;
+}) {
+  const { t } = useI18n();
+  if (lost === 0 && errors === 0) return null;
+  return (
+    <ul className="mt-3 space-y-1 border-t border-white/[0.06] pt-3 text-xs">
+      {lost > 0 && (
+        <li className="text-amber-400">
+          {t("analytics.lostAfterSend").replace("{n}", String(lost))}
+        </li>
+      )}
+      {errors > 0 && (
+        <li className="text-amber-400">
+          {t("analytics.formErrors")
+            .replace("{n}", String(errors))
+            .replace("{p}", String(people))}
+        </li>
+      )}
+    </ul>
+  );
+}
+
+export function FunnelSteps({
+  steps,
+  lost = 0,
+  errors = 0,
+  peopleWithErrors = 0,
+}: {
+  steps: FunnelStep[];
+  lost?: number;
+  errors?: number;
+  peopleWithErrors?: number;
+}) {
   const { t } = useI18n();
   const top = Math.max(1, ...steps.map((s) => s.count));
   if (steps.every((s) => s.count === 0)) {
     return <Empty>{t("analytics.empty.funnel")}</Empty>;
   }
   return (
+    <>
     <ol className="space-y-2">
       {steps.map((step) => (
         <li key={step.stage}>
@@ -48,5 +102,7 @@ export function FunnelSteps({ steps }: { steps: FunnelStep[] }) {
         </li>
       ))}
     </ol>
+    <SilentLosses lost={lost} errors={errors} people={peopleWithErrors} />
+    </>
   );
 }

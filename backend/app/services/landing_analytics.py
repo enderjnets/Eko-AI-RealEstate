@@ -234,6 +234,7 @@ class SessionDelta:
     events: int
     cta_clicks: int
     tel_clicks: int
+    form_errors: int
     max_scroll_pct: int | None
     sections: list[str]
     form_started: bool
@@ -242,7 +243,7 @@ class SessionDelta:
 
 def fold_events(events: Sequence[tuple[str, dict[str, Any]]]) -> SessionDelta:
     """Reduce a batch to the single delta it represents."""
-    cta = tel = 0
+    cta = tel = errors = 0
     scroll: int | None = None
     sections: list[str] = []
     started = submitted = False
@@ -262,6 +263,12 @@ def fold_events(events: Sequence[tuple[str, dict[str, Any]]]) -> SessionDelta:
             tel += 1
         elif kind == "form_start":
             started = True
+        elif kind == "form_error":
+            # Contado, no colapsado a un booleano: quien se estrella tres veces
+            # y se va no es quien se estrella una y lo consigue. Se guardaba en
+            # `landing_events` desde siempre y no lo leia nadie — el unico
+            # fallo del embudo que no aparecia en ninguna pantalla.
+            errors += 1
         elif kind == "form_submit":
             # Recorded on the session even though the lead POST sets it too.
             # The two disagreeing is the interesting case: `form_submitted_at
@@ -274,6 +281,7 @@ def fold_events(events: Sequence[tuple[str, dict[str, Any]]]) -> SessionDelta:
         events=len(events),
         cta_clicks=cta,
         tel_clicks=tel,
+        form_errors=errors,
         max_scroll_pct=scroll,
         sections=sections,
         form_started=started,
@@ -297,6 +305,10 @@ def merge_values(delta: SessionDelta, now: datetime) -> dict[str, Any]:
         values["cta_clicks"] = LandingSession.cta_clicks + delta.cta_clicks
     if delta.tel_clicks:
         values["tel_clicks"] = LandingSession.tel_clicks + delta.tel_clicks
+    if delta.form_errors:
+        values["form_error_count"] = (
+            LandingSession.form_error_count + delta.form_errors
+        )
     if delta.max_scroll_pct is not None:
         values["max_scroll_pct"] = func.greatest(
             LandingSession.max_scroll_pct, delta.max_scroll_pct

@@ -18,6 +18,12 @@ because the question the funnel answers is "of the leads that arrived then, how
 many did we reach" — not "how many calls did we make this week". Counting it the
 other way makes the conversion of any closed month change every time someone
 touches an old lead.
+
+*Con una excepción, y está señalada donde vive:* `calls()` acota por el instante
+de la llamada, no por el del lead. Es la única tarjeta que no pregunta por una
+cohorte, y acotarla como las demás la hacía imposible de leer — con cero leads
+nuevos en la ventana, las llamadas entrantes salían cero por aritmética,
+llamara quien llamara.
 """
 
 from __future__ import annotations
@@ -131,6 +137,63 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
                 func.coalesce(func.sum(LandingSession.tel_clicks), 0),
                 func.count(LandingSession.form_started_at),
                 func.count(LandingSession.form_submitted_at),
+                # ── Y los mismos hechos contados en PERSONAS ────────────────
+                # Los cuatro de arriba son sumas de contadores, y sirven para
+                # la tarjeta de tráfico: "cuántos toques hubo". El embudo
+                # necesita lo otro — cuántas personas distintas —, porque todos
+                # sus demás peldaños cuentan leads distintos y mezclar las dos
+                # unidades es lo que hacía que un peldaño pudiera superar al de
+                # encima. Medido el 12-sep-2026: 6 clics de 5 personas.
+                func.count(
+                    case((LandingSession.cta_clicks > 0, 1))
+                ),
+                # Los que de verdad hicieron algo: tocar el teléfono o meter el
+                # cursor en el formulario. Es un subconjunto ESTRICTO del
+                # siguiente por construcción, que es lo que garantiza que el
+                # embudo no se ensanche.
+                func.count(
+                    case(
+                        (
+                            or_(
+                                LandingSession.tel_clicks > 0,
+                                LandingSession.form_started_at.is_not(None),
+                            ),
+                            1,
+                        )
+                    )
+                ),
+                # Cualquiera de las tres cosas. El peldaño ancho.
+                func.count(
+                    case(
+                        (
+                            or_(
+                                LandingSession.cta_clicks > 0,
+                                LandingSession.tel_clicks > 0,
+                                LandingSession.form_started_at.is_not(None),
+                            ),
+                            1,
+                        )
+                    )
+                ),
+                # Cuántas veces se estrelló un envío, y a cuánta gente.
+                func.coalesce(func.sum(LandingSession.form_error_count), 0),
+                func.count(case((LandingSession.form_error_count > 0, 1))),
+                # **El detector de leads perdidos.** `landing_analytics.py` lo
+                # describe desde que existe —"pressed send and no lead ever
+                # arrived"— y hasta hoy ninguna consulta lo hacía. Es el
+                # honeypot que contesta 202, el captcha rechazado, la conexión
+                # caída: el visitante ve "enviado" y no hay lead.
+                func.count(
+                    case(
+                        (
+                            and_(
+                                LandingSession.form_submitted_at.is_not(None),
+                                LandingSession.lead_id.is_(None),
+                            ),
+                            1,
+                        )
+                    )
+                ),
             ).where(scope)
         )
     ).one()
@@ -176,6 +239,12 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
         "tel_clicks": int(totals[4]),
         "form_starts": totals[5],
         "form_submits": totals[6],
+        "people_clicked_cta": totals[7],
+        "people_tapped": totals[8],
+        "people_reached_out": totals[9],
+        "form_errors": int(totals[10]),
+        "people_with_errors": totals[11],
+        "submitted_without_lead": totals[12],
         "by_day": [{"date": d, "sessions": seen.get(d, 0)} for d in _days(w)],
         "by_source": await _breakdown(LandingSession.source),
         "by_device": await _breakdown(LandingSession.device),
@@ -370,7 +439,25 @@ async def response(db: AsyncSession, w: Window) -> dict:
 
 
 async def calls(db: AsyncSession, w: Window) -> dict:
-    scope = w.within(Lead.created_at)
+    """La única tarjeta que NO es una cohorte de leads, y a propósito.
+
+    El resto de este módulo acota por `Lead.created_at`: "de los leads que
+    llegaron entonces, a cuántos alcanzamos". Aquí eso daba una respuesta
+    imposible de interpretar y a veces falsa. Con **cero leads** creados en la
+    ventana, `JOIN Lead ... WHERE Lead.created_at IN ventana` obliga a que las
+    llamadas entrantes salgan **0 aritméticamente** — llamara quien llamara. El
+    12-sep-2026 el panel enseñaba "CALLS IN 0" y se leyó como "nadie llamó",
+    cuando lo único que decía era "no hubo leads nuevos".
+
+    Una llamada existe aunque el lead sea de otro mes, y el docstring de
+    `funnel()` ya dice por qué esto vive en una tarjeta y no en un peldaño: es
+    un hecho sobre la oficina, no un escalón de la escalera. Así que cada
+    consulta se acota por **su propio** instante: el evento de llamada por
+    `LeadEvent.at`, y el registro manual por el suyo.
+
+    `appointments()` y `deals()` NO cambian: ésas sí son preguntas de cohorte.
+    """
+    by_event = w.within(LeadEvent.at)
 
     inbound = (
         await db.execute(
@@ -383,7 +470,7 @@ async def calls(db: AsyncSession, w: Window) -> dict:
             )
             .select_from(LeadEvent)
             .join(Lead, Lead.id == LeadEvent.lead_id)
-            .where(LeadEvent.type == "call_inbound", scope)
+            .where(LeadEvent.type == "call_inbound", by_event)
         )
     ).one()
 
@@ -393,7 +480,7 @@ async def calls(db: AsyncSession, w: Window) -> dict:
             select(reason_col, func.count())
             .select_from(LeadEvent)
             .join(Lead, Lead.id == LeadEvent.lead_id)
-            .where(LeadEvent.type == "call_inbound", scope)
+            .where(LeadEvent.type == "call_inbound", by_event)
             .group_by(reason_col)
             .order_by(func.count().desc())
             .limit(5)
@@ -405,7 +492,9 @@ async def calls(db: AsyncSession, w: Window) -> dict:
             select(CallLog.outcome, func.count())
             .select_from(CallLog)
             .join(Lead, Lead.id == CallLog.lead_id)
-            .where(scope)
+            # Por cuándo se apuntó la llamada, no por cuándo llegó el lead:
+            # apuntar hoy una llamada a un lead de agosto es trabajo de hoy.
+            .where(w.within(CallLog.created_at))
             .group_by(CallLog.outcome)
         )
     ).all()
@@ -802,7 +891,27 @@ async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
     steps = [
         ("sessions", traffic_now["sessions"]),
         ("engaged", traffic_now["engaged"]),
-        ("cta", traffic_now["cta_clicks"] + traffic_now["tel_clicks"] + traffic_now["form_starts"]),
+        # Dos peldaños donde había uno, y contados en PERSONAS.
+        #
+        # Era `SUM(cta_clicks) + SUM(tel_clicks) + COUNT(form_starts)`: una suma
+        # de eventos en el único escalón que no contaba gente, contra lo que
+        # promete el docstring de arriba. Alguien que pulsa tres veces valía 3.
+        #
+        # Y la etiqueta mentía. `cta_click` se dispara con cualquier
+        # `<a href="#consult">`, que es un salto dentro de la página: en los 30
+        # días medidos el 12-sep-2026 los seis clics fueron **el menú de
+        # navegación** (`nav-buying`, `nav-selling`, el "Book" del móvil) y el
+        # botón de verdad tuvo **cero**. Llamar a eso "tocó llamar o empezó el
+        # formulario" es contar curiosidad como intención.
+        #
+        # `tapped` es un subconjunto ESTRICTO de `reached_out` por construcción
+        # —los dos salen de la misma fila, y su condición es parte de la otra—,
+        # así que el embudo no puede ensancharse aquí por mucho que cambien los
+        # datos. Los tres grupos salieron disjuntos en la medición (5 del menú,
+        # 3 del teléfono, 6 del formulario), que es justo la forma que habría
+        # roto un embudo de peldaños independientes.
+        ("reached_out", traffic_now["people_reached_out"]),
+        ("tapped", traffic_now["people_tapped"]),
         ("leads", total_leads),
         ("contacted", contacted),
         ("appointment_set", appointment_set),

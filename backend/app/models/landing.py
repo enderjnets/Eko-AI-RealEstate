@@ -111,6 +111,10 @@ class LandingSession(Base):
     sections_viewed: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     cta_clicks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tel_clicks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Cuántas veces se estrelló el envío. Un contador, no un instante: tres
+    # intentos fallidos y un abandono no son lo mismo que un fallo y un
+    # reintento con éxito, y un timestamp los cuenta igual.
+    form_error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     form_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

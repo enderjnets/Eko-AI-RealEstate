@@ -1157,6 +1157,18 @@ export interface Analytics {
     tel_clicks: number;
     form_starts: number;
     form_submits: number;
+    /** The same three facts counted in PEOPLE rather than taps. The funnel uses
+     *  these; the counters above are for "how many taps were there". */
+    people_clicked_cta: number;
+    people_tapped: number;
+    people_reached_out: number;
+    /** Submissions that came back with an error, and how many visitors hit one.
+     *  Recorded since the tracker existed and read by nothing until v0.100.0. */
+    form_errors: number;
+    people_with_errors: number;
+    /** Pressed send, and no lead ever arrived. The honeypot answering 202, a
+     *  refused captcha, a dropped connection — the visitor saw "sent". */
+    submitted_without_lead: number;
     by_day: { date: string; sessions: number }[];
     by_source: Breakdown[];
     by_device: Breakdown[];

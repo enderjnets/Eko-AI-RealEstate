@@ -149,7 +149,12 @@ export function AnalyticsView() {
 
       <div className="grid lg:grid-cols-2 gap-4">
         <Card title={t("analytics.funnel")} hint={t("analytics.funnelHint")}>
-          <FunnelSteps steps={data.funnel} />
+          <FunnelSteps
+            steps={data.funnel}
+            lost={traffic.submitted_without_lead}
+            errors={traffic.form_errors}
+            peopleWithErrors={traffic.people_with_errors}
+          />
         </Card>
 
         <Card title={t("analytics.perDay")}>

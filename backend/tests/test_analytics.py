@@ -243,7 +243,11 @@ async def test_the_funnel_never_widens_as_it_goes_down() -> None:
     counts = [step["count"] for step in body["funnel"]]
     stages = [step["stage"] for step in body["funnel"]]
     assert stages[-1] == "won"
-    assert stages[:4] == ["sessions", "engaged", "cta", "leads"]
+    assert stages[:5] == ["sessions", "engaged", "reached_out", "tapped", "leads"]
+    # `tapped` sale de la misma fila que `reached_out` y su condicion es parte
+    # de la de aquel, asi que es un subconjunto ESTRICTO: este peldano no puede
+    # ensancharse nunca, con los datos que sea.
+    assert counts[stages.index("tapped")] <= counts[stages.index("reached_out")]
     # Not a step on purpose: an appointment can be booked by the voice agent
     # without anybody logging a call, so this one sat wider than the step above
     # it. A seeded month showed it immediately; an empty database never would.

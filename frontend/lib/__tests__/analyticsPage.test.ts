@@ -81,7 +81,8 @@ describe("what the page promises", () => {
     const stages = [
       "sessions",
       "engaged",
-      "cta",
+      "reached_out",
+      "tapped",
       "leads",
       "contacted",
       "called_back",
