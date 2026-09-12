@@ -2,6 +2,50 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.100.0] — 2026-09-12
+
+### Fixed
+- **`form_start` was 37 events per visit instead of one.** Two guards, both
+  absent. `ConsultForm` kept "already started" in React **state** and read it
+  from the previous render's closure, so a burst of `focus` events in one tick
+  all saw `false` and all recorded; it is a `useRef` now, which writes
+  synchronously. And the tracker did not deduplicate either — `form_start` was
+  not in `ONCE` but was in `IMMEDIATE`, so every repeat was its own HTTP
+  request. Measured in production on 11-sep-2026: six sessions sent **37 each,
+  222 in all**, against `EVENTS_PER_IP_LIMIT` of 60 per address per ten
+  minutes. The comment already sitting beside that limit says what exhausting
+  it costs: the `form_submit` that follows is dropped in silence — a customer
+  who presses send and never arrives, with nothing in the panel to show it.
+  The two guards are kept on purpose: the component's protects one mount, the
+  tracker's protects the visit.
+- **The funnel counted taps where every other step counts people, and its
+  label described something the code did not measure.** The `cta` step was
+  `SUM(cta_clicks) + SUM(tel_clicks) + COUNT(form_starts)` — the one rung that
+  did not count distinct people, against what `funnel()`'s own docstring
+  promises. And `cta_click` fires on any `<a href="#consult">`, which is a jump
+  within the page: over the 30 days measured on 12-sep-2026 all six clicks were
+  **the navigation menu** and the real button had **zero**. It is now two
+  rungs — "Went for the form or the phone" and "Tapped call or the form
+  itself" — the second a strict subset of the first by construction, so the
+  funnel cannot widen there whatever the data does.
+- **Two silent failures were in the database with no reader.** `form_error` had
+  been stored since the tracker shipped and nothing ever queried it. The
+  lost-lead combination — `form_submitted_at` set with `lead_id` null, which
+  the code that writes it describes as "pressed send and no lead ever
+  arrived" — was never asked either. Both now appear under the funnel, and only
+  when they are not zero.
+- **`calls()` could not contradict `leads`.** It scoped by `Lead.created_at`,
+  so with zero leads in the window inbound calls came out **zero by
+  arithmetic**, whoever had called. Each query now scopes by its own instant.
+  `appointments()` and `deals()` are unchanged — those really are cohort
+  questions.
+
+### Added
+- Migration **058**: `landing_sessions.form_error_count`. A column rather than
+  a query over `landing_events`, because events are purged at 90 days while a
+  range may ask for 366 — summing them would make last quarter shrink every
+  night without anything failing.
+
 ## [0.99.0] — 2026-09-10
 
 ### Added

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.99.0";
+export const CURRENT_VERSION = "0.100.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.100.0",
+    date: "2026-09-12",
+    title: {
+      en: "The funnel was counting taps and bots instead of people, and the form could quietly eat a lead",
+      es: "El embudo contaba toques y bots en vez de personas, y el formulario podia comerse un lead en silencio",
+    },
+    changes: [
+      { en: "The step that read \u201cTapped call or started the form\u201d was three different things added together, and two of them were not that. It counted taps, not people, so one visitor tapping three times counted as three; and it fired on any link that jumps to the contact section, so clicking \u201cBuying\u201d in the top menu counted the same as tapping call. Over the 30 days measured on 12-sep-2026 every one of those clicks was the menu, and the real button had none. It is now two steps: who went looking for the form or the phone, and who actually tapped call or the form itself.", es: "El paso que decia \u00abTapped call or started the form\u00bb eran tres cosas distintas sumadas, y dos de ellas no eran eso. Contaba toques y no personas, asi que un visitante que pulsaba tres veces valia tres; y saltaba con cualquier enlace que baja a la seccion de contacto, asi que pulsar \u00abBuying\u00bb en el menu de arriba contaba igual que tocar llamar. En los 30 dias medidos el 12-sep-2026 todos esos clics fueron el menu, y el boton de verdad no tuvo ninguno. Ahora son dos pasos: quien fue a buscar el formulario o el telefono, y quien de verdad toco llamar o el formulario." },
+      { en: "A burst of taps inside the form could spend the visitor\u2019s whole allowance of messages to the server \u2014 and when that allowance runs out, the send that follows is thrown away without telling anybody. Six visits on 11-sep-2026 sent 37 notices each where one was meant. Both places that were supposed to stop that now do.", es: "Una rafaga de toques dentro del formulario podia gastar el cupo entero de avisos al servidor de ese visitante \u2014 y cuando ese cupo se agota, el envio que viene detras se tira sin decirselo a nadie. Seis visitas del 11-sep-2026 mandaron 37 avisos cada una donde tocaba uno. Los dos sitios que debian impedirlo ya lo impiden." },
+      { en: "Two failures the panel never showed now appear under the funnel, and only when they are not zero: submissions that came back with an error, and people who pressed send and produced no lead at all. Both were being recorded and nothing was reading them.", es: "Dos fallos que el panel no ensenaba nunca aparecen ahora bajo el embudo, y solo cuando no son cero: los envios que volvieron con error, y la gente que le dio a enviar y no produjo ningun lead. Los dos se estaban guardando y no los leia nadie." },
+      { en: "The incoming-calls card no longer depends on new leads existing. It used to count only calls from leads created inside the same date range, so a month with no new leads showed zero calls however many people had phoned.", es: "La tarjeta de llamadas entrantes ya no depende de que haya leads nuevos. Antes solo contaba llamadas de leads creados dentro del mismo rango de fechas, asi que un mes sin leads nuevos ensenaba cero llamadas por mucha gente que hubiera telefoneado." },
+    ],
+  },
   {
     version: "0.99.0",
     date: "2026-09-10",
