@@ -259,6 +259,93 @@ async def test_the_funnel_never_widens_as_it_goes_down() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_funnel_counts_people_not_taps_and_keeps_navigation_apart() -> None:
+    """El defecto entero, con los datos que lo destaparon.
+
+    Tres grupos DISJUNTOS, que es la forma que traia produccion el 12-sep-2026:
+    quien solo pulsa el menu, quien solo toca el telefono, quien solo mete el
+    cursor en el formulario. Nadie hace dos cosas.
+
+    Antes esto daba `SUM(cta)+SUM(tel)+COUNT(form)` = 3+1+1 = **5** en un solo
+    peldano llamado "tocaron llamar o empezaron el formulario", cuando son
+    **3 personas** y solo **2** hicieron algo que se parezca a contactar. Las
+    tres pulsaciones del menu eran una persona navegando.
+    """
+    await _fresh()
+    now = datetime.now(UTC)
+    async with get_bypass_session_factory()() as db:
+        # Uno que solo navego: TRES clics del menu, una sola persona. Es el que
+        # inflaba el numero, y el que la etiqueta llamaba "tapped call".
+        db.add(LandingSession(
+            org_id=ORG, session_key="funnel-nav-" + "a" * 20,
+            first_seen_at=now, last_seen_at=now, source="google", device="desktop",
+            max_scroll_pct=100, sections_viewed=["about", "how"],
+            cta_clicks=3, tel_clicks=0, event_count=9,
+        ))
+        # Uno que toco el telefono y NUNCA pulso el menu.
+        db.add(LandingSession(
+            org_id=ORG, session_key="funnel-tel-" + "b" * 20,
+            first_seen_at=now, last_seen_at=now, source="direct", device="phone",
+            max_scroll_pct=100, sections_viewed=["about", "how"],
+            cta_clicks=0, tel_clicks=1, event_count=4,
+        ))
+        # Uno que metio el cursor en el formulario y nada mas.
+        db.add(LandingSession(
+            org_id=ORG, session_key="funnel-form-" + "c" * 19,
+            first_seen_at=now, last_seen_at=now, source="facebook", device="phone",
+            max_scroll_pct=100, sections_viewed=["about", "how"],
+            cta_clicks=0, tel_clicks=0, form_started_at=now, event_count=5,
+        ))
+        await db.commit()
+    try:
+        body = await _get()
+        steps = {s["stage"]: s["count"] for s in body["funnel"]}
+
+        # PERSONAS. Sumando eventos esto habria dado 5.
+        assert steps["reached_out"] == 3, steps
+        # Y de esas tres, solo dos hicieron algo mas que navegar.
+        assert steps["tapped"] == 2, steps
+        # El subconjunto estricto, con datos disjuntos que es cuando importa:
+        # un embudo de dos peldanos independientes se habria ensanchado aqui.
+        assert steps["tapped"] <= steps["reached_out"]
+
+        # La tarjeta de trafico SIGUE contando toques, que es su pregunta.
+        assert body["traffic"]["cta_clicks"] == 3
+        assert body["traffic"]["people_clicked_cta"] == 1, "tres clics, una persona"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_send_that_produced_no_lead_is_visible() -> None:
+    """El detector que existia en la base y no leia nadie.
+
+    `form_submitted_at` puesto y `lead_id` nulo es el honeypot que contesta 202,
+    el captcha rechazado, la conexion caida: el visitante ve "enviado" y no hay
+    lead. El codigo que lo escribe lo describe asi desde que existe y ninguna
+    consulta lo preguntaba.
+    """
+    await _fresh()
+    now = datetime.now(UTC)
+    async with get_bypass_session_factory()() as db:
+        db.add(LandingSession(
+            org_id=ORG, session_key="funnel-lost-" + "d" * 19,
+            first_seen_at=now, last_seen_at=now, source="direct", device="phone",
+            max_scroll_pct=100, sections_viewed=["about", "consult"],
+            form_started_at=now, form_submitted_at=now, lead_id=None,
+            form_error_count=2, event_count=7,
+        ))
+        await db.commit()
+    try:
+        traffic = (await _get())["traffic"]
+        assert traffic["submitted_without_lead"] == 1, traffic
+        assert traffic["form_errors"] == 2
+        assert traffic["people_with_errors"] == 1
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
 async def test_a_visit_is_counted_where_it_was_read() -> None:
     await _fresh()
     now = datetime.now(UTC)

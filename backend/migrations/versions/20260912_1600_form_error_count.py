@@ -22,9 +22,12 @@ fallidos y un abandono es una historia distinta de un fallo y un reintento con
 
 `NOT NULL DEFAULT 0`, igual que `cta_clicks` y `tel_clicks`: una visita que
 nunca falló vale cero, no «se desconoce», y así ninguna suma necesita
-`COALESCE`. Las filas ya existentes quedan en 0 — que es la verdad para ellas:
-nadie estaba contando, pero tampoco se envió nada (medido: `form_enviado = 0`
-en los 30 días previos).
+`COALESCE`. Las filas ya existentes quedan en 0, y eso es una **aproximación honesta, no un
+hecho medido**: en los 30 días previos no hubo ningún `form_error` en
+`landing_events` (comprobado el 12-sep-2026, cero filas), así que para esa
+ventana el 0 es cierto. Para sesiones más antiguas cuyos eventos ya se purgaron
+no hay forma de saberlo, y no la habrá. **El contador empieza a contar desde el
+despliegue**, y quien lea la cifra debe saberlo.
 
 Sin `policy` ni `grant`: la RLS de `landing_sessions` es por fila y cubre todas
 sus columnas, y los permisos del rol de aplicación son por tabla.

@@ -243,6 +243,40 @@ class TestMergeValues:
         for column in ("cta_clicks", "tel_clicks", "event_count"):
             assert f"{column}=(landing_sessions.{column} + " in sql, sql
 
+    def test_a_failed_send_is_counted_not_collapsed(self) -> None:
+        """`form_error` se guardaba desde siempre y no lo leia nadie.
+
+        Contado y no booleano a proposito: quien se estrella tres veces y se va
+        no es quien se estrella una y lo consigue, y un `COALESCE` de "cuando
+        fallo la primera vez" los cuenta igual.
+        """
+        from app.services.landing_analytics import merge_values
+
+        d = fold_events(
+            [
+                ("form_start", {}),
+                ("form_error", {"reason": "captcha"}),
+                ("form_error", {"reason": "rate"}),
+            ]
+        )
+        assert d.form_errors == 2
+        assert d.form_started is True
+        assert d.form_submitted is False
+
+        # Y se aplica como suma sobre el valor actual, como los demas
+        # contadores: dos beacons de la misma visita no pueden pisarse.
+        sql = self._sql(merge_values(d, NOW), "form_error_count")
+        assert "form_error_count=(landing_sessions.form_error_count + " in sql, sql
+
+    def test_a_visit_with_no_failures_does_not_touch_the_counter(self) -> None:
+        from app.services.landing_analytics import merge_values
+
+        d = fold_events([("cta_click", {})])
+        assert d.form_errors == 0
+        # Ausente del UPDATE, no puesto a cero: escribir 0 sobre el valor actual
+        # borraria los fallos de un beacon anterior de la misma visita.
+        assert "form_error_count" not in merge_values(d, NOW)
+
     def test_the_scroll_maximum_is_taken_by_the_database(self) -> None:
         from app.services.landing_analytics import merge_values
 
