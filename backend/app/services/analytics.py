@@ -147,10 +147,13 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
                 func.count(
                     case((LandingSession.cta_clicks > 0, 1))
                 ),
-                # Los que de verdad hicieron algo: tocar el teléfono o meter el
-                # cursor en el formulario. Es un subconjunto ESTRICTO del
-                # siguiente por construcción, que es lo que garantiza que el
-                # embudo no se ensanche.
+                # Los que de verdad hicieron algo: tocar el teléfono o meter
+                # el cursor en el formulario. Su condición es parte de la del
+                # peldaño de abajo, así que este conjunto está CONTENIDO en
+                # aquel por construcción, nunca mayor. Iguales cuando nadie
+                # se limitó a navegar.
+                # Eso es lo que impide que el embudo se ensanche aquí con
+                # ningún dato.
                 func.count(
                     case(
                         (
@@ -904,10 +907,11 @@ async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
         # botón de verdad tuvo **cero**. Llamar a eso "tocó llamar o empezó el
         # formulario" es contar curiosidad como intención.
         #
-        # `tapped` es un subconjunto ESTRICTO de `reached_out` por construcción
-        # —los dos salen de la misma fila, y su condición es parte de la otra—,
-        # así que el embudo no puede ensancharse aquí por mucho que cambien los
-        # datos. Los tres grupos salieron disjuntos en la medición (5 del menú,
+        # `tapped` está CONTENIDO en `reached_out` por construcción —los dos
+        # salen de la misma fila y la condición del primero es parte de la del
+        # segundo—, así que el embudo no puede ensancharse aquí por mucho que
+        # cambien los datos. Iguales cuando nadie se limitó a navegar. Los
+        # tres grupos salieron disjuntos en la medición (5 del menú,
         # 3 del teléfono, 6 del formulario), que es justo la forma que habría
         # roto un embudo de peldaños independientes.
         ("reached_out", traffic_now["people_reached_out"]),

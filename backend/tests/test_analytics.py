@@ -245,8 +245,8 @@ async def test_the_funnel_never_widens_as_it_goes_down() -> None:
     assert stages[-1] == "won"
     assert stages[:5] == ["sessions", "engaged", "reached_out", "tapped", "leads"]
     # `tapped` sale de la misma fila que `reached_out` y su condicion es parte
-    # de la de aquel, asi que es un subconjunto ESTRICTO: este peldano no puede
-    # ensancharse nunca, con los datos que sea.
+    # de la de aquel, asi que esta CONTENIDO en el: este peldano no puede
+    # ensancharse nunca, con los datos que sea. Iguales cuando nadie se limito a navegar.
     assert counts[stages.index("tapped")] <= counts[stages.index("reached_out")]
     # Not a step on purpose: an appointment can be booked by the voice agent
     # without anybody logging a call, so this one sat wider than the step above
@@ -305,8 +305,8 @@ async def test_the_funnel_counts_people_not_taps_and_keeps_navigation_apart() ->
         assert steps["reached_out"] == 3, steps
         # Y de esas tres, solo dos hicieron algo mas que navegar.
         assert steps["tapped"] == 2, steps
-        # El subconjunto estricto, con datos disjuntos que es cuando importa:
-        # un embudo de dos peldanos independientes se habria ensanchado aqui.
+        # La contencion, con datos disjuntos que es cuando importa: un embudo
+        # de dos peldanos independientes se habria ensanchado aqui.
         assert steps["tapped"] <= steps["reached_out"]
 
         # La tarjeta de trafico SIGUE contando toques, que es su pregunta.
