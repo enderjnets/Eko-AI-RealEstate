@@ -1,0 +1,685 @@
+/**
+ * The partner brief's own stylesheet, scoped to `.eko-brief`.
+ *
+ * Its own file rather than utilities in the markup, and rather than a block in
+ * `globals.css`, for the same reason the landing scopes itself: this page has a
+ * visual identity of its own and nothing in it should be able to move a pixel
+ * of the panel. Scoping means the failure mode of an edit here is "the brief
+ * looks wrong", never "the dashboard does".
+ *
+ * The palette is `eko-noir` / `eko-violet` / `eko-green` / `eko-magenta` from
+ * `tailwind.config.ts` — the company palette, the one the panel already wears.
+ * Every neutral below is that palette's own ink at alpha over its own ground,
+ * so there is no colour here from outside it.
+ *
+ * Single theme on purpose. The panel is noir; a brief that flipped to cream on
+ * a phone set to light mode would look like a different product to the two
+ * people it is addressed to.
+ */
+
+.eko-brief {
+  --noir: #0b0b0f;
+  --surface: #14141a;
+  --sunk: #101015;
+  --ink: #f3f4f6;
+  --ink-2: rgba(243, 244, 246, 0.72);
+  --ink-3: rgba(243, 244, 246, 0.5);
+  --ink-4: rgba(243, 244, 246, 0.32);
+  --rule: rgba(243, 244, 246, 0.11);
+  --rule-soft: rgba(243, 244, 246, 0.07);
+
+  --violet: #7c3aed;
+  --violet-dark: #5b21b6;
+  --violet-soft: rgba(124, 58, 237, 0.14);
+  --violet-line: rgba(124, 58, 237, 0.42);
+
+  --green: #10b981;
+  --magenta: #ec4899;
+  --magenta-soft: rgba(236, 72, 153, 0.12);
+  --magenta-line: rgba(236, 72, 153, 0.4);
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.28);
+
+  background: var(--noir);
+  color: var(--ink);
+  font-family: var(--font-ln-sans), system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.62;
+  min-height: 100vh;
+  /* Clears the fixed save bar. The bar is ~72px; this leaves the last
+     paragraph readable rather than tucked behind it. */
+  padding-bottom: 130px;
+}
+
+.eko-brief .wrap {
+  max-width: 680px;
+  margin: 0 auto;
+  /* Side padding set once, here, so no child can zero it with a shorthand. */
+  padding-inline: 18px;
+}
+.eko-brief p {
+  margin: 0 0 1em;
+}
+.eko-brief strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+.eko-brief h1,
+.eko-brief h2,
+.eko-brief h3 {
+  margin: 0;
+  text-wrap: balance;
+}
+
+/* ── masthead ───────────────────────────────────────────────────────── */
+.eko-brief .mast {
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+}
+.eko-brief .mast .wrap {
+  padding-block: 28px 26px;
+}
+.eko-brief .eyebrow {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin: 0 0 14px;
+}
+.eko-brief h1 {
+  font-family: var(--font-ln-serif), Georgia, serif;
+  font-weight: 500;
+  font-size: clamp(34px, 8.6vw, 50px);
+  line-height: 1.06;
+  letter-spacing: -0.01em;
+  margin: 0 0 13px;
+}
+.eko-brief .standfirst {
+  color: var(--ink-2);
+  margin: 0;
+}
+.eko-brief .privacy {
+  display: inline-block;
+  margin-top: 17px;
+  background: var(--magenta-soft);
+  color: var(--magenta);
+  border: 1px solid var(--magenta-line);
+  border-radius: 3px;
+  padding: 5px 11px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* ── sections ───────────────────────────────────────────────────────── */
+.eko-brief section {
+  margin-top: 46px;
+}
+.eko-brief .kicker {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--violet);
+  margin: 0 0 9px;
+}
+.eko-brief h2.sec {
+  font-family: var(--font-ln-serif), Georgia, serif;
+  font-weight: 500;
+  font-size: clamp(27px, 6.6vw, 36px);
+  line-height: 1.12;
+  margin: 0 0 15px;
+}
+.eko-brief h3 {
+  font-weight: 600;
+  font-size: 17px;
+  margin: 30px 0 8px;
+}
+.eko-brief .lede {
+  font-size: 18px;
+}
+.eko-brief .muted {
+  color: var(--ink-2);
+}
+.eko-brief hr.rule {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 46px 0 0;
+}
+
+/* ── the plan, and the index of asks ────────────────────────────────── */
+.eko-brief .plan,
+.eko-brief .asks,
+.eko-brief .card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  box-shadow: var(--shadow);
+}
+.eko-brief .plan {
+  border-left: 3px solid var(--violet);
+  padding: 22px 21px;
+  margin: 26px 0 0;
+}
+.eko-brief .plan h2 {
+  font-family: var(--font-ln-serif), Georgia, serif;
+  font-weight: 500;
+  font-size: 25px;
+  line-height: 1.2;
+  margin: 0 0 10px;
+}
+.eko-brief .plan .label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin: 22px 0 6px;
+}
+.eko-brief .plan ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: mv;
+  display: grid;
+  gap: 11px;
+}
+.eko-brief .plan ol li {
+  position: relative;
+  padding-left: 31px;
+  counter-increment: mv;
+  font-size: 16px;
+  line-height: 1.52;
+  color: var(--ink-2);
+}
+.eko-brief .plan ol li::before {
+  content: counter(mv);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: var(--violet-soft);
+  border: 1px solid var(--violet-line);
+  color: var(--violet);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 19px;
+  text-align: center;
+}
+.eko-brief .plan > :last-child {
+  margin-bottom: 0;
+}
+
+.eko-brief .asks {
+  padding: 19px 20px 7px;
+  margin: 16px 0 0;
+}
+.eko-brief .asks h2 {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin: 0 0 12px;
+}
+.eko-brief .asks ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.eko-brief .asks li {
+  border-top: 1px solid var(--rule-soft);
+}
+.eko-brief .asks li:first-child {
+  border-top: 0;
+}
+.eko-brief .asks button {
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 14px 2px;
+  background: none;
+  border: 0;
+  text-align: left;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.eko-brief .asks .n {
+  flex: 0 0 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--violet-soft);
+  border: 1px solid var(--violet-line);
+  color: var(--violet);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 22px;
+  text-align: center;
+  margin-top: 1px;
+}
+.eko-brief .asks .who {
+  display: block;
+  font-weight: 400;
+  color: var(--ink-3);
+  font-size: 14.5px;
+  margin-top: 2px;
+}
+
+.eko-brief .card {
+  padding: 20px;
+  margin: 18px 0;
+}
+.eko-brief .card.tint {
+  background: var(--violet-soft);
+  border-color: var(--violet-line);
+}
+.eko-brief .card.flag {
+  background: var(--sunk);
+  border-left: 3px solid var(--magenta);
+}
+.eko-brief .card > :last-child {
+  margin-bottom: 0;
+}
+
+/* ── what they type ─────────────────────────────────────────────────── */
+.eko-brief .qa {
+  margin: 17px 0 0;
+}
+.eko-brief .qa:first-child {
+  margin-top: 0;
+}
+.eko-brief .qa label {
+  display: block;
+  font-weight: 600;
+  font-size: 15px;
+  margin: 0 0 7px;
+}
+.eko-brief .qa .hint {
+  display: block;
+  font-weight: 400;
+  color: var(--ink-3);
+  font-size: 14.5px;
+  margin-top: 2px;
+}
+.eko-brief textarea,
+.eko-brief input[type="text"] {
+  width: 100%;
+  font-family: inherit;
+  /* 16px or larger, always: iOS Safari zooms the page on focus below that,
+     and the zoom does not come back. */
+  font-size: 16.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--noir);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 11px 12px;
+  resize: vertical;
+}
+.eko-brief textarea {
+  min-height: 84px;
+}
+.eko-brief textarea::placeholder,
+.eko-brief input::placeholder {
+  color: var(--ink-4);
+}
+.eko-brief textarea:focus,
+.eko-brief input[type="text"]:focus {
+  outline: 2px solid var(--violet);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+/* ── the people, and the three things she can say about each ────────── */
+.eko-brief .tally {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 16px;
+  align-items: baseline;
+  padding: 11px 15px;
+  margin: 18px 0;
+  font-size: 13.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.eko-brief .tally b {
+  font-weight: 600;
+  font-size: 15px;
+}
+.eko-brief .tally .go b {
+  color: var(--green);
+}
+.eko-brief .tally .touch b {
+  color: var(--magenta);
+}
+.eko-brief .tally .out b {
+  color: var(--ink-2);
+}
+
+.eko-brief ol.people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.eko-brief .person {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--green);
+  border-radius: 7px;
+  box-shadow: var(--shadow);
+  padding: 15px 16px 13px;
+  transition: border-color 0.15s, opacity 0.15s;
+}
+.eko-brief .person[data-state="touch"] {
+  border-left-color: var(--magenta);
+}
+/* Left out reads as a removal, not an alarm: dimmed and struck, no hue.
+   The two brand hues are spent on the states that need telling apart at a
+   glance, and "not writing to them" is the one she already knows she chose. */
+.eko-brief .person[data-state="out"] {
+  border-left-color: var(--ink-4);
+  opacity: 0.6;
+}
+.eko-brief .person .top {
+  display: flex;
+  gap: 11px;
+  align-items: baseline;
+}
+.eko-brief .person .num {
+  font-size: 12.5px;
+  color: var(--ink-4);
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.eko-brief .person .name {
+  font-family: var(--font-ln-serif), Georgia, serif;
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.2;
+  margin: 0;
+}
+.eko-brief .person[data-state="out"] .name {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.eko-brief .person .addr {
+  font-size: 14.5px;
+  color: var(--ink-3);
+  margin: 3px 0 0;
+}
+.eko-brief .person .meta {
+  font-size: 12.5px;
+  color: var(--ink-4);
+  font-variant-numeric: tabular-nums;
+  margin: 5px 0 0;
+}
+.eko-brief .flagline {
+  display: inline-block;
+  margin: 9px 0 0;
+  padding: 3px 9px;
+  border-radius: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--magenta-soft);
+  color: var(--magenta);
+  border: 1px solid var(--magenta-line);
+}
+
+.eko-brief .choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 13px 0 0;
+}
+.eko-brief .choices button {
+  flex: 1 1 auto;
+  /* 46px: a finger target, not a pointer target. */
+  min-height: 46px;
+  min-width: 122px;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: 0.12s;
+}
+.eko-brief .choices button:hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+.eko-brief .choices button:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 2px;
+}
+.eko-brief .choices button[aria-pressed="true"] {
+  font-weight: 600;
+  color: var(--noir);
+}
+.eko-brief .choices button.b-out[aria-pressed="true"] {
+  background: var(--ink-2);
+  border-color: var(--ink-2);
+}
+.eko-brief .choices button.b-touch[aria-pressed="true"] {
+  background: var(--magenta);
+  border-color: var(--magenta);
+}
+.eko-brief .choices button.b-name[aria-pressed="true"] {
+  background: var(--violet);
+  border-color: var(--violet);
+  color: #fff;
+}
+.eko-brief .choices button.b-name {
+  flex: 0 1 auto;
+  min-width: 104px;
+}
+.eko-brief .namefix {
+  margin: 11px 0 0;
+}
+.eko-brief .namefix label {
+  display: block;
+  font-size: 14px;
+  color: var(--ink-3);
+  margin: 0 0 5px;
+}
+.eko-brief .status {
+  margin: 11px 0 0;
+  font-size: 14.5px;
+  font-weight: 500;
+}
+.eko-brief .status.go {
+  color: var(--green);
+}
+.eko-brief .status.touch {
+  color: var(--magenta);
+}
+.eko-brief .status.out {
+  color: var(--ink-3);
+}
+
+/* ── documents and the letter ───────────────────────────────────────── */
+.eko-brief .doc {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  box-shadow: var(--shadow);
+  padding: 15px 16px;
+  margin: 14px 0;
+  text-decoration: none;
+  color: var(--ink);
+}
+.eko-brief .doc:hover {
+  border-color: var(--violet-line);
+}
+.eko-brief .doc .ic {
+  flex: 0 0 40px;
+  height: 40px;
+  border-radius: 6px;
+  background: var(--violet-soft);
+  border: 1px solid var(--violet-line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+}
+.eko-brief .doc .t {
+  font-weight: 600;
+  font-size: 16px;
+  display: block;
+}
+.eko-brief .doc .s {
+  color: var(--ink-3);
+  font-size: 14px;
+  display: block;
+  margin-top: 1px;
+}
+
+.eko-brief .letter {
+  background: var(--sunk);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  padding: 16px 17px;
+  margin: 14px 0;
+  max-height: 290px;
+  overflow-y: auto;
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+}
+
+.eko-brief button.action {
+  width: 100%;
+  min-height: 50px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--violet);
+  border: 1px solid var(--violet);
+  border-radius: 6px;
+  padding: 12px;
+  cursor: pointer;
+  transition: 0.12s;
+}
+.eko-brief button.action:hover {
+  background: var(--violet-dark);
+}
+.eko-brief button.action:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* ── the save bar ───────────────────────────────────────────────────── */
+.eko-brief .savebar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  background: var(--surface);
+  border-top: 1px solid var(--rule);
+  box-shadow: 0 -2px 18px rgba(0, 0, 0, 0.5);
+  padding: 11px 0 max(11px, env(safe-area-inset-bottom));
+}
+.eko-brief .savebar .wrap {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+}
+.eko-brief .savebar .state {
+  flex: 1 1 auto;
+  font-size: 13px;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+.eko-brief .savebar .state.bad {
+  color: var(--magenta);
+}
+.eko-brief .savebar .state.good {
+  color: var(--green);
+}
+.eko-brief .savebar button {
+  flex: 0 0 auto;
+  min-height: 46px;
+  min-width: 134px;
+  font-family: inherit;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--violet);
+  border: 1px solid var(--violet);
+  border-radius: 6px;
+  padding: 10px 18px;
+  cursor: pointer;
+}
+.eko-brief .savebar button:hover:not(:disabled) {
+  background: var(--violet-dark);
+}
+.eko-brief .savebar button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.eko-brief .savebar button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* ── colophon ───────────────────────────────────────────────────────── */
+.eko-brief footer {
+  margin-top: 48px;
+  border-top: 1px solid var(--rule);
+  padding-top: 24px;
+}
+.eko-brief footer p {
+  font-size: 14px;
+  color: var(--ink-3);
+  margin: 0 0 0.7em;
+}
+.eko-brief footer .sign {
+  font-family: var(--font-ln-serif), Georgia, serif;
+  font-size: 22px;
+  color: var(--ink);
+  margin: 0 0 16px;
+}
+
+.eko-brief .centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 70vh;
+  text-align: center;
+  color: var(--ink-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eko-brief * {
+    transition: none !important;
+  }
+}

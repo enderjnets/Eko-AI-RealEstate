@@ -45,6 +45,7 @@ from app.models.organization import (
     DEMO_ORG_ID,
     Organization,
 )
+from app.models.partner_brief import TOKEN_BYTES, PartnerBrief, new_token
 from app.models.property import Property, PropertySource, PropertyStatus
 from app.models.render_job import RenderJob, RenderJobKind, RenderJobStatus
 from app.models.sync_state import SyncState
@@ -97,6 +98,9 @@ __all__: list[str] = [
     "MessageDirection",
     "MessageSender",
     "MessageStatus",
+    "PartnerBrief",
+    "new_token",
+    "TOKEN_BYTES",
     "Property",
     "PropertySource",
     "PropertyStatus",

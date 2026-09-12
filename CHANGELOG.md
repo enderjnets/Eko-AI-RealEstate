@@ -2,6 +2,63 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.101.0] — 2026-09-12
+
+### Added
+- **The partner brief: `/brief/<token>`.** Every ask that went out to the two
+  agents this install exists for was an email ending in *"reply with these
+  three lines"*, and the reply we needed was a person retyping nine client
+  names into a mail app on a phone. That reply does not come, and expecting it
+  was our failure rather than theirs. A brief is a page instead: they open a
+  link, read what the work is, and tap.
+
+  `partner_briefs` is one row per link — `payload` is what the page renders,
+  `answers` is what they tapped back, both JSONB. That is the decision worth
+  defending: a brief is written once, read for a week, and never again, so a
+  hardcoded page would mean a deploy per campaign and a migration per question.
+  What the table guarantees is not the shape of a brief, it is that an answer
+  stays attached to the brief it answers, under the org that owns both.
+
+  Created by `scripts/create_brief.py`, which also reads the answers back
+  (`--show <token>`) and lists the organizations first, because getting that
+  wrong is not a typo — it is handing one agency's link to another.
+
+- **Nothing on the page is pre-selected against the reader.** A `people` block
+  arrives with every person already set to receive the letter, so agreeing with
+  all of it costs zero taps and only exceptions are touched. A sticky count
+  says what has been decided so far.
+
+- **It autosaves.** A debounced write a second after the last keystroke, plus a
+  `sendBeacon` on `pagehide` and on `visibilitychange` — `pagehide` because iOS
+  Safari does not reliably fire `beforeunload`, and iOS Safari is where this is
+  read. The button stays: a person needs to be able to finish on purpose.
+
+- **The answers are mailed to `OWNER_NOTICE_EMAIL` on save**, rendered in full
+  rather than as a link. A brief that required *us* to remember to open a page
+  would have moved the chore from one end of the conversation to the other.
+  `services/brief_notify.py` is its own module and is named in
+  `test_opt_out_is_absolute.py`'s exemption list, with the reason.
+
+### Security
+- **The page is ungated and unpublished, and those are two separate decisions.**
+  It joins `/login` and `/register` in `AuthGuard` — no session, because the
+  people it is for hold none — and is deliberately **not** in `PUBLIC_PATHS`,
+  because that list publishes what it contains on the brand domain and a brief
+  carries past clients' names and street addresses. Page-level
+  `robots: index:false, follow:false, nocache, noarchive` rather than a
+  robots.txt: Cloudflare serves its own on both hostnames and prepends
+  `Allow: /`, measured on this infrastructure.
+- **The token is the credential, and the tenant boundary still holds.** The
+  bypass engine maps token → org and reads two integers; every read and write
+  after that runs on the ordinary RLS-enforcing session inside that org, so a
+  bug in those queries can leak one brief at worst, never the table. An unknown
+  token and a malformed one get the same 404 `unknown_brief`, so the endpoint
+  cannot be used to learn what a real token looks like.
+- **Its own rate-limit budget, not lead capture's.** Sharing one would mean an
+  agent re-reading the brief on a bad signal is what stops a seller's form from
+  being written — the same mistake the landing beacons already have a separate
+  budget to avoid. `answers` is bounded at 64 KB before it is stored.
+
 ## [0.100.0] — 2026-09-12
 
 ### Fixed

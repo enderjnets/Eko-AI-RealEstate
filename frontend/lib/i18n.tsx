@@ -998,6 +998,31 @@ const EN: Record<string, string> = {
   "calculator.cta.luxury": "Buying above $1 million? That is their market too \u2014 tell Natalia what you are looking for and she will take it from there.",
   "calculator.cta.reassure": "Three fields. Natalia answers you \u2014 not a robot.",
   "landing.footer.staffLogin": "Advisor sign-in",
+  // The partner brief — the page we hand to the people we work with. Only the
+  // chrome is translated: everything the brief actually says comes out of its
+  // own payload, written per brief in the language its reader reads.
+  "brief.private": "Private link · please don't forward",
+  "brief.loading": "Opening",
+  "brief.missing": "This link is not valid any more. Ask for a new one.",
+  "brief.send": "Send answers",
+  "brief.untouched": "Nothing changed yet",
+  "brief.unsaved": "Not sent yet",
+  "brief.saving": "Saving\u2026",
+  "brief.saved": "Saved",
+  "brief.saveFailed": "Could not save \u2014 tap Send answers to try again",
+  "brief.willGet": "will get a letter",
+  "brief.inTouch": "you're in touch with",
+  "brief.leftOut": "left out",
+  "brief.actionOut": "Leave out",
+  "brief.actionTouch": "I'm in touch",
+  "brief.actionName": "Fix name",
+  "brief.namePrompt": "What do you call them?",
+  "brief.stateGo": "Will receive a letter",
+  "brief.stateTouch": "You're in touch \u2014 I'll leave this one to you",
+  "brief.stateOut": "Left out \u2014 no letter",
+  "brief.copy": "Copy the whole email",
+  "brief.copied": "Copied \u2713",
+  "brief.whereItStands": "Where this stands",
 };
 
 const ES: Record<string, string> = {
@@ -1951,6 +1976,30 @@ const ES: Record<string, string> = {
   "calculator.cta.headingPriced": "\u00bfQuieres que Natalia te mande opciones cerca de {price}?",
   "calculator.cta.luxury": "\u00bfBuscas por encima del mill\u00f3n? Tambi\u00e9n es su mercado \u2014 dile a Natalia qu\u00e9 buscas y ella se encarga.",
   "calculator.cta.reassure": "Tres campos. Te contesta Natalia, no un robot.",
+  // La hoja de socios. Solo se traduce el marco: lo que la hoja dice viene de
+  // su propio payload, escrito por hoja en el idioma de quien la lee.
+  "brief.private": "Enlace privado \u00b7 no lo reenv\u00edes",
+  "brief.loading": "Abriendo",
+  "brief.missing": "Este enlace ya no vale. Pide uno nuevo.",
+  "brief.send": "Enviar respuestas",
+  "brief.untouched": "Sin cambios todav\u00eda",
+  "brief.unsaved": "Sin enviar",
+  "brief.saving": "Guardando\u2026",
+  "brief.saved": "Guardado",
+  "brief.saveFailed": "No se pudo guardar \u2014 toca Enviar respuestas",
+  "brief.willGet": "reciben carta",
+  "brief.inTouch": "ya hablas con ellos",
+  "brief.leftOut": "fuera",
+  "brief.actionOut": "Dejar fuera",
+  "brief.actionTouch": "Ya hablo con \u00e9l",
+  "brief.actionName": "Corregir nombre",
+  "brief.namePrompt": "\u00bfC\u00f3mo le llamas t\u00fa?",
+  "brief.stateGo": "Recibe la carta",
+  "brief.stateTouch": "Ya hablas con \u00e9l \u2014 te lo dejo a ti",
+  "brief.stateOut": "Fuera \u2014 sin carta",
+  "brief.copy": "Copiar el correo entero",
+  "brief.copied": "Copiado \u2713",
+  "brief.whereItStands": "C\u00f3mo va esto",
 };
 
 const DICTS: Record<Lang, Record<string, string>> = { en: EN, es: ES };

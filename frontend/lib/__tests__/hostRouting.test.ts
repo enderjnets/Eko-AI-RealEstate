@@ -351,6 +351,22 @@ describe("the auth guard cannot fall behind the public list", () => {
     }
   });
 
+  it("lets the two agents open a brief without a session, unpublished", async () => {
+    const { isUngatedForTest } = await import("../../components/ui/AuthGuard");
+    const hosts = await import("../hosts");
+    // Both halves matter and they pull in opposite directions. Ungated,
+    // because the people it is for hold no session and never will. And NOT on
+    // the brand site's list, because that list publishes what it contains and
+    // this page carries past clients' names and addresses.
+    expect(isUngatedForTest("/brief/abc123")).toBe(true);
+    expect(hosts.PUBLIC_PATHS).not.toContain("/brief");
+    expect(hosts.isPublicPath("/brief/abc123")).toBe(false);
+    // The prefix is `/brief/`, with the slash: a route that merely starts with
+    // those letters is still the panel.
+    expect(isUngatedForTest("/briefing")).toBe(false);
+    expect(isUngatedForTest("/brief")).toBe(false);
+  });
+
   it("still gates the panel", async () => {
     const { isUngatedForTest } = await import("../../components/ui/AuthGuard");
     for (const p of ["/leads", "/inbox", "/settings", "/analytics", "/about"]) {

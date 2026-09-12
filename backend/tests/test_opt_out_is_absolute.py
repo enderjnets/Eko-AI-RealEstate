@@ -190,6 +190,16 @@ SEND_EXEMPT = {
     # address is missing or wrong, so a gate that could silence it would remove
     # the only remaining reader.
     "app/services/lead_notify.py::_notify_owner_by_email",
+    # The partner brief's answers, mailed to whoever OPERATES the install
+    # (`OWNER_NOTICE_EMAIL`) the moment Natalia or Robbie save the page.
+    #
+    # Exempt because there is no recipient here who could have opted out of
+    # anything: the address belongs to the person who wrote the brief, and the
+    # message is the answer to their own question. Nothing in it is addressed
+    # to a lead, and nothing in this module can send anywhere else — the `to`
+    # is read from settings and never from the row, which is the property that
+    # makes this exemption safe to keep.
+    "app/services/brief_notify.py::send_brief_answered_notice",
 }
 
 APP = pathlib.Path(__file__).resolve().parents[1] / "app"

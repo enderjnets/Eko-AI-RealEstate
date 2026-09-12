@@ -35,9 +35,24 @@ import {
  *
  * `isPublicPath` and not `Set.has`: it matches sub-paths, so `/contact/thanks`
  * is ungated for the same reason `/contact` is. The old Set gated it.
+ *
+ * `/brief/<token>` joins /login and /register on that same asymmetry, and it is
+ * the clearest case of it yet. The page is handed to Natalia and Robbie, who
+ * hold no session and are not going to create one to tick nine boxes — so it
+ * must not be gated. And it carries their past clients' names and addresses —
+ * so it must NOT be in `PUBLIC_PATHS`, because that list publishes what it
+ * contains on the brand domain. Ungated, unpublished, and reachable only by a
+ * token nobody can guess.
+ *
+ * A prefix, not an equality: the token is the rest of the path.
  */
 function isUngated(pathname: string): boolean {
-  return isPublicPath(pathname) || pathname === "/login" || pathname === "/register";
+  return (
+    isPublicPath(pathname) ||
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname.startsWith("/brief/")
+  );
 }
 
 /**
