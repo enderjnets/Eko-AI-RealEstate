@@ -47,8 +47,20 @@ export type EventName =
 /** Recorded at most once per tracker, whatever the page does. A slider or a
  *  keystroke recalculating twenty times a minute must not spend the visitor's
  *  own beacon budget — the per-IP limit is charged per request, and an
- *  exhausted one silently drops the `form_submit` that follows. */
-const ONCE: ReadonlySet<EventName> = new Set<EventName>(["calculator_result"]);
+ *  exhausted one silently drops the `form_submit` that follows.
+ *
+ *  `form_start` is here because that drop stopped being hypothetical. It is a
+ *  once-per-visit fact — "they touched the form" — but it rides `focus`, and
+ *  focus repeats: six sessions on 11-sep-2026 sent **37 each, 222 in all**,
+ *  against a budget of 60 per address per ten minutes. The component guards it
+ *  too (`ConsultForm`), and that guard is now a ref rather than state, but the
+ *  two are deliberately independent: the component's protects one mount, this
+ *  one protects the visit, and a page that remounts the form — a language
+ *  switch, a route change — resets the first and not the second. */
+const ONCE: ReadonlySet<EventName> = new Set<EventName>([
+  "calculator_result",
+  "form_start",
+]);
 
 const IMMEDIATE: ReadonlySet<EventName> = new Set<EventName>([
   "cta_click",

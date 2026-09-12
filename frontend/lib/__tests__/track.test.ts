@@ -501,6 +501,35 @@ describe("calculator_result is recorded once per tracker, whatever the page does
   });
 });
 
+describe("form_start is one event per visit, however often focus fires", () => {
+  it("sends one beacon for a burst of thirty-seven", () => {
+    // Not a hypothetical number. On 11-sep-2026 six sessions each sent exactly
+    // 37 `form_start` — 222 in all — against a per-address budget of 60 per ten
+    // minutes. `form_start` is IMMEDIATE, so every repeat was its own HTTP
+    // request, and the comment on EVENTS_PER_IP_LIMIT says what an exhausted
+    // budget costs: the `form_submit` that follows is dropped in silence. That
+    // is a real lead, lost, with nothing in the panel to show for it.
+    const { t, sent } = tracker();
+    for (let i = 0; i < 37; i++) t.record("form_start");
+    expect(sent).toHaveLength(1);
+    expect(JSON.parse(sent[0]).events).toEqual([{ t: "form_start" }]);
+  });
+
+  it("still lets the submit through afterwards", () => {
+    // The guard must not swallow the step that matters. `form_submit` is not in
+    // ONCE and must stay out of it: a retry after a captcha refusal is a second
+    // genuine attempt, not a repeat.
+    const { t, sent } = tracker();
+    t.record("form_start");
+    t.record("form_start");
+    t.record("form_submit");
+    t.record("form_submit");
+    expect(sent).toHaveLength(3);
+    const kinds = sent.map((b) => JSON.parse(b).events.map((e: { t: string }) => e.t));
+    expect(kinds).toEqual([["form_start"], ["form_submit"], ["form_submit"]]);
+  });
+});
+
 describe("every section a page reports is one the server keeps", () => {
   // Three lists exist: the server's tuple, the tracker's default, and whatever
   // a page passes as `sections={[...]}`. A name outside the tuple is dropped

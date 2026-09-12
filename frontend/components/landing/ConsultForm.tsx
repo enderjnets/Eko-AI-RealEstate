@@ -14,7 +14,7 @@
  * lead came from is attribution, and rides in `landing_variant` instead.
  */
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { submitPublicLead, type CalculatorPayload, type CaptureOutcome } from "@/lib/api";
 import { collectAttribution } from "@/lib/capture";
@@ -58,7 +58,14 @@ function ConsultFormInner({
   const [consent, setConsent] = useState(false);
   const [utm, setUtm] = useState<Record<string, string>>({});
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
-  const [started, setStarted] = useState(false);
+  // A ref, not state, and the difference is 222 events wide. `started` is only
+  // ever read inside the guard below — it renders nothing — and as state it was
+  // read from the closure of the last render: a burst of `focus` events in one
+  // tick all saw `false`, all passed, and all recorded. Measured in production
+  // on 11-sep-2026: six sessions fired **37 `form_start` each**, 222 in total.
+  // A ref updates synchronously, so the second event in the same tick sees the
+  // first one's write.
+  const started = useRef(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -90,8 +97,8 @@ function ConsultFormInner({
   // without it an abandoned form is indistinguishable from a visitor who never
   // looked at it.
   const onFirstTouch = () => {
-    if (started) return;
-    setStarted(true);
+    if (started.current) return;
+    started.current = true;
     getTracker()?.record("form_start");
   };
 
