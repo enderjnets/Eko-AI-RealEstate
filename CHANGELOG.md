@@ -12,8 +12,9 @@ All notable changes to **Eko AI Realtors**.
   stays connected to the network that brought the visitor.
 - **An exact scorecard for each publication and platform.** The content card
   connects its own `piece-<id>` tag and platform to measured visitors, engaged
-  visitors, visitors choosing a next step, form starters, phone taps, leads,
-  appointments set and appointments held. These are explicit
+  visitors, visitors choosing a next step, form starters, visitors showing
+  contact intent (a phone tap or form start), leads, appointments set and
+  appointments held. These are explicit
   link matches; the existing 48-hour association remains separately labelled.
 - **Views, likes and comments on the same card.** YouTube readings continue to
   arrive from the platform. Instagram and TikTok can be entered manually, with

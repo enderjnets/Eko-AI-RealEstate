@@ -23,7 +23,7 @@ Desde la v0.75.0, el enlace del pie de cada vídeo sale etiquetado y **distinto 
 cada red**. No hay que hacer nada:
 
 ```
-https://www.denverhomestory.com?utm_source=tiktok&utm_medium=social&utm_campaign=video&utm_content=piece-10
+https://www.denverhomestory.com/start?utm_source=tiktok&utm_medium=social&utm_campaign=video&utm_content=piece-10
 ```
 
 `utm_source` dice la red, `utm_content` dice **qué vídeo**. Eso es lo que permite
