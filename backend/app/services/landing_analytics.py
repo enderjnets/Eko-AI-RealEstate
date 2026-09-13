@@ -71,6 +71,18 @@ _IN_APP = (
     (re.compile(r"\bfban|\bfbav|\bfb_iab", re.I), "facebook"),
 )
 
+_AUTOMATED_USER_AGENTS: tuple[tuple[str, str], ...] = (
+    ("headlesschrome", "ua_headless_chrome"),
+    ("googlebot", "ua_googlebot"),
+    ("bingbot", "ua_bingbot"),
+    ("facebookexternalhit", "ua_facebookexternalhit"),
+    ("lighthouse", "ua_lighthouse"),
+    ("curl", "ua_curl"),
+    ("wget", "ua_wget"),
+    ("python-requests", "ua_python_requests"),
+    ("bytespider", "ua_bytespider"),
+)
+
 
 def clip(value: Any, limit: int = MAX_VALUE) -> str | None:
     """A trimmed string of at most `limit` characters, or None if empty."""
@@ -130,6 +142,25 @@ def source_of(utm_source: str | None, referrer_host: str | None) -> str:
         if pattern.search(referrer_host):
             return name
     return "other"
+
+
+def classify_traffic(
+    user_agent: str | None,
+    webdriver: bool,
+    attribution: dict[str, str],
+) -> tuple[str, str | None]:
+    source = attribution.get("utm_source", "").strip().lower()
+    medium = attribution.get("utm_medium", "").strip().lower()
+    if source == "eko_qa" and medium == "test":
+        return "test", "explicit_qa"
+    if webdriver:
+        return "automated", "webdriver"
+
+    normalized_user_agent = (user_agent or "").lower()
+    for signature, reason in _AUTOMATED_USER_AGENTS:
+        if signature in normalized_user_agent:
+            return "automated", reason
+    return "unknown", None
 
 
 def device_of(user_agent: str | None) -> str:

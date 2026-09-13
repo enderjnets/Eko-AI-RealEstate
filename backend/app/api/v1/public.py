@@ -43,6 +43,7 @@ from app.services.capture import (
 )
 from app.services.landing_analytics import (
     browser_of,
+    classify_traffic,
     clip,
     device_of,
     fold_events,
@@ -623,6 +624,7 @@ class LandingBatchIn(BaseModel, extra="forbid"):
     path: str | None = Field(default=None, max_length=200)
     lang: Literal["en", "es"] | None = None
     screen_w: int | None = Field(default=None, ge=0, le=10_000)
+    webdriver: Literal[True] | None = None
     utm: dict[str, str] | None = None
     referrer: str | None = Field(default=None, max_length=500)
     events: list[LandingEventIn] = Field(min_length=1, max_length=EVENTS_MAX_PER_BATCH)
@@ -763,6 +765,7 @@ async def _landing_session_id(
     attribution = clean_attribution(body.utm)
     host = referrer_host_of(body.referrer)
     ua = request.headers.get("user-agent")
+    traffic_class, traffic_class_reason = classify_traffic(ua, body.webdriver is True, attribution)
     country, region, city = geo_of(request.headers)
 
     # Core INSERT, not the ORM: `before_flush` is what stamps `org_id` on this
@@ -785,6 +788,9 @@ async def _landing_session_id(
                 utm_term=attribution.get("utm_term"),
                 referrer_host=host,
                 source=source_of(attribution.get("utm_source"), host),
+                traffic_class=traffic_class,
+                traffic_class_reason=traffic_class_reason,
+                traffic_classified_at=now if traffic_class != "unknown" else None,
                 device=device_of(ua),
                 browser=browser_of(ua),
                 os=os_of(ua),

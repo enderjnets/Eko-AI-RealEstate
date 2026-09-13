@@ -15,6 +15,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -72,6 +73,10 @@ class LandingSession(Base):
         # collide into one row by chance.
         UniqueConstraint("org_id", "session_key", name="uq_landing_session"),
         Index("ix_landing_sessions_org_first_seen", "org_id", "first_seen_at"),
+        CheckConstraint(
+            "traffic_class IN ('unknown', 'automated', 'test')",
+            name="ck_landing_sessions_traffic_class",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -96,6 +101,14 @@ class LandingSession(Base):
     utm_term: Mapped[str | None] = mapped_column(Text, nullable=True)
     referrer_host: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(Text, nullable=False, default="direct")
+
+    traffic_class: Mapped[str] = mapped_column(
+        Text, nullable=False, default="unknown", server_default="unknown"
+    )
+    traffic_class_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    traffic_classified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     device: Mapped[str | None] = mapped_column(Text, nullable=True)
     browser: Mapped[str | None] = mapped_column(Text, nullable=True)

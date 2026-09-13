@@ -46,6 +46,19 @@ UA_INSTAGRAM = (
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
     "(KHTML, like Gecko) Mobile/15E148 Instagram 331.0.0.35.90 (iPhone14,3; iOS 17_5)"
 )
+UA_TIKTOK = (
+    "Mozilla/5.0 (Linux; Android 13; SM-S908B Build/TP1A) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Version/4.0 Chrome/119.0.0.0 Mobile Safari/537.36 "
+    "trill_310204 JsSdk/1.0 NetType/WIFI Channel/googleplay BytedanceWebview/d8a21c6"
+)
+UA_CHROME = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+)
+UA_SAFARI = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -143,6 +156,116 @@ async def _event_rows(key: str = SESSION) -> list[dict]:
             )
         ).mappings().all()
     return [dict(r) for r in rows]
+
+
+class TestTrafficClassification:
+    @pytest.mark.parametrize(
+        "user_agent,reason",
+        [
+            ("Mozilla/5.0 HeadlessChrome/128.0.0.0", "ua_headless_chrome"),
+            ("Googlebot/2.1 (+http://www.google.com/bot.html)", "ua_googlebot"),
+            ("Mozilla/5.0 compatible; bingbot/2.0", "ua_bingbot"),
+            ("facebookexternalhit/1.1", "ua_facebookexternalhit"),
+            ("Mozilla/5.0 Chrome-Lighthouse", "ua_lighthouse"),
+            ("curl/8.7.1", "ua_curl"),
+            ("Wget/1.21.4", "ua_wget"),
+            ("python-requests/2.32.3", "ua_python_requests"),
+            ("Mozilla/5.0 Bytespider", "ua_bytespider"),
+        ],
+    )
+    def test_explicit_automated_signatures_are_classified(
+        self, user_agent: str, reason: str
+    ) -> None:
+        from app.services.landing_analytics import classify_traffic
+
+        assert classify_traffic(user_agent, False, {}) == ("automated", reason)
+
+    def test_webdriver_is_automated(self) -> None:
+        from app.services.landing_analytics import classify_traffic
+
+        assert classify_traffic(UA_CHROME, True, {}) == ("automated", "webdriver")
+
+    def test_explicit_test_pair_requires_both_exact_values(self) -> None:
+        from app.services.landing_analytics import classify_traffic
+
+        assert classify_traffic(
+            UA_CHROME,
+            False,
+            {"utm_source": "eko_qa", "utm_medium": "test"},
+        ) == ("test", "explicit_qa")
+        assert classify_traffic(UA_CHROME, False, {"utm_source": "eko_qa"}) == (
+            "unknown",
+            None,
+        )
+        assert classify_traffic(UA_CHROME, False, {"utm_medium": "test"}) == (
+            "unknown",
+            None,
+        )
+
+    @pytest.mark.parametrize(
+        "user_agent",
+        [UA_CHROME, UA_SAFARI, UA_INSTAGRAM, UA_TIKTOK, None],
+    )
+    def test_normal_browsers_stay_unknown_traffic_class(self, user_agent: str | None) -> None:
+        from app.services.landing_analytics import classify_traffic
+
+        assert classify_traffic(user_agent, False, {}) == ("unknown", None)
+
+    async def test_webdriver_true_is_persisted_without_the_raw_user_agent(self) -> None:
+        await _beacon(
+            _batch(("page_view", {}), webdriver=True),
+            **{"user-agent": UA_CHROME},
+        )
+
+        row = await _session_row()
+        assert row["traffic_class"] == "automated"
+        assert row["traffic_class_reason"] == "webdriver"
+        assert row["traffic_classified_at"] is not None
+        assert all(UA_CHROME not in str(value) for value in row.values())
+
+    async def test_automated_user_agent_is_classified_before_it_is_discarded(self) -> None:
+        user_agent = "Mozilla/5.0 (X11; Linux x86_64) HeadlessChrome/128.0.0.0"
+        await _beacon(_batch(("page_view", {})), **{"user-agent": user_agent})
+
+        row = await _session_row()
+        assert row["traffic_class"] == "automated"
+        assert row["traffic_class_reason"] == "ua_headless_chrome"
+        assert row["traffic_classified_at"] is not None
+        assert all(user_agent not in str(value) for value in row.values())
+
+    async def test_explicit_test_pair_is_persisted(self) -> None:
+        await _beacon(
+            _batch(
+                ("page_view", {}),
+                utm={"utm_source": "eko_qa", "utm_medium": "test"},
+            ),
+            **{"user-agent": UA_CHROME},
+        )
+
+        row = await _session_row()
+        assert row["traffic_class"] == "test"
+        assert row["traffic_class_reason"] == "explicit_qa"
+        assert row["traffic_classified_at"] is not None
+
+    async def test_37_form_starts_and_geo_stay_unknown_traffic_class(self) -> None:
+        headers = {
+            "user-agent": UA_CHROME,
+            "cf-ipcountry": "US",
+            "cf-region-code": "CA",
+            "cf-ipcity": "San Jose",
+        }
+        await _beacon(_batch(*[("form_start", {})] * 25, screen_w=0), **headers)
+        await _beacon(_batch(*[("form_start", {})] * 12, screen_w=0), **headers)
+
+        row = await _session_row()
+        assert row["event_count"] == 37
+        assert row["traffic_class"] == "unknown"
+        assert row["traffic_class_reason"] is None
+        assert row["traffic_classified_at"] is None
+
+    async def test_webdriver_false_is_refused_instead_of_claiming_human_traffic(self) -> None:
+        assert await _beacon(_batch(("page_view", {}), webdriver=False)) == 400
+        assert await _session_row() is None
 
 
 class TestWritingASession:
