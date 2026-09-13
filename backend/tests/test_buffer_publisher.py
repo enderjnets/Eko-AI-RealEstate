@@ -1945,6 +1945,46 @@ def test_foreign_and_lookalike_hosts_are_untouched(foreign: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "lookalike",
+    [
+        "https://denverhomestory.com.xn--p1ai/calculator",
+        "denverhomestory.com.xn--p1ai/calculator",
+        "https://denverhomestory.com.123/calculator",
+        "denverhomestory.com.123/calculator",
+    ],
+)
+def test_the_complete_punycode_or_numeric_hostname_is_rejected(lookalike: str) -> None:
+    assert with_platform_utm(lookalike, CTA, PublicationPlatform.YOUTUBE, 7, "video") == lookalike
+
+
+@pytest.mark.parametrize(
+    "lookalike",
+    [
+        "https://denverhomestory.com.xn--p1ai/calculator",
+        "denverhomestory.com.xn--p1ai/calculator",
+    ],
+)
+def test_a_site_link_after_a_punycode_lookalike_is_the_one_tagged(lookalike: str) -> None:
+    text = f"Ignore {lookalike} Use {CTA}/calculator"
+    out = with_platform_utm(text, CTA, PublicationPlatform.YOUTUBE, 7, "video")
+    assert out.startswith(f"Ignore {lookalike} Use {CTA}/calculator?")
+    assert out.endswith(
+        "utm_source=youtube&utm_medium=social&utm_campaign=video&utm_content=piece-7"
+    )
+
+
+@pytest.mark.parametrize(("opening", "closing"), [("“", "”"), ("«", "»")])
+def test_an_https_root_inside_typographic_quotes_is_tagged(
+    opening: str, closing: str
+) -> None:
+    out = with_platform_utm(
+        f"Consulta {opening}{CTA}{closing}", CTA, PublicationPlatform.INSTAGRAM, 6, "video"
+    )
+    assert out.startswith(f"Consulta {opening}{CTA}/start?")
+    assert out.endswith(f"utm_content=piece-6{closing}")
+
+
+@pytest.mark.parametrize(
     "external",
     [
         "https://denverhomestory.com@example.org/contact",
