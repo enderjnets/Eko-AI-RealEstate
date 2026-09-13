@@ -18,6 +18,11 @@ All notable changes to **Eko AI Realtors**.
   the one that cannot surprise somebody with a charge they did not expect.
   `frontend/lib/__tests__/contentRebuild.test.ts` fails if the free-pictures
   promise returns, and fails too if the warning is merely deleted.
+- **The partner-brief notice read like a database dump.** `6121ef6`, written by
+  another session and left without a version bump, so it ships here: the mail
+  said `p1: state: out` where it now says the person's name and *LEAVE OUT*.
+  Recorded rather than silently carried — a released version has to describe
+  everything inside it, including the parts somebody else wrote.
 
 ## [0.101.0] — 2026-09-12
 
