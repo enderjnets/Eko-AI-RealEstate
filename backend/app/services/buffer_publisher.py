@@ -220,66 +220,68 @@ def with_platform_utm(
         return text
 
     base_host = configured_host.removeprefix("www.")
-    accepted_hosts = sorted({base_host, f"www.{base_host}"}, key=len, reverse=True)
-    host_pattern = "(?:" + "|".join(re.escape(host) for host in accepted_hosts) + ")"
     link_pattern = re.compile(
-        rf"(?<![\w@./-])(?:https?://)?{host_pattern}"
-        rf"(?::\d{{1,5}})?(?![\w.:-])(?:[/?#][^\s<>\"']*)?",
+        r"(?<![\w@./-])(?:"
+        r"https?://[^\s<>\"']+"
+        r"|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+        r"[a-z]{2,63}\.?(?::\d{1,5})?(?:[/?#][^\s<>\"']*)?(?![\w@-])"
+        r")",
         re.IGNORECASE,
     )
-    match = link_pattern.search(text)
-    if match is None:
-        return text
+    for match in link_pattern.finditer(text):
+        candidate = match.group(0)
+        suffix = ""
+        # Sentence punctuation is not part of a URL. Keep a balanced parenthesis
+        # or bracket that genuinely belongs to a path, while removing an unmatched
+        # closer from Markdown or prose.
+        while candidate:
+            last = candidate[-1]
+            removable = last in ".,;:!?}"
+            if last == ")":
+                removable = candidate.count(")") > candidate.count("(")
+            elif last == "]":
+                removable = candidate.count("]") > candidate.count("[")
+            if not removable:
+                break
+            candidate = candidate[:-1]
+            suffix = last + suffix
 
-    candidate = match.group(0)
-    suffix = ""
-    # Sentence punctuation is not part of a URL. Keep a balanced parenthesis
-    # or bracket that genuinely belongs to a path, while removing an unmatched
-    # closer from Markdown or prose.
-    while candidate:
-        last = candidate[-1]
-        removable = last in ".,;:!?}"
-        if last == ")":
-            removable = candidate.count(")") > candidate.count("(")
-        elif last == "]":
-            removable = candidate.count("]") > candidate.count("[")
-        if not removable:
-            break
-        candidate = candidate[:-1]
-        suffix = last + suffix
+        try:
+            parsed = urlsplit(candidate if "://" in candidate else f"https://{candidate}")
+            parsed_host = (parsed.hostname or "").lower().rstrip(".").removeprefix("www.")
+        except ValueError:
+            continue
+        if parsed_host != base_host:
+            continue
 
-    parsed = urlsplit(candidate if "://" in candidate else f"https://{candidate}")
-    parsed_host = (parsed.hostname or "").lower().rstrip(".").removeprefix("www.")
-    if parsed_host != base_host:
-        return text
-
-    managed = {"utm_source", "utm_medium", "utm_campaign", "utm_content"}
-    pairs = [
-        (key, value)
-        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-        if key not in managed
-    ]
-    pairs.extend(
-        [
-            ("utm_source", getattr(platform, "value", str(platform))),
-            ("utm_medium", "social"),
-            ("utm_campaign", campaign),
-            ("utm_content", f"piece-{piece_id}"),
+        managed = {"utm_source", "utm_medium", "utm_campaign", "utm_content"}
+        pairs = [
+            (key, value)
+            for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+            if key not in managed
         ]
-    )
-    path = parsed.path
-    if path in ("", "/") and not parsed.fragment:
-        path = "/start"
-    tagged = urlunsplit(
-        (
-            configured.scheme or "https",
-            configured.netloc,
-            path,
-            urlencode(pairs),
-            parsed.fragment,
+        pairs.extend(
+            [
+                ("utm_source", getattr(platform, "value", str(platform))),
+                ("utm_medium", "social"),
+                ("utm_campaign", campaign),
+                ("utm_content", f"piece-{piece_id}"),
+            ]
         )
-    )
-    return text[: match.start()] + tagged + suffix + text[match.end() :]
+        path = parsed.path
+        if path in ("", "/") and not parsed.fragment:
+            path = "/start"
+        tagged = urlunsplit(
+            (
+                configured.scheme or "https",
+                configured.netloc,
+                path,
+                urlencode(pairs),
+                parsed.fragment,
+            )
+        )
+        return text[: match.start()] + tagged + suffix + text[match.end() :]
+    return text
 
 
 def build_post_input(

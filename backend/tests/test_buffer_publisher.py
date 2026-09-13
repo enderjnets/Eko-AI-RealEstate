@@ -1944,6 +1944,45 @@ def test_foreign_and_lookalike_hosts_are_untouched(foreign: str) -> None:
     assert with_platform_utm(text, CTA, PublicationPlatform.INSTAGRAM, 2, "video") == text
 
 
+@pytest.mark.parametrize(
+    "external",
+    [
+        "https://denverhomestory.com@example.org/contact",
+        "denverhomestory.com@example.org/contact",
+        f"https://example.org/?next={CTA}/contact",
+        f"https://example.org/#{CTA}/contact",
+    ],
+)
+def test_site_text_inside_an_external_url_is_untouched(external: str) -> None:
+    assert with_platform_utm(external, CTA, PublicationPlatform.YOUTUBE, 7, "campaign") == external
+
+
+def test_a_site_link_after_an_external_url_is_the_one_tagged() -> None:
+    external = f"https://example.org/?next={CTA}/contact"
+    text = f"Ignore {external} Use {CTA}/calculator"
+    out = with_platform_utm(text, CTA, PublicationPlatform.YOUTUBE, 7, "campaign")
+    assert out.startswith(f"Ignore {external} Use {CTA}/calculator?")
+    assert out.endswith(
+        "utm_source=youtube&utm_medium=social&utm_campaign=campaign&utm_content=piece-7"
+    )
+
+
+def test_a_malformed_external_url_does_not_block_a_later_site_link() -> None:
+    text = f"Ignore https://[broken.example/{CTA} Use {CTA}"
+    out = with_platform_utm(text, CTA, PublicationPlatform.TIKTOK, 9, "video")
+    assert out.startswith(f"Ignore https://[broken.example/{CTA} Use {CTA}/start?")
+    assert out.endswith(
+        "utm_source=tiktok&utm_medium=social&utm_campaign=video&utm_content=piece-9"
+    )
+
+
+@pytest.mark.parametrize("written", ["denverhomestory.com.", f"{CTA}."])
+def test_root_link_before_a_sentence_period_is_tagged(written: str) -> None:
+    out = with_platform_utm(f"Consulta {written}", CTA, PublicationPlatform.INSTAGRAM, 6, "video")
+    assert out.startswith(f"Consulta {CTA}/start?")
+    assert out.endswith("utm_content=piece-6.")
+
+
 def test_only_the_first_mention_is_tagged() -> None:
     text = f"{CTA} … and again {CTA}"
     out = with_platform_utm(text, CTA, PublicationPlatform.TIKTOK, 5, "video")
