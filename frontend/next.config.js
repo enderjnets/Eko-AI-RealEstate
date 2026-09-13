@@ -19,7 +19,7 @@ const nextConfig = {
     const bio = (network) => ({
       source: `/${network.short}`,
       destination:
-        `/?utm_source=${network.source}&utm_medium=bio&utm_campaign=profile`,
+        `/start?utm_source=${network.source}&utm_medium=bio&utm_campaign=profile`,
       permanent: false,
     });
 

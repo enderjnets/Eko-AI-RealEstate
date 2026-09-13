@@ -78,7 +78,7 @@ describe("host routing", () => {
 
   it("leaves the public pages alone on the brand domain", async () => {
     const { middleware } = await load(BRAND, PANEL);
-    for (const p of ["/", "/contact", "/fall", "/calculator"]) {
+    for (const p of ["/", "/contact", "/fall", "/calculator", "/start"]) {
       expect(location(middleware(req("www.denverhomestory.com", p)))).toBeNull();
     }
   });
@@ -170,7 +170,7 @@ describe("host routing", () => {
     // with the same bytes as the brand one. One page, two addresses, and only
     // a canonical tag — a hint, not a rule — asking Google which to keep.
     const { middleware } = await load(BRAND, PANEL);
-    for (const p of ["/fall", "/calculator"]) {
+    for (const p of ["/fall", "/calculator", "/start"]) {
       const res = middleware(req("inmo-demo.ekoaiautomation.com", p));
       expect(location(res)).toBe(`${BRAND}${p}`);
       expect(res.status).toBe(308);
@@ -222,7 +222,7 @@ describe("host routing", () => {
     // hoisted the rule above the guard would 308 every landing there to an
     // empty string.
     const { middleware } = await load("", "");
-    for (const p of ["/fall", "/contact", "/calculator"]) {
+    for (const p of ["/fall", "/contact", "/calculator", "/start"]) {
       expect(location(middleware(req("inmo-demo.ekoaiautomation.com", p)))).toBeNull();
     }
   });
@@ -265,6 +265,9 @@ describe("host routing", () => {
     expect(hosts.isPublicPath("/fallback")).toBe(false);
     expect(hosts.isPublicPath("/calculator")).toBe(true);
     expect(hosts.isPublicPath("/calculators")).toBe(false);
+    expect(hosts.isPublicPath("/start")).toBe(true);
+    expect(hosts.isPublicPath("/start/buy")).toBe(true);
+    expect(hosts.isPublicPath("/starter")).toBe(false);
   });
 
   it("never redirects the API, or the capture form would lose its POST", async () => {

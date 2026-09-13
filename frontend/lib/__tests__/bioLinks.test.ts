@@ -23,13 +23,19 @@ describe("bio short links", () => {
     const redirects = await nextConfig.redirects();
     for (const [path, source] of [
       ["/yt", "youtube"],
+      ["/youtube", "youtube"],
       ["/tt", "tiktok"],
+      ["/tiktok", "tiktok"],
       ["/ig", "instagram"],
+      ["/instagram", "instagram"],
     ] as const) {
       const rule = redirects.find((r: { source: string }) => r.source === path);
       expect(rule, `${path} is missing`).toBeDefined();
-      expect(rule.destination).toContain(`utm_source=${source}`);
-      expect(rule.destination).toContain("utm_medium=bio");
+      const destination = new URL(rule.destination, "https://example.test");
+      expect(destination.pathname).toBe("/start");
+      expect(destination.searchParams.get("utm_source")).toBe(source);
+      expect(destination.searchParams.get("utm_medium")).toBe("bio");
+      expect(destination.searchParams.get("utm_campaign")).toBe("profile");
     }
   });
 
