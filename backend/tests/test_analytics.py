@@ -1148,3 +1148,518 @@ async def test_start_engaged_requires_a_real_choice_or_existing_scroll_signal() 
         }
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_exact_attribution_counts_people_by_piece_and_platform() -> None:
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentMetric,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+        Visit,
+        VisitStatus,
+    )
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 9, tzinfo=UTC)
+    end = datetime(2026, 9, 14, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+
+    async with get_bypass_session_factory()() as db:
+        piece_a = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook="instagram piece",
+        )
+        piece_b = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.ES,
+            status=ContentStatus.PUBLISHED,
+            hook="tiktok piece",
+        )
+        db.add_all([piece_a, piece_b])
+        await db.flush()
+        publication_a = ContentPublication(
+            org_id=ORG,
+            piece_id=piece_a.id,
+            platform=PublicationPlatform.INSTAGRAM,
+            status=PublicationStatus.PUBLISHED,
+            published_at=start + timedelta(hours=1),
+        )
+        publication_b = ContentPublication(
+            org_id=ORG,
+            piece_id=piece_b.id,
+            platform=PublicationPlatform.TIKTOK,
+            status=PublicationStatus.PUBLISHED,
+            published_at=start + timedelta(hours=2),
+        )
+        db.add_all([publication_a, publication_b])
+        await db.flush()
+
+        lead_a = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0401",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=8),
+            meta={
+                "attribution": {
+                    "utm_content": f"piece-{piece_a.id}",
+                    "utm_source": "instagram",
+                }
+            },
+        )
+        lead_a_second = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0402",
+            intent=LeadIntent.VALUATION,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=9),
+            meta={
+                "attribution": {
+                    "utm_content": f"piece-{piece_a.id}",
+                    "utm_source": "instagram",
+                }
+            },
+        )
+        lead_b = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0403",
+            intent=LeadIntent.RENT,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=10),
+            meta={
+                "attribution": {
+                    "utm_content": f"piece-{piece_b.id}",
+                    "utm_source": "tiktok",
+                }
+            },
+        )
+        wrong_source_lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0404",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=11),
+            meta={
+                "attribution": {
+                    "utm_content": f"piece-{piece_a.id}",
+                    "utm_source": "tiktok",
+                }
+            },
+        )
+        malformed_lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0405",
+            intent=LeadIntent.OTHER,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=12),
+            meta={"attribution": ["not", "a", "mapping"]},
+        )
+        malformed_values_lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0406",
+            intent=LeadIntent.OTHER,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=13),
+            meta={
+                "attribution": {
+                    "utm_content": [f"piece-{piece_a.id}"],
+                    "utm_source": {"platform": "instagram"},
+                }
+            },
+        )
+        db.add_all(
+            [
+                lead_a,
+                lead_a_second,
+                lead_b,
+                wrong_source_lead,
+                malformed_lead,
+                malformed_values_lead,
+            ]
+        )
+        await db.flush()
+
+        def tagged_session(
+            label: str,
+            *,
+            piece_id: int | None,
+            source: str,
+            hour: int,
+            traffic_class: str = "unknown",
+            lead_id: int | None = None,
+            cta_clicks: int = 0,
+            tel_clicks: int = 0,
+            form_started: bool = False,
+            form_submitted: bool = False,
+            scroll: int = 0,
+        ) -> LandingSession:
+            at = start + timedelta(hours=hour)
+            return LandingSession(
+                org_id=ORG,
+                session_key=f"exact-{label}",
+                first_seen_at=at,
+                last_seen_at=at,
+                landing_path="/start",
+                utm_content=f"piece-{piece_id}" if piece_id is not None else None,
+                source=source,
+                traffic_class=traffic_class,
+                device="phone",
+                max_scroll_pct=scroll,
+                sections_viewed=[],
+                cta_clicks=cta_clicks,
+                tel_clicks=tel_clicks,
+                form_started_at=at if form_started else None,
+                form_submitted_at=at if form_submitted else None,
+                lead_id=lead_id,
+                event_count=1,
+            )
+
+        db.add_all(
+            [
+                tagged_session(
+                    "a-cta", piece_id=piece_a.id, source="instagram", hour=4,
+                    cta_clicks=7,
+                ),
+                tagged_session(
+                    "a-tel", piece_id=piece_a.id, source="instagram", hour=5,
+                    tel_clicks=3,
+                ),
+                tagged_session(
+                    "a-form", piece_id=piece_a.id, source="instagram", hour=6,
+                    form_started=True, form_submitted=True,
+                ),
+                tagged_session(
+                    "a-scroll", piece_id=piece_a.id, source="instagram", hour=7,
+                    scroll=50,
+                ),
+                tagged_session(
+                    "a-view", piece_id=piece_a.id, source="instagram", hour=8,
+                ),
+                tagged_session(
+                    "b-view", piece_id=piece_b.id, source="tiktok", hour=9,
+                ),
+                tagged_session(
+                    "returning-a-on-b", piece_id=piece_b.id, source="tiktok", hour=10,
+                    lead_id=lead_a.id, cta_clicks=2,
+                ),
+                tagged_session(
+                    "wrong-source-a", piece_id=piece_a.id, source="tiktok", hour=11,
+                    cta_clicks=1, tel_clicks=1, form_started=True, form_submitted=True,
+                ),
+                tagged_session(
+                    "wrong-source-b", piece_id=piece_b.id, source="instagram", hour=12,
+                    cta_clicks=1,
+                ),
+                tagged_session(
+                    "wrong-case-a", piece_id=piece_a.id, source="Instagram", hour=13,
+                    cta_clicks=1,
+                ),
+                tagged_session(
+                    "untagged", piece_id=None, source="instagram", hour=14,
+                    cta_clicks=1,
+                ),
+                tagged_session(
+                    "automated", piece_id=piece_a.id, source="instagram", hour=15,
+                    traffic_class="automated", cta_clicks=1,
+                ),
+                tagged_session(
+                    "qa", piece_id=piece_b.id, source="tiktok", hour=16,
+                    traffic_class="test", cta_clicks=1,
+                ),
+            ]
+        )
+        db.add_all(
+            [
+                Visit(
+                    org_id=ORG,
+                    lead_id=lead_a.id,
+                    external_booking_id="exact-a-scheduled",
+                    status=VisitStatus.SCHEDULED,
+                    scheduled_at=start + timedelta(days=2),
+                ),
+                Visit(
+                    org_id=ORG,
+                    lead_id=lead_a.id,
+                    external_booking_id="exact-a-completed",
+                    status=VisitStatus.COMPLETED,
+                    scheduled_at=start + timedelta(days=3),
+                ),
+                Visit(
+                    org_id=ORG,
+                    lead_id=lead_a.id,
+                    external_booking_id="exact-a-cancelled",
+                    status=VisitStatus.CANCELLED,
+                    scheduled_at=start + timedelta(days=4),
+                ),
+                Visit(
+                    org_id=ORG,
+                    lead_id=lead_b.id,
+                    external_booking_id="exact-b-completed",
+                    status=VisitStatus.COMPLETED,
+                    scheduled_at=start + timedelta(days=2),
+                ),
+            ]
+        )
+        db.add_all(
+            [
+                ContentMetric(
+                    org_id=ORG,
+                    publication_id=publication_a.id,
+                    captured_on=(start + timedelta(days=1)).date(),
+                    views=40,
+                    likes=3,
+                    comments=2,
+                    source="manual",
+                ),
+                ContentMetric(
+                    org_id=ORG,
+                    publication_id=publication_a.id,
+                    captured_on=(start + timedelta(days=2)).date(),
+                    views=100,
+                    likes=0,
+                    comments=None,
+                    source="manual",
+                ),
+            ]
+        )
+        await db.commit()
+        ids = {"a": piece_a.id, "b": piece_b.id}
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            rows = await svc.content(db, window)
+        by_piece = {row["piece_id"]: row for row in rows}
+        row_a = by_piece[ids["a"]]
+        row_b = by_piece[ids["b"]]
+        attribution_fields = {
+            "sessions",
+            "engaged",
+            "cta_clickers",
+            "contact_intents",
+            "form_starts",
+            "form_submits",
+            "leads",
+            "appointments_set",
+            "appointments_held",
+        }
+
+        assert set(row_a["attribution"]) == attribution_fields
+        assert row_a["attribution"] == {
+            "sessions": 5,
+            "engaged": 4,
+            "cta_clickers": 1,
+            "contact_intents": 2,
+            "form_starts": 1,
+            "form_submits": 1,
+            "leads": 2,
+            "appointments_set": 3,
+            "appointments_held": 1,
+        }
+        assert row_b["attribution"] == {
+            "sessions": 2,
+            "engaged": 1,
+            "cta_clickers": 1,
+            "contact_intents": 0,
+            "form_starts": 0,
+            "form_submits": 0,
+            "leads": 1,
+            "appointments_set": 1,
+            "appointments_held": 1,
+        }
+        assert row_a["latest_metrics"] == {
+            "views": 100,
+            "likes": 0,
+            "comments": None,
+            "captured_on": "2026-09-11",
+            "source": "manual",
+        }
+        assert row_b["latest_metrics"] is None
+        assert row_a["views"] == {
+            "count": 100,
+            "captured_on": "2026-09-11",
+            "source": "manual",
+        }
+        assert row_b["views"] is None
+        assert row_a["leads_tagged"] == 3
+        assert row_b["leads_tagged"] == 1
+        assert row_a["association"]["window_hours"] == 48
+        assert row_b["association"]["window_hours"] == 48
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_first_touch_lead_attribution_ignores_a_later_piece_session() -> None:
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+    )
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 9, tzinfo=UTC)
+    end = datetime(2026, 9, 12, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+    async with get_bypass_session_factory()() as db:
+        first = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook="first touch",
+        )
+        later = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook="later visit",
+        )
+        db.add_all([first, later])
+        await db.flush()
+        db.add_all(
+            [
+                ContentPublication(
+                    org_id=ORG,
+                    piece_id=first.id,
+                    platform=PublicationPlatform.INSTAGRAM,
+                    status=PublicationStatus.PUBLISHED,
+                    published_at=start,
+                ),
+                ContentPublication(
+                    org_id=ORG,
+                    piece_id=later.id,
+                    platform=PublicationPlatform.TIKTOK,
+                    status=PublicationStatus.PUBLISHED,
+                    published_at=start + timedelta(hours=1),
+                ),
+            ]
+        )
+        lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0410",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=2),
+            meta={
+                "attribution": {
+                    "utm_content": f"piece-{first.id}",
+                    "utm_source": "instagram",
+                }
+            },
+        )
+        db.add(lead)
+        await db.flush()
+        db.add(
+            LandingSession(
+                org_id=ORG,
+                session_key="first-touch-return",
+                first_seen_at=start + timedelta(hours=3),
+                last_seen_at=start + timedelta(hours=3),
+                utm_content=f"piece-{later.id}",
+                source="tiktok",
+                traffic_class="unknown",
+                device="phone",
+                max_scroll_pct=0,
+                sections_viewed=[],
+                lead_id=lead.id,
+                event_count=1,
+            )
+        )
+        await db.commit()
+        ids = {"first": first.id, "later": later.id}
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            rows = await svc.content(db, window)
+        by_piece = {row["piece_id"]: row for row in rows}
+        assert by_piece[ids["first"]]["attribution"]["leads"] == 1
+        assert by_piece[ids["later"]]["attribution"]["sessions"] == 1
+        assert by_piece[ids["later"]]["attribution"]["leads"] == 0
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_exact_attribution_query_count_is_constant_for_one_or_two_pieces() -> None:
+    from sqlalchemy import event
+
+    from app.db.base import get_bypass_engine
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+    )
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 9, tzinfo=UTC)
+    end = datetime(2026, 9, 12, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+
+    async def add_piece(label: str, platform: PublicationPlatform, hour: int) -> None:
+        async with get_bypass_session_factory()() as db:
+            piece = ContentPiece(
+                org_id=ORG,
+                kind=ContentKind.GENERATED,
+                language=ContentLanguage.EN,
+                status=ContentStatus.PUBLISHED,
+                hook=label,
+            )
+            db.add(piece)
+            await db.flush()
+            db.add(
+                ContentPublication(
+                    org_id=ORG,
+                    piece_id=piece.id,
+                    platform=platform,
+                    status=PublicationStatus.PUBLISHED,
+                    published_at=start + timedelta(hours=hour),
+                )
+            )
+            await db.commit()
+
+    await add_piece("one", PublicationPlatform.INSTAGRAM, 1)
+    counter = {"selects": 0}
+
+    def count_selects(_conn, _cursor, statement, _parameters, _context, _many) -> None:
+        if statement.lstrip().upper().startswith("SELECT"):
+            counter["selects"] += 1
+
+    sync_engine = get_bypass_engine().sync_engine
+    event.listen(sync_engine, "before_cursor_execute", count_selects)
+    try:
+        async with get_bypass_session_factory()() as db:
+            await svc.content(db, window)
+        one_piece_queries = counter["selects"]
+
+        await add_piece("two", PublicationPlatform.TIKTOK, 2)
+        counter["selects"] = 0
+        async with get_bypass_session_factory()() as db:
+            await svc.content(db, window)
+        two_piece_queries = counter["selects"]
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", count_selects)
+        await _cleanup()
+
+    assert two_piece_queries == one_piece_queries

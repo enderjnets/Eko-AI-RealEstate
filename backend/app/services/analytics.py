@@ -658,6 +658,31 @@ def _within_any(column, starts: list[datetime], hours: int = 48):
     )
 
 
+def _is_within_any(at: datetime, starts: list[datetime], hours: int = 48) -> bool:
+    return any(start <= at < start + timedelta(hours=hours) for start in starts)
+
+
+def _empty_attribution() -> dict[str, int]:
+    return {
+        "sessions": 0,
+        "engaged": 0,
+        "cta_clickers": 0,
+        "contact_intents": 0,
+        "form_starts": 0,
+        "form_submits": 0,
+        "leads": 0,
+        "appointments_set": 0,
+        "appointments_held": 0,
+    }
+
+
+def _lead_attribution(meta: object) -> dict:
+    if not isinstance(meta, dict):
+        return {}
+    attribution = meta.get("attribution")
+    return attribution if isinstance(attribution, dict) else {}
+
+
 async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
     """Recent publications and what happened in the two days after each.
 
@@ -719,62 +744,143 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
         )
     ).all()
 
-    # Scoped to the window like everything else. Unscoped this read every lead
-    # the agency has ever had, on every request, to answer a question about
-    # twenty publications.
-    all_metas = (
-        await db.execute(select(Lead.meta).where(w.within(Lead.created_at)))
-    ).scalars().all()
-
-    # How many people actually saw it, which is the number that separates "the
-    # video reached nobody" from "the video reached people and the page lost
-    # them" — opposite problems that look identical without it. One query for
-    # the whole list; `None` for anything nobody has read yet.
-    newest = await video_metrics.latest_metrics(db, [row[0] for row in rows])
+    if not rows:
+        return []
 
     starts_by_piece: dict[int, list[datetime]] = {}
     for _publication_id, piece_id, _platform, published_at, _url, _hook in rows:
         starts_by_piece.setdefault(piece_id, []).append(published_at)
 
-    # Two queries per video rather than two per post — the same visit was
-    # being counted by every row whose window held it.
-    by_piece: dict[int, dict] = {}
-    for piece_id, starts in starts_by_piece.items():
-        sessions = await _scalar(
-            db,
-            select(func.count()).where(
+    all_starts = [start for starts in starts_by_piece.values() for start in starts]
+    publication_keys = {
+        (
+            piece_id,
+            platform.value if hasattr(platform, "value") else str(platform),
+        )
+        for _publication_id, piece_id, platform, _published_at, _url, _hook in rows
+    }
+    attribution_by_key = {key: _empty_attribution() for key in publication_keys}
+    association_by_piece = {
+        piece_id: {"window_hours": 48, "sessions": 0, "leads": 0}
+        for piece_id in starts_by_piece
+    }
+    leads_tagged_by_piece = {piece_id: 0 for piece_id in starts_by_piece}
+    piece_by_tag = {f"piece-{piece_id}": piece_id for piece_id in starts_by_piece}
+
+    session_rows = (
+        await db.execute(
+            select(
+                LandingSession.first_seen_at,
+                LandingSession.utm_content,
+                LandingSession.source,
+                LandingSession.max_scroll_pct,
+                LandingSession.sections_viewed,
+                LandingSession.cta_clicks,
+                LandingSession.tel_clicks,
+                LandingSession.form_started_at,
+                LandingSession.form_submitted_at,
+            ).where(
                 _measured_session(),
-                _within_any(LandingSession.first_seen_at, starts)
-            ),
+                or_(
+                    w.within(LandingSession.first_seen_at),
+                    _within_any(LandingSession.first_seen_at, all_starts),
+                ),
+            )
         )
-        leads_after = await _scalar(
-            db,
-            select(func.count())
-            .select_from(Lead)
-            .where(_within_any(Lead.created_at, starts)),
+    ).all()
+    for (
+        first_seen_at,
+        utm_content,
+        source,
+        max_scroll_pct,
+        sections_viewed,
+        cta_clicks,
+        tel_clicks,
+        form_started_at,
+        form_submitted_at,
+    ) in session_rows:
+        for piece_id, starts in starts_by_piece.items():
+            if _is_within_any(first_seen_at, starts):
+                association_by_piece[piece_id]["sessions"] += 1
+
+        if not w.start <= first_seen_at < w.end:
+            continue
+        piece_id = piece_by_tag.get(utm_content)
+        counters = attribution_by_key.get((piece_id, source))
+        if counters is None:
+            continue
+        counters["sessions"] += 1
+        if (
+            max_scroll_pct >= 50
+            or len(sections_viewed or []) >= 2
+            or cta_clicks > 0
+            or tel_clicks > 0
+            or form_started_at is not None
+        ):
+            counters["engaged"] += 1
+        if cta_clicks > 0:
+            counters["cta_clickers"] += 1
+        if tel_clicks > 0 or form_started_at is not None:
+            counters["contact_intents"] += 1
+        if form_started_at is not None:
+            counters["form_starts"] += 1
+        if form_submitted_at is not None:
+            counters["form_submits"] += 1
+
+    lead_rows = (
+        await db.execute(
+            select(Lead.id, Lead.created_at, Lead.meta).where(
+                or_(
+                    w.within(Lead.created_at),
+                    _within_any(Lead.created_at, all_starts),
+                )
+            )
         )
-        # The one honest number on the card: a lead that carried this piece's
-        # own tag. Zero for anything published before the tagging existed,
-        # which is most of them today, and that zero is the truth rather than
-        # a gap. Per piece by construction — the tag names the piece, not the
-        # post — so it too is stamped on every row and shown once.
-        tagged = sum(
-            1
-            for meta in all_metas
-            if ((meta or {}).get("attribution") or {}).get("utm_content")
-            == f"piece-{piece_id}"
-        )
-        by_piece[piece_id] = {
-            "association": {
-                "window_hours": 48,
-                "sessions": sessions,
-                "leads": leads_after,
-            },
-            "leads_tagged": tagged,
-        }
+    ).all()
+    attribution_by_lead: dict[int, tuple[int, str]] = {}
+    for lead_id, created_at, meta in lead_rows:
+        for piece_id, starts in starts_by_piece.items():
+            if _is_within_any(created_at, starts):
+                association_by_piece[piece_id]["leads"] += 1
+
+        if not w.start <= created_at < w.end:
+            continue
+        first_touch = _lead_attribution(meta)
+        content_tag = first_touch.get("utm_content")
+        piece_id = piece_by_tag.get(content_tag) if isinstance(content_tag, str) else None
+        if piece_id is None:
+            continue
+        leads_tagged_by_piece[piece_id] += 1
+        source = first_touch.get("utm_source")
+        if not isinstance(source, str):
+            continue
+        key = (piece_id, source)
+        counters = attribution_by_key.get(key)
+        if counters is None:
+            continue
+        counters["leads"] += 1
+        attribution_by_lead[lead_id] = key
+
+    if attribution_by_lead:
+        visit_rows = (
+            await db.execute(
+                select(Visit.lead_id, Visit.status).where(
+                    Visit.lead_id.in_(attribution_by_lead)
+                )
+            )
+        ).all()
+        for lead_id, status in visit_rows:
+            counters = attribution_by_key[attribution_by_lead[lead_id]]
+            counters["appointments_set"] += 1
+            if status == VisitStatus.COMPLETED:
+                counters["appointments_held"] += 1
+
+    newest = await video_metrics.latest_metrics(db, [row[0] for row in rows])
 
     out: list[dict] = []
     for publication_id, piece_id, platform, published_at, url, hook in rows:
+        platform_name = platform.value if hasattr(platform, "value") else str(platform)
+        snapshot = newest.get(publication_id)
         out.append(
             {
                 "piece_id": piece_id,
@@ -782,10 +888,23 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
                 # The video's name in the console. A row identified only by a
                 # piece id is a number nobody recognises.
                 "hook": hook,
-                "platform": platform.value if hasattr(platform, "value") else str(platform),
+                "platform": platform_name,
                 "published_at": published_at.isoformat(),
                 "external_url": url,
-                **by_piece[piece_id],
+                "association": association_by_piece[piece_id],
+                "leads_tagged": leads_tagged_by_piece[piece_id],
+                "attribution": attribution_by_key[(piece_id, platform_name)],
+                "latest_metrics": (
+                    {
+                        "views": snapshot.views,
+                        "likes": snapshot.likes,
+                        "comments": snapshot.comments,
+                        "captured_on": snapshot.captured_on.isoformat(),
+                        "source": snapshot.source,
+                    }
+                    if snapshot is not None
+                    else None
+                ),
                 "views": (
                     {
                         "count": snapshot.views,
@@ -795,7 +914,7 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
                         # reading must not sit in a column looking alike.
                         "source": snapshot.source,
                     }
-                    if (snapshot := newest.get(publication_id)) is not None
+                    if snapshot is not None
                     else None
                 ),
             }
