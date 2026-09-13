@@ -909,3 +909,242 @@ async def test_a_visit_after_two_posts_of_one_video_is_counted_once() -> None:
         assert of("gapped", "leads") == [1, 1]
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_excluded_sessions_never_enter_traffic_funnel_or_content() -> None:
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+    )
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 9, tzinfo=UTC)
+    end = datetime(2026, 9, 14, tzinfo=UTC)
+    publication_at = datetime(2026, 9, 10, 9, tzinfo=UTC)
+    unknown_at = datetime(2026, 9, 10, 10, tzinfo=UTC)
+    automated_at = datetime(2026, 9, 11, 10, tzinfo=UTC)
+    test_at = datetime(2026, 9, 12, 8, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+
+    async with get_bypass_session_factory()() as db:
+        lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0301",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=unknown_at,
+        )
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook="measured traffic",
+        )
+        db.add_all([lead, piece])
+        await db.flush()
+        db.add(
+            ContentPublication(
+                org_id=ORG,
+                piece_id=piece.id,
+                platform=PublicationPlatform.INSTAGRAM,
+                status=PublicationStatus.PUBLISHED,
+                published_at=publication_at,
+            )
+        )
+        db.add_all(
+            [
+                LandingSession(
+                    org_id=ORG,
+                    session_key="measured-unknown",
+                    first_seen_at=unknown_at,
+                    last_seen_at=unknown_at,
+                    landing_path="/start",
+                    source="instagram",
+                    device="phone",
+                    in_app="instagram",
+                    country="US",
+                    region="CO",
+                    city="Denver",
+                    lang="en",
+                    traffic_class="unknown",
+                    max_scroll_pct=60,
+                    sections_viewed=["about", "how"],
+                    cta_clicks=2,
+                    tel_clicks=1,
+                    form_error_count=3,
+                    form_started_at=unknown_at,
+                    form_submitted_at=unknown_at,
+                    lead_id=lead.id,
+                    event_count=8,
+                ),
+                LandingSession(
+                    org_id=ORG,
+                    session_key="excluded-automated",
+                    first_seen_at=automated_at,
+                    last_seen_at=automated_at,
+                    source="youtube",
+                    device="desktop",
+                    in_app="youtube",
+                    country="CA",
+                    region="ON",
+                    city="Toronto",
+                    lang="fr",
+                    traffic_class="automated",
+                    max_scroll_pct=100,
+                    sections_viewed=["markets", "guides", "consult"],
+                    cta_clicks=20,
+                    tel_clicks=10,
+                    form_error_count=9,
+                    form_started_at=automated_at,
+                    form_submitted_at=automated_at,
+                    event_count=99,
+                ),
+                LandingSession(
+                    org_id=ORG,
+                    session_key="excluded-test",
+                    first_seen_at=test_at,
+                    last_seen_at=test_at,
+                    source="eko_qa",
+                    device="tablet",
+                    in_app="tiktok",
+                    country="MX",
+                    region="CMX",
+                    city="Mexico City",
+                    lang="es",
+                    traffic_class="test",
+                    max_scroll_pct=90,
+                    sections_viewed=["guides", "consult"],
+                    cta_clicks=30,
+                    tel_clicks=15,
+                    form_error_count=7,
+                    form_started_at=test_at,
+                    form_submitted_at=test_at,
+                    event_count=120,
+                ),
+            ]
+        )
+        await db.commit()
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            traffic = await svc.traffic(db, window)
+            funnel = await svc.funnel(db, window, traffic)
+            content = await svc.content(db, window)
+
+        assert traffic["sessions"] == 1
+        assert traffic["engaged"] == 1
+        assert traffic["avg_scroll_pct"] == 60.0
+        assert traffic["cta_clicks"] == 2
+        assert traffic["tel_clicks"] == 1
+        assert traffic["form_starts"] == 1
+        assert traffic["form_submits"] == 1
+        assert traffic["people_clicked_cta"] == 1
+        assert traffic["people_tapped"] == 1
+        assert traffic["people_reached_out"] == 1
+        assert traffic["form_errors"] == 3
+        assert traffic["people_with_errors"] == 1
+        assert traffic["submitted_without_lead"] == 0
+        assert traffic["excluded_sessions"] == {
+            "total": 2,
+            "automated": 1,
+            "test": 1,
+        }
+        assert {row["name"] for row in traffic["by_source"]} == {"instagram"}
+        assert {row["name"] for row in traffic["by_device"]} == {"phone"}
+        assert {row["name"] for row in traffic["by_in_app"]} == {"instagram"}
+        assert {row["name"] for row in traffic["by_country"]} == {"US"}
+        assert {row["name"] for row in traffic["by_region"]} == {"CO"}
+        assert {row["name"] for row in traffic["by_city"]} == {"Denver"}
+        assert {row["name"] for row in traffic["by_lang"]} == {"en"}
+        assert {row["date"]: row["sessions"] for row in traffic["by_day"]} == {
+            "2026-09-09": 0,
+            "2026-09-10": 1,
+            "2026-09-11": 0,
+            "2026-09-12": 0,
+            "2026-09-13": 0,
+        }
+        assert traffic["sections"] == {
+            "about": 1,
+            "how": 1,
+            "markets": 0,
+            "guides": 0,
+            "consult": 0,
+        }
+        funnel_counts = {row["stage"]: row["count"] for row in funnel}
+        assert {name: funnel_counts[name] for name in (
+            "sessions",
+            "engaged",
+            "reached_out",
+            "tapped",
+        )} == {
+            "sessions": 1,
+            "engaged": 1,
+            "reached_out": 1,
+            "tapped": 1,
+        }
+        assert len(content) == 1
+        assert content[0]["association"]["sessions"] == 1
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_start_engaged_requires_a_real_choice_or_existing_scroll_signal() -> None:
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 10, tzinfo=UTC)
+    end = datetime(2026, 9, 11, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+
+    def start_session(label: str, **signals) -> LandingSession:
+        at = start + timedelta(hours=len(label))
+        return LandingSession(
+            org_id=ORG,
+            session_key=f"start-{label}",
+            first_seen_at=at,
+            last_seen_at=at,
+            landing_path="/start",
+            source="direct",
+            traffic_class="unknown",
+            device="phone",
+            max_scroll_pct=signals.get("max_scroll_pct", 0),
+            sections_viewed=[],
+            cta_clicks=signals.get("cta_clicks", 0),
+            tel_clicks=signals.get("tel_clicks", 0),
+            form_started_at=signals.get("form_started_at"),
+            event_count=1,
+        )
+
+    async with get_bypass_session_factory()() as db:
+        db.add_all(
+            [
+                start_session("untouched"),
+                start_session("cta", cta_clicks=1),
+                start_session("tel", tel_clicks=1),
+                start_session("form", form_started_at=start + timedelta(hours=1)),
+                start_session("scroll", max_scroll_pct=50),
+            ]
+        )
+        await db.commit()
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            traffic = await svc.traffic(db, window)
+        assert traffic["sessions"] == 5
+        assert traffic["engaged"] == 4
+        assert traffic["excluded_sessions"] == {
+            "total": 0,
+            "automated": 0,
+            "test": 0,
+        }
+    finally:
+        await _cleanup()

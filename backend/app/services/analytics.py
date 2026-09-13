@@ -34,6 +34,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import Float, Select, and_, case, cast, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import (
     CallLog,
@@ -100,6 +101,10 @@ async def _scalar(db: AsyncSession, stmt: Select) -> int:
     return int((await db.execute(stmt)).scalar() or 0)
 
 
+def _measured_session() -> ColumnElement[bool]:
+    return LandingSession.traffic_class == "unknown"
+
+
 # ── Traffic: what happened on the landing page ───────────────────────────
 
 
@@ -111,7 +116,8 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
     shrink every night. The session row carries the same facts already merged.
     """
     base = LandingSession.first_seen_at
-    scope = w.within(base)
+    date_scope = w.within(base)
+    scope = and_(date_scope, _measured_session())
 
     totals = (
         await db.execute(
@@ -127,6 +133,9 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
                             or_(
                                 LandingSession.max_scroll_pct >= 50,
                                 func.jsonb_array_length(LandingSession.sections_viewed) >= 2,
+                                LandingSession.cta_clicks > 0,
+                                LandingSession.tel_clicks > 0,
+                                LandingSession.form_started_at.is_not(None),
                             ),
                             1,
                         )
@@ -201,6 +210,15 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
         )
     ).one()
 
+    traffic_class_rows = (
+        await db.execute(
+            select(LandingSession.traffic_class, func.count())
+            .where(date_scope)
+            .group_by(LandingSession.traffic_class)
+        )
+    ).all()
+    traffic_class_counts = {traffic_class: count for traffic_class, count in traffic_class_rows}
+
     # One expression object, used in both places. Calling `w.day()` twice would
     # emit two bind parameters for the same timezone, and Postgres then sees two
     # different expressions and refuses to group by either.
@@ -248,6 +266,12 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
         "form_errors": int(totals[10]),
         "people_with_errors": totals[11],
         "submitted_without_lead": totals[12],
+        "excluded_sessions": {
+            "total": traffic_class_counts.get("automated", 0)
+            + traffic_class_counts.get("test", 0),
+            "automated": traffic_class_counts.get("automated", 0),
+            "test": traffic_class_counts.get("test", 0),
+        },
         "by_day": [{"date": d, "sessions": seen.get(d, 0)} for d in _days(w)],
         "by_source": await _breakdown(LandingSession.source),
         "by_device": await _breakdown(LandingSession.device),
@@ -719,6 +743,7 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
         sessions = await _scalar(
             db,
             select(func.count()).where(
+                _measured_session(),
                 _within_any(LandingSession.first_seen_at, starts)
             ),
         )
