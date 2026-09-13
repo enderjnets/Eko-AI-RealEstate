@@ -408,8 +408,8 @@ async def test_the_notice_reads_like_an_answer_not_a_lookup_exercise() -> None:
     opening the brief to find out who `p1` was. The payload already holds every
     name — the mail reads it as a legend rather than making the reader be one.
     """
-    from app.services.brief_notify import build_body
     from app.models.partner_brief import PartnerBrief
+    from app.services.brief_notify import build_body
 
     brief = PartnerBrief(
         title="Nine names and a listing",
@@ -452,3 +452,75 @@ async def test_the_notice_reads_like_an_answer_not_a_lookup_exercise() -> None:
     assert "p1" not in body
     assert "p4" not in body
     assert "naming" not in body
+
+
+async def test_telegram_says_how_far_along_and_never_what_they_wrote() -> None:
+    """Counts, not content.
+
+    The owner asked for this so nobody has to keep asking "how's it going" —
+    not for a feed. So the doorbell carries how much is done and the email
+    carries what was said. A phone alert that quoted a past client's name would
+    put it on a lock screen, which is a different thing entirely from a
+    document you open on purpose.
+    """
+    from app.models.partner_brief import PartnerBrief
+    from app.services.brief_activity import summarise
+
+    brief = PartnerBrief(
+        title="Nine names and a listing",
+        recipient="Natalia and Robbie",
+        payload={
+            "blocks": [
+                {
+                    "kind": "people",
+                    "id": "nine",
+                    "heading": "The nine",
+                    "people": [{"id": f"p{n}", "name": f"Person {n}"} for n in range(1, 10)],
+                },
+                {
+                    "kind": "questions",
+                    "fields": [
+                        {"id": "talking_natalia", "label": "Natalia"},
+                        {"id": "talking_robbie", "label": "Robbie"},
+                    ],
+                },
+                {
+                    "kind": "letter",
+                    "id": "broker",
+                    "fields": [{"id": "broker_note", "label": "Note"}],
+                },
+            ]
+        },
+        answers={
+            "nine": {
+                "p2": {"state": "out"},
+                "p5": {"state": "touch"},
+                "p4": {"correct": "Julie Auger"},
+            },
+            "talking_natalia": "the Ramirez family",
+            "broker.state": "sent",
+        },
+    )
+
+    text = summarise(brief)
+
+    assert "The nine: 7 to write to, 1 left out, 1 already in touch" in text
+    assert "1 name corrected" in text
+    assert "the broker email: sent it" in text
+    # Two free-text fields plus the broker note plus the broker choice = 4
+    # asked; one field filled plus the choice made = 2 given.
+    assert "2 of 4 questions answered" in text
+
+    # And not one word of what they typed.
+    assert "Ramirez" not in text
+    assert "Julie Auger" not in text
+    assert "Person" not in text
+
+
+async def test_the_doorbell_does_not_ring_on_every_keystroke() -> None:
+    from app.services.brief_activity import BRIEF_ACTIVITY_QUIET, should_ping_progress
+
+    assert should_ping_progress(None) is True, "the first save is news"
+    assert should_ping_progress(datetime.now(UTC)) is False, "a save seconds later is not"
+    stale = datetime.now(UTC) - BRIEF_ACTIVITY_QUIET - timedelta(minutes=1)
+    assert should_ping_progress(stale) is True, "picking it up again after a break is"

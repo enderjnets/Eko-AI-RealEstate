@@ -489,6 +489,14 @@ def test_every_wire_touching_function_is_declared_or_exempt() -> None:
             " one thing the approval gate exists to prevent. It is one function"
             " on purpose: a second wire-touching path in that module would have"
             " to be declared here too, which is the point of this sweep",
+        "app/services/brief_activity.py::_say":
+            "the partner brief's doorbell, on the owner's own Telegram. It"
+            " carries COUNTS and nothing else — how many of the nine are set to"
+            " receive a letter, how many questions are answered — so a content"
+            " piece cannot leave through it. `summarise()` reads the payload"
+            " for labels and the answers only for tallies, and the test beside"
+            " it asserts that not one word anybody typed survives. The answers"
+            " themselves go by email, which is a place you read on purpose",
     }
     # The messaging senders, accounted for by the opt-out sweep next door.
     MESSAGING = {"send_email", "send_sms", "send_text_message"}

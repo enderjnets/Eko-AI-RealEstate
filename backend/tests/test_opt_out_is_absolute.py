@@ -563,6 +563,12 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
             " somebody who asked not to be contacted. Its own gate is"
             " `content_studio.ensure_publishable` (a person approved this"
             " text), enforced by test_content_gate_is_absolute.py",
+        "app/services/brief_activity.py::_say":
+            "rings the operator's own Telegram about the progress of a brief"
+            " they wrote. No lead is addressed and no client is named — it"
+            " sends counts, never content — so there is nobody here who could"
+            " have opted out of anything.",
+
     }
     undeclared: list[str] = []
     walked = 0
