@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowUpRight, Calculator, House, Phone } from "lucide-react";
+import Link from "next/link";
 
 import { LandingTracker } from "@/components/landing/LandingTracker";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
@@ -29,7 +30,35 @@ export function Start({ searchParams = {} }: { searchParams?: StartSearchParams 
   const { lang, t } = useI18n();
   const links = attributedLinks(searchParams);
   const phone = dialable(LANDING.phone);
-  const contactHref = phone ? `tel:${phone}` : links.consult;
+  const talkCard = (
+    <>
+      <div className="flex items-start justify-between gap-4">
+        <span className="text-[10px] font-medium uppercase tracking-[0.24em] text-ln-canvas/65">
+          {t("start.talk.number")}
+        </span>
+        <Phone aria-hidden="true" className="h-5 w-5 text-ln-canvas/75" strokeWidth={1.5} />
+      </div>
+      <div className="mt-4 grid flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-4 [@media(max-height:700px)]:mt-2 lg:mt-9 lg:flex lg:flex-col">
+        <h2 className="max-w-xs font-ln-serif text-[27px] font-light leading-[1.02] [@media(max-height:700px)]:text-[22px] sm:text-[31px] lg:text-[34px]">
+          {t("start.talk.title")}
+        </h2>
+        <div className="flex min-w-0 flex-col">
+          <p className="max-w-sm text-[13px] leading-5 text-ln-canvas/70 [@media(max-height:700px)]:hidden sm:text-[14px] sm:leading-6 lg:mt-4">
+            {phone ? t("start.talk.phoneBody") : t("start.talk.fallbackBody")}
+          </p>
+          {phone && (
+            <p className="mt-1 text-[13px] tracking-[0.08em] text-ln-canvas/85 sm:text-[14px]">
+              {LANDING.phone}
+            </p>
+          )}
+          <span className="mt-3 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-ln-canvas/80 [@media(max-height:700px)]:mt-1 lg:mt-auto lg:pt-7">
+            {phone ? t("start.callAction") : t("start.action")}
+            <ArrowUpRight aria-hidden="true" className="h-4 w-4" strokeWidth={1.5} />
+          </span>
+        </div>
+      </div>
+    </>
+  );
 
   return (
     <div
@@ -73,7 +102,7 @@ export function Start({ searchParams = {} }: { searchParams?: StartSearchParams 
           aria-label={t("start.actions.label")}
           className="mt-7 grid border-b border-l border-ln-line-strong [@media(max-height:700px)]:mt-4 sm:mt-10 lg:mt-14 lg:grid-cols-3"
         >
-          <a
+          <Link
             href={links.calculator}
             data-track="start-calculator"
             aria-label={t("start.buy.aria")}
@@ -99,9 +128,9 @@ export function Start({ searchParams = {} }: { searchParams?: StartSearchParams 
                 </span>
               </div>
             </div>
-          </a>
+          </Link>
 
-          <a
+          <Link
             href={links.consult}
             data-track="start-sell-value"
             aria-label={t("start.sell.aria")}
@@ -127,40 +156,27 @@ export function Start({ searchParams = {} }: { searchParams?: StartSearchParams 
                 </span>
               </div>
             </div>
-          </a>
+          </Link>
 
-          <a
-            href={contactHref}
-            data-track={phone ? "start-call" : "start-contact"}
-            aria-label={phone ? t("start.talk.callAria") : t("start.talk.contactAria")}
-            className="group flex min-h-[160px] flex-col border-r border-t border-ln-line-strong bg-ln-dark p-5 text-ln-cream transition-colors hover:bg-ln-night focus-visible:z-10 [@media(max-height:700px)]:min-h-[112px] [@media(max-height:700px)]:p-3 sm:p-6 lg:min-h-[290px] lg:p-8"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-[10px] font-medium uppercase tracking-[0.24em] text-ln-canvas/65">
-                {t("start.talk.number")}
-              </span>
-              <Phone aria-hidden="true" className="h-5 w-5 text-ln-canvas/75" strokeWidth={1.5} />
-            </div>
-            <div className="mt-4 grid flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-4 [@media(max-height:700px)]:mt-2 lg:mt-9 lg:flex lg:flex-col">
-              <h2 className="max-w-xs font-ln-serif text-[27px] font-light leading-[1.02] [@media(max-height:700px)]:text-[22px] sm:text-[31px] lg:text-[34px]">
-                {t("start.talk.title")}
-              </h2>
-              <div className="flex min-w-0 flex-col">
-                <p className="max-w-sm text-[13px] leading-5 text-ln-canvas/70 [@media(max-height:700px)]:hidden sm:text-[14px] sm:leading-6 lg:mt-4">
-                  {phone ? t("start.talk.phoneBody") : t("start.talk.fallbackBody")}
-                </p>
-                {phone && (
-                  <p className="mt-1 text-[13px] tracking-[0.08em] text-ln-canvas/85 sm:text-[14px]">
-                    {LANDING.phone}
-                  </p>
-                )}
-                <span className="mt-3 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-ln-canvas/80 [@media(max-height:700px)]:mt-1 lg:mt-auto lg:pt-7">
-                  {phone ? t("start.callAction") : t("start.action")}
-                  <ArrowUpRight aria-hidden="true" className="h-4 w-4" strokeWidth={1.5} />
-                </span>
-              </div>
-            </div>
-          </a>
+          {phone ? (
+            <a
+              href={`tel:${phone}`}
+              data-track="start-call"
+              aria-label={t("start.talk.callAria")}
+              className="group flex min-h-[160px] flex-col border-r border-t border-ln-line-strong bg-ln-dark p-5 text-ln-cream transition-colors hover:bg-ln-night focus-visible:z-10 [@media(max-height:700px)]:min-h-[112px] [@media(max-height:700px)]:p-3 sm:p-6 lg:min-h-[290px] lg:p-8"
+            >
+              {talkCard}
+            </a>
+          ) : (
+            <Link
+              href={links.consult}
+              data-track="start-contact"
+              aria-label={t("start.talk.contactAria")}
+              className="group flex min-h-[160px] flex-col border-r border-t border-ln-line-strong bg-ln-dark p-5 text-ln-cream transition-colors hover:bg-ln-night focus-visible:z-10 [@media(max-height:700px)]:min-h-[112px] [@media(max-height:700px)]:p-3 sm:p-6 lg:min-h-[290px] lg:p-8"
+            >
+              {talkCard}
+            </Link>
+          )}
         </nav>
       </main>
 
