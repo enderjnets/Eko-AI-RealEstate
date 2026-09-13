@@ -149,8 +149,8 @@ def classify_traffic(
     webdriver: bool,
     attribution: dict[str, str],
 ) -> tuple[str, str | None]:
-    source = attribution.get("utm_source", "").strip().lower()
-    medium = attribution.get("utm_medium", "").strip().lower()
+    source = attribution.get("utm_source")
+    medium = attribution.get("utm_medium")
     if source == "eko_qa" and medium == "test":
         return "test", "explicit_qa"
     if webdriver:

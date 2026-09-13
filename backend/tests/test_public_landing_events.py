@@ -201,6 +201,16 @@ class TestTrafficClassification:
             "unknown",
             None,
         )
+        assert classify_traffic(
+            UA_CHROME,
+            False,
+            {"utm_source": "EKO_QA", "utm_medium": "test"},
+        ) == ("unknown", None)
+        assert classify_traffic(
+            UA_CHROME,
+            False,
+            {"utm_source": "eko_qa", "utm_medium": "TEST"},
+        ) == ("unknown", None)
 
     @pytest.mark.parametrize(
         "user_agent",
@@ -261,7 +271,14 @@ class TestTrafficClassification:
         assert row["event_count"] == 37
         assert row["traffic_class"] == "unknown"
         assert row["traffic_class_reason"] is None
-        assert row["traffic_classified_at"] is None
+
+    async def test_new_unknown_traffic_class_records_when_it_was_evaluated(self) -> None:
+        await _beacon(_batch(("page_view", {})), **{"user-agent": UA_CHROME})
+
+        row = await _session_row()
+        assert row["traffic_class"] == "unknown"
+        assert row["traffic_class_reason"] is None
+        assert row["traffic_classified_at"] is not None
 
     async def test_webdriver_false_is_refused_instead_of_claiming_human_traffic(self) -> None:
         assert await _beacon(_batch(("page_view", {}), webdriver=False)) == 400

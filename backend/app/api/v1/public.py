@@ -790,7 +790,7 @@ async def _landing_session_id(
                 source=source_of(attribution.get("utm_source"), host),
                 traffic_class=traffic_class,
                 traffic_class_reason=traffic_class_reason,
-                traffic_classified_at=now if traffic_class != "unknown" else None,
+                traffic_classified_at=now,
                 device=device_of(ua),
                 browser=browser_of(ua),
                 os=os_of(ua),
