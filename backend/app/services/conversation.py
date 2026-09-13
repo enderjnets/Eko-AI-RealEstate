@@ -125,19 +125,26 @@ INTENT_CONFIDENCE_THRESHOLD = 0.55
 SENDABLE_CHANNELS = {"sms", "email", "whatsapp"}
 
 
-def _channel_can_reach(channel: str, identifier: str) -> bool:
-    """Whether `channel` can deliver to a lead whose identifier is `identifier`.
+def _channel_recipient(
+    channel: str, identifier: str, email: str | None = None
+) -> str | None:
+    """Resolve the contact for a channel, including legacy email identifiers.
 
-    A lead has a single identifier (`Lead.phone`): an email address for email
-    leads, a phone number otherwise. Sending email needs an address; sending
-    sms/whatsapp needs a phone — picking the wrong one would dispatch to a
-    nonsense recipient (e.g. emailing a phone number)."""
-    is_email = "@" in identifier
+    Web leads can have both a phone identifier and a separate email address.
+    Use the same resolution for reachability and dispatch so an email reply
+    cannot accidentally be addressed to the phone number.
+    """
     if channel == "email":
-        return is_email
+        return email or (identifier if "@" in identifier else None)
     if channel in ("sms", "whatsapp"):
-        return not is_email
-    return False
+        return identifier if identifier and "@" not in identifier else None
+    return None
+
+
+def _channel_can_reach(
+    channel: str, identifier: str, email: str | None = None
+) -> bool:
+    return _channel_recipient(channel, identifier, email) is not None
 
 
 async def reachable_active_conversations(
@@ -169,7 +176,11 @@ async def reachable_active_conversations(
 
 
 async def _latest_active_conversation(
-    lead_id: int, db: AsyncSession, *, identifier: str | None = None
+    lead_id: int,
+    db: AsyncSession,
+    *,
+    identifier: str | None = None,
+    email: str | None = None,
 ) -> Conversation | None:
     """The most recently-active conversation for the lead.
 
@@ -190,7 +201,7 @@ async def _latest_active_conversation(
         Conversation.status == ConversationStatus.ACTIVE,
     )
     if identifier is not None:
-        reachable = [c for c in SENDABLE_CHANNELS if _channel_can_reach(c, identifier)]
+        reachable = [c for c in SENDABLE_CHANNELS if _channel_can_reach(c, identifier, email)]
         if not reachable:
             return None
         stmt = stmt.where(Conversation.channel.in_(reachable))
@@ -263,7 +274,7 @@ async def send_human_message(
     if channel is not None:
         if channel not in SENDABLE_CHANNELS:
             return {"status": "error", "error": "unsupported_channel"}
-        if not _channel_can_reach(channel, lead.phone):
+        if not _channel_can_reach(channel, lead.phone, lead.email):
             # e.g. picking email for a phone-only lead — don't create an
             # undeliverable conversation; surface a clear error instead.
             return {"status": "error", "error": "channel_identifier_mismatch"}
@@ -281,9 +292,15 @@ async def send_human_message(
         # thread is the `web` one from the public form made this return a
         # conversation nothing can be sent through, and the realtor's reply
         # died in `_dispatch_send` with an error about an unknown channel.
-        conv = await _latest_active_conversation(lead_id, db, identifier=lead.phone)
+        conv = await _latest_active_conversation(
+            lead_id, db, identifier=lead.phone, email=lead.email
+        )
         if conv is None:
             return {"status": "error", "error": "no_active_conversation"}
+
+    recipient = _channel_recipient(conv.channel, lead.phone, lead.email)
+    if recipient is None:
+        return {"status": "error", "error": "channel_identifier_mismatch"}
 
     # Build subject: for email, default to "Re: <last inbound subject>"; for
     # other channels, ignore the param.
@@ -339,7 +356,7 @@ async def send_human_message(
 
         external_id, _ = await _dispatch_send(
             conv.channel,
-            to=lead.phone,
+            to=recipient,
             text=text,
             subject=reply_subject,
             in_reply_to=in_reply_to,

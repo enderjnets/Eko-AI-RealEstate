@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.101.2";
+export const CURRENT_VERSION = "0.101.3";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.101.3",
+    date: "2026-09-13",
+    title: {
+      en: "Email replies for contacts with a phone and email",
+      es: "Respuestas por correo a contactos con teléfono y email",
+    },
+    changes: [
+      {
+        en: "The dashboard can now reply by email when a website inquiry includes both a phone number and an email address. It uses the saved email address to select the conversation and send the reply.",
+        es: "El dashboard permite responder por correo cuando una solicitud de la web incluye teléfono y email. Usa el correo guardado para seleccionar la conversación y enviar la respuesta.",
+      },
+    ],
+  },
   {
     version: "0.101.2",
     date: "2026-09-12",

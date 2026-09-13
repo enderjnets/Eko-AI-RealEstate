@@ -2,6 +2,19 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.101.3] — 2026-09-13
+
+### Fixed
+- Dashboard email replies to website leads with both phone and email no longer
+  fail with `channel_identifier_mismatch`. Reachability and initial delivery
+  resolve the recipient from `Lead.email`, falling back to a legacy email in
+  `Lead.phone`. Automatic conversation selection for a human reply also
+  considers the separate email address.
+- Six regression tests exercise persisted conversations and messages under the
+  application database role. They cover dual contacts, legacy email identifiers,
+  phone-only rejection, SMS destination, opt-out and existing email threads.
+  The external transport is mocked; these tests do not verify provider delivery.
+
 ## [0.101.2] — 2026-09-12
 
 ### Added
