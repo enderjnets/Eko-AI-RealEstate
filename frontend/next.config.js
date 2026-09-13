@@ -13,9 +13,9 @@ const nextConfig = {
     // profile shows something readable, and the tagging happens here, where it
     // is versioned and testable rather than typed into someone's phone.
     //
-    // 302 and not 301 on purpose: a permanent redirect is cached hard by
-    // browsers, and the day the campaign changes we would be fighting caches
-    // on devices we cannot reach.
+    // Next emits a temporary 307 here. A permanent redirect would be cached
+    // hard by browsers, and the day the campaign changes we would be fighting
+    // caches on devices we cannot reach.
     const bio = (network) => ({
       source: `/${network.short}`,
       destination:

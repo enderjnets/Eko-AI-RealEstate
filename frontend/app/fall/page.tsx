@@ -274,10 +274,10 @@ export default function FallGuidePage() {
           is <em>how high, this week</em>. Here is the whole season, sorted by elevation.
         </p>
 
-        {/* The only link on this page the tracker can count: `cta_click` fires
-            on the literal href "#consult" and on nothing else. One line, under
-            the guide's own promise, so the reader who wants us can find us
-            without the guide turning into a pitch. */}
+        {/* One of the page's two deliberate next steps. `data-track` makes the
+            shared tracker record one CTA choice; ordinary guide links remain
+            uncounted. It sits under the guide's own promise so the reader who
+            wants us can find us without the guide turning into a pitch. */}
         <p className="mt-5 text-[15px]">
           <a
             href="#consult"
@@ -341,10 +341,9 @@ export default function FallGuidePage() {
 
         {/* The one page on this site that answers a money question, offered
             where somebody has just finished reading about driving up there.
-            It records no event — the tracker counts `tel:` and `#consult` and
-            nothing else — but the first-touch attribution in sessionStorage
-            survives the hop, so a lead that starts here still reads as this
-            page's. Measuring the click itself is backlog B-2. */}
+            The explicit tag records this as a CTA choice, and first-touch
+            attribution in sessionStorage survives the hop so a later lead
+            still reads as this guide's. */}
         <p className="mt-12 border-t border-ln-hair pt-8 text-[15px] leading-[1.7]">
           Somewhere on the drive, most people ask the same question about the towns
           they pass through.{" "}

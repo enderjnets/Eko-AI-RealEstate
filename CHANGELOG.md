@@ -2,6 +2,35 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.102.0] — 2026-09-13
+
+### Added
+- **One useful choice after a social-profile tap.** `/yt`, `/tt`, `/ig` and
+  their spelled-out aliases now open the compact `/start` page. A visitor can
+  continue to the buying calculator, the selling and valuation form, or a
+  direct call. The source and campaign tags survive each choice, so the action
+  stays connected to the network that brought the visitor.
+- **An exact scorecard for each publication and platform.** The content card
+  connects its own `piece-<id>` tag and platform to measured visitors, engaged
+  visitors, visitors choosing a next step, form starters, phone taps, leads,
+  appointments set and appointments held. These are explicit
+  link matches; the existing 48-hour association remains separately labelled.
+- **Views, likes and comments on the same card.** YouTube readings continue to
+  arrive from the platform. Instagram and TikTok can be entered manually, with
+  the source and capture date shown. A missing reading remains empty; a real
+  zero remains zero.
+
+### Measurement
+- **QA and browser automation no longer inflate the working funnel.** A session
+  is excluded only with positive evidence: the exact `eko_qa`/`test` tags,
+  `navigator.webdriver === true`, or a small list of known automation user-agent
+  signatures. Excluded totals remain visible to operators, and historical
+  sessions stay `unknown` rather than being guessed after the fact.
+- **Published links preserve their destination.** The content publisher adds
+  platform, campaign and piece tags to the existing Denver Home Story URL. A
+  bare site root becomes `/start`; article, calculator, query and fragment
+  destinations stay intact. Host parsing rejects lookalikes before rewriting.
+
 ## [0.101.3] — 2026-09-13
 
 ### Fixed

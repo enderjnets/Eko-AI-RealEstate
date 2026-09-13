@@ -14,9 +14,14 @@ cifra de vistas no se pueden distinguir.
 | **TikTok** | **a mano**, desde la consola de contenido | su API solo da las vistas a una app propia que haya pasado la revisión de la plataforma |
 | **Instagram** | **a mano**, desde la consola de contenido | igual, con la revisión de Meta |
 
-Cada número guarda **de dónde vino**. En la página, una cifra leída por la
-máquina dice «leídas» y una tecleada dice «a mano». No es decoración: una
-estimación escrita a ojo y una medición no pueden mirarse igual.
+Cada lectura guarda **de dónde vino** y puede contener vistas, likes y
+comentarios. En la página, una lectura de YouTube dice que llegó de la plataforma
+y una de Instagram o TikTok dice que se escribió a mano. No es decoración: una
+cifra transcrita y una medición automática no pueden mirarse igual.
+
+Un hueco significa **sin lectura**. Un `0` visible significa que la plataforma sí
+mostró cero. El panel conserva esa diferencia para no convertir un dato que falta
+en un rendimiento que nunca se midió.
 
 ## La clave de YouTube: qué hay que crear
 
@@ -55,11 +60,13 @@ Nada se rompe, y esa es la decisión de diseño:
   (medido: 15 publicadas sin dirección, 4 con ella). No se pueden leer nunca.
   Es un hueco en el pasado, no una avería en el presente.
 
-## Corregir un número a mano
+## Escribir una lectura manual
 
-En la tarjeta de contenido de `/analytics`, la cifra de vistas de TikTok e
-Instagram se pulsa y se escribe. También se puede corregir la de YouTube: una
-persona mirando la app ahora mismo sabe más que una lectura de hace seis horas.
+En la tarjeta de contenido de `/analytics`, usa el lápiz de una publicación de
+TikTok o Instagram para escribir las vistas y, si están disponibles, los likes y
+comentarios. YouTube no tiene editor manual en esta pantalla: sus contadores
+proceden de la lectura automática y así queda claro qué fuente produjo el dato.
 
-Se guarda **una lectura por día**. Escribir la cifra dos veces el mismo día la
-corrige; no inventa un segundo dato.
+Se guarda **una lectura por día y plataforma**. Escribirla dos veces el mismo día
+la corrige; no inventa un segundo dato. Si el guardado falla, la tarjeta conserva
+lo escrito y muestra el error para que se pueda intentar de nuevo.

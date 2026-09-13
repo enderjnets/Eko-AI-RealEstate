@@ -59,4 +59,3 @@ no site URL.
 - Each of the three Buffer platform payloads carries its own source and the
   exact `piece-<id>` tag.
 - Fair-housing output before and after URL normalization is unchanged.
-

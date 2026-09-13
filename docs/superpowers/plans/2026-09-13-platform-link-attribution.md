@@ -6,7 +6,7 @@
 
 **Architecture:** `buffer_publisher.with_platform_utm` remains the single mutation point before the payload reaches Buffer. Small private helpers identify the configured hostname, parse the first matching caption URL, preserve path/query/fragment, and replace only the four managed UTM values.
 
-**Tech Stack:** Python 3.12, `urllib.parse`, regular expressions, pytest, SQLAlchemy integration tests.
+**Tech Stack:** Python 3.11+, `urllib.parse`, regular expressions, pytest, SQLAlchemy integration tests.
 
 **Spec:** `docs/superpowers/specs/2026-09-13-platform-link-attribution.md`
 

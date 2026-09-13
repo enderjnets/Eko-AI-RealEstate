@@ -91,4 +91,3 @@ JavaScript, while analytics and language switching enhance it after hydration.
 - Each tagged non-telephone action records one CTA event; the phone records one
   telephone event.
 - The existing homepage, calculator, guide, and form behavior remain intact.
-

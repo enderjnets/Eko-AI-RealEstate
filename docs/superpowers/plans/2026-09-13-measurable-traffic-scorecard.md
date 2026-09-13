@@ -250,4 +250,3 @@ Expected: all commands exit 0.
 git add frontend/lib/api.ts frontend/components/analytics/ContentTable.tsx frontend/components/analytics/AnalyticsView.tsx frontend/lib/i18n.tsx frontend/lib/__tests__/analyticsPage.test.ts frontend/lib/__tests__/i18nParity.test.ts
 git commit -m "feat(analytics): show social content conversion scorecard" -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
-

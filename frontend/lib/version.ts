@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.101.3";
+export const CURRENT_VERSION = "0.102.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.102.0",
+    date: "2026-09-13",
+    title: {
+      en: "Social content can now be followed from a visit to an appointment",
+      es: "El contenido social ya se puede seguir desde la visita hasta la cita",
+    },
+    changes: [
+      {
+        en: "The Instagram, TikTok and YouTube profile links now open a compact start page where a visitor can buy, sell or value a home, or talk to an advisor. The original social source stays attached when the visitor continues.",
+        es: "Los enlaces de perfil de Instagram, TikTok y YouTube abren ahora una pagina compacta donde la persona puede comprar, vender o valorar una casa, o hablar con un asesor. La red de origen se conserva cuando continua.",
+      },
+      {
+        en: "Each published piece carries its own platform tag. Analytics connects that exact tag to measured visitors, next steps, leads and appointments, while reporting automated and QA sessions separately.",
+        es: "Cada contenido publicado lleva su propia etiqueta por plataforma. Estadisticas conecta esa etiqueta exacta con visitantes medidos, siguientes pasos, leads y citas, y muestra aparte las sesiones automatizadas y de prueba.",
+      },
+      {
+        en: "Content cards show views, likes and comments without turning a missing reading into zero. YouTube is read automatically; Instagram and TikTok readings can be entered by hand with a visible source and date.",
+        es: "Las tarjetas de contenido muestran vistas, likes y comentarios sin convertir una lectura ausente en cero. YouTube se lee automaticamente; las lecturas de Instagram y TikTok se pueden escribir a mano con origen y fecha visibles.",
+      },
+    ],
+  },
   {
     version: "0.101.3",
     date: "2026-09-13",

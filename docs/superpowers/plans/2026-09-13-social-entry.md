@@ -229,4 +229,3 @@ Expected: all commands exit 0 and the build lists `/start` as a route.
 git add frontend/app/start/page.tsx frontend/components/landing/Start.tsx frontend/lib/hosts.ts frontend/next.config.js frontend/lib/i18n.tsx frontend/lib/__tests__
 git commit -m "feat(landing): add social entry hub" -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
-
