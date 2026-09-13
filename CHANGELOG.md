@@ -2,6 +2,23 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.101.1] — 2026-09-12
+
+### Fixed
+- **The rebuild button understated what it costs.** `content.rebuildHint` said
+  *"Costs one narration; the pictures are reused"*, and `rebuild_piece`'s
+  docstring said the same. True of `worker/produce.py`, which caches pictures by
+  prompt hash at the point of payment. Since 10-sep-2026 this agency's render
+  machine runs `RENDER_ENGINE=bittrader`, and that engine builds from its own
+  pipeline: measured on a verification render on 12-sep, one short cost two
+  Kling and two Pexels clips. The hint now says the pictures usually cost too.
+- **The route cannot know which engine will run**, so it stops guessing. The
+  engine is an environment variable on the render machine and `claim` sends only
+  the worker's name — so the wording errs towards the expensive answer, which is
+  the one that cannot surprise somebody with a charge they did not expect.
+  `frontend/lib/__tests__/contentRebuild.test.ts` fails if the free-pictures
+  promise returns, and fails too if the warning is merely deleted.
+
 ## [0.101.0] — 2026-09-12
 
 ### Added

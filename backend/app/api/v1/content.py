@@ -603,9 +603,20 @@ async def rebuild_piece(piece_id: int, db: AsyncSession = Depends(get_db)) -> Pi
     has replaced it, so clearing that field would throw the footage away to
     make a new version of it.
 
-    It costs a narration. The pictures do not: they are cached at the point of
-    payment. Worth saying out loud because the button is one click and the
-    charge is real.
+    **It costs a narration, and it usually costs the pictures too.** Worth
+    saying out loud because the button is one click and the charge is real.
+
+    The pictures come back free only from OUR maker (`worker/produce.py`),
+    which caches them by prompt hash at the point of payment. Since 10-sep-2026
+    the render machine runs `RENDER_ENGINE=bittrader` for this agency, and that
+    engine builds from its own pipeline: a rebuild there pays for the pictures
+    again. Measured on a verification render on 12-sep — two Kling and two
+    Pexels clips for one short.
+
+    This route cannot tell you which it will be. The engine is an environment
+    variable on the render machine, and `claim` only sends us the worker's
+    name — so the honest wording is the expensive one, which is also the one
+    that cannot mislead somebody into a charge they did not expect.
     """
     from app.models import RenderJob, RenderJobStatus
     from app.services.content_render import stored_shot_list_language

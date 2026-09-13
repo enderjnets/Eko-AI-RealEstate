@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.101.0";
+export const CURRENT_VERSION = "0.101.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.101.1",
+    date: "2026-09-12",
+    title: {
+      en: "The rebuild button said the pictures were free, and under the current renderer they are not",
+      es: "El boton de rehacer decia que las imagenes salian gratis, y con el fabricante actual no salen",
+    },
+    changes: [
+      { en: "\u201cRebuild the video\u201d promised that it cost one narration and the pictures were reused. That was true of our own maker, which keeps every picture it pays for and hands the same one back. Since 10-sep-2026 the videos are built by a different maker, and that one draws them again \u2014 measured on 12-sep: four new clips for one video. The hint now says the pictures usually cost too.", es: "\u00abRehacer el video\u00bb prometia que costaba una narracion y que las imagenes se reutilizaban. Eso era cierto de nuestro propio fabricante, que guarda cada imagen que paga y devuelve la misma. Desde el 10-sep-2026 los videos los monta otro fabricante, y ese las vuelve a dibujar \u2014 medido el 12-sep: cuatro clips nuevos para un video. El aviso ahora dice que las imagenes normalmente tambien cuestan." },
+      { en: "This side cannot tell which maker will run: it is a setting on the render machine, and all it tells us is its own name. So the wording errs towards the expensive answer, which is the one that cannot surprise somebody with a charge. A test now fails if that promise comes back.", es: "Este lado no puede saber que fabricante va a trabajar: es un ajuste de la maquina que renderiza, y lo unico que nos dice es su propio nombre. Asi que el texto se inclina hacia la respuesta cara, que es la que no puede sorprender a nadie con un cargo. Un test falla ahora si esa promesa vuelve." },
+    ],
+  },
   {
     version: "0.101.0",
     date: "2026-09-12",
