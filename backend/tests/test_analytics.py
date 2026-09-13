@@ -1663,3 +1663,80 @@ async def test_exact_attribution_query_count_is_constant_for_one_or_two_pieces()
         await _cleanup()
 
     assert two_piece_queries == one_piece_queries
+
+
+@pytest.mark.asyncio
+async def test_exact_lead_attribution_normalizes_the_first_touch_source() -> None:
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+        Visit,
+        VisitStatus,
+    )
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 9, tzinfo=UTC)
+    end = datetime(2026, 9, 12, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+
+    async with get_bypass_session_factory()() as db:
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook="aliased first touch",
+        )
+        db.add(piece)
+        await db.flush()
+        db.add(
+            ContentPublication(
+                org_id=ORG,
+                piece_id=piece.id,
+                platform=PublicationPlatform.INSTAGRAM,
+                status=PublicationStatus.PUBLISHED,
+                published_at=start + timedelta(hours=1),
+            )
+        )
+        lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0490",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=2),
+            meta={
+                "attribution": {
+                    "utm_content": f"piece-{piece.id}",
+                    "utm_source": "IG",
+                }
+            },
+        )
+        db.add(lead)
+        await db.flush()
+        db.add(
+            Visit(
+                org_id=ORG,
+                lead_id=lead.id,
+                external_booking_id="exact-aliased-source",
+                status=VisitStatus.COMPLETED,
+                scheduled_at=start + timedelta(days=2),
+            )
+        )
+        await db.commit()
+        piece_id = piece.id
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            rows = await svc.content(db, window)
+        row = next(item for item in rows if item["piece_id"] == piece_id)
+        assert row["attribution"]["leads"] == 1
+        assert row["attribution"]["appointments_set"] == 1
+        assert row["attribution"]["appointments_held"] == 1
+    finally:
+        await _cleanup()

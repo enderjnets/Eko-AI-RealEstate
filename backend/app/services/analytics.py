@@ -53,6 +53,7 @@ from app.models import (
 )
 from app.models.landing import HOME_SECTIONS
 from app.services import video_metrics
+from app.services.landing_analytics import source_of
 
 # The office's day, when the agency has not said otherwise. Denver because that
 # is where this product's only customer is; a second agency sets its own.
@@ -851,9 +852,10 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
         if piece_id is None:
             continue
         leads_tagged_by_piece[piece_id] += 1
-        source = first_touch.get("utm_source")
-        if not isinstance(source, str):
+        raw_source = first_touch.get("utm_source")
+        if not isinstance(raw_source, str):
             continue
+        source = source_of(raw_source, None)
         key = (piece_id, source)
         counters = attribution_by_key.get(key)
         if counters is None:
