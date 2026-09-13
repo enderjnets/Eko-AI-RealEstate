@@ -26,9 +26,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db.base import get_db
+from app.db.base import get_bypass_session_factory, get_db
 from app.models.channel_route import CHANNEL_WEB
 from app.models.landing import LANDING_EVENT_TYPES, LandingSession
+from app.models.partner_brief import PartnerBrief
+from app.services.brief_notify import send_brief_answered_notice
 from app.services.capture import (
     MAX_CONSENT_TEXT,
     MAX_MESSAGE,
@@ -112,6 +114,28 @@ EVENTS_MAX_PER_BATCH = 25
 
 _ev_hits: dict[str, deque[float]] = {}
 _ev_global_hits: deque[float] = deque()
+
+# And the partner brief gets a THIRD budget, for the same reason the beacons
+# got a second one: the people who open it are the two agents this install
+# exists for, and a budget shared with lead capture would mean Natalia
+# re-reading the page on a bad signal is what stops a seller's form from being
+# written. Backwards in exactly the way the comment above describes.
+#
+# Generous per address because the page autosaves as they type — a careful pass
+# through nine names is easily forty saves — and bounded globally because the
+# token is the only credential: somebody who has a link must not be able to
+# spend the install's capacity with it.
+BRIEF_PER_IP_LIMIT = 120
+BRIEF_PER_IP_WINDOW = 600.0
+BRIEF_GLOBAL_LIMIT = 1_200
+BRIEF_GLOBAL_WINDOW = 600.0
+# 64 KB. The answers are nine short verdicts and a handful of free-text notes;
+# this is two orders of magnitude more than that and still small enough that
+# the column can never become somebody's file store.
+BRIEF_MAX_ANSWERS = 65_536
+
+_brief_hits: dict[str, deque[float]] = {}
+_brief_global_hits: deque[float] = deque()
 
 # A beacon endpoint that logs per request is an amplifier: the cheapest way to
 # fill an operator's disk would be to send it rubbish. These remember the last
@@ -202,6 +226,21 @@ def _global_limited(now: float | None = None) -> bool:
     return False
 
 
+def _brief_ip_limited(ip: str, now: float | None = None) -> bool:
+    """Charge this address against the brief budget. See BRIEF_PER_IP_LIMIT."""
+    return _charge_ip(_brief_hits, ip, BRIEF_PER_IP_LIMIT, BRIEF_PER_IP_WINDOW, now)
+
+
+def _brief_global_limited(now: float | None = None) -> bool:
+    """Charge the platform-wide brief budget. Its own, never capture's."""
+    stamp = time.monotonic() if now is None else now
+    _prune(_brief_global_hits, stamp, BRIEF_GLOBAL_WINDOW)
+    if len(_brief_global_hits) >= BRIEF_GLOBAL_LIMIT:
+        return True
+    _brief_global_hits.append(stamp)
+    return False
+
+
 def _ev_global_limited(now: float | None = None) -> bool:
     """Charge the platform-wide beacon budget. Separate from capture's, so a
     flood of beacons can never be what stops a lead from being written."""
@@ -219,6 +258,8 @@ def reset_rate_limits() -> None:
     _global_hits.clear()
     _ev_hits.clear()
     _ev_global_hits.clear()
+    _brief_hits.clear()
+    _brief_global_hits.clear()
 
 
 def client_ip(request: Request) -> str:
@@ -874,3 +915,156 @@ async def public_media(request: Request, piece_id: int):
             "Content-Length": str(last - first + 1),
         },
     )
+
+
+# ── The partner brief ────────────────────────────────────────────────────
+# A page we hand to the two agents this install is built for, reached by a link
+# and answered by tapping. No session, because the whole point is that somebody
+# who does not work inside this product can answer without one; the token in
+# the path is the credential.
+#
+# That makes this the fourth caller with login's problem — it must find an
+# organization *before* an organization is known — and it is solved login's
+# way, not by widening anything: the bypass engine maps token → org and does
+# nothing else, and every read and write after that runs on the ordinary
+# RLS-enforcing session inside that org. A bug in the queries below can
+# therefore leak one tenant's brief at worst, never the table.
+
+# `secrets.token_urlsafe` output: base64url, no padding. Checked before the
+# database is touched so a flood of rubbish costs a regex and not a round trip
+# — and answered identically to a well-formed token that does not exist, so
+# this cannot be used to learn what a real one looks like.
+_BRIEF_TOKEN = re.compile(r"[A-Za-z0-9_-]{16,64}")
+
+
+class BriefAnswersIn(BaseModel):
+    """What the page saves. Deliberately unshaped beyond this.
+
+    `answers` is whatever that brief's page decided to collect, because the
+    briefs differ from one week to the next and a schema here would have to be
+    migrated for every question we think of. It is bounded by size rather than
+    by shape — see BRIEF_MAX_ANSWERS — which is the property that actually
+    protects the column.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    answers: dict[str, Any] = Field(default_factory=dict)
+
+
+async def _brief_org(token: str) -> tuple[int, int] | None:
+    """Map a token to `(brief id, org id)`, or None.
+
+    The only query in this module that runs outside a tenant, and it reads two
+    integers. Keeping it that small is what keeps the bypass justified.
+    """
+    async with get_bypass_session_factory()() as meta:
+        row = (
+            await meta.execute(
+                select(PartnerBrief.id, PartnerBrief.org_id).where(
+                    PartnerBrief.token == token
+                )
+            )
+        ).first()
+    return (int(row[0]), int(row[1])) if row else None
+
+
+async def _brief_or_404(token: str, request: Request) -> tuple[int, int]:
+    """Budget, then resolve. Raises the same 404 for every kind of miss."""
+    ip = client_ip(request)
+    if _brief_ip_limited(ip):
+        log.warning("Brief rate limit refused a request from %s", ip)
+        raise HTTPException(status_code=429, detail="too_many_requests")
+    if _brief_global_limited():
+        log.error("Global brief ceiling reached — briefs are refused until it clears")
+        raise HTTPException(status_code=429, detail="too_many_requests")
+
+    if not _BRIEF_TOKEN.fullmatch(token or ""):
+        raise HTTPException(status_code=404, detail="unknown_brief")
+    found = await _brief_org(token)
+    if found is None:
+        # Same body, same status, same timing class as a token that exists but
+        # is not yours to have. There is nothing to learn here.
+        raise HTTPException(status_code=404, detail="unknown_brief")
+    return found
+
+
+@router.get("/brief/{token}")
+async def brief_read(
+    token: str, request: Request, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """The brief itself, plus whatever has been answered so far."""
+    brief_id, org_id = await _brief_or_404(token, request)
+    set_org_id(org_id)
+
+    brief = await db.get(PartnerBrief, brief_id)
+    if brief is None:
+        # The row vanished between the two queries. Not reachable in practice;
+        # answered like any other miss rather than as a 500, because from the
+        # caller's side it is the same fact.
+        raise HTTPException(status_code=404, detail="unknown_brief")
+
+    # Stamped once, never refreshed: the question this answers is "have they
+    # seen it", and that stops changing the moment it is yes. Overwriting it on
+    # every load would turn a fact we use to decide whether to phone somebody
+    # into a last-seen timestamp nobody asked for.
+    if brief.opened_at is None:
+        brief.opened_at = datetime.now(UTC)
+        try:
+            await db.commit()
+        except Exception:  # noqa: BLE001 — reading the page must not depend on it
+            await db.rollback()
+            log.warning("Could not stamp opened_at on brief %d", brief_id)
+
+    return {
+        "title": brief.title,
+        "recipient": brief.recipient,
+        "payload": brief.payload or {},
+        "answers": brief.answers or {},
+        "answered_at": brief.answered_at.isoformat() if brief.answered_at else None,
+    }
+
+
+@router.post("/brief/{token}")
+async def brief_save(
+    token: str,
+    body: BriefAnswersIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Replace the answers on this brief.
+
+    Replace, not merge, and that is the safe direction here: the page sends its
+    whole state on every save, so a merge would make un-ticking something
+    impossible — the cleared key simply would not be in the payload, and the
+    old value would survive as a decision nobody made. Concurrent editors are
+    not a scenario worth trading that for; there are two readers and they are
+    in the same house.
+    """
+    brief_id, org_id = await _brief_or_404(token, request)
+
+    # Bounded before it is stored, not after. Measured against the serialized
+    # form rather than the number of keys: what has to stay small is the row.
+    if len(json.dumps(body.answers)) > BRIEF_MAX_ANSWERS:
+        raise HTTPException(status_code=413, detail="answers_too_large")
+
+    set_org_id(org_id)
+    brief = await db.get(PartnerBrief, brief_id)
+    if brief is None:
+        raise HTTPException(status_code=404, detail="unknown_brief")
+
+    brief.answers = body.answers
+    brief.answered_at = datetime.now(UTC)
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        log.exception("Could not save answers on brief %d", brief_id)
+        raise HTTPException(status_code=500, detail="save_failed") from None
+
+    # After the commit, for the same reason the lead notice is: the answers
+    # must be durable before anybody is told about them, and a mail failure
+    # must cost the mail, never the save. The page is told it saved either way.
+    await send_brief_answered_notice(brief_id)
+
+    return {"ok": True, "answered_at": brief.answered_at.isoformat()}

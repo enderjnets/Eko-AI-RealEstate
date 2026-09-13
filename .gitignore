@@ -83,3 +83,7 @@ docker-compose.override.yml
 
 # Playwright MCP drops page snapshots and console logs wherever it runs
 .playwright-mcp/
+
+# Material de trabajo con datos de clientes reales (MLS, direcciones, cierres).
+# Nunca se commitea: sale de REcolorado y es de la cartera de la agente.
+scratchpad/

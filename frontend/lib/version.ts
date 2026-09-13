@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.100.0";
+export const CURRENT_VERSION = "0.101.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.101.0",
+    date: "2026-09-12",
+    title: {
+      en: "The people we work with answer by tapping a page, instead of writing an email back",
+      es: "Con quien trabajamos responde tocando una pagina, en vez de escribir un correo de vuelta",
+    },
+    changes: [
+      { en: "Every request that went out to the two agents used to be an email ending in \u201creply with these three lines\u201d, and the reply we needed was somebody retyping nine client names into a mail app on a phone. That reply does not come, and expecting it was our mistake. There is now a page instead: a private link opens a brief they can read on the phone, and everything we need back is a tap.", es: "Cada peticion que salia a los dos agentes era un correo que acababa en \u00abcontesta con estas tres lineas\u00bb, y la respuesta que haciamos falta era alguien reescribiendo nueve nombres de clientes en el correo del movil. Esa respuesta no llega, y esperarla era error nuestro. Ahora hay una pagina: un enlace privado abre una hoja que pueden leer en el movil, y todo lo que necesitamos de vuelta es un toque." },
+      { en: "Nothing on it is pre-selected against them. A list of clients arrives with every one already marked to receive the letter, so agreeing with all of it costs nothing and only the exceptions are tapped. A running count at the top says what they have decided so far without them having to scroll back.", es: "Nada en ella viene marcado en su contra. Una lista de clientes llega con todos marcados ya para recibir la carta, asi que estar de acuerdo con todo no cuesta nada y solo se tocan las excepciones. Un contador arriba dice lo que llevan decidido sin tener que subir a mirar." },
+      { en: "It saves as they go. They are reading it on a phone between other things, and the outcome we could not have was twenty minutes of answers lost to a tab that got closed \u2014 so the page writes on its own a second after the last keystroke, and again if the phone is put down mid-sentence. The button is still there, because finishing something on purpose matters.", es: "Se guarda sola. La leen en el movil entre otras cosas, y lo que no podia pasar era perder veinte minutos de respuestas por cerrar una pestana; asi que la pagina escribe sola un segundo despues de la ultima tecla, y otra vez si dejan el movil a media frase. El boton sigue ahi, porque terminar algo a proposito importa." },
+      { en: "The answers arrive as an email the moment they save, so reading them needs nobody to open anything either. The page itself is never published: it is not on the public site, it asks search engines not to index or keep a copy, and it is reachable only through a link nobody can guess \u2014 which matters, because a brief carries real clients\u2019 names and addresses.", es: "Las respuestas llegan por correo en cuanto guardan, asi que leerlas tampoco obliga a nadie a abrir nada. La pagina en si no se publica nunca: no esta en el sitio publico, pide a los buscadores que no la indexen ni guarden copia, y solo se llega por un enlace que nadie puede adivinar \u2014 lo que importa, porque una hoja lleva nombres y direcciones de clientes reales." },
+    ],
+  },
   {
     version: "0.100.0",
     date: "2026-09-12",

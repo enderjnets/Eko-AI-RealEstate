@@ -52,6 +52,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `content_render.py` shells out to ffprobe to answer what a rendered
+      # file actually is — it is the gate that refuses a "video" that is not
+      # one, and `test_a_result_that_is_not_a_video_is_refused` drives it for
+      # real rather than stubbing it, which is the right call: a stub would
+      # assert that our mock refuses, not that the gate does.
+      #
+      # Without ffmpeg on the runner that test fails with FileNotFoundError,
+      # and it had been failing on main since at least 9-sep-2026 — four
+      # consecutive red runs. A CI that is always red is a CI nobody reads,
+      # which is where the failure that matters goes to hide.
+      - name: Install ffmpeg (ffprobe, for the render gate)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -65,6 +78,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install ruff pytest pytest-asyncio
+
+      # The worker's own dependencies, and this step is not optional dressing:
+      # `worker/spoken.py` degrades SILENTLY without num2words —
+      #
+      #   try:  from num2words import num2words
+      #   except ImportError:  ...
+      #
+      # — so "$450,000" comes out of `for_the_voice` as "450000.0 dollars",
+      # which is what the video would SAY. Ten tests exist to catch exactly
+      # that and none of them had ever run: the job died two steps earlier, at
+      # `pytest`, and by the time that was fixed the worker step could not
+      # import its own package either. Three faults stacked on top of one
+      # another, each hiding the next.
+      - name: Install the render worker's dependencies
+        run: pip install -r worker/requirements.txt
 
       - name: Lint (ruff)
         working-directory: backend
@@ -83,8 +111,15 @@ jobs:
       # this step its suite is collected nowhere and a regression in it cannot
       # turn CI red. The ffmpeg-backed tests skip themselves when ffmpeg is
       # absent; everything else runs anywhere.
+      # `python -m pytest`, not `pytest`. The console script does NOT put the
+      # current directory on `sys.path`; `python -m` does. These tests do
+      # `from worker import assemble, config, ...` from the repository root,
+      # and `worker/tests/` has no `__init__.py`, so plain `pytest` inserts
+      # `worker/tests` as the basedir and the package is unreachable:
+      # `ModuleNotFoundError: No module named 'worker'`, four collection
+      # errors, zero tests run.
       - name: Tests (render worker)
-        run: pytest worker/tests -v
+        run: python -m pytest worker/tests -v
 
   frontend:
     name: Frontend (tsc + test + lint)

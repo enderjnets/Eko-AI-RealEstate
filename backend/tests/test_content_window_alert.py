@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import text
@@ -36,6 +37,28 @@ from app.services.content_window_alert import alert_due_windows
 from app.services.tenant_context import org_scope
 
 ORG = 1
+
+#: La zona de la agencia en estos tests, y la que `_zona()` configura por
+#: defecto. Nombrada una vez para que el ayudante de abajo y la fixture no
+#: puedan discrepar.
+ZONA = "America/Denver"
+
+
+def hoy() -> date:
+    """Hoy en la zona de la AGENCIA, que es el reloj que lee el servicio.
+
+    `date.today()` es el reloj de la MÁQUINA, y usarlo aquí hacía que este
+    archivo pasara en un portátil en Denver y fallara en CI, que corre en UTC:
+    a partir de las 18:00 locales los dos discrepan sobre qué día es, así que
+    toda ventana sembrada respecto a «hoy» caía un día desplazada y las
+    aserciones de borde se rompían. Reproducido sobre el MISMO commit el
+    13-sep-2026: `TZ=UTC` rojo, `TZ=America/Denver` verde.
+
+    La regla ya estaba escrita en la cabecera de este módulo — «la fecha se
+    compara en la zona de la agencia» — y el test era el único que no la
+    cumplía.
+    """
+    return datetime.now(ZoneInfo(ZONA)).date()
 
 
 @pytest.fixture
@@ -68,7 +91,7 @@ class _Avisos:
         return self.acepta
 
 
-async def _zona(nombre: str = "America/Denver") -> None:
+async def _zona(nombre: str = ZONA) -> None:
     async with get_bypass_session_factory()() as db:
         row = (
             await db.execute(text("SELECT id FROM agent_settings WHERE org_id=1"))
@@ -140,7 +163,7 @@ async def test_avisa_una_vez_y_no_se_repite(
     avisos = _Avisos()
     monkeypatch.setattr(content_window_alert, "send_operator_alert", avisos)
     try:
-        pid = await _pieza(inicio=date.today() - timedelta(days=1))
+        pid = await _pieza(inicio=hoy() - timedelta(days=1))
 
         assert await _tic() == 1
         assert len(avisos.enviados) == 1
@@ -166,7 +189,7 @@ async def test_varias_piezas_del_mismo_dia_son_un_solo_aviso(
     avisos = _Avisos()
     monkeypatch.setattr(content_window_alert, "send_operator_alert", avisos)
     try:
-        ayer = date.today() - timedelta(days=1)
+        ayer = hoy() - timedelta(days=1)
         ids = [await _pieza(inicio=ayer, gancho=f"pieza {n}") for n in range(4)]
 
         assert await _tic() == 4
@@ -190,7 +213,7 @@ async def test_si_no_se_pudo_avisar_no_se_sella_y_se_reintenta(
     fallando = _Avisos(acepta=False)
     monkeypatch.setattr(content_window_alert, "send_operator_alert", fallando)
     try:
-        pid = await _pieza(inicio=date.today())
+        pid = await _pieza(inicio=hoy())
 
         assert await _tic() == 0
         assert len(fallando.enviados) == 1, "se intentó"
@@ -214,14 +237,14 @@ async def test_no_avisa_de_lo_que_ya_esta_resuelto_ni_de_lo_que_no_toca(
     avisos = _Avisos()
     monkeypatch.setattr(content_window_alert, "send_operator_alert", avisos)
     try:
-        ayer = date.today() - timedelta(days=1)
+        ayer = hoy() - timedelta(days=1)
         await _pieza(inicio=ayer, estado=ContentStatus.APPROVED)
         await _pieza(inicio=ayer, estado=ContentStatus.PUBLISHING)
         await _pieza(inicio=ayer, estado=ContentStatus.PUBLISHED)
         # Sin ventana: no participa jamás, tenga el estado que tenga.
         await _pieza(inicio=None)
         # Su ventana empieza dentro de mucho: fuera de la antelación.
-        await _pieza(inicio=date.today() + timedelta(days=30))
+        await _pieza(inicio=hoy() + timedelta(days=30))
 
         assert await _tic() == 0
         assert avisos.enviados == []
@@ -279,8 +302,8 @@ async def test_avisa_con_antelacion_porque_aprobar_no_es_publicar(
         get_settings(), "CONTENT_WINDOW_ALERT_LEAD_DAYS", 3, raising=False
     )
     try:
-        justo = await _pieza(inicio=date.today() + timedelta(days=3))
-        await _pieza(inicio=date.today() + timedelta(days=4))
+        justo = await _pieza(inicio=hoy() + timedelta(days=3))
+        await _pieza(inicio=hoy() + timedelta(days=4))
 
         assert await _tic() == 1, "el día 3 entra, el 4 todavía no"
         assert f"#{justo}" in avisos.enviados[0][1]
@@ -291,7 +314,7 @@ async def test_avisa_con_antelacion_porque_aprobar_no_es_publicar(
         monkeypatch.setattr(
             get_settings(), "CONTENT_WINDOW_ALERT_LEAD_DAYS", 0, raising=False
         )
-        await _pieza(inicio=date.today() + timedelta(days=1))
+        await _pieza(inicio=hoy() + timedelta(days=1))
         assert await _tic() == 0
     finally:
         await _limpiar()
