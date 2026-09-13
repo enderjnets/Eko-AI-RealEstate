@@ -113,6 +113,33 @@
   text-transform: uppercase;
 }
 
+/* ── the save state, pinned to the top ──────────────────────────────── */
+/* Sticky rather than fixed: it rides at the top of the scroll, where a
+   phone keyboard never reaches. The bar at the bottom stays — it holds the
+   button — but it can no longer be the ONLY place the answer is confirmed. */
+.eko-brief .topstate {
+  position: sticky;
+  top: 0;
+  z-index: 25;
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.eko-brief .topstate .wrap {
+  padding-block: 8px;
+}
+.eko-brief .topstate.good {
+  color: var(--green);
+}
+.eko-brief .topstate.bad {
+  color: var(--magenta);
+}
+/* The people tally is sticky too and would land underneath this one. */
+.eko-brief .topstate ~ .wrap .tally {
+  top: 34px;
+}
+
 /* ── sections ───────────────────────────────────────────────────────── */
 .eko-brief section {
   margin-top: 46px;

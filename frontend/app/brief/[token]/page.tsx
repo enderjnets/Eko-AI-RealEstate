@@ -67,6 +67,9 @@ export default function BriefPage({ params }: { params: { token: string } }) {
   // the timer was scheduled rather than what is on screen when it fires.
   const latest = useRef<Answers>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** `dirty` for the leave handler, which is registered once and must not
+   *  re-register to see a new value. */
+  const dirtyRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -86,21 +89,28 @@ export default function BriefPage({ params }: { params: { token: string } }) {
     };
   }, [params.token]);
 
-  const flush = useCallback(async () => {
-    if (timer.current) {
-      clearTimeout(timer.current);
-      timer.current = null;
-    }
-    setSaving(true);
-    const ok = await saveBrief(params.token, latest.current);
-    setSaving(false);
-    setFailed(!ok);
-    if (ok) {
-      setDirty(false);
-      setSavedAt(new Date().toISOString());
-    }
-    return ok;
-  }, [params.token]);
+  /** `deliberate` = they pressed the button, rather than the timer firing.
+   *  It rides along to the server, which uses it to decide whether this save
+   *  is worth an email — see the notify coalescing in `public.py`. */
+  const flush = useCallback(
+    async (deliberate = false) => {
+      if (timer.current) {
+        clearTimeout(timer.current);
+        timer.current = null;
+      }
+      setSaving(true);
+      const ok = await saveBrief(params.token, latest.current, deliberate);
+      setSaving(false);
+      setFailed(!ok);
+      if (ok) {
+        setDirty(false);
+        dirtyRef.current = false;
+        setSavedAt(new Date().toISOString());
+      }
+      return ok;
+    },
+    [params.token],
+  );
 
   const update = useCallback(
     (mutate: (draft: Answers) => void) => {
@@ -111,10 +121,11 @@ export default function BriefPage({ params }: { params: { token: string } }) {
         return next;
       });
       setDirty(true);
+      dirtyRef.current = true;
       setFailed(false);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => {
-        void flush();
+        void flush(false);
       }, AUTOSAVE_MS);
     },
     [flush],
@@ -125,8 +136,8 @@ export default function BriefPage({ params }: { params: { token: string } }) {
   // and iOS Safari is where this page is read.
   useEffect(() => {
     const onLeave = () => {
-      if (!dirty) return;
-      const body = JSON.stringify({ answers: latest.current });
+      if (!dirtyRef.current) return;
+      const body = JSON.stringify({ answers: latest.current, notify: false });
       // `sendBeacon` because a normal fetch is cancelled when the page goes
       // away; this one is queued by the browser and survives it.
       navigator.sendBeacon?.(
@@ -134,12 +145,23 @@ export default function BriefPage({ params }: { params: { token: string } }) {
         new Blob([body], { type: "application/json" }),
       );
     };
-    window.addEventListener("pagehide", onLeave);
-    document.addEventListener("visibilitychange", () => {
+    const onHide = () => {
       if (document.visibilityState === "hidden") onLeave();
-    });
-    return () => window.removeEventListener("pagehide", onLeave);
-  }, [dirty, params.token]);
+    };
+    window.addEventListener("pagehide", onLeave);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.removeEventListener("pagehide", onLeave);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+    // Deliberately empty: this effect must run ONCE. It used to depend on
+    // `dirty`, and the visibilitychange handler was an anonymous function that
+    // the cleanup never removed — so every keystroke that flipped `dirty` left
+    // another live listener behind, and one tab-hide fired all of them. Four
+    // identical POSTs in 51ms, measured in production on 13-sep-2026, each one
+    // also sending an email. `dirtyRef` is what lets this close over nothing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.token]);
 
   if (missing) {
     return (
@@ -184,6 +206,20 @@ export default function BriefPage({ params }: { params: { token: string } }) {
         </div>
       </header>
 
+      {/* The same status as the bar at the bottom, pinned to the TOP.
+          Not redundancy: on a phone the bottom bar sits behind the keyboard
+          the moment a text box is focused, so while somebody is typing — the
+          exact moment they need to know their words are safe — the only
+          confirmation on the page is invisible. Measured on 13-sep-2026: the
+          saves were landing and the person filling it in could not tell.
+          Hidden when there is nothing to say, so it never steals a line from
+          the reading. */}
+      {(dirty || saving || failed || savedAt) ? (
+        <div className={`topstate${failed ? " bad" : !dirty && savedAt ? " good" : ""}`}>
+          <div className="wrap">{status}</div>
+        </div>
+      ) : null}
+
       <div className="wrap">
         {(brief.payload.blocks || []).map((block, i) => (
           <Block key={block.id || `b${i}`} block={block} answers={answers} update={update} />
@@ -195,7 +231,7 @@ export default function BriefPage({ params }: { params: { token: string } }) {
           <span className={`state${failed ? " bad" : !dirty && savedAt ? " good" : ""}`}>
             {status}
           </span>
-          <button type="button" onClick={() => void flush()} disabled={saving || !dirty}>
+          <button type="button" onClick={() => void flush(true)} disabled={saving || !dirty}>
             {t("brief.send")}
           </button>
         </div>

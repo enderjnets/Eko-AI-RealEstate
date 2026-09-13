@@ -108,16 +108,21 @@ export async function loadBrief(token: string): Promise<Brief | null> {
 }
 
 /** True when the answers are durable. False means *try again* — never shown
- *  as "saved", because a person who believes they saved stops. */
+ *  as "saved", because a person who believes they saved stops.
+ *
+ *  `notify` says this save was a deliberate press of the button rather than
+ *  the autosave timer. The server decides what to do with that; the page's
+ *  job is only to be honest about which kind of save this was. */
 export async function saveBrief(
   token: string,
   answers: Record<string, unknown>,
+  notify = false,
 ): Promise<boolean> {
   try {
     const res = await fetch(url(token), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ answers }),
+      body: JSON.stringify({ answers, notify }),
       cache: "no-store",
     });
     return res.ok;

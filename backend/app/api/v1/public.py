@@ -14,7 +14,7 @@ import logging
 import re
 import time
 from collections import deque
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 import httpx
@@ -950,6 +950,9 @@ class BriefAnswersIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     answers: dict[str, Any] = Field(default_factory=dict)
+    #: True when a person pressed the button, false when the page autosaved.
+    #: See `_should_notify` for why the difference has to reach the server.
+    notify: bool = False
 
 
 async def _brief_org(token: str) -> tuple[int, int] | None:
@@ -1025,6 +1028,35 @@ async def brief_read(
     }
 
 
+#: How long a typing session goes quiet for before another autosave is worth
+#: an email. Sized so a person filling the whole brief in one sitting produces
+#: one notice at the start and one when they press the button, rather than one
+#: per keystroke-pause.
+BRIEF_NOTIFY_QUIET = timedelta(minutes=30)
+
+
+def _should_notify(deliberate: bool, previous: datetime | None) -> bool:
+    """Whether this save is worth telling the operator about.
+
+    The page autosaves about a second after the last keystroke, which is right
+    for not losing answers and catastrophic for the inbox: measured in
+    production on 13-sep-2026, ninety seconds of typing produced EIGHT emails.
+    Notifying on every save was not a bug in the sending, it was a design
+    mistake — the notice was written for an event that turned out to happen
+    every second and a half.
+
+    So: a deliberate press always tells us, because that is a person saying
+    "I am done". An autosave tells us only if the brief has been quiet, so
+    somebody who fills it in and never finds the button is still not silent —
+    which is the case the notice exists for.
+    """
+    if deliberate:
+        return True
+    if previous is None:
+        return True
+    return datetime.now(UTC) - previous >= BRIEF_NOTIFY_QUIET
+
+
 @router.post("/brief/{token}")
 async def brief_save(
     token: str,
@@ -1053,6 +1085,7 @@ async def brief_save(
     if brief is None:
         raise HTTPException(status_code=404, detail="unknown_brief")
 
+    notify = _should_notify(body.notify, brief.answered_at)
     brief.answers = body.answers
     brief.answered_at = datetime.now(UTC)
     try:
@@ -1065,6 +1098,7 @@ async def brief_save(
     # After the commit, for the same reason the lead notice is: the answers
     # must be durable before anybody is told about them, and a mail failure
     # must cost the mail, never the save. The page is told it saved either way.
-    await send_brief_answered_notice(brief_id)
+    if notify:
+        await send_brief_answered_notice(brief_id)
 
     return {"ok": True, "answered_at": brief.answered_at.isoformat()}

@@ -18,13 +18,18 @@ that test drives.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
-from app.api.v1.public import BRIEF_PER_IP_LIMIT, reset_rate_limits
+from app.api.v1.public import (
+    BRIEF_NOTIFY_QUIET,
+    BRIEF_PER_IP_LIMIT,
+    reset_rate_limits,
+)
 from app.config import get_settings
 from app.db.base import get_bypass_session_factory
 from app.main import app
@@ -105,13 +110,15 @@ async def _get(token: str, **headers: str) -> tuple[int, dict]:
     return res.status_code, (res.json() if res.content else {})
 
 
-async def _post(token: str, answers: dict, **headers: str) -> tuple[int, dict]:
+async def _post(
+    token: str, answers: dict, *, notify: bool = True, **headers: str
+) -> tuple[int, dict]:
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
         res = await client.post(
             f"/api/v1/public/brief/{token}",
-            json={"answers": answers},
+            json={"answers": answers, "notify": notify},
             headers=headers or None,
         )
     return res.status_code, (res.json() if res.content else {})
@@ -324,5 +331,67 @@ async def test_no_operator_address_is_not_an_error() -> None:
             ).scalar_one()
         with patch.object(get_settings(), "OWNER_NOTICE_EMAIL", ""):
             assert await send_brief_answered_notice(int(brief_id)) is False
+    finally:
+        await _cleanup()
+
+
+async def test_typing_does_not_mail_the_operator_once_per_keystroke() -> None:
+    """The page autosaves a second after the last keystroke. Ninety seconds of
+    typing produced EIGHT emails in production on 13-sep-2026 — not a bug in
+    the sending, a design mistake: the notice was written for an event that
+    turns out to happen every second and a half.
+
+    A deliberate press always tells us. An autosave tells us only when the
+    brief has been quiet, so somebody who fills it in and never finds the
+    button is still not silent.
+    """
+    token = await _seed()
+    try:
+        with patch(
+            "app.api.v1.public.send_brief_answered_notice", new=AsyncMock(return_value=True)
+        ) as notice:
+            # First autosave on an untouched brief: they have started, and
+            # that is worth knowing even though nobody pressed anything.
+            await _post(token, {"a": 1}, notify=False)
+            assert notice.await_count == 1
+
+            # The rest of the typing session is silent.
+            for _ in range(6):
+                await _post(token, {"a": 2}, notify=False)
+            assert notice.await_count == 1, "an autosave burst mailed more than once"
+
+            # And the button always speaks, however recent the last save.
+            await _post(token, {"a": 3}, notify=True)
+            assert notice.await_count == 2
+    finally:
+        await _cleanup()
+
+
+async def test_a_brief_left_quiet_and_picked_up_again_does_tell_us() -> None:
+    """The coalescing must not become silence.
+
+    Somebody who answers half of it, puts the phone down and comes back after
+    lunch has produced new information, and the whole point of the notice is
+    that nobody has to remember to go and look.
+    """
+    token = await _seed()
+    try:
+        with patch(
+            "app.api.v1.public.send_brief_answered_notice", new=AsyncMock(return_value=True)
+        ) as notice:
+            await _post(token, {"a": 1}, notify=False)
+            assert notice.await_count == 1
+
+            # Age the last save past the quiet window.
+            stale = datetime.now(UTC) - BRIEF_NOTIFY_QUIET - timedelta(minutes=1)
+            async with get_bypass_session_factory()() as db:
+                await db.execute(
+                    text("UPDATE partner_briefs SET answered_at = :t WHERE token = :k"),
+                    {"t": stale, "k": token},
+                )
+                await db.commit()
+
+            await _post(token, {"a": 2}, notify=False)
+            assert notice.await_count == 2, "coming back after a break went unreported"
     finally:
         await _cleanup()
