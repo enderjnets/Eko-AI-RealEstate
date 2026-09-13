@@ -59,6 +59,37 @@ describe("i18n dictionaries", () => {
     expect(used.size).toBeGreaterThan(100);
     expect([...used].filter((k) => !EN.has(k)).sort()).toEqual([]);
   });
+
+  it("defines the complete content scorecard vocabulary in both languages", () => {
+    const scorecardKeys = [
+      "analytics.exactAttribution",
+      "analytics.temporalAssociation",
+      "analytics.metric.visits",
+      "analytics.metric.engaged",
+      "analytics.metric.nextStepClicks",
+      "analytics.metric.contactIntent",
+      "analytics.metric.formStarts",
+      "analytics.metric.formSubmits",
+      "analytics.metric.leads",
+      "analytics.metric.appointmentsSet",
+      "analytics.metric.appointmentsHeld",
+      "analytics.metric.views",
+      "analytics.metric.likes",
+      "analytics.metric.comments",
+      "analytics.noReading",
+      "analytics.saveMetrics",
+      "analytics.cancelMetrics",
+      "analytics.metricsTyped",
+      "analytics.metricsRead",
+      "analytics.metricsSaveError",
+      "analytics.excludedTraffic",
+      "analytics.excludedAutomation",
+      "analytics.excludedQa",
+    ];
+
+    expect(scorecardKeys.filter((key) => !EN.has(key))).toEqual([]);
+    expect(scorecardKeys.filter((key) => !ES.has(key))).toEqual([]);
+  });
 });
 
 function sourceFiles(): string[] {

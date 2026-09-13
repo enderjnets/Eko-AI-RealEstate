@@ -504,6 +504,12 @@ export interface PublicationMetrics {
   source: "youtube_api" | "manual";
 }
 
+export interface ManualPublicationMetrics {
+  views: number;
+  likes: number | null;
+  comments: number | null;
+}
+
 export interface ContentPublication {
   id: number;
   platform: string;
@@ -665,7 +671,7 @@ export const contentApi = {
   setMetrics: (
     id: number,
     platform: string,
-    body: { views: number; likes?: number; comments?: number },
+    body: ManualPublicationMetrics,
   ) =>
     api<ContentPiece>(`/v1/content/${id}/publications/${platform}/metrics`, {
       method: "PUT",
@@ -1147,6 +1153,24 @@ export interface Breakdown {
   leads: number;
 }
 
+export interface AnalyticsExcludedSessions {
+  total: number;
+  automated: number;
+  test: number;
+}
+
+export interface ContentAttribution {
+  sessions: number;
+  engaged: number;
+  cta_clickers: number;
+  contact_intents: number;
+  form_starts: number;
+  form_submits: number;
+  leads: number;
+  appointments_set: number;
+  appointments_held: number;
+}
+
 export interface Analytics {
   range: { from: string; to: string; timezone: string };
   traffic: {
@@ -1169,6 +1193,7 @@ export interface Analytics {
     /** Pressed send, and no lead ever arrived. The honeypot answering 202, a
      *  refused captcha, a dropped connection — the visitor saw "sent". */
     submitted_without_lead: number;
+    excluded_sessions: AnalyticsExcludedSessions;
     by_day: { date: string; sessions: number }[];
     by_source: Breakdown[];
     by_device: Breakdown[];
@@ -1241,6 +1266,8 @@ export interface Analytics {
     association: { window_hours: number; sessions: number; leads: number };
     /** Also per video — the tag names the piece, not the post. */
     leads_tagged: number;
+    attribution: ContentAttribution;
+    latest_metrics: PublicationMetrics | null;
     /** How many people actually watched. This one IS a measurement — it is the
      *  platform's own counter — which is why it sits apart from `association`.
      *  Null when nobody has read it: no key, no address, or a network whose
