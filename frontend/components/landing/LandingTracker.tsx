@@ -22,6 +22,7 @@ import {
   sectionWasSeen,
   sessionKey,
   setTracker,
+  trackedAnchorEvent,
   trackingAllowed,
 } from "@/lib/track";
 import { useI18n } from "@/lib/i18n";
@@ -45,6 +46,7 @@ const SECTIONS: readonly string[] = ["about", "how", "markets", "guides", "consu
 export function LandingTracker({
   variant = LANDING_VARIANT,
   sections = SECTIONS,
+  trackScroll = true,
 }: {
   variant?: string;
   /** Element ids to observe; read ONCE at mount, like `variant` and `lang`
@@ -54,6 +56,7 @@ export function LandingTracker({
    *  views and no reading at all. Every name must be in `LANDING_SECTIONS`;
    *  `track.test.ts` reads that tuple and checks. */
   sections?: readonly string[];
+  trackScroll?: boolean;
 } = {}) {
   const { lang } = useI18n();
 
@@ -127,8 +130,10 @@ export function LandingTracker({
       // reporting 0% there would make every such visit look like a bounce.
       tracker.scrolled(scrollable <= 0 ? 100 : (window.scrollY / scrollable) * 100);
     };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
+    if (trackScroll) {
+      window.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+    }
 
     // Delegated rather than per-anchor: the mobile menu's links do not exist
     // until it opens, so anything bound at mount would miss them.
@@ -137,10 +142,9 @@ export function LandingTracker({
       if (!(target instanceof Element)) return;
       const anchor = target.closest("a[href]");
       if (!(anchor instanceof HTMLAnchorElement)) return;
-      const where = anchor.dataset.track || "unknown";
       const href = anchor.getAttribute("href") || "";
-      if (href.startsWith("tel:")) tracker.record("tel_click", { where });
-      else if (href === "#consult") tracker.record("cta_click", { where });
+      const tracked = trackedAnchorEvent(href, anchor.dataset.track);
+      if (tracked) tracker.record(tracked.name, tracked.meta);
     };
     document.addEventListener("click", onClick, true);
 
@@ -156,7 +160,7 @@ export function LandingTracker({
 
     return () => {
       observer.disconnect();
-      window.removeEventListener("scroll", onScroll);
+      if (trackScroll) window.removeEventListener("scroll", onScroll);
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("visibilitychange", onHide);
       window.removeEventListener("pagehide", onPageHide);

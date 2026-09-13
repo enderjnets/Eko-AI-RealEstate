@@ -41,6 +41,17 @@ export type EventName =
   /** /calculator showed a figure. Once per page load — enforced by `ONCE`, not by the page. */
   | "calculator_result";
 
+export function trackedAnchorEvent(
+  href: string,
+  where?: string,
+): { name: "cta_click" | "tel_click"; meta: { where: string } } | null {
+  if (!where) return null;
+  return {
+    name: /^tel:/i.test(href) ? "tel_click" : "cta_click",
+    meta: { where },
+  };
+}
+
 /** Sent the moment they happen: each one is a funnel step, and a visitor who
  *  taps "call" is on their way out of the page — a queued batch would never
  *  leave. The rest ride the next flush. */

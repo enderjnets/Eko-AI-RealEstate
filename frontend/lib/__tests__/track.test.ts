@@ -22,6 +22,7 @@ import {
   sectionWasSeen,
   sessionKey,
   storedAttribution,
+  trackedAnchorEvent,
   trackingAllowed,
   type TrackerOptions,
 } from "../track";
@@ -290,6 +291,27 @@ describe("the sender", () => {
   });
 });
 
+describe("tracked anchor classification", () => {
+  it("records a tagged navigation as a CTA click", () => {
+    expect(trackedAnchorEvent("/calculator", "start-calculator")).toEqual({
+      name: "cta_click",
+      meta: { where: "start-calculator" },
+    });
+  });
+
+  it("records a tagged telephone link as a telephone click", () => {
+    expect(trackedAnchorEvent("tel:+13035550101", "start-call")).toEqual({
+      name: "tel_click",
+      meta: { where: "start-call" },
+    });
+  });
+
+  it("does not record untagged navigation", () => {
+    expect(trackedAnchorEvent("/calculator")).toBeNull();
+    expect(trackedAnchorEvent("tel:+13035550101")).toBeNull();
+  });
+});
+
 describe("wiring", () => {
   const read = (p: string) =>
     readFileSync(join(process.cwd(), p), "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
@@ -319,6 +341,26 @@ describe("wiring", () => {
     const removed = (src.match(/removeEventListener\(/g) ?? []).length;
     expect(added).toBeGreaterThan(0);
     expect(removed).toBe(added);
+  });
+
+  it("exposes a default-on scroll tracking switch", () => {
+    const src = read("components/landing/LandingTracker.tsx");
+    expect(src).toMatch(/trackScroll\s*=\s*true/);
+    expect(src).toMatch(/trackScroll\?:\s*boolean/);
+  });
+
+  it("does not attach or call the scroll handler when tracking is disabled", () => {
+    const src = read("components/landing/LandingTracker.tsx");
+    expect(src).toMatch(
+      /if\s*\(trackScroll\)\s*\{\s*window\.addEventListener\("scroll",\s*onScroll,\s*\{\s*passive:\s*true\s*\}\);\s*onScroll\(\);\s*\}/,
+    );
+  });
+
+  it("only removes the scroll listener when it could have attached it", () => {
+    const src = read("components/landing/LandingTracker.tsx");
+    expect(src).toMatch(
+      /if\s*\(trackScroll\)\s*(?:\{\s*)?window\.removeEventListener\("scroll",\s*onScroll\);/,
+    );
   });
 
   it("agrees with the server about how many events fit in a batch", () => {
