@@ -1855,6 +1855,7 @@ def test_each_platform_gets_its_own_source() -> None:
         # Which video, not just which network: "this one brought eleven visits"
         # rather than "the videos brought eleven".
         assert "utm_content=piece-10" in out
+        assert f"Start here: {CTA}/start?" in out
 
 
 def test_a_caption_without_the_link_is_left_exactly_as_it_was() -> None:
@@ -1872,24 +1873,82 @@ def test_no_cta_configured_changes_nothing() -> None:
 def test_a_url_that_already_carries_a_query_gets_an_ampersand() -> None:
     cta = "https://www.denverhomestory.com/?ref=bio"
     out = with_platform_utm(f"Here: {cta}", cta, PublicationPlatform.YOUTUBE, 7, "video")
-    assert "?ref=bio&utm_source=youtube" in out
+    assert "/start?ref=bio&utm_source=youtube" in out
     assert "??" not in out
 
 
-def test_a_longer_url_that_merely_starts_the_same_is_not_rewritten() -> None:
-    """The trap in "replace the first occurrence": the blog link starts with the
-    CTA, and rewriting it would insert a query in the middle of a path and break
-    a link that worked."""
-    text = f"Read more at {CTA}/blog and start at {CTA}"
-    out = with_platform_utm(text, CTA, PublicationPlatform.TIKTOK, 3, "video")
-    assert f"{CTA}/blog and" in out, "the blog link is untouched"
-    assert out.rstrip().endswith("utm_content=piece-3")
+def test_an_explicit_path_is_preserved_and_tagged() -> None:
+    text = "Run it: denverhomestory.com/calculator?mode=rent#result."
+    out = with_platform_utm(text, CTA, PublicationPlatform.YOUTUBE, 21, "video")
+    assert "https://www.denverhomestory.com/calculator?mode=rent&" in out
+    assert "utm_source=youtube" in out
+    assert "utm_content=piece-21" in out
+    assert out.endswith("#result."), out
+
+
+def test_the_consult_fragment_keeps_its_explicit_destination() -> None:
+    text = f"Sell with a plan: {CTA}/#consult"
+    out = with_platform_utm(text, CTA, PublicationPlatform.INSTAGRAM, 12, "video")
+    assert f"{CTA}/?utm_source=instagram" in out
+    assert out.endswith("#consult")
+    assert "/start" not in out
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        "http://denverhomestory.com/calculator",
+        "www.denverhomestory.com/calculator",
+        "denverhomestory.com/calculator",
+    ],
+)
+def test_site_links_become_complete_https_urls(written: str) -> None:
+    out = with_platform_utm(f"Try {written}", CTA, PublicationPlatform.TIKTOK, 8, "video")
+    assert out.startswith(f"Try {CTA}/calculator?")
+    assert "utm_source=tiktok" in out
+
+
+def test_existing_managed_utm_values_are_replaced_once() -> None:
+    text = (
+        f"Try {CTA}/calculator?ref=bio&utm_source=old&utm_medium=old"
+        "&utm_campaign=old&utm_content=piece-1"
+    )
+    out = with_platform_utm(text, CTA, PublicationPlatform.YOUTUBE, 22, "new-campaign")
+    assert "ref=bio" in out
+    assert out.count("utm_source=") == 1
+    assert out.count("utm_medium=") == 1
+    assert out.count("utm_campaign=") == 1
+    assert out.count("utm_content=") == 1
+    assert "utm_source=youtube" in out
+    assert "utm_campaign=new-campaign" in out
+    assert "utm_content=piece-22" in out
+
+
+@pytest.mark.parametrize("punctuation", [".", ",", ")", "!"])
+def test_sentence_punctuation_stays_outside_the_url(punctuation: str) -> None:
+    text = f"Try ({CTA}/calculator{punctuation}"
+    out = with_platform_utm(text, CTA, PublicationPlatform.INSTAGRAM, 5, "video")
+    assert out.endswith(f"utm_content=piece-5{punctuation}"), out
+
+
+@pytest.mark.parametrize(
+    "foreign",
+    [
+        "https://denverhomestory.com.example.org/calculator",
+        "https://notdenverhomestory.com/calculator",
+        "https://example.com/denverhomestory.com/calculator",
+    ],
+)
+def test_foreign_and_lookalike_hosts_are_untouched(foreign: str) -> None:
+    text = f"Read {foreign}"
+    assert with_platform_utm(text, CTA, PublicationPlatform.INSTAGRAM, 2, "video") == text
 
 
 def test_only_the_first_mention_is_tagged() -> None:
     text = f"{CTA} … and again {CTA}"
     out = with_platform_utm(text, CTA, PublicationPlatform.TIKTOK, 5, "video")
     assert out.count("utm_source=tiktok") == 1
+    assert out.endswith(f"and again {CTA}")
 
 
 def test_tagging_the_link_does_not_create_a_fair_housing_violation() -> None:

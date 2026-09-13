@@ -46,7 +46,7 @@ import re
 from datetime import UTC, datetime, time, timedelta
 from datetime import date as date_cls
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -192,49 +192,94 @@ def with_platform_utm(
     piece_id: int,
     campaign: str,
 ) -> str:
-    """Tag the call-to-action link with which network it was posted on.
+    """Normalize and tag the first Denver Home Story link in a caption.
 
-    Today the same bare URL goes into all three captions, so every visit it
-    produces arrives as `direct` and the report cannot tell a video on TikTok
-    from one on YouTube. Measured on the live site: the first real visitors all
-    arrived with no referrer at all — Instagram strips it, in-app browsers strip
-    it, and a Shorts description link is not even clickable. A query string is
-    the only part of a link that survives every one of those, which is why the
-    tagging happens here and not by reading `document.referrer` later.
+    The approved text chooses the destination. A root link goes through the
+    small social hub; an explicit calculator path or consult fragment stays on
+    that destination. Schemeless links become the configured canonical HTTPS
+    address, which also makes them clickable where a platform recognizes only
+    complete URLs.
 
-    Returns `text` untouched when there is no CTA configured, or when the URL
-    does not appear in the caption. Both are normal: `CONTENT_CTA_URL` is empty
-    until the domain is live, and a caption may simply not carry the link.
+    Host matching is exact after removing an optional ``www.``. In particular,
+    a domain written inside another URL or a lookalike subdomain is not a site
+    link. Existing non-UTM query values and fragments survive; managed UTM
+    values are replaced so a re-publish cannot create two competing sources.
 
-    The replacement is bounded so a longer URL that merely starts with the CTA
-    — `…denverhomestory.com/blog` — is left alone; without that, the first
-    occurrence rule would rewrite the wrong link and silently break it.
+    Returns ``text`` byte-for-byte when the CTA is absent or invalid, or no
+    matching link appears. Only the first matching link changes.
     """
-    if not cta_url or cta_url not in text:
+    configured_text = cta_url.strip()
+    if not configured_text:
         return text
 
-    params = {
-        "utm_source": getattr(platform, "value", str(platform)),
-        "utm_medium": "social",
-        "utm_campaign": campaign,
-        # Which piece, so a report can say "this video brought eleven visits"
-        # rather than "the videos brought eleven".
-        "utm_content": f"piece-{piece_id}",
-    }
-    separator = "&" if "?" in cta_url else "?"
-    tagged = cta_url + separator + urlencode(params)
-
-    # `count=1`: the link is appended once by `_with_cta`, and rewriting a
-    # second mention would double-tag a URL the writer put there on purpose.
-    return re.sub(
-        re.escape(cta_url) + r"(?![\w/?#=&-])",
-        # A plain function as the replacement: `re.sub` reads backslashes and
-        # `\g<...>` in a replacement string, and a URL is exactly the kind of
-        # value that eventually contains one.
-        lambda _m: tagged,
-        text,
-        count=1,
+    configured = urlsplit(
+        configured_text if "://" in configured_text else f"https://{configured_text}"
     )
+    configured_host = (configured.hostname or "").lower().rstrip(".")
+    if not configured_host or not configured.netloc:
+        return text
+
+    base_host = configured_host.removeprefix("www.")
+    accepted_hosts = sorted({base_host, f"www.{base_host}"}, key=len, reverse=True)
+    host_pattern = "(?:" + "|".join(re.escape(host) for host in accepted_hosts) + ")"
+    link_pattern = re.compile(
+        rf"(?<![\w@./-])(?:https?://)?{host_pattern}"
+        rf"(?::\d{{1,5}})?(?![\w.:-])(?:[/?#][^\s<>\"']*)?",
+        re.IGNORECASE,
+    )
+    match = link_pattern.search(text)
+    if match is None:
+        return text
+
+    candidate = match.group(0)
+    suffix = ""
+    # Sentence punctuation is not part of a URL. Keep a balanced parenthesis
+    # or bracket that genuinely belongs to a path, while removing an unmatched
+    # closer from Markdown or prose.
+    while candidate:
+        last = candidate[-1]
+        removable = last in ".,;:!?}"
+        if last == ")":
+            removable = candidate.count(")") > candidate.count("(")
+        elif last == "]":
+            removable = candidate.count("]") > candidate.count("[")
+        if not removable:
+            break
+        candidate = candidate[:-1]
+        suffix = last + suffix
+
+    parsed = urlsplit(candidate if "://" in candidate else f"https://{candidate}")
+    parsed_host = (parsed.hostname or "").lower().rstrip(".").removeprefix("www.")
+    if parsed_host != base_host:
+        return text
+
+    managed = {"utm_source", "utm_medium", "utm_campaign", "utm_content"}
+    pairs = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key not in managed
+    ]
+    pairs.extend(
+        [
+            ("utm_source", getattr(platform, "value", str(platform))),
+            ("utm_medium", "social"),
+            ("utm_campaign", campaign),
+            ("utm_content", f"piece-{piece_id}"),
+        ]
+    )
+    path = parsed.path
+    if path in ("", "/") and not parsed.fragment:
+        path = "/start"
+    tagged = urlunsplit(
+        (
+            configured.scheme or "https",
+            configured.netloc,
+            path,
+            urlencode(pairs),
+            parsed.fragment,
+        )
+    )
+    return text[: match.start()] + tagged + suffix + text[match.end() :]
 
 
 def build_post_input(

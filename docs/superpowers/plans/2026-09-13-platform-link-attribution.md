@@ -92,7 +92,9 @@ pairs.extend([
     ("utm_campaign", campaign),
     ("utm_content", f"piece-{piece_id}"),
 ])
-path = parts.path if parts.path not in ("", "/") else "/start"
+path = parts.path
+if path in ("", "/") and not parts.fragment:
+    path = "/start"
 tagged = urlunsplit((configured.scheme, configured.netloc, path, urlencode(pairs), parts.fragment))
 ```
 
@@ -108,4 +110,3 @@ Expected: PASS, including the existing three-platform payload and fair-housing t
 git add backend/app/services/buffer_publisher.py backend/tests/test_buffer_publisher.py
 git commit -m "fix(content): preserve destinations in tracked social links" -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
-
