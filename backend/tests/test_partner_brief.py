@@ -312,7 +312,10 @@ async def test_the_operator_is_told_what_they_answered() -> None:
         # The answers are IN the mail, not a link to go and read them. The
         # whole point of the page is that nobody has to open anything.
         assert "call him" in sent["body_text"]
-        assert "out" in sent["body_text"]
+        # By name and in words. This line used to assert the raw `out` was
+        # present, which was true and was the defect: the reader was being
+        # handed the machine's vocabulary.
+        assert "Sherpa Yangdi — LEAVE OUT" in sent["body_text"]
     finally:
         await _cleanup()
 
@@ -395,3 +398,57 @@ async def test_a_brief_left_quiet_and_picked_up_again_does_tell_us() -> None:
             assert notice.await_count == 2, "coming back after a break went unreported"
     finally:
         await _cleanup()
+
+
+async def test_the_notice_reads_like_an_answer_not_a_lookup_exercise() -> None:
+    """Names, not ids.
+
+    The first notice this ever sent read `nine: p1: state: out`. Every fact was
+    in it and none of it was usable: deciding whether to phone somebody meant
+    opening the brief to find out who `p1` was. The payload already holds every
+    name — the mail reads it as a legend rather than making the reader be one.
+    """
+    from app.services.brief_notify import build_body
+    from app.models.partner_brief import PartnerBrief
+
+    brief = PartnerBrief(
+        title="Nine names and a listing",
+        recipient="Natalia and Robbie",
+        payload={
+            "blocks": [
+                {
+                    "kind": "people",
+                    "id": "nine",
+                    "heading": "The nine who still own the home",
+                    "people": [
+                        {"id": "p1", "name": "Sherpa Yangdi"},
+                        {"id": "p4", "name": "Auger Julie A"},
+                    ],
+                },
+                {
+                    "kind": "questions",
+                    "fields": [{"id": "talking_natalia", "label": "Natalia"}],
+                },
+            ]
+        },
+        answers={
+            "nine": {
+                "p1": {"state": "out"},
+                "p4": {"state": "touch", "correct": "Julie Auger", "naming": True},
+            },
+            "talking_natalia": "the Ramirez family",
+        },
+    )
+
+    body = build_body(brief)
+
+    # The people read by name and their verdict in words.
+    assert "Sherpa Yangdi — LEAVE OUT" in body
+    assert "Auger Julie A — already in touch" in body
+    assert 'calls them "Julie Auger"' in body
+    # The free text reads by its label.
+    assert "Natalia: the Ramirez family" in body
+    # And none of the machine's vocabulary survives.
+    assert "p1" not in body
+    assert "p4" not in body
+    assert "naming" not in body

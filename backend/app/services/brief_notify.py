@@ -45,7 +45,7 @@ log = logging.getLogger(__name__)
 MAX_BODY_CHARS = 8_000
 
 
-def _render(value: Any, indent: int = 0) -> list[str]:
+def _render(value: Any, indent: int = 0, legend: dict[str, str] | None = None) -> list[str]:
     """Answers as indented lines, whatever shape that brief chose to collect.
 
     Shape-agnostic on purpose: the endpoint stores whatever the page sends
@@ -54,18 +54,29 @@ def _render(value: Any, indent: int = 0) -> list[str]:
     structure prints as itself rather than being dropped.
     """
     pad = "  " * indent
+    names = legend or {}
     lines: list[str] = []
     if isinstance(value, dict):
         for key, inner in value.items():
-            if isinstance(inner, (dict, list)) and inner:
-                lines.append(f"{pad}{key}:")
-                lines.extend(_render(inner, indent + 1))
+            label = names.get(key, key)
+            # A person's row is `{state, correct, naming}` — three keys that
+            # read far better on one line than as a nested block, and `naming`
+            # is UI state that means nothing to a reader.
+            if isinstance(inner, dict) and ("state" in inner or "correct" in inner):
+                verdict = _STATES.get(str(inner.get("state") or "send"), str(inner.get("state")))
+                line = f"{pad}{label} — {verdict}"
+                if inner.get("correct"):
+                    line += f'  [calls them "{inner["correct"]}"]'
+                lines.append(line)
+            elif isinstance(inner, (dict, list)) and inner:
+                lines.append(f"{pad}{label}:")
+                lines.extend(_render(inner, indent + 1, names))
             else:
-                lines.append(f"{pad}{key}: {_scalar(inner)}")
+                lines.append(f"{pad}{label}: {_scalar(inner)}")
     elif isinstance(value, list):
         for item in value:
             if isinstance(item, (dict, list)):
-                lines.extend(_render(item, indent))
+                lines.extend(_render(item, indent, names))
             else:
                 lines.append(f"{pad}- {_scalar(item)}")
     else:
@@ -85,13 +96,47 @@ def _scalar(value: Any) -> str:
     return str(value)
 
 
+#: How a person's verdict reads in the mail. The page stores the machine's
+#: word; nobody should have to know what "touch" meant.
+_STATES = {
+    "out": "LEAVE OUT",
+    "touch": "already in touch — theirs to handle",
+    "send": "send",
+}
+
+
+def _legend(payload: dict) -> dict[str, str]:
+    """Every id in the answers, mapped to what a human calls it.
+
+    The answers are keyed by id, because ids are what stays stable when a
+    brief is edited. That is right for the row and useless in an email: the
+    first notice this ever sent read `nine: p1: state: out`, which is not an
+    answer, it is a lookup exercise. The brief's own payload already holds
+    every name and label, so the mail reads it as a legend rather than making
+    the reader be one.
+    """
+    out: dict[str, str] = {}
+    for block in payload.get("blocks") or []:
+        for person in block.get("people") or []:
+            if person.get("id"):
+                out[person["id"]] = person.get("name") or person["id"]
+        for field in block.get("fields") or []:
+            if field.get("id"):
+                out[field["id"]] = field.get("label") or field["id"]
+        if block.get("kind") == "people" and block.get("id"):
+            out[block["id"]] = block.get("heading") or block["id"]
+        if block.get("kind") == "letter" and block.get("id"):
+            out[f"{block['id']}.state"] = block.get("heading") or block["id"]
+    return out
+
+
 def build_body(brief: PartnerBrief) -> str:
     """The mail's text. Pure, so the test can read it without sending."""
     lines = [
         f"{brief.recipient or 'Someone'} answered: {brief.title}",
         "",
     ]
-    rendered = _render(brief.answers or {})
+    rendered = _render(brief.answers or {}, legend=_legend(brief.payload or {}))
     if rendered:
         lines.extend(rendered)
     else:
