@@ -2,6 +2,32 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.101.2] — 2026-09-12
+
+### Added
+- **A doorbell for the partner brief.** The brief went out and then went quiet,
+  and the only way to learn whether anybody had opened it was to ask — which is
+  the question that turns a favour into a deadline. `app/services/brief_activity.py`
+  sends three notices over Telegram (`@EkoRug_bot`, already configured): opened,
+  a checkpoint while they work, and finished.
+- **Counts, never content.** `summarise()` reads the payload as what was asked
+  and the answers as what came back, and reports *how much* — "7 to write to",
+  "2 of 4 questions answered". Nothing anybody typed appears. The answers go by
+  email, which is read on purpose, instead of a phone alert quoting a past
+  client's name on a lock screen. `test_partner_brief.py` asserts no typed text
+  survives the summary.
+- **Coalesced, with the lesson the email already paid for.** The page autosaves
+  a second after the last keystroke; ninety seconds of typing once produced
+  eight emails. `BRIEF_ACTIVITY_QUIET` is twenty minutes — long enough that one
+  sitting is one or two notices, short enough that "they picked it up again
+  after dinner" still arrives.
+
+### Known
+- **Brief 1 will never ring its "opened" bell.** `opened_at` is stamped once and
+  that row was opened during testing, before this existed. Every brief created
+  from here on rings it. Not faked by clearing the timestamp: a row that claims
+  a first open that did not happen misleads whoever reads it next.
+
 ## [0.101.1] — 2026-09-12
 
 ### Fixed

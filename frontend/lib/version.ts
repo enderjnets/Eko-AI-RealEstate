@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.101.1";
+export const CURRENT_VERSION = "0.101.2";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.101.2",
+    date: "2026-09-12",
+    title: {
+      en: "A doorbell for the brief, so nobody has to ask how it is going",
+      es: "Un timbre para la hoja, para que nadie tenga que preguntar como van",
+    },
+    changes: [
+      { en: "A private brief went out to two partners and then went quiet: the only way to know whether anybody had opened it was to ask them, which is the question that makes a favour feel like a deadline. Telegram now says three things \u2014 somebody opened it, where they had got to at a checkpoint, and somebody finished.", es: "Una hoja privada salio hacia dos socios y despues se quedo muda: la unica forma de saber si alguien la habia abierto era preguntarles, que es justo la pregunta que convierte un favor en un plazo. Telegram avisa ahora de tres cosas \u2014 que la abrieron, por donde iban en un punto de control, y que terminaron." },
+      { en: "It reports how much, never what. The notice carries counts \u2014 seven to write to, two of four questions answered \u2014 and never a word anybody typed. What they wrote goes by email, which is a place you read on purpose, rather than a phone alert that puts a past client\u2019s name on a lock screen. A test fails if any typed text reaches the notice.", es: "Dice cuanto, nunca que. El aviso lleva cuentas \u2014 siete a los que escribir, dos de cuatro preguntas contestadas \u2014 y ni una palabra de lo que alguien tecleo. Lo que escriben va por correo, que es un sitio que se lee a proposito, en vez de una alerta de movil que pone el nombre de un cliente en la pantalla de bloqueo. Un test falla si algun texto tecleado llega al aviso." },
+      { en: "There is no live feed, on purpose. The page saves itself a second after the last keystroke, and the email notice already learned what that costs \u2014 ninety seconds of typing once produced eight of them. Progress here waits twenty minutes of quiet before it speaks again, because twelve messages do not tell you how somebody is doing; they tell you to stop reading Telegram.", es: "No hay seguimiento en vivo, a proposito. La pagina se guarda sola un segundo despues de la ultima tecla, y el aviso por correo ya aprendio lo que eso cuesta \u2014 noventa segundos de escritura dieron ocho. El progreso aqui espera veinte minutos de silencio antes de volver a hablar, porque doce mensajes no te dicen como va alguien; te dicen que dejes de mirar Telegram." },
+      { en: "The first brief will not ring its \u201copened\u201d bell. That one was opened during testing before the notice existed, and the page records a first open only once. Every brief written from here on rings it; this is stated rather than faked by resetting the timestamp, which would leave a row claiming something that did not happen.", es: "La primera hoja no hara sonar su aviso de \u00abla abrieron\u00bb. Esa se abrio en las pruebas, antes de que el aviso existiera, y la pagina anota la primera apertura una sola vez. Toda hoja escrita a partir de ahora si lo hace; se dice en vez de fingirlo devolviendo la fecha atras, que dejaria una fila afirmando algo que no paso." },
+    ],
+  },
   {
     version: "0.101.1",
     date: "2026-09-12",
