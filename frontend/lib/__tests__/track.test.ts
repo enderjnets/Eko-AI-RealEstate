@@ -208,6 +208,20 @@ describe("what gets sent, and when", () => {
     expect(Object.keys(JSON.parse(sent[0])).sort()).toEqual(["events", "path", "session"]);
   });
 
+  it("sends webdriver evidence only when it is exactly true", () => {
+    const automated = tracker({ webdriver: true });
+    automated.t.record("form_submit");
+    expect(JSON.parse(automated.sent[0]).webdriver).toBe(true);
+
+    const claimedHuman = tracker({ webdriver: false } as unknown as Partial<TrackerOptions>);
+    claimedHuman.t.record("form_submit");
+    expect(JSON.parse(claimedHuman.sent[0])).not.toHaveProperty("webdriver");
+
+    const absent = tracker();
+    absent.t.record("form_submit");
+    expect(JSON.parse(absent.sent[0])).not.toHaveProperty("webdriver");
+  });
+
   it("never sends more events than the server accepts", () => {
     const { t, sent } = tracker();
     for (let i = 0; i < MAX_PER_BATCH + 3; i++) t.record("page_view");
@@ -347,6 +361,11 @@ describe("wiring", () => {
     const src = read("components/landing/LandingTracker.tsx");
     expect(src).toMatch(/trackScroll\s*=\s*true/);
     expect(src).toMatch(/trackScroll\?:\s*boolean/);
+  });
+
+  it("passes only positive webdriver evidence into the tracker", () => {
+    const src = read("components/landing/LandingTracker.tsx");
+    expect(src).toMatch(/webdriver:\s*navigator\.webdriver\s*===\s*true\s*\?\s*true\s*:\s*undefined/);
   });
 
   it("does not attach or call the scroll handler when tracking is disabled", () => {

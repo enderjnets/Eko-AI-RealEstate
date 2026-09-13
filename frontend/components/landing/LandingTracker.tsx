@@ -90,6 +90,7 @@ export function LandingTracker({
       screenW: window.innerWidth,
       utm: { landing_variant: variant, ...collected },
       referrer: document.referrer || null,
+      webdriver: navigator.webdriver === true ? true : undefined,
       allowed: trackingAllowed(navigator),
       send: beaconSender(),
     });

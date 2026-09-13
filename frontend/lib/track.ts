@@ -239,6 +239,7 @@ export interface TrackerOptions {
   screenW?: number;
   utm?: Record<string, string>;
   referrer?: string | null;
+  webdriver?: true;
   allowed?: boolean;
   /** Returns false when the send could not be handed off, so the caller can
    *  decide; the tracker itself does not retry — a dropped beacon is a dropped
@@ -313,6 +314,7 @@ export class Tracker {
     if (typeof this.opts.screenW === "number") body.screen_w = this.opts.screenW;
     if (this.opts.utm && Object.keys(this.opts.utm).length > 0) body.utm = this.opts.utm;
     if (this.opts.referrer) body.referrer = this.opts.referrer;
+    if (this.opts.webdriver === true) body.webdriver = true;
     this.opts.send(JSON.stringify(body));
     // Anything past the batch cap goes out next; the loop is bounded because
     // `slice` always shortens the queue.
