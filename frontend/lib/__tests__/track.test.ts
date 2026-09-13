@@ -99,8 +99,21 @@ describe("session key", () => {
   });
 
   it("survives storage that throws instead of returning null", () => {
-    expect(sessionKey(hostileStorage)).toMatch(/^[0-9a-f]{32}$/);
-    expect(sessionKey(null)).toMatch(/^[0-9a-f]{32}$/);
+    const first = sessionKey(hostileStorage);
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+    expect(sessionKey(hostileStorage)).toBe(first);
+    expect(sessionKey(null)).toBe(first);
+  });
+
+  it("keeps separate working storage objects isolated", () => {
+    const firstStorage = memoryStorage();
+    const secondStorage = memoryStorage();
+    const first = sessionKey(firstStorage);
+    const second = sessionKey(secondStorage);
+
+    expect(second).not.toBe(first);
+    expect(firstStorage.dump()[SESSION_STORAGE_KEY]).toBe(first);
+    expect(secondStorage.dump()[SESSION_STORAGE_KEY]).toBe(second);
   });
 });
 
@@ -118,6 +131,33 @@ describe("attribution", () => {
     persistAttribution(params({ utm_source: "youtube" }), "", s);
     expect(persistAttribution(params({ utm_source: "tiktok" }), "", s)).toEqual({
       utm_source: "youtube",
+    });
+  });
+
+  it("does not build a hybrid attribution from a later tagged URL", () => {
+    const s = memoryStorage();
+    const firstTouch = {
+      utm_source: "instagram",
+      utm_medium: "bio",
+      utm_campaign: "profile",
+      utm_content: "piece-41",
+    };
+    persistAttribution(params(firstTouch), "https://www.instagram.com/", s);
+
+    expect(
+      persistAttribution(
+        params({
+          utm_source: "youtube",
+          utm_medium: "shorts",
+          utm_campaign: "later-campaign",
+          gclid: "later-click",
+        }),
+        "https://www.youtube.com/",
+        s,
+      ),
+    ).toEqual({
+      ...firstTouch,
+      referrer: "https://www.instagram.com/",
     });
   });
 
@@ -144,6 +184,56 @@ describe("attribution", () => {
     expect(storedAttribution(memoryStorage({ [ATTRIBUTION_STORAGE_KEY]: "{{{" }))).toEqual({});
     expect(storedAttribution(memoryStorage({ [ATTRIBUTION_STORAGE_KEY]: "[1,2]" }))).toEqual({});
     expect(storedAttribution(hostileStorage)).toEqual({});
+  });
+
+  it("still reads saved attribution when only the session-key write fails", () => {
+    const saved = memoryStorage();
+    const storage = {
+      getItem: saved.getItem,
+      setItem(key: string, value: string) {
+        if (key === SESSION_STORAGE_KEY) throw new Error("session key blocked");
+        saved.setItem(key, value);
+      },
+    };
+    const first = persistAttribution(
+      params({ utm_source: "tiktok", utm_medium: "bio" }),
+      "",
+      storage,
+    );
+    sessionKey(storage);
+
+    expect(
+      persistAttribution(params({ utm_source: "youtube" }), "", storage),
+    ).toEqual(first);
+  });
+
+  it("keeps the first touch in memory when storage is blocked", () => {
+    const first = persistAttribution(
+      params({ utm_source: "instagram", utm_medium: "bio" }),
+      "https://www.instagram.com/",
+      hostileStorage,
+    );
+
+    expect(
+      persistAttribution(
+        params({ utm_source: "youtube", utm_campaign: "later" }),
+        "https://www.youtube.com/",
+        null,
+      ),
+    ).toEqual(first);
+    expect(storedAttribution(hostileStorage)).toEqual(first);
+    expect(storedAttribution(null)).toEqual(first);
+  });
+
+  it("keeps separate working attribution stores isolated", () => {
+    const firstStorage = memoryStorage();
+    const secondStorage = memoryStorage();
+
+    persistAttribution(params({ utm_source: "tiktok" }), "", firstStorage);
+    persistAttribution(params({ utm_source: "youtube" }), "", secondStorage);
+
+    expect(storedAttribution(firstStorage)).toEqual({ utm_source: "tiktok" });
+    expect(storedAttribution(secondStorage)).toEqual({ utm_source: "youtube" });
   });
 });
 
@@ -472,18 +562,19 @@ describe("wiring", () => {
   it("sends the session id with the lead, so the visit joins the funnel", () => {
     const src = read("components/landing/ConsultForm.tsx");
     expect(src).toMatch(/session_id:\s*sessionId/);
+    expect(src).toMatch(
+      /webdriver:\s*navigator\.webdriver\s*===\s*true\s*\?\s*true\s*:\s*undefined/,
+    );
     expect(src).toMatch(/getTracker\(\)\?\.record\("form_submit"\)/);
     expect(src).toMatch(/getTracker\(\)\?\.record\("form_error"/);
     expect(src).toMatch(/onFocusCapture=\{onFirstTouch\}/);
   });
 
-  it("prefers the remembered first touch over an empty query string", () => {
+  it("submits the remembered first touch without mixing in the current URL", () => {
     const src = read("components/landing/ConsultForm.tsx");
-    const stored = src.indexOf("storedAttribution(storage)");
-    const current = src.indexOf("...collected");
-    expect(stored).toBeGreaterThan(-1);
-    // Spread later wins, so the CURRENT url still beats what was remembered.
-    expect(current).toBeGreaterThan(stored);
+    expect(src).toContain("persistAttribution(params, document.referrer, storage)");
+    expect(src).not.toContain("storedAttribution(storage)");
+    expect(src).not.toContain("...collected");
   });
 });
 

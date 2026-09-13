@@ -117,6 +117,11 @@ class FormSubmission:
     consent: bool = False
     consent_text: str | None = None
     attribution: dict[str, str] = field(default_factory=dict)
+    # Server-classified acquisition traffic. The public route derives this
+    # from positive evidence (the exact QA pair, webdriver=true or a known bot
+    # user agent); callers cannot smuggle it through the attribution whitelist.
+    traffic_class: str = "unknown"
+    traffic_class_reason: str | None = None
     ip: str | None = None
     user_agent: str | None = None
     # `CalculatorIn.model_dump()` when the form sat under /calculator: the
@@ -349,7 +354,14 @@ async def capture_lead(sub: FormSubmission, db: AsyncSession) -> dict[str, objec
         lead.email = email
 
     now = datetime.now(UTC)
-    _record_attribution(lead, attribution, now)
+    _record_attribution(
+        lead,
+        attribution,
+        now,
+        is_new_lead=is_new,
+        traffic_class=sub.traffic_class,
+        traffic_class_reason=sub.traffic_class_reason,
+    )
     _record_consent(lead, sub, now, allowed=consent_allowed, is_new_lead=is_new)
 
     # The calculation, recomputed here. Last one wins: someone who goes back,
@@ -469,22 +481,46 @@ async def _lead_for(
     return lead, is_new, reached_by_address and not is_new
 
 
-def _record_attribution(lead: Lead, attribution: dict[str, str], now: datetime) -> None:
-    """First touch wins; later touches are kept beside it, not on top of it.
+def _record_attribution(
+    lead: Lead,
+    attribution: dict[str, str],
+    now: datetime,
+    *,
+    is_new_lead: bool,
+    traffic_class: str = "unknown",
+    traffic_class_reason: str | None = None,
+) -> None:
+    """A new web lead owns first touch; later touches stay beside acquisition.
 
     The question this data exists to answer is which video produced the lead, so
     overwriting on a second submission would credit whichever piece of content
     they happened to see last — usually the retargeting ad, never the video that
-    actually found them.
+    actually found them.  A pre-existing offline lead also keeps the acquisition
+    slot empty: its first later form submission is history, not a new origin.
 
     Reassigns `lead.meta` rather than mutating it: the column is plain JSON with
     no mutation tracking, so an in-place edit is simply not written.
     """
-    if not attribution:
+    classification = (
+        traffic_class if traffic_class in {"unknown", "automated", "test"} else "unknown"
+    )
+    # A direct human visit has no acquisition facts to keep. Automation is a
+    # fact by itself, however, and must survive even when the URL had no UTM.
+    if not attribution and classification == "unknown":
         return
     meta = dict(lead.meta or {})
-    stamped = {**attribution, "captured_at": now.isoformat()}
-    if not meta.get("attribution"):
+    stamped = {
+        **attribution,
+        "traffic_class": classification,
+        "captured_at": now.isoformat(),
+    }
+    if traffic_class_reason and classification != "unknown":
+        stamped["traffic_class_reason"] = traffic_class_reason
+    # Only a lead born from this submission has a web acquisition touch. An
+    # imported, phone or inbox lead with no attribution is not retroactively
+    # "produced" by the first tagged form they happen to submit months later;
+    # that visit belongs in history beside the acquisition slot, not inside it.
+    if is_new_lead and not meta.get("attribution"):
         meta["attribution"] = stamped
     else:
         later = list(meta.get("attribution_later") or [])

@@ -420,8 +420,10 @@ describe("the measurable content scorecard", () => {
       },
       views: {
         count: null,
-        captured_on: "2026-09-13",
-        source: "manual",
+        // Deliberately stale legacy reading: provenance and date must come
+        // from the same newest snapshot as the counters above.
+        captured_on: "2026-09-01",
+        source: "youtube_api",
       },
     };
 
@@ -437,7 +439,7 @@ describe("the measurable content scorecard", () => {
     expect(text).toContain("Views no reading");
     expect(text).toContain("Likes 0");
     expect(text).toContain("Comments no reading");
-    expect(text).toContain("Counters entered manually");
+    expect(text).toContain("Counters entered manually · 2026-09-13");
   });
 
   it("shows excluded QA and automation only when at least one session was excluded", () => {
@@ -448,5 +450,7 @@ describe("the measurable content scorecard", () => {
     expect(source).toContain('t("analytics.excludedQa")');
     expect(source).toContain("traffic.excluded_sessions.automated");
     expect(source).toContain("traffic.excluded_sessions.test");
+    expect(source).toMatch(/\{hint && <div className="[^"]*text-gray-400[^"]*"/);
+    expect(source).not.toMatch(/\{hint && <div className="[^"]*text-gray-600[^"]*"/);
   });
 });

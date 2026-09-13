@@ -441,6 +441,137 @@ async def test_attribution_is_stored_and_filtered() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("email", "extra_payload", "headers", "expected_reason"),
+    [
+        (
+            "webdriver@capture.test",
+            {"webdriver": True},
+            {"user-agent": "Mozilla/5.0"},
+            "webdriver",
+        ),
+        (
+            "googlebot@capture.test",
+            {},
+            {"user-agent": "Mozilla/5.0 Googlebot/2.1"},
+            "ua_googlebot",
+        ),
+    ],
+)
+async def test_capture_stamps_server_automation_evidence_on_the_first_touch(
+    email: str,
+    extra_payload: dict,
+    headers: dict[str, str],
+    expected_reason: str,
+) -> None:
+    """Automation classification must follow the lead beyond its visit row."""
+    try:
+        status, _ = await _post({"email": email, **extra_payload}, **headers)
+        assert status == 202
+        attribution = (await _lead_row(email))["meta"]["attribution"]
+        assert attribution["traffic_class"] == "automated"
+        assert attribution["traffic_class_reason"] == expected_reason
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_later_automated_submission_does_not_hide_a_real_first_touch() -> None:
+    try:
+        first = await _post(
+            {
+                "email": "later-automation@capture.test",
+                "utm": {"utm_source": "instagram", "utm_medium": "social"},
+                "message": "first",
+            },
+            **{"user-agent": "Mozilla/5.0"},
+        )
+        later = await _post(
+            {
+                "email": "later-automation@capture.test",
+                "webdriver": True,
+                "message": "second",
+            },
+            **{"user-agent": "Mozilla/5.0"},
+        )
+        assert first[0] == 202
+        assert later[0] == 202
+        meta = (await _lead_row("later-automation@capture.test"))["meta"]
+        assert meta["attribution"]["traffic_class"] == "unknown"
+        assert meta["attribution_later"][0]["traffic_class"] == "automated"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_first_web_visit_cannot_reclassify_an_existing_offline_lead() -> None:
+    """A known person's later QA form is history, not their acquisition source."""
+    from datetime import timedelta
+
+    from app.models import Lead, LeadIntent, LeadStatus, Visit, VisitStatus
+    from app.services import analytics as svc
+
+    email = "existing-qa@capture.test"
+    now = datetime.now(UTC)
+    window = svc.Window(
+        start=now - timedelta(days=1), end=now + timedelta(days=1), tz="UTC"
+    )
+    try:
+        async with get_bypass_session_factory()() as db:
+            leads_before = (await svc.leads(db, window))["total"]
+            appointments_before = (await svc.appointments(db, window))["set"]
+
+        async with get_bypass_session_factory()() as db:
+            lead = Lead(
+                org_id=1,
+                phone=email,
+                email=email,
+                intent=LeadIntent.BUY,
+                status=LeadStatus.NEW,
+                created_at=now,
+            )
+            db.add(lead)
+            await db.flush()
+            db.add(
+                Visit(
+                    org_id=1,
+                    lead_id=lead.id,
+                    external_booking_id="existing-before-qa",
+                    status=VisitStatus.COMPLETED,
+                    scheduled_at=now - timedelta(days=1),
+                )
+            )
+            await db.commit()
+
+        async with get_bypass_session_factory()() as db:
+            assert (await svc.leads(db, window))["total"] == leads_before + 1
+            assert (
+                await svc.appointments(db, window)
+            )["set"] == appointments_before + 1
+
+        status, _ = await _post(
+            {
+                "email": email,
+                "utm": {"utm_source": "eko_qa", "utm_medium": "test"},
+                "message": "later QA check",
+            }
+        )
+        assert status == 202
+        meta = (await _lead_row(email))["meta"]
+        assert "attribution" not in meta
+        assert meta["attribution_later"][0]["utm_source"] == "eko_qa"
+        assert meta["attribution_later"][0]["traffic_class"] == "test"
+
+        async with get_bypass_session_factory()() as db:
+            assert (await svc.leads(db, window))["total"] == leads_before + 1
+            assert (
+                await svc.appointments(db, window)
+            )["set"] == appointments_before + 1
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
 async def test_second_submission_merges_and_keeps_the_first_touch() -> None:
     # `leads` is unique on (org_id, phone). Before the upsert this was a 500 and
     # a lost lead the second time anybody used the form.

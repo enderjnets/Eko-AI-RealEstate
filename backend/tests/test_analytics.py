@@ -1097,6 +1097,361 @@ async def test_excluded_sessions_never_enter_traffic_funnel_or_content() -> None
 
 
 @pytest.mark.asyncio
+async def test_excluded_leads_stay_in_crm_but_never_enter_any_analytics_aggregate() -> None:
+    """Full QA and automated conversions must not become business results.
+
+    The test deliberately creates real, QA and automated leads with complete
+    descendant records.  Each excluded lead's immutable first touch carries
+    positive classification evidence; every Analytics section that derives a
+    number from leads must honour that marker while all three leads remain
+    available to the CRM and audit trail.
+    """
+    from decimal import Decimal
+
+    from app.models import (
+        CallLog,
+        CallOutcome,
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        LeadEvent,
+        PublicationPlatform,
+        PublicationStatus,
+        Visit,
+        VisitStatus,
+    )
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 10, tzinfo=UTC)
+    end = datetime(2026, 9, 11, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+
+    async with get_bypass_session_factory()() as db:
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook="qa exclusion",
+        )
+        db.add(piece)
+        await db.flush()
+        db.add(
+            ContentPublication(
+                org_id=ORG,
+                piece_id=piece.id,
+                platform=PublicationPlatform.INSTAGRAM,
+                status=PublicationStatus.PUBLISHED,
+                published_at=start + timedelta(hours=1),
+            )
+        )
+
+        def lead(suffix: str, *, traffic_class: str) -> Lead:
+            qa = traffic_class == "test"
+            automated = traffic_class == "automated"
+            attribution = {
+                "utm_source": "eko_qa" if qa else ("google" if automated else "instagram"),
+                "utm_medium": "test" if qa else "social",
+                "utm_content": f"piece-{piece.id}",
+            }
+            if automated:
+                attribution["traffic_class"] = "automated"
+                attribution["traffic_class_reason"] = "webdriver"
+            return Lead(
+                org_id=ORG,
+                phone=f"{MARKER}{suffix}",
+                intent=LeadIntent.BUY,
+                status=LeadStatus.WON,
+                created_at=start + timedelta(hours=2),
+                won_at=start + timedelta(hours=8),
+                won_kind="buyer_purchase",
+                won_value=Decimal("1000.00"),
+                meta={"attribution": attribution},
+            )
+
+        real_lead = lead("0501", traffic_class="unknown")
+        qa_lead = lead("0502", traffic_class="test")
+        automated_lead = lead("0503", traffic_class="automated")
+        db.add_all([real_lead, qa_lead, automated_lead])
+        await db.flush()
+
+        def conversation(for_lead: Lead, *, label: str) -> tuple[Conversation, Message]:
+            started_at = start + timedelta(hours=3)
+            conv = Conversation(
+                org_id=ORG,
+                lead_id=for_lead.id,
+                channel="sms",
+                status=ConversationStatus.ACTIVE,
+                started_at=started_at,
+            )
+            db.add(conv)
+            # Flush here because Message carries the conversation's FK.
+            return conv, Message(
+                org_id=ORG,
+                conversation=conv,
+                direction=MessageDirection.OUTBOUND,
+                sender=MessageSender.HUMAN,
+                content=f"{label} reply",
+                internal=False,
+                created_at=started_at
+                + timedelta(seconds={"real": 90, "qa": 300, "automated": 600}[label]),
+            )
+
+        real_conv, real_reply = conversation(real_lead, label="real")
+        qa_conv, qa_reply = conversation(qa_lead, label="qa")
+        automated_conv, automated_reply = conversation(automated_lead, label="automated")
+        db.add_all(
+            [
+                real_conv,
+                real_reply,
+                qa_conv,
+                qa_reply,
+                automated_conv,
+                automated_reply,
+            ]
+        )
+
+        def landing(for_lead: Lead, *, traffic_class: str) -> LandingSession:
+            qa = traffic_class == "test"
+            automated = traffic_class == "automated"
+            at = start + timedelta(hours=4)
+            return LandingSession(
+                org_id=ORG,
+                session_key=f"excluded-lead-{traffic_class}".ljust(32, "x"),
+                first_seen_at=at,
+                last_seen_at=at,
+                landing_path="/start",
+                utm_source="eko_qa" if qa else ("google" if automated else "instagram"),
+                utm_medium="test" if qa else "social",
+                utm_content=f"piece-{piece.id}",
+                source="eko_qa" if qa else ("google" if automated else "instagram"),
+                traffic_class=traffic_class,
+                device="phone",
+                max_scroll_pct=75,
+                sections_viewed=["about", "consult"],
+                cta_clicks=1,
+                tel_clicks=1,
+                form_started_at=at,
+                form_submitted_at=at,
+                lead_id=for_lead.id,
+                event_count=8,
+            )
+
+        db.add_all(
+            [
+                landing(real_lead, traffic_class="unknown"),
+                landing(qa_lead, traffic_class="test"),
+                landing(automated_lead, traffic_class="automated"),
+            ]
+        )
+
+        def call_event(for_lead: Lead, *, label: str) -> LeadEvent:
+            return LeadEvent(
+                org_id=ORG,
+                lead_id=for_lead.id,
+                type="call_inbound",
+                at=start + timedelta(hours=5),
+                actor="vapi",
+                meta={
+                    "duration_seconds": {"real": 60, "qa": 600, "automated": 900}[label],
+                    "ended_reason": "completed",
+                },
+            )
+
+        def close_event(for_lead: Lead, *, label: str) -> LeadEvent:
+            return LeadEvent(
+                org_id=ORG,
+                lead_id=for_lead.id,
+                type="deal_closed",
+                at=start + timedelta(hours=8),
+                actor=f"{label}@example.com" if label != "real" else "natalia@example.com",
+                to_status="won",
+            )
+
+        db.add_all(
+            [
+                call_event(real_lead, label="real"),
+                call_event(qa_lead, label="qa"),
+                call_event(automated_lead, label="automated"),
+                close_event(real_lead, label="real"),
+                close_event(qa_lead, label="qa"),
+                close_event(automated_lead, label="automated"),
+                CallLog(
+                    org_id=ORG,
+                    lead_id=real_lead.id,
+                    logged_by="natalia@example.com",
+                    outcome=CallOutcome.BOOKED_VISIT,
+                    created_at=start + timedelta(hours=6),
+                ),
+                CallLog(
+                    org_id=ORG,
+                    lead_id=automated_lead.id,
+                    logged_by="automated@example.com",
+                    outcome=CallOutcome.BOOKED_VISIT,
+                    created_at=start + timedelta(hours=6),
+                ),
+                CallLog(
+                    org_id=ORG,
+                    lead_id=qa_lead.id,
+                    logged_by="qa@example.com",
+                    outcome=CallOutcome.BOOKED_VISIT,
+                    created_at=start + timedelta(hours=6),
+                ),
+                Visit(
+                    org_id=ORG,
+                    lead_id=real_lead.id,
+                    external_booking_id="qa-exclusion-real",
+                    status=VisitStatus.COMPLETED,
+                    assigned_email="natalia@example.com",
+                    scheduled_at=start + timedelta(days=2),
+                ),
+                Visit(
+                    org_id=ORG,
+                    lead_id=automated_lead.id,
+                    external_booking_id="qa-exclusion-automated",
+                    status=VisitStatus.COMPLETED,
+                    assigned_email="automated@example.com",
+                    scheduled_at=start + timedelta(days=2),
+                ),
+                Visit(
+                    org_id=ORG,
+                    lead_id=qa_lead.id,
+                    external_booking_id="qa-exclusion-test",
+                    status=VisitStatus.COMPLETED,
+                    assigned_email="qa@example.com",
+                    scheduled_at=start + timedelta(days=2),
+                ),
+            ]
+        )
+        await db.commit()
+        piece_id = piece.id
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            raw_leads = (await db.execute(text("SELECT count(*) FROM leads"))).scalar_one()
+            traffic = await svc.traffic(db, window)
+            lead_stats = await svc.leads(db, window)
+            response_stats = await svc.response(db, window)
+            call_stats = await svc.calls(db, window)
+            appointment_stats = await svc.appointments(db, window)
+            deal_stats = await svc.deals(db, window, with_value=True)
+            content_stats = await svc.content(db, window)
+            agent_stats = await svc.by_agent(db, window)
+            funnel_stats = await svc.funnel(db, window, traffic)
+
+        assert raw_leads == 3, "excluded leads stay in the CRM"
+        assert traffic["sessions"] == 1
+        assert traffic["excluded_sessions"] == {"total": 2, "automated": 1, "test": 1}
+        assert lead_stats["total"] == 1
+        assert lead_stats["by_status"] == {"won": 1}
+        assert lead_stats["by_intent"] == {"buy": 1}
+        assert lead_stats["by_channel"] == {"sms": 1}
+        assert lead_stats["by_source"] == {"instagram": 1}
+        assert response_stats == {
+            "first_response_seconds": {"median": 90.0, "p90": 90.0, "avg": 90.0},
+            "by_kind": {"human": 1},
+            "unanswered": 0,
+        }
+        assert call_stats["inbound"] == 1
+        assert call_stats["avg_duration_seconds"] == 60.0
+        assert call_stats["by_ended_reason"] == {"completed": 1}
+        assert call_stats["logged"] == 1
+        assert call_stats["by_outcome"] == {"booked_visit": 1}
+        assert appointment_stats["set"] == 1
+        assert appointment_stats["completed"] == 1
+        assert deal_stats["won"] == 1
+        assert deal_stats["by_kind"] == {"buyer_purchase": 1}
+        assert deal_stats["total_value"] == 1000.0
+        content_row = next(row for row in content_stats if row["piece_id"] == piece_id)
+        assert content_row["association"]["sessions"] == 1
+        assert content_row["association"]["leads"] == 1
+        assert content_row["leads_tagged"] == 1
+        assert content_row["attribution"]["leads"] == 1
+        assert content_row["attribution"]["appointments_set"] == 1
+        assert content_row["attribution"]["appointments_held"] == 1
+        assert agent_stats == [
+            {
+                "email": "natalia@example.com",
+                "calls_logged": 1,
+                "appointments": 1,
+                "won": 1,
+            }
+        ]
+        funnel = {row["stage"]: row["count"] for row in funnel_stats}
+        assert funnel == {
+            "sessions": 1,
+            "engaged": 1,
+            "reached_out": 1,
+            "tapped": 1,
+            "leads": 1,
+            "contacted": 1,
+            "appointment_set": 1,
+            "appointment_held": 1,
+            "won": 1,
+        }
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_only_the_exact_first_touch_qa_pair_is_excluded() -> None:
+    """Near matches and a later QA visit still describe real leads."""
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 10, tzinfo=UTC)
+    end = datetime(2026, 9, 11, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+    cases = [
+        ("exact", {"attribution": {"utm_source": "eko_qa", "utm_medium": "test"}}),
+        ("source-only", {"attribution": {"utm_source": "eko_qa"}}),
+        ("medium-only", {"attribution": {"utm_medium": "test"}}),
+        ("case", {"attribution": {"utm_source": "EKO_QA", "utm_medium": "test"}}),
+        (
+            "later",
+            {
+                "attribution": {"utm_source": "instagram", "utm_medium": "social"},
+                "attribution_later": {"utm_source": "eko_qa", "utm_medium": "test"},
+            },
+        ),
+        ("malformed", {"attribution": ["not", "a", "mapping"]}),
+    ]
+    async with get_bypass_session_factory()() as db:
+        db.add_all(
+            [
+                Lead(
+                    org_id=ORG,
+                    phone=f"{MARKER}06{index:02d}",
+                    intent=LeadIntent.BUY,
+                    status=LeadStatus.NEW,
+                    created_at=start + timedelta(hours=index),
+                    meta=meta,
+                )
+                for index, (_label, meta) in enumerate(cases, start=1)
+            ]
+        )
+        await db.commit()
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            raw_leads = (await db.execute(text("SELECT count(*) FROM leads"))).scalar_one()
+            lead_stats = await svc.leads(db, window)
+        assert raw_leads == 6
+        assert lead_stats["total"] == 5
+        assert lead_stats["by_source"] == {
+            "eko_qa": 1,
+            "no_web": 2,
+            "EKO_QA": 1,
+            "instagram": 1,
+        }
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
 async def test_start_engaged_requires_a_real_choice_or_existing_scroll_signal() -> None:
     from app.services import analytics as svc
 
@@ -1641,10 +1996,12 @@ async def test_exact_attribution_query_count_is_constant_for_one_or_two_pieces()
 
     await add_piece("one", PublicationPlatform.INSTAGRAM, 1)
     counter = {"selects": 0}
+    statements: list[str] = []
 
     def count_selects(_conn, _cursor, statement, _parameters, _context, _many) -> None:
         if statement.lstrip().upper().startswith("SELECT"):
             counter["selects"] += 1
+            statements.append(" ".join(statement.lower().split()))
 
     sync_engine = get_bypass_engine().sync_engine
     event.listen(sync_engine, "before_cursor_execute", count_selects)
@@ -1663,6 +2020,17 @@ async def test_exact_attribution_query_count_is_constant_for_one_or_two_pieces()
         await _cleanup()
 
     assert two_piece_queries == one_piece_queries
+    assert not any(
+        "select landing_sessions.first_seen_at, landing_sessions.utm_content" in statement
+        for statement in statements
+    ), "visitor rows must be aggregated in PostgreSQL, not loaded into the worker"
+    assert not any(
+        "select leads.id, leads.created_at, leads.meta" in statement
+        for statement in statements
+    ), "lead rows must be aggregated in PostgreSQL, not loaded into the worker"
+    assert any(
+        "count(distinct landing_sessions.id)" in statement for statement in statements
+    ), "the database must deduplicate overlapping publication windows"
 
 
 @pytest.mark.asyncio

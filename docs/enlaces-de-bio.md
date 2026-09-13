@@ -76,7 +76,9 @@ ventana privada nueva** en
 `https://www.denverhomestory.com/start?utm_source=eko_qa&utm_medium=test`. La
 ventana nueva importa porque el origen de una sesión se fija en su primera
 visita. Esas sesiones aparecen en el total de pruebas excluidas, pero no entran
-en visitas, engagement, acciones ni conversión.
+en visitas, engagement, acciones ni conversión. Si completas el formulario, el
+lead de prueba permanece en el CRM para que se pueda auditar el flujo completo,
+pero tampoco cuenta como lead, respuesta, llamada, cita o cierre en Analytics.
 
 ## Lo que esto NO resuelve
 

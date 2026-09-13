@@ -118,6 +118,34 @@ export interface StorageLike {
   setItem(key: string, value: string): void;
 }
 
+// `sessionStorage` normally supplies both values below. Some embedded browsers
+// throw on every access instead; tracker and form still need one shared visit
+// during this page load. A module belongs to one browser realm, so this memory
+// survives component mounts and disappears on a real reload, just like the
+// best fallback available when the browser refuses storage.
+let volatileSessionKey: string | null = null;
+let volatileAttribution: Record<string, string> | null = null;
+const unavailableSessionStorages = new WeakSet<object>();
+const unavailableAttributionStorages = new WeakSet<object>();
+
+function sessionKeyInMemory(): string {
+  if (volatileSessionKey === null) volatileSessionKey = newSessionKey();
+  return volatileSessionKey;
+}
+
+function attributionInMemory(
+  firstTouch?: Record<string, string>,
+): Record<string, string> {
+  if (
+    volatileAttribution === null &&
+    firstTouch !== undefined &&
+    Object.keys(firstTouch).length > 0
+  ) {
+    volatileAttribution = { ...firstTouch };
+  }
+  return volatileAttribution === null ? {} : { ...volatileAttribution };
+}
+
 /**
  * A 32-character hex key. Random, per tab, and deliberately not derived from
  * anything about the visitor.
@@ -152,18 +180,27 @@ export function newSessionKey(random?: (a: Uint8Array) => Uint8Array): string {
  * Every access is guarded: Instagram's and TikTok's embedded browsers, and any
  * browser set to block site data, throw on `sessionStorage` rather than
  * returning null. Those are exactly the visitors this page most needs to count,
- * so a throw falls back to a key held in memory — one session per page load
- * instead of per visit, which undercounts rather than crashes.
+ * so a throw falls back to a key held in memory for the lifetime of the loaded
+ * page. A reload can split one visit into two sessions, but measurement never
+ * breaks the page or gives the tracker and form different keys.
  */
 export function sessionKey(storage: StorageLike | null | undefined): string {
+  if (!storage || unavailableSessionStorages.has(storage)) return sessionKeyInMemory();
+  let existing: string | null;
   try {
-    const existing = storage?.getItem(SESSION_STORAGE_KEY);
-    if (existing && /^[0-9a-f]{32}$/.test(existing)) return existing;
-    const fresh = newSessionKey();
-    storage?.setItem(SESSION_STORAGE_KEY, fresh);
+    existing = storage.getItem(SESSION_STORAGE_KEY);
+  } catch {
+    unavailableSessionStorages.add(storage);
+    return sessionKeyInMemory();
+  }
+  if (existing && /^[0-9a-f]{32}$/.test(existing)) return existing;
+  const fresh = newSessionKey();
+  try {
+    storage.setItem(SESSION_STORAGE_KEY, fresh);
     return fresh;
   } catch {
-    return newSessionKey();
+    unavailableSessionStorages.add(storage);
+    return sessionKeyInMemory();
   }
 }
 
@@ -186,10 +223,14 @@ export function persistAttribution(
 
   const collected = collectAttribution(params, referrer);
   if (Object.keys(collected).length === 0) return {};
+  if (!storage || unavailableAttributionStorages.has(storage)) {
+    return attributionInMemory(collected);
+  }
   try {
-    storage?.setItem(ATTRIBUTION_STORAGE_KEY, JSON.stringify(collected));
+    storage.setItem(ATTRIBUTION_STORAGE_KEY, JSON.stringify(collected));
   } catch {
-    // Unwritable storage costs the memory of the first touch, nothing else.
+    unavailableAttributionStorages.add(storage);
+    return attributionInMemory(collected);
   }
   return collected;
 }
@@ -199,9 +240,16 @@ export function persistAttribution(
 export function storedAttribution(
   storage: StorageLike | null | undefined,
 ): Record<string, string> {
+  if (!storage || unavailableAttributionStorages.has(storage)) return attributionInMemory();
+  let raw: string | null;
   try {
-    const raw = storage?.getItem(ATTRIBUTION_STORAGE_KEY);
-    if (!raw) return {};
+    raw = storage.getItem(ATTRIBUTION_STORAGE_KEY);
+  } catch {
+    unavailableAttributionStorages.add(storage);
+    return attributionInMemory();
+  }
+  if (!raw) return {};
+  try {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     const allowed = new Set<string>([...UTM_KEYS, "referrer"]);
@@ -213,6 +261,8 @@ export function storedAttribution(
     }
     return out;
   } catch {
+    // Malformed data in otherwise working storage is not evidence that the
+    // storage itself is blocked, and must not inherit another store's visit.
     return {};
   }
 }

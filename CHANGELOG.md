@@ -26,6 +26,10 @@ All notable changes to **Eko AI Realtors**.
   `navigator.webdriver === true`, or a small list of known automation user-agent
   signatures. Excluded totals remain visible to operators, and historical
   sessions stay `unknown` rather than being guessed after the fact.
+- **The same exclusion follows a new lead through the whole pipeline.** QA and
+  automated submissions remain in the CRM and audit trail, but their replies,
+  calls, appointments and deals stay out of Analytics. A later QA submission is
+  recorded as history and cannot reclassify an existing real or offline lead.
 - **Published links preserve their destination.** The content publisher adds
   platform, campaign and piece tags to the existing Denver Home Story URL. A
   bare site root becomes `/start`; article, calculator, query and fragment

@@ -17,8 +17,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { submitPublicLead, type CalculatorPayload, type CaptureOutcome } from "@/lib/api";
-import { collectAttribution } from "@/lib/capture";
-import { getTracker, sessionKey, storedAttribution } from "@/lib/track";
+import { getTracker, persistAttribution, sessionKey } from "@/lib/track";
 import { useI18n } from "@/lib/i18n";
 import { NAME_FIELD_MAX, fullName } from "@/lib/leadName";
 import { ArrowRight } from "lucide-react";
@@ -79,15 +78,13 @@ function ConsultFormInner({
     } catch {
       storage = null;
     }
-    const collected = collectAttribution(params, document.referrer);
-    // What the tracker remembered when the visit started wins over an empty
-    // URL: somebody who landed on `/?utm_source=tiktok`, read three sections
-    // and scrolled down here still came from TikTok. A UTM in the CURRENT url
-    // is more specific still, so it goes last.
+    // The tracker and the form share one first-touch rule. Whichever mounts
+    // first stores this visit's complete attribution; a later tagged URL can
+    // neither replace one field nor fill a missing field from another touch.
+    const attribution = persistAttribution(params, document.referrer, storage);
     setUtm({
       landing_variant: variant,
-      ...storedAttribution(storage),
-      ...collected,
+      ...attribution,
     });
     setSessionId(sessionKey(storage));
   }, [params, variant]);
@@ -169,6 +166,7 @@ function ConsultFormInner({
       consent_text: consent ? consentWording : undefined,
       utm,
       session_id: sessionId,
+      webdriver: navigator.webdriver === true ? true : undefined,
       turnstile_token: captchaToken || undefined,
       website: f.website || undefined,
       calculator,

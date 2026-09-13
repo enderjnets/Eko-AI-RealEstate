@@ -376,6 +376,10 @@ class PublicLeadIn(BaseModel):
     # below is written to avoid. Bounded only, and checked for shape at the
     # point of use, where a bad value is simply not looked up.
     session_id: str | None = Field(default=None, max_length=64)
+    # Positive browser evidence only. False and absence mean "unknown", never
+    # "human"; the server combines this with its own user-agent and the exact
+    # QA UTM pair before the lead is written.
+    webdriver: Literal[True] | None = None
     turnstile_token: str | None = Field(default=None, max_length=4_000)
     # Honeypot. Named for something a browser autofill would plausibly target
     # and hidden in the markup, so a human never sees it and a bot fills it in.
@@ -448,6 +452,12 @@ async def capture(
                 len(exc.errors()),
             )
 
+    cleaned_attribution = clean_attribution(body.utm)
+    traffic_class, traffic_class_reason = classify_traffic(
+        request.headers.get("user-agent"),
+        body.webdriver is True,
+        cleaned_attribution,
+    )
     submission = FormSubmission(
         name=body.name,
         email=body.email,
@@ -456,6 +466,8 @@ async def capture(
         consent=body.consent,
         consent_text=body.consent_text,
         attribution=body.utm or {},
+        traffic_class=traffic_class,
+        traffic_class_reason=traffic_class_reason,
         ip=ip,
         user_agent=request.headers.get("user-agent"),
         calculator=calculator,

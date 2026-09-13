@@ -1393,6 +1393,8 @@ export interface CapturePayload {
   /** The landing visit this submission came from, when the tracker is
    *  running. Joins the lead to what the visitor did before writing. */
   session_id?: string;
+  /** Sent only with positive browser-automation evidence. */
+  webdriver?: true;
   turnstile_token?: string;
   website?: string;
   /** Present only when the form sits under /calculator. */

@@ -52,7 +52,7 @@ function Stat({
         <span className="truncate">{label}</span>
       </div>
       <div className="text-xl font-semibold text-white tabular-nums">{value}</div>
-      {hint && <div className="text-[10px] text-gray-600 mt-0.5">{hint}</div>}
+      {hint && <div className="text-[10px] text-gray-400 mt-0.5">{hint}</div>}
     </div>
   );
 }

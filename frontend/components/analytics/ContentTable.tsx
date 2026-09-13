@@ -101,6 +101,7 @@ function Metrics({
   const likes = row.latest_metrics === null ? null : row.latest_metrics.likes;
   const comments = row.latest_metrics === null ? null : row.latest_metrics.comments;
   const source = row.latest_metrics?.source ?? row.views?.source ?? null;
+  const capturedOn = row.latest_metrics?.captured_on ?? row.views?.captured_on ?? null;
 
   const open = () => {
     setSaveError(false);
@@ -238,9 +239,11 @@ function Metrics({
         <MetricValue label={t("analytics.metric.likes")} value={likes} />
         <MetricValue label={t("analytics.metric.comments")} value={comments} />
       </div>
-      <div className="mt-0.5 flex items-center justify-end gap-1 text-[10px] text-gray-600">
+      <div className="mt-0.5 flex items-center justify-end gap-1 text-[10px] text-gray-400">
         {source !== null &&
           (source === "manual" ? t("analytics.metricsTyped") : t("analytics.metricsRead"))}
+        {source !== null && capturedOn !== null && " · "}
+        {capturedOn !== null && <time dateTime={capturedOn}>{capturedOn}</time>}
         {typed && (
           <button
             type="button"
