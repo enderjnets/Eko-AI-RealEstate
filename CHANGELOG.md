@@ -2,6 +2,15 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.102.2] — 2026-09-14
+
+### Fixed
+- Scheduled content no longer fills the publisher's limited selection ahead of
+  approved pieces. Selection considers configured platforms with missing or
+  pending deliveries, plus failed deliveries only after explicit reapproval.
+  Reconciliation and existing Buffer schedules are preserved; ambiguous
+  in-flight deliveries are not retried.
+
 ## [0.102.1] — 2026-09-14
 
 ### Changed
