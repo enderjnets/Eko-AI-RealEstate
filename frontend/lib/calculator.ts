@@ -16,8 +16,8 @@
  * the rent and solves for the price (the sheet starts from the price); it quotes
  * no APR and no lender language (the brokerage does not lend money); it drops
  * the tax benefit (it depends on bracket, filing status and itemizing); and
- * appreciation is a slider with a conservative default instead of a printed
- * fact — on the sheet that one number is 89% of the "gain".
+ * appreciation is a slider with an editable planning default instead of a
+ * printed fact — on the sheet that one number is 89% of the "gain".
  *
  * Every default carries its source and date in `SOURCES`. Rounding happens in
  * the view, never here.
@@ -85,7 +85,7 @@ export const DEFAULTS: Assumptions = {
   minDown: 0.03,
   pmi: { excellent: 0.0045, good: 0.008, fair: 0.013 },
   rateSpread: { excellent: 0, good: 0.0025, fair: 0.0075 },
-  appreciation: 0.02,
+  appreciation: 0.0375,
   rentGrowth: 0.02,
   years: 5,
   priceFloor: 250_000,
@@ -149,9 +149,9 @@ export const SOURCES: Record<keyof Assumptions, Source> = {
     asOf: "2026-09-05",
   },
   appreciation: {
-    label: "Case-Shiller Denver: −1.8% year over year (May 2026); 2% is a conservative long-run default",
+    label: "Editable planning assumption selected by Denver Home Story; actual home value growth can be higher or lower",
     url: "https://fred.stlouisfed.org/series/DNXRSA",
-    asOf: "2026-05",
+    asOf: "2026-09-14",
   },
   rentGrowth: {
     label: "Denver rents −1.5% to −3% year over year in 2026; 2% is a conservative default",

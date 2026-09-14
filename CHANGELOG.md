@@ -2,6 +2,15 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.102.1] — 2026-09-14
+
+### Changed
+- **The rent-versus-buy calculator starts at 3.75% annual home value growth.**
+  The public field remains editable. The page and the server now share this
+  default, so the result shown to a visitor matches the calculation saved with
+  their inquiry. The source note identifies it as a planning assumption rather
+  than a promised return.
+
 ## [0.102.0] — 2026-09-13
 
 ### Added

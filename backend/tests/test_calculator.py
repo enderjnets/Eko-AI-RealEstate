@@ -255,7 +255,7 @@ def test_10a_a_falling_market_never_crosses_over():
 
 def test_10b_the_default_crossover_year_recorded():
     c = compare(BASE, DEFAULTS, solve_price(BASE, DEFAULTS)["price"])
-    assert c["crossover_year"] == 3
+    assert c["crossover_year"] == 2
     assert c["years"] == DEFAULTS["years"]
     assert [r["year"] for r in c["rows"]] == [1, 2, 3, 4, 5]
 
@@ -339,6 +339,7 @@ def test_12_cross_anchors_to_the_cent():
 def test_defaults_are_the_page_defaults():
     # The values the TypeScript side declares, by hand — not read from it.
     assert DEFAULTS["rate"] == 0.0671
+    assert DEFAULTS["appreciation"] == 0.0375
     assert DEFAULTS["tax_rate"] == 0.0052
     assert DEFAULTS["insurance_rate"] == 0.007
     assert DEFAULTS["pmi"] == {"excellent": 0.0045, "good": 0.008, "fair": 0.013}
@@ -452,7 +453,11 @@ def test_25_the_mortgage_payment_stops_when_the_loan_is_paid_off():
     assert rows[31] < rows[30]
     assert rows[30] - rows[31] > pi * 0.9
     assert rows[35] > rows[31]
-    assert rows[35] < pi
+    # Con mayor apreciacion los gastos pueden superar la antigua cuota; lo que
+    # importa aqui es que despues del plazo solo quede la formula de carry.
+    value_35 = price * (1 + DEFAULTS["appreciation"]) ** 34
+    carry = (DEFAULTS["tax_rate"] + DEFAULTS["insurance_rate"] + DEFAULTS["maintenance_rate"]) / 12
+    assert rows[35] == pytest.approx(value_35 * carry + DEFAULTS["hoa_monthly"], abs=0.01)
 
 
 def test_26_the_crossing_is_searched_as_far_as_the_visitor_looks():

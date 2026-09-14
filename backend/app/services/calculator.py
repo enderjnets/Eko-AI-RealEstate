@@ -37,7 +37,7 @@ DEFAULTS: dict[str, Any] = {
     "min_down": 0.03,
     "pmi": {"excellent": 0.0045, "good": 0.008, "fair": 0.013},
     "rate_spread": {"excellent": 0.0, "good": 0.0025, "fair": 0.0075},
-    "appreciation": 0.02,
+    "appreciation": 0.0375,
     "rent_growth": 0.02,
     "years": 5,
     "price_floor": 250_000,
