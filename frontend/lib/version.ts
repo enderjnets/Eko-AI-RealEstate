@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.102.0";
+export const CURRENT_VERSION = "0.102.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.102.1",
+    date: "2026-09-14",
+    title: {
+      en: "The rent-versus-buy calculator starts with 3.75% home value growth",
+      es: "La calculadora de alquilar o comprar comienza con 3.75% de crecimiento del valor",
+    },
+    changes: [
+      {
+        en: "Home value growth now opens at 3.75% per year in the public calculator. The assumption remains editable, and the browser and server use the same default when calculating and saving an inquiry.",
+        es: "El crecimiento del valor de la vivienda abre ahora en 3.75% anual en la calculadora publica. El supuesto sigue siendo editable, y el navegador y el servidor usan el mismo valor al calcular y guardar una consulta.",
+      },
+    ],
+  },
   {
     version: "0.102.0",
     date: "2026-09-13",

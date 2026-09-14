@@ -279,17 +279,21 @@ describe("owning against renting", () => {
   });
 
   it("10b. with the defaults, the crossover year is what it is — recorded, not forced", () => {
-    // Product information, not a target: at 2% appreciation and 2% rent growth
+    // Product information, not a target: at 3.75% appreciation and 2% rent growth
     // this is when owning pulls ahead for $3,000 of rent and $60,000 saved.
     const inputs: Inputs = { rent: 3000, savings: 60_000, credit: "excellent" };
     const c = compare(inputs, DEFAULTS, solvePrice(inputs, DEFAULTS).price);
-    expect(c.crossoverYear).toBe(3);
+    expect(c.crossoverYear).toBe(2);
     expect(c.years).toBe(DEFAULTS.years);
     expect(c.rows.map((r) => r.year)).toEqual([1, 2, 3, 4, 5]);
   });
 });
 
 describe("parity anchors and sources", () => {
+  it("defaults home value growth to 3.75% per year", () => {
+    expect(DEFAULTS.appreciation).toBe(0.0375);
+  });
+
   it("12. the three cross anchors the server must reproduce", () => {
     expect(golden.cross).toHaveLength(3);
     for (const { price, ...inputs } of golden.cross) {
@@ -386,7 +390,11 @@ describe("what the audit found missing", () => {
     // Year one of owning is the qualifying payment itself: no upkeep here,
     // and the value has not moved yet.
     within(c.rows[0].buyMonthly, r.monthly.total, 0.01);
-    within(c.rows[1].buyMonthly - c.rows[0].buyMonthly, r.price * 0.02 * (a.taxRate + a.insuranceRate) / 12, 0.01);
+    within(
+      c.rows[1].buyMonthly - c.rows[0].buyMonthly,
+      (r.price * a.appreciation * (a.taxRate + a.insuranceRate)) / 12,
+      0.01,
+    );
   });
 
   it("19. the credit spread reaches the note rate", () => {
@@ -503,9 +511,12 @@ describe("long horizons", () => {
     const pi = monthlyFor(price, inputs, DEFAULTS).pi;
     expect(y30.buyMonthly - y31.buyMonthly).toBeGreaterThan(pi * 0.9);
     // And past the term only the carrying costs are left, which keep rising
-    // with the home's value.
+    // with the home's value. At higher appreciation they can eventually be
+    // larger than the old mortgage payment, so pin the formula itself.
     expect(y35.buyMonthly).toBeGreaterThan(y31.buyMonthly);
-    expect(y35.buyMonthly).toBeLessThan(pi);
+    const value35 = price * Math.pow(1 + DEFAULTS.appreciation, 34);
+    const carry = (DEFAULTS.taxRate + DEFAULTS.insuranceRate + DEFAULTS.maintenanceRate) / 12;
+    within(y35.buyMonthly, value35 * carry + DEFAULTS.hoaMonthly, 0.01);
   });
 
   // 26. The crossing was only ever searched for in years 1..10, so a visitor
