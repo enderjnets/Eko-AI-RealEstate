@@ -281,6 +281,13 @@ export function trackingAllowed(nav: unknown): boolean {
   return gpc !== true;
 }
 
+export function trackingSessionKey(
+  nav: unknown,
+  storage: StorageLike | null | undefined,
+): string | undefined {
+  return trackingAllowed(nav) ? sessionKey(storage) : undefined;
+}
+
 export interface TrackerOptions {
   form?: string;
   session: string;

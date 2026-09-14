@@ -17,7 +17,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { submitPublicLead, type CalculatorPayload, type CaptureOutcome } from "@/lib/api";
-import { getTracker, persistAttribution, sessionKey } from "@/lib/track";
+import { getTracker, persistAttribution, trackingSessionKey } from "@/lib/track";
 import { useI18n } from "@/lib/i18n";
 import { NAME_FIELD_MAX, fullName } from "@/lib/leadName";
 import { ArrowRight } from "lucide-react";
@@ -86,7 +86,7 @@ function ConsultFormInner({
       landing_variant: variant,
       ...attribution,
     });
-    setSessionId(sessionKey(storage));
+    setSessionId(trackingSessionKey(navigator, storage));
   }, [params, variant]);
 
   // The moment somebody starts filling this in — once, on the first field they

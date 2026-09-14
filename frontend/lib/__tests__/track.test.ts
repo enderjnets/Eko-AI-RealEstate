@@ -24,6 +24,7 @@ import {
   storedAttribution,
   trackedAnchorEvent,
   trackingAllowed,
+  trackingSessionKey,
   type TrackerOptions,
 } from "../track";
 
@@ -240,6 +241,19 @@ describe("attribution", () => {
 describe("Global Privacy Control", () => {
   it("is honoured", () => {
     expect(trackingAllowed({ globalPrivacyControl: true })).toBe(false);
+  });
+
+  it("does not create a form session key", () => {
+    const storage = memoryStorage();
+    expect(trackingSessionKey({ globalPrivacyControl: true }, storage)).toBeUndefined();
+    expect(storage.dump()[SESSION_STORAGE_KEY]).toBeUndefined();
+  });
+
+  it("creates the form session key when there is no opt-out", () => {
+    const storage = memoryStorage();
+    const key = trackingSessionKey({}, storage);
+    expect(key).toMatch(/^[0-9a-f]{32}$/);
+    expect(storage.dump()[SESSION_STORAGE_KEY]).toBe(key);
   });
 
   it("does not read absence as refusal", () => {
@@ -559,8 +573,9 @@ describe("wiring", () => {
     }
   });
 
-  it("sends the session id with the lead, so the visit joins the funnel", () => {
+  it("sends a privacy-gated session id with the lead, so the visit joins the funnel", () => {
     const src = read("components/landing/ConsultForm.tsx");
+    expect(src).toContain("trackingSessionKey(navigator, storage)");
     expect(src).toMatch(/session_id:\s*sessionId/);
     expect(src).toMatch(
       /webdriver:\s*navigator\.webdriver\s*===\s*true\s*\?\s*true\s*:\s*undefined/,

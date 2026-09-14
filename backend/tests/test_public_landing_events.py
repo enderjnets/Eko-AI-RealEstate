@@ -469,7 +469,7 @@ class TestBudgets:
 
 
 class TestDroppingQuietly:
-    """Three ways this endpoint declines, and all of them answer the same.
+    """Ways this endpoint declines, all answering the same.
 
     The sameness is the security property: a public endpoint that distinguishes
     "no such agency" from "that agency, but something broke" is an oracle for
@@ -480,6 +480,16 @@ class TestDroppingQuietly:
     async def test_an_unknown_form_key_writes_nothing(self) -> None:
         assert await _beacon(_batch(("page_view", {}), form="no-such-agency")) == 204
         assert await _session_row() is None
+
+    async def test_global_privacy_control_spends_no_budget_and_writes_nothing(
+        self,
+    ) -> None:
+        for _ in range(EVENTS_PER_IP_LIMIT + 1):
+            assert await _beacon("{not json", **{"sec-gpc": "1"}) == 204
+        assert await _session_row() is None
+
+        assert await _beacon(_batch(("page_view", {}))) == 204
+        assert await _session_row() is not None
 
     async def test_the_platform_ceiling_refuses_without_writing(self, monkeypatch) -> None:
         import app.api.v1.public as public
@@ -512,7 +522,7 @@ class TestTheSwitch:
 
 
 class TestJoiningTheFunnel:
-    async def _submit(self, **extra) -> int:
+    async def _submit(self, *, headers: dict[str, str] | None = None, **extra) -> int:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             response = await c.post(
                 "/api/v1/public/leads",
@@ -523,6 +533,7 @@ class TestJoiningTheFunnel:
                     "message": "I want to sell",
                     **extra,
                 },
+                headers=headers,
             )
         return response.status_code
 
@@ -533,6 +544,51 @@ class TestJoiningTheFunnel:
         row = await _session_row()
         assert row["lead_id"] is not None
         assert row["form_submitted_at"] is not None
+
+    async def test_a_submission_before_the_first_beacon_still_claims_its_session(
+        self,
+    ) -> None:
+        assert await self._submit(
+            session_id=SESSION,
+            utm={"utm_source": "youtube"},
+        ) == 202
+        async with get_bypass_session_factory()() as db:
+            lead_id = (
+                await db.execute(
+                    text("SELECT id FROM leads WHERE email = :e"),
+                    {"e": "lead@beacon.test"},
+                )
+            ).scalar_one()
+
+        assert await _beacon(
+            _batch(("form_submit", {}), utm={"utm_source": "tiktok"})
+        ) == 204
+
+        row = await _session_row()
+        assert row["lead_id"] == lead_id
+        assert row["form_submitted_at"] is not None
+        assert row["utm_source"] == "youtube"
+        assert row["landing_path"] == "/"
+        assert row["lang"] == "en"
+        assert row["screen_w"] == 390
+
+    async def test_global_privacy_control_does_not_create_a_landing_session(
+        self,
+    ) -> None:
+        assert await self._submit(
+            session_id=SESSION,
+            headers={"sec-gpc": "1"},
+        ) == 202
+        async with get_bypass_session_factory()() as db:
+            lead_id = (
+                await db.execute(
+                    text("SELECT id FROM leads WHERE email = :e"),
+                    {"e": "lead@beacon.test"},
+                )
+            ).scalar_one_or_none()
+
+        assert lead_id is not None
+        assert await _session_row() is None
 
     async def test_a_session_that_does_not_exist_is_not_an_error(self) -> None:
         assert await self._submit(session_id=OTHER_SESSION) == 202
@@ -551,22 +607,17 @@ class TestJoiningTheFunnel:
         assert found is not None
 
     async def test_the_lead_survives_a_broken_link(self, monkeypatch) -> None:
-        """The join is analytics; the lead is the product. If this update
+        """The join is analytics; the lead is the product. If this link
         fails the visitor must still see a success, or they resubmit and the
         agency gets the same person twice."""
         import app.api.v1.public as public
 
-        real = public.update
-
-        def _boom(*args, **kwargs):
+        async def _boom(*args, **kwargs):
             raise RuntimeError("no")
 
         await _beacon(_batch(("page_view", {})))
-        monkeypatch.setattr(public, "update", _boom)
-        try:
-            assert await self._submit(session_id=SESSION) == 202
-        finally:
-            monkeypatch.setattr(public, "update", real)
+        monkeypatch.setattr(public, "_claim_landing_session", _boom)
+        assert await self._submit(session_id=SESSION) == 202
 
         async with get_bypass_session_factory()() as db:
             found = (
