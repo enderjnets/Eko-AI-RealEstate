@@ -94,6 +94,13 @@ describe("public pages do not leak the platform's identity", () => {
     for (const s of strings(metadata)) expect(s).not.toMatch(PLATFORM);
   });
 
+  it("keeps the social entry hub out of search while links remain crawlable", async () => {
+    const { metadata } = await import("../../app/start/page");
+    expect(metadata.robots).toMatchObject({ index: false, follow: true });
+    expect(metadata.alternates?.canonical).toBe("/start");
+    for (const s of strings(metadata)) expect(s).not.toMatch(PLATFORM);
+  });
+
   it("the calculator is indexable", async () => {
     const { metadata } = await import("../../app/calculator/layout");
     expect(metadata.robots).toMatchObject({ index: true });

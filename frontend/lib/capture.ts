@@ -21,6 +21,27 @@ export const UTM_KEYS = [
   "tier",
 ] as const;
 
+export function withAttribution(
+  href: string,
+  attribution: Record<string, string>,
+): string {
+  if (/^(?:tel|mailto):/i.test(href)) return href;
+  const hashAt = href.indexOf("#");
+  const hash = hashAt >= 0 ? href.slice(hashAt) : "";
+  const beforeHash = hashAt >= 0 ? href.slice(0, hashAt) : href;
+  const queryAt = beforeHash.indexOf("?");
+  const path = queryAt >= 0 ? beforeHash.slice(0, queryAt) : beforeHash;
+  const params = new URLSearchParams(
+    queryAt >= 0 ? beforeHash.slice(queryAt + 1) : "",
+  );
+  for (const key of UTM_KEYS) {
+    const value = (attribution[key] ?? "").trim().slice(0, 200);
+    if (value) params.set(key, value);
+  }
+  const query = params.toString();
+  return `${path}${query ? `?${query}` : ""}${hash}`;
+}
+
 export interface ParamSource {
   get(key: string): string | null;
 }

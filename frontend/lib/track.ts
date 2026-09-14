@@ -7,11 +7,12 @@
  * works, the form still submits, and the only symptom is a dashboard of zeroes
  * that nobody can explain.
  *
- * Nothing here identifies a person. The session key is random, lives in
- * `sessionStorage`, and dies with the tab; the server stores no IP and reduces
- * the user agent to a family before writing it. That is what makes this
- * reportable without a consent banner — and why the Global Privacy Control
- * check below is honoured rather than argued with.
+ * Before somebody submits the form, nothing here identifies a person. The
+ * session key is random, lives in `sessionStorage`, and dies with the tab; the
+ * server stores no IP and reduces the user agent to a family before writing
+ * it. A successful form deliberately links that visit to the resulting CRM
+ * lead so the agency can measure conversion. Global Privacy Control skips the
+ * key, attribution and tracker entirely.
  */
 
 import { UTM_KEYS, collectAttribution, type ParamSource } from "./capture";
@@ -40,6 +41,17 @@ export type EventName =
   | "form_error"
   /** /calculator showed a figure. Once per page load — enforced by `ONCE`, not by the page. */
   | "calculator_result";
+
+export function trackedAnchorEvent(
+  href: string,
+  where?: string,
+): { name: "cta_click" | "tel_click"; meta: { where: string } } | null {
+  if (!where) return null;
+  return {
+    name: /^tel:/i.test(href) ? "tel_click" : "cta_click",
+    meta: { where },
+  };
+}
 
 /** Sent the moment they happen: each one is a funnel step, and a visitor who
  *  taps "call" is on their way out of the page — a queued batch would never
@@ -107,6 +119,34 @@ export interface StorageLike {
   setItem(key: string, value: string): void;
 }
 
+// `sessionStorage` normally supplies both values below. Some embedded browsers
+// throw on every access instead; tracker and form still need one shared visit
+// during this page load. A module belongs to one browser realm, so this memory
+// survives component mounts and disappears on a real reload, just like the
+// best fallback available when the browser refuses storage.
+let volatileSessionKey: string | null = null;
+let volatileAttribution: Record<string, string> | null = null;
+const unavailableSessionStorages = new WeakSet<object>();
+const unavailableAttributionStorages = new WeakSet<object>();
+
+function sessionKeyInMemory(): string {
+  if (volatileSessionKey === null) volatileSessionKey = newSessionKey();
+  return volatileSessionKey;
+}
+
+function attributionInMemory(
+  firstTouch?: Record<string, string>,
+): Record<string, string> {
+  if (
+    volatileAttribution === null &&
+    firstTouch !== undefined &&
+    Object.keys(firstTouch).length > 0
+  ) {
+    volatileAttribution = { ...firstTouch };
+  }
+  return volatileAttribution === null ? {} : { ...volatileAttribution };
+}
+
 /**
  * A 32-character hex key. Random, per tab, and deliberately not derived from
  * anything about the visitor.
@@ -141,18 +181,27 @@ export function newSessionKey(random?: (a: Uint8Array) => Uint8Array): string {
  * Every access is guarded: Instagram's and TikTok's embedded browsers, and any
  * browser set to block site data, throw on `sessionStorage` rather than
  * returning null. Those are exactly the visitors this page most needs to count,
- * so a throw falls back to a key held in memory — one session per page load
- * instead of per visit, which undercounts rather than crashes.
+ * so a throw falls back to a key held in memory for the lifetime of the loaded
+ * page. A reload can split one visit into two sessions, but measurement never
+ * breaks the page or gives the tracker and form different keys.
  */
 export function sessionKey(storage: StorageLike | null | undefined): string {
+  if (!storage || unavailableSessionStorages.has(storage)) return sessionKeyInMemory();
+  let existing: string | null;
   try {
-    const existing = storage?.getItem(SESSION_STORAGE_KEY);
-    if (existing && /^[0-9a-f]{32}$/.test(existing)) return existing;
-    const fresh = newSessionKey();
-    storage?.setItem(SESSION_STORAGE_KEY, fresh);
+    existing = storage.getItem(SESSION_STORAGE_KEY);
+  } catch {
+    unavailableSessionStorages.add(storage);
+    return sessionKeyInMemory();
+  }
+  if (existing && /^[0-9a-f]{32}$/.test(existing)) return existing;
+  const fresh = newSessionKey();
+  try {
+    storage.setItem(SESSION_STORAGE_KEY, fresh);
     return fresh;
   } catch {
-    return newSessionKey();
+    unavailableSessionStorages.add(storage);
+    return sessionKeyInMemory();
   }
 }
 
@@ -175,10 +224,14 @@ export function persistAttribution(
 
   const collected = collectAttribution(params, referrer);
   if (Object.keys(collected).length === 0) return {};
+  if (!storage || unavailableAttributionStorages.has(storage)) {
+    return attributionInMemory(collected);
+  }
   try {
-    storage?.setItem(ATTRIBUTION_STORAGE_KEY, JSON.stringify(collected));
+    storage.setItem(ATTRIBUTION_STORAGE_KEY, JSON.stringify(collected));
   } catch {
-    // Unwritable storage costs the memory of the first touch, nothing else.
+    unavailableAttributionStorages.add(storage);
+    return attributionInMemory(collected);
   }
   return collected;
 }
@@ -188,9 +241,16 @@ export function persistAttribution(
 export function storedAttribution(
   storage: StorageLike | null | undefined,
 ): Record<string, string> {
+  if (!storage || unavailableAttributionStorages.has(storage)) return attributionInMemory();
+  let raw: string | null;
   try {
-    const raw = storage?.getItem(ATTRIBUTION_STORAGE_KEY);
-    if (!raw) return {};
+    raw = storage.getItem(ATTRIBUTION_STORAGE_KEY);
+  } catch {
+    unavailableAttributionStorages.add(storage);
+    return attributionInMemory();
+  }
+  if (!raw) return {};
+  try {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     const allowed = new Set<string>([...UTM_KEYS, "referrer"]);
@@ -202,6 +262,8 @@ export function storedAttribution(
     }
     return out;
   } catch {
+    // Malformed data in otherwise working storage is not evidence that the
+    // storage itself is blocked, and must not inherit another store's visit.
     return {};
   }
 }
@@ -220,6 +282,34 @@ export function trackingAllowed(nav: unknown): boolean {
   return gpc !== true;
 }
 
+export function trackingContext(
+  nav: unknown,
+  params: ParamSource,
+  referrer: string | null | undefined,
+  storage: () => StorageLike | null | undefined,
+): {
+  allowed: boolean;
+  session?: string;
+  attribution: Record<string, string>;
+} {
+  // The storage supplier is lazy on purpose. Under GPC, even reading the
+  // browser's storage object is unnecessary work and a future caller cannot
+  // accidentally mint a key before checking the privacy signal.
+  if (!trackingAllowed(nav)) return { allowed: false, attribution: {} };
+
+  let available: StorageLike | null | undefined;
+  try {
+    available = storage();
+  } catch {
+    available = null;
+  }
+  return {
+    allowed: true,
+    session: sessionKey(available),
+    attribution: persistAttribution(params, referrer, available),
+  };
+}
+
 export interface TrackerOptions {
   form?: string;
   session: string;
@@ -228,6 +318,7 @@ export interface TrackerOptions {
   screenW?: number;
   utm?: Record<string, string>;
   referrer?: string | null;
+  webdriver?: true;
   allowed?: boolean;
   /** Returns false when the send could not be handed off, so the caller can
    *  decide; the tracker itself does not retry — a dropped beacon is a dropped
@@ -302,6 +393,7 @@ export class Tracker {
     if (typeof this.opts.screenW === "number") body.screen_w = this.opts.screenW;
     if (this.opts.utm && Object.keys(this.opts.utm).length > 0) body.utm = this.opts.utm;
     if (this.opts.referrer) body.referrer = this.opts.referrer;
+    if (this.opts.webdriver === true) body.webdriver = true;
     this.opts.send(JSON.stringify(body));
     // Anything past the batch cap goes out next; the loop is bounded because
     // `slice` always shortens the queue.

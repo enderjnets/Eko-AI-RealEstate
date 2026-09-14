@@ -43,6 +43,7 @@ from app.services.capture import (
 )
 from app.services.landing_analytics import (
     browser_of,
+    classify_traffic,
     clip,
     device_of,
     fold_events,
@@ -363,10 +364,9 @@ class PublicLeadIn(BaseModel):
     # from TikTok, read three sections and tapped call first".
     #
     # A separate field rather than an attribution key on purpose: the whitelist
-    # in `capture.py` is pinned by a test that reads it, by an assert on its
-    # size and by the public form's documentation, and it means "which campaign
-    # produced this lead" — a per-visit identifier is not that, and it must
-    # never reach `lead.meta`.
+    # in `capture.py` means "which campaign produced this lead". For a lead
+    # born in this submission, the validated key is stored separately as a
+    # private acquisition-session marker; later submissions never replace it.
     #
     # Deliberately NOT pinned to the session-key shape here, unlike the beacon's
     # own field. A `pattern` on this model rejects the whole submission with
@@ -375,6 +375,10 @@ class PublicLeadIn(BaseModel):
     # below is written to avoid. Bounded only, and checked for shape at the
     # point of use, where a bad value is simply not looked up.
     session_id: str | None = Field(default=None, max_length=64)
+    # Positive browser evidence only. False and absence mean "unknown", never
+    # "human"; the server combines this with its own user-agent and the exact
+    # QA UTM pair before the lead is written.
+    webdriver: Literal[True] | None = None
     turnstile_token: str | None = Field(default=None, max_length=4_000)
     # Honeypot. Named for something a browser autofill would plausibly target
     # and hidden in the markup, so a human never sees it and a bot fills it in.
@@ -407,6 +411,59 @@ class PublicLeadIn(BaseModel):
     # - `consent_text` reaches `clean_text` like the rest, so it is already
     #   collapsed rather than stored verbatim. Worth knowing before anyone
     #   relies on it reading back exactly as the person saw it.
+
+
+async def _claim_landing_session(
+    db: AsyncSession,
+    *,
+    org_id: int,
+    session_key: str,
+    lead_id: int,
+    request: Request,
+    attribution: dict[str, str],
+    traffic_class: str,
+    traffic_class_reason: str | None,
+) -> None:
+    now = datetime.now(UTC)
+    referrer_host = referrer_host_of(attribution.get("referrer"))
+    user_agent = request.headers.get("user-agent")
+    country, region, city = geo_of(request.headers)
+    statement = pg_insert(LandingSession).values(
+        org_id=org_id,
+        session_key=session_key,
+        first_seen_at=now,
+        last_seen_at=now,
+        utm_source=attribution.get("utm_source"),
+        utm_medium=attribution.get("utm_medium"),
+        utm_campaign=attribution.get("utm_campaign"),
+        utm_content=attribution.get("utm_content"),
+        utm_term=attribution.get("utm_term"),
+        referrer_host=referrer_host,
+        source=source_of(attribution.get("utm_source"), referrer_host),
+        traffic_class=traffic_class,
+        traffic_class_reason=traffic_class_reason,
+        traffic_classified_at=now,
+        device=device_of(user_agent),
+        browser=browser_of(user_agent),
+        os=os_of(user_agent),
+        in_app=in_app_of(user_agent),
+        country=country,
+        region=region,
+        city=city,
+        lead_id=lead_id,
+        form_submitted_at=now,
+    )
+    await db.execute(
+        statement.on_conflict_do_update(
+            index_elements=["org_id", "session_key"],
+            set_={
+                "lead_id": lead_id,
+                "form_submitted_at": now,
+                "updated_at": func.now(),
+            },
+            where=LandingSession.lead_id.is_(None),
+        )
+    )
 
 
 @router.post("/leads", status_code=202)
@@ -447,6 +504,27 @@ async def capture(
                 len(exc.errors()),
             )
 
+    gpc = request.headers.get("sec-gpc") == "1"
+    submitted_attribution = {} if gpc else (body.utm or {})
+    cleaned_attribution = clean_attribution(submitted_attribution)
+    traffic_class, traffic_class_reason = (
+        ("unknown", None)
+        if gpc
+        else classify_traffic(
+            request.headers.get("user-agent"),
+            body.webdriver is True,
+            cleaned_attribution,
+        )
+    )
+    analytics_session_id = (
+        body.session_id
+        if (
+            _SESSION_KEY.fullmatch(body.session_id or "")
+            and get_settings().LANDING_EVENTS_ENABLED
+            and not gpc
+        )
+        else None
+    )
     submission = FormSubmission(
         name=body.name,
         email=body.email,
@@ -454,7 +532,10 @@ async def capture(
         message=body.message,
         consent=body.consent,
         consent_text=body.consent_text,
-        attribution=body.utm or {},
+        attribution=submitted_attribution,
+        traffic_class=traffic_class,
+        traffic_class_reason=traffic_class_reason,
+        landing_session_key=analytics_session_id,
         ip=ip,
         user_agent=request.headers.get("user-agent"),
         calculator=calculator,
@@ -529,30 +610,26 @@ async def capture(
 
     await db.commit()
 
-    # After the commit, on purpose: the lead must be durable before anyone is
-    # told about it, and a notification failure must cost the notification,
-    # never the capture. Duplicates are already filtered — a double-submit
-    # returns status "duplicate" above and must not email the agency twice.
-    if captured.get("status") == "ok":
-        await send_new_lead_notice(captured["lead_id"], captured.get("message_id"))
-    # Join the visit to the lead it produced. Wrapped, and after everything
-    # else, because this is analytics: the lead is already durable and already
-    # notified, and a failure here must cost a row in a report, never a 500
-    # that sends the visitor round the submit button a second time.
+    # Join the visit to the lead it produced. Wrapped after the lead commit
+    # because this is analytics: the lead is already durable, and a failure
+    # here must cost a row in a report, never a 500 that sends the
+    # visitor round the submit button a second time. This is an upsert because
+    # the POST can arrive before the first beacon; the unique session key makes
+    # either arrival order converge on one row.
     if (
-        _SESSION_KEY.fullmatch(body.session_id or "")
+        analytics_session_id
         and captured.get("lead_id")
-        and get_settings().LANDING_EVENTS_ENABLED
     ):
         try:
-            await db.execute(
-                update(LandingSession)
-                .where(
-                    LandingSession.org_id == org_id,
-                    LandingSession.session_key == body.session_id,
-                    LandingSession.lead_id.is_(None),
-                )
-                .values(lead_id=captured["lead_id"], form_submitted_at=datetime.now(UTC))
+            await _claim_landing_session(
+                db,
+                org_id=org_id,
+                session_key=analytics_session_id,
+                lead_id=int(captured["lead_id"]),
+                request=request,
+                attribution=cleaned_attribution,
+                traffic_class=traffic_class,
+                traffic_class_reason=traffic_class_reason,
             )
             await db.commit()
         except Exception as exc:  # noqa: BLE001
@@ -566,6 +643,13 @@ async def capture(
                 # submission that already succeeded, which is the one outcome
                 # this whole block exists to prevent.
                 log.warning("Rollback after the link failure also failed")
+
+    # After the commit, on purpose: the lead must be durable before anyone is
+    # told about it, and a notification failure must cost the notification,
+    # never the capture. Duplicates are already filtered — a double-submit
+    # returns status "duplicate" above and must not email the agency twice.
+    if captured.get("status") == "ok":
+        await send_new_lead_notice(captured["lead_id"], captured.get("message_id"))
 
     # Deliberately says nothing about whether the lead was new, merged or
     # duplicate: that is a membership oracle for anyone who wants to test
@@ -623,6 +707,7 @@ class LandingBatchIn(BaseModel, extra="forbid"):
     path: str | None = Field(default=None, max_length=200)
     lang: Literal["en", "es"] | None = None
     screen_w: int | None = Field(default=None, ge=0, le=10_000)
+    webdriver: Literal[True] | None = None
     utm: dict[str, str] | None = None
     referrer: str | None = Field(default=None, max_length=500)
     events: list[LandingEventIn] = Field(min_length=1, max_length=EVENTS_MAX_PER_BATCH)
@@ -653,6 +738,9 @@ async def landing_events(request: Request, db: AsyncSession = Depends(get_db)) -
     Blob from a beacon in some contexts — and FastAPI would answer a valid
     batch with 422 purely over the content type.
     """
+    if request.headers.get("sec-gpc") == "1":
+        return Response(status_code=204)
+
     ip = client_ip(request)
     if _ev_ip_limited(ip):
         return Response(status_code=429)
@@ -710,7 +798,18 @@ async def landing_events(request: Request, db: AsyncSession = Depends(get_db)) -
         await db.execute(
             update(LandingSession)
             .where(LandingSession.id == session_id)
-            .values(**merge_values(fold_events(batch), now))
+            .values(
+                **merge_values(fold_events(batch), now),
+                # A successful form POST can win the race and create the
+                # session before this first beacon. Preserve that POST's
+                # first-touch attribution while filling the page context that
+                # only the beacon carries.
+                landing_path=func.coalesce(
+                    LandingSession.landing_path, _path_only(body.path)
+                ),
+                lang=func.coalesce(LandingSession.lang, body.lang),
+                screen_w=func.coalesce(LandingSession.screen_w, body.screen_w),
+            )
         )
         db.add_all(new_events(org_id, session_id, batch, now))
         await db.commit()
@@ -763,6 +862,7 @@ async def _landing_session_id(
     attribution = clean_attribution(body.utm)
     host = referrer_host_of(body.referrer)
     ua = request.headers.get("user-agent")
+    traffic_class, traffic_class_reason = classify_traffic(ua, body.webdriver is True, attribution)
     country, region, city = geo_of(request.headers)
 
     # Core INSERT, not the ORM: `before_flush` is what stamps `org_id` on this
@@ -785,6 +885,9 @@ async def _landing_session_id(
                 utm_term=attribution.get("utm_term"),
                 referrer_host=host,
                 source=source_of(attribution.get("utm_source"), host),
+                traffic_class=traffic_class,
+                traffic_class_reason=traffic_class_reason,
+                traffic_classified_at=now,
                 device=device_of(ua),
                 browser=browser_of(ua),
                 os=os_of(ua),

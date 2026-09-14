@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 
 from app.db.base import get_bypass_session_factory, get_session_factory
 from app.models import LandingEvent, LandingSession
@@ -126,6 +126,32 @@ async def test_writing_into_another_agency_is_refused() -> None:
             )
         ).scalar_one()
     assert found == 0
+
+
+async def test_traffic_class_cannot_be_changed_across_agencies() -> None:
+    await _seed(KEY_A, ORG_A)
+    await _seed(KEY_B, ORG_B)
+
+    with org_scope(ORG_A):
+        async with get_session_factory()() as db:
+            result = await db.execute(
+                update(LandingSession)
+                .where(LandingSession.session_key == KEY_B)
+                .values(traffic_class="test", traffic_class_reason="explicit_qa")
+            )
+            await db.commit()
+
+    assert result.rowcount == 0
+    async with get_bypass_session_factory()() as db:
+        row = (
+            await db.execute(
+                select(
+                    LandingSession.traffic_class,
+                    LandingSession.traffic_class_reason,
+                ).where(LandingSession.session_key == KEY_B)
+            )
+        ).one()
+    assert row == ("unknown", None)
 
 
 async def test_the_purge_only_reaches_the_acting_agency() -> None:

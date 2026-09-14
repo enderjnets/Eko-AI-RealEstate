@@ -11,8 +11,9 @@
  *
  * Two rules the layout follows, and they are the same rule twice: **a number
  * appears with the words that make it true, or it does not appear.** The
- * content card says "association", never "attribution". The empty states say
- * why a section is empty rather than showing a zero that reads like a fact.
+ * content card separates exact attribution from temporal association. The empty
+ * states say why a section is empty rather than showing a zero that reads like
+ * a fact.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -51,7 +52,7 @@ function Stat({
         <span className="truncate">{label}</span>
       </div>
       <div className="text-xl font-semibold text-white tabular-nums">{value}</div>
-      {hint && <div className="text-[10px] text-gray-600 mt-0.5">{hint}</div>}
+      {hint && <div className="text-[10px] text-gray-400 mt-0.5">{hint}</div>}
     </div>
   );
 }
@@ -111,7 +112,16 @@ export function AnalyticsView() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-        <Stat icon={Users} label={t("analytics.sessions")} value={String(traffic.sessions)} />
+        <Stat
+          icon={Users}
+          label={t("analytics.sessions")}
+          value={String(traffic.sessions)}
+          hint={
+            traffic.excluded_sessions.total > 0
+              ? `${traffic.excluded_sessions.total} ${t("analytics.excludedTraffic")} · ${traffic.excluded_sessions.automated} ${t("analytics.excludedAutomation")} · ${traffic.excluded_sessions.test} ${t("analytics.excludedQa")}`
+              : undefined
+          }
+        />
         <Stat
           icon={Users}
           label={t("analytics.leadsWord")}

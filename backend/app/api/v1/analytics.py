@@ -128,7 +128,7 @@ async def analytics(
             "timezone": zone,
         },
         traffic=traffic,
-        funnel=await svc.funnel(db, window, traffic),
+        funnel=await svc.funnel(db, window),
         leads=await svc.leads(db, window),
         response=await svc.response(db, window),
         calls=await svc.calls(db, window),

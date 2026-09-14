@@ -291,16 +291,19 @@ not change when the purge runs.
 ## What it does not store, and why that is the whole design
 
 - **No cookie and no persistent identifier.** The session key lives in
-  `sessionStorage`; it dies with the tab and cannot follow anybody anywhere.
+  `sessionStorage`; it dies with the tab and cannot follow anybody across sites.
+  If the person voluntarily sends the form, that one visit is deliberately
+  linked to the resulting CRM lead so its conversion can be measured.
 - **No IP address.** It is read for the rate limit and dropped.
 - **No raw user agent.** Reduced to families (`phone` / `Chrome` / `iOS`)
   before it is written; the full string is close enough to a fingerprint that
   keeping it would undo not setting a cookie.
 
-Because of those three, this is not tracking in the sense a cookie banner
-exists for. A privacy notice is still the right thing to publish, and the
-Global Privacy Control signal is honoured by the page: with it set, the tracker
-sends nothing at all.
+These choices minimize what the measurement stores. The privacy notice must
+still describe it. Global Privacy Control is honoured end to end: the page does
+not read or write either analytics key, does not collect attribution or
+webdriver evidence, and sends no beacon; the server also discards any injected
+analytics fields while still accepting the person's operational form.
 
 ## Contract
 
@@ -330,22 +333,34 @@ beacons for the same visit are normal — `sendBeacon` fires on both
 `visibilitychange` and `pagehide` — and folding them in the process loses
 clicks and lets the scroll depth go *down*.
 
-**Always 204**, including when it declines: an endpoint that answers
-differently for a valid and an invalid form key is an oracle for enumerating an
-operator's tenants, and a beacon has nothing useful to do with the difference.
+An unknown form key, a disabled tracker, GPC or an internal write failure all
+answer **204**: distinguishing those states would turn the endpoint into a
+tenant oracle and gives a beacon nothing useful to do. Rate and shape limits
+still return `429`, `413` or `400` so operational monitoring can distinguish an
+overloaded endpoint from a malformed client release.
 
 ## Joining a visit to its lead
 
 The form sends `session_id` alongside the rest. It is a **separate field, not
 an attribution key**: the whitelist in `services/capture.py` means "which
 campaign produced this lead" and is pinned by a test, an assert and this
-document — a per-visit identifier is not that and must never reach `lead.meta`.
-The join is applied after the lead is committed and notified, wrapped, because
-a failure there must cost a row in a report and never a resubmission. For the
-same reason the field carries **no shape pattern**: a `pattern` would reject the
-whole submission with 422, so a bug in the tracker's key generator would stop
-costing an analytics row and start costing the lead. The shape is checked where
-it is used, and a value that does not match is simply not looked up.
+document. When this submission creates the lead, the validated value is also
+kept as the private top-level `acquisition_session_key`; it is never returned as
+campaign attribution and later submissions cannot replace it. That exact pair
+lets the funnel distinguish a new acquisition from a known lead who fills the
+form again.
+
+The lead is committed first. The session join then runs as a best-effort upsert,
+before the agency notice: if the form request arrived before the first beacon,
+it creates the session and the later beacon fills path, language and screen
+width without changing first touch. A failure there costs a row in a report and
+never a lead or a resubmission. For the same reason the public field carries
+**no shape pattern**: a `pattern` would reject the whole submission with 422, so
+a bug in the tracker's key generator would stop costing an analytics row and
+start costing the lead. The shape is checked where it is used, and a value that
+does not match is ignored. With Global Privacy Control, the page creates no
+local key or attribution record and the server neither persists the private
+marker nor creates a landing session.
 
 **`form_submitted_at IS NOT NULL AND lead_id IS NULL`** is the funnel step that
 would otherwise be invisible: the visitor pressed send and no lead ever arrived

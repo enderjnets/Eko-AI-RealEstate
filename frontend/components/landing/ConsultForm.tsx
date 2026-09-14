@@ -17,8 +17,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { submitPublicLead, type CalculatorPayload, type CaptureOutcome } from "@/lib/api";
-import { collectAttribution } from "@/lib/capture";
-import { getTracker, sessionKey, storedAttribution } from "@/lib/track";
+import { getTracker, trackingContext } from "@/lib/track";
 import { useI18n } from "@/lib/i18n";
 import { NAME_FIELD_MAX, fullName } from "@/lib/leadName";
 import { ArrowRight } from "lucide-react";
@@ -66,6 +65,7 @@ function ConsultFormInner({
   // A ref updates synchronously, so the second event in the same tick sees the
   // first one's write.
   const started = useRef(false);
+  const trackingEnabled = useRef(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -73,23 +73,26 @@ function ConsultFormInner({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    let storage: Storage | null = null;
-    try {
-      storage = window.sessionStorage;
-    } catch {
-      storage = null;
+    // The tracker and the form share one first-touch rule. Whichever mounts
+    // first stores this visit's complete attribution; a later tagged URL can
+    // neither replace one field nor fill a missing field from another touch.
+    const context = trackingContext(
+      navigator,
+      params,
+      document.referrer,
+      () => window.sessionStorage,
+    );
+    trackingEnabled.current = context.allowed;
+    if (!context.allowed) {
+      setUtm({});
+      setSessionId(undefined);
+      return;
     }
-    const collected = collectAttribution(params, document.referrer);
-    // What the tracker remembered when the visit started wins over an empty
-    // URL: somebody who landed on `/?utm_source=tiktok`, read three sections
-    // and scrolled down here still came from TikTok. A UTM in the CURRENT url
-    // is more specific still, so it goes last.
     setUtm({
       landing_variant: variant,
-      ...storedAttribution(storage),
-      ...collected,
+      ...context.attribution,
     });
-    setSessionId(sessionKey(storage));
+    setSessionId(context.session);
   }, [params, variant]);
 
   // The moment somebody starts filling this in — once, on the first field they
@@ -169,6 +172,8 @@ function ConsultFormInner({
       consent_text: consent ? consentWording : undefined,
       utm,
       session_id: sessionId,
+      webdriver:
+        trackingEnabled.current && navigator.webdriver === true ? true : undefined,
       turnstile_token: captchaToken || undefined,
       website: f.website || undefined,
       calculator,

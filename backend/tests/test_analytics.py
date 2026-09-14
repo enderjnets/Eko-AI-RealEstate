@@ -34,6 +34,7 @@ from app.models import (
     Message,
     MessageDirection,
     MessageSender,
+    MessageStatus,
 )
 
 ORG = 1
@@ -206,9 +207,32 @@ async def test_a_real_reply_is_measured_and_named() -> None:
                     conversation_id=conv.id,
                     direction=MessageDirection.OUTBOUND,
                     sender=MessageSender.AGENT,
+                    content="Still queued",
+                    llm_provider="kimi",
+                    internal=False,
+                    delivery_status=MessageStatus.PENDING,
+                    created_at=started + timedelta(seconds=30),
+                ),
+                Message(
+                    org_id=ORG,
+                    conversation_id=conv.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
+                    content="Provider refused this",
+                    llm_provider="kimi",
+                    internal=False,
+                    delivery_status=MessageStatus.FAILED,
+                    created_at=started + timedelta(seconds=60),
+                ),
+                Message(
+                    org_id=ORG,
+                    conversation_id=conv.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
                     content="Hi, happy to help.",
                     llm_provider="kimi",
                     internal=False,
+                    delivery_status=MessageStatus.DELIVERED,
                     created_at=started + timedelta(seconds=90),
                 ),
                 # The canned reply that goes out when no model answers. Counted
@@ -221,6 +245,7 @@ async def test_a_real_reply_is_measured_and_named() -> None:
                     content="We'll be right with you.",
                     llm_provider="fallback",
                     internal=False,
+                    delivery_status=MessageStatus.SENT,
                     created_at=started + timedelta(minutes=5),
                 ),
             ]
@@ -238,24 +263,311 @@ async def test_a_real_reply_is_measured_and_named() -> None:
 @pytest.mark.asyncio
 async def test_the_funnel_never_widens_as_it_goes_down() -> None:
     """A stage bigger than the one above it is the shape that makes a funnel
-    obviously wrong in a chart and quietly wrong in a table."""
-    body = await _get()
-    counts = [step["count"] for step in body["funnel"]]
-    stages = [step["stage"] for step in body["funnel"]]
-    assert stages[-1] == "won"
-    assert stages[:5] == ["sessions", "engaged", "reached_out", "tapped", "leads"]
-    # `tapped` sale de la misma fila que `reached_out` y su condicion es parte
-    # de la de aquel, asi que esta CONTENIDO en el: este peldano no puede
-    # ensancharse nunca, con los datos que sea. Iguales cuando nadie se limito a navegar.
-    assert counts[stages.index("tapped")] <= counts[stages.index("reached_out")]
-    # Not a step on purpose: an appointment can be booked by the voice agent
-    # without anybody logging a call, so this one sat wider than the step above
-    # it. A seeded month showed it immediately; an empty database never would.
-    assert "called_back" not in stages
-    # Leads can exceed sessions — a phone call is a lead with no visit — so the
-    # monotonic claim is only made from `leads` down, where it must hold.
-    below = counts[stages.index("leads") :]
-    assert below == sorted(below, reverse=True), below
+    obviously wrong in a chart and quietly wrong in a table.
+
+    The lead card includes every channel. The funnel is one website cohort, so
+    an offline lead — even one already answered, booked and won — must never be
+    spliced underneath a social visitor.
+    """
+    from app.models import Visit, VisitStatus
+
+    await _fresh()
+    now = datetime.now(UTC)
+    async with get_bypass_session_factory()() as db:
+        acquisition_key = "funnel-cohort-" + "a" * 18
+        web_lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0004",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.WON,
+            created_at=now,
+            won_at=now + timedelta(hours=2),
+            meta={"acquisition_session_key": acquisition_key},
+        )
+        offline_lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0005",
+            intent=LeadIntent.VALUATION,
+            status=LeadStatus.WON,
+            created_at=now,
+            won_at=now,
+        )
+        db.add_all([web_lead, offline_lead])
+        await db.flush()
+        db.add(
+            LandingSession(
+                org_id=ORG,
+                session_key=acquisition_key,
+                first_seen_at=now,
+                last_seen_at=now,
+                source="instagram",
+                device="phone",
+                form_submitted_at=now,
+                lead_id=web_lead.id,
+                # The submit itself is stronger evidence than a missing focus
+                # beacon and must keep every upstream funnel stage contained.
+                event_count=2,
+            )
+        )
+        conversation = Conversation(
+            org_id=ORG,
+            lead_id=offline_lead.id,
+            channel="voice",
+            status=ConversationStatus.ACTIVE,
+            started_at=now,
+        )
+        db.add(conversation)
+        await db.flush()
+        db.add_all(
+            [
+                Message(
+                    org_id=ORG,
+                    conversation_id=conversation.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.HUMAN,
+                    content="Offline follow-up",
+                    internal=False,
+                    created_at=now,
+                ),
+                Visit(
+                    org_id=ORG,
+                    lead_id=offline_lead.id,
+                    external_booking_id="offline-funnel-visit",
+                    status=VisitStatus.COMPLETED,
+                    scheduled_at=now + timedelta(days=1),
+                ),
+                # Even a linked lead's independent later facts cannot skip a
+                # rung. With no recorded reply, this appointment and win stay
+                # in their cards but not in the cumulative funnel.
+                Visit(
+                    org_id=ORG,
+                    lead_id=web_lead.id,
+                    external_booking_id="uncontacted-web-funnel-visit",
+                    status=VisitStatus.COMPLETED,
+                    scheduled_at=now + timedelta(days=1),
+                ),
+            ]
+        )
+        await db.commit()
+
+    try:
+        body = await _get()
+        assert body["leads"]["total"] == 2, "the lead card still covers every channel"
+        assert body["traffic"]["engaged"] == 1
+        assert body["traffic"]["people_reached_out"] == 1
+        assert body["traffic"]["people_tapped"] == 1
+        assert body["traffic"]["form_starts"] == 1
+        assert body["traffic"]["form_submits"] == 1
+        by_stage = {step["stage"]: step["count"] for step in body["funnel"]}
+        assert by_stage["leads"] == 1, "only the lead linked to this website cohort"
+        assert by_stage["contacted"] == 0
+        assert by_stage["appointment_set"] == 0
+        assert by_stage["appointment_held"] == 0
+        assert by_stage["won"] == 0
+        counts = [step["count"] for step in body["funnel"]]
+        assert counts == sorted(counts, reverse=True), counts
+        assert "called_back" not in by_stage
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_funnel_reads_every_stage_in_one_database_snapshot() -> None:
+    """The router computes ``traffic`` before it asks for the funnel.
+
+    Under READ COMMITTED, reusing those earlier totals while reading each later
+    stage in separate statements lets a capture committed between statements
+    put one lead underneath zero sessions.  The funnel must therefore read all
+    nine stages in one PostgreSQL statement, from one statement snapshot.
+    """
+    from app.services import analytics as svc
+
+    await _fresh()
+    now = datetime.now(UTC)
+    window = svc.Window(
+        start=now - timedelta(days=1),
+        end=now + timedelta(days=1),
+        tz="UTC",
+    )
+    async with get_bypass_session_factory()() as db:
+        acquisition_key = "one-snapshot-" + "a" * 20
+        lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0030",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=now,
+            meta={"acquisition_session_key": acquisition_key},
+        )
+        db.add(lead)
+        await db.flush()
+        db.add(
+            LandingSession(
+                org_id=ORG,
+                session_key=acquisition_key,
+                first_seen_at=now,
+                last_seen_at=now,
+                source="instagram",
+                max_scroll_pct=75,
+                form_started_at=now,
+                form_submitted_at=now,
+                lead_id=lead.id,
+                event_count=3,
+            )
+        )
+        await db.commit()
+
+    class CountingSession:
+        def __init__(self, session) -> None:
+            self.session = session
+            self.executions = 0
+
+        async def execute(self, *args, **kwargs):
+            self.executions += 1
+            return await self.session.execute(*args, **kwargs)
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            counted = CountingSession(db)
+            funnel = await svc.funnel(counted, window)
+
+        assert counted.executions == 1
+        assert {row["stage"]: row["count"] for row in funnel} == {
+            "sessions": 1,
+            "engaged": 1,
+            "reached_out": 1,
+            "tapped": 1,
+            "leads": 1,
+            "contacted": 0,
+            "appointment_set": 0,
+            "appointment_held": 0,
+            "won": 0,
+        }
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_funnel_contacted_requires_a_successfully_sent_message() -> None:
+    """Queued and failed attempts are not contact with a prospective client."""
+    from app.services import analytics as svc
+
+    await _fresh()
+    now = datetime.now(UTC)
+    window = svc.Window(
+        start=now - timedelta(days=1),
+        end=now + timedelta(days=1),
+        tz="UTC",
+    )
+    statuses = (
+        MessageStatus.PENDING,
+        MessageStatus.FAILED,
+        MessageStatus.SENT,
+        MessageStatus.DELIVERED,
+        MessageStatus.READ,
+    )
+    async with get_bypass_session_factory()() as db:
+        for index, delivery_status in enumerate(statuses):
+            acquisition_key = f"delivery-{index}-" + "a" * 20
+            lead = Lead(
+                org_id=ORG,
+                phone=f"{MARKER}004{index}",
+                intent=LeadIntent.BUY,
+                status=LeadStatus.NEW,
+                created_at=now,
+                meta={"acquisition_session_key": acquisition_key},
+            )
+            db.add(lead)
+            await db.flush()
+            db.add(
+                LandingSession(
+                    org_id=ORG,
+                    session_key=acquisition_key,
+                    first_seen_at=now,
+                    last_seen_at=now,
+                    source="instagram",
+                    form_submitted_at=now,
+                    lead_id=lead.id,
+                    event_count=2,
+                )
+            )
+            conversation = Conversation(
+                org_id=ORG,
+                lead_id=lead.id,
+                channel="email",
+                status=ConversationStatus.ACTIVE,
+                started_at=now,
+            )
+            db.add(conversation)
+            await db.flush()
+            db.add(
+                Message(
+                    org_id=ORG,
+                    conversation_id=conversation.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.HUMAN,
+                    content=delivery_status.value,
+                    internal=False,
+                    delivery_status=delivery_status,
+                    created_at=now + timedelta(minutes=1),
+                )
+            )
+        await db.commit()
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            funnel = await svc.funnel(db, window)
+        by_stage = {row["stage"]: row["count"] for row in funnel}
+        assert by_stage["leads"] == 5
+        assert by_stage["contacted"] == 3
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_returning_lead_form_is_not_a_new_funnel_lead() -> None:
+    """A later website submission is engagement, not another acquisition."""
+    from app.services import analytics as svc
+
+    await _fresh()
+    now = datetime.now(UTC)
+    window = svc.Window(
+        start=now - timedelta(hours=1),
+        end=now + timedelta(hours=1),
+        tz="UTC",
+    )
+    async with get_bypass_session_factory()() as db:
+        existing = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0050",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=now - timedelta(days=30),
+        )
+        db.add(existing)
+        await db.flush()
+        db.add(
+            LandingSession(
+                org_id=ORG,
+                session_key="returning-form-" + "a" * 20,
+                first_seen_at=now,
+                last_seen_at=now,
+                source="instagram",
+                form_submitted_at=now,
+                lead_id=existing.id,
+                event_count=2,
+            )
+        )
+        await db.commit()
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            funnel = await svc.funnel(db, window)
+        by_stage = {row["stage"]: row["count"] for row in funnel}
+        assert by_stage["sessions"] == 1
+        assert by_stage["leads"] == 0
+    finally:
+        await _cleanup()
 
 
 @pytest.mark.asyncio
@@ -524,7 +836,7 @@ async def test_one_agency_never_reads_anothers_numbers() -> None:
             async with get_session_factory()() as db:
                 assert (await svc.leads(db, window))["total"] == 0
                 assert (await svc.traffic(db, window))["sessions"] == 0
-                assert (await svc.funnel(db, window, await svc.traffic(db, window)))[0][
+                assert (await svc.funnel(db, window))[0][
                     "count"
                 ] == 0
                 assert await svc.content(db, window) == []
@@ -907,5 +1219,1216 @@ async def test_a_visit_after_two_posts_of_one_video_is_counted_once() -> None:
         # first post to the last would have claimed it, and four others.
         assert of("gapped", "sessions") == [1, 1], "the -20h post's window holds the -10h visit"
         assert of("gapped", "leads") == [1, 1]
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_excluded_sessions_never_enter_traffic_funnel_or_content() -> None:
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+    )
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 9, tzinfo=UTC)
+    end = datetime(2026, 9, 14, tzinfo=UTC)
+    publication_at = datetime(2026, 9, 10, 9, tzinfo=UTC)
+    unknown_at = datetime(2026, 9, 10, 10, tzinfo=UTC)
+    automated_at = datetime(2026, 9, 11, 10, tzinfo=UTC)
+    test_at = datetime(2026, 9, 12, 8, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+
+    async with get_bypass_session_factory()() as db:
+        lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0301",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=unknown_at,
+        )
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook="measured traffic",
+        )
+        db.add_all([lead, piece])
+        await db.flush()
+        db.add(
+            ContentPublication(
+                org_id=ORG,
+                piece_id=piece.id,
+                platform=PublicationPlatform.INSTAGRAM,
+                status=PublicationStatus.PUBLISHED,
+                published_at=publication_at,
+            )
+        )
+        db.add_all(
+            [
+                LandingSession(
+                    org_id=ORG,
+                    session_key="measured-unknown",
+                    first_seen_at=unknown_at,
+                    last_seen_at=unknown_at,
+                    landing_path="/start",
+                    source="instagram",
+                    device="phone",
+                    in_app="instagram",
+                    country="US",
+                    region="CO",
+                    city="Denver",
+                    lang="en",
+                    traffic_class="unknown",
+                    max_scroll_pct=60,
+                    sections_viewed=["about", "how"],
+                    cta_clicks=2,
+                    tel_clicks=1,
+                    form_error_count=3,
+                    form_started_at=unknown_at,
+                    form_submitted_at=unknown_at,
+                    lead_id=lead.id,
+                    event_count=8,
+                ),
+                LandingSession(
+                    org_id=ORG,
+                    session_key="excluded-automated",
+                    first_seen_at=automated_at,
+                    last_seen_at=automated_at,
+                    source="youtube",
+                    device="desktop",
+                    in_app="youtube",
+                    country="CA",
+                    region="ON",
+                    city="Toronto",
+                    lang="fr",
+                    traffic_class="automated",
+                    max_scroll_pct=100,
+                    sections_viewed=["markets", "guides", "consult"],
+                    cta_clicks=20,
+                    tel_clicks=10,
+                    form_error_count=9,
+                    form_started_at=automated_at,
+                    form_submitted_at=automated_at,
+                    event_count=99,
+                ),
+                LandingSession(
+                    org_id=ORG,
+                    session_key="excluded-test",
+                    first_seen_at=test_at,
+                    last_seen_at=test_at,
+                    source="eko_qa",
+                    device="tablet",
+                    in_app="tiktok",
+                    country="MX",
+                    region="CMX",
+                    city="Mexico City",
+                    lang="es",
+                    traffic_class="test",
+                    max_scroll_pct=90,
+                    sections_viewed=["guides", "consult"],
+                    cta_clicks=30,
+                    tel_clicks=15,
+                    form_error_count=7,
+                    form_started_at=test_at,
+                    form_submitted_at=test_at,
+                    event_count=120,
+                ),
+            ]
+        )
+        await db.commit()
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            traffic = await svc.traffic(db, window)
+            funnel = await svc.funnel(db, window)
+            content = await svc.content(db, window)
+
+        assert traffic["sessions"] == 1
+        assert traffic["engaged"] == 1
+        assert traffic["avg_scroll_pct"] == 60.0
+        assert traffic["cta_clicks"] == 2
+        assert traffic["tel_clicks"] == 1
+        assert traffic["form_starts"] == 1
+        assert traffic["form_submits"] == 1
+        assert traffic["people_clicked_cta"] == 1
+        assert traffic["people_tapped"] == 1
+        assert traffic["people_reached_out"] == 1
+        assert traffic["form_errors"] == 3
+        assert traffic["people_with_errors"] == 1
+        assert traffic["submitted_without_lead"] == 0
+        assert traffic["excluded_sessions"] == {
+            "total": 2,
+            "automated": 1,
+            "test": 1,
+        }
+        assert {row["name"] for row in traffic["by_source"]} == {"instagram"}
+        assert {row["name"] for row in traffic["by_device"]} == {"phone"}
+        assert {row["name"] for row in traffic["by_in_app"]} == {"instagram"}
+        assert {row["name"] for row in traffic["by_country"]} == {"US"}
+        assert {row["name"] for row in traffic["by_region"]} == {"CO"}
+        assert {row["name"] for row in traffic["by_city"]} == {"Denver"}
+        assert {row["name"] for row in traffic["by_lang"]} == {"en"}
+        assert {row["date"]: row["sessions"] for row in traffic["by_day"]} == {
+            "2026-09-09": 0,
+            "2026-09-10": 1,
+            "2026-09-11": 0,
+            "2026-09-12": 0,
+            "2026-09-13": 0,
+        }
+        assert traffic["sections"] == {
+            "about": 1,
+            "how": 1,
+            "markets": 0,
+            "guides": 0,
+            "consult": 0,
+        }
+        funnel_counts = {row["stage"]: row["count"] for row in funnel}
+        assert {name: funnel_counts[name] for name in (
+            "sessions",
+            "engaged",
+            "reached_out",
+            "tapped",
+        )} == {
+            "sessions": 1,
+            "engaged": 1,
+            "reached_out": 1,
+            "tapped": 1,
+        }
+        assert len(content) == 1
+        assert content[0]["association"]["sessions"] == 1
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_excluded_leads_stay_in_crm_but_never_enter_any_analytics_aggregate() -> None:
+    """Full QA and automated conversions must not become business results.
+
+    The test deliberately creates real, QA and automated leads with complete
+    descendant records.  Each excluded lead's immutable first touch carries
+    positive classification evidence; every Analytics section that derives a
+    number from leads must honour that marker while all three leads remain
+    available to the CRM and audit trail.
+    """
+    from decimal import Decimal
+
+    from app.models import (
+        CallLog,
+        CallOutcome,
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        LeadEvent,
+        PublicationPlatform,
+        PublicationStatus,
+        Visit,
+        VisitStatus,
+    )
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 10, tzinfo=UTC)
+    end = datetime(2026, 9, 11, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+
+    async with get_bypass_session_factory()() as db:
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook="qa exclusion",
+        )
+        db.add(piece)
+        await db.flush()
+        db.add(
+            ContentPublication(
+                org_id=ORG,
+                piece_id=piece.id,
+                platform=PublicationPlatform.INSTAGRAM,
+                status=PublicationStatus.PUBLISHED,
+                published_at=start + timedelta(hours=1),
+            )
+        )
+
+        def acquisition_key(traffic_class: str) -> str:
+            return f"excluded-lead-{traffic_class}".ljust(32, "x")
+
+        def lead(suffix: str, *, traffic_class: str) -> Lead:
+            qa = traffic_class == "test"
+            automated = traffic_class == "automated"
+            attribution = {
+                "utm_source": "eko_qa" if qa else ("google" if automated else "instagram"),
+                "utm_medium": "test" if qa else "social",
+                "utm_content": f"piece-{piece.id}",
+            }
+            if automated:
+                attribution["traffic_class"] = "automated"
+                attribution["traffic_class_reason"] = "webdriver"
+            return Lead(
+                org_id=ORG,
+                phone=f"{MARKER}{suffix}",
+                intent=LeadIntent.BUY,
+                status=LeadStatus.WON,
+                created_at=start + timedelta(hours=2),
+                won_at=start + timedelta(hours=8),
+                won_kind="buyer_purchase",
+                won_value=Decimal("1000.00"),
+                meta={
+                    "attribution": attribution,
+                    "acquisition_session_key": acquisition_key(traffic_class),
+                },
+            )
+
+        real_lead = lead("0501", traffic_class="unknown")
+        qa_lead = lead("0502", traffic_class="test")
+        automated_lead = lead("0503", traffic_class="automated")
+        db.add_all([real_lead, qa_lead, automated_lead])
+        await db.flush()
+
+        def conversation(for_lead: Lead, *, label: str) -> tuple[Conversation, Message]:
+            # The web thread starts when the form is submitted. Keeping this
+            # after the linked session is what makes its reply a downstream
+            # funnel step rather than unrelated earlier history.
+            started_at = start + timedelta(hours=4)
+            conv = Conversation(
+                org_id=ORG,
+                lead_id=for_lead.id,
+                channel="sms",
+                status=ConversationStatus.ACTIVE,
+                started_at=started_at,
+            )
+            db.add(conv)
+            # Flush here because Message carries the conversation's FK.
+            return conv, Message(
+                org_id=ORG,
+                conversation=conv,
+                direction=MessageDirection.OUTBOUND,
+                sender=MessageSender.HUMAN,
+                content=f"{label} reply",
+                internal=False,
+                delivery_status=MessageStatus.DELIVERED,
+                created_at=started_at
+                + timedelta(seconds={"real": 90, "qa": 300, "automated": 600}[label]),
+            )
+
+        real_conv, real_reply = conversation(real_lead, label="real")
+        qa_conv, qa_reply = conversation(qa_lead, label="qa")
+        automated_conv, automated_reply = conversation(automated_lead, label="automated")
+        db.add_all(
+            [
+                real_conv,
+                real_reply,
+                qa_conv,
+                qa_reply,
+                automated_conv,
+                automated_reply,
+            ]
+        )
+
+        def landing(for_lead: Lead, *, traffic_class: str) -> LandingSession:
+            qa = traffic_class == "test"
+            automated = traffic_class == "automated"
+            at = start + timedelta(hours=4)
+            return LandingSession(
+                org_id=ORG,
+                session_key=acquisition_key(traffic_class),
+                first_seen_at=at,
+                last_seen_at=at,
+                landing_path="/start",
+                utm_source="eko_qa" if qa else ("google" if automated else "instagram"),
+                utm_medium="test" if qa else "social",
+                utm_content=f"piece-{piece.id}",
+                source="eko_qa" if qa else ("google" if automated else "instagram"),
+                traffic_class=traffic_class,
+                device="phone",
+                max_scroll_pct=75,
+                sections_viewed=["about", "consult"],
+                cta_clicks=1,
+                tel_clicks=1,
+                form_started_at=at,
+                form_submitted_at=at,
+                lead_id=for_lead.id,
+                event_count=8,
+            )
+
+        db.add_all(
+            [
+                landing(real_lead, traffic_class="unknown"),
+                landing(qa_lead, traffic_class="test"),
+                landing(automated_lead, traffic_class="automated"),
+            ]
+        )
+
+        def call_event(for_lead: Lead, *, label: str) -> LeadEvent:
+            return LeadEvent(
+                org_id=ORG,
+                lead_id=for_lead.id,
+                type="call_inbound",
+                at=start + timedelta(hours=5),
+                actor="vapi",
+                meta={
+                    "duration_seconds": {"real": 60, "qa": 600, "automated": 900}[label],
+                    "ended_reason": "completed",
+                },
+            )
+
+        def close_event(for_lead: Lead, *, label: str) -> LeadEvent:
+            return LeadEvent(
+                org_id=ORG,
+                lead_id=for_lead.id,
+                type="deal_closed",
+                at=start + timedelta(hours=8),
+                actor=f"{label}@example.com" if label != "real" else "natalia@example.com",
+                to_status="won",
+            )
+
+        db.add_all(
+            [
+                call_event(real_lead, label="real"),
+                call_event(qa_lead, label="qa"),
+                call_event(automated_lead, label="automated"),
+                close_event(real_lead, label="real"),
+                close_event(qa_lead, label="qa"),
+                close_event(automated_lead, label="automated"),
+                CallLog(
+                    org_id=ORG,
+                    lead_id=real_lead.id,
+                    logged_by="natalia@example.com",
+                    outcome=CallOutcome.BOOKED_VISIT,
+                    created_at=start + timedelta(hours=6),
+                ),
+                CallLog(
+                    org_id=ORG,
+                    lead_id=automated_lead.id,
+                    logged_by="automated@example.com",
+                    outcome=CallOutcome.BOOKED_VISIT,
+                    created_at=start + timedelta(hours=6),
+                ),
+                CallLog(
+                    org_id=ORG,
+                    lead_id=qa_lead.id,
+                    logged_by="qa@example.com",
+                    outcome=CallOutcome.BOOKED_VISIT,
+                    created_at=start + timedelta(hours=6),
+                ),
+                Visit(
+                    org_id=ORG,
+                    lead_id=real_lead.id,
+                    external_booking_id="qa-exclusion-real",
+                    status=VisitStatus.COMPLETED,
+                    assigned_email="natalia@example.com",
+                    scheduled_at=start + timedelta(days=2),
+                ),
+                Visit(
+                    org_id=ORG,
+                    lead_id=automated_lead.id,
+                    external_booking_id="qa-exclusion-automated",
+                    status=VisitStatus.COMPLETED,
+                    assigned_email="automated@example.com",
+                    scheduled_at=start + timedelta(days=2),
+                ),
+                Visit(
+                    org_id=ORG,
+                    lead_id=qa_lead.id,
+                    external_booking_id="qa-exclusion-test",
+                    status=VisitStatus.COMPLETED,
+                    assigned_email="qa@example.com",
+                    scheduled_at=start + timedelta(days=2),
+                ),
+            ]
+        )
+        await db.commit()
+        piece_id = piece.id
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            raw_leads = (await db.execute(text("SELECT count(*) FROM leads"))).scalar_one()
+            traffic = await svc.traffic(db, window)
+            lead_stats = await svc.leads(db, window)
+            response_stats = await svc.response(db, window)
+            call_stats = await svc.calls(db, window)
+            appointment_stats = await svc.appointments(db, window)
+            deal_stats = await svc.deals(db, window, with_value=True)
+            content_stats = await svc.content(db, window)
+            agent_stats = await svc.by_agent(db, window)
+            funnel_stats = await svc.funnel(db, window)
+
+        assert raw_leads == 3, "excluded leads stay in the CRM"
+        assert traffic["sessions"] == 1
+        assert traffic["excluded_sessions"] == {"total": 2, "automated": 1, "test": 1}
+        assert lead_stats["total"] == 1
+        assert lead_stats["by_status"] == {"won": 1}
+        assert lead_stats["by_intent"] == {"buy": 1}
+        assert lead_stats["by_channel"] == {"sms": 1}
+        assert lead_stats["by_source"] == {"instagram": 1}
+        assert response_stats == {
+            "first_response_seconds": {"median": 90.0, "p90": 90.0, "avg": 90.0},
+            "by_kind": {"human": 1},
+            "unanswered": 0,
+        }
+        assert call_stats["inbound"] == 1
+        assert call_stats["avg_duration_seconds"] == 60.0
+        assert call_stats["by_ended_reason"] == {"completed": 1}
+        assert call_stats["logged"] == 1
+        assert call_stats["by_outcome"] == {"booked_visit": 1}
+        assert appointment_stats["set"] == 1
+        assert appointment_stats["completed"] == 1
+        assert deal_stats["won"] == 1
+        assert deal_stats["by_kind"] == {"buyer_purchase": 1}
+        assert deal_stats["total_value"] == 1000.0
+        content_row = next(row for row in content_stats if row["piece_id"] == piece_id)
+        assert content_row["association"]["sessions"] == 1
+        assert content_row["association"]["leads"] == 1
+        assert content_row["leads_tagged"] == 1
+        assert content_row["attribution"]["leads"] == 1
+        assert content_row["attribution"]["appointments_set"] == 1
+        assert content_row["attribution"]["appointments_held"] == 1
+        assert agent_stats == [
+            {
+                "email": "natalia@example.com",
+                "calls_logged": 1,
+                "appointments": 1,
+                "won": 1,
+            }
+        ]
+        funnel = {row["stage"]: row["count"] for row in funnel_stats}
+        assert funnel == {
+            "sessions": 1,
+            "engaged": 1,
+            "reached_out": 1,
+            "tapped": 1,
+            "leads": 1,
+            "contacted": 1,
+            "appointment_set": 1,
+            "appointment_held": 1,
+            "won": 1,
+        }
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_only_the_exact_first_touch_qa_pair_is_excluded() -> None:
+    """Near matches and a later QA visit still describe real leads."""
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 10, tzinfo=UTC)
+    end = datetime(2026, 9, 11, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+    cases = [
+        ("exact", {"attribution": {"utm_source": "eko_qa", "utm_medium": "test"}}),
+        ("source-only", {"attribution": {"utm_source": "eko_qa"}}),
+        ("medium-only", {"attribution": {"utm_medium": "test"}}),
+        ("case", {"attribution": {"utm_source": "EKO_QA", "utm_medium": "test"}}),
+        (
+            "later",
+            {
+                "attribution": {"utm_source": "instagram", "utm_medium": "social"},
+                "attribution_later": {"utm_source": "eko_qa", "utm_medium": "test"},
+            },
+        ),
+        ("malformed", {"attribution": ["not", "a", "mapping"]}),
+    ]
+    async with get_bypass_session_factory()() as db:
+        db.add_all(
+            [
+                Lead(
+                    org_id=ORG,
+                    phone=f"{MARKER}06{index:02d}",
+                    intent=LeadIntent.BUY,
+                    status=LeadStatus.NEW,
+                    created_at=start + timedelta(hours=index),
+                    meta=meta,
+                )
+                for index, (_label, meta) in enumerate(cases, start=1)
+            ]
+        )
+        await db.commit()
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            raw_leads = (await db.execute(text("SELECT count(*) FROM leads"))).scalar_one()
+            lead_stats = await svc.leads(db, window)
+        assert raw_leads == 6
+        assert lead_stats["total"] == 5
+        assert lead_stats["by_source"] == {
+            "eko_qa": 1,
+            "no_web": 2,
+            "EKO_QA": 1,
+            "instagram": 1,
+        }
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_start_engaged_requires_a_real_choice_or_existing_scroll_signal() -> None:
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 10, tzinfo=UTC)
+    end = datetime(2026, 9, 11, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+
+    def start_session(label: str, **signals) -> LandingSession:
+        at = start + timedelta(hours=len(label))
+        return LandingSession(
+            org_id=ORG,
+            session_key=f"start-{label}",
+            first_seen_at=at,
+            last_seen_at=at,
+            landing_path="/start",
+            source="direct",
+            traffic_class="unknown",
+            device="phone",
+            max_scroll_pct=signals.get("max_scroll_pct", 0),
+            sections_viewed=[],
+            cta_clicks=signals.get("cta_clicks", 0),
+            tel_clicks=signals.get("tel_clicks", 0),
+            form_started_at=signals.get("form_started_at"),
+            event_count=1,
+        )
+
+    async with get_bypass_session_factory()() as db:
+        db.add_all(
+            [
+                start_session("untouched"),
+                start_session("cta", cta_clicks=1),
+                start_session("tel", tel_clicks=1),
+                start_session("form", form_started_at=start + timedelta(hours=1)),
+                start_session("scroll", max_scroll_pct=50),
+            ]
+        )
+        await db.commit()
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            traffic = await svc.traffic(db, window)
+        assert traffic["sessions"] == 5
+        assert traffic["engaged"] == 4
+        assert traffic["excluded_sessions"] == {
+            "total": 0,
+            "automated": 0,
+            "test": 0,
+        }
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_exact_attribution_counts_people_by_piece_and_platform() -> None:
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentMetric,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+        Visit,
+        VisitStatus,
+    )
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 9, tzinfo=UTC)
+    end = datetime(2026, 9, 14, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+
+    async with get_bypass_session_factory()() as db:
+        piece_a = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook="instagram piece",
+        )
+        piece_b = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.ES,
+            status=ContentStatus.PUBLISHED,
+            hook="tiktok piece",
+        )
+        db.add_all([piece_a, piece_b])
+        await db.flush()
+        publication_a = ContentPublication(
+            org_id=ORG,
+            piece_id=piece_a.id,
+            platform=PublicationPlatform.INSTAGRAM,
+            status=PublicationStatus.PUBLISHED,
+            published_at=start + timedelta(hours=1),
+        )
+        publication_b = ContentPublication(
+            org_id=ORG,
+            piece_id=piece_b.id,
+            platform=PublicationPlatform.TIKTOK,
+            status=PublicationStatus.PUBLISHED,
+            published_at=start + timedelta(hours=2),
+        )
+        db.add_all([publication_a, publication_b])
+        await db.flush()
+
+        lead_a = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0401",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=8),
+            meta={
+                "attribution": {
+                    "utm_content": f"piece-{piece_a.id}",
+                    "utm_source": "instagram",
+                }
+            },
+        )
+        lead_a_second = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0402",
+            intent=LeadIntent.VALUATION,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=9),
+            meta={
+                "attribution": {
+                    "utm_content": f"piece-{piece_a.id}",
+                    "utm_source": "instagram",
+                }
+            },
+        )
+        lead_b = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0403",
+            intent=LeadIntent.RENT,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=10),
+            meta={
+                "attribution": {
+                    "utm_content": f"piece-{piece_b.id}",
+                    "utm_source": "tiktok",
+                }
+            },
+        )
+        wrong_source_lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0404",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=11),
+            meta={
+                "attribution": {
+                    "utm_content": f"piece-{piece_a.id}",
+                    "utm_source": "tiktok",
+                }
+            },
+        )
+        malformed_lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0405",
+            intent=LeadIntent.OTHER,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=12),
+            meta={"attribution": ["not", "a", "mapping"]},
+        )
+        malformed_values_lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0406",
+            intent=LeadIntent.OTHER,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=13),
+            meta={
+                "attribution": {
+                    "utm_content": [f"piece-{piece_a.id}"],
+                    "utm_source": {"platform": "instagram"},
+                }
+            },
+        )
+        db.add_all(
+            [
+                lead_a,
+                lead_a_second,
+                lead_b,
+                wrong_source_lead,
+                malformed_lead,
+                malformed_values_lead,
+            ]
+        )
+        await db.flush()
+
+        def tagged_session(
+            label: str,
+            *,
+            piece_id: int | None,
+            source: str,
+            hour: int,
+            traffic_class: str = "unknown",
+            lead_id: int | None = None,
+            cta_clicks: int = 0,
+            tel_clicks: int = 0,
+            form_started: bool = False,
+            form_submitted: bool = False,
+            scroll: int = 0,
+        ) -> LandingSession:
+            at = start + timedelta(hours=hour)
+            return LandingSession(
+                org_id=ORG,
+                session_key=f"exact-{label}",
+                first_seen_at=at,
+                last_seen_at=at,
+                landing_path="/start",
+                utm_content=f"piece-{piece_id}" if piece_id is not None else None,
+                source=source,
+                traffic_class=traffic_class,
+                device="phone",
+                max_scroll_pct=scroll,
+                sections_viewed=[],
+                cta_clicks=cta_clicks,
+                tel_clicks=tel_clicks,
+                form_started_at=at if form_started else None,
+                form_submitted_at=at if form_submitted else None,
+                lead_id=lead_id,
+                event_count=1,
+            )
+
+        db.add_all(
+            [
+                tagged_session(
+                    "a-cta", piece_id=piece_a.id, source="instagram", hour=4,
+                    cta_clicks=7,
+                ),
+                tagged_session(
+                    "a-tel", piece_id=piece_a.id, source="instagram", hour=5,
+                    tel_clicks=3,
+                ),
+                tagged_session(
+                    "a-form", piece_id=piece_a.id, source="instagram", hour=6,
+                    # A successful submit proves the form was started even if
+                    # the earlier focus beacon was dropped.
+                    form_submitted=True,
+                ),
+                tagged_session(
+                    "a-scroll", piece_id=piece_a.id, source="instagram", hour=7,
+                    scroll=50,
+                ),
+                tagged_session(
+                    "a-view", piece_id=piece_a.id, source="instagram", hour=8,
+                ),
+                tagged_session(
+                    "b-view", piece_id=piece_b.id, source="tiktok", hour=9,
+                ),
+                tagged_session(
+                    "returning-a-on-b", piece_id=piece_b.id, source="tiktok", hour=10,
+                    lead_id=lead_a.id, cta_clicks=2,
+                ),
+                tagged_session(
+                    "wrong-source-a", piece_id=piece_a.id, source="tiktok", hour=11,
+                    cta_clicks=1, tel_clicks=1, form_started=True, form_submitted=True,
+                ),
+                tagged_session(
+                    "wrong-source-b", piece_id=piece_b.id, source="instagram", hour=12,
+                    cta_clicks=1,
+                ),
+                tagged_session(
+                    "wrong-case-a", piece_id=piece_a.id, source="Instagram", hour=13,
+                    cta_clicks=1,
+                ),
+                tagged_session(
+                    "untagged", piece_id=None, source="instagram", hour=14,
+                    cta_clicks=1,
+                ),
+                tagged_session(
+                    "automated", piece_id=piece_a.id, source="instagram", hour=15,
+                    traffic_class="automated", cta_clicks=1,
+                ),
+                tagged_session(
+                    "qa", piece_id=piece_b.id, source="tiktok", hour=16,
+                    traffic_class="test", cta_clicks=1,
+                ),
+            ]
+        )
+        db.add_all(
+            [
+                Visit(
+                    org_id=ORG,
+                    lead_id=lead_a.id,
+                    external_booking_id="exact-a-scheduled",
+                    status=VisitStatus.SCHEDULED,
+                    scheduled_at=start + timedelta(days=2),
+                ),
+                Visit(
+                    org_id=ORG,
+                    lead_id=lead_a.id,
+                    external_booking_id="exact-a-completed",
+                    status=VisitStatus.COMPLETED,
+                    scheduled_at=start + timedelta(days=3),
+                ),
+                Visit(
+                    org_id=ORG,
+                    lead_id=lead_a.id,
+                    external_booking_id="exact-a-cancelled",
+                    status=VisitStatus.CANCELLED,
+                    scheduled_at=start + timedelta(days=4),
+                ),
+                Visit(
+                    org_id=ORG,
+                    lead_id=lead_b.id,
+                    external_booking_id="exact-b-completed",
+                    status=VisitStatus.COMPLETED,
+                    scheduled_at=start + timedelta(days=2),
+                ),
+            ]
+        )
+        db.add_all(
+            [
+                ContentMetric(
+                    org_id=ORG,
+                    publication_id=publication_a.id,
+                    captured_on=(start + timedelta(days=1)).date(),
+                    views=40,
+                    likes=3,
+                    comments=2,
+                    source="manual",
+                ),
+                ContentMetric(
+                    org_id=ORG,
+                    publication_id=publication_a.id,
+                    captured_on=(start + timedelta(days=2)).date(),
+                    views=100,
+                    likes=0,
+                    comments=None,
+                    source="manual",
+                ),
+            ]
+        )
+        await db.commit()
+        ids = {"a": piece_a.id, "b": piece_b.id}
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            rows = await svc.content(db, window)
+        by_piece = {row["piece_id"]: row for row in rows}
+        row_a = by_piece[ids["a"]]
+        row_b = by_piece[ids["b"]]
+        attribution_fields = {
+            "sessions",
+            "engaged",
+            "cta_clickers",
+            "contact_intents",
+            "form_starts",
+            "form_submits",
+            "leads",
+            "appointments_set",
+            "appointments_held",
+        }
+
+        assert set(row_a["attribution"]) == attribution_fields
+        assert row_a["attribution"] == {
+            "sessions": 5,
+            "engaged": 4,
+            "cta_clickers": 1,
+            "contact_intents": 2,
+            "form_starts": 1,
+            "form_submits": 1,
+            "leads": 2,
+            "appointments_set": 3,
+            "appointments_held": 1,
+        }
+        assert row_b["attribution"] == {
+            "sessions": 2,
+            "engaged": 1,
+            "cta_clickers": 1,
+            "contact_intents": 0,
+            "form_starts": 0,
+            "form_submits": 0,
+            "leads": 1,
+            "appointments_set": 1,
+            "appointments_held": 1,
+        }
+        assert row_a["latest_metrics"] == {
+            "views": 100,
+            "likes": 0,
+            "comments": None,
+            "captured_on": "2026-09-11",
+            "source": "manual",
+        }
+        assert row_b["latest_metrics"] is None
+        assert row_a["views"] == {
+            "count": 100,
+            "captured_on": "2026-09-11",
+            "source": "manual",
+        }
+        assert row_b["views"] is None
+        assert row_a["leads_tagged"] == 3
+        assert row_b["leads_tagged"] == 1
+        assert row_a["association"]["window_hours"] == 48
+        assert row_b["association"]["window_hours"] == 48
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_first_touch_lead_attribution_ignores_a_later_piece_session() -> None:
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+    )
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 9, tzinfo=UTC)
+    end = datetime(2026, 9, 12, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+    async with get_bypass_session_factory()() as db:
+        first = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook="first touch",
+        )
+        later = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook="later visit",
+        )
+        db.add_all([first, later])
+        await db.flush()
+        db.add_all(
+            [
+                ContentPublication(
+                    org_id=ORG,
+                    piece_id=first.id,
+                    platform=PublicationPlatform.INSTAGRAM,
+                    status=PublicationStatus.PUBLISHED,
+                    published_at=start,
+                ),
+                ContentPublication(
+                    org_id=ORG,
+                    piece_id=later.id,
+                    platform=PublicationPlatform.TIKTOK,
+                    status=PublicationStatus.PUBLISHED,
+                    published_at=start + timedelta(hours=1),
+                ),
+            ]
+        )
+        lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0410",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=2),
+            meta={
+                "attribution": {
+                    "utm_content": f"piece-{first.id}",
+                    "utm_source": "instagram",
+                }
+            },
+        )
+        db.add(lead)
+        await db.flush()
+        db.add(
+            LandingSession(
+                org_id=ORG,
+                session_key="first-touch-return",
+                first_seen_at=start + timedelta(hours=3),
+                last_seen_at=start + timedelta(hours=3),
+                utm_content=f"piece-{later.id}",
+                source="tiktok",
+                traffic_class="unknown",
+                device="phone",
+                max_scroll_pct=0,
+                sections_viewed=[],
+                lead_id=lead.id,
+                event_count=1,
+            )
+        )
+        await db.commit()
+        ids = {"first": first.id, "later": later.id}
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            rows = await svc.content(db, window)
+        by_piece = {row["piece_id"]: row for row in rows}
+        assert by_piece[ids["first"]]["attribution"]["leads"] == 1
+        assert by_piece[ids["later"]]["attribution"]["sessions"] == 1
+        assert by_piece[ids["later"]]["attribution"]["leads"] == 0
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_exact_attribution_query_count_is_constant_for_one_or_two_pieces() -> None:
+    from sqlalchemy import event
+
+    from app.db.base import get_bypass_engine
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+    )
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 9, tzinfo=UTC)
+    end = datetime(2026, 9, 12, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+
+    async def add_piece(label: str, platform: PublicationPlatform, hour: int) -> None:
+        async with get_bypass_session_factory()() as db:
+            piece = ContentPiece(
+                org_id=ORG,
+                kind=ContentKind.GENERATED,
+                language=ContentLanguage.EN,
+                status=ContentStatus.PUBLISHED,
+                hook=label,
+            )
+            db.add(piece)
+            await db.flush()
+            db.add(
+                ContentPublication(
+                    org_id=ORG,
+                    piece_id=piece.id,
+                    platform=platform,
+                    status=PublicationStatus.PUBLISHED,
+                    published_at=start + timedelta(hours=hour),
+                )
+            )
+            await db.commit()
+
+    await add_piece("one", PublicationPlatform.INSTAGRAM, 1)
+    counter = {"selects": 0}
+    statements: list[str] = []
+
+    def count_selects(_conn, _cursor, statement, _parameters, _context, _many) -> None:
+        if statement.lstrip().upper().startswith("SELECT"):
+            counter["selects"] += 1
+            statements.append(" ".join(statement.lower().split()))
+
+    sync_engine = get_bypass_engine().sync_engine
+    event.listen(sync_engine, "before_cursor_execute", count_selects)
+    try:
+        async with get_bypass_session_factory()() as db:
+            await svc.content(db, window)
+        one_piece_queries = counter["selects"]
+
+        await add_piece("two", PublicationPlatform.TIKTOK, 2)
+        counter["selects"] = 0
+        async with get_bypass_session_factory()() as db:
+            await svc.content(db, window)
+        two_piece_queries = counter["selects"]
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", count_selects)
+        await _cleanup()
+
+    assert two_piece_queries == one_piece_queries
+    assert not any(
+        "select landing_sessions.first_seen_at, landing_sessions.utm_content" in statement
+        for statement in statements
+    ), "visitor rows must be aggregated in PostgreSQL, not loaded into the worker"
+    assert not any(
+        "select leads.id, leads.created_at, leads.meta" in statement
+        for statement in statements
+    ), "lead rows must be aggregated in PostgreSQL, not loaded into the worker"
+    assert any(
+        "count(distinct landing_sessions.id)" in statement for statement in statements
+    ), "the database must deduplicate overlapping publication windows"
+
+
+@pytest.mark.asyncio
+async def test_exact_lead_attribution_normalizes_the_first_touch_source() -> None:
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+        Visit,
+        VisitStatus,
+    )
+    from app.services import analytics as svc
+
+    await _fresh()
+    start = datetime(2026, 9, 9, tzinfo=UTC)
+    end = datetime(2026, 9, 12, tzinfo=UTC)
+    window = svc.Window(start=start, end=end, tz="UTC")
+
+    async with get_bypass_session_factory()() as db:
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED,
+            hook="aliased first touch",
+        )
+        db.add(piece)
+        await db.flush()
+        db.add(
+            ContentPublication(
+                org_id=ORG,
+                piece_id=piece.id,
+                platform=PublicationPlatform.INSTAGRAM,
+                status=PublicationStatus.PUBLISHED,
+                published_at=start + timedelta(hours=1),
+            )
+        )
+        lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0490",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=start + timedelta(hours=2),
+            meta={
+                "attribution": {
+                    "utm_content": f"piece-{piece.id}",
+                    "utm_source": "IG",
+                }
+            },
+        )
+        db.add(lead)
+        await db.flush()
+        db.add(
+            Visit(
+                org_id=ORG,
+                lead_id=lead.id,
+                external_booking_id="exact-aliased-source",
+                status=VisitStatus.COMPLETED,
+                scheduled_at=start + timedelta(days=2),
+            )
+        )
+        await db.commit()
+        piece_id = piece.id
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            rows = await svc.content(db, window)
+        row = next(item for item in rows if item["piece_id"] == piece_id)
+        assert row["attribution"]["leads"] == 1
+        assert row["attribution"]["appointments_set"] == 1
+        assert row["attribution"]["appointments_held"] == 1
     finally:
         await _cleanup()

@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { UTM_KEYS, collectAttribution } from "../capture";
+import { UTM_KEYS, collectAttribution, withAttribution } from "../capture";
 
 function params(values: Record<string, string>) {
   return { get: (k: string) => (k in values ? values[k] : null) };
@@ -72,5 +72,73 @@ describe("collectAttribution", () => {
     // `referrer` is on both sides but comes from document.referrer rather than
     // the query string, so the page collects it outside UTM_KEYS.
     expect([...UTM_KEYS, "referrer"].sort()).toEqual([...backendKeys].sort());
+  });
+});
+
+describe("withAttribution", () => {
+  it("adds only trimmed attribution keys", () => {
+    expect(
+      withAttribution("/calculator", {
+        utm_source: " instagram ",
+        utm_content: "piece-42",
+        referrer: "https://instagram.com/",
+        unknown: "ignored",
+      }),
+    ).toBe("/calculator?utm_source=instagram&utm_content=piece-42");
+  });
+
+  it("preserves an existing query and fragment", () => {
+    expect(
+      withAttribution("/?mode=sell#consult", {
+        utm_source: "youtube",
+        landing_variant: "start",
+      }),
+    ).toBe("/?mode=sell&utm_source=youtube&landing_variant=start#consult");
+  });
+
+  it("leaves telephone links unchanged", () => {
+    expect(withAttribution("tel:+13035550101", { utm_source: "tiktok" })).toBe(
+      "tel:+13035550101",
+    );
+  });
+
+  it("leaves email links unchanged", () => {
+    expect(
+      withAttribution("mailto:team@example.com", { utm_source: "tiktok" }),
+    ).toBe("mailto:team@example.com");
+  });
+
+  it("leaves unattributed links unchanged", () => {
+    expect(withAttribution("/calculator", {})).toBe("/calculator");
+  });
+
+  it("percent-encodes attribution values", () => {
+    expect(
+      withAttribution("/calculator", {
+        utm_source: "instagram reels/cañon",
+      }),
+    ).toBe("/calculator?utm_source=instagram+reels%2Fca%C3%B1on");
+  });
+
+  it("limits each attribution value to 200 characters", () => {
+    expect(
+      withAttribution("/calculator", { utm_content: "x".repeat(201) }),
+    ).toBe(`/calculator?utm_content=${"x".repeat(200)}`);
+  });
+
+  it("drops empty attribution values", () => {
+    expect(withAttribution("/calculator", { utm_medium: "   " })).toBe(
+      "/calculator",
+    );
+  });
+
+  it("replaces an existing allowed key without duplicating it", () => {
+    const href = withAttribution(
+      "/calculator?utm_source=old&utm_source=older&mode=buy",
+      { utm_source: "tiktok" },
+    );
+
+    expect(href).toBe("/calculator?utm_source=tiktok&mode=buy");
+    expect(href.match(/utm_source=/g)).toHaveLength(1);
   });
 });

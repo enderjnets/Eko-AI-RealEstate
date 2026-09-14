@@ -8,7 +8,14 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import * as React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { ContentTable } from "@/components/analytics/ContentTable";
+import { type Analytics } from "@/lib/api";
+import { LanguageProvider } from "@/lib/i18n";
+
+Object.assign(globalThis, { React });
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
@@ -34,21 +41,25 @@ const EN = dict("EN");
 const ES = dict("ES");
 const view = () => read("components/analytics/AnalyticsView.tsx");
 
+function interfaceFields(name: string): string[] {
+  const source = read("lib/api.ts");
+  const start = source.indexOf(`export interface ${name} {`);
+  expect(start, `${name} interface not found`).toBeGreaterThan(-1);
+  const body = source.slice(start, source.indexOf("\n}", start));
+  return [...body.matchAll(/^\s{2}([a-z_]+):/gm)].map((match) => match[1]);
+}
+
 describe("what the page promises", () => {
-  it("calls the content card association and never attribution", () => {
-    // A Shorts link is not clickable and Instagram strips the referrer, so
-    // these visits are *followed by* the video, not *caused by* it as far as
-    // anyone can prove. The word is the whole honesty of the section.
-    for (const dict of [EN, ES]) {
-      const hint = dict["analytics.contentHint"].toLowerCase();
-      expect(hint).toMatch(/associat|asociaci/);
-      // The word "attribution" may appear, but only to deny it. Anywhere else
-      // in this sentence it would be claiming exactly what cannot be proven.
-      for (const m of hint.matchAll(/attribution|atribuci\u00f3n/g)) {
-        expect(hint.slice(Math.max(0, m.index - 5), m.index)).toMatch(/not |no /);
-      }
-    }
-    expect(read("components/analytics/ContentTable.tsx")).toContain("analytics.assoc48");
+  it("names exact attribution separately from temporal association", () => {
+    expect(EN["analytics.contentHint"].toLowerCase()).toMatch(
+      /exact attribution.*temporal association/,
+    );
+    expect(ES["analytics.contentHint"].toLowerCase()).toMatch(
+      /atribuci\u00f3n exacta.*asociaci\u00f3n temporal/,
+    );
+    const source = read("components/analytics/ContentTable.tsx");
+    expect(source).toContain("analytics.exactAttribution");
+    expect(source).toContain("analytics.temporalAssociation");
   });
 
   it("says an internal note is not a reply, where the number is shown", () => {
@@ -151,13 +162,12 @@ describe("view counts, and where they came from", () => {
     // TikTok and Instagram hand view counts to nobody without a reviewed
     // first-party app, so those are typed by a person. A column that showed
     // both alike would let an estimate be read as a measurement.
-    expect(table()).toContain("analytics.viewsTyped");
-    expect(table()).toContain("analytics.viewsRead");
-    for (const dict of [EN, ES]) {
-      expect(dict["analytics.viewsTyped"]).toBeTruthy();
-      expect(dict["analytics.viewsRead"]).toBeTruthy();
-      expect(dict["analytics.viewsTyped"]).not.toBe(dict["analytics.viewsRead"]);
-    }
+    expect(table()).toContain("analytics.metricsTyped");
+    expect(table()).toContain("analytics.metricsRead");
+    expect(EN["analytics.metricsTyped"]).toMatch(/counters.*manually/i);
+    expect(EN["analytics.metricsRead"]).toMatch(/counters.*platform/i);
+    expect(ES["analytics.metricsTyped"]).toMatch(/métricas.*mano/i);
+    expect(ES["analytics.metricsRead"]).toMatch(/métricas.*plataforma/i);
   });
 
   it("offers the pencil only where no machine can read the number", () => {
@@ -261,7 +271,7 @@ describe("the card names the video", () => {
 describe("one 48h figure per video", () => {
   const table = () => read("components/analytics/ContentTable.tsx");
 
-  it("reads the association once per video, above the platform lines", () => {
+  it("reads the association once per video without folding tagged leads into it", () => {
     // The server counts the union of the video's windows and stamps the same
     // block on every row. Rendered per platform line it read as three times
     // the people; rendered per row it also invited adding the rows up.
@@ -270,9 +280,8 @@ describe("one 48h figure per video", () => {
     expect(reads.map((m) => m.index)).toHaveLength(1);
     expect(source).toContain("video.rows[0].association");
     expect(reads[0].index).toBeLessThan(source.indexOf("video.rows.map("));
-    // The tag names the piece, not the post: once per video as well.
-    expect([...source.matchAll(/\.leads_tagged\b/g)]).toHaveLength(1);
-    expect(source.indexOf(".leads_tagged")).toBeLessThan(source.indexOf("video.rows.map("));
+    expect(source).not.toContain(".leads_tagged");
+    expect(read("lib/api.ts")).toContain("leads_tagged: number;");
   });
 
   it("says the window is counted from each post, in both languages", () => {
@@ -288,5 +297,160 @@ describe("one 48h figure per video", () => {
     // landing wherever the break fell. The hour's span now closes its line
     // before the link block opens.
     expect(table()).toMatch(/exactTime\([^)]*\)\}\s*<\/span>\s*<\/div>/);
+  });
+});
+
+describe("the measurable content scorecard", () => {
+  const table = () => read("components/analytics/ContentTable.tsx");
+
+  it("types the complete backend contract without collapsing nullable counters", () => {
+    expect(interfaceFields("AnalyticsExcludedSessions")).toEqual([
+      "total",
+      "automated",
+      "test",
+    ]);
+    expect(interfaceFields("ContentAttribution")).toEqual([
+      "sessions",
+      "engaged",
+      "cta_clickers",
+      "contact_intents",
+      "form_starts",
+      "form_submits",
+      "leads",
+      "appointments_set",
+      "appointments_held",
+    ]);
+    expect(interfaceFields("PublicationMetrics")).toEqual([
+      "views",
+      "likes",
+      "comments",
+      "captured_on",
+      "source",
+    ]);
+
+    const source = read("lib/api.ts");
+    expect(source).toContain("excluded_sessions: AnalyticsExcludedSessions;");
+    expect(source).toContain("attribution: ContentAttribution;");
+    expect(source).toContain("latest_metrics: PublicationMetrics | null;");
+  });
+
+  it("labels every exact step separately from the temporal association", () => {
+    const source = table();
+    const keys = [
+      "analytics.exactAttribution",
+      "analytics.metric.visits",
+      "analytics.metric.engaged",
+      "analytics.metric.nextStepClicks",
+      "analytics.metric.contactIntent",
+      "analytics.metric.formStarts",
+      "analytics.metric.formSubmits",
+      "analytics.metric.leads",
+      "analytics.metric.appointmentsSet",
+      "analytics.metric.appointmentsHeld",
+      "analytics.temporalAssociation",
+    ];
+    for (const key of keys) expect(source, key).toContain(`t("${key}")`);
+    for (const dictionary of [EN, ES]) {
+      expect(dictionary["analytics.exactAttribution"]).toBeTruthy();
+      expect(dictionary["analytics.temporalAssociation"]).toBeTruthy();
+      expect(dictionary["analytics.exactAttribution"]).not.toBe(
+        dictionary["analytics.temporalAssociation"],
+      );
+    }
+    expect(EN["analytics.metric.nextStepClicks"]).toMatch(/visitors|people/i);
+    expect(ES["analytics.metric.nextStepClicks"]).toMatch(/visitantes|personas/i);
+  });
+
+  it("shows and edits views, likes, and comments only on manually read platforms", () => {
+    const source = table();
+    for (const counter of ["views", "likes", "comments"]) {
+      expect(source).toContain(`t("analytics.metric.${counter}")`);
+      expect(source).toContain(`name="${counter}"`);
+    }
+    expect(source).toContain('TYPED_BY_HAND = new Set(["tiktok", "instagram"])');
+    expect(source).toMatch(
+      /contentApi\.setMetrics\([\s\S]{0,500}\{[\s\S]{0,300}views[\s\S]{0,300}likes[\s\S]{0,300}comments/,
+    );
+  });
+
+  it("keeps the draft on save failure and uses the server's canonical snapshot on success", () => {
+    const source = table();
+    expect(source).toContain('role="alert"');
+    expect(source).toContain('t("analytics.metricsSaveError")');
+    expect(source).toMatch(/catch\s*\{[\s\S]{0,120}setSaveError\(true\)/);
+    expect(source).toContain("updated.publications.find");
+    expect(source).toContain("publication.id === row.publication_id");
+    expect(source).not.toContain("new Date().toISOString()");
+  });
+
+  it("uses explicit null branches so measured zeroes stay visible", () => {
+    const source = table();
+    expect(source).toContain("row.latest_metrics === null");
+    expect(source).toContain("value === null");
+    expect(source).not.toMatch(/value\s*\|\|\s*t\("analytics\.noReading"\)/);
+  });
+
+  it("renders a measured zero and keeps snapshot provenance when another counter is null", () => {
+    const row: Analytics["content"][number] = {
+      piece_id: 7,
+      publication_id: 11,
+      hook: "A measurable clip",
+      platform: "instagram",
+      published_at: "2026-09-13T14:00:00Z",
+      external_url: null,
+      association: { window_hours: 48, sessions: 0, leads: 0 },
+      leads_tagged: 0,
+      attribution: {
+        sessions: 0,
+        engaged: 0,
+        cta_clickers: 0,
+        contact_intents: 0,
+        form_starts: 0,
+        form_submits: 0,
+        leads: 0,
+        appointments_set: 0,
+        appointments_held: 0,
+      },
+      latest_metrics: {
+        views: null,
+        likes: 0,
+        comments: null,
+        captured_on: "2026-09-13",
+        source: "manual",
+      },
+      views: {
+        count: null,
+        // Deliberately stale legacy reading: provenance and date must come
+        // from the same newest snapshot as the counters above.
+        captured_on: "2026-09-01",
+        source: "youtube_api",
+      },
+    };
+
+    const html = renderToStaticMarkup(
+      React.createElement(
+        LanguageProvider,
+        null,
+        React.createElement(ContentTable, { rows: [row], timezone: "America/Denver" }),
+      ),
+    );
+    const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+
+    expect(text).toContain("Views no reading");
+    expect(text).toContain("Likes 0");
+    expect(text).toContain("Comments no reading");
+    expect(text).toContain("Counters entered manually · 2026-09-13");
+  });
+
+  it("shows excluded QA and automation only when at least one session was excluded", () => {
+    const source = view();
+    expect(source).toContain("traffic.excluded_sessions.total > 0");
+    expect(source).toContain('t("analytics.excludedTraffic")');
+    expect(source).toContain('t("analytics.excludedAutomation")');
+    expect(source).toContain('t("analytics.excludedQa")');
+    expect(source).toContain("traffic.excluded_sessions.automated");
+    expect(source).toContain("traffic.excluded_sessions.test");
+    expect(source).toMatch(/\{hint && <div className="[^"]*text-gray-400[^"]*"/);
+    expect(source).not.toMatch(/\{hint && <div className="[^"]*text-gray-600[^"]*"/);
   });
 });

@@ -2,6 +2,54 @@
 
 All notable changes to **Eko AI Realtors**.
 
+## [0.102.0] — 2026-09-13
+
+### Added
+- **One useful choice after a social-profile tap.** `/yt`, `/tt`, `/ig` and
+  their spelled-out aliases now open the compact `/start` page. A visitor can
+  continue to the buying calculator, the selling and valuation form, or a
+  direct call. The source and campaign tags survive each choice, so the action
+  stays connected to the network that brought the visitor.
+- **An exact scorecard for each publication and platform.** The content card
+  connects its own `piece-<id>` tag and platform to measured visitors, engaged
+  visitors, visitors choosing a next step, form starters, visitors showing
+  contact intent (a phone tap or form start), leads, appointments set and
+  appointments held. These are explicit
+  link matches; the existing 48-hour association remains separately labelled.
+- **Views, likes and comments on the same card.** YouTube readings continue to
+  arrive from the platform. Instagram and TikTok can be entered manually, with
+  the source and capture date shown. A missing reading remains empty; a real
+  zero remains zero.
+
+### Measurement
+- **QA and browser automation no longer inflate the working funnel.** A session
+  is excluded only with positive evidence: the exact `eko_qa`/`test` tags,
+  `navigator.webdriver === true`, or a small list of known automation user-agent
+  signatures. Excluded totals remain visible to operators, and historical
+  sessions stay `unknown` rather than being guessed after the fact.
+- **The same exclusion follows a new lead through the whole pipeline.** QA and
+  automated submissions remain in the CRM and audit trail, but their replies,
+  calls, appointments and deals stay out of Analytics. A later QA submission is
+  recorded as history and cannot reclassify an existing real or offline lead.
+- **The dashboard funnel is one measured website cohort.** Its lead step starts
+  with leads whose private acquisition key exactly matches the measured form
+  session that created them, and every later step narrows that same set. All
+  nine counts come from one database snapshot, and “responded” requires a sent,
+  delivered or read message. Offline, returning and legacy unmarked leads stay
+  visible in their own cards without producing percentages above 100% in the
+  website funnel.
+- **A successful form and its first beacon now converge in either order.** If
+  the form arrives first, it creates and claims the measured session; the later
+  beacon fills its path, language and screen width without replacing the
+  form's first-touch attribution. The one session that actually creates a new
+  lead receives a private immutable marker, so a later form from a known lead
+  stays linked without being reported as a new acquisition. Global Privacy
+  Control creates no local analytics key, attribution record or server session.
+- **Published links preserve their destination.** The content publisher adds
+  platform, campaign and piece tags to the existing Denver Home Story URL. A
+  bare site root becomes `/start`; article, calculator, query and fragment
+  destinations stay intact. Host parsing rejects lookalikes before rewriting.
+
 ## [0.101.3] — 2026-09-13
 
 ### Fixed

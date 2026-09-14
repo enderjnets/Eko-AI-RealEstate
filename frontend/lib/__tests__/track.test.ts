@@ -22,7 +22,9 @@ import {
   sectionWasSeen,
   sessionKey,
   storedAttribution,
+  trackedAnchorEvent,
   trackingAllowed,
+  trackingContext,
   type TrackerOptions,
 } from "../track";
 
@@ -98,8 +100,21 @@ describe("session key", () => {
   });
 
   it("survives storage that throws instead of returning null", () => {
-    expect(sessionKey(hostileStorage)).toMatch(/^[0-9a-f]{32}$/);
-    expect(sessionKey(null)).toMatch(/^[0-9a-f]{32}$/);
+    const first = sessionKey(hostileStorage);
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+    expect(sessionKey(hostileStorage)).toBe(first);
+    expect(sessionKey(null)).toBe(first);
+  });
+
+  it("keeps separate working storage objects isolated", () => {
+    const firstStorage = memoryStorage();
+    const secondStorage = memoryStorage();
+    const first = sessionKey(firstStorage);
+    const second = sessionKey(secondStorage);
+
+    expect(second).not.toBe(first);
+    expect(firstStorage.dump()[SESSION_STORAGE_KEY]).toBe(first);
+    expect(secondStorage.dump()[SESSION_STORAGE_KEY]).toBe(second);
   });
 });
 
@@ -117,6 +132,33 @@ describe("attribution", () => {
     persistAttribution(params({ utm_source: "youtube" }), "", s);
     expect(persistAttribution(params({ utm_source: "tiktok" }), "", s)).toEqual({
       utm_source: "youtube",
+    });
+  });
+
+  it("does not build a hybrid attribution from a later tagged URL", () => {
+    const s = memoryStorage();
+    const firstTouch = {
+      utm_source: "instagram",
+      utm_medium: "bio",
+      utm_campaign: "profile",
+      utm_content: "piece-41",
+    };
+    persistAttribution(params(firstTouch), "https://www.instagram.com/", s);
+
+    expect(
+      persistAttribution(
+        params({
+          utm_source: "youtube",
+          utm_medium: "shorts",
+          utm_campaign: "later-campaign",
+          gclid: "later-click",
+        }),
+        "https://www.youtube.com/",
+        s,
+      ),
+    ).toEqual({
+      ...firstTouch,
+      referrer: "https://www.instagram.com/",
     });
   });
 
@@ -144,11 +186,98 @@ describe("attribution", () => {
     expect(storedAttribution(memoryStorage({ [ATTRIBUTION_STORAGE_KEY]: "[1,2]" }))).toEqual({});
     expect(storedAttribution(hostileStorage)).toEqual({});
   });
+
+  it("still reads saved attribution when only the session-key write fails", () => {
+    const saved = memoryStorage();
+    const storage = {
+      getItem: saved.getItem,
+      setItem(key: string, value: string) {
+        if (key === SESSION_STORAGE_KEY) throw new Error("session key blocked");
+        saved.setItem(key, value);
+      },
+    };
+    const first = persistAttribution(
+      params({ utm_source: "tiktok", utm_medium: "bio" }),
+      "",
+      storage,
+    );
+    sessionKey(storage);
+
+    expect(
+      persistAttribution(params({ utm_source: "youtube" }), "", storage),
+    ).toEqual(first);
+  });
+
+  it("keeps the first touch in memory when storage is blocked", () => {
+    const first = persistAttribution(
+      params({ utm_source: "instagram", utm_medium: "bio" }),
+      "https://www.instagram.com/",
+      hostileStorage,
+    );
+
+    expect(
+      persistAttribution(
+        params({ utm_source: "youtube", utm_campaign: "later" }),
+        "https://www.youtube.com/",
+        null,
+      ),
+    ).toEqual(first);
+    expect(storedAttribution(hostileStorage)).toEqual(first);
+    expect(storedAttribution(null)).toEqual(first);
+  });
+
+  it("keeps separate working attribution stores isolated", () => {
+    const firstStorage = memoryStorage();
+    const secondStorage = memoryStorage();
+
+    persistAttribution(params({ utm_source: "tiktok" }), "", firstStorage);
+    persistAttribution(params({ utm_source: "youtube" }), "", secondStorage);
+
+    expect(storedAttribution(firstStorage)).toEqual({ utm_source: "tiktok" });
+    expect(storedAttribution(secondStorage)).toEqual({ utm_source: "youtube" });
+  });
 });
 
 describe("Global Privacy Control", () => {
   it("is honoured", () => {
     expect(trackingAllowed({ globalPrivacyControl: true })).toBe(false);
+  });
+
+  it("does not access storage or collect attribution", () => {
+    const storage = memoryStorage();
+    let storageAccesses = 0;
+    const context = trackingContext(
+      { globalPrivacyControl: true },
+      params({ utm_source: "instagram", utm_content: "piece-41" }),
+      "https://www.instagram.com/",
+      () => {
+        storageAccesses += 1;
+        return storage;
+      },
+    );
+
+    expect(context).toEqual({ allowed: false, attribution: {} });
+    expect(storageAccesses).toBe(0);
+    expect(storage.dump()[SESSION_STORAGE_KEY]).toBeUndefined();
+    expect(storage.dump()[ATTRIBUTION_STORAGE_KEY]).toBeUndefined();
+  });
+
+  it("creates one shared context when there is no opt-out", () => {
+    const storage = memoryStorage();
+    const context = trackingContext(
+      {},
+      params({ utm_source: "youtube" }),
+      "",
+      () => storage,
+    );
+
+    expect(context.allowed).toBe(true);
+    expect(context.session).toMatch(/^[0-9a-f]{32}$/);
+    expect(context.attribution).toEqual({ utm_source: "youtube" });
+    expect(storage.dump()[SESSION_STORAGE_KEY]).toBe(context.session);
+    expect(JSON.parse(storage.dump()[ATTRIBUTION_STORAGE_KEY])).toEqual({
+      utm_source: "youtube",
+    });
   });
 
   it("does not read absence as refusal", () => {
@@ -205,6 +334,20 @@ describe("what gets sent, and when", () => {
     const { t, sent } = tracker();
     t.record("form_submit");
     expect(Object.keys(JSON.parse(sent[0])).sort()).toEqual(["events", "path", "session"]);
+  });
+
+  it("sends webdriver evidence only when it is exactly true", () => {
+    const automated = tracker({ webdriver: true });
+    automated.t.record("form_submit");
+    expect(JSON.parse(automated.sent[0]).webdriver).toBe(true);
+
+    const claimedHuman = tracker({ webdriver: false } as unknown as Partial<TrackerOptions>);
+    claimedHuman.t.record("form_submit");
+    expect(JSON.parse(claimedHuman.sent[0])).not.toHaveProperty("webdriver");
+
+    const absent = tracker();
+    absent.t.record("form_submit");
+    expect(JSON.parse(absent.sent[0])).not.toHaveProperty("webdriver");
   });
 
   it("never sends more events than the server accepts", () => {
@@ -290,6 +433,27 @@ describe("the sender", () => {
   });
 });
 
+describe("tracked anchor classification", () => {
+  it("records a tagged navigation as a CTA click", () => {
+    expect(trackedAnchorEvent("/calculator", "start-calculator")).toEqual({
+      name: "cta_click",
+      meta: { where: "start-calculator" },
+    });
+  });
+
+  it("records a tagged telephone link as a telephone click", () => {
+    expect(trackedAnchorEvent("tel:+13035550101", "start-call")).toEqual({
+      name: "tel_click",
+      meta: { where: "start-call" },
+    });
+  });
+
+  it("does not record untagged navigation", () => {
+    expect(trackedAnchorEvent("/calculator")).toBeNull();
+    expect(trackedAnchorEvent("tel:+13035550101")).toBeNull();
+  });
+});
+
 describe("wiring", () => {
   const read = (p: string) =>
     readFileSync(join(process.cwd(), p), "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
@@ -319,6 +483,42 @@ describe("wiring", () => {
     const removed = (src.match(/removeEventListener\(/g) ?? []).length;
     expect(added).toBeGreaterThan(0);
     expect(removed).toBe(added);
+  });
+
+  it("exposes a default-on scroll tracking switch", () => {
+    const src = read("components/landing/LandingTracker.tsx");
+    expect(src).toMatch(/trackScroll\s*=\s*true/);
+    expect(src).toMatch(/trackScroll\?:\s*boolean/);
+  });
+
+  it("passes only positive webdriver evidence into the tracker", () => {
+    const src = read("components/landing/LandingTracker.tsx");
+    expect(src).toMatch(/webdriver:\s*navigator\.webdriver\s*===\s*true\s*\?\s*true\s*:\s*undefined/);
+  });
+
+  it("routes both landing components through the shared privacy context", () => {
+    for (const file of [
+      "components/landing/LandingTracker.tsx",
+      "components/landing/ConsultForm.tsx",
+    ]) {
+      const src = read(file);
+      expect(src).toContain("trackingContext(");
+      expect(src).not.toMatch(/\b(?:persistAttribution|sessionKey|trackingSessionKey)\s*\(/);
+    }
+  });
+
+  it("does not attach or call the scroll handler when tracking is disabled", () => {
+    const src = read("components/landing/LandingTracker.tsx");
+    expect(src).toMatch(
+      /if\s*\(trackScroll\)\s*\{\s*window\.addEventListener\("scroll",\s*onScroll,\s*\{\s*passive:\s*true\s*\}\);\s*onScroll\(\);\s*\}/,
+    );
+  });
+
+  it("only removes the scroll listener when it could have attached it", () => {
+    const src = read("components/landing/LandingTracker.tsx");
+    expect(src).toMatch(
+      /if\s*\(trackScroll\)\s*(?:\{\s*)?window\.removeEventListener\("scroll",\s*onScroll\);/,
+    );
   });
 
   it("agrees with the server about how many events fit in a batch", () => {
@@ -408,21 +608,26 @@ describe("wiring", () => {
     }
   });
 
-  it("sends the session id with the lead, so the visit joins the funnel", () => {
+  it("sends a privacy-gated session id with the lead, so the visit joins the funnel", () => {
     const src = read("components/landing/ConsultForm.tsx");
+    expect(src).toContain("trackingContext(");
+    expect(src).toMatch(/if\s*\(!context\.allowed\)[\s\S]*setSessionId\(undefined\)/);
+    expect(src).toContain("setSessionId(context.session)");
     expect(src).toMatch(/session_id:\s*sessionId/);
+    expect(src).toMatch(
+      /webdriver:\s*trackingEnabled\.current\s*&&\s*navigator\.webdriver\s*===\s*true\s*\?\s*true\s*:\s*undefined/,
+    );
     expect(src).toMatch(/getTracker\(\)\?\.record\("form_submit"\)/);
     expect(src).toMatch(/getTracker\(\)\?\.record\("form_error"/);
     expect(src).toMatch(/onFocusCapture=\{onFirstTouch\}/);
   });
 
-  it("prefers the remembered first touch over an empty query string", () => {
+  it("submits the remembered first touch without mixing in the current URL", () => {
     const src = read("components/landing/ConsultForm.tsx");
-    const stored = src.indexOf("storedAttribution(storage)");
-    const current = src.indexOf("...collected");
-    expect(stored).toBeGreaterThan(-1);
-    // Spread later wins, so the CURRENT url still beats what was remembered.
-    expect(current).toBeGreaterThan(stored);
+    expect(src).toContain("trackingContext(");
+    expect(src).toContain("...context.attribution");
+    expect(src).not.toContain("storedAttribution(storage)");
+    expect(src).not.toContain("...collected");
   });
 });
 

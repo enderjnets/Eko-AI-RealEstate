@@ -12,12 +12,11 @@ arrived at 23:30 in Denver lands on tomorrow's report, and the two busiest
 hours of the evening are permanently attributed to the wrong day — a six-hour
 error that is invisible because every individual number looks plausible.
 
-*The range applies to the lead, not to the thing that happened.* A lead created
-in August and called back today counts as "called back" in August's report,
-because the question the funnel answers is "of the leads that arrived then, how
-many did we reach" — not "how many calls did we make this week". Counting it the
-other way makes the conversion of any closed month change every time someone
-touches an old lead.
+*The range follows the acquisition anchor, not every downstream event.* Lead
+cards anchor on when the lead was created. The website funnel anchors on when
+its measured session began, then asks how far that same cohort eventually got.
+That keeps a closed period interpretable instead of mixing in people acquired
+elsewhere merely because somebody contacted or booked them during the range.
 
 *Con una excepción, y está señalada donde vive:* `calls()` acota por el instante
 de la llamada, no por el del lead. Es la única tarjeta que no pregunta por una
@@ -32,8 +31,24 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Float, Select, and_, case, cast, distinct, func, or_, select
+from sqlalchemy import (
+    DateTime,
+    Float,
+    Integer,
+    Select,
+    String,
+    and_,
+    case,
+    cast,
+    column,
+    distinct,
+    func,
+    or_,
+    select,
+    values,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import (
     CallLog,
@@ -47,6 +62,7 @@ from app.models import (
     Message,
     MessageDirection,
     MessageSender,
+    MessageStatus,
     Visit,
     VisitStatus,
 )
@@ -100,6 +116,43 @@ async def _scalar(db: AsyncSession, stmt: Select) -> int:
     return int((await db.execute(stmt)).scalar() or 0)
 
 
+def _measured_session() -> ColumnElement[bool]:
+    return LandingSession.traffic_class == "unknown"
+
+
+def _lead_attribution(meta: object) -> dict:
+    """The immutable first-touch mapping, defensive against legacy junk JSON."""
+    if not isinstance(meta, dict):
+        return {}
+    attribution = meta.get("attribution")
+    return attribution if isinstance(attribution, dict) else {}
+
+
+def _measured_lead() -> ColumnElement[bool]:
+    """A lead that represents a real acquisition in Analytics.
+
+    QA submissions stay in the CRM so the complete form flow remains testable,
+    but their calls, appointments and deals must not become business results.
+    The marker is read only from the immutable first-touch attribution: a real
+    lead who later visits a QA link therefore remains real.
+
+    The explicit UTM pair covers QA leads captured before ``traffic_class`` was
+    persisted.  ``json_extract_path_text`` is deliberate: ``Lead.meta`` is a
+    plain JSON column, and SQLAlchemy's indexed JSON expression has previously
+    produced an uncacheable query in this module.
+    """
+    source = func.json_extract_path_text(Lead.meta, "attribution", "utm_source")
+    medium = func.json_extract_path_text(Lead.meta, "attribution", "utm_medium")
+    traffic_class = func.json_extract_path_text(Lead.meta, "attribution", "traffic_class")
+    return and_(
+        or_(
+            func.coalesce(source, "") != "eko_qa",
+            func.coalesce(medium, "") != "test",
+        ),
+        func.coalesce(traffic_class, "unknown").not_in(("test", "automated")),
+    )
+
+
 # ── Traffic: what happened on the landing page ───────────────────────────
 
 
@@ -111,7 +164,8 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
     shrink every night. The session row carries the same facts already merged.
     """
     base = LandingSession.first_seen_at
-    scope = w.within(base)
+    date_scope = w.within(base)
+    scope = and_(date_scope, _measured_session())
 
     totals = (
         await db.execute(
@@ -127,6 +181,10 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
                             or_(
                                 LandingSession.max_scroll_pct >= 50,
                                 func.jsonb_array_length(LandingSession.sections_viewed) >= 2,
+                                LandingSession.cta_clicks > 0,
+                                LandingSession.tel_clicks > 0,
+                                LandingSession.form_started_at.is_not(None),
+                                LandingSession.form_submitted_at.is_not(None),
                             ),
                             1,
                         )
@@ -135,7 +193,20 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
                 func.coalesce(func.avg(LandingSession.max_scroll_pct), 0),
                 func.coalesce(func.sum(LandingSession.cta_clicks), 0),
                 func.coalesce(func.sum(LandingSession.tel_clicks), 0),
-                func.count(LandingSession.form_started_at),
+                # A successful submit necessarily started the form. Count it
+                # even when the earlier focus beacon was lost or raced the
+                # capture request.
+                func.count(
+                    case(
+                        (
+                            or_(
+                                LandingSession.form_started_at.is_not(None),
+                                LandingSession.form_submitted_at.is_not(None),
+                            ),
+                            1,
+                        )
+                    )
+                ),
                 func.count(LandingSession.form_submitted_at),
                 # ── Y los mismos hechos contados en PERSONAS ────────────────
                 # Los cuatro de arriba son sumas de contadores, y sirven para
@@ -160,6 +231,7 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
                             or_(
                                 LandingSession.tel_clicks > 0,
                                 LandingSession.form_started_at.is_not(None),
+                                LandingSession.form_submitted_at.is_not(None),
                             ),
                             1,
                         )
@@ -173,6 +245,7 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
                                 LandingSession.cta_clicks > 0,
                                 LandingSession.tel_clicks > 0,
                                 LandingSession.form_started_at.is_not(None),
+                                LandingSession.form_submitted_at.is_not(None),
                             ),
                             1,
                         )
@@ -200,6 +273,15 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
             ).where(scope)
         )
     ).one()
+
+    traffic_class_rows = (
+        await db.execute(
+            select(LandingSession.traffic_class, func.count())
+            .where(date_scope)
+            .group_by(LandingSession.traffic_class)
+        )
+    ).all()
+    traffic_class_counts = {traffic_class: count for traffic_class, count in traffic_class_rows}
 
     # One expression object, used in both places. Calling `w.day()` twice would
     # emit two bind parameters for the same timezone, and Postgres then sees two
@@ -248,6 +330,12 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
         "form_errors": int(totals[10]),
         "people_with_errors": totals[11],
         "submitted_without_lead": totals[12],
+        "excluded_sessions": {
+            "total": traffic_class_counts.get("automated", 0)
+            + traffic_class_counts.get("test", 0),
+            "automated": traffic_class_counts.get("automated", 0),
+            "test": traffic_class_counts.get("test", 0),
+        },
         "by_day": [{"date": d, "sessions": seen.get(d, 0)} for d in _days(w)],
         "by_source": await _breakdown(LandingSession.source),
         "by_device": await _breakdown(LandingSession.device),
@@ -264,7 +352,7 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
 
 
 async def leads(db: AsyncSession, w: Window) -> dict:
-    scope = w.within(Lead.created_at)
+    scope = and_(w.within(Lead.created_at), _measured_lead())
     total = await _scalar(db, select(func.count()).where(scope).select_from(Lead))
 
     by_status_rows = (
@@ -319,12 +407,16 @@ async def leads(db: AsyncSession, w: Window) -> dict:
     metas = (await db.execute(select(Lead.meta).where(scope))).scalars().all()
     by_source: dict[str, int] = {}
     for meta in metas:
-        attribution = (meta or {}).get("attribution") or {}
+        attribution = _lead_attribution(meta)
         # `no_web` is not a measurement failure: it is a lead that never
         # touched the landing page — imported, phoned in, found by discovery —
         # and folding it into `direct` would invent web traffic that never
         # happened.
-        key = attribution.get("utm_source") or attribution.get("referrer") or "no_web"
+        candidates = (attribution.get("utm_source"), attribution.get("referrer"))
+        key = next(
+            (candidate for candidate in candidates if isinstance(candidate, str) and candidate),
+            "no_web",
+        )
         by_source[key] = by_source.get(key, 0) + 1
 
     day = w.day(Lead.created_at).label("day")
@@ -352,18 +444,21 @@ async def leads(db: AsyncSession, w: Window) -> dict:
 def _real_outbound():
     """An outbound message that a person could actually receive.
 
-    `internal=True` is a note an advisor left on the thread. Counting it as a
-    reply is the defect this section exists to fix: the old metric averaged
-    every outbound row, so a lead nobody ever answered showed a two-minute
-    response time because somebody typed "called, no answer" into the notes.
+    `internal=True` is a note an advisor left on the thread. Pending and failed
+    rows are delivery attempts, not replies. Counting either shape made a lead
+    nobody ever reached look answered and understated the real response time.
     """
     return and_(
         Message.direction == MessageDirection.OUTBOUND,
         Message.internal.is_(False),
+        Message.delivery_status.in_(
+            (MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ)
+        ),
     )
 
 
 async def response(db: AsyncSession, w: Window) -> dict:
+    scope = and_(w.within(Lead.created_at), _measured_lead())
     # First real reply per conversation, for conversations whose LEAD arrived in
     # range — the window is about the leads, not about when we got around to it.
     first_reply = (
@@ -386,7 +481,7 @@ async def response(db: AsyncSession, w: Window) -> dict:
             .select_from(Conversation)
             .join(Lead, Lead.id == Conversation.lead_id)
             .join(first_reply, first_reply.c.cid == Conversation.id)
-            .where(w.within(Lead.created_at))
+            .where(scope)
         )
     ).scalars().all()
     seconds = sorted(float(s) for s in rows if s is not None and s >= 0)
@@ -411,7 +506,7 @@ async def response(db: AsyncSession, w: Window) -> dict:
             .select_from(Message)
             .join(Conversation, Conversation.id == Message.conversation_id)
             .join(Lead, Lead.id == Conversation.lead_id)
-            .where(_real_outbound(), w.within(Lead.created_at))
+            .where(_real_outbound(), scope)
             .group_by(kind_col)
         )
     ).all()
@@ -424,7 +519,7 @@ async def response(db: AsyncSession, w: Window) -> dict:
         .select_from(Conversation)
         .join(Lead, Lead.id == Conversation.lead_id)
         .outerjoin(first_reply, first_reply.c.cid == Conversation.id)
-        .where(w.within(Lead.created_at), first_reply.c.replied_at.is_(None)),
+        .where(scope, first_reply.c.replied_at.is_(None)),
     )
 
     return {
@@ -473,7 +568,7 @@ async def calls(db: AsyncSession, w: Window) -> dict:
             )
             .select_from(LeadEvent)
             .join(Lead, Lead.id == LeadEvent.lead_id)
-            .where(LeadEvent.type == "call_inbound", by_event)
+            .where(LeadEvent.type == "call_inbound", by_event, _measured_lead())
         )
     ).one()
 
@@ -483,7 +578,7 @@ async def calls(db: AsyncSession, w: Window) -> dict:
             select(reason_col, func.count())
             .select_from(LeadEvent)
             .join(Lead, Lead.id == LeadEvent.lead_id)
-            .where(LeadEvent.type == "call_inbound", by_event)
+            .where(LeadEvent.type == "call_inbound", by_event, _measured_lead())
             .group_by(reason_col)
             .order_by(func.count().desc())
             .limit(5)
@@ -497,7 +592,7 @@ async def calls(db: AsyncSession, w: Window) -> dict:
             .join(Lead, Lead.id == CallLog.lead_id)
             # Por cuándo se apuntó la llamada, no por cuándo llegó el lead:
             # apuntar hoy una llamada a un lead de agosto es trabajo de hoy.
-            .where(w.within(CallLog.created_at))
+            .where(w.within(CallLog.created_at), _measured_lead())
             .group_by(CallLog.outcome)
         )
     ).all()
@@ -514,7 +609,7 @@ async def calls(db: AsyncSession, w: Window) -> dict:
 
 
 async def appointments(db: AsyncSession, w: Window) -> dict:
-    scope = w.within(Lead.created_at)
+    scope = and_(w.within(Lead.created_at), _measured_lead())
     rows = (
         await db.execute(
             select(Visit.status, func.count())
@@ -560,7 +655,7 @@ async def deals(db: AsyncSession, w: Window, *, with_value: bool) -> dict:
     divides one month's closings by another month's losses and reads like a
     single number.
     """
-    won_scope = w.within(Lead.won_at)
+    won_scope = and_(w.within(Lead.won_at), _measured_lead())
 
     kinds = (
         await db.execute(
@@ -588,7 +683,11 @@ async def deals(db: AsyncSession, w: Window, *, with_value: bool) -> dict:
             select(Lead.lost_reason, func.count())
             .select_from(Lead)
             .join(lost_at, lost_at.c.lead_id == Lead.id)
-            .where(w.within(lost_at.c.at), Lead.status == LeadStatus.LOST)
+            .where(
+                w.within(lost_at.c.at),
+                Lead.status == LeadStatus.LOST,
+                _measured_lead(),
+            )
             .group_by(Lead.lost_reason)
             .order_by(func.count().desc())
             .limit(5)
@@ -622,15 +721,71 @@ async def deals(db: AsyncSession, w: Window, *, with_value: bool) -> dict:
 # ── Content: what each published piece was followed by ───────────────────
 
 
-def _within_any(column, starts: list[datetime], hours: int = 48):
-    """`column` falls inside at least one of the windows opening at `starts`.
+def _empty_attribution() -> dict[str, int]:
+    return {
+        "sessions": 0,
+        "engaged": 0,
+        "cta_clickers": 0,
+        "contact_intents": 0,
+        "form_starts": 0,
+        "form_submits": 0,
+        "leads": 0,
+        "appointments_set": 0,
+        "appointments_held": 0,
+    }
 
-    An OR of intervals, not a span from the first start to the last end: two
-    posts three days apart would otherwise claim the day between them, when
-    nobody had just seen either.
-    """
-    return or_(
-        *[and_(column >= start, column < start + timedelta(hours=hours)) for start in starts]
+
+def _publication_windows(starts_by_piece: dict[int, list[datetime]]):
+    """A bounded SQL table of each publication's 48-hour association window."""
+    rows = [
+        (piece_id, start, start + timedelta(hours=48))
+        for piece_id, starts in starts_by_piece.items()
+        for start in starts
+    ]
+    return (
+        values(
+            column("piece_id", Integer),
+            column("start_at", DateTime(timezone=True)),
+            column("end_at", DateTime(timezone=True)),
+            name="publication_windows",
+        )
+        .data(rows)
+        .alias("publication_windows")
+    )
+
+
+def _publication_keys(publication_keys: set[tuple[int, str]]):
+    """The piece/platform pairs whose exact conversion counters are requested."""
+    rows = [
+        (piece_id, platform, f"piece-{piece_id}") for piece_id, platform in sorted(publication_keys)
+    ]
+    return (
+        values(
+            column("piece_id", Integer),
+            column("platform", String),
+            column("content_tag", String),
+            name="publication_keys",
+        )
+        .data(rows)
+        .alias("publication_keys")
+    )
+
+
+def _normalized_first_touch_source() -> ColumnElement[str]:
+    """The three publishable social sources, with the same aliases as visits."""
+    raw = func.lower(
+        func.trim(
+            func.coalesce(
+                func.json_extract_path_text(Lead.meta, "attribution", "utm_source"),
+                "",
+            )
+        )
+    )
+    return case(
+        (raw.in_(("youtube", "yt", "youtube_shorts", "shorts")), "youtube"),
+        (raw.in_(("tiktok", "tt")), "tiktok"),
+        (raw.in_(("instagram", "ig")), "instagram"),
+        else_="other",
     )
 
 
@@ -695,61 +850,200 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
         )
     ).all()
 
-    # Scoped to the window like everything else. Unscoped this read every lead
-    # the agency has ever had, on every request, to answer a question about
-    # twenty publications.
-    all_metas = (
-        await db.execute(select(Lead.meta).where(w.within(Lead.created_at)))
-    ).scalars().all()
-
-    # How many people actually saw it, which is the number that separates "the
-    # video reached nobody" from "the video reached people and the page lost
-    # them" — opposite problems that look identical without it. One query for
-    # the whole list; `None` for anything nobody has read yet.
-    newest = await video_metrics.latest_metrics(db, [row[0] for row in rows])
+    if not rows:
+        return []
 
     starts_by_piece: dict[int, list[datetime]] = {}
     for _publication_id, piece_id, _platform, published_at, _url, _hook in rows:
         starts_by_piece.setdefault(piece_id, []).append(published_at)
 
-    # Two queries per video rather than two per post — the same visit was
-    # being counted by every row whose window held it.
-    by_piece: dict[int, dict] = {}
-    for piece_id, starts in starts_by_piece.items():
-        sessions = await _scalar(
-            db,
-            select(func.count()).where(
-                _within_any(LandingSession.first_seen_at, starts)
+    publication_keys = {
+        (
+            piece_id,
+            platform.value if hasattr(platform, "value") else str(platform),
+        )
+        for _publication_id, piece_id, platform, _published_at, _url, _hook in rows
+    }
+    attribution_by_key = {key: _empty_attribution() for key in publication_keys}
+    association_by_piece = {
+        piece_id: {"window_hours": 48, "sessions": 0, "leads": 0} for piece_id in starts_by_piece
+    }
+    leads_tagged_by_piece = {piece_id: 0 for piece_id in starts_by_piece}
+    windows = _publication_windows(starts_by_piece)
+    keys = _publication_keys(publication_keys)
+
+    # Every result below is bounded by the number of displayed pieces or
+    # publications. PostgreSQL scans and aggregates the underlying visitors;
+    # the API worker never materialises a year's worth of session JSON and
+    # never performs sessions × pieces comparisons in Python.
+    session_associations = (
+        await db.execute(
+            select(
+                windows.c.piece_id,
+                func.count(distinct(LandingSession.id)),
+            )
+            .select_from(windows)
+            .join(
+                LandingSession,
+                and_(
+                    LandingSession.first_seen_at >= windows.c.start_at,
+                    LandingSession.first_seen_at < windows.c.end_at,
+                    _measured_session(),
+                ),
+            )
+            .group_by(windows.c.piece_id)
+        )
+    ).all()
+    for piece_id, count in session_associations:
+        association_by_piece[piece_id]["sessions"] = count
+
+    lead_associations = (
+        await db.execute(
+            select(windows.c.piece_id, func.count(distinct(Lead.id)))
+            .select_from(windows)
+            .join(
+                Lead,
+                and_(
+                    Lead.created_at >= windows.c.start_at,
+                    Lead.created_at < windows.c.end_at,
+                    _measured_lead(),
+                ),
+            )
+            .group_by(windows.c.piece_id)
+        )
+    ).all()
+    for piece_id, count in lead_associations:
+        association_by_piece[piece_id]["leads"] = count
+
+    engaged = or_(
+        LandingSession.max_scroll_pct >= 50,
+        func.jsonb_array_length(LandingSession.sections_viewed) >= 2,
+        LandingSession.cta_clicks > 0,
+        LandingSession.tel_clicks > 0,
+        LandingSession.form_started_at.is_not(None),
+        LandingSession.form_submitted_at.is_not(None),
+    )
+    exact_sessions = (
+        await db.execute(
+            select(
+                keys.c.piece_id,
+                keys.c.platform,
+                func.count(distinct(LandingSession.id)),
+                func.count(distinct(case((engaged, LandingSession.id)))),
+                func.count(distinct(case((LandingSession.cta_clicks > 0, LandingSession.id)))),
+                func.count(
+                    distinct(
+                        case(
+                            (
+                                or_(
+                                    LandingSession.tel_clicks > 0,
+                                    LandingSession.form_started_at.is_not(None),
+                                    LandingSession.form_submitted_at.is_not(None),
+                                ),
+                                LandingSession.id,
+                            )
+                        )
+                    )
+                ),
+                func.count(
+                    distinct(
+                        case(
+                            (
+                                or_(
+                                    LandingSession.form_started_at.is_not(None),
+                                    LandingSession.form_submitted_at.is_not(None),
+                                ),
+                                LandingSession.id,
+                            )
+                        )
+                    )
+                ),
+                func.count(
+                    distinct(
+                        case(
+                            (
+                                LandingSession.form_submitted_at.is_not(None),
+                                LandingSession.id,
+                            )
+                        )
+                    )
+                ),
+            )
+            .select_from(keys)
+            .join(
+                LandingSession,
+                and_(
+                    LandingSession.utm_content == keys.c.content_tag,
+                    LandingSession.source == keys.c.platform,
+                ),
+            )
+            .where(w.within(LandingSession.first_seen_at), _measured_session())
+            .group_by(keys.c.piece_id, keys.c.platform)
+        )
+    ).all()
+    for row in exact_sessions:
+        counters = attribution_by_key[(row[0], row[1])]
+        for field, count in zip(
+            (
+                "sessions",
+                "engaged",
+                "cta_clickers",
+                "contact_intents",
+                "form_starts",
+                "form_submits",
             ),
+            row[2:],
+            strict=True,
+        ):
+            counters[field] = count
+
+    first_touch_content = func.json_extract_path_text(Lead.meta, "attribution", "utm_content")
+    tagged_leads = (
+        await db.execute(
+            select(keys.c.piece_id, func.count(distinct(Lead.id)))
+            .select_from(keys)
+            .join(Lead, first_touch_content == keys.c.content_tag)
+            .where(w.within(Lead.created_at), _measured_lead())
+            .group_by(keys.c.piece_id)
         )
-        leads_after = await _scalar(
-            db,
-            select(func.count())
-            .select_from(Lead)
-            .where(_within_any(Lead.created_at, starts)),
+    ).all()
+    for piece_id, count in tagged_leads:
+        leads_tagged_by_piece[piece_id] = count
+
+    exact_leads = (
+        await db.execute(
+            select(
+                keys.c.piece_id,
+                keys.c.platform,
+                func.count(distinct(Lead.id)),
+                func.count(distinct(Visit.id)),
+                func.count(distinct(case((Visit.status == VisitStatus.COMPLETED, Visit.id)))),
+            )
+            .select_from(keys)
+            .join(
+                Lead,
+                and_(
+                    first_touch_content == keys.c.content_tag,
+                    _normalized_first_touch_source() == keys.c.platform,
+                ),
+            )
+            .outerjoin(Visit, Visit.lead_id == Lead.id)
+            .where(w.within(Lead.created_at), _measured_lead())
+            .group_by(keys.c.piece_id, keys.c.platform)
         )
-        # The one honest number on the card: a lead that carried this piece's
-        # own tag. Zero for anything published before the tagging existed,
-        # which is most of them today, and that zero is the truth rather than
-        # a gap. Per piece by construction — the tag names the piece, not the
-        # post — so it too is stamped on every row and shown once.
-        tagged = sum(
-            1
-            for meta in all_metas
-            if ((meta or {}).get("attribution") or {}).get("utm_content")
-            == f"piece-{piece_id}"
-        )
-        by_piece[piece_id] = {
-            "association": {
-                "window_hours": 48,
-                "sessions": sessions,
-                "leads": leads_after,
-            },
-            "leads_tagged": tagged,
-        }
+    ).all()
+    for piece_id, platform, leads_count, appointments_set, appointments_held in exact_leads:
+        counters = attribution_by_key[(piece_id, platform)]
+        counters["leads"] = leads_count
+        counters["appointments_set"] = appointments_set
+        counters["appointments_held"] = appointments_held
+
+    newest = await video_metrics.latest_metrics(db, [row[0] for row in rows])
 
     out: list[dict] = []
     for publication_id, piece_id, platform, published_at, url, hook in rows:
+        platform_name = platform.value if hasattr(platform, "value") else str(platform)
+        snapshot = newest.get(publication_id)
         out.append(
             {
                 "piece_id": piece_id,
@@ -757,10 +1051,23 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
                 # The video's name in the console. A row identified only by a
                 # piece id is a number nobody recognises.
                 "hook": hook,
-                "platform": platform.value if hasattr(platform, "value") else str(platform),
+                "platform": platform_name,
                 "published_at": published_at.isoformat(),
                 "external_url": url,
-                **by_piece[piece_id],
+                "association": association_by_piece[piece_id],
+                "leads_tagged": leads_tagged_by_piece[piece_id],
+                "attribution": attribution_by_key[(piece_id, platform_name)],
+                "latest_metrics": (
+                    {
+                        "views": snapshot.views,
+                        "likes": snapshot.likes,
+                        "comments": snapshot.comments,
+                        "captured_on": snapshot.captured_on.isoformat(),
+                        "source": snapshot.source,
+                    }
+                    if snapshot is not None
+                    else None
+                ),
                 "views": (
                     {
                         "count": snapshot.views,
@@ -770,7 +1077,7 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
                         # reading must not sit in a column looking alike.
                         "source": snapshot.source,
                     }
-                    if (snapshot := newest.get(publication_id)) is not None
+                    if snapshot is not None
                     else None
                 ),
             }
@@ -792,7 +1099,7 @@ _NOT_A_PERSON = ("vapi", "system")
 
 
 async def by_agent(db: AsyncSession, w: Window) -> list[dict]:
-    scope = w.within(Lead.created_at)
+    scope = and_(w.within(Lead.created_at), _measured_lead())
 
     logged = dict(
         (
@@ -850,12 +1157,22 @@ async def by_agent(db: AsyncSession, w: Window) -> list[dict]:
 # ── The funnel, which is every section above read as one line ────────────
 
 
-async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
-    """Each step counts LEADS that reached it, not events.
+async def funnel(db: AsyncSession, w: Window) -> list[dict]:
+    """One measured website cohort, narrowed at every successive step.
 
-    A lead contacted twice is one lead contacted. Counting events would make a
-    stage exceed the one above it, which is the shape that makes a funnel chart
-    obviously wrong and a funnel table quietly wrong.
+    The first four steps count landing sessions. ``leads`` starts only with the
+    distinct leads whose immutable acquisition-session key matches a measured
+    form submission; imported, telephone, returning and legacy unmarked leads
+    remain in their own cards. Every later CTE starts from the previous CTE and
+    requires its event to happen after the website conversion. That is what
+    makes the percentages honest shares of the step immediately above rather
+    than unrelated totals.
+
+    All nine counts come from one SELECT.  At PostgreSQL's READ COMMITTED
+    isolation level each statement gets its own snapshot, so reusing the
+    an earlier ``traffic()`` result and issuing one statement per later stage can
+    briefly put a newly committed lead underneath an older, smaller session
+    count. The funnel therefore reads its own atomic view.
 
     **`called_back` is deliberately not a step**, and finding that out needed
     real data: a seeded month showed four appointments sitting under zero
@@ -865,35 +1182,140 @@ async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
     phoned lives in the calls card, as a fact about the office rather than a
     rung on a ladder.
     """
-    scope = w.within(Lead.created_at)
-
-    async def _leads_with(join_table, extra=None) -> int:
-        stmt = (
-            select(func.count(distinct(Lead.id)))
-            .select_from(Lead)
-            .join(join_table, join_table.lead_id == Lead.id)
-            .where(scope)
+    session_scope = and_(
+        w.within(LandingSession.first_seen_at),
+        _measured_session(),
+    )
+    engaged = or_(
+        LandingSession.max_scroll_pct >= 50,
+        func.jsonb_array_length(LandingSession.sections_viewed) >= 2,
+        LandingSession.cta_clicks > 0,
+        LandingSession.tel_clicks > 0,
+        LandingSession.form_started_at.is_not(None),
+        LandingSession.form_submitted_at.is_not(None),
+    )
+    tapped = or_(
+        LandingSession.tel_clicks > 0,
+        LandingSession.form_started_at.is_not(None),
+        LandingSession.form_submitted_at.is_not(None),
+    )
+    reached_out = or_(LandingSession.cta_clicks > 0, tapped)
+    session_counts = (
+        select(
+            func.count().label("sessions"),
+            func.count(case((engaged, 1))).label("engaged"),
+            func.count(case((reached_out, 1))).label("reached_out"),
+            func.count(case((tapped, 1))).label("tapped"),
         )
-        return int((await db.execute(stmt if extra is None else stmt.where(extra))).scalar() or 0)
+        .select_from(LandingSession)
+        .where(session_scope)
+        .cte("measured_funnel_sessions")
+    )
 
-    total_leads = await _scalar(db, select(func.count()).where(scope).select_from(Lead))
-    contacted = await _scalar(
-        db,
-        select(func.count(distinct(Lead.id)))
-        .select_from(Lead)
-        .join(Conversation, Conversation.lead_id == Lead.id)
+    cohort = (
+        select(
+            LandingSession.lead_id.label("lead_id"),
+            func.min(LandingSession.form_submitted_at).label("converted_at"),
+        )
+        .select_from(LandingSession)
+        .join(Lead, Lead.id == LandingSession.lead_id)
+        .where(
+            w.within(LandingSession.first_seen_at),
+            _measured_session(),
+            LandingSession.form_submitted_at.is_not(None),
+            func.json_extract_path_text(Lead.meta, "acquisition_session_key")
+            == LandingSession.session_key,
+            _measured_lead(),
+        )
+        .group_by(LandingSession.lead_id)
+        .cte("measured_funnel_leads")
+    )
+
+    contacted_cohort = (
+        select(cohort.c.lead_id, cohort.c.converted_at)
+        .select_from(cohort)
+        .join(Conversation, Conversation.lead_id == cohort.c.lead_id)
         .join(Message, Message.conversation_id == Conversation.id)
-        .where(scope, _real_outbound()),
+        .where(
+            _real_outbound(),
+            Message.created_at >= cohort.c.converted_at,
+        )
+        .group_by(cohort.c.lead_id, cohort.c.converted_at)
+        .cte("contacted_funnel_leads")
     )
-    appointment_set = await _leads_with(Visit)
-    appointment_held = await _leads_with(Visit, Visit.status == VisitStatus.COMPLETED)
-    won = await _scalar(
-        db, select(func.count()).where(scope, Lead.status == LeadStatus.WON).select_from(Lead)
+    appointment_cohort = (
+        select(contacted_cohort.c.lead_id, contacted_cohort.c.converted_at)
+        .select_from(contacted_cohort)
+        .join(
+            Visit,
+            and_(
+                Visit.lead_id == contacted_cohort.c.lead_id,
+                Visit.created_at >= contacted_cohort.c.converted_at,
+            ),
+        )
+        .group_by(contacted_cohort.c.lead_id, contacted_cohort.c.converted_at)
+        .cte("appointment_funnel_leads")
     )
+    held_cohort = (
+        select(appointment_cohort.c.lead_id, appointment_cohort.c.converted_at)
+        .select_from(appointment_cohort)
+        .join(
+            Visit,
+            and_(
+                Visit.lead_id == appointment_cohort.c.lead_id,
+                Visit.created_at >= appointment_cohort.c.converted_at,
+                Visit.status == VisitStatus.COMPLETED,
+            ),
+        )
+        .group_by(appointment_cohort.c.lead_id, appointment_cohort.c.converted_at)
+        .cte("held_funnel_leads")
+    )
+    won_cohort = (
+        select(held_cohort.c.lead_id)
+        .select_from(held_cohort)
+        .join(Lead, Lead.id == held_cohort.c.lead_id)
+        .where(
+            Lead.status == LeadStatus.WON,
+            Lead.won_at >= held_cohort.c.converted_at,
+        )
+        .group_by(held_cohort.c.lead_id)
+        .cte("won_funnel_leads")
+    )
+
+    counts = (
+        await db.execute(
+            select(
+                session_counts.c.sessions,
+                session_counts.c.engaged,
+                session_counts.c.reached_out,
+                session_counts.c.tapped,
+                select(func.count())
+                .select_from(cohort)
+                .scalar_subquery()
+                .label("leads"),
+                select(func.count())
+                .select_from(contacted_cohort)
+                .scalar_subquery()
+                .label("contacted"),
+                select(func.count())
+                .select_from(appointment_cohort)
+                .scalar_subquery()
+                .label("appointment_set"),
+                select(func.count())
+                .select_from(held_cohort)
+                .scalar_subquery()
+                .label("appointment_held"),
+                select(func.count())
+                .select_from(won_cohort)
+                .scalar_subquery()
+                .label("won"),
+            ).select_from(session_counts)
+        )
+    ).one()
 
     steps = [
-        ("sessions", traffic_now["sessions"]),
-        ("engaged", traffic_now["engaged"]),
+        ("sessions", counts.sessions),
+        ("engaged", counts.engaged),
         # Dos peldaños donde había uno, y contados en PERSONAS.
         #
         # Era `SUM(cta_clicks) + SUM(tel_clicks) + COUNT(form_starts)`: una suma
@@ -914,13 +1336,13 @@ async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
         # tres grupos salieron disjuntos en la medición (5 del menú,
         # 3 del teléfono, 6 del formulario), que es justo la forma que habría
         # roto un embudo de peldaños independientes.
-        ("reached_out", traffic_now["people_reached_out"]),
-        ("tapped", traffic_now["people_tapped"]),
-        ("leads", total_leads),
-        ("contacted", contacted),
-        ("appointment_set", appointment_set),
-        ("appointment_held", appointment_held),
-        ("won", won),
+        ("reached_out", counts.reached_out),
+        ("tapped", counts.tapped),
+        ("leads", counts.leads),
+        ("contacted", counts.contacted),
+        ("appointment_set", counts.appointment_set),
+        ("appointment_held", counts.appointment_held),
+        ("won", counts.won),
     ]
 
     out: list[dict] = []

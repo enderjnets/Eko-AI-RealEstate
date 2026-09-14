@@ -13,13 +13,13 @@ const nextConfig = {
     // profile shows something readable, and the tagging happens here, where it
     // is versioned and testable rather than typed into someone's phone.
     //
-    // 302 and not 301 on purpose: a permanent redirect is cached hard by
-    // browsers, and the day the campaign changes we would be fighting caches
-    // on devices we cannot reach.
+    // Next emits a temporary 307 here. A permanent redirect would be cached
+    // hard by browsers, and the day the campaign changes we would be fighting
+    // caches on devices we cannot reach.
     const bio = (network) => ({
       source: `/${network.short}`,
       destination:
-        `/?utm_source=${network.source}&utm_medium=bio&utm_campaign=profile`,
+        `/start?utm_source=${network.source}&utm_medium=bio&utm_campaign=profile`,
       permanent: false,
     });
 
@@ -32,12 +32,10 @@ const nextConfig = {
     // indexable URLs carrying the same guide.
     //
     // The destination is relative, and that is safe HERE for a reason worth
-    // naming rather than assuming: `/fall` is a public path, so no middleware
-    // rule rewrites it and the query survives. `bio()` above points at `/`,
-    // which on the panel host IS rewritten — to `/leads`, dropping the query
-    // — so a bio link pasted with the panel hostname loses its attribution.
-    // If a destination ever stops being a public path, it has to become
-    // absolute to the brand domain.
+    // naming rather than assuming: `/fall` and the bio destination `/start`
+    // are public paths, so no middleware rule rewrites them and their queries
+    // survive. If a destination ever stops being a public path, it has to
+    // become absolute to the brand domain.
     const fall = (band) => ({
       source: `/fall/${band}`,
       destination:

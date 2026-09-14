@@ -23,7 +23,7 @@ Desde la v0.75.0, el enlace del pie de cada vídeo sale etiquetado y **distinto 
 cada red**. No hay que hacer nada:
 
 ```
-https://www.denverhomestory.com?utm_source=tiktok&utm_medium=social&utm_campaign=video&utm_content=piece-10
+https://www.denverhomestory.com/start?utm_source=tiktok&utm_medium=social&utm_campaign=video&utm_content=piece-10
 ```
 
 `utm_source` dice la red, `utm_content` dice **qué vídeo**. Eso es lo que permite
@@ -48,22 +48,50 @@ versionada y probada en vez de escrita en el móvil de alguien:
 
 También valen escritas enteras: `/youtube`, `/tiktok`, `/instagram`.
 
-Cada una redirige (302, no 301: un permanente se cachea a fuego en el navegador
-y el día que cambie la campaña estaríamos peleando con cachés de aparatos que no
-podemos tocar) a la landing con su `utm_source`, `utm_medium=bio` y
+Cada una redirige temporalmente (307: un permanente se cachea a fuego en el
+navegador y el día que cambie la campaña estaríamos peleando con cachés de
+aparatos que no podemos tocar) a `/start` con su `utm_source`, `utm_medium=bio` y
 `utm_campaign=profile`.
+
+`/start` es una pantalla corta, bilingüe y pensada para el navegador interno de
+las redes. Ofrece tres decisiones: calcular qué puede comprar, vender o conocer
+el valor de una casa, o hablar con un asesor. Al seguir cualquiera de ellas se
+conservan las etiquetas de la visita; el panel puede enlazar la red con la
+acción, el lead y la cita que resulten.
 
 ## Cómo comprobar que funciona
 
-Abre cada uno de los tres desde el teléfono y luego, en el panel, mira
-`/analytics`. Deben aparecer tres visitas con `source` distinto. Si aparecen como
-`direct`, el enlace se pegó sin la query — algunas apps la recortan al guardarla,
-y hay que volver a pegarlo comprobando que se guardó entero.
+Primero comprueba el salto sin cargar la página ni crear una visita. Por ejemplo:
+
+```
+curl -I https://www.denverhomestory.com/ig
+```
+
+La cabecera `location` debe empezar por
+`/start?utm_source=instagram&utm_medium=bio&utm_campaign=profile`. Repite con
+`/tt` y `/yt`, cambiando la fuente esperada a `tiktok` y `youtube`.
+
+Para probar botones y formulario sin ensuciar las cifras medidas, abre **una
+ventana privada nueva** en
+`https://www.denverhomestory.com/start?utm_source=eko_qa&utm_medium=test`. La
+ventana nueva importa porque el origen de una sesión se fija en su primera
+visita. Esas sesiones aparecen en el total de pruebas excluidas, pero no entran
+en visitas, engagement, acciones ni conversión. Si completas el formulario, el
+lead de prueba permanece en el CRM para que se pueda auditar el flujo completo,
+pero tampoco cuenta como lead, respuesta, llamada, cita o cierre en Analytics.
 
 ## Lo que esto NO resuelve
 
-**La atribución por vídeo sigue sin ser certeza.** El enlace del pie va etiquetado,
-pero en Shorts nadie puede pulsarlo: quien llega desde ahí teclea el dominio y
-aparece como `direct`. Lo que se puede decir con honradez es *asociación
-temporal* — visitas y leads en las 48 h siguientes a publicar — y la página lo
-etiqueta así, nunca como «atribución».
+**La atribución exacta exige que sobreviva el enlace etiquetado.** El enlace de
+cada contenido lleva red y `piece-<id>`, pero en Shorts nadie puede pulsarlo:
+quien llega desde ahí teclea el dominio y aparece como `direct`. El panel separa
+dos lecturas: atribución exacta cuando coinciden la etiqueta y la red, y
+*asociación temporal* para visitas y leads en las 48 h siguientes a publicar.
+La segunda nunca se presenta como certeza.
+
+**Tocar el teléfono demuestra intención, pero no identifica la llamada que
+sigue.** Un enlace `tel:` no puede llevar el identificador de sesión dentro de
+la llamada. Hasta usar números de call tracking por origen, el funnel web se
+detiene en ese toque y la llamada aparece por separado en la tarjeta de
+llamadas; no se atribuye una cita a una pieza por proximidad ni se presenta esa
+proximidad como certeza.
