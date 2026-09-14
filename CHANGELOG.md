@@ -31,6 +31,16 @@ All notable changes to **Eko AI Realtors**.
   automated submissions remain in the CRM and audit trail, but their replies,
   calls, appointments and deals stay out of Analytics. A later QA submission is
   recorded as history and cannot reclassify an existing real or offline lead.
+- **The dashboard funnel is one measured website cohort.** Its lead step starts
+  with leads linked to measured form submissions, and every later step narrows
+  that same set. Offline leads and outcomes that skipped an earlier recorded
+  step remain visible in their own cards without producing percentages above
+  100% in the website funnel.
+- **A successful form and its first beacon now converge in either order.** If
+  the form arrives first, it creates and claims the measured session; the later
+  beacon fills its path, language and screen width without replacing the
+  form's first-touch attribution. Global Privacy Control still creates no
+  analytics session.
 - **Published links preserve their destination.** The content publisher adds
   platform, campaign and piece tags to the existing Denver Home Story URL. A
   bare site root becomes `/start`; article, calculator, query and fragment

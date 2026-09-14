@@ -88,3 +88,10 @@ quien llega desde ahí teclea el dominio y aparece como `direct`. El panel separ
 dos lecturas: atribución exacta cuando coinciden la etiqueta y la red, y
 *asociación temporal* para visitas y leads en las 48 h siguientes a publicar.
 La segunda nunca se presenta como certeza.
+
+**Tocar el teléfono demuestra intención, pero no identifica la llamada que
+sigue.** Un enlace `tel:` no puede llevar el identificador de sesión dentro de
+la llamada. Hasta usar números de call tracking por origen, el funnel web se
+detiene en ese toque y la llamada aparece por separado en la tarjeta de
+llamadas; no se atribuye una cita a una pieza por proximidad ni se presenta esa
+proximidad como certeza.

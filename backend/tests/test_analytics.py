@@ -238,24 +238,110 @@ async def test_a_real_reply_is_measured_and_named() -> None:
 @pytest.mark.asyncio
 async def test_the_funnel_never_widens_as_it_goes_down() -> None:
     """A stage bigger than the one above it is the shape that makes a funnel
-    obviously wrong in a chart and quietly wrong in a table."""
-    body = await _get()
-    counts = [step["count"] for step in body["funnel"]]
-    stages = [step["stage"] for step in body["funnel"]]
-    assert stages[-1] == "won"
-    assert stages[:5] == ["sessions", "engaged", "reached_out", "tapped", "leads"]
-    # `tapped` sale de la misma fila que `reached_out` y su condicion es parte
-    # de la de aquel, asi que esta CONTENIDO en el: este peldano no puede
-    # ensancharse nunca, con los datos que sea. Iguales cuando nadie se limito a navegar.
-    assert counts[stages.index("tapped")] <= counts[stages.index("reached_out")]
-    # Not a step on purpose: an appointment can be booked by the voice agent
-    # without anybody logging a call, so this one sat wider than the step above
-    # it. A seeded month showed it immediately; an empty database never would.
-    assert "called_back" not in stages
-    # Leads can exceed sessions — a phone call is a lead with no visit — so the
-    # monotonic claim is only made from `leads` down, where it must hold.
-    below = counts[stages.index("leads") :]
-    assert below == sorted(below, reverse=True), below
+    obviously wrong in a chart and quietly wrong in a table.
+
+    The lead card includes every channel. The funnel is one website cohort, so
+    an offline lead — even one already answered, booked and won — must never be
+    spliced underneath a social visitor.
+    """
+    from app.models import Visit, VisitStatus
+
+    await _fresh()
+    now = datetime.now(UTC)
+    async with get_bypass_session_factory()() as db:
+        web_lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0004",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.WON,
+            created_at=now,
+            won_at=now + timedelta(hours=2),
+        )
+        offline_lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0005",
+            intent=LeadIntent.VALUATION,
+            status=LeadStatus.WON,
+            created_at=now,
+            won_at=now,
+        )
+        db.add_all([web_lead, offline_lead])
+        await db.flush()
+        db.add(
+            LandingSession(
+                org_id=ORG,
+                session_key="funnel-cohort-" + "a" * 18,
+                first_seen_at=now,
+                last_seen_at=now,
+                source="instagram",
+                device="phone",
+                form_submitted_at=now,
+                lead_id=web_lead.id,
+                # The submit itself is stronger evidence than a missing focus
+                # beacon and must keep every upstream funnel stage contained.
+                event_count=2,
+            )
+        )
+        conversation = Conversation(
+            org_id=ORG,
+            lead_id=offline_lead.id,
+            channel="voice",
+            status=ConversationStatus.ACTIVE,
+            started_at=now,
+        )
+        db.add(conversation)
+        await db.flush()
+        db.add_all(
+            [
+                Message(
+                    org_id=ORG,
+                    conversation_id=conversation.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.HUMAN,
+                    content="Offline follow-up",
+                    internal=False,
+                    created_at=now,
+                ),
+                Visit(
+                    org_id=ORG,
+                    lead_id=offline_lead.id,
+                    external_booking_id="offline-funnel-visit",
+                    status=VisitStatus.COMPLETED,
+                    scheduled_at=now + timedelta(days=1),
+                ),
+                # Even a linked lead's independent later facts cannot skip a
+                # rung. With no recorded reply, this appointment and win stay
+                # in their cards but not in the cumulative funnel.
+                Visit(
+                    org_id=ORG,
+                    lead_id=web_lead.id,
+                    external_booking_id="uncontacted-web-funnel-visit",
+                    status=VisitStatus.COMPLETED,
+                    scheduled_at=now + timedelta(days=1),
+                ),
+            ]
+        )
+        await db.commit()
+
+    try:
+        body = await _get()
+        assert body["leads"]["total"] == 2, "the lead card still covers every channel"
+        assert body["traffic"]["engaged"] == 1
+        assert body["traffic"]["people_reached_out"] == 1
+        assert body["traffic"]["people_tapped"] == 1
+        assert body["traffic"]["form_starts"] == 1
+        assert body["traffic"]["form_submits"] == 1
+        by_stage = {step["stage"]: step["count"] for step in body["funnel"]}
+        assert by_stage["leads"] == 1, "only the lead linked to this website cohort"
+        assert by_stage["contacted"] == 0
+        assert by_stage["appointment_set"] == 0
+        assert by_stage["appointment_held"] == 0
+        assert by_stage["won"] == 0
+        counts = [step["count"] for step in body["funnel"]]
+        assert counts == sorted(counts, reverse=True), counts
+        assert "called_back" not in by_stage
+    finally:
+        await _cleanup()
 
 
 @pytest.mark.asyncio
@@ -1179,7 +1265,10 @@ async def test_excluded_leads_stay_in_crm_but_never_enter_any_analytics_aggregat
         await db.flush()
 
         def conversation(for_lead: Lead, *, label: str) -> tuple[Conversation, Message]:
-            started_at = start + timedelta(hours=3)
+            # The web thread starts when the form is submitted. Keeping this
+            # after the linked session is what makes its reply a downstream
+            # funnel step rather than unrelated earlier history.
+            started_at = start + timedelta(hours=4)
             conv = Conversation(
                 org_id=ORG,
                 lead_id=for_lead.id,
@@ -1692,7 +1781,9 @@ async def test_exact_attribution_counts_people_by_piece_and_platform() -> None:
                 ),
                 tagged_session(
                     "a-form", piece_id=piece_a.id, source="instagram", hour=6,
-                    form_started=True, form_submitted=True,
+                    # A successful submit proves the form was started even if
+                    # the earlier focus beacon was dropped.
+                    form_submitted=True,
                 ),
                 tagged_session(
                     "a-scroll", piece_id=piece_a.id, source="instagram", hour=7,

@@ -12,12 +12,11 @@ arrived at 23:30 in Denver lands on tomorrow's report, and the two busiest
 hours of the evening are permanently attributed to the wrong day — a six-hour
 error that is invisible because every individual number looks plausible.
 
-*The range applies to the lead, not to the thing that happened.* A lead created
-in August and called back today counts as "called back" in August's report,
-because the question the funnel answers is "of the leads that arrived then, how
-many did we reach" — not "how many calls did we make this week". Counting it the
-other way makes the conversion of any closed month change every time someone
-touches an old lead.
+*The range follows the acquisition anchor, not every downstream event.* Lead
+cards anchor on when the lead was created. The website funnel anchors on when
+its measured session began, then asks how far that same cohort eventually got.
+That keeps a closed period interpretable instead of mixing in people acquired
+elsewhere merely because somebody contacted or booked them during the range.
 
 *Con una excepción, y está señalada donde vive:* `calls()` acota por el instante
 de la llamada, no por el del lead. Es la única tarjeta que no pregunta por una
@@ -184,6 +183,7 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
                                 LandingSession.cta_clicks > 0,
                                 LandingSession.tel_clicks > 0,
                                 LandingSession.form_started_at.is_not(None),
+                                LandingSession.form_submitted_at.is_not(None),
                             ),
                             1,
                         )
@@ -192,7 +192,20 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
                 func.coalesce(func.avg(LandingSession.max_scroll_pct), 0),
                 func.coalesce(func.sum(LandingSession.cta_clicks), 0),
                 func.coalesce(func.sum(LandingSession.tel_clicks), 0),
-                func.count(LandingSession.form_started_at),
+                # A successful submit necessarily started the form. Count it
+                # even when the earlier focus beacon was lost or raced the
+                # capture request.
+                func.count(
+                    case(
+                        (
+                            or_(
+                                LandingSession.form_started_at.is_not(None),
+                                LandingSession.form_submitted_at.is_not(None),
+                            ),
+                            1,
+                        )
+                    )
+                ),
                 func.count(LandingSession.form_submitted_at),
                 # ── Y los mismos hechos contados en PERSONAS ────────────────
                 # Los cuatro de arriba son sumas de contadores, y sirven para
@@ -217,6 +230,7 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
                             or_(
                                 LandingSession.tel_clicks > 0,
                                 LandingSession.form_started_at.is_not(None),
+                                LandingSession.form_submitted_at.is_not(None),
                             ),
                             1,
                         )
@@ -230,6 +244,7 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
                                 LandingSession.cta_clicks > 0,
                                 LandingSession.tel_clicks > 0,
                                 LandingSession.form_started_at.is_not(None),
+                                LandingSession.form_submitted_at.is_not(None),
                             ),
                             1,
                         )
@@ -903,6 +918,7 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
         LandingSession.cta_clicks > 0,
         LandingSession.tel_clicks > 0,
         LandingSession.form_started_at.is_not(None),
+        LandingSession.form_submitted_at.is_not(None),
     )
     exact_sessions = (
         await db.execute(
@@ -919,6 +935,7 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
                                 or_(
                                     LandingSession.tel_clicks > 0,
                                     LandingSession.form_started_at.is_not(None),
+                                    LandingSession.form_submitted_at.is_not(None),
                                 ),
                                 LandingSession.id,
                             )
@@ -926,7 +943,17 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
                     )
                 ),
                 func.count(
-                    distinct(case((LandingSession.form_started_at.is_not(None), LandingSession.id)))
+                    distinct(
+                        case(
+                            (
+                                or_(
+                                    LandingSession.form_started_at.is_not(None),
+                                    LandingSession.form_submitted_at.is_not(None),
+                                ),
+                                LandingSession.id,
+                            )
+                        )
+                    )
                 ),
                 func.count(
                     distinct(
@@ -1128,11 +1155,14 @@ async def by_agent(db: AsyncSession, w: Window) -> list[dict]:
 
 
 async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
-    """Each step counts LEADS that reached it, not events.
+    """One measured website cohort, narrowed at every successive step.
 
-    A lead contacted twice is one lead contacted. Counting events would make a
-    stage exceed the one above it, which is the shape that makes a funnel chart
-    obviously wrong and a funnel table quietly wrong.
+    The first four steps count landing sessions. ``leads`` starts only with the
+    distinct leads linked to a measured form submission from one of those
+    sessions; imported, telephone and other offline leads remain in their own
+    cards. Every later CTE starts from the previous CTE and requires its event
+    to happen after the website conversion. That is what makes the percentages
+    honest shares of the step immediately above rather than unrelated totals.
 
     **`called_back` is deliberately not a step**, and finding that out needed
     real data: a seeded month showed four appointments sitting under zero
@@ -1142,31 +1172,82 @@ async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
     phoned lives in the calls card, as a fact about the office rather than a
     rung on a ladder.
     """
-    scope = and_(w.within(Lead.created_at), _measured_lead())
-
-    async def _leads_with(join_table, extra=None) -> int:
-        stmt = (
-            select(func.count(distinct(Lead.id)))
-            .select_from(Lead)
-            .join(join_table, join_table.lead_id == Lead.id)
-            .where(scope)
+    cohort = (
+        select(
+            LandingSession.lead_id.label("lead_id"),
+            func.min(LandingSession.form_submitted_at).label("converted_at"),
         )
-        return int((await db.execute(stmt if extra is None else stmt.where(extra))).scalar() or 0)
+        .select_from(LandingSession)
+        .join(Lead, Lead.id == LandingSession.lead_id)
+        .where(
+            w.within(LandingSession.first_seen_at),
+            _measured_session(),
+            LandingSession.form_submitted_at.is_not(None),
+            _measured_lead(),
+        )
+        .group_by(LandingSession.lead_id)
+        .cte("measured_funnel_leads")
+    )
 
-    total_leads = await _scalar(db, select(func.count()).where(scope).select_from(Lead))
-    contacted = await _scalar(
-        db,
-        select(func.count(distinct(Lead.id)))
-        .select_from(Lead)
-        .join(Conversation, Conversation.lead_id == Lead.id)
+    contacted_cohort = (
+        select(cohort.c.lead_id, cohort.c.converted_at)
+        .select_from(cohort)
+        .join(Conversation, Conversation.lead_id == cohort.c.lead_id)
         .join(Message, Message.conversation_id == Conversation.id)
-        .where(scope, _real_outbound()),
+        .where(
+            _real_outbound(),
+            Message.created_at >= cohort.c.converted_at,
+        )
+        .group_by(cohort.c.lead_id, cohort.c.converted_at)
+        .cte("contacted_funnel_leads")
     )
-    appointment_set = await _leads_with(Visit)
-    appointment_held = await _leads_with(Visit, Visit.status == VisitStatus.COMPLETED)
-    won = await _scalar(
-        db, select(func.count()).where(scope, Lead.status == LeadStatus.WON).select_from(Lead)
+    appointment_cohort = (
+        select(contacted_cohort.c.lead_id, contacted_cohort.c.converted_at)
+        .select_from(contacted_cohort)
+        .join(
+            Visit,
+            and_(
+                Visit.lead_id == contacted_cohort.c.lead_id,
+                Visit.created_at >= contacted_cohort.c.converted_at,
+            ),
+        )
+        .group_by(contacted_cohort.c.lead_id, contacted_cohort.c.converted_at)
+        .cte("appointment_funnel_leads")
     )
+    held_cohort = (
+        select(appointment_cohort.c.lead_id, appointment_cohort.c.converted_at)
+        .select_from(appointment_cohort)
+        .join(
+            Visit,
+            and_(
+                Visit.lead_id == appointment_cohort.c.lead_id,
+                Visit.created_at >= appointment_cohort.c.converted_at,
+                Visit.status == VisitStatus.COMPLETED,
+            ),
+        )
+        .group_by(appointment_cohort.c.lead_id, appointment_cohort.c.converted_at)
+        .cte("held_funnel_leads")
+    )
+    won_cohort = (
+        select(held_cohort.c.lead_id)
+        .select_from(held_cohort)
+        .join(Lead, Lead.id == held_cohort.c.lead_id)
+        .where(
+            Lead.status == LeadStatus.WON,
+            Lead.won_at >= held_cohort.c.converted_at,
+        )
+        .group_by(held_cohort.c.lead_id)
+        .cte("won_funnel_leads")
+    )
+
+    async def _cohort_size(relation) -> int:
+        return await _scalar(db, select(func.count()).select_from(relation))
+
+    total_leads = await _cohort_size(cohort)
+    contacted = await _cohort_size(contacted_cohort)
+    appointment_set = await _cohort_size(appointment_cohort)
+    appointment_held = await _cohort_size(held_cohort)
+    won = await _cohort_size(won_cohort)
 
     steps = [
         ("sessions", traffic_now["sessions"]),

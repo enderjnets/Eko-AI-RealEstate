@@ -714,10 +714,12 @@ número a número.
     by_country/by_region/by_city [top 10 {name, sessions, leads}], by_lang, sections
     {about, how, markets, consult}}` — `engaged` = `max_scroll_pct ≥ 50` **o** ≥ 2
     secciones.
-  - `funnel [{stage, count, pct_of_previous}]` en este orden: `sessions → engaged → cta
-    (sesiones con cta_click|tel_click|form_start) → leads (creados en rango, cualquier
-    canal) → contacted (≥1 saliente `internal=False`) → called_back (≥1 `call_logs`) →
-    appointment_set (≥1 visita) → appointment_held (≥1 visita `completed`) → won`.
+  - `funnel [{stage, count, pct_of_previous}]` en este orden: `sessions → engaged →
+    reached_out → tapped → leads → contacted → appointment_set → appointment_held →
+    won`. Es una sola cohorte web: `leads` incluye únicamente los leads enlazados a una
+    sesión medida con formulario enviado, y cada peldaño posterior reduce el conjunto
+    anterior con hechos ocurridos después del envío. Los leads de otros canales siguen
+    en sus tarjetas, sin mezclarse bajo las visitas del sitio.
   - `leads {total, by_channel (canal de la primera conversación), by_intent, by_status,
     by_source (utm_source o referrer de `meta.attribution`, `direct` si vacío,
     `no_web` si no hay atribución), new_by_day}`
