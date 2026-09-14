@@ -2554,3 +2554,104 @@ async def test_an_empty_batch_never_becomes_a_query() -> None:
     building `query () {}` — which Buffer rejects, and which a third caller
     would otherwise discover in production."""
     assert await buffer_publisher._post_states([], "nothing at all") == []
+
+
+@pytest.mark.asyncio
+async def test_scheduled_backlog_does_not_starve_approved_piece(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    recorder = _Recorder()
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    monkeypatch.setattr(get_settings(), "CONTENT_PUBLISH_MAX_PER_DAY", 1)
+    old = await _approved_piece()
+    fresh = await _approved_piece()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                await publish_piece(db, old)
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE content_publications SET created_at=:t WHERE piece_id=:p"),
+                {"t": datetime.now(UTC) - timedelta(days=2), "p": old},
+            )
+            await db.execute(
+                text("UPDATE content_pieces SET approved_at=:t WHERE id=:p"),
+                {"t": datetime.now(UTC) - timedelta(days=3), "p": old},
+            )
+            await db.commit()
+        recorder.sent.clear()
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                assert await publish_approved(db) == 1
+        assert len(recorder.sent) == 3
+        assert all(f"/{fresh}/media" in str(post) for post in recorder.sent)
+        assert await _status(old) == "publishing"
+        assert len(await _rows(old)) == 3
+        assert len(await _rows(fresh)) == 3
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("piece_status", "row_status", "expected_old"),
+    [
+        ("publishing", "pending", True),
+        ("publishing", None, True),
+        ("approved", "failed", True),
+        ("publishing", "failed", False),
+        ("publishing", "publishing", False),
+        ("publishing", "published", False),
+    ],
+)
+async def test_tick_selects_only_platforms_that_can_still_be_sent(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch,
+    piece_status: str, row_status: str | None, expected_old: bool,
+) -> None:
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    recorder = _Recorder()
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    monkeypatch.setattr(get_settings(), "CONTENT_PUBLISH_MAX_PER_DAY", 1)
+    old = await _approved_piece()
+    fresh = await _approved_piece()
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                await publish_piece(db, old)
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE content_publications SET created_at=:t WHERE piece_id=:p"),
+                {"t": datetime.now(UTC) - timedelta(days=2), "p": old},
+            )
+            await db.execute(
+                text("UPDATE content_pieces SET approved_at=:t, status=:s WHERE id=:p"),
+                {"t": datetime.now(UTC) - timedelta(days=3), "p": old, "s": piece_status},
+            )
+            if row_status is None:
+                await db.execute(text(
+                    "DELETE FROM content_publications WHERE piece_id=:p AND platform='tiktok'"
+                ), {"p": old})
+            else:
+                await db.execute(text(
+                    "UPDATE content_publications SET status=:s WHERE piece_id=:p "
+                    "AND platform='tiktok'"
+                ), {"p": old, "s": row_status})
+            await db.commit()
+        recorder.sent.clear()
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                assert await publish_approved(db) == 1
+        target = old if expected_old else fresh
+        assert len(recorder.sent) == (1 if expected_old else 3)
+        assert all(f"/{target}/media" in str(post) for post in recorder.sent)
+        if expected_old:
+            assert recorder.sent[0]["channelId"] == TT
+        if row_status == "publishing":
+            assert (await _rows(old))["tiktok"].status == "publishing"
+    finally:
+        await _cleanup()

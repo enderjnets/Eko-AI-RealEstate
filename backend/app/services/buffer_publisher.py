@@ -1283,6 +1283,30 @@ async def publish_approved(db: AsyncSession) -> int:
                         (ContentStatus.APPROVED, ContentStatus.PUBLISHING)
                     ),
                     ContentPiece.media_path.is_not(None),
+                    # Buffer-owned rows are reconciled above, not new work.
+                    # Filter before LIMIT or a scheduled backlog starves approvals.
+                    or_(
+                        *(
+                            or_(
+                                ~ContentPiece.publications.any(
+                                    ContentPublication.platform == platform
+                                ),
+                                ContentPiece.publications.any(
+                                    and_(
+                                        ContentPublication.platform == platform,
+                                        or_(
+                                            ContentPublication.status == PublicationStatus.PENDING,
+                                            and_(
+                                                ContentPiece.status == ContentStatus.APPROVED,
+                                                ContentPublication.status == PublicationStatus.FAILED,
+                                            ),
+                                        ),
+                                    )
+                                ),
+                            )
+                            for platform in configured_channels()
+                        )
+                    ),
                 )
                 # "In order" is the order the person approved in, not the
                 # order the machine happened to create the rows in. With one

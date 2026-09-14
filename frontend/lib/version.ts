@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.102.1";
+export const CURRENT_VERSION = "0.102.2";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.102.2",
+    date: "2026-09-14",
+    title: {
+      en: "Scheduled content no longer blocks approved pieces",
+      es: "El contenido programado ya no bloquea las piezas aprobadas",
+    },
+    changes: [{
+      en: "The publishing queue selects pieces with pending platform deliveries. Posts already held by Buffer keep their schedules and are not sent again.",
+      es: "La cola selecciona piezas con envíos pendientes por plataforma. Las publicaciones que Buffer ya tiene conservan su horario y no se vuelven a enviar.",
+    }],
+  },
   {
     version: "0.102.1",
     date: "2026-09-14",
