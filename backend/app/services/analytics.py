@@ -62,6 +62,7 @@ from app.models import (
     Message,
     MessageDirection,
     MessageSender,
+    MessageStatus,
     Visit,
     VisitStatus,
 )
@@ -443,14 +444,16 @@ async def leads(db: AsyncSession, w: Window) -> dict:
 def _real_outbound():
     """An outbound message that a person could actually receive.
 
-    `internal=True` is a note an advisor left on the thread. Counting it as a
-    reply is the defect this section exists to fix: the old metric averaged
-    every outbound row, so a lead nobody ever answered showed a two-minute
-    response time because somebody typed "called, no answer" into the notes.
+    `internal=True` is a note an advisor left on the thread. Pending and failed
+    rows are delivery attempts, not replies. Counting either shape made a lead
+    nobody ever reached look answered and understated the real response time.
     """
     return and_(
         Message.direction == MessageDirection.OUTBOUND,
         Message.internal.is_(False),
+        Message.delivery_status.in_(
+            (MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ)
+        ),
     )
 
 
@@ -1154,15 +1157,22 @@ async def by_agent(db: AsyncSession, w: Window) -> list[dict]:
 # ── The funnel, which is every section above read as one line ────────────
 
 
-async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
+async def funnel(db: AsyncSession, w: Window) -> list[dict]:
     """One measured website cohort, narrowed at every successive step.
 
     The first four steps count landing sessions. ``leads`` starts only with the
-    distinct leads linked to a measured form submission from one of those
-    sessions; imported, telephone and other offline leads remain in their own
-    cards. Every later CTE starts from the previous CTE and requires its event
-    to happen after the website conversion. That is what makes the percentages
-    honest shares of the step immediately above rather than unrelated totals.
+    distinct leads whose immutable acquisition-session key matches a measured
+    form submission; imported, telephone, returning and legacy unmarked leads
+    remain in their own cards. Every later CTE starts from the previous CTE and
+    requires its event to happen after the website conversion. That is what
+    makes the percentages honest shares of the step immediately above rather
+    than unrelated totals.
+
+    All nine counts come from one SELECT.  At PostgreSQL's READ COMMITTED
+    isolation level each statement gets its own snapshot, so reusing the
+    an earlier ``traffic()`` result and issuing one statement per later stage can
+    briefly put a newly committed lead underneath an older, smaller session
+    count. The funnel therefore reads its own atomic view.
 
     **`called_back` is deliberately not a step**, and finding that out needed
     real data: a seeded month showed four appointments sitting under zero
@@ -1172,6 +1182,36 @@ async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
     phoned lives in the calls card, as a fact about the office rather than a
     rung on a ladder.
     """
+    session_scope = and_(
+        w.within(LandingSession.first_seen_at),
+        _measured_session(),
+    )
+    engaged = or_(
+        LandingSession.max_scroll_pct >= 50,
+        func.jsonb_array_length(LandingSession.sections_viewed) >= 2,
+        LandingSession.cta_clicks > 0,
+        LandingSession.tel_clicks > 0,
+        LandingSession.form_started_at.is_not(None),
+        LandingSession.form_submitted_at.is_not(None),
+    )
+    tapped = or_(
+        LandingSession.tel_clicks > 0,
+        LandingSession.form_started_at.is_not(None),
+        LandingSession.form_submitted_at.is_not(None),
+    )
+    reached_out = or_(LandingSession.cta_clicks > 0, tapped)
+    session_counts = (
+        select(
+            func.count().label("sessions"),
+            func.count(case((engaged, 1))).label("engaged"),
+            func.count(case((reached_out, 1))).label("reached_out"),
+            func.count(case((tapped, 1))).label("tapped"),
+        )
+        .select_from(LandingSession)
+        .where(session_scope)
+        .cte("measured_funnel_sessions")
+    )
+
     cohort = (
         select(
             LandingSession.lead_id.label("lead_id"),
@@ -1183,6 +1223,8 @@ async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
             w.within(LandingSession.first_seen_at),
             _measured_session(),
             LandingSession.form_submitted_at.is_not(None),
+            func.json_extract_path_text(Lead.meta, "acquisition_session_key")
+            == LandingSession.session_key,
             _measured_lead(),
         )
         .group_by(LandingSession.lead_id)
@@ -1240,18 +1282,40 @@ async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
         .cte("won_funnel_leads")
     )
 
-    async def _cohort_size(relation) -> int:
-        return await _scalar(db, select(func.count()).select_from(relation))
-
-    total_leads = await _cohort_size(cohort)
-    contacted = await _cohort_size(contacted_cohort)
-    appointment_set = await _cohort_size(appointment_cohort)
-    appointment_held = await _cohort_size(held_cohort)
-    won = await _cohort_size(won_cohort)
+    counts = (
+        await db.execute(
+            select(
+                session_counts.c.sessions,
+                session_counts.c.engaged,
+                session_counts.c.reached_out,
+                session_counts.c.tapped,
+                select(func.count())
+                .select_from(cohort)
+                .scalar_subquery()
+                .label("leads"),
+                select(func.count())
+                .select_from(contacted_cohort)
+                .scalar_subquery()
+                .label("contacted"),
+                select(func.count())
+                .select_from(appointment_cohort)
+                .scalar_subquery()
+                .label("appointment_set"),
+                select(func.count())
+                .select_from(held_cohort)
+                .scalar_subquery()
+                .label("appointment_held"),
+                select(func.count())
+                .select_from(won_cohort)
+                .scalar_subquery()
+                .label("won"),
+            ).select_from(session_counts)
+        )
+    ).one()
 
     steps = [
-        ("sessions", traffic_now["sessions"]),
-        ("engaged", traffic_now["engaged"]),
+        ("sessions", counts.sessions),
+        ("engaged", counts.engaged),
         # Dos peldaños donde había uno, y contados en PERSONAS.
         #
         # Era `SUM(cta_clicks) + SUM(tel_clicks) + COUNT(form_starts)`: una suma
@@ -1272,13 +1336,13 @@ async def funnel(db: AsyncSession, w: Window, traffic_now: dict) -> list[dict]:
         # tres grupos salieron disjuntos en la medición (5 del menú,
         # 3 del teléfono, 6 del formulario), que es justo la forma que habría
         # roto un embudo de peldaños independientes.
-        ("reached_out", traffic_now["people_reached_out"]),
-        ("tapped", traffic_now["people_tapped"]),
-        ("leads", total_leads),
-        ("contacted", contacted),
-        ("appointment_set", appointment_set),
-        ("appointment_held", appointment_held),
-        ("won", won),
+        ("reached_out", counts.reached_out),
+        ("tapped", counts.tapped),
+        ("leads", counts.leads),
+        ("contacted", counts.contacted),
+        ("appointment_set", counts.appointment_set),
+        ("appointment_held", counts.appointment_held),
+        ("won", counts.won),
     ]
 
     out: list[dict] = []

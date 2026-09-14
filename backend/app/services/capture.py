@@ -1,9 +1,9 @@
 """Turn a public form submission into a lead.
 
 The one thing that makes this different from every other way a lead arrives:
-there is no session and no provider signature, so nothing about the request
-proves who is asking or which agency it belongs to. Two consequences run through
-this whole module.
+there is no provider signature, so nothing about the request proves who is
+asking. The browser may supply an opaque landing-session key for attribution,
+but it authenticates nothing. Two consequences run through this whole module.
 
 First, the tenant is resolved from the form key through `channel_routes`, the
 same table that attributes an inbound SMS to the agency whose number was texted.
@@ -122,6 +122,11 @@ class FormSubmission:
     # user agent); callers cannot smuggle it through the attribution whitelist.
     traffic_class: str = "unknown"
     traffic_class_reason: str | None = None
+    # The opaque per-tab key from the measured landing session. It is kept
+    # outside attribution because it describes the join, not the campaign.
+    # Only a lead born in this submission may persist it as its immutable
+    # acquisition-session marker.
+    landing_session_key: str | None = None
     ip: str | None = None
     user_agent: str | None = None
     # `CalculatorIn.model_dump()` when the form sat under /calculator: the
@@ -354,6 +359,16 @@ async def capture_lead(sub: FormSubmission, db: AsyncSession) -> dict[str, objec
         lead.email = email
 
     now = datetime.now(UTC)
+    if (
+        is_new
+        and re.fullmatch(r"[0-9a-f]{32}", sub.landing_session_key or "")
+    ):
+        meta = dict(lead.meta or {})
+        # Set once. In the concurrent first-contact race, the loser adopts the
+        # winner's lead and must not replace the session that actually created
+        # it with its own later request.
+        meta.setdefault("acquisition_session_key", sub.landing_session_key)
+        lead.meta = meta
     _record_attribution(
         lead,
         attribution,

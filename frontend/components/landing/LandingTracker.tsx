@@ -18,12 +18,10 @@ import { useEffect } from "react";
 import {
   Tracker,
   beaconSender,
-  persistAttribution,
   sectionWasSeen,
-  sessionKey,
   setTracker,
   trackedAnchorEvent,
-  trackingAllowed,
+  trackingContext,
 } from "@/lib/track";
 import { useI18n } from "@/lib/i18n";
 
@@ -71,27 +69,26 @@ export function LandingTracker({
     // because its value drives what it renders; this one does not.
     const params = new URLSearchParams(window.location.search);
 
-    const storage = (() => {
-      try {
-        return window.sessionStorage;
-      } catch {
-        // Blocked site data, or a privacy mode that throws on access rather
-        // than returning null. The tracker degrades to one session per load.
-        return null;
-      }
-    })();
-
-    const collected = persistAttribution(params, document.referrer, storage);
+    const context = trackingContext(
+      navigator,
+      params,
+      document.referrer,
+      () => window.sessionStorage,
+    );
+    if (!context.allowed || !context.session) {
+      setTracker(null);
+      return;
+    }
     const tracker = new Tracker({
       form: FORM_KEY,
-      session: sessionKey(storage),
+      session: context.session,
       path: window.location.pathname,
       lang: lang === "es" ? "es" : "en",
       screenW: window.innerWidth,
-      utm: { landing_variant: variant, ...collected },
+      utm: { landing_variant: variant, ...context.attribution },
       referrer: document.referrer || null,
       webdriver: navigator.webdriver === true ? true : undefined,
-      allowed: trackingAllowed(navigator),
+      allowed: context.allowed,
       send: beaconSender(),
     });
     setTracker(tracker);

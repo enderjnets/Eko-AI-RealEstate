@@ -7,11 +7,12 @@
  * works, the form still submits, and the only symptom is a dashboard of zeroes
  * that nobody can explain.
  *
- * Nothing here identifies a person. The session key is random, lives in
- * `sessionStorage`, and dies with the tab; the server stores no IP and reduces
- * the user agent to a family before writing it. That is what makes this
- * reportable without a consent banner — and why the Global Privacy Control
- * check below is honoured rather than argued with.
+ * Before somebody submits the form, nothing here identifies a person. The
+ * session key is random, lives in `sessionStorage`, and dies with the tab; the
+ * server stores no IP and reduces the user agent to a family before writing
+ * it. A successful form deliberately links that visit to the resulting CRM
+ * lead so the agency can measure conversion. Global Privacy Control skips the
+ * key, attribution and tracker entirely.
  */
 
 import { UTM_KEYS, collectAttribution, type ParamSource } from "./capture";
@@ -281,11 +282,32 @@ export function trackingAllowed(nav: unknown): boolean {
   return gpc !== true;
 }
 
-export function trackingSessionKey(
+export function trackingContext(
   nav: unknown,
-  storage: StorageLike | null | undefined,
-): string | undefined {
-  return trackingAllowed(nav) ? sessionKey(storage) : undefined;
+  params: ParamSource,
+  referrer: string | null | undefined,
+  storage: () => StorageLike | null | undefined,
+): {
+  allowed: boolean;
+  session?: string;
+  attribution: Record<string, string>;
+} {
+  // The storage supplier is lazy on purpose. Under GPC, even reading the
+  // browser's storage object is unnecessary work and a future caller cannot
+  // accidentally mint a key before checking the privacy signal.
+  if (!trackingAllowed(nav)) return { allowed: false, attribution: {} };
+
+  let available: StorageLike | null | undefined;
+  try {
+    available = storage();
+  } catch {
+    available = null;
+  }
+  return {
+    allowed: true,
+    session: sessionKey(available),
+    attribution: persistAttribution(params, referrer, available),
+  };
 }
 
 export interface TrackerOptions {

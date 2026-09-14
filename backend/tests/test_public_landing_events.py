@@ -26,6 +26,7 @@ from app.api.v1.public import (
 )
 from app.db.base import get_bypass_session_factory
 from app.main import app
+from app.models import Lead
 from app.models.channel_route import CHANNEL_WEB
 from app.services import tenant_resolver
 
@@ -553,12 +554,13 @@ class TestJoiningTheFunnel:
             utm={"utm_source": "youtube"},
         ) == 202
         async with get_bypass_session_factory()() as db:
-            lead_id = (
+            lead_row = (
                 await db.execute(
-                    text("SELECT id FROM leads WHERE email = :e"),
+                    text("SELECT id, meta FROM leads WHERE email = :e"),
                     {"e": "lead@beacon.test"},
                 )
-            ).scalar_one()
+            ).mappings().one()
+            lead_id = lead_row["id"]
 
         assert await _beacon(
             _batch(("form_submit", {}), utm={"utm_source": "tiktok"})
@@ -571,6 +573,34 @@ class TestJoiningTheFunnel:
         assert row["landing_path"] == "/"
         assert row["lang"] == "en"
         assert row["screen_w"] == 390
+        assert lead_row["meta"]["acquisition_session_key"] == SESSION
+
+    async def test_a_returning_lead_is_linked_but_not_marked_as_a_new_acquisition(
+        self, org: int
+    ) -> None:
+        async with get_bypass_session_factory()() as db:
+            existing = Lead(
+                org_id=org,
+                name="Known lead",
+                phone="lead@beacon.test",
+                email="lead@beacon.test",
+            )
+            db.add(existing)
+            await db.commit()
+            existing_id = existing.id
+
+        assert await self._submit(session_id=SESSION) == 202
+
+        row = await _session_row()
+        assert row["lead_id"] == existing_id
+        async with get_bypass_session_factory()() as db:
+            meta = (
+                await db.execute(
+                    text("SELECT meta FROM leads WHERE id = :lead_id"),
+                    {"lead_id": existing_id},
+                )
+            ).scalar_one()
+        assert "acquisition_session_key" not in (meta or {})
 
     async def test_global_privacy_control_does_not_create_a_landing_session(
         self,
@@ -578,16 +608,19 @@ class TestJoiningTheFunnel:
         assert await self._submit(
             session_id=SESSION,
             headers={"sec-gpc": "1"},
+            utm={"utm_source": "instagram", "utm_content": "piece-41"},
         ) == 202
         async with get_bypass_session_factory()() as db:
-            lead_id = (
+            lead_row = (
                 await db.execute(
-                    text("SELECT id FROM leads WHERE email = :e"),
+                    text("SELECT id, meta FROM leads WHERE email = :e"),
                     {"e": "lead@beacon.test"},
                 )
-            ).scalar_one_or_none()
+            ).mappings().one_or_none()
 
-        assert lead_id is not None
+        assert lead_row is not None
+        assert "acquisition_session_key" not in (lead_row["meta"] or {})
+        assert "attribution" not in (lead_row["meta"] or {})
         assert await _session_row() is None
 
     async def test_a_session_that_does_not_exist_is_not_an_error(self) -> None:

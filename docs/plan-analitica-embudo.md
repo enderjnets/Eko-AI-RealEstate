@@ -290,25 +290,33 @@ disponibilidad del formulario de captura, que es el eslabón que produce leads.
     str ≤ 200`, `lang: Literal["en","es"] | None`, `screen_w: int | None` (0-10000), `utm:
     dict[str,str] | None` (pasa por `clean_attribution` — misma lista blanca, **sin
     añadir claves**), `referrer: str | None ≤ 500`, `events: list[LandingEventIn]` (1..25).
-  - `@router.post("/landing", status_code=204)`: orden fijo — (1) `_ev_ip_limited` → 429;
-    (2) `raw = await request.body()`; `len(raw) > EVENTS_MAX_BODY` → 413; `json.loads` →
-    400; `LandingBatchIn.model_validate` → **400** (el cuerpo llega como `text/plain` desde
-    `sendBeacon`, por eso no se usa el parseo de Pydantic del cuerpo); (3) `_ev_global_limited`
-    → 429; (4) `if not get_settings().LANDING_EVENTS_ENABLED: return` (204, nada escrito);
-    (5) `org_id = await webhook_org_or_refuse(CHANNEL_WEB, body.form, fallback_when_unmapped=not
+  - `@router.post("/landing", status_code=204)`: orden fijo — (1) `Sec-GPC: 1` → 204
+    sin gastar presupuesto ni leer el cuerpo; (2) `_ev_ip_limited` → 429;
+    (3) `_ev_global_limited` → 429; (4) `raw = await request.body()`;
+    `len(raw) > EVENTS_MAX_BODY` → 413; `json.loads` → 400;
+    `LandingBatchIn.model_validate` → **400** (el cuerpo llega como `text/plain` desde
+    `sendBeacon`, por eso no se usa el parseo de Pydantic del cuerpo);
+    (5) `if not get_settings().LANDING_EVENTS_ENABLED: return` (204, nada escrito);
+    (6) `org_id = await webhook_org_or_refuse(CHANNEL_WEB, body.form, fallback_when_unmapped=not
     body.form)` — en `WebhookOrgUnresolved` → log + 204 (una baliza no obtiene un oráculo);
-    `set_org_id(org_id)`; (6) upsert de sesión: `INSERT … ON CONFLICT (org_id, session_key)
+    `set_org_id(org_id)`; (7) upsert de sesión: `INSERT … ON CONFLICT (org_id, session_key)
     DO NOTHING` + `SELECT`, `merge_session`, `add_all(LandingEvent(... at=now ...))`
-    (**hora del servidor**, no la del cliente), `commit`. Respuesta siempre 204.
+    (**hora del servidor**, no la del cliente), `commit`. GPC, clave desconocida,
+    interruptor apagado y fallo interno responden 204; límites o forma inválida
+    conservan `429|413|400`.
   - `capture` (`/leads`): `PublicLeadIn.session_id: str | None`, **`max_length=64`
     y deliberadamente SIN `pattern`**. El plan pedía «la misma regex», y eso era
     un error: un `pattern` en Pydantic devuelve 422 y **rechaza el formulario
     entero**, así que una clave de sesión corrupta costaría el lead. La forma se
     comprueba después, con `_SESSION_KEY.fullmatch`, y si no encaja sólo se
-    pierde el enlace con la visita. Un lead vale más que su atribución. Tras el
-    `commit` del lead: `UPDATE landing_sessions SET lead_id=:lead, form_submitted_at=now
-    WHERE org_id=:org AND session_key=:sid AND lead_id IS NULL` (idempotente; en
-    `duplicate` no se toca). **No entra en `ATTRIBUTION_KEYS`.**
+    pierde el enlace con la visita. Un lead vale más que su atribución. Cuando
+    la captura crea un lead, guarda la clave validada una sola vez como
+    `Lead.meta.acquisition_session_key`; no entra en `ATTRIBUTION_KEYS` ni se
+    expone como atribución. Tras el `commit` del lead, un `INSERT … ON CONFLICT
+    DO UPDATE` enlaza `lead_id` y `form_submitted_at`, aunque la forma gane la
+    carrera al primer beacon. Un envío posterior de un lead conocido conserva
+    el enlace pero no recibe la marca de adquisición. Con GPC no se guarda
+    ninguna de las dos cosas.
 - `backend/app/config.py` + `.env.example` + `docker-compose.yml` (bloque `backend:`):
   `LANDING_EVENTS_ENABLED: bool = True`, `LANDING_EVENTS_RETENTION_DAYS: int = 90`,
   **`LANDING_SESSIONS_PER_DAY: int = 20000`** (añadido al ejecutar, ver abajo).
@@ -349,9 +357,13 @@ calcando `test_public_capture.py` con `ASGITransport` y `reset_rate_limits` auto
    ausentes → `NULL`; `XX` → `NULL`.
 7. UA de Instagram in-app → `device=phone`, `in_app=instagram`; **ninguna columna
    contiene el UA** (afirmar sobre `row.__dict__`).
-8. `session_id` en `/leads` → `lead_id` y `form_submitted_at` puestos; una `session_key`
-   de **otra org** no se enlaza; `duplicate` no re-enlaza.
-9. `LANDING_EVENTS_ENABLED=false` → 204 y cero filas.
+8. `session_id` en `/leads` → `lead_id` y `form_submitted_at` puestos aunque el POST
+   gane al primer beacon; el beacon posterior completa ruta, idioma y pantalla sin
+   reemplazar first-touch. Una `session_key` de **otra org** no se reasigna.
+9. Un lead nuevo guarda `acquisition_session_key`; un lead ya existente conserva el
+   enlace histórico pero no recibe una nueva marca de adquisición. Con `Sec-GPC: 1`
+   no se guarda sesión, marca, UTM ni evidencia webdriver, incluso si el cliente las
+   inyecta. `LANDING_EVENTS_ENABLED=false` también deja cero sesiones.
 10. Aislamiento: sesiones de la org A invisibles bajo `org_scope(B)`; insert bajo B con
     `org_id=A` rechazado. (Mutación: quitar `FORCE ROW LEVEL SECURITY` de la migración →
     rojo.)
@@ -381,8 +393,9 @@ y scroll; enviar el formulario la enlaza con el lead.
     (in-app browsers con almacenamiento bloqueado) → clave en memoria para esa carga.
   - `persistAttribution(params, referrer, storage)` → `dhs.attr` JSON, **primer toque
     gana** (no sobrescribe si existe); `storedAttribution(storage)`.
-  - `trackingAllowed(nav)` → `false` si `nav.globalPrivacyControl === true` (Colorado
-    reconoce GPC) — el tracker no emite nada.
+  - `trackingAllowed(nav)` → `false` si `nav.globalPrivacyControl === true`;
+    `trackingContext(...)` decide antes de abrir `sessionStorage` y devuelve contexto
+    vacío, por lo que tracker y formulario no crean claves ni conservan UTM.
   - `class Tracker { constructor(opts: {form?, session, path, lang, screenW, utm, referrer,
     send: (json: string) => boolean}) ; record(t, meta?) ; flush() }`: cola ≤ 25 por envío;
     `section_view` deduplicado por sección; `scroll` solo al cruzar 25/50/75/100 por
@@ -393,8 +406,9 @@ y scroll; enviar el formulario la enlaza con el lead.
     si devuelve `false` o no existe → `fetch(url, {method:"POST", body: json, keepalive:
     true, headers: {"Content-Type":"text/plain"}})`.
 - `frontend/components/landing/LandingTracker.tsx` (nuevo, `"use client"`, montado en
-  `Landing()` como hermano de `<main>`, igual que `MobileMenu`): en `useEffect` construye
-  el `Tracker` con `FORM_KEY` (`NEXT_PUBLIC_CAPTURE_FORM_KEY`, ya existe), `path`,
+  `Landing()` como hermano de `<main>`, igual que `MobileMenu`): en `useEffect` obtiene
+  primero `trackingContext`; con GPC termina sin listeners ni tracker. En otro caso
+  construye el `Tracker` con `FORM_KEY` (`NEXT_PUBLIC_CAPTURE_FORM_KEY`, ya existe), `path`,
   `lang` del contexto i18n, `innerWidth`, atribución (`collectAttribution` + persistida),
   `document.referrer`; emite `page_view`; `IntersectionObserver` (umbral 0,5) sobre
   `#about, #how, #markets, #consult` → `section_view {section}`; listener `scroll`
@@ -404,12 +418,12 @@ y scroll; enviar el formulario la enlaza con el lead.
 - `frontend/components/landing/Landing.tsx`: `data-track="nav"|"hero"|"menu"|"footer"`
   en las anclas `tel:` y `#consult` existentes (`:122,125,272,404,412` y las del
   `MobileMenu`). **Sin cambiar textos.**
-- `frontend/components/landing/ConsultForm.tsx`: atribución = URL ∪ `storedAttribution`
-  (la URL manda si trae algo); `form_start` en el primer `focus` de cualquier campo (una
+- `frontend/components/landing/ConsultForm.tsx`: usa el primer toque completo de
+  `trackingContext` (lo ya guardado manda; la URL actual sólo inicia un toque nuevo);
+  `form_start` en el primer `focus` de cualquier campo (una
   vez); `form_submit` al `outcome.ok`, `form_error {reason}` si no; **`session_id`** en
-  `submitPublicLead`. Expone el `Tracker` por contexto React ligero
-  (`LandingTrackerContext`) o por un singleton en `track.ts` — elegir el singleton
-  (`getTracker()`), más simple y testable.
+  `submitPublicLead`; con GPC omite sesión, UTM y webdriver. Comparte el tracker
+  mediante el singleton acotado a la página `getTracker()` de `track.ts`.
 - `frontend/lib/api.ts`: `CapturePayload.session_id?: string`.
 - **Ninguna `NEXT_PUBLIC_*` nueva** (el interruptor es `LANDING_EVENTS_ENABLED` en el
   servidor). Evita los 4 sitios de `landingConfigWiring`.
@@ -716,10 +730,13 @@ número a número.
     secciones.
   - `funnel [{stage, count, pct_of_previous}]` en este orden: `sessions → engaged →
     reached_out → tapped → leads → contacted → appointment_set → appointment_held →
-    won`. Es una sola cohorte web: `leads` incluye únicamente los leads enlazados a una
-    sesión medida con formulario enviado, y cada peldaño posterior reduce el conjunto
-    anterior con hechos ocurridos después del envío. Los leads de otros canales siguen
-    en sus tarjetas, sin mezclarse bajo las visitas del sitio.
+    won`. Es una sola cohorte web y un solo `SELECT`: `leads` incluye únicamente los
+    leads cuyo `Lead.meta.acquisition_session_key` coincide con la sesión medida que los
+    creó; los registros históricos sin marcador quedan fuera en vez de inferirse.
+    `contacted` exige un mensaje `sent|delivered|read`, y cada peldaño posterior reduce
+    el conjunto anterior con hechos ocurridos después del envío. Los leads de otros
+    canales y los recontactos siguen en sus tarjetas, sin mezclarse bajo las visitas del
+    sitio.
   - `leads {total, by_channel (canal de la primera conversación), by_intent, by_status,
     by_source (utm_source o referrer de `meta.attribution`, `direct` si vacío,
     `no_web` si no hay atribución), new_by_day}`

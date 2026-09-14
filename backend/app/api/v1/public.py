@@ -364,10 +364,9 @@ class PublicLeadIn(BaseModel):
     # from TikTok, read three sections and tapped call first".
     #
     # A separate field rather than an attribution key on purpose: the whitelist
-    # in `capture.py` is pinned by a test that reads it, by an assert on its
-    # size and by the public form's documentation, and it means "which campaign
-    # produced this lead" — a per-visit identifier is not that, and it must
-    # never reach `lead.meta`.
+    # in `capture.py` means "which campaign produced this lead". For a lead
+    # born in this submission, the validated key is stored separately as a
+    # private acquisition-session marker; later submissions never replace it.
     #
     # Deliberately NOT pinned to the session-key shape here, unlike the beacon's
     # own field. A `pattern` on this model rejects the whole submission with
@@ -505,11 +504,26 @@ async def capture(
                 len(exc.errors()),
             )
 
-    cleaned_attribution = clean_attribution(body.utm)
-    traffic_class, traffic_class_reason = classify_traffic(
-        request.headers.get("user-agent"),
-        body.webdriver is True,
-        cleaned_attribution,
+    gpc = request.headers.get("sec-gpc") == "1"
+    submitted_attribution = {} if gpc else (body.utm or {})
+    cleaned_attribution = clean_attribution(submitted_attribution)
+    traffic_class, traffic_class_reason = (
+        ("unknown", None)
+        if gpc
+        else classify_traffic(
+            request.headers.get("user-agent"),
+            body.webdriver is True,
+            cleaned_attribution,
+        )
+    )
+    analytics_session_id = (
+        body.session_id
+        if (
+            _SESSION_KEY.fullmatch(body.session_id or "")
+            and get_settings().LANDING_EVENTS_ENABLED
+            and not gpc
+        )
+        else None
     )
     submission = FormSubmission(
         name=body.name,
@@ -518,9 +532,10 @@ async def capture(
         message=body.message,
         consent=body.consent,
         consent_text=body.consent_text,
-        attribution=body.utm or {},
+        attribution=submitted_attribution,
         traffic_class=traffic_class,
         traffic_class_reason=traffic_class_reason,
+        landing_session_key=analytics_session_id,
         ip=ip,
         user_agent=request.headers.get("user-agent"),
         calculator=calculator,
@@ -602,16 +617,14 @@ async def capture(
     # the POST can arrive before the first beacon; the unique session key makes
     # either arrival order converge on one row.
     if (
-        _SESSION_KEY.fullmatch(body.session_id or "")
+        analytics_session_id
         and captured.get("lead_id")
-        and get_settings().LANDING_EVENTS_ENABLED
-        and request.headers.get("sec-gpc") != "1"
     ):
         try:
             await _claim_landing_session(
                 db,
                 org_id=org_id,
-                session_key=body.session_id or "",
+                session_key=analytics_session_id,
                 lead_id=int(captured["lead_id"]),
                 request=request,
                 attribution=cleaned_attribution,

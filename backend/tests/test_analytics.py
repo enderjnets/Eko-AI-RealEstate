@@ -34,6 +34,7 @@ from app.models import (
     Message,
     MessageDirection,
     MessageSender,
+    MessageStatus,
 )
 
 ORG = 1
@@ -206,9 +207,32 @@ async def test_a_real_reply_is_measured_and_named() -> None:
                     conversation_id=conv.id,
                     direction=MessageDirection.OUTBOUND,
                     sender=MessageSender.AGENT,
+                    content="Still queued",
+                    llm_provider="kimi",
+                    internal=False,
+                    delivery_status=MessageStatus.PENDING,
+                    created_at=started + timedelta(seconds=30),
+                ),
+                Message(
+                    org_id=ORG,
+                    conversation_id=conv.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
+                    content="Provider refused this",
+                    llm_provider="kimi",
+                    internal=False,
+                    delivery_status=MessageStatus.FAILED,
+                    created_at=started + timedelta(seconds=60),
+                ),
+                Message(
+                    org_id=ORG,
+                    conversation_id=conv.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
                     content="Hi, happy to help.",
                     llm_provider="kimi",
                     internal=False,
+                    delivery_status=MessageStatus.DELIVERED,
                     created_at=started + timedelta(seconds=90),
                 ),
                 # The canned reply that goes out when no model answers. Counted
@@ -221,6 +245,7 @@ async def test_a_real_reply_is_measured_and_named() -> None:
                     content="We'll be right with you.",
                     llm_provider="fallback",
                     internal=False,
+                    delivery_status=MessageStatus.SENT,
                     created_at=started + timedelta(minutes=5),
                 ),
             ]
@@ -249,6 +274,7 @@ async def test_the_funnel_never_widens_as_it_goes_down() -> None:
     await _fresh()
     now = datetime.now(UTC)
     async with get_bypass_session_factory()() as db:
+        acquisition_key = "funnel-cohort-" + "a" * 18
         web_lead = Lead(
             org_id=ORG,
             phone=f"{MARKER}0004",
@@ -256,6 +282,7 @@ async def test_the_funnel_never_widens_as_it_goes_down() -> None:
             status=LeadStatus.WON,
             created_at=now,
             won_at=now + timedelta(hours=2),
+            meta={"acquisition_session_key": acquisition_key},
         )
         offline_lead = Lead(
             org_id=ORG,
@@ -270,7 +297,7 @@ async def test_the_funnel_never_widens_as_it_goes_down() -> None:
         db.add(
             LandingSession(
                 org_id=ORG,
-                session_key="funnel-cohort-" + "a" * 18,
+                session_key=acquisition_key,
                 first_seen_at=now,
                 last_seen_at=now,
                 source="instagram",
@@ -340,6 +367,205 @@ async def test_the_funnel_never_widens_as_it_goes_down() -> None:
         counts = [step["count"] for step in body["funnel"]]
         assert counts == sorted(counts, reverse=True), counts
         assert "called_back" not in by_stage
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_funnel_reads_every_stage_in_one_database_snapshot() -> None:
+    """The router computes ``traffic`` before it asks for the funnel.
+
+    Under READ COMMITTED, reusing those earlier totals while reading each later
+    stage in separate statements lets a capture committed between statements
+    put one lead underneath zero sessions.  The funnel must therefore read all
+    nine stages in one PostgreSQL statement, from one statement snapshot.
+    """
+    from app.services import analytics as svc
+
+    await _fresh()
+    now = datetime.now(UTC)
+    window = svc.Window(
+        start=now - timedelta(days=1),
+        end=now + timedelta(days=1),
+        tz="UTC",
+    )
+    async with get_bypass_session_factory()() as db:
+        acquisition_key = "one-snapshot-" + "a" * 20
+        lead = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0030",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=now,
+            meta={"acquisition_session_key": acquisition_key},
+        )
+        db.add(lead)
+        await db.flush()
+        db.add(
+            LandingSession(
+                org_id=ORG,
+                session_key=acquisition_key,
+                first_seen_at=now,
+                last_seen_at=now,
+                source="instagram",
+                max_scroll_pct=75,
+                form_started_at=now,
+                form_submitted_at=now,
+                lead_id=lead.id,
+                event_count=3,
+            )
+        )
+        await db.commit()
+
+    class CountingSession:
+        def __init__(self, session) -> None:
+            self.session = session
+            self.executions = 0
+
+        async def execute(self, *args, **kwargs):
+            self.executions += 1
+            return await self.session.execute(*args, **kwargs)
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            counted = CountingSession(db)
+            funnel = await svc.funnel(counted, window)
+
+        assert counted.executions == 1
+        assert {row["stage"]: row["count"] for row in funnel} == {
+            "sessions": 1,
+            "engaged": 1,
+            "reached_out": 1,
+            "tapped": 1,
+            "leads": 1,
+            "contacted": 0,
+            "appointment_set": 0,
+            "appointment_held": 0,
+            "won": 0,
+        }
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_funnel_contacted_requires_a_successfully_sent_message() -> None:
+    """Queued and failed attempts are not contact with a prospective client."""
+    from app.services import analytics as svc
+
+    await _fresh()
+    now = datetime.now(UTC)
+    window = svc.Window(
+        start=now - timedelta(days=1),
+        end=now + timedelta(days=1),
+        tz="UTC",
+    )
+    statuses = (
+        MessageStatus.PENDING,
+        MessageStatus.FAILED,
+        MessageStatus.SENT,
+        MessageStatus.DELIVERED,
+        MessageStatus.READ,
+    )
+    async with get_bypass_session_factory()() as db:
+        for index, delivery_status in enumerate(statuses):
+            acquisition_key = f"delivery-{index}-" + "a" * 20
+            lead = Lead(
+                org_id=ORG,
+                phone=f"{MARKER}004{index}",
+                intent=LeadIntent.BUY,
+                status=LeadStatus.NEW,
+                created_at=now,
+                meta={"acquisition_session_key": acquisition_key},
+            )
+            db.add(lead)
+            await db.flush()
+            db.add(
+                LandingSession(
+                    org_id=ORG,
+                    session_key=acquisition_key,
+                    first_seen_at=now,
+                    last_seen_at=now,
+                    source="instagram",
+                    form_submitted_at=now,
+                    lead_id=lead.id,
+                    event_count=2,
+                )
+            )
+            conversation = Conversation(
+                org_id=ORG,
+                lead_id=lead.id,
+                channel="email",
+                status=ConversationStatus.ACTIVE,
+                started_at=now,
+            )
+            db.add(conversation)
+            await db.flush()
+            db.add(
+                Message(
+                    org_id=ORG,
+                    conversation_id=conversation.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.HUMAN,
+                    content=delivery_status.value,
+                    internal=False,
+                    delivery_status=delivery_status,
+                    created_at=now + timedelta(minutes=1),
+                )
+            )
+        await db.commit()
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            funnel = await svc.funnel(db, window)
+        by_stage = {row["stage"]: row["count"] for row in funnel}
+        assert by_stage["leads"] == 5
+        assert by_stage["contacted"] == 3
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_returning_lead_form_is_not_a_new_funnel_lead() -> None:
+    """A later website submission is engagement, not another acquisition."""
+    from app.services import analytics as svc
+
+    await _fresh()
+    now = datetime.now(UTC)
+    window = svc.Window(
+        start=now - timedelta(hours=1),
+        end=now + timedelta(hours=1),
+        tz="UTC",
+    )
+    async with get_bypass_session_factory()() as db:
+        existing = Lead(
+            org_id=ORG,
+            phone=f"{MARKER}0050",
+            intent=LeadIntent.BUY,
+            status=LeadStatus.NEW,
+            created_at=now - timedelta(days=30),
+        )
+        db.add(existing)
+        await db.flush()
+        db.add(
+            LandingSession(
+                org_id=ORG,
+                session_key="returning-form-" + "a" * 20,
+                first_seen_at=now,
+                last_seen_at=now,
+                source="instagram",
+                form_submitted_at=now,
+                lead_id=existing.id,
+                event_count=2,
+            )
+        )
+        await db.commit()
+
+    try:
+        async with get_bypass_session_factory()() as db:
+            funnel = await svc.funnel(db, window)
+        by_stage = {row["stage"]: row["count"] for row in funnel}
+        assert by_stage["sessions"] == 1
+        assert by_stage["leads"] == 0
     finally:
         await _cleanup()
 
@@ -610,7 +836,7 @@ async def test_one_agency_never_reads_anothers_numbers() -> None:
             async with get_session_factory()() as db:
                 assert (await svc.leads(db, window))["total"] == 0
                 assert (await svc.traffic(db, window))["sessions"] == 0
-                assert (await svc.funnel(db, window, await svc.traffic(db, window)))[0][
+                assert (await svc.funnel(db, window))[0][
                     "count"
                 ] == 0
                 assert await svc.content(db, window) == []
@@ -1122,7 +1348,7 @@ async def test_excluded_sessions_never_enter_traffic_funnel_or_content() -> None
     try:
         async with get_bypass_session_factory()() as db:
             traffic = await svc.traffic(db, window)
-            funnel = await svc.funnel(db, window, traffic)
+            funnel = await svc.funnel(db, window)
             content = await svc.content(db, window)
 
         assert traffic["sessions"] == 1
@@ -1235,6 +1461,9 @@ async def test_excluded_leads_stay_in_crm_but_never_enter_any_analytics_aggregat
             )
         )
 
+        def acquisition_key(traffic_class: str) -> str:
+            return f"excluded-lead-{traffic_class}".ljust(32, "x")
+
         def lead(suffix: str, *, traffic_class: str) -> Lead:
             qa = traffic_class == "test"
             automated = traffic_class == "automated"
@@ -1255,7 +1484,10 @@ async def test_excluded_leads_stay_in_crm_but_never_enter_any_analytics_aggregat
                 won_at=start + timedelta(hours=8),
                 won_kind="buyer_purchase",
                 won_value=Decimal("1000.00"),
-                meta={"attribution": attribution},
+                meta={
+                    "attribution": attribution,
+                    "acquisition_session_key": acquisition_key(traffic_class),
+                },
             )
 
         real_lead = lead("0501", traffic_class="unknown")
@@ -1285,6 +1517,7 @@ async def test_excluded_leads_stay_in_crm_but_never_enter_any_analytics_aggregat
                 sender=MessageSender.HUMAN,
                 content=f"{label} reply",
                 internal=False,
+                delivery_status=MessageStatus.DELIVERED,
                 created_at=started_at
                 + timedelta(seconds={"real": 90, "qa": 300, "automated": 600}[label]),
             )
@@ -1309,7 +1542,7 @@ async def test_excluded_leads_stay_in_crm_but_never_enter_any_analytics_aggregat
             at = start + timedelta(hours=4)
             return LandingSession(
                 org_id=ORG,
-                session_key=f"excluded-lead-{traffic_class}".ljust(32, "x"),
+                session_key=acquisition_key(traffic_class),
                 first_seen_at=at,
                 last_seen_at=at,
                 landing_path="/start",
@@ -1429,7 +1662,7 @@ async def test_excluded_leads_stay_in_crm_but_never_enter_any_analytics_aggregat
             deal_stats = await svc.deals(db, window, with_value=True)
             content_stats = await svc.content(db, window)
             agent_stats = await svc.by_agent(db, window)
-            funnel_stats = await svc.funnel(db, window, traffic)
+            funnel_stats = await svc.funnel(db, window)
 
         assert raw_leads == 3, "excluded leads stay in the CRM"
         assert traffic["sessions"] == 1
