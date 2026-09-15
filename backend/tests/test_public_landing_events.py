@@ -186,6 +186,31 @@ class TestTrafficClassification:
 
         assert classify_traffic(UA_CHROME, True, {}) == ("automated", "webdriver")
 
+    def test_a_device_that_says_it_is_ours_is_a_test_visit(self) -> None:
+        """The marker a browser keeps between visits.
+
+        Ours reach the page by ordinary links most of the time — opening the
+        site to look at it is not a QA campaign — so the UTM pair above never
+        catches them. Measured 15-sep-2026: 104 of 193 sessions came from the
+        four towns we and the agents sit in, counted as visitors throughout.
+        """
+        from app.services.landing_analytics import classify_traffic
+
+        assert classify_traffic(UA_CHROME, False, {}, True) == (
+            "test",
+            "persistent_qa",
+        )
+        # It outranks `webdriver`, which is the sharper signal about the client
+        # and the wrong answer about the person: our own Playwright runs are
+        # ours before they are machines, and `test` is what excludes them.
+        assert classify_traffic(UA_CHROME, True, {}, True) == (
+            "test",
+            "persistent_qa",
+        )
+        # And it is opt-in. Absent, nothing changes for anybody else.
+        assert classify_traffic(UA_CHROME, False, {}, False) == ("unknown", None)
+        assert classify_traffic(UA_CHROME, False, {}) == ("unknown", None)
+
     def test_explicit_test_pair_requires_both_exact_values(self) -> None:
         from app.services.landing_analytics import classify_traffic
 

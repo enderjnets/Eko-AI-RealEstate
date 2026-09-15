@@ -379,6 +379,9 @@ class PublicLeadIn(BaseModel):
     # "human"; the server combines this with its own user-agent and the exact
     # QA UTM pair before the lead is written.
     webdriver: Literal[True] | None = None
+    # The same marker the beacon carries, so a submission we make while testing
+    # the form does not arrive in the CRM looking like a customer.
+    qa: Literal[True] | None = None
     turnstile_token: str | None = Field(default=None, max_length=4_000)
     # Honeypot. Named for something a browser autofill would plausibly target
     # and hidden in the markup, so a human never sees it and a bot fills it in.
@@ -514,6 +517,7 @@ async def capture(
             request.headers.get("user-agent"),
             body.webdriver is True,
             cleaned_attribution,
+            body.qa is True,
         )
     )
     analytics_session_id = (
@@ -708,6 +712,9 @@ class LandingBatchIn(BaseModel, extra="forbid"):
     lang: Literal["en", "es"] | None = None
     screen_w: int | None = Field(default=None, ge=0, le=10_000)
     webdriver: Literal[True] | None = None
+    # This browser was marked as one of ours, once, and remembers it. The model
+    # forbids extra keys, so the beacon would 422 without this line.
+    qa: Literal[True] | None = None
     utm: dict[str, str] | None = None
     referrer: str | None = Field(default=None, max_length=500)
     events: list[LandingEventIn] = Field(min_length=1, max_length=EVENTS_MAX_PER_BATCH)
@@ -862,7 +869,9 @@ async def _landing_session_id(
     attribution = clean_attribution(body.utm)
     host = referrer_host_of(body.referrer)
     ua = request.headers.get("user-agent")
-    traffic_class, traffic_class_reason = classify_traffic(ua, body.webdriver is True, attribution)
+    traffic_class, traffic_class_reason = classify_traffic(
+        ua, body.webdriver is True, attribution, body.qa is True
+    )
     country, region, city = geo_of(request.headers)
 
     # Core INSERT, not the ORM: `before_flush` is what stamps `org_id` on this

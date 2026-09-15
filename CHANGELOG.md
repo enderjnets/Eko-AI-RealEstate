@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.103.0] — 2026-09-15
+
+### Added
+- **The landing page's traffic is classified after the fact, not only on
+  arrival.** Every one of the 193 sessions on record read
+  `traffic_class = 'unknown'`, because the classifier that runs at ingest knows
+  three things: the explicit QA UTM pair, `navigator.webdriver`, and nine
+  user-agent signatures. A network rendering a link preview announces none of
+  them — it opens the link in a real browser, executes our JavaScript and writes
+  a row indistinguishable from a person's.
+
+  What gives them away is the clock. Nine sessions landed between **one and
+  thirty-one seconds** after the very publication they were tagged with, in
+  pairs, from Clonee and Boardman — AWS Ireland and AWS Oregon. On a channel
+  with four subscribers, nobody watches a video and clicks through in one
+  second.
+
+  The rule needs both hands: near the publication **and** having done nothing at
+  all. The window alone would file the first real viewer of a fast-travelling
+  post as a machine, and that is the error worth avoiding — the whole point is
+  to stop miscounting people. Control on the same data: of every session inside
+  the window, exactly one had done something, and it keeps its `unknown`.
+  It has to run late, too. At the moment the beacon lands, a preview fetch and a
+  reader who has not scrolled yet are the same row, so the sweep is not a
+  shortcut — it is the only place the evidence exists.
+
+- **A browser can say it is ours, once, and keep saying it.** `?eko_qa=1` marks
+  the device in `localStorage`; `?eko_qa=0` undoes it. Of the 193 sessions, 104
+  came from Parker, Denver, Aurora and The Pinery — the two agents, and us. The
+  obvious fix is to drop those cities and it is wrong twice over: a city is not
+  an identity, and Denver is exactly where the real customers are. The undo is
+  not decoration either — without it, tapping the link on a personal phone would
+  discard that phone's traffic for good.
+
+  It outranks `webdriver`, which is the sharper signal about the client and the
+  wrong answer about the person: our own Playwright runs are ours before they
+  are machines. Under Global Privacy Control nothing is marked at all; the
+  privacy signal outranks our convenience.
+
+### Changed
+- **The traffic card reports the visits that left no trace of a person.** One
+  `page_view`, no scroll, no click, nothing typed: 88 of 193, and not one of
+  them had touched the CTA, the phone or the form. Counted beside the total
+  rather than subtracted from it, because the row does not prove who was
+  there — part of it is crawlers and part of it is us looking at the page for
+  two seconds. What it does prove is that the number above it was never a count
+  of people, and until today it was read as one.
+
 ## [0.102.9] — 2026-09-15
 
 ### Fixed

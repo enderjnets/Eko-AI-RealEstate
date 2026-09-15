@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.102.9";
+export const CURRENT_VERSION = "0.103.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.103.0",
+    date: "2026-09-15",
+    title: {
+      en: "The visitors who were never people",
+      es: "Los visitantes que nunca fueron personas",
+    },
+    changes: [
+      { en: "The landing page's traffic is now classified after the fact, not only on arrival. When a post goes out, the network fetches the link in a real browser to build its preview card \u2014 it runs our JavaScript and writes a visit like anybody else. Nine of those were counted as visitors; they had landed between one and thirty-one seconds after the very publication they were tagged with.", es: "El tr\u00e1fico de la p\u00e1gina se clasifica ahora tambi\u00e9n despu\u00e9s, no solo al llegar. Cuando sale una publicaci\u00f3n, la red abre el enlace en un navegador de verdad para montar su tarjeta de vista previa: ejecuta nuestro JavaScript y escribe una visita como cualquiera. Nueve de esas se contaban como visitantes, y hab\u00edan llegado entre uno y treinta y un segundos despu\u00e9s de publicarse la pieza que las etiquetaba." },
+      { en: "A browser can now be marked as ours once and stay marked, with ?eko_qa=1 \u2014 and unmarked with ?eko_qa=0. Of 193 sessions, 104 came from the four towns we and the agents sit in; the honest way to exclude them is for the device to say so, never for the report to drop a city, because that city is also where the customers are.", es: "Un navegador puede marcarse como nuestro una sola vez y seguir marcado, con ?eko_qa=1, y desmarcarse con ?eko_qa=0. De 193 sesiones, 104 ven\u00edan de los cuatro pueblos donde estamos nosotros y los agentes; la forma honesta de excluirlas es que el aparato lo diga, nunca que el informe descarte una ciudad \u2014 porque en esa ciudad est\u00e1n tambi\u00e9n los clientes." },
+      { en: "The traffic card now reports, separately, the visits that left no trace of a person at all: one page view, no scroll, no touch. There were 88 of 193, and not one of them had clicked anything. They are counted apart rather than deleted, because the row does not prove who was there \u2014 only that the total above it was never a count of people.", es: "La tarjeta de tr\u00e1fico informa ahora aparte de las visitas que no dejaron rastro de nadie: un solo page view, cero scroll, cero toques. Eran 88 de 193 y ninguna hab\u00eda tocado nada. Se cuentan aparte en vez de borrarse, porque la fila no demuestra qui\u00e9n estuvo \u2014 solo que el total de arriba nunca fue un recuento de personas." },
+    ],
+  },
   {
     version: "0.102.9",
     date: "2026-09-15",

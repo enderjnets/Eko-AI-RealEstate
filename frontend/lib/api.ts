@@ -1395,6 +1395,8 @@ export interface CapturePayload {
   session_id?: string;
   /** Sent only with positive browser-automation evidence. */
   webdriver?: true;
+  /** This browser was marked as one of ours. See `qaDevice` in `lib/track`. */
+  qa?: true;
   turnstile_token?: string;
   website?: string;
   /** Present only when the form sits under /calculator. */

@@ -256,7 +256,12 @@ describe("Global Privacy Control", () => {
       },
     );
 
-    expect(context).toEqual({ allowed: false, attribution: {} });
+    // `qa: false` and not an absent key: under GPC the question is answered
+    // rather than left open, and answered in the direction that counts the
+    // visit as a stranger's. A QA device that turns GPC on stops being marked,
+    // which is the correct order of precedence — the privacy signal outranks
+    // our own convenience.
+    expect(context).toEqual({ allowed: false, attribution: {}, qa: false });
     expect(storageAccesses).toBe(0);
     expect(storage.dump()[SESSION_STORAGE_KEY]).toBeUndefined();
     expect(storage.dump()[ATTRIBUTION_STORAGE_KEY]).toBeUndefined();

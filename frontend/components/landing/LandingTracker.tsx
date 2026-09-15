@@ -74,6 +74,7 @@ export function LandingTracker({
       params,
       document.referrer,
       () => window.sessionStorage,
+      () => window.localStorage,
     );
     if (!context.allowed || !context.session) {
       setTracker(null);
@@ -88,6 +89,7 @@ export function LandingTracker({
       utm: { landing_variant: variant, ...context.attribution },
       referrer: document.referrer || null,
       webdriver: navigator.webdriver === true ? true : undefined,
+      qa: context.qa ? true : undefined,
       allowed: context.allowed,
       send: beaconSender(),
     });

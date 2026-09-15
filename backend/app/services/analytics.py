@@ -270,6 +270,33 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
                         )
                     )
                 ),
+                # **Las que no dejaron rastro de nadie.** Un solo `page_view`,
+                # cero scroll, cero toques: la fila existe y no dice que haya
+                # habido una persona. Medido el 15-sep-2026: 88 de 193, y
+                # NINGUNA de las 88 habia tocado el CTA, el telefono ni el
+                # formulario — el control salio limpio.
+                #
+                # Se cuenta aparte en vez de descontarse de `sessions` porque
+                # esto no afirma quien era: parte son rastreadores y parte
+                # somos nosotros mirando la pagina dos segundos. Lo que dice
+                # es que el total de arriba no es gente, y hasta hoy se leia
+                # como si lo fuera. `traffic_class` sigue guardando solo lo
+                # que se puede demostrar.
+                func.count(
+                    case(
+                        (
+                            and_(
+                                LandingSession.event_count <= 1,
+                                LandingSession.max_scroll_pct == 0,
+                                LandingSession.cta_clicks == 0,
+                                LandingSession.tel_clicks == 0,
+                                LandingSession.form_started_at.is_(None),
+                                LandingSession.form_submitted_at.is_(None),
+                            ),
+                            1,
+                        )
+                    )
+                ),
             ).where(scope)
         )
     ).one()
@@ -330,6 +357,7 @@ async def traffic(db: AsyncSession, w: Window) -> dict:
         "form_errors": int(totals[10]),
         "people_with_errors": totals[11],
         "submitted_without_lead": totals[12],
+        "no_signal_sessions": totals[13],
         "excluded_sessions": {
             "total": traffic_class_counts.get("automated", 0)
             + traffic_class_counts.get("test", 0),

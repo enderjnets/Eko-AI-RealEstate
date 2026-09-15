@@ -66,6 +66,9 @@ function ConsultFormInner({
   // first one's write.
   const started = useRef(false);
   const trackingEnabled = useRef(false);
+  // Set from the same context as the tracker's, so a test submission and the
+  // visit that made it are filed the same way instead of disagreeing.
+  const qaDeviceRef = useRef(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -81,8 +84,10 @@ function ConsultFormInner({
       params,
       document.referrer,
       () => window.sessionStorage,
+      () => window.localStorage,
     );
     trackingEnabled.current = context.allowed;
+    qaDeviceRef.current = context.qa;
     if (!context.allowed) {
       setUtm({});
       setSessionId(undefined);
@@ -174,6 +179,7 @@ function ConsultFormInner({
       session_id: sessionId,
       webdriver:
         trackingEnabled.current && navigator.webdriver === true ? true : undefined,
+      qa: qaDeviceRef.current ? true : undefined,
       turnstile_token: captchaToken || undefined,
       website: f.website || undefined,
       calculator,

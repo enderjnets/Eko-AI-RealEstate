@@ -478,7 +478,10 @@ async def _llm_monitor_loop() -> None:
     `run_monitor_tick`, not in this interval.
     """
     from app.services.fair_housing_watch import run_fair_housing_tick
-    from app.services.landing_analytics import purge_landing_events
+    from app.services.landing_analytics import (
+        classify_publish_previews,
+        purge_landing_events,
+    )
     from app.services.llm_monitor import run_monitor_tick
     from app.services.render_watch import run_render_watch_tick
     from app.services.tenant_context import run_for_every_org
@@ -519,6 +522,19 @@ async def _llm_monitor_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001 — same reason as above
             logger.error("Landing events purge failed: %s", exc)
+
+        # And the same again for the classifier, which is the other half of
+        # keeping that table honest: the purge bounds what it costs, this
+        # bounds what it claims. It has to run late rather than at ingest —
+        # at the moment the beacon lands, a preview fetch and a person who
+        # has not scrolled yet are the same row — so a periodic sweep is not
+        # a shortcut here, it is the only place the evidence exists.
+        try:
+            await run_for_every_org(classify_publish_previews)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — same reason as above
+            logger.error("Landing traffic classification failed: %s", exc)
 
 
 async def _content_studio_loop() -> None:

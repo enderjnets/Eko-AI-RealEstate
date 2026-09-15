@@ -21,6 +21,56 @@ import { UTM_KEYS, collectAttribution, type ParamSource } from "./capture";
 export const SESSION_STORAGE_KEY = "dhs.sid";
 export const ATTRIBUTION_STORAGE_KEY = "dhs.attr";
 
+/**
+ * Where a device remembers that it is one of ours. `localStorage`, not
+ * `sessionStorage`: the whole point is that it outlives the tab.
+ */
+export const QA_STORAGE_KEY = "dhs.qa";
+
+/** The switch, in the address bar. `?eko_qa=1` on, `?eko_qa=0` off. */
+export const QA_PARAM = "eko_qa";
+
+/**
+ * Whether this browser belongs to us rather than to a visitor.
+ *
+ * Measured on 15-sep-2026: of 193 sessions on the landing page, 104 came from
+ * Parker, Denver, Aurora and The Pinery — the two agents, and us. Counted as
+ * visitors, they were most of the traffic the funnel reported.
+ *
+ * The obvious fix is to drop those cities, and it is wrong: a city is not an
+ * identity, and Denver is precisely where the real customers live. So the
+ * device says so itself. Each of us opens the marked link once per browser,
+ * and every later visit from it is filed as `test` — evidence, not a guess.
+ *
+ * `?eko_qa=0` undoes it, and that half is not decoration: without it, tapping
+ * the link on a personal phone would discard that phone's traffic forever,
+ * with no way back that does not involve clearing site data.
+ *
+ * Reading storage throws outright in some embedded browsers, so every access
+ * is guarded and the answer on failure is "not ours" — the direction that
+ * counts a machine as a person rather than losing a real visit.
+ */
+export function qaDevice(
+  params: ParamSource,
+  storage: StorageLike | null | undefined,
+): boolean {
+  const asked = params.get(QA_PARAM);
+  if (asked === "1" || asked === "0") {
+    try {
+      storage?.setItem(QA_STORAGE_KEY, asked);
+    } catch {
+      // Nothing to remember it with. The answer is still what they just asked
+      // for, so this one visit is marked even when the flag cannot persist.
+    }
+    return asked === "1";
+  }
+  try {
+    return storage?.getItem(QA_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 /** The endpoint. Same origin, so the Next rewrite proxies it to the backend. */
 export const BEACON_URL = "/api/v1/public/landing";
 
@@ -287,15 +337,17 @@ export function trackingContext(
   params: ParamSource,
   referrer: string | null | undefined,
   storage: () => StorageLike | null | undefined,
+  persistent?: () => StorageLike | null | undefined,
 ): {
   allowed: boolean;
   session?: string;
   attribution: Record<string, string>;
+  qa: boolean;
 } {
   // The storage supplier is lazy on purpose. Under GPC, even reading the
   // browser's storage object is unnecessary work and a future caller cannot
   // accidentally mint a key before checking the privacy signal.
-  if (!trackingAllowed(nav)) return { allowed: false, attribution: {} };
+  if (!trackingAllowed(nav)) return { allowed: false, attribution: {}, qa: false };
 
   let available: StorageLike | null | undefined;
   try {
@@ -303,10 +355,21 @@ export function trackingContext(
   } catch {
     available = null;
   }
+  // Optional, so the two existing callers and their tests keep compiling while
+  // only the one that owns a page passes it. Absent, the answer is `false` —
+  // which counts one of our own visits as a visitor, the same thing that
+  // happened for the first 193 sessions, and never the other way round.
+  let durable: StorageLike | null | undefined;
+  try {
+    durable = persistent?.();
+  } catch {
+    durable = null;
+  }
   return {
     allowed: true,
     session: sessionKey(available),
     attribution: persistAttribution(params, referrer, available),
+    qa: qaDevice(params, durable),
   };
 }
 
@@ -319,6 +382,8 @@ export interface TrackerOptions {
   utm?: Record<string, string>;
   referrer?: string | null;
   webdriver?: true;
+  /** This browser has been marked as ours. See `qaDevice`. */
+  qa?: true;
   allowed?: boolean;
   /** Returns false when the send could not be handed off, so the caller can
    *  decide; the tracker itself does not retry — a dropped beacon is a dropped
@@ -394,6 +459,7 @@ export class Tracker {
     if (this.opts.utm && Object.keys(this.opts.utm).length > 0) body.utm = this.opts.utm;
     if (this.opts.referrer) body.referrer = this.opts.referrer;
     if (this.opts.webdriver === true) body.webdriver = true;
+    if (this.opts.qa === true) body.qa = true;
     this.opts.send(JSON.stringify(body));
     // Anything past the batch cap goes out next; the loop is bounded because
     // `slice` always shortens the queue.

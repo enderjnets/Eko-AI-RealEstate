@@ -22,7 +22,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlsplit
 
-from sqlalchemy import bindparam, delete, func, text
+from sqlalchemy import and_, bindparam, delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.landing import LANDING_SECTIONS, LandingEvent, LandingSession
@@ -148,11 +148,18 @@ def classify_traffic(
     user_agent: str | None,
     webdriver: bool,
     attribution: dict[str, str],
+    qa_device: bool = False,
 ) -> tuple[str, str | None]:
     source = attribution.get("utm_source")
     medium = attribution.get("utm_medium")
     if source == "eko_qa" and medium == "test":
         return "test", "explicit_qa"
+    # A browser that told us it is ours, and keeps telling us on every later
+    # visit. First, because it is the only claim here somebody made on purpose:
+    # the QA UTM above says "this link is a test", this says "this device is",
+    # and our own devices reach the page by ordinary links most of the time.
+    if qa_device:
+        return "test", "persistent_qa"
     if webdriver:
         return "automated", "webdriver"
 
@@ -161,6 +168,48 @@ def classify_traffic(
         if signature in normalized_user_agent:
             return "automated", reason
     return "unknown", None
+
+
+# How close to its own publication a visit has to land before arriving there by
+# watching the video stops being a possible explanation.
+PUBLISH_PREVIEW_SECONDS = 90
+
+# How long a visit is left alone before its silence is taken as an answer. A
+# real reader can sit on the first screen for a while — the tracker records
+# nothing until they scroll — and judging them at the moment the beacon lands
+# would file every slow reader as a machine.
+SETTLED_MINUTES = 60
+
+
+def is_publish_preview(gap_seconds: float | None, event_count: int) -> bool:
+    """Whether a visit is the network fetching its own link preview.
+
+    When a post goes out, the network renders the link in a real browser to
+    build the preview card. That browser runs our JavaScript, so it writes a
+    `landing_sessions` row like anybody else — and it does not announce itself
+    in the user agent, which is why `classify_traffic` lets it through. What
+    gives it away is the clock: measured in production on 15-sep-2026, nine of
+    these landed between **one and thirty-one seconds** after the publication
+    they were tagged with, in pairs, from Clonee and Boardman (AWS Ireland and
+    AWS Oregon). Nobody watches a video and clicks through in one second.
+
+    Two conditions, and the second is what keeps this honest. The window alone
+    would also catch the first real viewer of a post that happens to land fast,
+    so the visit must ALSO have done nothing at all — one `page_view`, no
+    scroll, no click. A person who arrives in that window and then reads is
+    left alone. Control on the same data: of every session inside the window,
+    exactly one had done anything, and it keeps its `unknown`.
+
+    The gap is taken as an absolute value because a platform fetches the link
+    when the post is created, which can be a few seconds before we stamp
+    `published_at` — and because one piece publishes to three channels at
+    slightly different times, so the nearest of them is the honest reference.
+    """
+    if gap_seconds is None:
+        return False
+    if event_count > 1:
+        return False
+    return abs(gap_seconds) <= PUBLISH_PREVIEW_SECONDS
 
 
 def device_of(user_agent: str | None) -> str:
@@ -370,6 +419,75 @@ def new_events(
         LandingEvent(org_id=org_id, session_id=session_id, type=kind, at=now, meta=meta or None)
         for kind, meta in events
     ]
+
+
+async def classify_publish_previews(db: AsyncSession) -> int:
+    """Mark the visits that were a network fetching its own link preview.
+
+    This runs after the fact, and it has to: at the moment the beacon arrives
+    the row is one `page_view` old and indistinguishable from a person who has
+    not scrolled yet. `SETTLED_MINUTES` is how long that person is given.
+
+    It only ever writes over `unknown`. A row already called `test` or
+    `automated` was decided by something that knew more — the explicit QA
+    marker, `navigator.webdriver`, a user agent that named itself — and this
+    rule is the weakest evidence of the three.
+    """
+    from app.models.content import ContentPublication
+    from app.services.tenant_context import get_org_id
+
+    org_id = get_org_id()
+    if org_id is None:
+        log.warning("Landing classification skipped — no organization is bound")
+        return 0
+
+    settled = datetime.now(UTC) - timedelta(minutes=SETTLED_MINUTES)
+    gap = func.abs(
+        func.extract(
+            "epoch", LandingSession.first_seen_at - ContentPublication.published_at
+        )
+    )
+    candidates = (
+        await db.execute(
+            select(LandingSession.id)
+            .join(
+                ContentPublication,
+                and_(
+                    ContentPublication.org_id == org_id,
+                    ContentPublication.published_at.is_not(None),
+                    LandingSession.utm_content
+                    == func.concat("piece-", ContentPublication.piece_id),
+                    gap <= PUBLISH_PREVIEW_SECONDS,
+                ),
+            )
+            .where(
+                LandingSession.org_id == org_id,
+                LandingSession.traffic_class == "unknown",
+                LandingSession.event_count <= 1,
+                LandingSession.last_seen_at < settled,
+            )
+            # One piece publishes to three channels, so the same session joins
+            # up to three publication rows. Without this it would be updated
+            # three times and counted three times.
+            .distinct()
+        )
+    ).scalars().all()
+
+    if not candidates:
+        return 0
+
+    await db.execute(
+        update(LandingSession)
+        .where(LandingSession.org_id == org_id, LandingSession.id.in_(candidates))
+        .values(
+            traffic_class="automated",
+            traffic_class_reason="publish_preview",
+            traffic_classified_at=datetime.now(UTC),
+        )
+    )
+    await db.commit()
+    log.info("Classified %d landing session(s) as publish previews", len(candidates))
+    return len(candidates)
 
 
 async def purge_landing_events(db: AsyncSession) -> int:
