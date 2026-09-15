@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.104.0] — 2026-09-15
+
+### Added
+- **A dollar figure in a piece has to be one the calculator can account for,
+  or the piece cannot be approved.** On 12-14 September five videos went out
+  saying "Renting at $2,600 a month? — Buying is ~$21,000 ahead in five years."
+  The calculator their own caption links to answers **$52,210** for that rent.
+  Somebody who watched, clicked through and typed their rent would have been
+  shown a number two and a half times larger than the promise they had just
+  been made. The owner caught it by watching them and set all five to private.
+
+  The figures were not invented: $21,000 reproduces at a flat **2%** annual
+  appreciation, against the **3.75%** the page uses. That is the worse outcome,
+  because "wrong" and "right under assumptions nobody recorded" are
+  indistinguishable from outside.
+
+  The root cause is one line long: **nothing in content generation has ever
+  called the calculator.** `app/services/calculator.py` is imported by
+  `capture.py` and `lead_notify.py` and by nothing else. The numbers arrive as
+  prose from a model, so approval is the first and only moment the claim and
+  the arithmetic are in the same room. `docs/content/calculator-consistency.md`
+  has required recording the inputs since 14-sep-2026; it was prose, and
+  nothing read it.
+
+  **The wording is checked, never the paperwork.** Each figure in the approved
+  text must be an input that was recorded, something the calculator computed
+  from it, or the difference between the same field across two recorded
+  scenarios — which is how "doubling your down payment adds $35,000 to the
+  price" is said when the real difference is $34,638. A record that agrees with
+  itself while disagreeing with the hook above it fails, because a record
+  agreeing with a record is the exact shape of the bug.
+
+  Differences are taken within one field only. Allowing a price minus a monthly
+  payment would manufacture an explanation for a number nobody computed, and
+  with enough scenarios it would explain nearly anything — a gate that cannot
+  be failed is decoration.
+
+  The tolerance is read off the claim's own trailing zeros: `$361,000` for a
+  computed `$360,794` is honest rounding, `$21,000` for `$52,210` is not. Capped
+  at the nearest thousand, and the cap is load-bearing — `$40,000` divides by
+  ten thousand, and reading that as "anything from 35,000 to 45,000" would make
+  every savings figure unfalsifiable.
+
+  A number that is deliberately not from the calculator — a transfer tax, a
+  recording fee — goes in `literal`, one at a time: an escape hatch nobody takes
+  by accident. The record is written and read through the existing edit route,
+  because a lock with no key is not a gate, it is an outage.
+
+  Checked against production: the five hidden videos are all refused, and the
+  six pieces in flight (40, 42, 44, 46, 47) all pass, each at the $60,000
+  savings they were evidently written against.
+
 ## [0.103.0] — 2026-09-15
 
 ### Added

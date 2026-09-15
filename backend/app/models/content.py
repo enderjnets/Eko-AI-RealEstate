@@ -140,6 +140,21 @@ class ContentPiece(Base):
         JSONB(none_as_null=True), nullable=True
     )
 
+    # What the dollar figures in this piece were computed from:
+    # `{"scenarios": [{"inputs": {...}, "overrides": {...}}, ...],
+    #   "literal": [12000]}`. NULL for the overwhelming majority, which state
+    # no figure at all. Required before a piece that DOES state one can be
+    # approved — see `content_figures.py` and the five videos that went out
+    # promising $21,000 where the calculator answers $52,210.
+    #
+    # The inputs and not the answer, deliberately. A stored answer is true on
+    # the day it is stored and silently stops being true when a default rate
+    # moves, which is the case the written instruction of 14-sep-2026 calls
+    # out by name.
+    calculator_check: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+
     # Identity of the person who approved, not a boolean. "Somebody approved it"
     # is not an answer anyone can act on when a broker asks who did.
     approved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)

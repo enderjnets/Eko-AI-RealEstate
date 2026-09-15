@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.103.0";
+export const CURRENT_VERSION = "0.104.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.104.0",
+    date: "2026-09-15",
+    title: {
+      en: "A figure the calculator never saw",
+      es: "Una cifra que la calculadora nunca vio",
+    },
+    changes: [
+      { en: "A piece that states a dollar figure can no longer be approved unless the calculator can account for it. Five videos went out saying \u201cBuying is ~$21,000 ahead in five years\u201d where the calculator their own caption links to answers $52,210 \u2014 real at a flat 2% appreciation, against the 3.75% the page uses, and nothing recorded which was meant.", es: "Una pieza que dice una cifra en d\u00f3lares ya no puede aprobarse si la calculadora no sabe explicarla. Cinco v\u00eddeos salieron diciendo \u00abcomprar va ~$21.000 por delante en cinco a\u00f1os\u00bb donde la calculadora que enlaza su propio caption responde $52.210: cierto con una apreciaci\u00f3n del 2 %, frente al 3,75 % que usa la p\u00e1gina, y nada registr\u00f3 cu\u00e1l se quiso decir." },
+      { en: "The wording is what gets checked, not the paperwork. Every figure in the approved text must be an input we recorded, something the calculator computed from it, or the difference between two recorded scenarios \u2014 so a tidy record that disagrees with the hook above it fails, which is exactly the shape the old bug had.", es: "Lo que se comprueba es el texto, no el papeleo. Cada cifra del texto aprobado tiene que ser un dato que registramos, algo que la calculadora calcul\u00f3 con \u00e9l, o la diferencia entre dos escenarios registrados \u2014 as\u00ed que un registro impecable que contradiga al gancho de encima falla, que es justo la forma que ten\u00eda el fallo." },
+    ],
+  },
   {
     version: "0.103.0",
     date: "2026-09-15",

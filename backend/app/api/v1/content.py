@@ -50,6 +50,7 @@ from app.models import (
     PublicationPlatform,
 )
 from app.services.buffer_publisher import undeliverable_reason
+from app.services.content_figures import unexplained_figures
 from app.services.content_studio import (
     PUBLISHING_AVAILABLE,
     IllegalTransition,
@@ -112,6 +113,10 @@ class PieceOut(BaseModel):
     # waiting on a missing brokerage line saw it sit there with no reason.
     render_error: str | None = None
     violations: list | None = None
+    # What the dollar figures in this piece were computed from, so the console
+    # can show it beside the text somebody is being asked to approve. Null for
+    # the great majority, which state no figure.
+    calculator_check: dict | None = None
     # What the render is doing, so the queue can stop saying "still being made"
     # over a job nothing has picked up. None when there is no job at all.
     render_state: str | None = None
@@ -142,6 +147,15 @@ class PieceEdit(BaseModel):
     hook: str | None = Field(default=None, max_length=300)
     script: str | None = None
     caption: str | None = None
+    # Where the dollar figures came from. Without a way to write this, the
+    # approval gate in `approve_piece` would be a lock with no key: a piece
+    # that states a figure could never be approved by anybody.
+    #
+    # It rides the edit route rather than getting its own because the two
+    # belong together — changing the wording can change which figures are
+    # claimed — and because editing already revokes approval, which is the
+    # right thing to happen when the arithmetic behind approved text moves.
+    calculator_check: dict | None = None
 
     _trim = field_validator("hook", "script", "caption", mode="before")(
         classmethod(lambda cls, v: _trim_or_clear(v))
@@ -427,7 +441,7 @@ async def edit_piece(
         )
 
     changed = False
-    for field in ("hook", "script", "caption"):
+    for field in ("hook", "script", "caption", "calculator_check"):
         # `model_fields_set`, not `is not None`. The two are different questions
         # and only this one has an answer: "was this field sent?" versus "did it
         # arrive empty?". Skipping None made clearing a caption impossible —
@@ -516,6 +530,31 @@ async def approve_piece(
                 "this piece has no video yet — it is still being made. "
                 "Approving it now would leave it approved and empty: the render "
                 "can no longer attach a file to an approved piece."
+            ),
+        )
+    # Every dollar figure in the approved wording has to be one the calculator
+    # can account for. Five videos went out on 12-14 September saying "Buying
+    # is ~$21,000 ahead in five years" where the calculator their own caption
+    # links to answers $52,210 — right under assumptions nobody wrote down,
+    # which is worse than wrong, because it is indistinguishable from wrong.
+    # The owner caught it by watching them and set all five to private.
+    #
+    # It belongs here and nowhere earlier: nothing in content generation has
+    # ever called the calculator, so the figures arrive as prose and this is
+    # the first moment the claim and the arithmetic are in the same room.
+    unexplained = unexplained_figures(
+        f"{piece.hook or ''}\n{piece.caption or ''}", piece.calculator_check
+    )
+    if unexplained:
+        listed = ", ".join(f"${n:,}" for n in unexplained)
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"the calculator does not account for {listed}. Record what "
+                "each figure was computed from in `calculator_check` "
+                '(`{"scenarios": [{"inputs": {"rent": …, "savings": …, '
+                '"credit": …}}]}`) and approve again. A number that is '
+                'deliberately not from the calculator goes in `literal`.'
             ),
         )
     try:
