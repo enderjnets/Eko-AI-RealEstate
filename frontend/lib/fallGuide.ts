@@ -100,20 +100,20 @@ export type Band = { id: string; elevation: string; when: string; note: string; 
 export const BANDS: Band[] = [
   {
     id: "band-1",
-    elevation: "Above 9,500 ft",
-    when: "Mid to late September",
-    note: "The high passes go first, and they go fast — a windy week can end it.",
+    elevation: "High passes and mountain byways",
+    when: "Often September; check current reports",
+    note: "Higher locations often turn earlier. Wind and weather can shorten the viewing window.",
     spots: [
       {
         name: "Guanella Pass Scenic Byway",
         maps: [
           { label: "Open in Maps", query: "Guanella Pass Scenic Byway, Colorado" },
         ],
-        drive: "40 miles",
+        drive: "Georgetown area — map your route",
         what:
           "Twenty-two miles of byway between Georgetown and Grant, topping out at " +
-          "11,670 ft under Mount Blue Sky and Mount Bierstadt, with thick aspen " +
-          "stands on both sides near the summit.",
+          "about 11,670 ft. Elevation varies along the route; check road and " +
+          "viewing conditions before setting out.",
         photo: {
           src: "/landing/fall/guanella-pass.jpg",
           alt: "The valley below Guanella Pass, aspens turning gold among the spruce",
@@ -130,11 +130,10 @@ export const BANDS: Band[] = [
         maps: [
           { label: "Open in Maps", query: "Kenosha Pass, Colorado" },
         ],
-        drive: "60 miles, US 285",
+        drive: "US 285 — map your route",
         what:
-          "The classic Denver leaf drive. At about 10,000 ft the highway tops out " +
-          "and the whole South Park basin opens up in gold. The lots on both sides " +
-          "of the road fill early — this is a sunrise trip, not a lunchtime one.",
+          "A mountain stop on US 285 with views toward South Park. Check current " +
+          "conditions and parking information, and have a backup plan on busy days.",
         photo: {
           src: "/landing/fall/kenosha-pass.jpg",
           alt: "The South Park basin seen from Kenosha Pass, with gold aspens beside US 285",
@@ -152,8 +151,8 @@ export const BANDS: Band[] = [
         ],
         drive: "CO 72 and CO 7",
         what:
-          "Black Hawk up to Estes Park, with high aspen groves most of the way. " +
-          "The long option: it works as a loop rather than an out-and-back.",
+          "Plan a scenic drive between the Black Hawk area and Estes Park. " +
+          "Allow time for your chosen stops and check travel conditions.",
         photo: {
           src: "/landing/fall/peak-to-peak.jpg",
           alt: "An aspen-streaked hillside along the Peak to Peak Highway",
@@ -168,20 +167,20 @@ export const BANDS: Band[] = [
   },
   {
     id: "band-2",
-    elevation: "7,000 – 9,000 ft",
-    when: "Late September to mid October",
-    note: "The widest window of the season, and the one that survives a bad forecast.",
+    elevation: "Mountain towns and scenic stops",
+    when: "September into October; timing varies",
+    note: "Compare current conditions across several stops before choosing your route.",
     spots: [
       {
         name: "Georgetown Loop Railroad",
         maps: [
           { label: "Open in Maps", query: "Georgetown Loop Railroad, Georgetown, Colorado" },
         ],
-        drive: "40 miles",
+        drive: "Georgetown area — map your route",
         what:
-          "A vintage steam locomotive between Georgetown and Silver Plume, " +
-          "surrounded by aspen. The one on this list that works with small " +
-          "children and with anyone who would rather not hike.",
+          "A scenic railroad ride between Georgetown and Silver Plume. " +
+          "Check the operator's schedule, ticket availability and accessibility " +
+          "information before planning your visit.",
         photo: {
           src: "/landing/fall/georgetown-loop.jpg",
           alt: "The Georgetown Loop train curving between pines and turning aspen",
@@ -197,28 +196,28 @@ export const BANDS: Band[] = [
         maps: [
           { label: "Open in Maps", query: "Mighty Argo Cable Car, Idaho Springs, Colorado" },
         ],
-        drive: "33 miles",
+        drive: "Idaho Springs — map your route",
         what:
-          "Gondolas climbing from 7,550 ft to 8,800 ft at Miners Point. Height " +
-          "without a trailhead, and the shortest drive of any real overlook here.",
+          "A cable-car option in Idaho Springs. Check the operator's current " +
+          "opening status, hours and ticket information before traveling.",
       },
       {
         name: "Dillon Reservoir — Frisco and Silverthorne",
         maps: [
           { label: "Open in Maps", query: "Dillon Reservoir, Colorado" },
         ],
-        drive: "69 miles",
+        drive: "Frisco and Silverthorne — map your route",
         what:
-          "An 18-mile paved path circles the lake, so you can take as much or as " +
-          "little of it as the afternoon allows.",
+          "Explore the reservoir's path network from a starting point that suits " +
+          "your plans. Check the route, distance and conditions before setting out.",
       },
     ],
   },
   {
     id: "band-3",
-    elevation: "6,000 – 8,000 ft",
-    when: "Most of October",
-    note: "When the passes are bare and everyone assumes it is over, this is where it is.",
+    elevation: "Parks and foothill towns",
+    when: "Check from September; do not wait for late October",
+    note: "These places span different elevations. A date that works for one may be late for another.",
     spots: [
       {
         name: "Golden Gate Canyon State Park",
@@ -227,8 +226,8 @@ export const BANDS: Band[] = [
         ],
         drive: "Northwest of Golden",
         what:
-          "Lower-elevation aspen groves with the mountain vistas behind them. " +
-          "Close enough to go after work.",
+          "Mountain trails and aspen groves northwest of Golden. Start checking " +
+          "conditions in September; do not assume color will remain through late October.",
         photo: {
           src: "/landing/fall/golden-gate-canyon.jpg",
           alt: "A trail through yellow aspens and dry grass at Golden Gate Canyon State Park",
@@ -258,16 +257,16 @@ export const BANDS: Band[] = [
         ],
         drive: "Oh My God Road to Idaho Springs",
         what:
-          "Aspen around the old cemeteries above town, and a slow unpaved road " +
-          "down to Idaho Springs that is worth the hour it takes.",
+          "Explore the historic town and nearby routes. Check road conditions " +
+          "and vehicle suitability before considering Oh My God Road.",
       },
     ],
   },
   {
     id: "band-4",
-    elevation: "Denver itself, 5,280 ft",
-    when: "October into November",
-    note: "The part people forget: the last three weeks of color happen at home.",
+    elevation: "Denver parks and trails",
+    when: "Often October; weather dependent",
+    note: "Look for local color too, without assuming it will last a fixed number of weeks.",
     spots: [
       {
         name: "High Line Canal Trail",
@@ -285,8 +284,8 @@ export const BANDS: Band[] = [
         ],
         drive: "From downtown",
         what:
-          "Forty-plus miles each — downtown out to Cherry Creek State Park, and " +
-          "the river down to Chatfield and Waterton Canyon.",
+          "Choose a segment of the creek or river trail network. Check the route " +
+          "length, access points and any closures before leaving.",
       },
       {
         name: "Washington Park, City Park, Sloan's Lake",
@@ -297,8 +296,8 @@ export const BANDS: Band[] = [
         ],
         drive: "In town",
         what:
-          "The three that hold their color longest, and the ones you can walk " +
-          "to from a Denver neighborhood.",
+          "Three city-park options for a local outing. Choose a route from your " +
+          "neighborhood and check current conditions.",
       },
     ],
   },

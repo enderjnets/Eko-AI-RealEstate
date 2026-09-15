@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.102.2";
+export const CURRENT_VERSION = "0.102.3";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,12 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.102.3",
+    date: "2026-09-14",
+    title: { en: "Clearer fall planning", es: "Guía de otoño más precisa" },
+    changes: [{ en: "Replaced videos refresh correctly before approval.", es: "Los videos sustituidos se actualizan correctamente antes de aprobar." }, { en: "Fall outing windows and route descriptions now emphasize current conditions and preserve all maps and photo credits.", es: "Las ventanas y rutas de otoño ahora priorizan las condiciones actuales y conservan mapas y créditos fotográficos." }],
+  },
   {
     version: "0.102.2",
     date: "2026-09-14",

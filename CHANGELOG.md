@@ -1,3 +1,11 @@
+# Changelog
+
+## [0.102.3] — 2026-09-14
+
+- Refresh video previews when a piece receives a replacement file, avoiding stale cached footage during approval.
+
+- Clarify fall-guide timing, routes and location groups; remove fixed color-duration promises and ambiguous drive distances. Preserve all destination links, photo credits and lead-capture paths.
+
 # CHANGELOG
 
 All notable changes to **Eko AI Realtors**.

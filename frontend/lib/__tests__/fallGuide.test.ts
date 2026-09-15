@@ -179,13 +179,13 @@ describe("the elevation ladder and the bands it points at", () => {
     expect(source).toContain("<ConsultForm");
   });
 
-  it("the bands run downhill, because that is the whole idea", () => {
+  it("location groups keep the high-country to city ordering without universal altitude claims", () => {
     // Aspens turn from the top down. A band list that starts in Denver is not
     // a reordering, it is the opposite claim.
     const first = BANDS_FOR_TEST[0].elevation;
     const last = BANDS_FOR_TEST[BANDS_FOR_TEST.length - 1].elevation;
-    expect(first).toMatch(/9,500/);
-    expect(last).toMatch(/5,280/);
+    expect(first).toMatch(/High passes/);
+    expect(last).toMatch(/Denver/);
   });
 });
 
