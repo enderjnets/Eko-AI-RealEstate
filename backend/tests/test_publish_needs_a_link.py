@@ -86,6 +86,22 @@ def test_a_schemeless_cta_still_produces_a_clickable_comment() -> None:
     assert comment_for(7, "denverhomestory.com/calculator").count("https://") == 1
 
 
+def test_the_comment_lands_where_the_caption_lands() -> None:
+    """The configured CTA is the bare root, and the publisher routes a root to
+    the social hub before posting it. A comment assembled by hand would have
+    sent people to the homepage while the description above it went to
+    `/start` — the same video pointing two places, and the split invisible in
+    the report because both arrive tagged."""
+    assert "/start" in comment_for(42, "https://www.denverhomestory.com")
+
+
+def test_an_explicit_destination_is_not_rerouted() -> None:
+    """A caption that names `/calculator` means it. The comment follows."""
+    link = comment_for(42, "https://www.denverhomestory.com/calculator")
+    assert "/calculator" in link
+    assert "/start" not in link
+
+
 @pytest.mark.parametrize("piece_id", [1, 42, 999])
 def test_every_piece_gets_its_own_link(piece_id: int) -> None:
     assert f"piece-{piece_id}" in comment_for(piece_id, CTA)

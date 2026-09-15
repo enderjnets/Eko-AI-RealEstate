@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.102.5] — 2026-09-15
+
+### Fixed
+- **The follow-up comment went to the homepage while the description went to
+  `/start`.** `comment_for` was assembling its own URL from `CONTENT_CTA_URL`,
+  which in production is the bare root — and a bare root is routed to the social
+  hub by `with_platform_utm` before it is posted. So the same video would have
+  pointed at two different pages, and the split would have been invisible in the
+  report because both arrive tagged. `with_platform_utm` gained an optional
+  `medium` (default `social`, unchanged for every existing caller) and the
+  comment now goes through it. One router, two mediums: the comment and the
+  caption above it land on the same page and stay countable apart.
+
 ## [0.102.4] — 2026-09-15
 
 ### Added

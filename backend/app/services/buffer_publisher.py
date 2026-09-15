@@ -196,8 +196,15 @@ def with_platform_utm(
     platform: PublicationPlatform,
     piece_id: int,
     campaign: str,
+    medium: str = "social",
 ) -> str:
     """Normalize and tag the first Denver Home Story link in a caption.
+
+    `medium` exists so the follow-up comment can go through this same router
+    instead of assembling a second URL of its own. A comment posted under the
+    video and the caption above it must land on the same page — the routing to
+    the social hub lives here — while still being countable apart from it. A
+    second assembler would have drifted the moment either destination moved.
 
     The approved text chooses the destination. A root link goes through the
     small social hub; an explicit calculator path or consult fragment stays on
@@ -269,7 +276,7 @@ def with_platform_utm(
         pairs.extend(
             [
                 ("utm_source", getattr(platform, "value", str(platform))),
-                ("utm_medium", "social"),
+                ("utm_medium", medium),
                 ("utm_campaign", campaign),
                 ("utm_content", f"piece-{piece_id}"),
             ]

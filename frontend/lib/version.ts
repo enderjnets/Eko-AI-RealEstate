@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.102.4";
+export const CURRENT_VERSION = "0.102.5";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.102.5",
+    date: "2026-09-15",
+    title: {
+      en: "The comment lands where the description lands",
+      es: "El comentario cae donde cae la descripcion",
+    },
+    changes: [
+      { en: "The follow-up comment is now built by the publisher's own link router instead of assembling its own. The configured address is the bare root, which the publisher sends to the social hub before posting; a hand-made link would have pointed the comment at the homepage while the description above it went to /start.", es: "El comentario de seguimiento lo construye ahora el mismo enrutador de enlaces del publisher, en vez de armar el suyo. La direccion configurada es la raiz, que el publisher manda al hub social antes de publicar; un enlace hecho a mano habria llevado el comentario a la portada mientras la descripcion iba a /start." },
+    ],
+  },
   {
     version: "0.102.4",
     date: "2026-09-15",

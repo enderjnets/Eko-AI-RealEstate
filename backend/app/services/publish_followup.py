@@ -71,17 +71,24 @@ def caption_carries_link(text: str, cta_url: str) -> bool:
     return tagged != (text or "")
 
 
-def comment_for(piece_id: int, cta_url: str) -> str:
+def comment_for(piece_id: int, cta_url: str, campaign: str = "video") -> str:
     """The comment to paste under the video, with this piece's own tag.
 
     Short on purpose: a comment is truncated after about two lines, so the link
     goes on the first one a reader sees, not after an explanation.
+
+    The link is built by the publisher's own router, with `medium="comment"`.
+    Assembling it here instead would have been three lines and a bug: a bare
+    configured root is routed to the social hub before it is posted, so a
+    hand-made link would have sent the comment to the homepage while the
+    caption above it went to `/start`. One router, two mediums.
     """
+    from app.services.buffer_publisher import with_platform_utm
+
     base = (cta_url or "").strip() or "denverhomestory.com"
-    if "://" not in base:
-        base = f"https://{base}"
-    separator = "&" if "?" in base else "?"
-    link = f"{base}{separator}utm_source=youtube&utm_medium=comment&utm_content=piece-{piece_id}"
+    link = with_platform_utm(
+        base, base, PublicationPlatform.YOUTUBE, piece_id, campaign, medium="comment"
+    )
     return (
         f"Run your own number — nothing to fill in to see it:\n{link}\n"
         "Every assumption on that page is a slider you can move: rate, "
