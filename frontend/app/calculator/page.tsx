@@ -37,6 +37,7 @@ import {
 } from "@/lib/calculator";
 import { useI18n } from "@/lib/i18n";
 import { LANDING } from "@/lib/landing";
+import { resultInView } from "@/lib/resultInView";
 import { getTracker } from "@/lib/track";
 
 /** The sections the tracker measures. Every id must be in `LANDING_SECTIONS`. */
@@ -170,6 +171,56 @@ export default function CalculatorPage() {
       credit,
     });
   }, [result, shown, credit]);
+
+  // The answer arrives below the fold, and nothing says so.
+  //
+  // Measured against production on a 390x844 phone, 15-sep-2026: tapping the
+  // two presets leaves `window.scrollY` at 0 while the figure lands at
+  // 1,073px — 229px past the bottom of the screen. The page simply does not
+  // move. The funnel says the same thing from the other side: of 43 sessions
+  // on this page in 28 days, 32 never scrolled at all, and 27 of those 32 did
+  // interact. They tapped, nothing visibly happened, and they left without
+  // ever seeing the number the video had promised them.
+  //
+  // Three conditions, each earning its place:
+  //
+  // * Once per page load. Bringing the answer into view is an answer to "did
+  //   anything happen"; doing it on every recalculation would fight a person
+  //   who has scrolled away to read the assumptions.
+  // * Only when it is actually off screen. On a wide layout the result sits
+  //   beside the inputs and is already visible, and hijacking the scroll of
+  //   somebody who can see the answer is worse than doing nothing.
+  // * Never while a text field has focus — and without spending the one shot,
+  //   so the next keystroke retries. Someone typing their savings has the
+  //   field above the result; scrolling would pull what they are typing off
+  //   the screen. Tapping a preset blurs the field, which is the path this
+  //   whole effect exists for.
+  //
+  // The rules themselves live in `lib/resultInView.ts`, where `vitest` can
+  // reach them: this app has no DOM in its tests, and four conditions nothing
+  // checks are four conditions that drift.
+  const resultRef = useRef<HTMLElement | null>(null);
+  const broughtIntoView = useRef(false);
+  useEffect(() => {
+    if (broughtIntoView.current || !result || !shown) return;
+    const el = resultRef.current;
+    if (!el) return;
+
+    const focused = document.activeElement;
+    const answer = resultInView({
+      alreadyDone: broughtIntoView.current,
+      hasResult: true,
+      focusedIsTextField:
+        focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement,
+      top: el.getBoundingClientRect().top,
+      viewportHeight: window.innerHeight,
+    });
+    if (answer.spend) broughtIntoView.current = true;
+    if (!answer.scroll) return;
+
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    el.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+  }, [result, shown]);
 
   // What travels with the lead: the inputs and only the sliders that moved,
   // and only once the page has a figure to stand behind. The server recomputes
@@ -340,7 +391,7 @@ export default function CalculatorPage() {
       {/* The answer, and everything that explains it. */}
       <div className="min-w-0 flex-1 px-5 pb-14 pt-2 sm:px-8 lg:px-12 lg:py-10">
         {/* ── Result ─────────────────────────────────────────────────── */}
-        <section id="result" className="scroll-mt-10">
+        <section id="result" ref={resultRef} className="scroll-mt-10">
           {!(result && shown) && (
             /* The empty state wears the answer's own chrome: on a wide screen
                the column is otherwise a void, and a visitor cannot tell what

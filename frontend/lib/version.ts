@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.102.7";
+export const CURRENT_VERSION = "0.102.8";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.102.8",
+    date: "2026-09-15",
+    title: {
+      en: "The calculator's answer comes to the screen",
+      es: "La respuesta de la calculadora viene a la pantalla",
+    },
+    changes: [
+      { en: "On a phone, tapping the two presets left the page exactly where it was while the figure appeared 229 pixels below the bottom of the screen \u2014 so nothing visibly happened. The result now comes into view the first time it appears, and only when it is actually off screen.", es: "En un m\u00f3vil, tocar los dos botones dejaba la p\u00e1gina donde estaba mientras la cifra aparec\u00eda 229 p\u00edxeles por debajo del borde: no pasaba nada visible. El resultado viene ahora a la pantalla la primera vez que aparece, y solo si estaba fuera de ella." },
+      { en: "It never pulls the page while somebody is typing in a field, and it does not spend its one turn then either \u2014 the savings field sits above the result, so scrolling would take what they are typing off the screen.", es: "Nunca tira de la p\u00e1gina mientras alguien escribe en un campo, y tampoco gasta su \u00fanico turno ah\u00ed: el campo de ahorro est\u00e1 encima del resultado, as\u00ed que desplazar se llevar\u00eda fuera lo que est\u00e1n escribiendo." },
+      { en: "The site now identifies the brokerage the same way the videos do.", es: "El sitio identifica ya la correduria igual que los videos." },
+    ],
+  },
   {
     version: "0.102.7",
     date: "2026-09-15",

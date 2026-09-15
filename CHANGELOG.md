@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.102.8] — 2026-09-15
+
+### Fixed
+- **On a phone, the calculator's answer appeared where nobody could see it.**
+  Measured against production on a 390×844 screen: tapping the two presets
+  leaves `window.scrollY` at **0** while the figure lands at **1,073px** — 229
+  past the bottom of the screen. The page does not move, so as far as the person
+  holding the phone is concerned, nothing happened. The funnel says the same
+  thing from the other side: of **43** sessions on `/calculator` in 28 days,
+  **32 never scrolled at all**, and **27 of those 32 did interact**. They
+  tapped, nothing visibly changed, and they left without ever seeing the number
+  the video had promised them. Only **8 of 43** ever reached the 33% mark where
+  the invitation to talk sits, and **none** of the 43 clicked it.
+
+  The result now comes into view the first time it appears. Three conditions,
+  each earning its place: once per page load, never when the figure is already
+  on screen (the wide layout puts it beside the inputs), and never while a text
+  field has focus — the savings field sits *above* the result, so scrolling
+  would pull what somebody is typing off the screen. That last case also does
+  not spend the one turn, so the tap that blurs the field still gets it.
+
+### Changed
+- `NEXT_PUBLIC_LANDING_BROKERAGE` now reads **Engel & Völkers**, matching the
+  captions corrected the same day. The site and the videos had drifted apart
+  again; a previous release aligned them on purpose and this restores that. The
+  page's own content about **Aspen & Snowmass as one of their markets** is
+  untouched — that is true and stays.
+
+### Why the rule lives in `lib/`
+- `resultInView` is a pure function with its own tests. This app has `vitest`
+  and no DOM, so a decision left inside the effect could not be checked at all,
+  and four conditions that nothing checks are four conditions that drift.
+
 ## [0.102.7] — 2026-09-15
 
 ### Fixed
