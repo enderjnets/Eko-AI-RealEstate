@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.102.6] — 2026-09-15
+
+### Added
+- **`edit_scheduled_text`: change what a queued post will say, keeping its slot.**
+  For a correction to something already handed to Buffer — a brokerage line that
+  changed, a figure that went stale — where cancelling and re-queuing would lose
+  the schedule. `read_scheduled_post` reads what Buffer currently holds first, so
+  a caption edited by hand after queueing is not silently overwritten with what
+  we think we sent.
+
+### Why it is shaped this way
+- **`editPost` replaces a post; it does not patch one.** Sending `{id, text}` —
+  the obvious call — passes schema validation and is then refused by the network:
+  *"Instagram posts require at least one image or video., Instagram posts require
+  a type (post, story, or reel)."* The assets and metadata were simply not in the
+  input, so they were dropped. The edit therefore rebuilds the whole input with
+  `build_post_input`, the same function that created the post. Measured on the
+  **first** of twenty-eight scheduled posts; running the batch first would have
+  stripped the video from all twenty-eight, silently, weeks before anyone looked.
+- **The error union was read, not guessed.** `createPost` names `MutationError`,
+  which `PostActionPayload` does not contain — copying that fragment across fails
+  validation with *"Fragment cannot be spread here"*, a 200 carrying an error no
+  parser would have seen. `parse_edit_post` names the six real error types.
+- `channelId` is filtered out of the rebuilt input: a post cannot change channel,
+  and an unknown key fails the whole edit on a field nobody needed.
+
 ## [0.102.5] — 2026-09-15
 
 ### Fixed

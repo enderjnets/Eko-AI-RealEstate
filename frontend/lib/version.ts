@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.102.5";
+export const CURRENT_VERSION = "0.102.6";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.102.6",
+    date: "2026-09-15",
+    title: {
+      en: "Correcting a queued post without stripping its video",
+      es: "Corregir un post en cola sin dejarlo sin video",
+    },
+    changes: [
+      { en: "The publisher can now change the words of a post Buffer is still holding, for a brokerage line that changed or a figure that went stale, without cancelling it and losing its slot.", es: "El publicador puede cambiar ahora el texto de un post que Buffer todavia tiene en cola \u2014 una linea de correduria que cambio, una cifra que quedo vieja \u2014 sin cancelarlo y perder su hueco." },
+      { en: "Buffer's editPost replaces a post rather than patching it: sending only the new text drops the video, and the platform refuses it. The edit rebuilds the whole input with the same function that created the post.", es: "El editPost de Buffer reemplaza el post en vez de parchearlo: mandar solo el texto nuevo pierde el video y la plataforma lo rechaza. La edicion reconstruye la entrada entera con la misma funcion que creo el post." },
+    ],
+  },
   {
     version: "0.102.5",
     date: "2026-09-15",

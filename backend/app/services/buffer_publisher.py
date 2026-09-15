@@ -421,6 +421,124 @@ def parse_create_post(payload: dict[str, Any]) -> str:
     raise BufferRefused(f"[{kind}] {message}" if message else f"unexpected reply: {kind}")
 
 
+# Changing the text of a post Buffer is still holding.
+#
+# **`editPost` replaces the post, it does not patch it.** Sending `{id, text}`
+# and nothing else is accepted by the schema and then refused by the network:
+# "Instagram posts require at least one image or video., Instagram posts require
+# a type (post, story, or reel)." — the video and the metadata were simply not
+# in the input, so they were dropped. `edit_scheduled_text` therefore rebuilds
+# the whole input with `build_post_input`, the same function that created the
+# post, and changes only the words. Measured on 15-sep-2026, on the first of
+# twenty-eight scheduled posts; doing all twenty-eight first would have stripped
+# the video from every one of them.
+#
+# The error branches are the real union, read out of the schema rather than
+# guessed. `createPost` above names `MutationError`, which this union does not
+# contain — writing the same fragment here fails validation with "Fragment
+# cannot be spread here", which is how the shape below was found.
+_EDIT_POST = """
+mutation EditPost($input: EditPostInput!) {
+  editPost(input: $input) {
+    __typename
+    ... on PostActionSuccess { post { id text dueAt status } }
+    ... on InvalidInputError { message }
+    ... on NotFoundError { message }
+    ... on UnauthorizedError { message }
+    ... on UnexpectedError { message }
+    ... on RestProxyError { message }
+    ... on LimitReachedError { message }
+  }
+}
+""".strip()
+
+_READ_POST = """
+query ReadPost($input: PostInput!) {
+  post(input: $input) { id text dueAt status }
+}
+""".strip()
+
+# Which `CreatePostInput` keys `EditPostInput` also accepts. Anything else in
+# the built input — `channelId`, which a post cannot change — is dropped rather
+# than sent, because the schema refuses an unknown field outright and the whole
+# edit would fail on a key nobody needed.
+_EDITABLE_KEYS = frozenset(
+    {"aiAssisted", "assets", "dueAt", "metadata", "mode", "schedulingType", "source", "text"}
+)
+
+
+def parse_edit_post(payload: dict[str, Any]) -> dict[str, Any]:
+    """The edited post, or raise with what Buffer said. Mirrors its sibling."""
+    if not isinstance(payload, dict):
+        raise BufferRefused("Buffer did not answer JSON")
+
+    errors = payload.get("errors")
+    if errors:
+        messages = "; ".join(e.get("message", "?") for e in errors if isinstance(e, dict))
+        raise BufferRefused(messages or "unnamed GraphQL error")
+
+    edited = (payload.get("data") or {}).get("editPost")
+    if not isinstance(edited, dict):
+        raise BufferRefused("response carried no data.editPost")
+
+    kind = edited.get("__typename")
+    if kind == "PostActionSuccess":
+        post = edited.get("post")
+        if not isinstance(post, dict) or not post.get("id"):
+            raise BufferRefused("Buffer reported success without a post")
+        return post
+
+    message = edited.get("message")
+    raise BufferRefused(f"[{kind}] {message}" if message else f"unexpected reply: {kind}")
+
+
+async def read_scheduled_post(post_id: str) -> dict[str, Any]:
+    """What Buffer currently holds for this post: its text, due date and state.
+
+    Read before every edit rather than reconstructed from our own caption: a
+    caption edited by hand after the post was queued would otherwise be silently
+    overwritten with what we think we sent.
+    """
+    payload = await _graphql(_READ_POST, {"input": {"id": post_id}})
+    post = (payload.get("data") or {}).get("post")
+    if not isinstance(post, dict):
+        raise BufferRefused(f"Buffer knows no post {post_id}")
+    return post
+
+
+async def edit_scheduled_text(
+    piece: ContentPiece,
+    platform: PublicationPlatform,
+    post_id: str,
+    text: str,
+    due_at: datetime | None,
+) -> dict[str, Any]:
+    """Replace the words of a queued post, keeping everything else it has.
+
+    For a correction to something already handed to Buffer — a brokerage line
+    that changed, a figure that went stale — where cancelling and re-queuing
+    would lose the slot and the schedule. It does not touch the approval gate,
+    because it does not publish: the post was already approved and queued, and
+    this changes what it will say.
+    """
+    channel_id = configured_channels().get(platform)
+    if not channel_id:
+        raise BufferRefused(f"no channel configured for {platform.value}")
+
+    built = build_post_input(
+        channel_id=channel_id,
+        platform=platform,
+        text=text,
+        video_url=public_media_url(piece.id),
+        ai_generated=piece.kind is ContentKind.GENERATED,
+        title=(piece.hook or "").strip(),
+        due_at=due_at,
+    )
+    payload = {k: v for k, v in built.items() if k in _EDITABLE_KEYS}
+    payload["id"] = post_id
+    return parse_edit_post(await _graphql(_EDIT_POST, {"input": payload}))
+
+
 async def _graphql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
     s = get_settings()
     async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
