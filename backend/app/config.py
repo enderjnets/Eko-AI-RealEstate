@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.102.6"
+    APP_VERSION: str = "0.102.7"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -596,6 +596,21 @@ class Settings(BaseSettings):
     # out, and a fetch that starts after the hour has passed is a post that
     # misses it.
     CONTENT_SCHEDULE_LEAD_MINUTES: int = 20
+    # How far ahead a piece may be handed to Buffer at all.
+    #
+    # Buffer holds ten scheduled posts per channel and refuses the eleventh
+    # with `LimitReachedError`. The refusal arrives per platform, so a full
+    # queue does not stop the rail — it shreds it. Measured in production on
+    # 15-sep-2026: Instagram sat at ten of ten with posts booked out to 26
+    # October, pieces 33, 34 and 36 were refused on all three channels and
+    # died, and 37 and 38 went out on fewer channels than they were approved
+    # for. Nothing rang anybody's phone.
+    #
+    # A piece whose window opens in six weeks does not need one of those ten
+    # today. Holding the far end of the queue here costs nothing and leaves
+    # Buffer's slots for the pieces that are actually due. A piece with no
+    # window at all — the calculator ones are permanent — is unaffected.
+    CONTENT_SCHEDULE_HORIZON_DAYS: int = 10
 
     # ─── CORS ───────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3004"

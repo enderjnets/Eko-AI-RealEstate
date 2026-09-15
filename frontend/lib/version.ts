@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.102.6";
+export const CURRENT_VERSION = "0.102.7";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.102.7",
+    date: "2026-09-15",
+    title: {
+      en: "The queue stops outrunning Buffer",
+      es: "La cola deja de adelantarse a Buffer",
+    },
+    changes: [
+      { en: "A piece is no longer handed to Buffer weeks before its window opens. Buffer holds ten scheduled posts per channel and refuses the eleventh, and the publisher had booked Instagram out to 26 October \u2014 so everything behind it was turned away.", es: "Una pieza ya no se entrega a Buffer semanas antes de que abra su ventana. Buffer guarda diez posts programados por canal y rechaza el once, y el publicador ten\u00eda Instagram reservado hasta el 26 de octubre, as\u00ed que todo lo que ven\u00eda detr\u00e1s era rechazado." },
+      { en: "A full Buffer queue now leaves the platform pending instead of failed. Failed is terminal \u2014 nothing retries it unless a person approves the whole piece again \u2014 and three approved pieces had died that way, with two more going out on fewer channels than they were approved for.", es: "Una cola llena en Buffer deja ahora la plataforma pendiente en vez de fallida. Fallida es terminal \u2014 nada la reintenta si una persona no vuelve a aprobar la pieza entera \u2014 y as\u00ed hab\u00edan muerto tres piezas aprobadas, con otras dos saliendo en menos canales de los aprobados." },
+      { en: "The request quota is read from the header Buffer already sends on every response, so the publisher stops two requests short of the ceiling instead of discovering it with a real post.", es: "La cuota de peticiones se lee de la cabecera que Buffer ya manda en cada respuesta, as\u00ed que el publicador se para dos peticiones antes del techo en vez de descubrirlo con un post real." },
+    ],
+  },
   {
     version: "0.102.6",
     date: "2026-09-15",

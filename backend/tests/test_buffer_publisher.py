@@ -2196,7 +2196,14 @@ async def test_the_publisher_actually_uses_the_window(
     await _brokerage()
     await _set_timezone()
     zone = ZoneInfo(DENVER)
-    lejos = (datetime.now(zone) + timedelta(days=25)).date()
+    # Dentro de `CONTENT_SCHEDULE_HORIZON_DAYS`, y no por comodidad: desde el
+    # 15-sep-2026 una pieza cuya ventana abre mas alla del horizonte no se
+    # entrega a Buffer en absoluto, porque hacerlo gastaba uno de los diez
+    # huecos por canal semanas antes de necesitarlo. Los 25 dias que habia aqui
+    # median el mismo invariante contra un camino que ya no existe. Cinco sigue
+    # siendo un dia distinto de hoy, que es lo unico que esta prueba necesita
+    # para distinguir `_from_when` de `datetime.now(UTC)`.
+    lejos = (datetime.now(zone) + timedelta(days=5)).date()
     piece = await _piece_with_window(lejos)
 
     vistos: list[datetime | None] = []

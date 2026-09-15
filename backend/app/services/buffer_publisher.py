@@ -45,6 +45,7 @@ import logging
 import re
 from datetime import UTC, datetime, time, timedelta
 from datetime import date as date_cls
+from time import monotonic
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
@@ -539,7 +540,76 @@ async def edit_scheduled_text(
     return parse_edit_post(await _graphql(_EDIT_POST, {"input": payload}))
 
 
+# What Buffer will not let us go below before we stop asking. Two, not zero:
+# `reconcile_scheduled` runs at the top of every tick and a rail that spends
+# its last request posting cannot afterwards ask how the post went.
+_QUOTA_FLOOR = 2
+
+# Buffer counts per API client, not per endpoint, so this is deliberately
+# module state rather than per-call: every caller in this file draws on the
+# same hundred requests per fifteen minutes.
+_quota_remaining: int | None = None
+_quota_refills_at: float = 0.0
+
+
+def slots_are_full(message: str) -> bool:
+    """Whether Buffer refused because that channel's queue is full.
+
+    Told apart from every other refusal because the answer is different in
+    kind. A caption Instagram will not accept is about the piece and will be
+    refused again tomorrow; ten scheduled posts is about the calendar and
+    stops being true the moment one of them goes out.
+    """
+    return "scheduled posts limit reached" in (message or "").lower()
+
+
+def parse_rate_limit(header: str | None) -> tuple[int | None, int | None]:
+    """What is left in the window, read from Buffer's own `ratelimit` header.
+
+    The header reads `"100-in-15min"; r=98; t=897`: `r` is what remains and
+    `t` is the seconds until it refills. Anything that does not parse returns
+    `(None, None)` on purpose — an unreadable header is not news that the
+    quota is spent, and reading it as zero would stop the rail over a string.
+    """
+    if not header:
+        return None, None
+    found: dict[str, int] = {}
+    for part in header.split(";"):
+        key, _, raw = part.strip().partition("=")
+        if key in ("r", "t"):
+            try:
+                found[key] = int(raw)
+            except ValueError:
+                return None, None
+    return found.get("r"), found.get("t")
+
+
 async def _graphql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
+    """One request, with the quota read before it is spent rather than after.
+
+    Reacting to 429 alone means every ceiling is discovered by hitting it, and
+    the request that hits it is a real post that then has to be picked up
+    again. Buffer states what is left on every response; this stops one short
+    of the edge instead.
+
+    There is deliberately no sleep-and-retry here, so there is no jitter
+    either: the docs warn that an exact `Retry-After` makes every client
+    return in the same instant, but this rail does not return — it raises
+    `QuotaReached`, the tick ends, and the scheduler brings the next one round
+    later. Jitter on a path that never waits would be decoration.
+    """
+    global _quota_remaining, _quota_refills_at
+
+    if (
+        _quota_remaining is not None
+        and _quota_remaining <= _QUOTA_FLOOR
+        and monotonic() < _quota_refills_at
+    ):
+        raise QuotaReached(
+            f"only {_quota_remaining} Buffer requests left in this window; "
+            f"stopping {int(_quota_refills_at - monotonic())}s short of the refill"
+        )
+
     s = get_settings()
     async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
         resp = await client.post(
@@ -550,9 +620,15 @@ async def _graphql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
                 "Content-Type": "application/json",
             },
         )
+    remaining, refills_in = parse_rate_limit(resp.headers.get("ratelimit"))
+    if remaining is not None:
+        _quota_remaining = remaining
+        _quota_refills_at = monotonic() + (refills_in or 0)
+
     if resp.status_code == 429:
         # Retry-After is the truth. The body names the window that ran out
-        # ("15m"/"24h"/"30d"), which is not the same question.
+        # ("15m"/"24h"/"30d"), which is not the same question. A rejected
+        # request costs no quota, so the counter above is not adjusted here.
         raise QuotaReached(f"Buffer quota reached; retry-after={resp.headers.get('Retry-After')}")
     if resp.status_code >= 400:
         raise BufferRefused(f"HTTP {resp.status_code}: {resp.text[:300]}")
@@ -1044,6 +1120,24 @@ async def publish_piece(db: AsyncSession, piece_id: int) -> None:
             await db.commit()
             raise
         except (BufferRefused, httpx.HTTPError) as exc:
+            if slots_are_full(str(exc)):
+                # Not this piece's fault, and FAILED here is a death
+                # sentence: nothing retries a failed row unless a person
+                # approves the whole piece again, and the per-platform arrival
+                # of this refusal means a piece can lose one channel and keep
+                # the others, then close as published having gone out on one.
+                # That is exactly what happened to 33, 34 and 36 on 15-sep and
+                # to one channel each of 37 and 38. PENDING is the answer a
+                # quota pause already gets: still owed, try again next tick.
+                row.status = PublicationStatus.PENDING
+                row.last_error = str(exc)[:2000]
+                await db.commit()
+                log.warning(
+                    "Piece %s: the %s queue at Buffer is full, leaving the "
+                    "platform pending rather than failed: %s",
+                    piece.id, platform.value, exc,
+                )
+                continue
             row.status = PublicationStatus.FAILED
             row.last_error = str(exc)[:2000]
             await db.commit()
@@ -1428,6 +1522,13 @@ async def publish_approved(db: AsyncSession) -> int:
     if claimed >= settings.CONTENT_PUBLISH_MAX_PER_DAY:
         return 0
 
+    # A date, not an instant: the horizon is counted in days and a few hours
+    # either side of midnight cannot change which side of ten days a window
+    # falls on, so the agency's zone is not worth a query here.
+    horizon = datetime.now(UTC).date() + timedelta(
+        days=settings.CONTENT_SCHEDULE_HORIZON_DAYS
+    )
+
     # Pieces a person approved that have a rendered file, plus pieces already
     # claimed and half-finished (a quota pause leaves those, and they have to
     # be resumed or the piece never closes).
@@ -1440,6 +1541,18 @@ async def publish_approved(db: AsyncSession) -> int:
                         (ContentStatus.APPROVED, ContentStatus.PUBLISHING)
                     ),
                     ContentPiece.media_path.is_not(None),
+                    # Buffer holds ten scheduled posts per channel and no
+                    # more. A piece whose window opens in six weeks does not
+                    # need one of those ten today; spending them that far out
+                    # is what filled Instagram to 26 October and then refused
+                    # everything behind it. Held here it costs nothing. A
+                    # piece with no window is permanent, and permanent means
+                    # now — the calculator pieces are the reason that branch
+                    # exists and they must not be caught by this.
+                    or_(
+                        ContentPiece.publish_window_start.is_(None),
+                        ContentPiece.publish_window_start <= horizon,
+                    ),
                     # Buffer-owned rows are reconciled above, not new work.
                     # Filter before LIMIT or a scheduled backlog starves approvals.
                     or_(

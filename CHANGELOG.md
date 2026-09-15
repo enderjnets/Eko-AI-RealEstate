@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.102.7] — 2026-09-15
+
+### Fixed
+- **A piece is no longer handed to Buffer weeks before its window opens.**
+  Buffer holds **ten** scheduled posts per channel and refuses the eleventh with
+  `LimitReachedError`. The refusal arrives *per platform*, so a full queue did
+  not stop the rail — it shredded it. Measured in production on 15-sep-2026:
+  Instagram sat at ten of ten with posts booked out to 26 October, pieces 33, 34
+  and 36 were refused on all three channels, and 37 and 38 went out on fewer
+  channels than they were approved for. `CONTENT_SCHEDULE_HORIZON_DAYS` (10)
+  keeps the far end of the queue at home, where it costs nothing. A piece with no
+  window at all — the calculator ones are permanent — is unaffected.
+- **A full queue leaves the platform PENDING, not FAILED.** `FAILED` is terminal
+  for a platform: `publish_piece` only releases failed rows when a person
+  approves the whole piece again, so recording a full *calendar* as a content
+  failure loses the piece for good. It is now treated the way a quota pause
+  already was — still owed, tried again next tick.
+
+### Added
+- **The request quota is read, not discovered.** `_graphql` parses Buffer's own
+  `ratelimit: "100-in-15min"; r=98; t=897` header and stops two requests short of
+  the ceiling. Reacting only to 429 meant every ceiling was found by hitting it,
+  and the request that hit it was a real post that then had to be picked up
+  again. An unreadable or absent header yields `(None, None)`, never zero: "no
+  news" must not be read as "quota spent", or a changed header would stop
+  publishing altogether.
+
+### Why there is no jitter
+- The docs warn that an exact `Retry-After` returns every client in the same
+  instant. This rail never waits: it raises `QuotaReached`, the tick ends, and
+  the scheduler brings the next one round later. Jitter on a path that does not
+  sleep would be decoration.
+
 ## [0.102.6] — 2026-09-15
 
 ### Added
