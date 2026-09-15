@@ -531,7 +531,7 @@ function PieceCard({
           controls
           preload="metadata"
           className="mt-3 w-full max-h-80 rounded-lg bg-black"
-          src={contentApi.mediaUrl(piece.id)}
+          src={`${contentApi.mediaUrl(piece.id)}?v=${encodeURIComponent(piece.media_path)}`}
         />
       )}
 
