@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.102.3";
+export const CURRENT_VERSION = "0.102.4";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.102.4",
+    date: "2026-09-15",
+    title: {
+      en: "A video with no link does not go out",
+      es: "Un video sin enlace no sale",
+    },
+    changes: [
+      { en: "Publishing now refuses a piece whose caption carries no link to the site. Seven cards took 3,833 views between them and the page recorded one visit: the videos worked, the way out of them did not.", es: "Publicar ahora rechaza una pieza cuya descripcion no lleve enlace al sitio. Siete tarjetas sumaron 3.833 visualizaciones y la pagina registro una visita: los videos funcionaban, la salida no." },
+      { en: "A piece held for that reason rings the operator's Telegram instead of only writing a log line nobody reads.", es: "Una pieza retenida por eso avisa por Telegram, en vez de solo dejar una linea de registro que nadie lee." },
+      { en: "A published piece arrives with the comment to paste under it, already tagged with its own piece number so the comment can be measured apart from the description and the channel bio.", es: "Una pieza publicada llega con el comentario listo para pegar, ya etiquetado con su propio numero de pieza para poder medirlo aparte de la descripcion y de la bio del canal." },
+    ],
+  },
   {
     version: "0.102.3",
     date: "2026-09-14",

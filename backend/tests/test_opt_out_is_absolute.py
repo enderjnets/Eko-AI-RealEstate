@@ -568,6 +568,13 @@ def test_every_outbound_primitive_is_on_the_list_the_sweep_checks() -> None:
             " they wrote. No lead is addressed and no client is named — it"
             " sends counts, never content — so there is nobody here who could"
             " have opted out of anything.",
+        "app/services/publish_followup.py::_say":
+            "tells the owner's own Telegram that one of their videos was held"
+            " for having no link, or that it went out and here is the comment"
+            " to paste under it. Addressed to TELEGRAM_CHAT_ID and never to a"
+            " lead: what it carries is a piece id, the hook a person approved,"
+            " and our own CTA address. Nobody here could have opted out, and"
+            " a lead's STOP must not silence the agency's own channel.",
 
     }
     undeclared: list[str] = []

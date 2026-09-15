@@ -1,0 +1,125 @@
+"""The link is the whole point of the video, so nothing goes out without one.
+
+Measured, not theorised. Between 11 and 15 September 2026 the channel put out
+seven cards that took 3,833 views between them, and the landing page recorded
+**one** visit from all of them. The captions did carry the address, but a Shorts
+description is collapsed behind "…more" and almost nobody opens it. The videos
+were working; the path out of them was not.
+
+Two things live here, and they are halves of the same idea.
+
+**A caption with no link cannot be published.** `caption_carries_link` asks the
+publisher's own tagger whether it can find and tag one of our addresses in the
+text. Asking the tagger rather than writing a second regex is deliberate: two
+matchers drift, and the one that decides what gets published would then differ
+from the one that decides what the link says. The check runs at publish time,
+beside the brokerage line and the Fair Housing filter, for the same reason
+those do — the caption a person approved is not necessarily the caption that
+exists now, and the link is the first thing an edit drops.
+
+**A held piece says so out loud.** `publish_approved` catches `NotPublishable`
+and logs it at INFO, which is right for its ordinary cause — a piece edited
+back into review between the query and the gate. A missing link is not that: it
+is a piece that will sit still, silently, until somebody happens to read a log.
+So the refusal rings the owner's phone. A gate nobody hears about is how
+`pending_alerts.json` ended up written by one process and read by none.
+
+**And a published piece hands over the comment to paste.** We publish through
+Buffer, which posts videos and cannot write comments, and the module that does
+the posting explains why adding YouTube's own OAuth was refused. So the last
+step stays manual — but it does not stay *remembered*: the notice arrives with
+the finished text, the piece number already in the link, so posting it is a
+copy and a paste rather than a thing to look up. `utm_medium=comment` is what
+will finally answer whether the comment is worth the trouble, separately from
+the description and from the channel's bio link.
+
+Nothing here may break a publish. A notice that fails is a notice that failed.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from app.models import PublicationPlatform
+from app.services.telegram_notify import send_operator_telegram
+
+log = logging.getLogger(__name__)
+
+
+def caption_carries_link(text: str, cta_url: str) -> bool:
+    """Whether the publisher would find one of our addresses in this caption.
+
+    Delegates to `with_platform_utm`, which returns the text byte-for-byte when
+    it finds nothing to tag. That equality is the answer: if tagging changed
+    nothing, there is no link for a viewer to follow either.
+
+    Imported inside the function because `buffer_publisher` imports this module;
+    at module scope the two would not load.
+    """
+    from app.services.buffer_publisher import with_platform_utm
+
+    if not (cta_url or "").strip():
+        # No destination is configured at all. That is a deployment state, not
+        # a bad caption, and refusing every piece over it would stop the
+        # channel rather than fix it — `undeliverable_reason` is where a
+        # missing configuration belongs.
+        return True
+
+    # Any platform and any campaign: the question is whether a link EXISTS, and
+    # the tagger finds the same link for all three.
+    tagged = with_platform_utm(text or "", cta_url, PublicationPlatform.YOUTUBE, 0, "probe")
+    return tagged != (text or "")
+
+
+def comment_for(piece_id: int, cta_url: str) -> str:
+    """The comment to paste under the video, with this piece's own tag.
+
+    Short on purpose: a comment is truncated after about two lines, so the link
+    goes on the first one a reader sees, not after an explanation.
+    """
+    base = (cta_url or "").strip() or "denverhomestory.com"
+    if "://" not in base:
+        base = f"https://{base}"
+    separator = "&" if "?" in base else "?"
+    link = f"{base}{separator}utm_source=youtube&utm_medium=comment&utm_content=piece-{piece_id}"
+    return (
+        f"Run your own number — nothing to fill in to see it:\n{link}\n"
+        "Every assumption on that page is a slider you can move: rate, "
+        "appreciation, taxes, insurance. None of it is a promise."
+    )
+
+
+async def _say(subject: str, body: str, piece_id: int) -> bool:
+    """Send, and never let a failed notice cost a publish."""
+    try:
+        return bool(await send_operator_telegram(subject, body))
+    except Exception as exc:  # noqa: BLE001 — a notice may never break a publish
+        log.error("Piece %d: telegram notice failed: %s", piece_id, exc)
+        return False
+
+
+async def notify_held_without_link(piece_id: int, hook: str) -> bool:
+    """A piece was refused for having no link. Said out loud, once per attempt."""
+    return await _say(
+        "Piece held: no link in the caption",
+        f"Piece {piece_id} — “{(hook or '').strip()[:90]}” — was not published.\n\n"
+        "Its caption has no link to the site, so the video would have had no way "
+        "back to the page. Add the address to the caption and approve it again.",
+        piece_id,
+    )
+
+
+async def notify_published(piece_id: int, hook: str, cta_url: str) -> bool:
+    """It went out. Here is the comment to paste under it.
+
+    Once per piece, not once per platform: three posts are one video as far as
+    the person holding the phone is concerned.
+    """
+    return await _say(
+        "Published — paste the comment",
+        f"Piece {piece_id} — “{(hook or '').strip()[:90]}” — is out.\n\n"
+        "Paste this as a comment on the YouTube Short (the description link is "
+        "collapsed behind “…more” and almost nobody opens it):\n\n"
+        f"{comment_for(piece_id, cta_url)}",
+        piece_id,
+    )
