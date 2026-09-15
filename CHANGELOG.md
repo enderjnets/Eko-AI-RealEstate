@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.102.4] — 2026-09-15
+
+### Added
+- **A caption with no link cannot be published.** `publish_piece` now asks
+  `publish_followup.caption_carries_link` before the claim, beside the brokerage
+  line and the Fair Housing filter, and for the same reason those are re-asked
+  there: the caption a person approved is not necessarily the caption that
+  exists now, and the link is the first thing an edit drops. The check delegates
+  to the publisher's own tagger rather than carrying a second matcher — two
+  matchers drift, and the one deciding what gets published would then disagree
+  with the one deciding what the link says. An unset `CONTENT_CTA_URL` stays
+  permissive on purpose: that is a deployment state, and refusing every piece
+  over it would stop the channel instead of fixing it.
+- **The refusal is announced.** `publish_approved` catches `NotPublishable` and
+  logs it at INFO, which is right for its ordinary cause — a piece edited back
+  into review between the query and the gate. A missing link is not that: it is
+  a piece that sits still until somebody happens to read a log. It now rings the
+  operator's Telegram.
+- **A published piece arrives with the comment to paste.** We publish through
+  Buffer, which posts videos and cannot write comments, and `buffer_publisher`
+  explains why YouTube's own OAuth was refused. So that step stays human — but
+  it no longer has to be remembered: the notice carries the finished text with
+  this piece's `utm_content=piece-NN` already in the link, and `utm_medium=comment`
+  so a click from the comment can finally be told apart from one out of the
+  description or the channel's bio.
+
+### Why
+- Measured 11–15 September 2026: seven cards took **3,833 views** between them
+  and `landing_sessions` recorded **one** visit from all seven. The captions did
+  carry the address; a Shorts description is collapsed behind "…more" and
+  practically nobody opens it. The videos were working and the path out of them
+  was not, and nothing was asking.
+
+### Known
+- **Five already-published cards now quote numbers the calculator no longer
+  produces.** They were correct when made — verified against the calculator at
+  the 2% appreciation default that then applied — and `0.102.1`'s change of that
+  default to 3.75% moved every five-year figure without touching the videos. The
+  live page returns roughly 2.3× to 2.5× what those cards say. Not silently
+  edited or deleted here: they are the channel's only real traffic, and the
+  decision of what to do with a published claim belongs to the people whose
+  licence is under it.
+- **`solve_price` returns one answer across a band of rents.** At the documented
+  $60,000 savings, every rent from **$1,770 to $1,910** resolves to $279,070,
+  whose real monthly is $1,763 — so somebody who says they can pay $1,910 is
+  shown the ceiling for $147 a month less. It is the 20% boundary where PMI
+  falls to zero, and the bisection settling on the cheap side of it. Untouched
+  here: the fix has to move the TypeScript side and the golden fixture in the
+  same change, or parity breaks.
+
 ## [0.102.3] — 2026-09-14
 
 - Refresh video previews when a piece receives a replacement file, avoiding stale cached footage during approval.

@@ -497,6 +497,15 @@ def test_every_wire_touching_function_is_declared_or_exempt() -> None:
             " for labels and the answers only for tallies, and the test beside"
             " it asserts that not one word anybody typed survives. The answers"
             " themselves go by email, which is a place you read on purpose",
+        "app/services/publish_followup.py::_say":
+            "the publishing follow-up, on the owner's own Telegram. It reaches"
+            " a phone AFTER the gate has already decided, never instead of it:"
+            " one notice says a piece was refused for having no link, the other"
+            " says a piece went out and carries the comment to paste under it."
+            " Neither can put a piece on a platform — they run either side of"
+            " `publish_piece`, which still goes through `ensure_publishable`"
+            " like every other publisher. What leaves is a piece id, its hook,"
+            " and our own CTA link, all of which a person already approved",
     }
     # The messaging senders, accounted for by the opt-out sweep next door.
     MESSAGING = {"send_email", "send_sms", "send_text_message"}

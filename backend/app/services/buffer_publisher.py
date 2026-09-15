@@ -69,6 +69,11 @@ from app.services.content_studio import (
     ensure_publishable,
     not_our_rail,
 )
+from app.services.publish_followup import (
+    caption_carries_link,
+    notify_held_without_link,
+    notify_published,
+)
 from app.services.tenant_context import get_org_id
 from app.services.timezones import resolve_zone
 
@@ -768,6 +773,18 @@ async def _close_piece(db: AsyncSession, piece: ContentPiece) -> None:
     )
     await db.commit()
 
+    # Here rather than beside the per-platform commits above: three posts are
+    # one video to the person who has to go and paste the comment, and this is
+    # the only place that runs once per piece. Buffer posts videos and cannot
+    # write comments, so that step stays human — but it arrives finished, with
+    # this piece's own tag already in the link, rather than as something to
+    # remember. After the commit, so a notice can never be the reason a close
+    # is rolled back.
+    if published:
+        await notify_published(
+            piece.id, piece.hook or "", get_settings().CONTENT_CTA_URL
+        )
+
 
 async def publish_piece(db: AsyncSession, piece_id: int) -> None:
     """Publish one approved piece to every configured platform.
@@ -779,6 +796,21 @@ async def publish_piece(db: AsyncSession, piece_id: int) -> None:
     other check runs again regardless.
     """
     piece = await ensure_publishable(db, piece_id, resuming=True)
+
+    # The second half of the gate, and the reason it is here rather than in
+    # `ensure_publishable`: that function lives in `content_studio`, which this
+    # module imports, and the matcher that answers the question lives here. A
+    # caption with no link publishes a video with no way back to the page —
+    # measured in September 2026 as 3,833 views and one visit. Announced rather
+    # than only logged, because `publish_approved` treats `NotPublishable` as
+    # ordinary and a piece held in silence is held forever.
+    if not caption_carries_link(piece.caption or piece.hook or "", get_settings().CONTENT_CTA_URL):
+        await notify_held_without_link(piece.id, piece.hook or "")
+        raise NotPublishable(
+            f"piece {piece_id} has no link to the site in its caption, and a "
+            "video nobody can click out of is the one thing this channel exists "
+            "to avoid"
+        )
 
     # Resolved once, before any claim. A None zone means the agency's timezone
     # is unusable, and a date computed in the wrong zone is worse than no date
