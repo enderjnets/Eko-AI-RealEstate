@@ -402,3 +402,8 @@ cruzada entre inquilinos, y es permanente.
 **Antes de añadir `--workers` o una segunda réplica**, la invalidación de esa
 caché tiene que dejar de ser local al proceso (Redis pub/sub, o releer el
 `updated_at` máximo de `organizations` en cada resolución).
+
+
+## Cifras de calculadoras en redes — instrucción de Ender (14-sep-2026)
+
+Antes de preparar o publicar ejemplos numéricos, aplica `docs/content/calculator-consistency.md`: los números deben salir de nuestras calculadoras con los mismos datos y supuestos. Se aplica también a cualquier calculadora futura.

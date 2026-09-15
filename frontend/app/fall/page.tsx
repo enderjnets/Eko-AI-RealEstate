@@ -38,7 +38,7 @@ import { BANDS, mapsUrl, type Spot } from "@/lib/fallGuide";
 
 const TITLE = "Where to see fall color near Denver";
 const DESCRIPTION =
-  "A season-long guide to Colorado's aspens by elevation — where to go in " +
+  "A guide to Colorado fall outings — places to consider in " +
   "mid-September, in October, and when the color finally reaches Denver itself.";
 
 export const metadata: Metadata = {
@@ -75,9 +75,9 @@ function ElevationLadder() {
       className="border border-ln-hair bg-ln-paper px-5 py-6 sm:px-7 sm:py-7"
     >
       <p className="text-[10px] font-medium uppercase tracking-[0.3em] text-ln-muted">
-        The season, top to bottom
+        Plan by location and conditions
       </p>
-      <p className="mt-4 text-[10px] tracking-[0.08em] text-ln-faint">11,670 FT</p>
+      <p className="mt-4 text-[10px] tracking-[0.08em] text-ln-faint">CHECK BEFORE YOU GO</p>
 
       <ol className="mt-2 border-l border-ln-line-strong pl-6">
         {BANDS.map((band) => (
@@ -270,8 +270,8 @@ export default function FallGuidePage() {
         </h1>
 
         <p className="mt-6 text-[16px] leading-[1.7]">
-          Aspens turn from the top down. So the useful question is not <em>where</em> — it
-          is <em>how high, this week</em>. Here is the whole season, sorted by elevation.
+          Higher locations often turn earlier, but weather and local conditions matter.
+          Explore these twelve places, then check current reports before choosing your route.
         </p>
 
         {/* One of the page's two deliberate next steps. `data-track` makes the
@@ -301,18 +301,18 @@ export default function FallGuidePage() {
                 also the thing a local actually says out loud, which is why it
                 sits directly under the instrument it explains how to read. */}
             <p className="mt-8 border-l-2 border-ln-gold pl-5 font-ln-serif text-[19px] leading-[1.55] text-ln-dark sm:text-[21px] lg:text-[19px]">
-              If the top of the pass is already bare, go lower. If the valley is still
-              green, go higher.
+              If one stop is past its peak, check reports from other elevations.
+              Keep a backup route and leave room for changing conditions.
             </p>
           </div>
 
           <div className="max-w-2xl">
         <p className="mt-8 bg-ln-tint px-5 py-4 text-[15px] leading-[1.7] sm:px-6 sm:py-5 lg:mt-0">
-          <strong className="font-semibold text-ln-dark">2026 runs early.</strong> After a
-          record-low snowpack and a dry summer, the high country is expected to peak sooner
-          than average — think mid-to-late September up top rather than the end of the
-          month. Drought-stressed aspens also turn earlier, read duller, and drop their
-          leaves faster, so a trip you postpone by a week is a trip you may lose.
+          <strong className="font-semibold text-ln-dark">Check conditions, not just the calendar.</strong>{" "}
+          These are planning windows, not live color reports. Wind, temperature and dry
+          weather can change the view quickly. Confirm road access, park notices and
+          attraction schedules before you leave. Drive distance depends on your starting
+          point and route; use each map link to plan your trip.
         </p>
 
         <div className="mt-14 space-y-14">
@@ -352,7 +352,7 @@ export default function FallGuidePage() {
             data-track="fall-to-calculator"
             className="border-b border-ln-gold pb-0.5 font-medium text-ln-dark hover:border-ln-dark"
           >
-            What your rent would buy up here
+            Explore a home-price estimate with our calculator
           </a>{" "}
           — the arithmetic, with the assumptions on the page and nothing to fill in.
         </p>
@@ -361,25 +361,24 @@ export default function FallGuidePage() {
           <h2 className="font-ln-serif text-[22px] text-ln-dark">Three things worth knowing</h2>
           <ul className="mt-5 space-y-3.5 text-[15px] leading-[1.7]">
             <li>
-              <strong className="font-semibold text-ln-dark">Go early.</strong> Kenosha and
-              Guanella fill their pullouts by mid-morning on a September weekend. A weekday
-              at sunrise is a different mountain than a Saturday at noon.
+              <strong className="font-semibold text-ln-dark">Go early.</strong> Popular stops can have limited parking. Consider a weekday
+              if your schedule allows, use designated parking and keep a backup stop.
             </li>
             <li>
               <strong className="font-semibold text-ln-dark">Check before you drive.</strong>{" "}
-              A single windy night strips a pass. The bands above tell you where to go
-              instead, which is the point of having them.
+              Wind can shorten the viewing window. Check current reports and road
+              conditions rather than relying on a fixed date.
             </li>
             <li>
               <strong className="font-semibold text-ln-dark">Higher is not better.</strong>{" "}
-              The best week of color at 7,000 ft is as good as the best week at 11,000 ft —
-              it just happens three weeks later.
+              Different places peak at different times. Let current conditions and your
+              travel plans guide your choice.
             </li>
           </ul>
           <p className="mt-7 text-[12px] leading-relaxed text-ln-muted">
-            Elevation bands and drive distances follow Visit Denver&rsquo;s fall foliage guide;
-            timing reflects this year&rsquo;s published forecasts. Conditions change weekly —
-            treat every date here as a window, not an appointment.
+            Planning references: <a href="https://georgetown-colorado.org/guanella-pass/" className="underline">Visit Georgetown</a>{" "}
+            and <a href="https://www.visitgolden.com/outdoors/hiking/fall-foliage-hikes/" className="underline">Visit Golden</a>.{" "}
+            Conditions vary; these general windows are not a forecast for a specific day.
           </p>
         </section>
 
