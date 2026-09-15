@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.102.9] — 2026-09-15
+
+### Fixed
+- **The follow-up comment now goes where the caption goes.** Until today it used
+  the configured address for every piece — the bare root, which routes to the
+  social hub — so *every* comment pointed at `/start`, a menu asking "what brings
+  you here?". The caption directly above it pointed somewhere else: pieces 40, 42
+  and 44 name `/calculator`, the autumn pieces name `/fall/1`–`/fall/4`, piece 69
+  names `/contact`. One video, two destinations, and invisible in the report
+  because both arrive tagged. Somebody who had just watched thirty seconds to get
+  a mortgage figure was asked to choose a path instead of being given the figure.
+
+  The rule is not "calculator pieces go to the calculator" — a rule per piece
+  type is a rule that gets a type wrong. It is **whatever the approved text
+  names**, which is already the principle `with_platform_utm` documents: *the
+  approved text chooses the destination*. The test named
+  `the comment lands where the caption lands` has always been the right idea; it
+  was checking the configured address, which is not where the caption lands.
+
+### Added
+- **A full Buffer queue now says so, once.** On the transition into the wait, not
+  on every fifteen-minute retry — ninety-six notices a day per platform is noise
+  nobody reads, which is the same outcome as no notice, reached more expensively.
+  Nothing is lost while it waits and it recovers by itself; this is the half that
+  makes PENDING safe, because a piece that stops in silence is what let 33, 34
+  and 36 die unnoticed.
+
+### Why the finder moved
+- `_first_site_link` and `_tag_site_link` are now shared by `with_platform_utm`
+  and the new `link_the_text_chose`. Two callers need the same answer to "which
+  link did the approved text choose", and two matchers drift the first time
+  either destination moves — the same reason `caption_carries_link` asks this
+  module instead of writing its own regex. The refactor is behaviour-preserving:
+  all 128 existing publisher tests passed before anything new was added.
+
 ## [0.102.8] — 2026-09-15
 
 ### Fixed

@@ -366,3 +366,86 @@ async def test_a_piece_with_no_window_is_never_held_by_the_horizon(
         assert await _rows(evergreen)
     finally:
         await _cleanup()
+
+# ───────────────────── and the wait is not silent ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_full_queue_rings_once_and_then_stops(database_url: str) -> None:
+    """The half that makes PENDING safe.
+
+    Leaving a platform pending is right — it recovers on its own — but a piece
+    that waits in silence is the thing that went wrong in the first place:
+    nothing said that 33, 34 and 36 had stopped. So the transition into the
+    wait is announced.
+
+    And exactly once. The publisher comes round every fifteen minutes, so a
+    notice per attempt would be ninety-six a day per platform, which is noise
+    nobody reads — the same outcome as no notice, reached more expensively.
+    """
+    await _cleanup()
+    rung: list[tuple[int, str]] = []
+
+    async def remember(piece_id: int, hook: str, platform: str) -> bool:
+        rung.append((piece_id, platform))
+        return True
+
+    try:
+        piece_id = await _piece(None)
+        with patch(
+            "app.services.buffer_publisher.verify_organization", new=AsyncMock()
+        ):
+            with patch(
+                "app.services.buffer_publisher._send",
+                new=AsyncMock(side_effect=BufferRefused(FULL)),
+            ):
+                with patch(
+                    "app.services.buffer_publisher.notify_slots_full", new=remember
+                ):
+                    for _tick in range(3):
+                        with org_scope(ORG):
+                            async with get_session_factory()() as db:
+                                await publish_approved(db)
+
+        assert rung, "the piece stopped and nothing said so"
+        platforms = [p for _id, p in rung]
+        assert sorted(platforms) == sorted(set(platforms)), (
+            f"rang more than once per platform across three ticks: {platforms}"
+        )
+        assert {pid for pid, _p in rung} == {piece_id}
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_ordinary_refusal_does_not_ring_this_bell(database_url: str) -> None:
+    """A caption Instagram will not accept is a different problem with a
+    different answer, and it must not arrive dressed as a queue that is full."""
+    await _cleanup()
+    rung: list[int] = []
+
+    async def remember(piece_id: int, hook: str, platform: str) -> bool:
+        rung.append(piece_id)
+        return True
+
+    try:
+        await _piece(None)
+        with patch(
+            "app.services.buffer_publisher.verify_organization", new=AsyncMock()
+        ):
+            with patch(
+                "app.services.buffer_publisher._send",
+                new=AsyncMock(
+                    side_effect=BufferRefused("[InvalidInputError] posts require a type")
+                ),
+            ):
+                with patch(
+                    "app.services.buffer_publisher.notify_slots_full", new=remember
+                ):
+                    with org_scope(ORG):
+                        async with get_session_factory()() as db:
+                            await publish_approved(db)
+
+        assert rung == [], "an ordinary refusal rang the full-queue bell"
+    finally:
+        await _cleanup()

@@ -71,23 +71,43 @@ def caption_carries_link(text: str, cta_url: str) -> bool:
     return tagged != (text or "")
 
 
-def comment_for(piece_id: int, cta_url: str, campaign: str = "video") -> str:
+def comment_for(
+    piece_id: int, cta_url: str, campaign: str = "video", caption: str | None = None
+) -> str:
     """The comment to paste under the video, with this piece's own tag.
 
     Short on purpose: a comment is truncated after about two lines, so the link
     goes on the first one a reader sees, not after an explanation.
 
-    The link is built by the publisher's own router, with `medium="comment"`.
-    Assembling it here instead would have been three lines and a bug: a bare
-    configured root is routed to the social hub before it is posted, so a
-    hand-made link would have sent the comment to the homepage while the
-    caption above it went to `/start`. One router, two mediums.
+    **The caption chooses the destination, and the comment follows it.** Given
+    the caption, the link is the one the approved text already names: a
+    calculator piece says `/calculator`, an autumn piece says `/fall/2`. Without
+    it, the configured address is the fallback, and a bare root routes to the
+    social hub.
+
+    That mattered more than it looks. Until 15-sep-2026 this used the configured
+    root for every piece, so every comment pointed at `/start` — a menu asking
+    "what brings you here?" — while the caption above it pointed at the page
+    with the answer. Somebody who had just watched thirty seconds about a
+    mortgage figure was asked to choose a path instead of being given the
+    figure. The test named `the comment lands where the caption lands` has
+    always been the right idea; it was checking the configured address, which is
+    not where the caption lands.
+
+    The link is built by the publisher's own router either way, with
+    `medium="comment"`. Assembling one here would have been three lines and a
+    bug the first time either destination moved.
     """
-    from app.services.buffer_publisher import with_platform_utm
+    from app.services.buffer_publisher import link_the_text_chose, with_platform_utm
 
     base = (cta_url or "").strip() or "denverhomestory.com"
-    link = with_platform_utm(
-        base, base, PublicationPlatform.YOUTUBE, piece_id, campaign, medium="comment"
+    link = (
+        link_the_text_chose(
+            caption or "", base, PublicationPlatform.YOUTUBE, piece_id, campaign, medium="comment"
+        )
+        or with_platform_utm(
+            base, base, PublicationPlatform.YOUTUBE, piece_id, campaign, medium="comment"
+        )
     )
     return (
         f"Run your own number — nothing to fill in to see it:\n{link}\n"
@@ -116,7 +136,35 @@ async def notify_held_without_link(piece_id: int, hook: str) -> bool:
     )
 
 
-async def notify_published(piece_id: int, hook: str, cta_url: str) -> bool:
+async def notify_slots_full(piece_id: int, hook: str, platform: str) -> bool:
+    """A platform is waiting because Buffer's queue for it is full.
+
+    On the transition into that state, never on every tick: the publisher tries
+    again every fifteen minutes and a notice per attempt would be noise nobody
+    reads, which is the same failure as no notice at all.
+
+    This exists because of what happened without it. Buffer holds ten scheduled
+    posts per channel; the queue was full to 26 October, and pieces 33, 34 and
+    36 were refused on all three channels and marked FAILED — a state nothing
+    retries unless a person approves the piece again. Three approved pieces
+    stopped dead and not one thing said so. The state is now PENDING and
+    recovers by itself, and this is the half that makes it visible while it
+    waits.
+    """
+    return await _say(
+        "Waiting for room at Buffer",
+        f"Piece {piece_id} — “{(hook or '').strip()[:90]}” — is waiting on "
+        f"{platform}.\n\n"
+        "Buffer holds ten scheduled posts per channel and that channel is full. "
+        "Nothing is lost: it will go out on its own as soon as one of the ten "
+        "publishes. This is only so the wait is not silent.",
+        piece_id,
+    )
+
+
+async def notify_published(
+    piece_id: int, hook: str, cta_url: str, caption: str | None = None
+) -> bool:
     """It went out. Here is the comment to paste under it.
 
     Once per piece, not once per platform: three posts are one video as far as
@@ -127,6 +175,6 @@ async def notify_published(piece_id: int, hook: str, cta_url: str) -> bool:
         f"Piece {piece_id} — “{(hook or '').strip()[:90]}” — is out.\n\n"
         "Paste this as a comment on the YouTube Short (the description link is "
         "collapsed behind “…more” and almost nobody opens it):\n\n"
-        f"{comment_for(piece_id, cta_url)}",
+        f"{comment_for(piece_id, cta_url, caption=caption)}",
         piece_id,
     )

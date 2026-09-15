@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.102.8";
+export const CURRENT_VERSION = "0.102.9";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.102.9",
+    date: "2026-09-15",
+    title: {
+      en: "The comment goes where the caption goes",
+      es: "El comentario va donde va el caption",
+    },
+    changes: [
+      { en: "The follow-up comment now links to the page the approved caption itself names \u2014 a calculator piece to the calculator, an autumn piece to its own guide. Every comment used to point at the three-way menu instead, so a video about a mortgage figure sent people somewhere that asked them to choose a path rather than giving them the number.", es: "El comentario de seguimiento enlaza ahora a la p\u00e1gina que nombra el propio caption aprobado: una pieza de calculadora a la calculadora, una de oto\u00f1o a su gu\u00eda. Antes todos apuntaban al men\u00fa de tres caminos, as\u00ed que un v\u00eddeo sobre una cifra mandaba a la gente a elegir camino en vez de darles el n\u00famero." },
+      { en: "When Buffer's queue for a channel is full, the owner is told once \u2014 on the way in, not on every fifteen-minute retry. Nothing is lost and it recovers on its own; this is only so the wait is not silent, which is exactly what let three approved pieces stop dead unnoticed.", es: "Cuando la cola de Buffer de un canal est\u00e1 llena, se avisa una vez, al entrar en la espera y no en cada reintento de quince minutos. No se pierde nada y se recupera solo; esto es para que la espera no sea muda, que es justo lo que dej\u00f3 pararse a tres piezas aprobadas sin que nadie lo viera." },
+    ],
+  },
   {
     version: "0.102.8",
     date: "2026-09-15",

@@ -74,6 +74,7 @@ from app.services.publish_followup import (
     caption_carries_link,
     notify_held_without_link,
     notify_published,
+    notify_slots_full,
 )
 from app.services.tenant_context import get_org_id
 from app.services.timezones import resolve_zone
@@ -221,16 +222,101 @@ def with_platform_utm(
     Returns ``text`` byte-for-byte when the CTA is absent or invalid, or no
     matching link appears. Only the first matching link changes.
     """
+    found = _first_site_link(text, cta_url)
+    if found is None:
+        return text
+    start, end, parsed, suffix, configured = found
+    tagged = _tag_site_link(parsed, configured, platform, piece_id, campaign, medium)
+    return text[:start] + tagged + suffix + text[end:]
+
+
+def link_the_text_chose(
+    text: str,
+    cta_url: str,
+    platform: PublicationPlatform,
+    piece_id: int,
+    campaign: str,
+    medium: str = "social",
+) -> str | None:
+    """The link the approved text chose, tagged — the URL alone, no text around it.
+
+    The same question `with_platform_utm` answers, asked by somebody who wants
+    only the address: the follow-up comment, which must land on the page the
+    caption above it points to. Sharing the finder is the point. A caption
+    naming `/calculator` and a comment pointing at `/start` is one video sending
+    people to two places, and the split is invisible in the report because both
+    arrive tagged.
+
+    `None` when the text names no link of ours, which is the caller's cue to
+    fall back to the configured address.
+    """
+    found = _first_site_link(text or "", cta_url)
+    if found is None:
+        return None
+    _start, _end, parsed, _suffix, configured = found
+    return _tag_site_link(parsed, configured, platform, piece_id, campaign, medium)
+
+
+def _tag_site_link(
+    parsed: Any,
+    configured: Any,
+    platform: PublicationPlatform,
+    piece_id: int,
+    campaign: str,
+    medium: str,
+) -> str:
+    """One found link, rebuilt on the canonical host with our four UTM values."""
+    managed = {"utm_source", "utm_medium", "utm_campaign", "utm_content"}
+    pairs = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key not in managed
+    ]
+    pairs.extend(
+        [
+            ("utm_source", getattr(platform, "value", str(platform))),
+            ("utm_medium", medium),
+            ("utm_campaign", campaign),
+            ("utm_content", f"piece-{piece_id}"),
+        ]
+    )
+    path = parsed.path
+    if path in ("", "/") and not parsed.fragment:
+        path = "/start"
+    return urlunsplit(
+        (
+            configured.scheme or "https",
+            configured.netloc,
+            path,
+            urlencode(pairs),
+            parsed.fragment,
+        )
+    )
+
+
+def _first_site_link(text: str, cta_url: str) -> tuple[int, int, Any, str, Any] | None:
+    """Where our first link sits in `text`, and what it parses to.
+
+    Factored out because two callers need the same answer to "which link did
+    the approved text choose": the publisher, which rewrites the caption in
+    place, and the comment, which wants the address by itself. Two matchers
+    would drift the first time either destination moved — the same reason
+    `caption_carries_link` asks this module instead of writing its own regex.
+
+    Returns `(start, end, parsed, trailing_punctuation, configured)`, or `None`
+    when there is no CTA configured, the CTA is unusable, or nothing in the
+    text is ours.
+    """
     configured_text = cta_url.strip()
     if not configured_text:
-        return text
+        return None
 
     configured = urlsplit(
         configured_text if "://" in configured_text else f"https://{configured_text}"
     )
     configured_host = (configured.hostname or "").lower().rstrip(".")
     if not configured_host or not configured.netloc:
-        return text
+        return None
 
     base_host = configured_host.removeprefix("www.")
     link_pattern = re.compile(
@@ -267,35 +353,8 @@ def with_platform_utm(
             continue
         if parsed_host != base_host:
             continue
-
-        managed = {"utm_source", "utm_medium", "utm_campaign", "utm_content"}
-        pairs = [
-            (key, value)
-            for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-            if key not in managed
-        ]
-        pairs.extend(
-            [
-                ("utm_source", getattr(platform, "value", str(platform))),
-                ("utm_medium", medium),
-                ("utm_campaign", campaign),
-                ("utm_content", f"piece-{piece_id}"),
-            ]
-        )
-        path = parsed.path
-        if path in ("", "/") and not parsed.fragment:
-            path = "/start"
-        tagged = urlunsplit(
-            (
-                configured.scheme or "https",
-                configured.netloc,
-                path,
-                urlencode(pairs),
-                parsed.fragment,
-            )
-        )
-        return text[: match.start()] + tagged + suffix + text[match.end() :]
-    return text
+        return match.start(), match.end(), parsed, suffix, configured
+    return None
 
 
 def build_post_input(
@@ -983,7 +1042,10 @@ async def _close_piece(db: AsyncSession, piece: ContentPiece) -> None:
     # is rolled back.
     if published:
         await notify_published(
-            piece.id, piece.hook or "", get_settings().CONTENT_CTA_URL
+            piece.id,
+            piece.hook or "",
+            get_settings().CONTENT_CTA_URL,
+            caption=piece.caption or piece.hook or "",
         )
 
 
@@ -1090,9 +1152,16 @@ async def publish_piece(db: AsyncSession, piece_id: int) -> None:
             # second insert for the same pair impossible, and a PENDING row is
             # exactly the claim a quota pause released for this tick to pick up.
             row = existing
+            # What this row already said, captured before the claim wipes it.
+            # A platform that was already waiting on a full Buffer queue must
+            # not ring the owner's phone again on every fifteen-minute tick.
+            was_pending_before = existing.status is PublicationStatus.PENDING
+            previous_error = existing.last_error
             row.status = PublicationStatus.PUBLISHING
             row.last_error = None
         else:
+            was_pending_before = False
+            previous_error = None
             row = ContentPublication(
                 org_id=piece.org_id,
                 piece_id=piece.id,
@@ -1121,6 +1190,12 @@ async def publish_piece(db: AsyncSession, piece_id: int) -> None:
             raise
         except (BufferRefused, httpx.HTTPError) as exc:
             if slots_are_full(str(exc)):
+                # Only on the way in. The tick comes round every fifteen
+                # minutes and a notice per attempt is noise nobody reads,
+                # which ends up being the same as no notice at all.
+                already_waiting = (
+                    was_pending_before and slots_are_full(previous_error or "")
+                )
                 # Not this piece's fault, and FAILED here is a death
                 # sentence: nothing retries a failed row unless a person
                 # approves the whole piece again, and the per-platform arrival
@@ -1137,6 +1212,8 @@ async def publish_piece(db: AsyncSession, piece_id: int) -> None:
                     "platform pending rather than failed: %s",
                     piece.id, platform.value, exc,
                 )
+                if not already_waiting:
+                    await notify_slots_full(piece.id, piece.hook or "", platform.value)
                 continue
             row.status = PublicationStatus.FAILED
             row.last_error = str(exc)[:2000]

@@ -105,3 +105,83 @@ def test_an_explicit_destination_is_not_rerouted() -> None:
 @pytest.mark.parametrize("piece_id", [1, 42, 999])
 def test_every_piece_gets_its_own_link(piece_id: int) -> None:
     assert f"piece-{piece_id}" in comment_for(piece_id, CTA)
+
+
+# ─────────────────── the caption chooses, the comment follows ───────────────
+
+
+ROOT = "https://www.denverhomestory.com"
+
+CALC_CAPTION = (
+    "At $2,600 a month, going from $40,000 saved to $80,000 moves the ceiling "
+    "from $343,000 to $378,000.\n\nNothing to fill in to see the number: "
+    "denverhomestory.com/calculator\n\nDenver Home Story · Natalia & Robbie"
+)
+
+FALL_CAPTION = (
+    "Explore the scenic byway between Georgetown and Grant.\n\n"
+    "Plan your route: https://www.denverhomestory.com/fall/2\n\n"
+    "Save this for your next day out."
+)
+
+
+def test_the_comment_goes_where_the_caption_goes() -> None:
+    """The one this module is named for, finally true.
+
+    Until 15-sep-2026 every comment used the configured address, which is the
+    bare root and routes to the social hub. So a video about a mortgage figure
+    linked its description to `/calculator` and its comment to `/start` — a
+    menu asking "what brings you here?" put in front of somebody who had just
+    watched thirty seconds to get a number. One video, two destinations, and
+    invisible in the report because both arrive tagged.
+    """
+    link = comment_for(47, ROOT, caption=CALC_CAPTION)
+    assert "/calculator" in link
+    assert "/start" not in link
+
+
+def test_an_autumn_piece_keeps_its_own_page() -> None:
+    """Not "calculator pieces go to the calculator" — whatever the approved
+    text names. A rule per piece type is a rule that gets a type wrong."""
+    link = comment_for(25, ROOT, caption=FALL_CAPTION)
+    assert "/fall/2" in link
+    assert "/calculator" not in link
+
+
+def test_a_schemeless_caption_link_still_decides() -> None:
+    """What the writer actually produces. `/calculator` above is schemeless;
+    the router normalizes it, and refusing it here would send every real
+    caption's comment to the hub instead."""
+    assert "/calculator" in comment_for(47, ROOT, caption="see denverhomestory.com/calculator")
+
+
+def test_without_a_caption_nothing_changes() -> None:
+    """The fallback is the behaviour every caller had before, and the notice
+    for a piece with no caption still has to produce a usable comment."""
+    assert "/start" in comment_for(42, ROOT)
+    assert "/start" in comment_for(42, ROOT, caption="")
+
+
+def test_a_caption_with_no_link_of_ours_falls_back() -> None:
+    """A caption naming somebody else's site is not a destination. It must not
+    silently become one, and it must not produce a comment with no link."""
+    link = comment_for(42, ROOT, caption="Read more at example.com/elsewhere")
+    assert "/start" in link
+    assert "example.com" not in link
+
+
+def test_the_comment_still_carries_its_own_medium_and_piece() -> None:
+    """Following the caption must not cost the two values that make a click
+    from the comment countable apart from one from the description."""
+    link = comment_for(47, ROOT, caption=CALC_CAPTION)
+    assert "utm_medium=comment" in link
+    assert "utm_content=piece-47" in link
+    assert "utm_source=youtube" in link
+
+
+def test_a_lookalike_host_in_the_caption_is_not_our_link() -> None:
+    """The caption is approved text, not trusted text. A lookalike would send
+    the comment somewhere that is not ours, under our video."""
+    link = comment_for(42, ROOT, caption="go to denverhomestory.com.evil.io/now")
+    assert "evil.io" not in link
+    assert "/start" in link
