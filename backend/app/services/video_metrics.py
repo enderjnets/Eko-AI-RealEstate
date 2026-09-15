@@ -29,12 +29,12 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -164,8 +164,6 @@ async def agency_today(db: AsyncSession) -> date:
     grouping by the server's date would file two consecutive evening readings
     under one bucket and leave the day between them empty.
     """
-    from datetime import datetime
-
     name = (
         await db.execute(select(AgentSettings.timezone).limit(1))
     ).scalar_one_or_none()
@@ -260,6 +258,8 @@ async def snapshot_youtube(db: AsyncSession, *, today: date | None = None) -> in
     day = today or await agency_today(db)
     ids = list(by_video)
     written = 0
+    gone: list[int] = []
+    back: list[int] = []
     for start in range(0, len(ids), BATCH):
         chunk = ids[start : start + BATCH]
         stats = await fetch_youtube_stats(chunk, key)
@@ -274,7 +274,54 @@ async def snapshot_youtube(db: AsyncSession, *, today: date | None = None) -> in
                     values=counts,
                 )
                 written += 1
-    if written:
+                back.extend(by_video.get(video_id, []))
+        # An id we asked about that is not in the answer is an id nobody can
+        # open. The docstring of `fetch_youtube_stats` has said so since it was
+        # written — "a video that was deleted or made private comes back as a
+        # 200 with an empty `items`" — and the reading was thrown away as "no
+        # data" rather than kept as the fact it is. This loop already visits
+        # every published video every six hours; it was holding the answer and
+        # not writing it down.
+        #
+        # Only when the batch came back with SOMETHING. An empty `stats` is
+        # what a failed call, a spent quota and a referrer-restricted key all
+        # return, and marking the whole catalogue withdrawn because a key
+        # expired is a far worse error than the one this fixes.
+        if stats:
+            for video_id in chunk:
+                if video_id not in stats:
+                    gone.extend(by_video.get(video_id, []))
+
+    now = datetime.now(UTC)
+    if gone:
+        await db.execute(
+            update(ContentPublication)
+            .where(
+                ContentPublication.org_id == org_id,
+                ContentPublication.id.in_(gone),
+                ContentPublication.withdrawn_at.is_(None),
+            )
+            .values(withdrawn_at=now, withdrawn_reason="not visible on the platform")
+        )
+        log.info("YouTube metrics: %d publication(s) are no longer visible", len(gone))
+    if back:
+        # A video made public again stops being withdrawn. Without this the
+        # flag is a one-way door, and the first time somebody unhides a piece
+        # the count would stay wrong in the other direction.
+        restored = (
+            await db.execute(
+                update(ContentPublication)
+                .where(
+                    ContentPublication.org_id == org_id,
+                    ContentPublication.id.in_(back),
+                    ContentPublication.withdrawn_at.is_not(None),
+                )
+                .values(withdrawn_at=None, withdrawn_reason=None)
+            )
+        ).rowcount
+        if restored:
+            log.info("YouTube metrics: %d publication(s) are visible again", restored)
+    if written or gone or back:
         await db.commit()
     return written
 

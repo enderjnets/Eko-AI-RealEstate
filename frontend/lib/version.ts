@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.104.0";
+export const CURRENT_VERSION = "0.105.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.105.0",
+    date: "2026-09-15",
+    title: {
+      en: "The video nobody can open",
+      es: "El v\u00eddeo que nadie puede abrir",
+    },
+    changes: [
+      { en: "A post that went out and is no longer visible now says so. Five videos were set to private because their figures did not reproduce, and the rows kept reading \u201cpublished\u201d with a live link \u2014 so the count said twenty-three where five could not be opened by anybody.", es: "Una publicaci\u00f3n que sali\u00f3 y ya no se ve ahora lo dice. Cinco v\u00eddeos se pusieron en privado porque sus cifras no cuadraban, y las filas segu\u00edan diciendo \u00abpublicada\u00bb con el enlace vivo: el recuento dec\u00eda veintitr\u00e9s donde cinco no las pod\u00eda abrir nadie." },
+      { en: "It is detected, not typed in. The metrics loop already visited every published video every six hours and already received the answer \u2014 a private video comes back as an empty result \u2014 and was recording it as \u201cno data\u201d instead of as the fact it is. A video made public again stops being marked.", es: "Se detecta, no se teclea. El lector de m\u00e9tricas ya visitaba cada v\u00eddeo publicado cada seis horas y ya recib\u00eda la respuesta \u2014un v\u00eddeo privado vuelve como resultado vac\u00edo\u2014 y la registraba como \u00absin datos\u00bb en vez de como el hecho que es. Un v\u00eddeo que vuelve a ser p\u00fablico deja de estar marcado." },
+      { en: "And the two exits in the consult form that returned without recording anything now record why. That gap is why \u201czero submits, zero errors\u201d could not be told apart from \u201cnobody pressed send\u201d: a captcha that never resolves would have measured as a quiet day.", es: "Y las dos salidas del formulario que volv\u00edan sin registrar nada ahora registran por qu\u00e9. Ese hueco es la raz\u00f3n de que \u00abcero env\u00edos, cero errores\u00bb no pudiera distinguirse de \u00abnadie lo puls\u00f3\u00bb: un captcha que no resolviera se habr\u00eda medido como un d\u00eda tranquilo." },
+    ],
+  },
   {
     version: "0.104.0",
     date: "2026-09-15",

@@ -81,6 +81,14 @@ HANDLED = {
     # on the page can reach a VARCHAR, so no write of theirs can be refused for
     # length — which is what would otherwise lose twenty minutes of answers.
     "partner_briefs": (LOUD, "operator-typed title/recipient; the page writes no bounded column"),
+    # The only bounded column is `withdrawn_reason`, and nothing outside this
+    # codebase can reach it: the metrics loop writes one module literal
+    # ("not visible on the platform", 32 characters) through a Core UPDATE, and
+    # clears it to NULL when a video comes back. The warning this test prints
+    # about Core writes is the right one to have read here — a model validator
+    # would never have fired — and the answer is that there is no value to fit,
+    # because there is no caller.
+    "content_publications": (OURS, "withdrawn_reason is one module literal, written by a Core update"),
 }
 
 def _models_with_bounded_text() -> list[type]:

@@ -147,12 +147,20 @@ function ConsultFormInner({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (loading) return;
+    // Both of these used to `return` having recorded nothing, and that gap is
+    // why "0 submits, 0 errors" could not be told apart from "nobody pressed
+    // send". It is not hypothetical: if the Turnstile widget ever fails to
+    // resolve, every visitor sees an error, nobody can submit, and the funnel
+    // reads exactly as it does on a quiet day. A wall that measures as silence
+    // is the one kind of outage nobody goes looking for.
     if (!f.email.trim() && !f.phone.trim()) {
       setError(t("contact.errorContact"));
+      getTracker()?.record("form_error", { reason: "contact" });
       return;
     }
     if (TURNSTILE_SITE_KEY && !captchaToken) {
       setError(t("contact.errorCaptchaPending"));
+      getTracker()?.record("form_error", { reason: "captcha_pending" });
       return;
     }
     setLoading(true);

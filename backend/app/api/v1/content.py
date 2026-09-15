@@ -89,6 +89,11 @@ class PublicationOut(BaseModel):
     # The post's real address on the platform, harvested once it has gone out.
     # Without it a published piece leaves the console with nowhere to click.
     external_url: str | None = None
+    # It went out and is no longer visible. `status` stays "published", which
+    # is about the past and still true; this is about now, and without it the
+    # console shows a live link to a video nobody can open.
+    withdrawn_at: datetime | None = None
+    withdrawn_reason: str | None = None
     last_error: str | None = None
     # The newest reading of the public counters, or None when nobody has read
     # them: no key configured, no address to read, or a network that publishes

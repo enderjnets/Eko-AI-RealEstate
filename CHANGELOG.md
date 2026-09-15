@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.105.0] — 2026-09-15
+
+### Added
+- **A post that went out and is no longer visible says so.** The owner set
+  pieces 52-56 to private because their figures did not reproduce; the rows
+  kept reading `published` with a live `external_url`, so the count said
+  twenty-three published where five could not be opened by anybody, and the
+  follow-up comment pointed at a page from a video nobody can watch.
+
+  `status` stays PUBLISHED, which is true and is about the past — rewriting it
+  would lose that these five were public for three days carrying a wrong
+  number. `withdrawn_at` is the second fact, the one about the present.
+
+  **It is detected, not typed in, and the detector already existed.** The
+  docstring of `fetch_youtube_stats` has said since it was written that "a
+  video that was deleted or made private comes back as a 200 with an empty
+  `items`". The metrics loop visits every published video every six hours,
+  received exactly that answer forty times over three days, and recorded it as
+  "no data" rather than as the fact it is. It was holding the evidence and not
+  writing it down.
+
+  Only when the batch came back with something. An empty answer is what a spent
+  quota, an unreachable host and a referrer-restricted key all return, and
+  marking the whole catalogue withdrawn because a key expired would be far
+  worse than the problem being fixed. A video made public again stops being
+  marked, and the stamp is when we first could not see it — not when we last
+  looked.
+
+  Per publication, not per piece: the same piece is private on YouTube and
+  still live on TikTok.
+
+### Fixed
+- **The two exits in the consult form that recorded nothing now record why.**
+  `handleSubmit` returned silently when there was neither phone nor email, and
+  when Turnstile had not resolved. That gap is precisely why "zero submits,
+  zero errors" could not be told apart from "nobody pressed send" — and it is
+  not hypothetical: if the widget ever failed to resolve, every visitor would
+  see an error, nobody could submit, and the funnel would read exactly as it
+  does on a quiet day. A wall that measures as silence is the one kind of
+  outage nobody goes looking for.
+
 ## [0.104.0] — 2026-09-15
 
 ### Added

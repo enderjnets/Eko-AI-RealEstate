@@ -257,6 +257,19 @@ class ContentPublication(Base):
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # It went out, and it is no longer visible. `status` stays PUBLISHED, which
+    # remains true and is about the past; this is about the present. The owner
+    # set pieces 52-56 to private on 15-sep-2026 because their figures did not
+    # reproduce, and for hours the count said twenty-three published where five
+    # could not be opened by anyone.
+    #
+    # Per publication rather than per piece, because the same piece is private
+    # on YouTube and still live on TikTok — a flag on the piece would be wrong
+    # on two platforms out of three.
+    withdrawn_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    withdrawn_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # When the platform will publish it. Written when Buffer accepts a
