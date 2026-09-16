@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.107.1";
+export const CURRENT_VERSION = "0.107.2";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.107.2",
+    date: "2026-09-16",
+    title: {
+      en: "A doorbell nobody had connected to a rope",
+      es: "Un timbre que nadie había conectado a la cuerda",
+    },
+    changes: [
+      { en: "The partner brief's Telegram doorbell was never wired. `brief_activity.py` defined notify_opened, notify_progress and notify_finished, documented them, and nobody called any of them: measured across the whole backend on 16-sep, the only references outside that module were two tests of its pure helpers and two allow-lists naming its sending function. It had shipped three days earlier and the release notes said it rang. Testing the helper does not test that anyone pulls the rope — the same mailbox-with-no-postman shape as the alerts file nothing ever read. Now the route rings it: once on the first open and never again, a coalesced checkpoint while somebody is working, and finished only on a deliberate press. An autosave can never say finished — that is the one message worth interrupting a day for, and sending it about a person who is still typing would empty it of meaning. The email notice that carries the answers was always wired and is unchanged; Telegram is the doorbell, the email is the letter.", es: "El timbre de Telegram de la hoja de socios nunca se cableó. `brief_activity.py` definía notify_opened, notify_progress y notify_finished, las documentaba, y no las llamaba nadie: medido sobre todo el backend el 16-sep, las únicas referencias fuera de ese módulo eran dos tests de sus ayudantes puros y dos listas de exención que nombran su función de envío. Se había desplegado tres días antes y las notas de versión decían que sonaba. Probar el ayudante no prueba que alguien tire de la cuerda — la misma forma del buzón sin cartero que el fichero de alertas que no leía nadie. Ahora lo toca la ruta: una vez en la primera apertura y nunca más, un punto de control coalescido mientras alguien trabaja, y «terminado» solo con una pulsación deliberada. Un autoguardado no puede decir nunca que alguien terminó — es el único mensaje por el que merece la pena interrumpir un día, y mandarlo sobre quien todavía está escribiendo lo vaciaría de sentido. El aviso por correo que lleva las respuestas siempre estuvo cableado y no cambia; Telegram es el timbre, el correo es la carta." },
+    ],
+  },
   {
     version: "0.107.1",
     date: "2026-09-16",

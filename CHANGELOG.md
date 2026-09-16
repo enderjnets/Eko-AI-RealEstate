@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.107.2] - 2026-09-16
+
+### Corregido
+
+**Un timbre que nadie había conectado a la cuerda.**
+
+`app/services/brief_activity.py` define `notify_opened`, `notify_progress` y
+`notify_finished`, las documenta con cuidado —*«no es espiar, es para no estar
+preguntando cómo van»*— y **no las llamaba nadie**. Medido el 16-sep sobre todo
+`backend/`: las únicas referencias fuera del propio módulo eran dos tests de sus
+ayudantes puros (`summarise`, `should_ping_progress`) y dos listas de exención
+que nombran `brief_activity.py::_say`.
+
+Se había desplegado el 13-sep y tanto las notas como la memoria del proyecto
+decían que sonaba. **Probar el ayudante no prueba que alguien tire de la
+cuerda** — la misma forma que el fichero de alertas que no leía nadie.
+
+Ahora lo toca la ruta, con las tres reglas que el módulo ya pedía por escrito:
+
+- **La apertura suena una vez y nunca más**, atada al mismo `opened_at` que ya
+  significa eso. Y después del commit: tocar antes anunciaría una apertura que
+  una transacción revertida dice que no ocurrió.
+- **El punto de control se coalesce** con `should_ping_progress`, leído sobre el
+  `answered_at` anterior al guardado. La página autoguarda a los 1.200 ms; sin
+  la puerta, una sesión de trabajo son cuarenta timbrazos.
+- **«Terminado» es solo la pulsación deliberada.** Un autoguardado no puede
+  decirlo nunca: es el único mensaje por el que merece la pena interrumpir un
+  día, y mandarlo sobre quien todavía escribe lo vacía de sentido. Y una
+  pulsación no es además un punto de control — dos avisos por un guardado es
+  justo la inundación que el módulo existe para evitar.
+
+El aviso **por correo**, que lleva las respuestas, siempre estuvo cableado y no
+cambia. Telegram es el timbre; el correo es la carta.
+
+Seis tests nuevos, todos **a través de la ruta HTTP** y afirmando sobre
+`send_operator_telegram` — el último punto antes del cable—, porque un test
+unitario del ayudante es exactamente lo que no vio esto. Cuatro mutantes
+verificados: dejarlo huérfano otra vez mata **4**, que un autoguardado diga
+«terminado» mata 3, quitar la coalescencia mata 1, y tocar en cada carga mata 1.
+Suite backend **2.036/2.036**.
+
 ## [0.107.1] - 2026-09-16
 
 ### Corregido

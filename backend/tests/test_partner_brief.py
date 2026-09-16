@@ -524,3 +524,145 @@ async def test_the_doorbell_does_not_ring_on_every_keystroke() -> None:
     assert should_ping_progress(datetime.now(UTC)) is False, "a save seconds later is not"
     stale = datetime.now(UTC) - BRIEF_ACTIVITY_QUIET - timedelta(minutes=1)
     assert should_ping_progress(stale) is True, "picking it up again after a break is"
+
+
+# ── The doorbell is actually rung ────────────────────────────────────────
+# The two tests above this pair exercise `summarise` and `should_ping_progress`
+# by calling them. They passed for three days while NOBODY called either from
+# the application: `notify_opened`, `notify_progress` and `notify_finished` were
+# defined, documented and orphaned, and the only references to them outside
+# their own module were those two tests and two allow-lists naming `_say`.
+#
+# That is the mailbox with no postman, and it is invisible from inside a unit
+# test of the helper — which is why every test below goes through the HTTP
+# route and asserts on `send_operator_telegram`, the last thing before the
+# wire. A helper proven correct that nobody calls is not a feature.
+
+
+def _ring_recorder() -> tuple[list[tuple[str, str]], object]:
+    """Capture what the doorbell would have sent, at the outermost seam."""
+    rung: list[tuple[str, str]] = []
+
+    async def _fake(subject: str, body: str, *args, **kwargs):
+        rung.append((subject, body))
+        return True
+
+    return rung, _fake
+
+
+async def test_opening_the_page_rings_the_doorbell_once_and_never_again() -> None:
+    from app.services import brief_activity
+
+    token = await _seed()
+    try:
+        rung, fake = _ring_recorder()
+        with patch.object(brief_activity, "send_operator_telegram", fake):
+            await _get(token)
+            await _get(token)
+            await _get(token)
+        assert len(rung) == 1, f"one open, one ring — got {len(rung)}"
+        assert "opened" in rung[0][0].lower()
+    finally:
+        await _cleanup()
+
+
+async def test_pressing_send_rings_the_doorbell_as_finished() -> None:
+    from app.services import brief_activity
+
+    token = await _seed()
+    try:
+        rung, fake = _ring_recorder()
+        with patch.object(brief_activity, "send_operator_telegram", fake):
+            status, _ = await _post(token, {"nine": {"p1": {"state": "out"}}}, notify=True)
+        assert status == 200
+        subjects = [s for s, _ in rung]
+        assert any("finished" in s.lower() for s in subjects), subjects
+        # The one message worth interrupting a day for must not also arrive as
+        # a progress ping. Two notices about one save is the flood the module
+        # exists to avoid.
+        assert not any("progress" in s.lower() for s in subjects), subjects
+    finally:
+        await _cleanup()
+
+
+async def test_an_autosave_never_says_somebody_finished() -> None:
+    """The distinction the whole thing rests on.
+
+    An autosave fires about a second after a keystroke. If that announced
+    somebody had finished, the one notice that means "go and read it" would be
+    sent about a person who is still typing, and would stop meaning anything.
+    """
+    from app.services import brief_activity
+
+    token = await _seed()
+    try:
+        rung, fake = _ring_recorder()
+        with patch.object(brief_activity, "send_operator_telegram", fake):
+            await _post(token, {"nine": {}}, notify=False)
+        assert not any("finished" in s.lower() for s, _ in rung), rung
+    finally:
+        await _cleanup()
+
+
+async def test_autosaves_in_one_sitting_ring_once_not_once_each() -> None:
+    from app.services import brief_activity
+
+    token = await _seed()
+    try:
+        rung, fake = _ring_recorder()
+        with patch.object(brief_activity, "send_operator_telegram", fake):
+            for i in range(6):
+                await _post(token, {"nine": {f"p{i}": {"state": "out"}}}, notify=False)
+        progress = [s for s, _ in rung if "progress" in s.lower()]
+        assert len(progress) == 1, f"six saves, one checkpoint — got {len(progress)}"
+    finally:
+        await _cleanup()
+
+
+async def test_a_sitting_picked_up_after_a_break_rings_again() -> None:
+    from app.services import brief_activity
+
+    token = await _seed()
+    try:
+        rung, fake = _ring_recorder()
+        with patch.object(brief_activity, "send_operator_telegram", fake):
+            await _post(token, {"nine": {}}, notify=False)
+            # Reach in and age the row past the quiet window, which is what
+            # "they came back after dinner" looks like to the gate.
+            factory = get_bypass_session_factory()
+            async with factory() as db:
+                await db.execute(
+                    text(
+                        "UPDATE partner_briefs SET answered_at = :t WHERE token = :tok"
+                    ),
+                    {
+                        "t": datetime.now(UTC) - brief_activity.BRIEF_ACTIVITY_QUIET * 2,
+                        "tok": token,
+                    },
+                )
+                await db.commit()
+            await _post(token, {"nine": {"p1": {"state": "out"}}}, notify=False)
+        progress = [s for s, _ in rung if "progress" in s.lower()]
+        assert len(progress) == 2, f"two sittings, two checkpoints — got {len(progress)}"
+    finally:
+        await _cleanup()
+
+
+async def test_a_dead_doorbell_never_costs_a_save() -> None:
+    """Telegram being down must cost the notice and nothing else."""
+    from app.services import brief_activity
+
+    token = await _seed()
+    try:
+
+        async def _explode(*args, **kwargs):
+            raise RuntimeError("telegram is down")
+
+        with patch.object(brief_activity, "send_operator_telegram", _explode):
+            status, body = await _post(token, {"nine": {"p1": {"state": "out"}}})
+        assert status == 200, "the answers are what matters; the doorbell is not"
+        assert body["answered_at"]
+        status, loaded = await _get(token)
+        assert loaded["answers"] == {"nine": {"p1": {"state": "out"}}}
+    finally:
+        await _cleanup()

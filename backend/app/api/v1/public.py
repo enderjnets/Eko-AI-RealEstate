@@ -30,6 +30,12 @@ from app.db.base import get_bypass_session_factory, get_db
 from app.models.channel_route import CHANNEL_WEB
 from app.models.landing import LANDING_EVENT_TYPES, LandingSession
 from app.models.partner_brief import PartnerBrief
+from app.services.brief_activity import (
+    notify_finished,
+    notify_opened,
+    notify_progress,
+    should_ping_progress,
+)
 from app.services.brief_notify import send_brief_answered_notice
 from app.services.capture import (
     MAX_CONSENT_TEXT,
@@ -1123,13 +1129,22 @@ async def brief_read(
     # seen it", and that stops changing the moment it is yes. Overwriting it on
     # every load would turn a fact we use to decide whether to phone somebody
     # into a last-seen timestamp nobody asked for.
-    if brief.opened_at is None:
+    first_open = brief.opened_at is None
+    if first_open:
         brief.opened_at = datetime.now(UTC)
         try:
             await db.commit()
         except Exception:  # noqa: BLE001 — reading the page must not depend on it
             await db.rollback()
             log.warning("Could not stamp opened_at on brief %d", brief_id)
+            first_open = False
+
+    # After the stamp, and only when the stamp is the one that landed: the
+    # doorbell rings for the first open and never again, which is exactly what
+    # `opened_at` already means. Ringing it before the commit would announce an
+    # open that a rolled-back transaction says never happened.
+    if first_open:
+        await notify_opened(brief)
 
     return {
         "title": brief.title,
@@ -1198,6 +1213,11 @@ async def brief_save(
         raise HTTPException(status_code=404, detail="unknown_brief")
 
     notify = _should_notify(body.notify, brief.answered_at)
+    # Both gates read `answered_at` as it was BEFORE this save overwrites it,
+    # and both have to be decided here for that reason. They are not the same
+    # question: the email carries the answers, the doorbell carries how far
+    # along they are, and only the button means finished.
+    ping = should_ping_progress(brief.answered_at)
     brief.answers = body.answers
     brief.answered_at = datetime.now(UTC)
     try:
@@ -1212,5 +1232,16 @@ async def brief_save(
     # must cost the mail, never the save. The page is told it saved either way.
     if notify:
         await send_brief_answered_notice(brief_id)
+
+    # The doorbell, after the letter and after the same commit. "Finished" is
+    # the press and nothing else — an autosave that announced somebody had
+    # finished would be the one message worth interrupting a day for, sent
+    # about a person who is still typing. Otherwise a coalesced checkpoint,
+    # and a press is never also a checkpoint: two notices about one save is
+    # the flood this module exists to avoid.
+    if body.notify:
+        await notify_finished(brief)
+    elif ping:
+        await notify_progress(brief)
 
     return {"ok": True, "answered_at": brief.answered_at.isoformat()}
