@@ -549,3 +549,343 @@ fila viva.
   creadas en bloque por la API: `["en","es"]` no alterna limpio en una agencia
   que además crea en bloque.
 - Las tres piezas rechazadas en español no se tocan.
+
+---
+
+# PLAN (5) — Del alcance a la conversación
+
+**Escrito el 16-sep-2026, 22:40 UTC, por Fable 5.1. Ejecutor: Claude Opus 5.**
+Objetivo del dueño, literal: *«que tengamos el suficiente tráfico en la página
+para que nos dé un número decente de gente llenando el formulario y/o
+apretando el botón para contactarnos y hablar con Clara»*.
+
+Lo que este plan sostiene, con la medición de abajo: **el alcance ya existe
+(≥ 8.760 vistas) y el problema está después** — no hay puerta desde TikTok, la
+puerta de YouTube aterriza en un formulario vacío, el instrumento no distingue
+personas de robots, y el formato que consigue vistas no consigue que nadie haga
+nada. Más vistas por el mismo tubo dan más cero.
+
+Y dos cosas que llegaron el mismo día y cambian el orden: **Natalia dijo que sí
+al vídeo de la casa abierta del sábado 19 y sí a las seis cartas restantes**, y
+Robbie manda cada viernes la lista de avisos de ejecución hipotecaria de Land
+Title — la primera lista de **alta intención** de toda la operación.
+
+## ⛔ Para el ejecutor — no negociable, antes de la primera acción
+
+1. **Confirma «Protocolo Fable activo»** en tu primera respuesta (CLAUDE.md).
+2. **Lee estas memorias antes de tocar nada:**
+   `feedback_una_cola_llena_no_es_una_pieza_mala`,
+   `project_eko_realtors_cola_publicacion`,
+   `feedback_idioma_correos_eko_realtors`, `feedback_un_buzon_sin_cartero`,
+   `feedback_coordinar_entre_sesiones`.
+3. **NUNCA** `cat`, `grep` multi-fichero ni `git diff` para contar o concluir en
+   este repo: `rtk` reescribe la salida. `Read`, `sed -n` o `python3`.
+4. **NUNCA** toques `eko-frontend`, `eko-backend`, `eko-db`, `eko-redis`,
+   `eko-pipeline`, `eko-celery-*`, `eko-*-main`, `eko-frontend-pricing-v2`, ni
+   nada `zorros-*` o `blackvolt-*` en el VPS.
+5. **Nada se envía sin aprobación explícita de Ender** — correo, SMS, publicación
+   fuera de la cola normal. Los correos a socios se dejan **en borrador** en su
+   Gmail (`create_draft`, **solo `htmlBody`**, sin URLs sueltas ni `tel:`; releer
+   con `get_draft`). Tú no introduces credenciales en ningún sitio.
+6. **Hacia fuera, inglés y tono de socio**: nadie es jefe de nadie, ningún
+   plazo, «our» donde sea verdad, y siempre el techo honesto. Español solo con
+   constancia de que la persona lo habla.
+7. **`scratchpad/` sigue en `.gitignore`.** Nombres de clientes, direcciones,
+   precios y **cualquier fila de la lista de Land Title** viven ahí o en el
+   scratchpad de sesión, nunca en un commit, nunca en un documento a terceros.
+8. **Ender no tiene licencia.** Ningún documento a socios menciona porcentajes
+   de comisión ni operaciones concretas. Ningún contacto con un cliente o con
+   un deudor sale de Ender: lo firma Natalia o Robbie.
+9. **Coordinación**: otra sesión Opus 5 ejecuta PLAN (4) sobre **la misma cola y
+   el mismo Buffer**. Antes de aprobar, reordenar o insertar en
+   `content_pieces`/`content_publications`, avisa por el canal que usa esa
+   sesión y espera confirmación. Buffer guarda **10 programados por canal y es
+   una cuenta, no un calendario**: mover no libera, solo salir libera.
+10. **Migrar antes de arrancar** en cada despliegue; bump de versión + changelog
+    en las dos lenguas + tag + push; el `origin` del VPS es `/tmp/eko.bundle`
+    (bundle → scp → `fetch` + `reset --hard origin/main` en
+    `/home/enderj/Eko-AI-RealEstate`, luego `docker compose up -d --build
+    frontend backend`).
+
+**Acceso a datos, tal cual funcionó el 16-sep:**
+
+```
+# producción (solo lectura salvo que la fase diga otra cosa)
+ssh ender-vps "docker exec eko-realestate-db psql -U eko -d eko_realestate -X -A -F'|' \
+  -c \"SET app.current_org_id='1'; <SQL>\""
+# tests de backend contra la base de pruebas eko-t3 (al día, 062)
+cd backend && DATABASE_URL=postgresql+asyncpg://eko:eko@127.0.0.1:55434/eko_realestate \
+  DATABASE_URL_APP=postgresql+asyncpg://eko_app:eko_app_local_pass@127.0.0.1:55434/eko_realestate \
+  REDIS_URL=redis://127.0.0.1:6381/0 .venv/bin/python -m pytest -q --tb=short
+# frontend
+cd frontend && npx vitest run && npx tsc --noEmit
+```
+
+**Puertas que vuelven a Ender (no las cruces solo):** cada envío; el go/no-go de
+la Fase 5 (lista de Land Title); la reevaluación de pago del 30-sep; cualquier
+cambio de cadencia de PLAN (4).
+
+## Contexto medido — 16-sep-2026, producción, con su fuente
+
+| hecho | valor | de dónde sale |
+|---|---|---|
+| Alcance registrado | YouTube 4.935 · TikTok 3.751 · **Instagram sin medir** (una sola lectura manual) | `content_metrics` última lectura por publicación; vidIQ `channel_stats` @denverhomestory = 4.775/24 vídeos/**4 suscriptores**, todo entre el 13 y el 16-sep |
+| Sesiones en la página | **212** | `landing_sessions` |
+| … con scroll > 0 | 73 | ídem, `max_scroll_pct>0` |
+| … formularios enviados / leads | **0 / 0**, nunca | `form_submitted_at`, `lead_id` |
+| TikTok → página | **0 sesiones** | `utm_source='tiktok'` = 0; `in_app='tiktok'` = 0 en 212; el detector sí reconoce `bytedancewebview\|musical_ly\|tiktok` (`landing_analytics.py::_IN_APP`) |
+| Por qué | bio de TikTok = **texto plano**, 9 seguidores | perfil público leído en Chrome; `/tt` → 307 → `/start?utm_source=tiktok&utm_medium=bio` → 200 (la ruta funciona) |
+| YouTube → página | 28 sesiones; **23 con un solo evento y 0 % scroll, en navegador normal** | `in_app IS NULL AND source='youtube'`, bucket `event_count=1` |
+| A dónde aterrizan | piezas 47-57 → `/calculator`; piezas 3-14, 19, 68 → `/` (portada); 18 → `/fall` | `content_pieces.caption` regexp `denverhomestory\.com[^ ]*` |
+| `/calculator` lee `?rent=` | **no** — ningún `searchParams` en `frontend/app/calculator` ni `lib/calculator*` | grep del 16-sep |
+| Google orgánico | 11 sesiones, 9 con scroll ≥ 50 %, 2 de los 5 toques de CTA del sitio | `referrer_host='google.com' AND utm_source IS NULL` |
+| … pero | todas de Denver/Wheat Ridge, **4 huellas de dispositivo**, anteriores a `?eko_qa=1` | `browser,os,screen_w` → 4 combos. **No se puede afirmar que sean extraños.** El 8-sep se midió la misma forma (3 sesiones, 83 %) |
+| Facebook 11-sep | 26 sesiones, 9 con scroll ≥ 50 %, ciudades reales del metro | `source='facebook'` por día. **Nadie sabe quién compartió.** |
+| Instrumento | **197 de 212 = `unknown`**; 6 IPs de centros de datos de Facebook (Forest City, Clonee, Luleå, Prineville, Boardman, Springfield) contadas como «empezó el formulario», scroll 0, 38-41 eventos | `traffic_class`; `form_started_at IS NOT NULL` |
+| Formato | local (18, 21): 1.081 vistas, **16 comentarios**; calculadora (51-57): ~5.600 vistas, 5 comentarios | `content_metrics`. **n = 2 piezas locales, y sus vistas de IG no están.** Dirección sólida; multiplicador blando: «aproximadamente un orden de magnitud, sobre dos piezas» |
+| Cola próximos 10 días | 18-sep **vacío en los tres canales**; 19-sep solo IG (24); luego 33, 40, 25, 26, 27, 42, 44 | `content_publications` `status='scheduled'` por día y canal |
+| Google Business | **no existe**; al buscar «Denver Home Story» sale el panel de **Story Home Group** (otra correduría, 4,9★/174) | búsqueda en Chrome 16-sep |
+| SEO básico | `sitemap.xml` → 404; `robots.txt` no bloquea nada; Google indexa `/` y `/fall` | curl + `site:` |
+| Instagram | 15 seguidores, 21 posts, **enlace de bio pulsable** a `/ig` | vidIQ `ig_profile` |
+| Clara | la agente de voz que contesta llamadas (`webhooks/voice.py`, `lead_notify.py`) | código |
+| PDF | **no hay generador** en el repo; `pypdf` solo lee | `pip list`, grep |
+| Cartas | **un solo cuerpo escrito** (Andrew, #3); datos de calle y mes para los 7 en `scratchpad/cartas-a-los-siete.md` | conteo de «Dear» = 1 |
+| Land Title | 92 avisos NED la semana del 11-sep, ~67 en el metro (Denver 23, Aurora 17, Commerce City 9, Littleton 5, Thornton 5, Arvada 3, Brighton 3, Westminster 2); 44 prestamistas; tipos C 42 / F 36 / M 8 / V 6 | `ned.xlsx` del correo de Robbie `1a09373c79eb0a71`, leído en scratchpad de sesión, **sin copiar** |
+
+## Decisiones del dueño — 16-sep-2026
+
+- **Google Business Profile: no, por ahora.** Queda el riesgo del panel ajeno.
+- **TikTok → cuenta Business: sí.** Lo hace **Ender en la app** (Perfil → ☰ →
+  Ajustes y privacidad → Cuenta → Cambiar a cuenta Business → Real Estate). El
+  cambio no existe en la web de TikTok (comprobado en su sesión).
+- **Solo orgánico.** *«Que quede anotado: si en dos semanas no vemos progreso,
+  volver a hacer la evaluación de una posible inversión en publicidad»* →
+  **30-sep-2026**.
+- **Facebook del 11-sep: no sabe quién compartió.** Se pregunta a los socios.
+- **Inventario:** existe la lista de correos de clientes pasados de Natalia
+  (es suya; ella manda). No sabe si tienen Zillow/Realtor.com/Nextdoor.
+- **Natalia, por correo (21:28 y 21:30 UTC):** sí al vídeo del sábado; sí a
+  las seis cartas. No contestó los nombres ni el #6.
+- **p2 queda fuera de las cartas** (su tecla manda sobre su texto).
+
+## Fases
+
+### Fase 0 [CRÍTICA — sale el jueves 18] — El vídeo de la casa abierta
+
+**Qué:** una pieza de 20-30 s, 1080×1920, para los tres canales, sobre
+**1560 S Quebec Way #56, Denver — sábado 19 de septiembre, 11:00-14:00**.
+
+**El bloqueo que nadie ha nombrado: las fotos.** Natalia dijo sí y no adjuntó
+nada. Ender no tiene REcolorado; Redfin es exposición IDX, no fuente. Hay un
+borrador en el Gmail de Ender, hilo `1a0abf3fa082dbe8`, pidiéndole 6-8 fotos —
+**Ender decide si lo manda**. Si las fotos llegan el jueves por la mañana, sale
+el 18; si llegan el jueves por la tarde, sale el 19 en YouTube y TikTok (el 19
+solo tiene Instagram ocupado). Si no llegan el jueves, **no se publica nada** y
+se le dice a Ender.
+
+**Cómo:**
+1. Espera las fotos. Guárdalas en el scratchpad de sesión, nunca en el repo.
+2. Monta el vídeo **fuera del generador**: Ken Burns suave sobre 6-8 fotos, un
+   solo texto estático por plano, **sin voz sintética**, piano
+   `worker/assets/bgm/01-piano.mp3` (licencia Pixabay, en el repo). Herramienta a
+   tu criterio (ffmpeg es suficiente). En pantalla, obligatorio:
+   - «Open House · Saturday Sept 19 · 11 AM – 2 PM»
+   - «1560 S Quebec Way #56, Denver»
+   - «Natalia Kanonerova · Engel & Völkers Aspen» — Regla 6.10.A.4, nombre de
+     la correduría claro y conspicuo.
+   - «Each office independently owned and operated» — 6.10.A.6.a.
+   - El teléfono que contesta Clara (léelo de `agent_settings`, no de memoria).
+3. **`kind`:** son fotos reales sin narración sintética → `kind=RECORDED` con
+   `media_path` puesto (así el renderizador no la reclama, y `isAiGenerated`
+   va en `false`, que es verdad). Antes, **lee el enum `ContentKind`**: si
+   existe un valor más honesto para «montaje de fotos reales», úsalo. Nunca
+   `GENERATED` para fotos reales, nunca `RECORDED` para material de fal.ai.
+4. Alta sin panel, como documenta `project_eko_realtors_cola_publicacion`:
+   script en `eko-realestate-backend` (`PYTHONPATH=/app`, sesión de bypass,
+   `org_id=1` explícito, `advance()` por transición, `find_violations` antes).
+   `publish_window_start = 2026-09-18`, `publish_window_end = 2026-09-19`.
+   Caption en inglés con el enlace **corto y medible** de la Fase 1 si ya
+   existe; si no, `denverhomestory.com/start`.
+5. **Antes de aprobar**, verifica con una consulta que el 18 sigue vacío en
+   los tres canales y que Buffer tiene < 10 programados por canal (46 y 69
+   salen el 16, 16 el 17 → 7-8 el jueves). Avisa a la sesión de PLAN (4).
+6. Aprueba. El tick de `publish_approved` la programa en los tres canales (es lo
+   que el correo prometió: **sin exclusiones manuales**). Verifica `dueAt` en
+   Buffer, no solo la fila.
+7. **Los comentaristas de Colorado**: responde a mano (Ender, no tú) a los seis
+   que escribieron «Fall» en TikTok con la casa abierta — información útil, no
+   anuncio. Deja el texto listo en el scratchpad.
+
+**Verificación:** la pieza sale en los tres canales el 18 (o 19); `external_url`
+rellenado por `backfill_links`; una sesión con `utm_source` de cada canal
+llega el sábado antes de las 11.
+
+### Fase 1 — Las puertas y el aterrizaje (esta semana)
+
+1. **TikTok Business — verificar, no hacer.** Ender lo cambia en la app. Tú
+   compruebas: el perfil público muestra el enlace como `<a href>` (antes era
+   texto), y en 7 días aparece ≥ 1 sesión con `utm_source='tiktok'`. Si la
+   cuenta ya era Business y el enlace sigue sin verse, investiga el campo
+   «Website» en Editar perfil.
+2. **`/calculator?rent=2600`**: que la página lea `rent` (y `savings` si el
+   vídeo lo nombra) de la URL y muestre el resultado **ya calculado** al
+   cargar, sin pedir nada. Un vídeo que promete un número tiene que aterrizar
+   en el número. Regla de la casa: la cifra sale de la calculadora con los
+   mismos supuestos (`docs/content/calculator-consistency.md`). Test de
+   `resultInView` sigue valiendo: el resultado tiene que estar en pantalla.
+3. **Captions de las piezas 47-57**: reescribir el enlace a
+   `denverhomestory.com/calculator?rent=<la renta del vídeo>&utm_source=youtube&utm_medium=social&utm_content=p<id>`.
+   En YouTube se edita la descripción vía Buffer `editPost` **solo si la pieza
+   sigue programada**; las ya publicadas se editan a mano (Ender) o se dejan.
+   No toques TikTok/IG: la caption no enlaza.
+4. **Enlaces cortos por persona que comparte**: `/n` (Natalia), `/r` (Robbie),
+   `/e` (Ender) → `/start?utm_source=partner&utm_medium=share&utm_content=<letra>`.
+   Mismo patrón que `/tt`, `/ig`. Así la próxima vez que alguien comparta en
+   Facebook se sabe quién. Se les da en el correo de la Fase 2.
+5. **`sitemap.xml`**: generar con `/`, `/start`, `/calculator`, `/fall`,
+   `/contact`, `/guides` y lo que exista público. Es media hora y hoy da 404.
+
+### Fase 2 — Las seis cartas, siete PDF y el sobre (esta semana, tras la Fase 0)
+
+Natalia: *«I like it. Let's get the other letters ready»*. Está pidiendo.
+
+1. **Generar las seis** a partir de la plantilla y la tabla de
+   `scratchpad/cartas-a-los-siete.md` (calle + mes + saludo por persona; versión
+   A para #4, #5, #6, #8; versión B para #7, #9). **#6 con el saludo en blanco**
+   — se lo preguntamos, no lo adivinamos. Firma de Natalia literal, las dos
+   líneas de pie (6.10.A.6.a + NAR Art. 16). «We closed on the house on…»,
+   nunca «I sold you».
+2. **Renderizador de PDF** — no existe. A tu criterio: plantilla HTML + Playwright
+   `page.pdf()` (ya hay Playwright en el proyecto) o `reportlab`. Una carta por
+   página, carta US Letter, márgenes de impresión, y **una hoja aparte con las
+   siete direcciones** para los sobres. Los PDF van a `scratchpad/cartas/`,
+   nunca al repo.
+3. **Correo de entrega — en borrador**, respuesta al hilo `1a0abc83315c5be9`:
+   los siete PDF adjuntos, la hoja de direcciones, y **una sola pregunta**: los
+   nombres (sobre todo #6). Corto; sin repetir nada del correo anterior. Cierre
+   cálido de una línea. Incluye los enlaces `/n` y `/r` con una frase: «if you
+   ever share the site, this one tells us it was you».
+4. **No mezcles** la Fase 5 en este correo. Una propuesta por correo.
+
+### Fase 3 — El instrumento (esta semana, en paralelo)
+
+Sin esto, lo que mida el sábado no vale.
+
+1. **`classify_traffic`**: 197 de 212 quedan `unknown`. Añadir dos señales,
+   ambas medidas el 16-sep:
+   - **Sesión de un solo evento y 0 % scroll con `settled`** (ya existe
+     `SETTLED_MINUTES`) → `automated`, razón `one_shot_no_scroll`. Control: las
+     11 sesiones de Google y las 12 de Facebook con 4+ eventos no deben caer.
+   - **Ciudad de centro de datos** (Boardman, Prineville, Clonee, Luleå, Forest
+     City, Springfield NE, Ashburn, Council Bluffs, Altoona, The Dalles…) con
+     scroll 0 → `automated`, razón `datacenter_city`. La lista en un módulo,
+     con la fuente de cada ciudad comentada.
+   - Reclasificar el histórico con un script idempotente (`traffic_classified_at`).
+2. **Un cuadro semanal** (consulta guardada, no UI): sesiones humanas
+   (`traffic_class NOT IN ('automated','test')` y scroll ≥ 50 %) por fuente, y
+   formularios/llamadas. Es el número que se lee el 30-sep.
+3. **La rutina del 22-sep** que mide los comentarios con enlace en YouTube:
+   verificar en `/routines` que existe y está activa; no recrearla.
+4. **Lectores de TikTok e Instagram**: siguen siendo manuales (decisión del
+   dueño, aplazada). Antes del 30-sep hay que hacer **una** lectura manual de
+   los dos para que el cuadro no compare YouTube con ceros.
+
+### Fase 4 — El formato (a partir de la semana que viene)
+
+PLAN (4) fijó 7 educativas + 3 otoño + 3 calculadora por semana. La medición
+dice que las locales producen comentarios y las de calculadora vistas sin
+nadie detrás. **Propuesta, que Ender decide** (cambia la cadencia de otra
+sesión): 3 educativas + 5 locales/estacionales + 2 calculadora **con
+`?rent=` en el enlace**. Las locales: sitios concretos, fechas concretas, una
+sola promesa por post (nunca «Comment FALL» y el enlace en la misma caption).
+
+### Fase 5 — La lista de los viernes (propuesta a los socios; **no se ejecuta sin go**)
+
+**Qué es:** el *Weekly Foreclosure Report* de Land Title Guarantee (Jackson
+Smith, `jasmith@ltgc.com`) que Robbie recibe como cliente. La lista de **Notice
+of Election and Demand** — el primer paso público de la ejecución hipotecaria en
+Colorado — con dirección, deudor, prestamista, importe y fecha. Registro
+público. ~67 direcciones del metro **cada semana**.
+
+**Por qué importa, dicho una vez:** es la primera lista de **alta intención**.
+8.760 vistas dieron cero; aquí son 67 hogares/semana con una decisión
+inmobiliaria delante, y **Natalia es CDPE** — es literalmente su certificación.
+
+**Por qué no se ejecuta sin go:**
+- Es gente en apuros. El tono lo es todo: una carta **útil** con la línea de
+  tiempo de Colorado, el teléfono del asesor HUD y, si vender es una de las
+  opciones, qué vale la casa. Nunca «we can save your home».
+- **Colorado Foreclosure Protection Act**: regula a «foreclosure consultants» y
+  «equity purchasers». La actividad ordinaria de un corredor con licencia al
+  listar es la exención relevante — **eso lo confirma el bróker, no tú ni
+  Ender**. No cites artículos de memoria: nadie los ha leído en esta sesión.
+- Ender no tiene licencia: compila, no contacta. Firma Natalia.
+- La lista es de Robbie como cliente de Land Title: uso interno, nunca
+  reenviada, nunca en el repo.
+
+**Higiene de datos, no opinión:** fuera `Y=Ind N=Bus = N` (empresas); fuera o
+aparte las hipotecas inversas (Fin Am Reverse, Onity); filtro por ciudad del
+metro; `Orig Loan Amt` vs `Loan Amt` orienta sobre el capital. 92 → ~67 → menos.
+
+**Qué se propone** (correo **en borrador**, a los dos Gmail personales, la
+semana que viene, **después** de que salgan el vídeo y las cartas): reutilizar
+el mismo generador de cartas + PDF de la Fase 2; una carta a la semana por
+dirección del metro; lo firma Natalia; el bróker ve el formato antes del
+primer sobre. Y una pieza de contenido local: «What a Notice of Election and
+Demand means in Colorado, and the 110 days that follow» — la página a la que
+la carta puede apuntar.
+
+### Fase 6 — 30-sep: la reevaluación
+
+**«Progreso» es un número, no una sensación.** Con el cuadro de la Fase 3:
+sesiones humanas con scroll ≥ 50 % desde redes por semana, y formularios +
+llamadas a Clara. Hoy: ≈ 0 humanas desde redes, 0 formularios. Si el 30-sep
+sigue en ese orden con las puertas abiertas y el sábado publicado, se reabre la
+pregunta del pago con el dueño, con esos números delante.
+
+## Fuera de alcance (anotado)
+
+- **Google Business Profile** — el dueño dijo no. Riesgo: la búsqueda de marca
+  muestra a Story Home Group.
+- **Google orgánico como canal** — 11 sesiones sin resolver (4 huellas, todas
+  Denver). Se vuelve a mirar el 30-sep con dos semanas de `?eko_qa=1`.
+- **Lectores automáticos de TikTok/Instagram** — aplazados por el dueño.
+- **Publicidad de pago** — hasta el 30-sep.
+- **El «Instagram 74» del correo a Natalia** — es una nota de medición aquí,
+  no una corrección a ella.
+- **La estructura de cobro** — sigue pendiente y es de Ender
+  (`pending_estructura_de_cobro_eko_realtors`).
+
+## Verificación (resumen ejecutable)
+
+```
+-- Fase 0: el 18 sigue vacío y Buffer tiene sitio
+SET app.current_org_id='1';
+SELECT platform, count(*) FROM content_publications
+ WHERE status='scheduled' AND (scheduled_at AT TIME ZONE 'America/Denver')::date='2026-09-18' GROUP BY 1;
+SELECT platform, count(*) FROM content_publications WHERE status='scheduled' GROUP BY 1;  -- < 10
+
+-- Fase 1: la puerta de TikTok existe
+SELECT count(*) FROM landing_sessions WHERE utm_source='tiktok' AND created_at > '2026-09-17';
+
+-- Fase 3: el instrumento ve personas
+SELECT traffic_class, count(*) FROM landing_sessions GROUP BY 1;   -- unknown debe bajar de 197
+
+-- Fase 6: el número del 30-sep
+SELECT date_trunc('week', created_at) AS semana, source, count(*) AS humanas
+  FROM landing_sessions
+ WHERE coalesce(traffic_class,'') NOT IN ('automated','test') AND max_scroll_pct >= 50
+ GROUP BY 1,2 ORDER BY 1,2;
+```
+
+## Ficheros que se tocan
+
+- `frontend/app/calculator/**` — leer `?rent=`/`?savings=` y calcular al cargar.
+- `frontend/middleware.ts` o donde vivan `/tt`, `/ig` — añadir `/n`, `/r`, `/e`.
+- `frontend/app/sitemap.ts` — nuevo.
+- `backend/app/services/landing_analytics.py` — `classify_traffic` + módulo de
+  ciudades de centro de datos; script de reclasificación en `backend/scripts/`.
+- `backend/scripts/` — alta de la pieza del sábado; generador de cartas + PDF
+  (salida a `scratchpad/`, nunca al repo).
+- `CHANGELOG.md`, `frontend/lib/version.ts`, `backend/app/config.py` — por
+  despliegue.
