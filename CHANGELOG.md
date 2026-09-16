@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.107.0] - 2026-09-16
+
+### La ventana bajo la que se encoló un post puede cambiar
+
+`_from_when` decide la fecha de una pieza **una sola vez**, al crear la fila, y
+hasta hoy nadie volvía a mirar. Una `publish_window_start` escrita o corregida
+después de que el post llegara a Buffer no cambiaba nada.
+
+Lo que eso dejó en el calendario el 16-sep-2026:
+
+- las piezas **42 y 44** ocupaban el 18 y el 19 de septiembre en los tres
+  canales, **diez y dieciséis días antes de que abriera su propia ventana**
+  (28-sep y 5-oct). Las dos son piezas de calculadora: permanentes, buenas
+  cualquier semana;
+- la pieza **24**, de colores de otoño, con ventana del 19 al 30 de septiembre,
+  tenía hueco **solo en Instagram**. YouTube y TikTok la rechazaron con
+  `LimitReachedError` porque esos diez huecos estaban gastados. La 25, Guanella
+  Pass, perdió YouTube igual.
+
+Las piezas que llevan ventana son las que caducan. Las sentadas en su semana
+eran las que no caducan nunca.
+
+### Añadido
+- `realign_windows` devuelve un post encolado a un hueco **dentro** de su
+  ventana, con las mismas dos funciones que usa el camino de creación
+  (`_from_when` + `next_free_slot`), así que aterriza donde habría aterrizado si
+  la ventana hubiera estado ahí desde el principio. Corre en cada tick, antes de
+  que nada nuevo pida hueco.
+- **Libera una fecha, no un hueco de Buffer**, y la diferencia importa: los diez
+  de Buffer son una cuenta de posts programados, no de días. Un post movido del
+  18 al 28 sigue siendo uno de los diez, y esa cuenta solo baja cuando un post
+  **sale**. Lo que gana la pieza 24 es aterrizar el 19 —el día que abre su
+  ventana— en cuanto drene el primer envío, en vez de caer donde quede. El
+  coste: la 44 retiene un hueco de Buffer hasta el 5 de octubre en vez de
+  soltarlo el 19 de septiembre.
+- El post se **lee de Buffer antes de moverlo**. Un pie corregido a mano no lo
+  pisa un cambio que solo iba de una fecha.
+- Las vistas de **TikTok** quedan registradas por primera vez: 24 vídeos, 3.751
+  vistas, `source='manual'`, unidas por id de vídeo. No existe lector para
+  TikTok ni Instagram —solo la ruta manual— así que hasta hoy todo el alcance
+  medido de este canal era el de YouTube y nada más.
+
+### Decidido, no omitido
+- **Una ventana ya cerrada se deja donde está.** No hay dónde moverla dentro, y
+  arrastrarla al siguiente hueco libre sería inventarle una fecha que la pieza
+  nunca pidió. El reconciliador la publica y una persona decide si debía salir.
+- **Una pieza sin ventana no se toca jamás.** Las de calculadora son permanentes
+  a propósito, y permanente quiere decir ahora.
+- **Un post cuya hora ya pasó es asunto del reconciliador.** Moverlo sería
+  reescribir la historia en vez de la cola: Buffer puede haberlo enviado ya y
+  este tick todavía no ha preguntado.
+
 ## [0.106.0] — 2026-09-16
 
 ### Added

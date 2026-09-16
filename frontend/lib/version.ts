@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.106.0";
+export const CURRENT_VERSION = "0.107.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.107.0",
+    date: "2026-09-16",
+    title: {
+      en: "The window a post was queued under can change",
+      es: "La ventana bajo la que se encoló un post puede cambiar",
+    },
+    changes: [
+      { en: "A queued post is now moved back inside its piece's publish window when it no longer falls in it. The date was decided once, when the post was handed to Buffer, and nothing ever looked again — so pieces 42 and 44 held the 18th and the 19th of September on all three channels, ten and sixteen days before their own windows opened, while the fall-colour piece whose window opened on the 19th could only get a slot on Instagram. The pieces that carry windows are the ones that perish; the ones sitting in their week were the ones that never expire.", es: "Un post ya encolado se devuelve ahora a la ventana de publicación de su pieza cuando deja de caer dentro. La fecha se decidía una sola vez, al entregarlo a Buffer, y nadie volvía a mirar — así que las piezas 42 y 44 ocupaban el 18 y el 19 de septiembre en los tres canales, diez y dieciséis días antes de que abriera su propia ventana, mientras la pieza de colores de otoño cuya ventana abría el 19 solo conseguía hueco en Instagram. Las piezas con ventana son las que caducan; las sentadas en su semana eran las que no caducan nunca." },
+      { en: "A window that has already closed is left alone: there is nowhere inside it to move to, and the next free slot would be a date the piece never asked for. Whether it should go out at all is a judgement for a person.", es: "Una ventana ya cerrada se deja en paz: no hay dónde moverla dentro, y el siguiente hueco libre sería una fecha que la pieza nunca pidió. Si debe salir o no es un juicio de una persona." },
+      { en: "The post is read from Buffer before it is moved, so a caption corrected by hand is not overwritten by a change that was only ever about a date.", es: "El post se lee de Buffer antes de moverlo, para que un pie corregido a mano no lo pise un cambio que solo iba de una fecha." },
+      { en: "TikTok and Instagram view counts are recorded manually and nothing ever had: TikTok had 3,751 views across 24 videos and not one reading, so every measure of reach this channel has produced was YouTube's alone.", es: "Las vistas de TikTok e Instagram se registran a mano y nunca se había hecho: TikTok tenía 3.751 vistas en 24 vídeos y ni una sola lectura, así que toda medida de alcance de este canal era solo la de YouTube." },
+    ],
+  },
   {
     version: "0.106.0",
     date: "2026-09-16",

@@ -1552,6 +1552,140 @@ async def backfill_links(db: AsyncSession) -> int:
     return linked
 
 
+# How many drifted posts one tick moves. Each move is two Buffer requests — the
+# post is read before it is edited, so a caption corrected by hand is not
+# overwritten — and the whole rail draws on one hundred per fifteen minutes.
+# Small on purpose: six drifted posts are back inside their windows within half
+# an hour, and the tick that moves them can still afford to ask how the posts
+# that were due this morning went.
+_REALIGN_BATCH = 4
+
+
+async def realign_windows(db: AsyncSession) -> int:
+    """Move a queued post that no longer falls inside its piece's window.
+
+    Returns how many were moved.
+
+    `_from_when` decides a piece's date **once**, when the row is created, and
+    until now nothing ever looked again. A window written or corrected after
+    the post was queued therefore changed nothing at all: on 16-sep-2026 pieces
+    42 and 44 sat on the 18th and the 19th across all three channels, ten and
+    sixteen days before their own windows opened, while piece 24 — whose window
+    opened on the 19th and closed on the 30th — could not get a slot on YouTube
+    or TikTok, because those ten were already spent. The autumn pieces are the
+    ones with windows precisely because they perish; the ones sitting in their
+    week were the permanent ones.
+
+    The dates handed out here are `_from_when` and `next_free_slot`, the same
+    two the creating path uses, so a post moved by this lands exactly where it
+    would have landed had the window been there from the start.
+
+    **A window that has already closed is left alone.** There is nowhere inside
+    it to move to, and dragging the post to the next free slot would be
+    inventing a date the piece never asked for. It stays where it is, the
+    reconciler publishes it, and a person can decide whether it should have
+    gone out at all — which is a judgement, not a schedule.
+
+    Buffer's side is an `editPost` on `dueAt`, not a cancel and re-queue:
+    cancelling is only possible in Buffer's own interface, and a re-queue would
+    hand the slot to whatever asked next.
+    """
+    if get_settings().BUFFER_SIMULATED:
+        return 0
+
+    zone = await agency_zone(db)
+    if zone is None:
+        # Same rule as the creating path: a date computed in the wrong zone is
+        # worse than no date, because it looks right.
+        return 0
+
+    now = datetime.now(UTC)
+    today = now.astimezone(zone).date()
+
+    queued = (
+        await db.execute(
+            select(ContentPublication, ContentPiece)
+            .join(ContentPiece, ContentPiece.id == ContentPublication.piece_id)
+            .where(
+                ContentPublication.status == PublicationStatus.SCHEDULED,
+                ContentPublication.scheduled_at.is_not(None),
+                # Only what is still ahead. A post whose hour has passed is the
+                # reconciler's business, and moving it would be rewriting
+                # history rather than the queue.
+                ContentPublication.scheduled_at > now,
+                ContentPublication.external_id.is_not(None),
+                ContentPiece.publish_window_start.is_not(None),
+            )
+            .order_by(ContentPublication.id.asc())
+        )
+    ).all()
+
+    drifted: list[tuple[ContentPublication, ContentPiece]] = []
+    for row, piece in queued:
+        start = piece.publish_window_start
+        end = piece.publish_window_end
+        if start is None:  # pragma: no cover - the query already said otherwise
+            continue
+        if end is not None and end < today:
+            continue
+        # The stored instant is UTC; the window is a local date. Comparing them
+        # in the agency's zone is the whole reason `agency_zone` is read above:
+        # a post at 18:30 on the 27th in Denver is the 28th in UTC, and off by
+        # one day is exactly the error this function exists to correct.
+        assert row.scheduled_at is not None
+        local = row.scheduled_at.astimezone(zone).date()
+        if local < start or (end is not None and local > end):
+            drifted.append((row, piece))
+
+    if not drifted:
+        return 0
+
+    moved = 0
+    for row, piece in drifted[:_REALIGN_BATCH]:
+        post_id = row.external_id or ""
+        due_at = await next_free_slot(db, row.platform, zone, _from_when(piece, zone))
+        if due_at == row.scheduled_at:
+            # The only free slot inside the window is the one it already holds.
+            continue
+        try:
+            current = await read_scheduled_post(post_id)
+            await edit_scheduled_text(
+                piece,
+                row.platform,
+                post_id,
+                str(current.get("text") or ""),
+                due_at,
+            )
+        except QuotaReached:
+            # Out of requests. The rest keep their dates and this runs again in
+            # fifteen minutes; nothing here is urgent to the minute.
+            break
+        except (BufferRefused, httpx.HTTPError) as exc:
+            log.warning(
+                "Piece %s: could not move the %s post back inside its window "
+                "(%s to %s): %s",
+                piece.id, row.platform.value,
+                row.scheduled_at, due_at, exc,
+            )
+            continue
+
+        was = row.scheduled_at
+        row.scheduled_at = due_at
+        # Committed per row, so the next iteration's `next_free_slot` can see
+        # the slot this one just vacated and the one it just took.
+        await db.commit()
+        moved += 1
+        log.info(
+            "Piece %s: moved the %s post from %s into its window %s-%s, now %s",
+            piece.id, row.platform.value,
+            was.isoformat() if was else "?",
+            piece.publish_window_start, piece.publish_window_end,
+            due_at.isoformat(),
+        )
+
+    return moved
+
+
 def _parse_dt(raw: object) -> datetime | None:
     """Buffer's ISO timestamps, or None. A bad one must not lose the row."""
     if not isinstance(raw, str) or not raw:
@@ -1594,6 +1728,17 @@ async def publish_approved(db: AsyncSession) -> int:
 
     # And what went out before the queue existed, which nothing else revisits.
     await backfill_links(db)
+
+    # Before anything new claims a slot, and deliberately before the daily cap
+    # is read: the day the post was sitting on becomes free in OUR calendar, so
+    # the piece that day belongs to can take it as soon as there is room.
+    #
+    # "As soon as there is room" is the honest half. Buffer's ten are a count of
+    # scheduled posts, not of days — a post moved from the 18th to the 28th is
+    # still one of the ten, and that count only drops when a post is SENT. So
+    # this frees a date, never a Buffer slot, and on a full queue the piece that
+    # date belongs to still waits for the next send to drain one.
+    await realign_windows(db)
 
     claimed = await _claimed_today(db)
     if claimed >= settings.CONTENT_PUBLISH_MAX_PER_DAY:
