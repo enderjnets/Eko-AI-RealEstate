@@ -676,12 +676,14 @@ cambio de cadencia de PLAN (4).
 **1560 S Quebec Way #56, Denver — sábado 19 de septiembre, 11:00-14:00**.
 
 **El bloqueo que nadie ha nombrado: las fotos.** Natalia dijo sí y no adjuntó
-nada. Ender no tiene REcolorado; Redfin es exposición IDX, no fuente. Hay un
-borrador en el Gmail de Ender, hilo `1a0abf3fa082dbe8`, pidiéndole 6-8 fotos —
-**Ender decide si lo manda**. Si las fotos llegan el jueves por la mañana, sale
-el 18; si llegan el jueves por la tarde, sale el 19 en YouTube y TikTok (el 19
-solo tiene Instagram ocupado). Si no llegan el jueves, **no se publica nada** y
-se le dice a Ender.
+nada. Ender no tiene REcolorado; Redfin es exposición IDX, no fuente. **La
+petición ya salió**: Ender le escribió el 16-sep a las 22:31 UTC (16:31 Denver)
+en el hilo `1a0abf3fa082dbe8`, mensaje `1a0ac58634929941`, pidiéndole 6-8 fotos
+adjuntas a una respuesta. **No se le vuelve a pedir**; lo que toca es mirar el
+hilo con `get_thread` (nunca `in:sent`) y descargar los adjuntos cuando
+lleguen. Si las fotos llegan el jueves por la mañana, sale el 18; si llegan el
+jueves por la tarde, sale el 19 en YouTube y TikTok (el 19 solo tiene Instagram
+ocupado). Si no llegan el jueves, **no se publica nada** y se le dice a Ender.
 
 **Cómo:**
 1. Espera las fotos. Guárdalas en el scratchpad de sesión, nunca en el repo.
