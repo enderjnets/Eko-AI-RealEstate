@@ -479,6 +479,7 @@ async def _llm_monitor_loop() -> None:
     """
     from app.services.fair_housing_watch import run_fair_housing_tick
     from app.services.landing_analytics import (
+        classify_datacenter_visits,
         classify_publish_previews,
         purge_landing_events,
     )
@@ -535,6 +536,18 @@ async def _llm_monitor_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001 — same reason as above
             logger.error("Landing traffic classification failed: %s", exc)
+
+        # The second classifier, in its own try for the reason the fair-housing
+        # watch has one: a failure here must not be reported as, or hide, a
+        # failure of the preview sweep. Different rule, different evidence — a
+        # data-centre city that scrolled nothing, rather than a visit landing
+        # within ninety seconds of its own publication.
+        try:
+            await run_for_every_org(classify_datacenter_visits)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — same reason as above
+            logger.error("Data-centre traffic classification failed: %s", exc)
 
 
 async def _content_studio_loop() -> None:

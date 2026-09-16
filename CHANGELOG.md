@@ -1,5 +1,62 @@
 # Changelog
 
+## [0.109.0] - 2026-09-16
+
+### Añadido
+
+**La visita que vino de una sala de máquinas, y el vecino que no.**
+
+De las **ocho** sesiones que han empezado alguna vez el formulario de contacto,
+**siete eran infraestructura**: Clonee, Boardman, Prineville, Forest City,
+Luleå y Springfield, con 38 a 41 eventos cada una y **cero scroll**. Más
+Council Bluffs (9 sesiones) y Ashburn (3), llegando con un solo evento y sin
+referente. Todas quedaban en `unknown`, así que cada número del embudo las
+contaba como personas.
+
+**La octava era una persona.** The Pinery, Colorado, el 15-sep a las 19:09.
+Leyó la portada hasta el 75%, fue a la calculadora, obtuvo **$374.000**, volvió
+a deslizar y empezó el formulario. Cuarenta y ocho segundos desde que llegó. No
+lo envió.
+
+El clasificador nuevo exige **ciudad de centro de datos Y cero scroll**, y solo
+escribe encima de `unknown`.
+
+**La lista es corta a propósito**, y separa lo medido de lo esperado. Dublín,
+San José, Chicago, Nueva York y Mountain View **no están**: alojan nube
+enorme, y también viven cientos de miles de personas, algunas de las cuales se
+mudan a Denver. Boydton queda fuera aunque sea región de Microsoft, porque sus
+cuatro visitas aquí llegaron al **100% de scroll**.
+
+La asimetría decide cada caso: **con cero leads**, un `automated` falso tira la
+única clase de fila que importa; un `unknown` falso solo ensucia un
+denominador.
+
+### Corregido
+
+**Luleå está guardada en nuestra base como `LuleÃ¥`.** Los bytes son
+`4c756c65c383c2a5`: la `å` leída como Latin-1 y reescrita como UTF-8. Es un
+defecto real en cómo se decodifica la cabecera de ciudad de Cloudflare, y
+afecta a **toda** ciudad con nombre no ASCII. Se emparejan las dos grafías a
+propósito: solo la correcta daría una lista que parece bien y no captura nada;
+solo la rota dejaría de funcionar el día que se arregle la cabecera.
+
+### No hecho, y por qué
+
+**Una regla que se pidió, se midió y no se implementó.** Marcar como
+`automated` cualquier sesión de un evento y cero scroll.
+
+De las sesiones que habría capturado, **unas treinta y tres son del área de
+Denver** — Aurora, Denver, Parker, The Pinery, Wheat Ridge — incluidas **ocho
+que llegaron dentro de la app de Facebook** desde el compartido del 11-sep, el
+mejor día que ha tenido esta página.
+
+No son máquinas. Son personas que entraron y se fueron sin deslizar, que hasta
+v0.108.0 era la respuesta razonable a una calculadora que abría con dos campos
+vacíos. Marcarlas borraría la evidencia del problema que v0.108.0 arregla, y
+haría que la reevaluación del 30-sep se leyera mejor que la verdad. La métrica
+que importa ya las excluye al exigir 50% de scroll: la regla habría costado el
+diagnóstico sin comprar nada.
+
 ## [0.108.0] - 2026-09-16
 
 ### Añadido

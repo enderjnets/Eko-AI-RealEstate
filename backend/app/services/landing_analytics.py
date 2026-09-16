@@ -490,6 +490,80 @@ async def classify_publish_previews(db: AsyncSession) -> int:
     return len(candidates)
 
 
+async def classify_datacenter_visits(db: AsyncSession) -> int:
+    """Mark the visits that came from a machine room and did nothing.
+
+    Two conditions, and the second is what keeps this honest.
+
+    **A data-centre city.** `datacenter_cities.py` carries the list and the
+    evidence for every entry. It is deliberately short, and deliberately
+    excludes Dublin, San Jose, Chicago and every other place that is a real
+    city as well as a cloud region.
+
+    **And zero scroll.** Not "little" — none. A machine that renders the page
+    to build a link preview never scrolls; a person who happens to be sitting
+    in Ashburn does. This is what lets Ashburn stay on the list at all, and it
+    is why Boydton is not on it: four visits from there scrolled to 100%, so
+    whatever they are, they are not this.
+
+    The asymmetry behind both: the operation has **zero leads**, so a false
+    `automated` discards the only kind of row that matters, while a false
+    `unknown` only makes a denominator noisier. When the evidence is thin, the
+    row keeps `unknown`.
+
+    Like the preview sweep, it runs after the fact and only ever writes over
+    `unknown`. A row already called `test` or `automated` was decided by
+    something that knew more.
+
+    ── What this deliberately does NOT do ──────────────────────────────────
+    The plan that asked for this also asked for a second rule: one event and
+    zero scroll, anywhere, filed as `automated`. That rule was measured before
+    being written, and it was **not** implemented. Of the sessions it would
+    have caught, about thirty-three are Denver-area cities — Aurora, Denver,
+    Parker, The Pinery, Wheat Ridge — including eight that arrived in the
+    Facebook app from the 11-sep share, the best day this site has had.
+
+    Those are not machines. They are people who landed and left without
+    scrolling, which until today was the entirely reasonable response to a
+    calculator that opened on two empty fields. Filing them as `automated`
+    would erase the evidence of the very problem v0.108.0 fixes, and would
+    make the 30-sep re-evaluation read better than the truth. The metric that
+    matters already excludes them by requiring scroll >= 50%, so the rule
+    would have cost the diagnosis and bought nothing.
+    """
+    from app.services.datacenter_cities import DATACENTER_CITIES
+    from app.services.tenant_context import get_org_id
+
+    org_id = get_org_id()
+    if org_id is None:
+        log.warning("Datacenter classification skipped — no organization is bound")
+        return 0
+
+    now = datetime.now(UTC)
+    settled = now - timedelta(minutes=SETTLED_MINUTES)
+    result = await db.execute(
+        update(LandingSession)
+        .where(
+            LandingSession.org_id == org_id,
+            LandingSession.traffic_class == "unknown",
+            LandingSession.city.is_not(None),
+            func.lower(func.trim(LandingSession.city)).in_(sorted(DATACENTER_CITIES)),
+            func.coalesce(LandingSession.max_scroll_pct, 0) == 0,
+            LandingSession.last_seen_at < settled,
+        )
+        .values(
+            traffic_class="automated",
+            traffic_class_reason="datacenter_city",
+            traffic_classified_at=now,
+        )
+    )
+    await db.commit()
+    changed = result.rowcount or 0
+    if changed:
+        log.info("Classified %d landing session(s) as data-centre visits", changed)
+    return changed
+
+
 async def purge_landing_events(db: AsyncSession) -> int:
     """Delete raw events past the retention window; keep every session.
 
