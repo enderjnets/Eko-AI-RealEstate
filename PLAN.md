@@ -743,11 +743,35 @@ llega el sábado antes de las 11.
 > `auto` lo movía 954px. Ahí **todo v0.102.8 era inerte**. No es la mayoría de
 > visitantes, pero sí **el navegador desde el que verificamos**.
 
-1. **TikTok Business — verificar, no hacer.** Ender lo cambia en la app. Tú
-   compruebas: el perfil público muestra el enlace como `<a href>` (antes era
-   texto), y en 7 días aparece ≥ 1 sesión con `utm_source='tiktok'`. Si la
-   cuenta ya era Business y el enlace sigue sin verse, investiga el campo
-   «Website» en Editar perfil.
+1. **TikTok — CERRADO el 16-sep. No reabrir como si fuera un olvido.**
+
+   La cuenta **ya es Business** y el enlace **sigue sin ser pulsable**: leído
+   del perfil público, la URL vive dentro de `<h2 data-e2e="user-bio">` como
+   texto y no existe ningún elemento `user-link`. TikTok ahora pide
+   **«Become a Verified Business Account»**, que exige documentación legal de
+   empresa, o **1.000 seguidores**. Hay 9.
+
+   **Decisión del dueño, 16-sep:** no registrar la empresa en el IRS hasta que
+   haya ingresos. Es la decisión correcta y está medida, no es una corazonada:
+
+   | vía | exige | compra |
+   |---|---|---|
+   | verificar empresa | registro IRS | **2 sesiones en 3 semanas** |
+   | 1.000 seguidores | tiene 9 | proyecto aparte |
+   | texto sin pulsar | ya puesto | **3.751 visionados → 0 sesiones** |
+
+   Las «2 sesiones en 3 semanas» no son una estimación: es lo que ha producido
+   el enlace de bio de **Instagram**, que **sí** es pulsable, en una cuenta del
+   mismo tamaño (15 seguidores, 21 posts). `utm_medium='bio'`: instagram 2,
+   youtube 4. Ese es el techo real de un enlace de bio aquí.
+
+   **Consecuencia para el contenido:** TikTok es el **segundo canal por
+   alcance** y no es un canal de captación. La llamada a la acción que funciona
+   ahí sin enlace es **el teléfono de Clara** (`agent_settings.agency_phone`),
+   no un dominio que nadie teclea. Ponerlo en pantalla; quitar la URL de las
+   piezas de TikTok cuando se revise el formato en la Fase 4.
+
+   Se vuelve a mirar el **30-sep** junto con el resto, no antes.
 2. **`/calculator?rent=2600`**: que la página lea `rent` (y `savings` si el
    vídeo lo nombra) de la URL y muestre el resultado **ya calculado** al
    cargar, sin pedir nada. Un vídeo que promete un número tiene que aterrizar
