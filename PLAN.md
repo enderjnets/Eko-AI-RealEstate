@@ -790,6 +790,43 @@ Natalia: *«I like it. Let's get the other letters ready»*. Está pidiendo.
 
 ### Fase 3 — El instrumento (esta semana, en paralelo)
 
+> ✅ **3.1 ESCRITA Y PROBADA — commit `d843643`, v0.109.0. NO desplegada aún**
+> (es backend; la ventana tranquila empieza a las 21:00 de Denver). 2050 tests
+> verdes, ruff limpio, 6 mutantes muertos, **sin migración**:
+> `traffic_classified_at` ya existía.
+>
+> **Se implementó `datacenter_city`. NO se implementó `one_shot_no_scroll`, y
+> la razón está medida.** Esa regla habría marcado como `automated` unas **33
+> sesiones del área de Denver** — Aurora 10, Denver 8+6, Parker 4, y **ocho
+> dentro de la app de Facebook** del compartido del 11-sep, el mejor día de la
+> página. Son rebotes humanos, no máquinas, y marcarlos **borraría la evidencia
+> del problema que arregla v0.108.0**. La métrica del 30-sep ya los excluye al
+> exigir scroll ≥ 50 %: la regla costaba el diagnóstico y no compraba nada.
+>
+> 🔴 **Hallazgo que cambia el relato.** De las **ocho** sesiones que han
+> empezado alguna vez el formulario, **siete eran infraestructura** y **una era
+> una persona**: sesión 208, The Pinery (Colorado), 15-sep 19:09, escritorio,
+> `direct`. Portada al 75 %, calculadora, **$374.000**, y `form_start` a los
+> **48 segundos**. No lo envió. Tiene test propio para que ninguna regla futura
+> la alcance. «8.760 vistas dieron cero» es verdad en leads, **no en
+> interés**.
+>
+> 🔴 **`is_publish_preview` no tiene ni un llamador** fuera de sus tests: el
+> barredor `classify_publish_previews` reimplementa la regla en SQL. Dos copias
+> de la misma lógica que pueden separarse. No tocado hoy; anotado.
+>
+> 🔴 **Luleå está guardada como `LuleÃ¥`** (bytes `4c756c65c383c2a5`): la
+> cabecera de ciudad de Cloudflare se decodifica como Latin-1. Afecta a toda
+> ciudad no ASCII. Se emparejan las dos grafías; el defecto de origen sigue.
+>
+> ⏳ **3.2, 3.3 y 3.4 pendientes.** La 3.3 (rutina del 22-sep) la verifica Ender
+> en `/routines`; yo no la toco.
+>
+> ℹ️ **El publicador consulta cada 15 min** (`CONTENT_PUBLISH_INTERVAL_SECONDS
+> = 900`) y **duerme antes de trabajar**. Tras un reinicio, el primer tic cae
+> 15 min después, así que una franja puede publicarse hasta 15 min tarde. No es
+> avería: es el pulso. Tenerlo en cuenta al desplegar cerca de una franja.
+
 Sin esto, lo que mida el sábado no vale.
 
 1. **`classify_traffic`**: 197 de 212 quedan `unknown`. Añadir dos señales,
