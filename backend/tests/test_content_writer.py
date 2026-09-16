@@ -50,6 +50,13 @@ def database_url() -> str:
 @pytest.fixture(autouse=True)
 def studio_on(monkeypatch):
     monkeypatch.setattr(get_settings(), "CONTENT_STUDIO_ENABLED", True)
+    # These are about the PROSE rail — the budget switches, the Fair Housing
+    # filter, the single rewrite. Left unpinned they pass anyway, because a
+    # fresh count of zero lands on the calculated rail and a clean draft with
+    # no figures survives its check too — which is a test passing for a reason
+    # it does not state, and the first time `plan_for(0)` changes they would
+    # break somewhere with no connection to what they are named after.
+    monkeypatch.setattr(get_settings(), "CONTENT_CALCULATED_EVERY", 0, raising=False)
 
 
 def _reply(payload: dict) -> LLMResult:

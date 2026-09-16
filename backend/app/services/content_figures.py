@@ -52,6 +52,43 @@ _FIGURE = re.compile(r"\$\s?(\d{1,3}(?:,\d{3})*|\d+)(?:\.(\d{1,2}))?")
 MINIMUM_CLAIM = 100
 
 
+def claimed_text(
+    hook: str | None,
+    caption: str | None,
+    scenes: dict[str, Any] | None,
+    script: str | None = None,
+) -> str:
+    """Every way a dollar figure in a piece reaches a person.
+
+    One definition, used by the approval gate and by the writer's own check.
+    `content_writer._all_violations` says why that matters in the Fair Housing
+    case — "three copies of 'which fields count' is how a field gets added to
+    the product and forgotten by the filter" — and this is the same shape of
+    thing one layer down.
+
+    **Read, heard, and seen — all three.** The gate this replaced read the hook
+    and the caption. The five videos pulled on 15-sep-2026 said their wrong
+    number *on screen*, and `docs/content/otono-2026.md` requires the screen to
+    stand alone precisely because nobody reads a caption before deciding
+    whether to keep watching: a caption edit away, that gate passes all five.
+
+    The script is in here too, and the first draft of this function left it out
+    on the reasoning that `worker/spoken.py` turns "$450,000" into words before
+    anybody hears it. That is backwards. Converting it to words does not remove
+    the claim — it is what makes a person *hear* it. A narrated figure nothing
+    checked is the same defect with a microphone in front of it.
+    """
+    plan = scenes or {}
+    screen = " ".join(
+        str(scene.get("on_screen_text") or "")
+        for scene in (plan.get("scenes") or [])
+    )
+    narration = str(plan.get("narration") or "")
+    return "\n".join(
+        part for part in (hook, caption, script, narration, screen) if part
+    )
+
+
 def figures_in(text: str | None) -> list[int]:
     """Every dollar amount in the text, in whole dollars, in order of appearance.
 

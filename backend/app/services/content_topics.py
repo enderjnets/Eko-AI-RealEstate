@@ -23,6 +23,12 @@ SELLER = "seller"
 BUYER = "buyer"
 BOTH = "both"
 
+# The stamp `content_calculated` puts in every `calculator_check` it writes, so
+# `calculated_index` can count that rail's own work. It lives here and not next
+# to the writer of it because `content_calculated` imports `Topic` from this
+# module, and the other direction would be a cycle.
+CALCULATED_SOURCE = "content_calculated"
+
 
 @dataclass(frozen=True)
 class Topic:
@@ -254,6 +260,62 @@ async def rotation_index(db: AsyncSession) -> int:
     ).scalar_one()
 
 
+async def prose_index(db: AsyncSession) -> int:
+    """How many pieces this organisation has generated FROM THIS TUPLE.
+
+    Not `rotation_index`. Since v0.106.0 a second rail generates pieces whose
+    figure comes from the calculator (`content_calculated`), and those pieces
+    are `GENERATED` too. Counting them here would advance this rotation on a
+    lap it did not take: with one calculated piece between every two prose
+    ones, `TOPICS[n % 12]` over a count that moves in twos visits six of the
+    twelve topics and never the other six.
+
+    `calculator_check IS NOT NULL` is the discriminator because it is the one
+    that is true by definition — a calculated piece is exactly a piece whose
+    figures are recorded — and because it needs no column nobody else reads.
+    It counts the eight pieces of that family whose check was written by hand
+    on 15-sep-2026, which is correct: they belong to the other rail.
+    """
+    return (
+        await db.execute(
+            select(func.count())
+            .select_from(ContentPiece)
+            .where(
+                ContentPiece.kind == ContentKind.GENERATED,
+                ContentPiece.calculator_check.is_(None),
+            )
+        )
+    ).scalar_one()
+
+
+async def calculated_index(db: AsyncSession) -> int:
+    """How many pieces THIS RAIL has made, which is not the same question.
+
+    Counted on the stamp `content_calculated` writes, not on merely having a
+    `calculator_check`. Eight pieces were stamped by hand on 15-sep-2026 to get
+    finished work past the v0.104.0 gate; counting those would have started the
+    rail at index 8, which is `price_ceiling` at $2,600 — piece 42, scheduled
+    for 18-sep on all three channels, with 43, 44 and 45 immediately behind it.
+    The first four pieces this rail was built to produce would have been copies
+    of what was already in the queue.
+
+    So `prose_index` and this do NOT add up to `rotation_index`: the eight
+    hand-stamped pieces are in neither. That is the point — one counts a
+    rotation through `TOPICS`, the other a rotation through the calculated
+    grid, and a piece that walked in from outside belongs to no rotation at all.
+    """
+    return (
+        await db.execute(
+            select(func.count())
+            .select_from(ContentPiece)
+            .where(
+                ContentPiece.kind == ContentKind.GENERATED,
+                ContentPiece.calculator_check["source"].astext == CALCULATED_SOURCE,
+            )
+        )
+    ).scalar_one()
+
+
 async def next_topic(db: AsyncSession) -> Topic:
-    """The topic after the last one this organisation generated."""
-    return TOPICS[await rotation_index(db) % len(TOPICS)]
+    """The topic after the last prose one this organisation generated."""
+    return TOPICS[await prose_index(db) % len(TOPICS)]

@@ -37,8 +37,15 @@ from app.models import (
     ContentPiece,
     ContentStatus,
 )
+from app.services.content_calculated import Plan, plan_for, scene_fields
+from app.services.content_figures import claimed_text, unexplained_figures
 from app.services.content_studio import advance, not_our_rail, text_violations
-from app.services.content_topics import Topic, next_topic, rotation_index
+from app.services.content_topics import (
+    Topic,
+    calculated_index,
+    next_topic,
+    rotation_index,
+)
 from app.services.lang_guard import not_english_prompt, wrong_language
 from app.services.llm import generate_reply
 
@@ -149,9 +156,36 @@ def _parse(raw: str) -> DraftPayload | None:
         return None
 
 
+def _with_plan(draft: DraftPayload | None, plan: Plan | None) -> DraftPayload | None:
+    """Replace the model's shot list with the calculated one.
+
+    Applied BEFORE `_with_cta`, and the order is load-bearing: `_with_cta`
+    decides whether to append the AI disclosure and the spoken sign-off by
+    asking whether the draft has scenes. Overriding them afterwards would give
+    a calculated piece four shots and no disclosure.
+
+    The screen text is where the figure the owner caught actually appeared, so
+    on this rail the model never writes it — same reason `_CTA` keeps the URL
+    out of its hands, for a stronger reason: a dropped character in a link is
+    a dead click, and a wrong digit in a figure is a promise the page refuses
+    to repeat.
+    """
+    if draft is None or plan is None:
+        return draft
+    return draft.model_copy(
+        update={
+            "scenes": [
+                Scene(visual_prompt=visual, on_screen_text=line)
+                for visual, line in scene_fields(plan)
+            ]
+        }
+    )
+
+
 async def _ask(topic: Topic, language: ContentLanguage,
                feedback: str | None = None,
-               cta_index: int = 0) -> DraftPayload | None:
+               cta_index: int = 0,
+               plan: Plan | None = None) -> DraftPayload | None:
     brief = topic.brief_en if language is ContentLanguage.EN else topic.brief_es
     messages: list[dict[str, Any]] = [{"role": "user", "content": brief}]
     if feedback:
@@ -177,7 +211,7 @@ async def _ask(topic: Topic, language: ContentLanguage,
         log.exception("Content writer: both providers failed for topic %s",
                       topic.key)
         return None
-    return _with_cta(_parse(result.text), language, cta_index)
+    return _with_cta(_with_plan(_parse(result.text), plan), language, cta_index)
 
 
 # The sentence that turns a view into a visit. Kept OUT of the model's hands on
@@ -295,8 +329,23 @@ def _with_cta(
     return draft.model_copy(update={"caption": caption, "narration": narration})
 
 
+def figure_text(draft: DraftPayload) -> str:
+    """The same text the approval gate will read, one step earlier.
+
+    Routed through `content_figures.claimed_text` rather than assembled here:
+    two answers to "which fields can a figure reach a viewer through" is how
+    the writer ends up checking a field the gate does not, or the other way
+    round, and the piece that falls in the gap is the one nobody looks at.
+    """
+    return claimed_text(
+        draft.hook, draft.caption, _scene_plan(draft), draft.script
+    )
+
+
 def _all_violations(
-    draft: DraftPayload, language: ContentLanguage
+    draft: DraftPayload,
+    language: ContentLanguage,
+    check: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     """Everything wrong with this draft, in one list.
 
@@ -348,6 +397,15 @@ def _all_violations(
         found.append(
             {"phrase": reason, "category": "language", "where": "scenes"}
         )
+
+    # Every dollar figure has to be one the calculator accounts for — and for
+    # a prose topic, where `check` is None, that means there may be none at
+    # all. `_SYSTEM` has always said "never invent numbers"; this is the first
+    # thing that reads the answer. Run here rather than only at approval so a
+    # piece with a number nobody can stand behind stays a DRAFT instead of
+    # becoming a 409 in a person's face at the moment they try to approve it.
+    for amount in unexplained_figures(figure_text(draft), check):
+        found.append({"phrase": f"${amount:,}", "category": "figure"})
     return found
 
 
@@ -417,6 +475,62 @@ async def _language_for(db: AsyncSession) -> ContentLanguage:
     return ContentLanguage(configured[count % len(configured)])
 
 
+async def _calculated_plan(
+    db: AsyncSession, language: ContentLanguage
+) -> Plan | None:
+    """The next calculated piece, or None when this lap belongs to prose.
+
+    `CONTENT_CALCULATED_EVERY` counts laps of the whole writer, not of either
+    rail, so the share it names is the share that actually gets published.
+    Zero turns the rail off and everything goes back to prose.
+    """
+    every = get_settings().CONTENT_CALCULATED_EVERY
+    if every <= 0:
+        return None
+    if await rotation_index(db) % every != 0:
+        return None
+    try:
+        return plan_for(await calculated_index(db), language)
+    except ValueError as exc:
+        # Under the page's price floor there is no figure to state. Falling
+        # back to prose is the honest move: the alternative is a video that
+        # claims a number the calculator would not show.
+        log.warning("Content writer: no calculated piece this lap (%s)", exc)
+        return None
+
+
+def _feedback(violations: list[dict[str, str]]) -> str:
+    """What to tell the model so its one rewrite has a chance.
+
+    Split by kind, because "do not describe who a home is for" is no help at
+    all to a model that invented a dollar amount, and the rewrite is billed
+    whether it lands or not.
+    """
+    parts: list[str] = []
+    wording = [v["phrase"] for v in violations if v.get("category") != "figure"]
+    figures = [v["phrase"] for v in violations if v.get("category") == "figure"]
+    if wording:
+        named = ", ".join(f'"{phrase}"' for phrase in wording)
+        parts.append(
+            "Your draft contained phrasing that cannot appear in housing "
+            f"advertising: {named}. Rewrite the whole draft without these "
+            "phrases or anything equivalent — do not describe who an area or "
+            "home is for, and do not characterise neighborhoods."
+        )
+    if figures:
+        named = ", ".join(figures)
+        parts.append(
+            f"These dollar amounts are not ours to state: {named}. Every "
+            "figure in one of these pieces has to be one the calculator on "
+            "the page actually answers for the inputs in the brief, and these "
+            "are not. Use only the figures the brief handed you, exactly as "
+            "it wrote them — and if the brief handed you none, write no "
+            "dollar amounts anywhere."
+        )
+    parts.append("Reply with the same JSON shape.")
+    return " ".join(parts)
+
+
 async def generate_draft(db: AsyncSession) -> ContentPiece | None:
     """One draft, gated, or None with the reason in the log."""
     settings = get_settings()
@@ -437,40 +551,40 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
                  made_today, settings.CONTENT_MAX_DRAFTS_PER_DAY)
         return None
 
-    topic = await next_topic(db)
     language = await _language_for(db)
     # Read once and passed to BOTH calls below. The rewrite path replaces the
     # draft wholesale, so a sign-off chosen inside only the first call would be
     # lost on exactly the drafts that needed a second look.
     cta_index = await rotation_index(db)
+    # Which rail this lap belongs to. The calculated one brings its own topic
+    # — the figure is already in the brief — so `next_topic` is only asked on
+    # the laps that will actually consume one.
+    plan = await _calculated_plan(db, language)
+    topic = plan.topic if plan is not None else await next_topic(db)
+    check = plan.check if plan is not None else None
 
-    draft = await _ask(topic, language, cta_index=cta_index)
+    draft = await _ask(topic, language, cta_index=cta_index, plan=plan)
     if draft is None:
         return None
 
-    violations = _all_violations(draft, language)
+    violations = _all_violations(draft, language, check)
     if violations:
         # One rewrite, with the phrases named. Not a loop: a model that failed
         # twice with the phrases in front of it is not going to converge, and
         # every retry is billed.
         phrases = ", ".join(f'"{v["phrase"]}"' for v in violations)
-        log.info("Content writer: draft for %s violates fair housing (%s); "
+        log.info("Content writer: draft for %s came back with %s; "
                  "asking for one rewrite", topic.key, phrases)
         rewritten = await _ask(
             topic,
             language,
             cta_index=cta_index,
-            feedback=(
-                "Your draft contained phrasing that cannot appear in housing "
-                f"advertising: {phrases}. Rewrite the whole draft without "
-                "these phrases or anything equivalent — do not describe who "
-                "an area or home is for, and do not characterise "
-                "neighborhoods. Reply with the same JSON shape."
-            ),
+            plan=plan,
+            feedback=_feedback(violations),
         )
         if rewritten is not None:
             draft = rewritten
-            violations = _all_violations(draft, language)
+            violations = _all_violations(draft, language, check)
 
     piece = ContentPiece(
         kind=ContentKind.GENERATED,
@@ -480,6 +594,11 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
         script=draft.script,
         caption=draft.caption,
         scenes=_scene_plan(draft),
+        # Recorded whatever the draft did with it. A calculated piece that
+        # still carries a figure violation stays a DRAFT below, and its check
+        # is what the person editing it needs in order to see which number the
+        # calculator was actually willing to stand behind.
+        calculator_check=check,
         violations=violations or None,
         publications=[],
     )

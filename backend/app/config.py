@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.105.0"
+    APP_VERSION: str = "0.106.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -372,6 +372,18 @@ class Settings(BaseSettings):
     CONTENT_UTM_CAMPAIGN: str = "video"
 
     CONTENT_MAX_DRAFTS_PER_DAY: int = 3
+    # Cada cuántas piezas generadas sale una cuya cifra la calcula la
+    # calculadora (`content_calculated`) en vez de escribirla el modelo. 2 =
+    # una de cada dos. 0 apaga el carril entero y todo vuelve a ser prosa.
+    #
+    # El 2 no es una preferencia de estilo: medido el 15-sep-2026, el 72% de
+    # las vistas del canal pertenece a esa familia de formato y nada más se le
+    # acerca (401 vistas contra 3 el mismo día). Al mismo tiempo, esa familia
+    # le habla a quien ALQUILA y este canal existe para encontrar a quien
+    # VENDE — que es la tensión que `test_content_audience_and_cta` protege
+    # sobre la otra rotación. Mitad y mitad es el reparto que no resuelve esa
+    # discusión a favor de ninguna de las dos por su cuenta.
+    CONTENT_CALCULATED_EVERY: int = 2
     CONTENT_STUDIO_INTERVAL_SECONDS: int = 3600
     # The render worker (lane A: uploaded clips -> vertical + burned brokerage
     # line). Separate switch from generation: an agency can film clips without

@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.106.0] — 2026-09-16
+
+### Added
+- **The calculator answers first.** Until today nothing in content generation
+  had ever called the calculator — `app/api/v1/content.py` said so in its own
+  comment — so every dollar figure arrived as prose and the first thing to
+  check it was a person clicking approve. After v0.104.0 that meant a
+  rent-vs-buy piece could only be approved if somebody wrote its
+  `calculator_check` by hand, which is what happened to pieces 41, 43, 45 and
+  52-56 on 15-sep-2026, one at a time, by SQL. A gate with no supply behind it
+  does not stop bad content; it stops content — and this is the family that
+  produced **72% of the channel's views**.
+
+  `app/services/content_calculated.py` computes the figure from
+  `calculator.build_snapshot` first, hands it to the model in the brief, and
+  records the INPUTS in `calculator_check` so the gate recomputes rather than
+  agreeing with a record. Twelve pieces: six rents × two series — the five-year
+  net (the series that was pulled, now at the assumptions the page actually
+  uses) and the price ceiling.
+
+- **The number never passes through the model.** The four lines of screen text
+  are written by the same code that asked for the figure, exactly as `_CTA` has
+  always kept the URL out of the model's hands. The reason is stronger here: a
+  dropped character in a link is a dead click; a wrong digit in a figure is a
+  promise the page refuses to repeat.
+
+- `CONTENT_CALCULATED_EVERY` (default 2) sets how many of every N generated
+  pieces come from that rail. 0 turns it off entirely.
+
+### Changed
+- **The figure check reads everything a figure reaches a person through.**
+  `content_figures.claimed_text` is now the single definition of which fields
+  count, used by the approval gate and by the writer: hook, caption, script,
+  narration and **on-screen text**. The five videos that were pulled said their
+  wrong number *on screen* — a caption edit away from a gate that read only the
+  hook and the caption. Measured against all 70 production pieces, widening it
+  newly blocks **none**.
+
+  The script is in there after being left out of the first draft on the
+  reasoning that `worker/spoken.py` turns "$450,000" into words before anybody
+  hears it. That is backwards: the conversion is what makes a person *hear* the
+  claim.
+
+- **The writer checks its own figures before a piece leaves as anything but a
+  DRAFT**, through the same single-rewrite path the Fair Housing filter uses.
+  On the prose rail there is no record, so any dollar figure is unexplained —
+  which is the correct reading of `_SYSTEM`'s standing "never invent numbers",
+  and the first thing that has ever read the answer.
+
+- The prose rotation counts only prose pieces (`content_topics.prose_index`).
+  Counted over every generated piece, with one calculated piece between every
+  two prose ones, `TOPICS[n % 12]` would advance in twos and visit six of the
+  twelve topics for ever.
+
 ## [0.105.0] — 2026-09-15
 
 ### Added

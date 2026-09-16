@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.105.0";
+export const CURRENT_VERSION = "0.106.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.106.0",
+    date: "2026-09-16",
+    title: {
+      en: "The calculator answers first",
+      es: "La calculadora responde primero",
+    },
+    changes: [
+      { en: "The figure in a video is now computed before a word of it is written. Until today nothing in content generation had ever called the calculator, so the numbers arrived as prose and the first thing that checked them was a person clicking approve — which meant the one format this channel has ever been watched for could only ship if somebody typed its record in by hand.", es: "La cifra de un vídeo se calcula ahora antes de escribir una sola palabra. Hasta hoy nada de la generación de contenido había llamado jamás a la calculadora, así que los números llegaban como prosa y lo primero que los comprobaba era una persona pulsando aprobar — lo que dejaba el único formato que este canal ha visto funcionar fuera de circulación salvo que alguien escribiera su registro a mano." },
+      { en: "The number never passes through the model. It is put on screen by the same code that asked the calculator for it, exactly as the link in every caption has always been kept out of the model's hands — for a stronger reason: a dropped character in a link is a dead click, and a wrong digit in a figure is a promise the page refuses to repeat.", es: "El número no pasa por el modelo. Lo pone en pantalla el mismo código que se lo pidió a la calculadora, igual que el enlace de cada caption lleva siempre fuera de sus manos — y por una razón más fuerte: un carácter perdido en un enlace es un clic muerto, y un dígito equivocado en una cifra es una promesa que la página se niega a repetir." },
+      { en: "And the check now reads everything a figure reaches a person through: what is written, what is on screen, and what the narrator says. The five videos that were pulled said their wrong number on screen — a caption edit away from a check that read only the caption.", es: "Y la comprobación lee ahora todo por donde una cifra llega a una persona: lo escrito, lo que sale en pantalla y lo que dice la voz. Los cinco vídeos que se retiraron decían su cifra equivocada en pantalla — a una edición de caption de distancia de una comprobación que solo leía el caption." },
+    ],
+  },
   {
     version: "0.105.0",
     date: "2026-09-15",

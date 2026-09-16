@@ -50,7 +50,7 @@ from app.models import (
     PublicationPlatform,
 )
 from app.services.buffer_publisher import undeliverable_reason
-from app.services.content_figures import unexplained_figures
+from app.services.content_figures import claimed_text, unexplained_figures
 from app.services.content_studio import (
     PUBLISHING_AVAILABLE,
     IllegalTransition,
@@ -544,11 +544,16 @@ async def approve_piece(
     # which is worse than wrong, because it is indistinguishable from wrong.
     # The owner caught it by watching them and set all five to private.
     #
-    # It belongs here and nowhere earlier: nothing in content generation has
-    # ever called the calculator, so the figures arrive as prose and this is
-    # the first moment the claim and the arithmetic are in the same room.
+    # It still belongs here even now that `content_calculated` computes the
+    # figure BEFORE the words are written (v0.106.0). That rail covers what
+    # this product generates; this gate covers what a person approves, and a
+    # piece typed into the console by hand — which is where all five of the
+    # wrong ones came from — passes through here and not through there.
+    #
+    # `claimed_text` and not hook+caption: the wrong number was ON SCREEN.
     unexplained = unexplained_figures(
-        f"{piece.hook or ''}\n{piece.caption or ''}", piece.calculator_check
+        claimed_text(piece.hook, piece.caption, piece.scenes, piece.script),
+        piece.calculator_check,
     )
     if unexplained:
         listed = ", ".join(f"${n:,}" for n in unexplained)
