@@ -519,17 +519,19 @@ async def classify_datacenter_visits(db: AsyncSession) -> int:
     The plan that asked for this also asked for a second rule: one event and
     zero scroll, anywhere, filed as `automated`. That rule was measured before
     being written, and it was **not** implemented. Of the sessions it would
-    have caught, about thirty-three are Denver-area cities — Aurora, Denver,
-    Parker, The Pinery, Wheat Ridge — including eight that arrived in the
-    Facebook app from the 11-sep share, the best day this site has had.
+    have caught, about thirty-six are Denver-area cities — Aurora, Denver,
+    Parker, The Pinery, Wheat Ridge — and **thirteen of those arrived inside
+    the Facebook app**, which no crawler and none of our own tooling does.
 
-    Those are not machines. They are people who landed and left without
-    scrolling, which until today was the entirely reasonable response to a
-    calculator that opened on two empty fields. Filing them as `automated`
-    would erase the evidence of the very problem v0.108.0 fixes, and would
-    make the 30-sep re-evaluation read better than the truth. The metric that
-    matters already excludes them by requiring scroll >= 50%, so the rule
-    would have cost the diagnosis and bought nothing.
+    What they are cannot be settled. Some are very likely us: before the
+    `?eko_qa=1` marker existed there was no way to tell our own browsers from
+    a stranger's, and we are in the same metro area. Others, the in-app ones
+    especially, came from the 11-sep share. That uncertainty is the argument:
+    `unknown` is the honest label for a row nobody can identify, and filing it
+    as `automated` would launder a guess into a fact — one that makes the
+    30-sep re-evaluation read better than the truth. The metric that matters
+    already excludes them by requiring scroll >= 50%, so the rule would have
+    cost the diagnosis and bought nothing.
     """
     from app.services.datacenter_cities import DATACENTER_CITIES
     from app.services.tenant_context import get_org_id

@@ -797,19 +797,30 @@ Natalia: *«I like it. Let's get the other letters ready»*. Está pidiendo.
 >
 > **Se implementó `datacenter_city`. NO se implementó `one_shot_no_scroll`, y
 > la razón está medida.** Esa regla habría marcado como `automated` unas **33
-> sesiones del área de Denver** — Aurora 10, Denver 8+6, Parker 4, y **ocho
-> dentro de la app de Facebook** del compartido del 11-sep, el mejor día de la
-> página. Son rebotes humanos, no máquinas, y marcarlos **borraría la evidencia
-> del problema que arregla v0.108.0**. La métrica del 30-sep ya los excluye al
-> exigir scroll ≥ 50 %: la regla costaba el diagnóstico y no compraba nada.
+> sesiones del área de Denver** — Aurora, Denver, Parker, Wheat Ridge — y
+> **trece dentro de la app de Facebook**, cosa que no hace ningún rastreador.
+> **Lo que son no se puede zanjar**: parte somos casi seguro nosotros (antes de
+> `?eko_qa=1` no había forma de distinguirnos), y parte viene del compartido
+> del 11-sep. Esa incertidumbre **es** el argumento: `unknown` es la etiqueta
+> honesta para una fila que nadie puede identificar, y marcarla convertiría una
+> suposición en un dato. La métrica del 30-sep ya las excluye al exigir scroll
+> ≥ 50 %.
 >
-> 🔴 **Hallazgo que cambia el relato.** De las **ocho** sesiones que han
-> empezado alguna vez el formulario, **siete eran infraestructura** y **una era
-> una persona**: sesión 208, The Pinery (Colorado), 15-sep 19:09, escritorio,
-> `direct`. Portada al 75 %, calculadora, **$374.000**, y `form_start` a los
-> **48 segundos**. No lo envió. Tiene test propio para que ninguna regla futura
-> la alcance. «8.760 vistas dieron cero» es verdad en leads, **no en
-> interés**.
+> 🔴 **Un error mío, corregido, que conviene que quede escrito.** Reporté que
+> una de las ocho sesiones que empezaron el formulario era **una persona real**
+> de The Pinery. **No lo es.** La sesión 208 lleva `traffic_class = 'test'`,
+> razón «playwright verificacion formulario 15-sep»: es **nuestro propio
+> Playwright** de una sesión anterior. Consulté `form_started_at` sin leer
+> `traffic_class`.
+>
+> Lo cierto: **siete de las ocho eran infraestructura y la octava éramos
+> nosotros. Nadie de fuera ha tocado nunca el formulario.** El cero era cero
+> antes de ir a mirar, y el plan ya lo decía bien.
+>
+> Es la ficha [[feedback-de-donde-sale-el-numero]] repitiéndose: el único dato
+> del embudo que parecía una persona lo había escrito nuestra propia
+> herramienta. **Cualquier consulta sobre el embudo filtra `traffic_class`
+> antes de concluir.**
 >
 > 🔴 **`is_publish_preview` no tiene ni un llamador** fuera de sus tests: el
 > barredor `classify_publish_previews` reimplementa la regla en SQL. Dos copias

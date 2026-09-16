@@ -7,16 +7,25 @@ in somebody's cloud region announces none of them.
 
 Seven of the eight sessions that ever "started the form" were infrastructure:
 Clonee, Boardman, Prineville, Forest City, Luleå and Springfield, 38 to 41
-events each and **zero scroll**. Two more cities turned up the same day with
-the same signature and no referrer at all: Council Bluffs (nine sessions) and
-Ashburn (three).
+events each and **zero scroll**. Two more cities turned up with the same
+signature and no referrer at all: Council Bluffs (nine sessions) and Ashburn
+(three).
 
-The eighth was a person in The Pinery, Colorado.
+The eighth was our own Playwright. It is session 208, The Pinery, Colorado,
+15-sep, and it carries `traffic_class = 'test'` with the reason "playwright
+verificacion formulario 15-sep", written by the session that ran it.
 
-That asymmetry is the whole design. This operation has no leads, so a session
-wrongly called `automated` throws away the only kind of row that matters, while
-one wrongly left `unknown` costs a slightly noisier denominator. Every rule
-here is built to fail towards `unknown`.
+That is worth stating plainly, because it was got wrong here first. Reading
+`form_started_at IS NOT NULL` without also reading `traffic_class` produced a
+confident report of "a real person who reached the form and stopped" — and the
+row that disproved it had been written by us. **No real visitor has ever
+started the contact form.** The count is zero, and it was zero before anyone
+went looking.
+
+The asymmetry is still the whole design. This operation has no leads, so a
+session wrongly called `automated` throws away the only kind of row that could
+ever matter, while one wrongly left `unknown` costs a slightly noisier
+denominator. Every rule here is built to fail towards `unknown`.
 """
 
 from __future__ import annotations
@@ -245,18 +254,17 @@ async def test_a_session_with_no_city_is_never_judged():
 
 
 @pytest.mark.asyncio
-async def test_the_person_who_started_the_form_survives_every_rule():
-    """Session 208 in production, and the reason this file is careful.
+async def test_a_denver_suburb_that_read_the_page_is_never_a_machine_room():
+    """The shape a real prospect would have, if one ever arrives.
 
-    The Pinery, Colorado, 15-sep at 19:09. Desktop, arrived `direct`. Read the
-    home page to 75%, went to the calculator, got $374,000, scrolled again and
-    began the contact form — forty-eight seconds from landing to `form_start`.
-    They did not submit.
-
-    Seven of the eight form starters were machine rooms. This one was a person,
-    and no rule here may ever reach them.
+    Nobody has. The only session that ever looked like this — The Pinery,
+    Colorado, 75% scroll, calculator answered, form started forty-eight seconds
+    after landing — was our own Playwright, and it says so in its
+    `traffic_class`. This test is therefore about a visitor who does not exist
+    yet, which is exactly when it is worth writing: the day one does arrive,
+    no rule in this module may reach them.
     """
-    pinery = await _seed_session(
+    suburb = await _seed_session(
         "dc" + "7" * 30, city="The Pinery", max_scroll=75, event_count=19,
     )
 
@@ -264,6 +272,6 @@ async def test_the_person_who_started_the_form_survives_every_rule():
         with org_scope(ORG):
             async with get_session_factory()() as db:
                 assert await classify_datacenter_visits(db) == 0
-        assert await _class_of(pinery) == ("unknown", None)
+        assert await _class_of(suburb) == ("unknown", None)
     finally:
-        await _cleanup([pinery])
+        await _cleanup([suburb])

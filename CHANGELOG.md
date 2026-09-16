@@ -13,10 +13,16 @@ Council Bluffs (9 sesiones) y Ashburn (3), llegando con un solo evento y sin
 referente. Todas quedaban en `unknown`, así que cada número del embudo las
 contaba como personas.
 
-**La octava era una persona.** The Pinery, Colorado, el 15-sep a las 19:09.
-Leyó la portada hasta el 75%, fue a la calculadora, obtuvo **$374.000**, volvió
-a deslizar y empezó el formulario. Cuarenta y ocho segundos desde que llegó. No
-lo envió.
+**La octava era nuestro propio Playwright.** Sesión 208, The Pinery, el 15-sep.
+Lleva `traffic_class = 'test'` con la razón «playwright verificacion formulario
+15-sep», escrita por la sesión que lo ejecutó. Leyó la portada hasta el 75%,
+resolvió la calculadora en **$374.000** y empezó el formulario a los 48
+segundos — que es justo el aspecto que tendría un interesado real, y por eso
+engaña a quien consulta `form_started_at` sin leer también `traffic_class`.
+
+Ese error se cometió aquí el 16-sep y se reportó como hallazgo antes de
+detectarse. **Nadie de fuera ha tocado nunca el formulario.** El cero era cero
+antes de ir a mirar.
 
 El clasificador nuevo exige **ciudad de centro de datos Y cero scroll**, y solo
 escribe encima de `unknown`.
@@ -45,17 +51,20 @@ solo la rota dejaría de funcionar el día que se arregle la cabecera.
 **Una regla que se pidió, se midió y no se implementó.** Marcar como
 `automated` cualquier sesión de un evento y cero scroll.
 
-De las sesiones que habría capturado, **unas treinta y tres son del área de
-Denver** — Aurora, Denver, Parker, The Pinery, Wheat Ridge — incluidas **ocho
-que llegaron dentro de la app de Facebook** desde el compartido del 11-sep, el
-mejor día que ha tenido esta página.
+De las sesiones que habría capturado, **unas treinta y seis son del área de
+Denver** — Aurora, Denver, Parker, The Pinery, Wheat Ridge — y **trece de ellas
+llegaron dentro de la app de Facebook**, cosa que no hace ningún rastreador ni
+ninguna herramienta nuestra.
 
-No son máquinas. Son personas que entraron y se fueron sin deslizar, que hasta
-v0.108.0 era la respuesta razonable a una calculadora que abría con dos campos
-vacíos. Marcarlas borraría la evidencia del problema que v0.108.0 arregla, y
-haría que la reevaluación del 30-sep se leyera mejor que la verdad. La métrica
-que importa ya las excluye al exigir 50% de scroll: la regla habría costado el
-diagnóstico sin comprar nada.
+**Lo que son no se puede zanjar.** Algunas somos casi seguro nosotros: antes de
+que existiera `?eko_qa=1` no había forma de distinguir nuestro navegador del de
+un extraño, y estamos en la misma área. Otras, sobre todo las de dentro de la
+app, vienen del compartido del 11-sep. Esa incertidumbre **es** el argumento:
+`unknown` es la etiqueta honesta para una fila que nadie puede identificar, y
+marcarla como `automated` convertiría una suposición en un dato — uno que haría
+que el 30-sep se leyera mejor que la verdad. La métrica que importa ya las
+excluye al exigir 50% de scroll: la regla habría costado el diagnóstico sin
+comprar nada.
 
 ## [0.108.0] - 2026-09-16
 
