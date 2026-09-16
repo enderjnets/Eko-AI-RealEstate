@@ -36,6 +36,26 @@ const nextConfig = {
     // are public paths, so no middleware rule rewrites them and their queries
     // survive. If a destination ever stops being a public path, it has to
     // become absolute to the brand domain.
+    // One short path per person who might share the site by hand.
+    //
+    // On 11-sep somebody posted the site on Facebook and it brought 26 real
+    // sessions from Denver suburbs — the best day the site has had. Nobody
+    // knows who did it, so it cannot be thanked, repeated, or asked for
+    // again. A share carries no tag: whoever pastes the plain domain is
+    // invisible, and `source=facebook` is the most the report can ever say.
+    //
+    // The content tag is the person's first name and not their initial. The
+    // whole point of these is that somebody reads the breakdown weeks later
+    // and knows what it means without a decoder ring; "n" needs one and
+    // "natalia" does not. The short path stays a single letter because that
+    // is the part a person has to type or remember.
+    const partner = (person) => ({
+      source: `/${person.short}`,
+      destination:
+        `/start?utm_source=partner&utm_medium=share&utm_content=${person.name}`,
+      permanent: false,
+    });
+
     const fall = (band) => ({
       source: `/fall/${band}`,
       destination:
@@ -52,6 +72,9 @@ const nextConfig = {
       bio({ short: "youtube", source: "youtube" }),
       bio({ short: "tiktok", source: "tiktok" }),
       bio({ short: "instagram", source: "instagram" }),
+      partner({ short: "n", name: "natalia" }),
+      partner({ short: "r", name: "robbie" }),
+      partner({ short: "e", name: "ender" }),
       fall(1),
       fall(2),
       fall(3),

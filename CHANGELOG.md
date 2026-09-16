@@ -1,5 +1,67 @@
 # Changelog
 
+## [0.108.0] - 2026-09-16
+
+### Añadido
+
+**El número que prometía el vídeo, en la página donde aterriza.**
+
+Once Shorts apuntan a `/calculator` y cinco dicen en voz alta *«$2,600 a month,
+going from $40,000 saved…»*. Los dos campos de dinero empezaban **vacíos**, así
+que la cifra solo aparecía si el visitante la escribía. De las 28 sesiones que
+YouTube ha mandado, **23 fueron de un solo evento y 0% de scroll**: les
+prometieron una respuesta y encontraron un formulario.
+
+`/calculator` lee ahora `rent`, `savings` y `credit` del enlace, con las mismas
+reglas que usan sus propios campos. Verificado de punta a punta contra la
+caption real: `?rent=2600&savings=40000` muestra **$343,000**, exactamente la
+cifra que nombra la caption.
+
+Nunca inventa la cifra de ahorros. Un campo de ahorros sin tocar significa
+«todavía no», y un cero daría un precio suelo que nadie pidió; un enlace que
+solo lleva `rent` rellena solo `rent`. Sin parámetros, la página se comporta
+exactamente como antes.
+
+**Tres enlaces cortos para poder agradecer a quien comparte.** `/n`, `/r` y `/e`
+llevan `utm_source=partner` y nombran a la persona. El 11-sep alguien publicó el
+sitio en Facebook y trajo 26 sesiones reales del área de Denver, el mejor día
+que ha tenido la página, y **nadie sabe quién fue**. La etiqueta es el nombre de
+pila y no la inicial: el objetivo es que alguien lea el desglose semanas después
+sin una tabla de equivalencias.
+
+**`/sitemap.xml` y `robots.txt`.** El sitemap daba 404, así que la página a la
+que apunta todo el embudo no estaba en el índice. Lista las cinco páginas
+públicas derivadas de `PUBLIC_PATHS` — la misma constante que usa el middleware
+— y no de una segunda lista a mano, que es como una URL `/brief/<token>` acaba
+publicada a todos los rastreadores. Si Cloudflare deja pasar la línea `Sitemap:`
+hay que leerlo del fichero **servido**, nunca del fuente.
+
+### Corregido
+
+**El desplazamiento que no desplazaba.**
+
+`scrollIntoView({ behavior: "smooth" })` **no hace nada, y no lo dice**, en un
+navegador con el desplazamiento suave desactivado. Medido en producción el
+16-sep, Chrome 152 en macOS, con `prefers-reduced-motion` en **falso**, así que
+la rama que ya contemplaba movimiento reducido no lo cubría:
+
+```
+window.scrollTo({ top: 600, behavior: "smooth" })  ->  scrollY 0
+window.scrollTo({ top: 600, behavior: "auto"   })  ->  scrollY 600
+el.scrollIntoView()                                ->  scrollY 954
+```
+
+En ese navegador **todo v0.102.8 era inerte**: la cifra se dibujaba 271px por
+debajo del borde de la ventana y la página no se movía — el fallo exacto que
+v0.102.8 existía para terminar. No es la mayoría de visitantes, pero sí todo el
+que tenga la opción apagada, y es **el navegador desde el que esto se
+verifica**, que es como un arreglo que funciona se reporta roto y uno roto se
+reporta bueno.
+
+Ahora se pide el desplazamiento suave y se comprueba 150 ms después si algo se
+movió de verdad; si no, salta. Cualquier movimiento cuenta como que la persona
+ha tomado el control.
+
 ## [0.107.2] - 2026-09-16
 
 ### Corregido

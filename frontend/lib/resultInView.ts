@@ -50,3 +50,43 @@ export function resultInView(q: InViewQuestion): InViewAnswer {
   const visible = q.top >= 0 && q.top < q.viewportHeight;
   return { scroll: !visible, spend: true };
 }
+
+/**
+ * How long to wait before checking that a smooth scroll actually started.
+ *
+ * A smooth scroll of roughly a thousand pixels takes Chrome about 400ms, but
+ * it begins moving on the first frame. So this only has to outlast a few
+ * frames, not the whole animation.
+ */
+export const SMOOTH_CHECK_MS = 150;
+
+/**
+ * Whether the page has to jump, because the smooth scroll it asked for never
+ * happened.
+ *
+ * ── Why this exists ──────────────────────────────────────────────────────
+ * `scrollIntoView({ behavior: "smooth" })` does nothing at all — silently, with
+ * no error and no return value — in a browser that has smooth scrolling turned
+ * off. Measured on production on 16-sep-2026, Chrome 152 on macOS, with
+ * `prefers-reduced-motion` reporting **false**, so the branch above that
+ * already handles reduced motion does not catch it:
+ *
+ *     window.scrollTo({ top: 600, behavior: "smooth" })  ->  scrollY 0
+ *     window.scrollTo({ top: 600, behavior: "auto"   })  ->  scrollY 600
+ *     el.scrollIntoView()                                ->  scrollY 954
+ *
+ * On that machine the whole of the v0.102.8 fix is inert: the figure renders
+ * 271px below the bottom of the window and the page never moves, which is the
+ * exact failure that fix was written to end. It is not most visitors — phones
+ * scroll smoothly — but it is every visitor who has switched the setting off,
+ * and it is **the browser this gets verified in**, which is how a working fix
+ * gets reported broken and a broken one gets reported working.
+ *
+ * Asking whether anything moved costs one comparison and removes the whole
+ * class of failure. Any movement counts: if the person grabbed the page
+ * themselves in those few frames, they have taken over and nothing should be
+ * yanked out from under them.
+ */
+export function needsFallbackJump(startY: number, currentY: number): boolean {
+  return Math.abs(currentY - startY) < 1;
+}

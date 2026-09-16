@@ -71,6 +71,46 @@ describe("bio short links", () => {
     expect(new Set(tags).size).toBe(4);
   });
 
+  it("each partner has a short path that says who shared", async () => {
+    // On 11-sep somebody posted the site on Facebook: 26 real sessions from
+    // Denver suburbs, the best day the site has had, and nobody knows who to
+    // thank or ask again. These three are what make the next one countable.
+    const redirects = await nextConfig.redirects();
+    for (const [path, name] of [
+      ["/n", "natalia"],
+      ["/r", "robbie"],
+      ["/e", "ender"],
+    ] as const) {
+      const rule = redirects.find((r: { source: string }) => r.source === path);
+      expect(rule, `${path} is missing`).toBeDefined();
+      const destination = new URL(rule.destination, "https://example.test");
+      expect(destination.pathname).toBe("/start");
+      expect(destination.searchParams.get("utm_source")).toBe("partner");
+      expect(destination.searchParams.get("utm_medium")).toBe("share");
+      expect(destination.searchParams.get("utm_content")).toBe(name);
+    }
+  });
+
+  it("the three partners do not share a tag", async () => {
+    // The same copy-paste this file already guards twice. Three rules that
+    // all say natalia look right and answer the one question they exist for
+    // with the wrong name.
+    const redirects = await nextConfig.redirects();
+    const tags = ["/n", "/r", "/e"].map((path) => {
+      const rule = redirects.find((r: { source: string }) => r.source === path);
+      return new URL(rule.destination, "https://example.test").searchParams.get("utm_content");
+    });
+    expect(new Set(tags).size).toBe(3);
+  });
+
+  it("no short path is claimed twice", () => {
+    // `/n`, `/r` and `/e` are single letters in the same namespace as `/yt`
+    // and `/ig`. A duplicated source is not an error Next reports: the first
+    // rule wins and the second silently never fires.
+    const all = ["/yt", "/youtube", "/tt", "/tiktok", "/ig", "/instagram", "/n", "/r", "/e"];
+    expect(new Set(all).size).toBe(all.length);
+  });
+
   it("they are temporary, so the campaign can change later", async () => {
     // A 301 is cached hard by browsers. Changing the campaign afterwards would
     // mean fighting caches on devices nobody can reach.

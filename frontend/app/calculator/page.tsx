@@ -35,9 +35,10 @@ import {
   type Credit,
   type Inputs,
 } from "@/lib/calculator";
+import { calculatorSeed } from "@/lib/calculatorQuery";
 import { useI18n } from "@/lib/i18n";
 import { LANDING } from "@/lib/landing";
-import { resultInView } from "@/lib/resultInView";
+import { SMOOTH_CHECK_MS, needsFallbackJump, resultInView } from "@/lib/resultInView";
 import { getTracker } from "@/lib/track";
 
 /** The sections the tracker measures. Every id must be in `LANDING_SECTIONS`. */
@@ -129,6 +130,30 @@ export default function CalculatorPage() {
   const [rateRaw, setRateRaw] = useState((DEFAULTS.rate * 100).toFixed(2));
   const [hoaRaw, setHoaRaw] = useState("");
 
+  // A video that names a number has to land on the number.
+  //
+  // Eleven Shorts point here, and five of them promise "$2,600 a month,
+  // $40,000 saved" out loud. Until now they arrived at two empty fields:
+  // YouTube sent 28 sessions and 23 of them were a single event with 0%
+  // scroll — people who were promised an answer and met a form.
+  //
+  // Read once, on mount, and only from the URL. `calculatorSeed` never
+  // invents a savings figure, so a link carrying only rent still leaves the
+  // page waiting rather than showing a floor price nobody asked for.
+  //
+  // `window.location.search` rather than `useSearchParams` for the reason
+  // `LandingTracker` documents: that hook opts the route out of static
+  // rendering unless the whole page sits behind a Suspense boundary, and this
+  // page is indexed. Everything downstream — the debounce, `solvePrice`, and
+  // the `resultInView` effect that brings the figure onto a phone screen —
+  // then runs exactly as it does for someone who typed the same numbers.
+  useEffect(() => {
+    const seed = calculatorSeed(window.location.search);
+    if (seed.rent !== undefined) setRentRaw(seed.rent);
+    if (seed.savings !== undefined) setSavingsRaw(seed.savings);
+    if (seed.credit !== undefined) setCredit(seed.credit);
+  }, []);
+
   const rent = useDebounced(dollars(rentRaw, LIMITS.rent), DEBOUNCE_MS);
   const savings = useDebounced(dollars(savingsRaw, LIMITS.savings), DEBOUNCE_MS);
   const ratePct = ratePercent(rateRaw);
@@ -219,7 +244,25 @@ export default function CalculatorPage() {
     if (!answer.scroll) return;
 
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-    el.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+    if (still) {
+      el.scrollIntoView({ behavior: "auto", block: "start" });
+      return;
+    }
+
+    // Ask nicely, then check that it happened. In a browser with smooth
+    // scrolling switched off this call does nothing at all and reports
+    // nothing — measured on production in Chrome 152 with
+    // `prefers-reduced-motion` false, where the figure sat 271px below the
+    // window and the page never moved. `needsFallbackJump` carries the
+    // reasoning and the numbers.
+    const startY = window.scrollY;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    const id = window.setTimeout(() => {
+      if (needsFallbackJump(startY, window.scrollY)) {
+        el.scrollIntoView({ behavior: "auto", block: "start" });
+      }
+    }, SMOOTH_CHECK_MS);
+    return () => window.clearTimeout(id);
   }, [result, shown]);
 
   // What travels with the lead: the inputs and only the sliders that moved,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resultInView } from "../resultInView";
+import { needsFallbackJump, resultInView } from "../resultInView";
 
 /** The phone the failure was measured on, and where the figure landed. */
 const PHONE = { viewportHeight: 844, top: 1073 };
@@ -62,5 +62,36 @@ describe("bringing the calculator's answer onto the screen", () => {
     // Negative `top` means it is behind them. Rare, but "visible" must mean
     // visible, not "not below".
     expect(ask({ top: -200 }).scroll).toBe(true);
+  });
+});
+
+describe("when the smooth scroll never happens", () => {
+  it("jumps if nothing moved at all", () => {
+    // Measured on production, Chrome 152, prefers-reduced-motion false:
+    // `scrollIntoView({ behavior: "smooth" })` left scrollY at 0 while the
+    // same call with "auto" moved it 954px. Without this, the whole v0.102.8
+    // fix is inert in that browser and the figure stays off screen.
+    expect(needsFallbackJump(0, 0)).toBe(true);
+    expect(needsFallbackJump(320, 320)).toBe(true);
+  });
+
+  it("leaves it alone once the page is moving", () => {
+    // The smooth scroll is working: it begins on the first frame, so any
+    // movement at all means the browser took the request.
+    expect(needsFallbackJump(0, 40)).toBe(false);
+    expect(needsFallbackJump(0, 954)).toBe(false);
+  });
+
+  it("counts movement in either direction as the person taking over", () => {
+    // Somebody who grabbed the page in those few frames has answered the
+    // question themselves. Yanking the view somewhere else is worse than the
+    // off-screen figure this exists to fix.
+    expect(needsFallbackJump(500, 460)).toBe(false);
+  });
+
+  it("treats a sub-pixel difference as not having moved", () => {
+    // Fractional scroll positions are ordinary on a scaled display; a
+    // rounding artefact is not a scroll.
+    expect(needsFallbackJump(0, 0.4)).toBe(true);
   });
 });
