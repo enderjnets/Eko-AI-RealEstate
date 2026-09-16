@@ -670,7 +670,7 @@ cambio de cadencia de PLAN (4).
 
 ## Fases
 
-### Fase 0 [CRÍTICA — sale el jueves 18] — El vídeo de la casa abierta
+### Fase 0 [CRÍTICA — sale el viernes 18] — El vídeo de la casa abierta
 
 **Qué:** una pieza de 20-30 s, 1080×1920, para los tres canales, sobre
 **1560 S Quebec Way #56, Denver — sábado 19 de septiembre, 11:00-14:00**.
@@ -723,6 +723,25 @@ rellenado por `backfill_links`; una sesión con `utm_source` de cada canal
 llega el sábado antes de las 11.
 
 ### Fase 1 — Las puertas y el aterrizaje (esta semana)
+
+> ✅ **DESPLEGADA el 16-sep a las 17:13 de Denver — v0.108.0, commit `a3a6920`.**
+> Puntos 2, 4 y 5 hechos y verificados a través de Cloudflare. El punto 3 quedó
+> **sin objeto**: las once piezas 47-57 están *todas* `published`, ninguna
+> programada, así que no hay nada que editar por Buffer. El punto 1 sigue en el
+> tejado de Ender ↓.
+>
+> **TikTok: la cuenta ya es Business y el enlace SIGUE sin ser pulsable.** Leído
+> del perfil público el 16-sep: la URL vive dentro de `<h2 data-e2e="user-bio">`
+> como **texto**, y no existe ningún elemento `user-link`. El enlace pulsable lo
+> pinta el campo **Website** de «Editar perfil», que está vacío: la URL se
+> escribió en el texto de la bio. Es lo que anticipaba el punto 1.
+>
+> **Avería encontrada de camino, ya corregida:**
+> `scrollIntoView({behavior:"smooth"})` **no hace nada y no lo dice** en un
+> navegador con el desplazamiento suave apagado. Medido en producción, Chrome
+> 152, `prefers-reduced-motion` en **falso**: `smooth` dejaba `scrollY` en 0 y
+> `auto` lo movía 954px. Ahí **todo v0.102.8 era inerte**. No es la mayoría de
+> visitantes, pero sí **el navegador desde el que verificamos**.
 
 1. **TikTok Business — verificar, no hacer.** Ender lo cambia en la app. Tú
    compruebas: el perfil público muestra el enlace como `<a href>` (antes era
@@ -883,7 +902,9 @@ SELECT date_trunc('week', created_at) AS semana, source, count(*) AS humanas
 ## Ficheros que se tocan
 
 - `frontend/app/calculator/**` — leer `?rent=`/`?savings=` y calcular al cargar.
-- `frontend/middleware.ts` o donde vivan `/tt`, `/ig` — añadir `/n`, `/r`, `/e`.
+- `frontend/next.config.js` — ahí viven `/tt`, `/ig`, `/yt` y los `/fall/N`, en
+  `redirects()`, **no** en `middleware.ts`. Verificado el 16-sep: esos redirects
+  ganan al 308 del middleware.
 - `frontend/app/sitemap.ts` — nuevo.
 - `backend/app/services/landing_analytics.py` — `classify_traffic` + módulo de
   ciudades de centro de datos; script de reclasificación en `backend/scripts/`.
