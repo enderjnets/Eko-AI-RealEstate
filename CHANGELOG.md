@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.107.1] - 2026-09-16
+
+### Corregido
+
+**El botón que decía «he terminado» no se podía pulsar.**
+
+El botón *Enviar respuestas* de `/brief/<token>` estaba condicionado a
+`disabled={saving || !dirty}`. La página autoguarda 1.200 ms después del último
+toque y pone `dirty = false`, y una página recién cargada tampoco está sucia —
+así que el botón nacía muerto y, tras cada edición, vivía alrededor de un
+segundo.
+
+Medido el 16-sep-2026: entre el arranque del contenedor a las 18:14 UTC y el
+mensaje de Natalia —*«I did send it press» / «It only did save»*— hubo **un GET
+sobre su hoja y cero POST**. No estaba confundida: el botón realmente no hacía
+nada.
+
+**Sus respuestas nunca estuvieron en peligro**, porque las tenía el
+autoguardado (siete campos, `answered_at` del 15-sep). Lo que no llegó nunca fue
+la señal que ese botón existe para dar.
+
+`!dirty` es la condición correcta para un botón que significa *guarda mis
+cambios*, y este significa **«he terminado»** — algo que una persona puede decir
+de respuestas que escribió ayer, o de una hoja que leyó y a la que no tenía nada
+que añadir. El docstring de `PartnerBrief` ya lo decía: distinguir «no la ha
+leído» de «la leyó y no tenía nada que decir» es justo para lo que existe
+`opened_at`. La única razón honesta para rechazar la pulsación es que ya haya
+una escritura en vuelo.
+
+**Y la palabra con la que responde.** Arreglar solo el botón habría dejado la
+otra mitad: una pulsación deliberada aterrizaba en el mismo «Guardado» que el
+autoguardado llevaba un segundo mostrando, así que incluso un botón que
+funcionara parecía haberla ignorado — y una pulsación que parece ignorada se
+vuelve a pulsar. Ahora dice **«Enviado — gracias»**, que es un estado distinto y
+se retira en cuanto se toca algo más.
+
+La decisión vive en `frontend/lib/briefSend.ts`, función pura, con
+`frontend/lib/__tests__/briefSend.test.ts` cubriéndola. Tres mutantes
+verificados: restaurar `!dirty` mata 3 tests, quitar el estado «enviado» mata 1,
+y degradar la prioridad del fallo mata 2.
+
 ## [0.107.0] - 2026-09-16
 
 ### La ventana bajo la que se encoló un post puede cambiar

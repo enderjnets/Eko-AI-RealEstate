@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.107.0";
+export const CURRENT_VERSION = "0.107.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.107.1",
+    date: "2026-09-16",
+    title: {
+      en: "The button that said I am done could not be pressed",
+      es: "El botón que decía he terminado no se podía pulsar",
+    },
+    changes: [
+      { en: "The brief's Send answers button could not be pressed. It was disabled whenever there was nothing pending to write, and the page autosaves 1,200ms after the last tap — so it was dead on a freshly loaded page and alive for about a second after each edit. Measured on 16-sep: between the container starting and the partner writing \"I did send it press / It only did save\" there was one GET on her brief and zero POSTs. Her answers were never at risk, because the autosave had them; what never arrived was the one thing the button exists to say. The guard is right for a button that means save my changes, and this one means I am done — which a person can say about answers they wrote yesterday, or about a brief they read and had nothing to add to. A deliberate press now also answers with its own word, Sent, instead of the Saved the autosave had been showing for a second: a press that looks ignored gets pressed again.", es: "El botón Enviar respuestas de la hoja no se podía pulsar. Se desactivaba en cuanto no había nada pendiente de escribir, y la página autoguarda 1.200 ms después del último toque — así que nacía muerto en una página recién cargada y vivía alrededor de un segundo tras cada edición. Medido el 16-sep: entre el arranque del contenedor y el mensaje de la socia «I did send it press / It only did save» hubo un GET sobre su hoja y cero POST. Sus respuestas nunca estuvieron en peligro, porque las tenía el autoguardado; lo que no llegó nunca fue lo único que ese botón existe para decir. La condición es correcta para un botón que significa guarda mis cambios, y este significa he terminado — algo que una persona puede decir de respuestas que escribió ayer, o de una hoja que leyó y a la que no tenía nada que añadir. Una pulsación deliberada responde además con su propia palabra, Enviado, en vez del Guardado que el autoguardado llevaba un segundo mostrando: una pulsación que parece ignorada se vuelve a pulsar." },
+    ],
+  },
   {
     version: "0.107.0",
     date: "2026-09-16",

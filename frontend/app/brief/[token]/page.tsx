@@ -33,6 +33,7 @@ import { Loader2 } from "lucide-react";
 
 import { useI18n } from "@/lib/i18n";
 import { loadBrief, saveBrief, type Brief, type BriefBlock } from "@/lib/brief";
+import { briefSend } from "@/lib/briefSend";
 
 /** What a person's row can be set to. `send` is the unchosen default. */
 type PersonState = "send" | "out" | "touch";
@@ -61,6 +62,9 @@ export default function BriefPage({ params }: { params: { token: string } }) {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  /** A deliberate press has landed. Separate from `savedAt` because the two
+   *  have to say different words — see `lib/briefSend`. */
+  const [sent, setSent] = useState(false);
 
   // Read in a ref as well as state: the debounce timer fires outside React's
   // render, and closing over `answers` would post whatever was current when
@@ -106,6 +110,10 @@ export default function BriefPage({ params }: { params: { token: string } }) {
         setDirty(false);
         dirtyRef.current = false;
         setSavedAt(new Date().toISOString());
+        // Only a press says "I am done". An autosave that quietly promoted
+        // itself to "Sent" would be the page answering a question nobody
+        // asked, and would hide the next real press behind an unchanged word.
+        if (deliberate) setSent(true);
       }
       return ok;
     },
@@ -123,6 +131,7 @@ export default function BriefPage({ params }: { params: { token: string } }) {
       setDirty(true);
       dirtyRef.current = true;
       setFailed(false);
+      setSent(false);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => {
         void flush(false);
@@ -183,15 +192,9 @@ export default function BriefPage({ params }: { params: { token: string } }) {
     );
   }
 
-  const status = failed
-    ? t("brief.saveFailed")
-    : saving
-      ? t("brief.saving")
-      : dirty
-        ? t("brief.unsaved")
-        : savedAt
-          ? t("brief.saved")
-          : t("brief.untouched");
+  const decision = briefSend({ saving, dirty, failed, sent, everSaved: savedAt !== null });
+  const status = t(decision.status);
+  const good = !dirty && !failed && (sent || savedAt !== null);
 
   return (
     <div className="eko-brief">
@@ -214,8 +217,8 @@ export default function BriefPage({ params }: { params: { token: string } }) {
           saves were landing and the person filling it in could not tell.
           Hidden when there is nothing to say, so it never steals a line from
           the reading. */}
-      {(dirty || saving || failed || savedAt) ? (
-        <div className={`topstate${failed ? " bad" : !dirty && savedAt ? " good" : ""}`}>
+      {(dirty || saving || failed || sent || savedAt) ? (
+        <div className={`topstate${failed ? " bad" : good ? " good" : ""}`}>
           <div className="wrap">{status}</div>
         </div>
       ) : null}
@@ -228,10 +231,10 @@ export default function BriefPage({ params }: { params: { token: string } }) {
 
       <div className="savebar">
         <div className="wrap">
-          <span className={`state${failed ? " bad" : !dirty && savedAt ? " good" : ""}`}>
+          <span className={`state${failed ? " bad" : good ? " good" : ""}`}>
             {status}
           </span>
-          <button type="button" onClick={() => void flush(true)} disabled={saving || !dirty}>
+          <button type="button" onClick={() => void flush(true)} disabled={!decision.enabled}>
             {t("brief.send")}
           </button>
         </div>
