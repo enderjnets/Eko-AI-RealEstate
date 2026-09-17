@@ -892,12 +892,23 @@ Sin esto, lo que mida el sábado no vale.
    comentario** en dos semanas, aunque `publish_followup` se los manda por
    Telegram con el texto ya hecho. Así que `utm_medium=comment` tiene cero
    sesiones porque no existe el comentario, no porque no funcione.
-   Decisión del 16-sep: pega **tres** antes del 22 — piezas 51 (402 vistas),
-   47 (228) y 48 (208) — con el texto ya escrito en
-   `scratchpad/comentarios-youtube-para-pegar.md`. Ese texto **no es el de
-   Telegram**: el generado lleva el enlace sin `rent=`/`savings=` y promete
-   *«nothing to fill in to see it»* sobre una página que sí pedía rellenar.
-   Van fijados (*Pin*), o quedan enterrados y la lectura no dice nada.
+   ✅ **Resuelto el 16-sep, conduciendo Chrome.** Y la premisa de arriba era
+   falsa a medias: al ir a mirar, **dos comentarios sí existían** (piezas 51 y
+   57, puestos el 15-sep), con el enlace **sin** `rent=`/`savings=`. Lo que no
+   tenía ninguno era el *Pin* — lo que yo había leído como «fijado» era el
+   hueco vacío que YouTube pinta siempre.
+   Estado final, verificado **recargando cada página**, no mirando el editor:
+   piezas **47 y 48** con comentario nuevo y semilla; **51** editada con la
+   semilla; **57** editada sin semilla — ese vídeo no nombra renta ni ahorro y
+   ponerle cifras sería inventarlas — pero se le quitó la frase *«Nothing to
+   fill in to see it»*, que con un enlace vacío era falsa. **Las cuatro
+   fijadas.** Los dos comentarios nuevos llevan la línea de correduría que pide
+   la 6.10.A.4; el texto del generador no la tiene.
+   🔴 **El prompt de la rutina quedó viejo y nadie lo ha tocado:** dice que
+   solo dos vídeos tienen comentario (son cuatro: se le escapan la 47 y la 48) y
+   usa 411 vistas del 15-sep para la 51, cuando la página muestra 402 — si el
+   agente resta, le sale crecimiento negativo. Se arregla con
+   `RemoteTrigger update`; es configuración permanente, así que lo decide Ender.
 4. **Lectores de TikTok e Instagram**: siguen siendo manuales (decisión del
    dueño, aplazada). Antes del 30-sep hay que hacer **una** lectura manual de
    los dos para que el cuadro no compare YouTube con ceros.
