@@ -5,6 +5,131 @@ Estado de ejecución del plan `~/.claude/plans/si-haz-el-plan-jazzy-sifakis.md`
 v0.56.0 y anteriores vive en git y en el plan.
 
 ---
+# 17-sep — 0.116.0 desplegada: la entrega del vídeo se reintenta
+
+Con tu «aprobado despliega» y la respuesta «ROG y VPS». `main` en **`d1eeef2`**,
+tag `v0.116.0`, **sin migración** (sigue en `063_content_rejections`).
+
+| dónde | lo que se midió |
+|---|---|
+| **ROG** (`pcrug` = `ender-rog`) | copia previa `~/eko-render/worker.bak.20260917_v0116` (20 entradas); **un solo fichero** copiado, `worker/main.py`, md5 `12652275…` = el del commit; `~/.eko-render.env` intacto (1.653 → 1.653 bytes); `systemctl --user restart` con **0 trabajos en cola o reclamados**, comprobado en el mismo comando; servicio `active`; y **lo que carga el intérprete**, no solo el fichero: `import worker.main` desde el venv con el env del servicio → `DELIVERY_ATTEMPTS=3`, `DELIVERY_BACKOFF_SECONDS=5.0`, desde `~/eko-render/app/worker/main.py` |
+| **VPS** | bundle `d5c4d23..main` (13.754 bytes, cabeza `refs/heads/main` = `d1eeef2`) → `reset --hard` → `d1eeef23e`; build sin cortar nada; contenedores cambiados **con 0 renders en vuelo**, comprobado en el mismo comando |
+| Salud | `0.116.0` · `status: ok` · `env: production` · `llm_fallback: ok` |
+| Alembic | `063_content_rejections (head)`, sin tocar |
+| Panel | `/leads` `/about` `/content` → **200** · trazas tras arrancar: **0** · latidos del ROG tras el reinicio: **2** |
+
+**Un tropiezo sin daño:** el primer bundle lo hice con `5731e09..HEAD` desde la
+rama, así que llevaba `refs/heads/fix/…` y no `refs/heads/main`; el VPS se quedó
+en `d5c4d23` (0.115.0, donde ya estaba) y reconstruyó imágenes idénticas. Mi
+`main` local estaba atrasado respecto al remoto que yo mismo había empujado —
+la ficha del tronco atrasado, otra vez. Corregido con `git fetch origin
+main:main` y `git bundle list-heads` antes de enviar.
+
+**Vuelta atrás:** ROG: `cp ~/eko-render/worker.bak.20260917_v0116/main.py
+~/eko-render/app/worker/main.py && systemctl --user restart eko-render-worker`.
+VPS: `git reset --hard d5c4d23 && docker compose up -d --build backend frontend`.
+Nada que deshacer en la base.
+
+## Fase 0.116.0 — la entrega se reintenta (`fix/la-entrega-se-reintenta`, `d1eeef2`)
+
+**Medido en el registro del obrero del ROG (`~/eko-render/worker.log`), no
+supuesto:** 40 entregas buenas, 29 trabajos fallidos por cualquier causa, y **3
+fallos en `panel.deliver`** (`main.py:327` → `PUT /result`), los tres con
+`SSLV3_ALERT_BAD_RECORD_MAC` en `_receive_response_headers`: el cuerpo ya había
+salido, la respuesta nunca llegó entera. Dos de los tres el 17-sep (jobs 36 y
+37, a las 20:04 y 19:50 UTC, ~13,7 min tras reclamar), el tercero el 7-sep (job
+14). El obrero sube a `https://inmo-demo…`, o sea a través de Cloudflare. Para
+entonces la narración y las imágenes están pagadas y el `finally` borra la
+carpeta. **La 75 sobrevivió por suerte:** su tercer y último intento entregó a
+las 21:33 UTC con el obrero viejo.
+
+| comprobación | salida real |
+|---|---|
+| `worker/tests` | **112 → 128**, 16 nuevos, 0 saltados |
+| Backend | **2.265 en verde** (antes de la última edición de `CHANGELOG.md`; `test_version_is_one_number` **2/2 después**, el único que lee ese fichero) |
+| Frontend | 514 · `tsc` limpio · build OK · `next lint` **2 avisos preexistentes** en `app/brief/[token]/page.tsx`, leídos con `rtk proxy` porque el hook los reescribió como «Warnings: 0» |
+| Mutaciones | **14/14 en rojo**, md5 del fuente idéntico tras cada una. La que discrimina: abrir el fichero una vez fuera del bucle → el 2.º intento manda `b""` → rojo por los BYTES |
+| `ruff` | obrero **7 = los 7 de `HEAD`** (F401, DTZ005×2, RUF100×3, UP037; no míos); test nuevo limpio; backend limpio |
+| Secretos / prints | **0** en +178 líneas añadidas, medido con `difflib` contra `git show HEAD:`, no con `git diff` |
+
+**Auditoría (1 agente de solo lectura): 12 puntos, 0 bloqueantes.** Disposición:
+
+1. Tres frases falsas mías, **verificadas en el venv y corregidas** en código,
+   test y los dos changelogs: «sale la original» (salía la **última**; `last =
+   exc` en cada vuelta); «nunca 4xx» (era «nada <500»: `raise_for_status`
+   levanta para todo lo que no sea 2xx, 3xx incluido, y el cliente no sigue
+   redirecciones); «un descriptor consumido manda cuerpo vacío → 400»
+   (`peek_filelike_length` sobre un descriptor ya leído sigue diciendo el
+   fichero entero → declara el tamaño y manda 0 bytes → `LocalProtocolError`,
+   que es `TransportError` y **se reintentaría**). La conclusión — reabrir —
+   era correcta; el motivo escrito, no.
+2. **IMPORTANTE, mitigado y documentado, no arreglado:** el 409 de «el panel
+   ya lo tiene» se emite **antes de leer el cuerpo** (`job_result`: «Asked
+   BEFORE a byte is read»), así que desde el obrero llega como `WriteError`/
+   `RemoteProtocolError` y se reintenta, no como 409. **Leído en el endpoint,
+   no medido contra uvicorn.** El atenuante sí **verificado**: `/fail` responde
+   409 a un trabajo que no está `claimed`, `Panel.failed` no hace
+   `raise_for_status` → nada se re-encola ni se duplica. Añadí el aviso «may
+   have landed» también a ese caso. **Límite conocido:** salta en todo fallo
+   de transporte con `attempt > 1`, incluido el patrón de hoy (dos TLS
+   seguidos, nada entró); dice «may», no miente, pero se aprenderá a
+   ignorar. Hacerlo exacto exige un **endpoint de estado del trabajo** en el
+   panel. Backlog.
+3. **Carrera residual de `.mp4` huérfano:** `_refuse_unless_awaited` no bloquea
+   la fila (sin `with_for_update`, a diferencia de `claim_job`); dos PUT
+   realmente concurrentes (reintento tras un `ReadTimeout` de 300 s con el
+   primero aún en vuelo) pueden pasar los dos. Baja probabilidad; el backoff de
+   5 s ayuda. Backlog: `with_for_update` ahí.
+4. Sin riesgo de trabajo atascado: `STALE_CLAIM` = 2 h frente a ≈ 17 min de
+   peor caso del bucle. Ningún otro llamador de `deliver`. Versión: los tres
+   sitios que lee el test más el array de `version.ts`. CI corre
+   `worker/tests`.
+5. Faltaban tests: la espera (`sleep` anulado sin comprobar), el 5xx agotado,
+   la secuencia mixta, la escritura rota tras fallo y su ausencia en el
+   primero. **Los cinco añadidos**, y sus mutaciones.
+
+**El tropiezo de la fase:** un `.pyc` envenenado por la mutación `3 → 2`
+(misma longitud, restore en el mismo segundo): la suite completa dio **3 rojos
+con el fuente correcto** (`assert 2 == 3` sobre una constante que el fichero
+decía 3); solos, verdes. La ficha ya existía y reincidí escribiendo un arnés
+nuevo sin `PYTHONDONTWRITEBYTECODE`. Arnés corregido (purga antes de mutar y
+tras restaurar) y reincidencia anotada en la ficha.
+
+## Lo que pasó alrededor, medido
+
+- **La regla nueva de Ender, textual:** «hay que fijarse que lo que salga
+  escrito salga bien escrito en correcto inglés». Dos vías distintas: el
+  modelo de imagen **no sabe escribir** (0.115.0 le prohíbe pedir texto), y lo
+  que tiene que salir escrito de verdad — `www.denverhomestory.com` y `Engel &
+  Voelkers` — solo sale bien **quemado por el montador** con una fuente, nunca
+  pintado por el modelo. Eso es G1, reabierta, y vive en **BitTrader** (perfil
+  DHS, `cta_overlay` hoy `null`; ya salió «None» en caja roja en 8 vídeos):
+  para esa sesión, con la frase de Ender del rechazo: «y lo que deba llevar
+  de Engel & Völkers».
+- **La 74, predicha y confirmada.** Reescrita a las 19:46 UTC bajo 0.114.0,
+  siete minutos antes de que 0.115.0 existiera; sus **6 de 6 planos** pedían
+  un objeto con letras. Entregó a las 21:13: «FUCH FOR LI SALE», «Fesh Frish
+  Listing», y una tarjeta de Engel & Voelkers inventada con logo falso, nombres
+  falsos y dominio falso («locverties.com»). En `needs_approval`, **sin
+  rechazar** a las 22:07. El motivo que la manda por el camino barato
+  (`figure`+`visual` → `other` → `rewrite`, sin pasar por el modelo para
+  clasificar) está entregado a Ender y guardado en el scratchpad
+  (`motivo_para_pegar_74.txt`).
+- **El SQL para reescribirla lo abortó su propia guarda** a las 21:03:06 UTC —
+  «job 36 no esta como en la foto previa (filas=0)» — porque el ROG la había
+  reclamado a las 21:00:31. **Cero filas escritas.** La cola es un blanco
+  móvil; la guarda era el punto.
+- **El clasificador dijo `other` por diseño:** casan `no_cta` («CTA») y
+  `visual` («imagen»), y dos reglas → `other` → `rewrite`. Aquí la reescritura
+  no respondía a ninguna de las dos (el rótulo vive fuera de este repo).
+  Límite anotado, no avería.
+- **La franja «20:59–21:19» era falsa**: `RENDER_WORKER_HOURS=13,15,16,17,21,
+  23,1,2`. Corregido arriba en la tabla de la Fase 1 y la tarea de las 21:43
+  descargada y borrada.
+- **`rtk` también reescribe `next lint`**: «Errors: 0 | Warnings: 0» donde
+  `rtk proxy npx next lint` enseña los 2 avisos reales.
+
+---
 # 17-sep — 0.115.0 desplegada, y la 74 rechazada por el rótulo que falta
 
 Con tu autorización («4. despliega»). `main` en **`d5c4d23`**, tag `v0.115.0`,
