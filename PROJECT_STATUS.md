@@ -5,6 +5,77 @@ Estado de ejecución del plan `~/.claude/plans/si-haz-el-plan-jazzy-sifakis.md`
 v0.56.0 y anteriores vive en git y en el plan.
 
 ---
+# 17-sep, 23:14 UTC — el barrido reescribió la 74 y la dejó parada
+
+Lo que hizo la orden de trabajo que le puse a las 22:58 (`category='other'`,
+motivo: los seis planos pedían objetos con letra). El barrido de las 23:13
+resolvió la fila 3 como **`rewrite`** a las 23:14:20 y la pieza volvió a
+`draft` con una lista de planos nueva (`scenes` cambió de hash).
+
+**No se gastó un render.** La pieza quedó con **una** violación:
+
+> `shot 4 asks for a "monitor", which arrives with words written on it — say it is blank and unbranded`
+
+De seis planos con letra quedó uno, y la puerta de 0.115.0 lo paró antes de
+encolar nada: `render_jobs` sigue en `done` con `attempts=1` y `media_path`
+sigue siendo el vídeo viejo. Era su **segunda y última** corrección automática
+(`MAX_CORRECTIONS_PER_PIECE=2`), así que el bucle no la volverá a tocar.
+
+Lo que queda, y es decisión de Ender: arreglar el plano 4 a mano —que el
+monitor sea liso y sin marca— y rehacer el vídeo, que cuesta narración e
+imágenes; o dejarla parada.
+
+---
+
+# 17-sep — Las siete cartas, en PDF, y el correo en borrador
+
+Natalia contestó el 16-sep *«I like it. Let's [have the] other letters ready»*
+(hilo `1a0abc83315c5be9`). Esto cierra la Fase 2 de PLAN (5) salvo el envío,
+que es de Ender.
+
+**Lo que hay, en `scratchpad/cartas/` (ignorado por git, y ahí se queda):**
+las siete cartas en PDF de **una página cada una**, la hoja de direcciones para
+los sobres, y un octavo fichero `the-seven-letters.pdf` con las ocho páginas
+juntas — una impresión en vez de ocho, y un adjunto en vez de ocho.
+
+**El cuerpo no se ha reescrito.** `comparar_fuente.py` compara dos fuentes
+independientes —el borrador del scratchpad y la transcripción del correo que
+salió el 16-sep— y dan **12 párrafos idénticos**. `verificar.py` va más lejos:
+a cada carta le **deshace** sus sustituciones (calle, mes, variante) y exige que
+lo que queda sea, carácter a carácter, la carta aprobada. Las siete pasan, más:
+una sola página cada una, las dos líneas de pie, la firma entera, ningún
+símbolo de dólar, y en la 6 ningún nombre adivinado.
+
+| lo que cambia | dónde | por qué |
+|---|---|---|
+| calle y mes | las siete | es lo único que distingue una carta de otra |
+| «your place» en vez de «the house» (3 sitios) | la 5 | es un piso; el borrador nombraba 2 sitios, el tercero se cambia por el mismo motivo y **queda dicho** |
+| «the property», «the street», «that block», «I hope the place has served you well» | la 7 y la 9 | el correo del condado va a otra ciudad: no se asume ni que alquilan, ni que se mudaron, ni que está vacía. El borrador cambiaba 3 frases; «that block» es la cuarta, por coherencia con las otras tres |
+| saludo en blanco | la 6 | dos nombres vietnamitas; el apellido va primero y **no se adivina** |
+
+**Correo en borrador, sin enviar** — `r-8493391042365706191`, respuesta dentro
+del hilo, solo a ella, `htmlBody`, releído con `get_draft`. Corto: qué recibe,
+qué cambia de una a otra, **una sola pregunta** (los nombres; la 6 es la única
+sin terminar) y una línea sobre `/n` y `/r`, que existen — comprobado: 307 a
+`/start?utm_source=partner&utm_medium=share&utm_content=natalia|robbie`.
+Sin fecha y sin plazo, como todo lo que le escribimos.
+
+🔴 **El adjunto lo pone Ender.** El borrador no lleva fichero: el PDF son 199 kB
+y meterlo por la herramienta significa escribir un cuarto de millón de
+caracteres en base64 en una sola llamada, que es donde se corta y llega roto.
+La primera línea del borrador, en rojo, dice qué adjuntar y que se borre.
+
+**Detalles técnicos que costaron tiempo y valen para la próxima:** Chrome
+headless escribe el PDF en 2 s y **no sale**; además sus hijos heredan
+`stdout`, así que `subprocess.run(capture_output=True)` se queda esperando para
+siempre (medido: 120 s de timeout con el PDF ya escrito). Se lanza con `Popen`,
+se espera **al fichero** y se mata el proceso. Y un `--user-data-dir` propio, o
+el headless le pasa el trabajo al Chrome que ya está abierto.
+
+**Nada de la tabla del condado sale de ahí**: ni precios, ni vendedores, ni
+nombres, ni direcciones — ni en este fichero, ni en un commit.
+
+---
 # 17-sep — 0.116.0 desplegada: la entrega del vídeo se reintenta
 
 Con tu «aprobado despliega» y la respuesta «ROG y VPS». `main` en **`d1eeef2`**,
