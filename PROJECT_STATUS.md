@@ -64,7 +64,7 @@ llegado al narrador bajo el motor de BitTrader**. Es una línea en `job_input`.
 
 ## Fase 1 — el CTA llega al narrador (código escrito; checklist en verde)
 
-Rama `feat/el-cta-llega-al-narrador`, commit **`83c990d`**.
+Rama `feat/el-cta-llega-al-narrador`, commit **`031ca5b`**.
 
 - `render_jobs.py:job_input` — `JobInput.script` pasa a ser lo que el narrador
   **debe decir**: `scenes["narration"]` si la hay, si no `piece.script`. Más un
