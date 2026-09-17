@@ -247,6 +247,9 @@ Parecería que el despliegue falló. El código vive en una rama y la regla es q
 
 ```bash
 # Necesita tu autorización explícita: es un merge a main.
+# El `fetch` primero: un `main` local «al día» sin traerse el remoto no lo está,
+# y sin él el --ff-only falla con un mensaje que no dice por qué.
+git fetch origin
 git checkout main && git merge --ff-only feat/clasificar-parejas-de-enlace
 git tag -a v0.110.0 -m "0.110.0" && git push origin main && git push origin v0.110.0
 ```
