@@ -780,8 +780,17 @@ llega el sábado antes de las 11.
    `resultInView` sigue valiendo: el resultado tiene que estar en pantalla.
 3. **Captions de las piezas 47-57**: reescribir el enlace a
    `denverhomestory.com/calculator?rent=<la renta del vídeo>&utm_source=youtube&utm_medium=social&utm_content=p<id>`.
-   En YouTube se edita la descripción vía Buffer `editPost` **solo si la pieza
-   sigue programada**; las ya publicadas se editan a mano (Ender) o se dejan.
+   ✅ **Hecho el 16-sep para las piezas 47-51.** Seis enlaces en total (la 48
+   lleva dos, uno con `utm_medium=comment`), editados conduciendo Chrome sobre
+   YouTube Studio — no por Buffer: las cinco están `published`, y vidIQ rechaza
+   el canal `UC9wpgdqHHpGRTqF5pSR7wgA` por no estar autorizado.
+   Verificado **leyendo el `shortDescription` de las cinco páginas públicas**,
+   no el editor, que en un caso mostraba algo que el público no tenía: la 51
+   llevaba el cambio hecho pero **sin guardar** en Studio, y su descripción
+   pública seguía en 597 caracteres; guardarla fue lo que lo publicó.
+   Las piezas 52-57 quedan como estaban: nombran la renta en el título pero no
+   el ahorro, y la calculadora necesita los dos campos para dar un número.
+   Se revisan con el texto entero en la Fase 4.
    No toques TikTok/IG: la caption no enlaza.
 4. **Enlaces cortos por persona que comparte**: `/n` (Natalia), `/r` (Robbie),
    `/e` (Ender) → `/start?utm_source=partner&utm_medium=share&utm_content=<letra>`.
