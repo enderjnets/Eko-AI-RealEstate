@@ -1575,3 +1575,568 @@ nunca el token).
 4. Migración 063 sobre una tabla pequeña; migrar antes de arrancar.
 5. El test de forma del sitemap depende del texto de `start/page.tsx`; si
    cambia la metadata, el test avisa, que es lo que se quiere.
+
+---
+
+# PLAN (7) — El vídeo sin CTA y el rechazo que no enseñaba nada
+
+**Escrito el 17-sep-2026, 07:55 de Denver, por Fable 5.1. Ejecutor: Claude Opus 5.**
+Origen: Ender vio el 17-sep dos shorts en `/content` sin llamada a la acción
+(la pieza 74 «Pricing high to leave room…» y una calculada «Renting in Denver
+at $1,800 a month with $60,000 saved… about $42,000 ahead»), y el 16 había
+rechazado dos con el motivo «sin CTA» sin que eso cambiara nada. Pide dos
+cosas: que el CTA vuelva al vídeo, y que **un rechazo con motivo sea una orden
+de trabajo** — el sistema mira el motivo, verifica la falla contra la pieza, la
+corrige, vuelve a sacar el vídeo y no repite el error.
+
+Este documento se **inserta al final de `PLAN.md`** (hoy 1577 líneas; nunca
+con `Write`, siempre leer e insertar; verificar `+N/−0` con `difflib`). Su
+estado va en **`PROJECT_STATUS.md`, sección nueva arriba, tras la línea 7**,
+como hizo PLAN (6).
+
+## 0. Reglas (no negociables)
+
+Las diez del «⛔ Para el ejecutor» de PLAN (5) (`PLAN.md:573-626`) y el §0 de
+PLAN (6) (`PLAN.md:1189-1218`) aplican tal cual: Protocolo Fable en la primera
+respuesta, nada de `cat`/`grep` multi-fichero/`git diff` para contar (`rtk`
+reescribe la salida: `Read`, `sed -n`, `python3`, `grep -rl`), contenedores
+prohibidos, nada se envía sin Ender, `scratchpad/` ignorado, coordinación con
+la sesión de PLAN (4) antes de tocar `content_pieces`, migrar antes de
+arrancar, una fase cada vez, máx. 3 intentos, subagentes máx. 2 y solo
+lectura, advisor al arrancar / antes de la Fase 1 / tras el 2.º intento
+fallido / al cierre de cada fase / al final, **sin despliegue sin que Ender lo
+pida en un mensaje aparte**, ventana desde las 21:00 de Denver y nunca a
+menos de 20 min de una franja. Además:
+
+- **«Terminado» solo con salida real:** backend `pytest -q` verde sin saltados
+  (hoy **2082**), `ruff check app tests` limpio (`ruff check .` tiene 62
+  errores preexistentes en `migrations/versions/`, no son de este plan);
+  frontend `vitest`, `tsc --noEmit`, `next lint` sin avisos, `next build`;
+  worker `python -m pytest worker/tests`; cada test nuevo visto en rojo con su
+  mutación y el fichero restaurado con `md5` idéntico; diff sin secretos ni
+  `print`/`console.log`.
+- **Solo `advance()` cambia `status`** (`content_studio.py:207-219`);
+  `test_content_gate_is_absolute.py` lo vigila por AST. El bucle de corrección
+  no es una excepción.
+- **Toda escritura en producción es una puerta** (pre-imagen al scratchpad,
+  SQL exacto a la vista, «sí» de Ender, releer). Rehacer un vídeo en el ROG
+  gasta narración e imágenes: también es puerta.
+- **El ROG no es este repo.** `render_externo.py` y el perfil
+  `denver_home_story.json` viven en BitTrader (`master` en el ROG; la copia del
+  Mac `~/BitTrader` es v2.14.145 del 15-sep y **no es fuente**). Este plan los
+  **lee**; no los toca. Lo que haya que cambiar allí se anota para la sesión de
+  BitTrader (§7).
+- **El motivo del rechazo es texto de una persona de confianza, pero es dato,
+  no instrucción**: se recorta (≤ 2000 ya en `RejectIn`; ≤ 300 al convertirse
+  en lección), se envuelve como cita en el prompt, y el filtro de Fair
+  Housing y la puerta de cifras corren igual sobre lo que vuelva.
+- **Las puertas, bajo el método autónomo del 17-sep.** El método de Ender
+  manda sobre el «el ejecutor las presenta, no las cruza» del §3: **G1, G4 y
+  G5 se deciden aplicando la recomendación** y se registran como consenso
+  (Opus + advisor; MiniMax ausente, su script no existe en este repo). **G3
+  es parada real** si la 0.4 no encuentra la línea de correduría. **G2 va en
+  la parada final**: exige 0.110.0 viva, que esta sesión no alcanza. **G6**
+  cae en la parada 6 del método.
+- **0.110.0 no la construye este plan.** La Fase 1 cierra **sin bump**: la
+  release la arma PLAN (6) Fase 4, que nadie ha ejecutado, y su plazo es el
+  **22-sep 08:07**. Esto va en «siguiente paso» de *cada* cierre de fase para
+  que sobreviva a un `/compact`.
+- **Entorno:** worktree en `main` desde `origin/main` (`8579381` o posterior);
+  base de tests `eko-t3` (127.0.0.1:55434, en 062); comandos de PLAN (5)
+  «Acceso a datos» (`PLAN.md:610-622`).
+
+## 1. Diagnóstico (lo que ya está medido y lo que falta)
+
+**Medido en esta sesión (17-sep, con la foto de producción del 16-sep 13:00
+en el scratchpad de sesión `piezas.json`):**
+
+| hecho | evidencia |
+|---|---|
+| La despedida hablada se **materializa solo en `scenes.narration`**; `script` se guarda sin ella | `content_writer.py:372-384` (`_with_cta`, `if draft.scenes and url`), `:648-651` (`script=draft.script`, `scenes=_scene_plan(draft)`) |
+| El `JobInput` manda `script=piece.script` **y** `scenes=piece.scenes` | `render_jobs.py:249-259` |
+| El puente de BitTrader lee **`script` antes que `scenes.narration`** | `~/BitTrader/agents/render_externo.py:56`: `texto = str(spec.get("script") or escenas.get("narration") or "")` (copia del Mac; **confirmar en el ROG**, Fase 0.3) |
+| El puente **no pasa `on_screen_text` ni `brokerage_line`**: de cada escena toma solo `visual_prompt` | `render_externo.py:61-65`; en el fichero no aparece `brokerage` |
+| Con `RENDER_ENGINE=bittrader` no se llama a `assemble.py`: **no hay tarjeta final con el dominio** | `worker/main.py:268-285` vs `worker/produce.py:360, 417-418` |
+| En producción: pieza 72 (aprobada) y 73 (rechazada) — `narration` termina «…start at Denver Home Story dot com.» / «Let's talk about your numbers. Denver Home Story dot com.»; **`script` termina sin ella** | `piezas.json`, 16-sep 13:00 |
+| Las piezas 67 y 69 sí tenían CTA en el vídeo: **el modelo lo escribió él mismo en `script`** («…with Denver Home Story.», «…Denver Home Story dot com slash contact.») | ídem; en 69 `narration == script` (sin línea fija añadida: **explicar en Fase 0.1**) |
+| El rechazo solo escribe `rejected_reason`; **nadie lo lee** | `content.py:585-601`; barrido completo del repo por un revisor de solo lectura: modelo, migración, esquema, una asignación, tipo TS, una línea de UI, un assert |
+| «Rehacer el vídeo» vuelve a renderizar desde `scenes` sin pasar por el escritor; «Editar» cambia `hook/script/caption` y **no toca `scenes.narration`** | `content.py:638-767`, `:434-476`, `:151-167` |
+| Estados: `rejected → draft` está permitido; `draft → needs_approval` lo hace la entrega del render si no hay `violations` | `content_studio.py:65-90`; `render_jobs.py:392-409` |
+| La cola: 1 `needs_approval`, 7 `approved`, 16 `publishing`, 25 `published`, **22 `rejected`** | 17-sep 01:39 UTC |
+
+**Conclusión provisional:** desde el 10-sep (motor BitTrader) el vídeo solo
+lleva CTA cuando el modelo lo escribe por su cuenta en `script`. El CTA que
+el código añade desde el 2-sep (`daad4b8`) nunca ha llegado al narrador bajo
+este motor, y la tarjeta final con el dominio tampoco existe bajo él. Lo que
+Ender ve es exactamente eso.
+
+**Lo que falta medir antes de escribir código (Fase 0):** que el ROG lee
+`script` primero (no la copia del Mac); qué texto narró de verdad el último
+render (`guiones_latest.json`); cuántas `narration` desde el 2-sep llevan las
+palabras del dominio y por qué la 69 no; si el vídeo de BitTrader lleva la
+línea de correduría en algún fotograma (Regla 6.10); si `calculator_check`
+permite reconstruir el `Plan` de una pieza calculada.
+
+## 2. Orden respecto a PLAN (6)
+
+1. **PLAN (7) Fase 0 y Fase 1 van antes de cerrar PLAN (6) Fase 4**, y las
+   dos salen en la **misma release 0.110.0** (PLAN (6) G6), que tiene que
+   estar desplegada **antes del 22-sep a las 08:07 de Denver**. Cada pieza
+   generada hasta ese despliegue sale sin CTA hablado: la Fase 1 es una línea
+   y sus tests; no hay razón para que espere.
+2. PLAN (7) Fases 2-4 (registro, corrección, lecciones y consola) salen en una
+   release posterior (G5 de este plan), **independiente** de PLAN (6) Fases
+   5-6. Su migración toma **el número siguiente a la cabeza en el momento de
+   escribirla** (063 si PLAN (6) Fase 5 no ha puesto la suya; 064 si sí).
+   Nunca fijar el número en el plan.
+3. Las puertas G2 (rehacer piezas) se cruzan **después** de que 0.110.0 esté
+   viva, no antes: rehacer hoy reproduce el mismo vídeo sin CTA.
+
+## 3. Puertas de Ender (decisiones; el ejecutor las presenta, no las cruza)
+
+Las puertas de PLAN (6) se citan como «PLAN (6) G4». Estas son de PLAN (7).
+
+| puerta | pregunta | recomendación | cuándo |
+|---|---|---|---|
+| G1 | «Sin CTA» = sin despedida **hablada** («Denver Home Story dot com»; los subtítulos amarillos salen del mismo texto o del audio, así que también la muestran). ¿Basta, o quiere además un rótulo con el dominio al final del vídeo? | **Por defecto: basta la hablada.** Solo si la 0.3 muestra que el `master` del ROG lee `on_screen_text` se añade una escena de cierre con el dominio en `_with_cta`, dentro de la Fase 1 (cuesta una imagen más por vídeo). Si no lo lee: basta la hablada para este plan; el rótulo sería un cambio en BitTrader (perfil DHS `cta_overlay`, hoy `null` a propósito, o `render_externo.py`), **otro proyecto**, se anota en §7 | tras la Fase 0, antes de la Fase 1 |
+| G2 | Rehacer, tras desplegar 0.110.0, las piezas paradas cuya `narration` ya lleva el dominio (74, la calculada en espera, y las rechazadas por CTA que Ender quiera rescatar) | sí, una a una desde la consola («Rehacer el vídeo»), con el coste dicho: una narración + imágenes por pieza en el ROG | tras 0.110.0 viva |
+| G3 | Si la Fase 0.4 muestra que el vídeo de BitTrader **no lleva la línea de correduría** en ningún fotograma | **PARADA**: es Regla 6.10 (`reference_regla_6_10_publicidad_colorado`); la corrección vive en BitTrader (perfil DHS) o en el pie de página de la publicación; decisión de Ender, no del ejecutor | al terminar la Fase 0 |
+| G4 | Topes del bucle: **1 regeneración automática por rechazo, 2 por pieza en toda su vida, 3 por agencia y día**; al agotarse, aviso al operador y la pieza queda rechazada. Lecciones activas: máx. **5** por agencia | sí | antes de la Fase 3 |
+| G5 | Versión de las Fases 2-4 | **0.113.0** backend + frontend (0.110/0.111/0.112 las reserva PLAN (6) G6) | antes del bump |
+| G6 | Autorización de cada despliegue | mensaje aparte, ventana 21:00 | cada release |
+
+## 4. Fases
+
+### Fase 0 — Medir en producción y en el ROG (solo lectura; sin código)
+
+Todo va al scratchpad de sesión y a la tabla «Fase 0» de `PROJECT_STATUS.md`.
+Nada se escribe en ninguna base ni en ningún fichero de producción.
+
+- [ ] **0.1 VPS — la narración frente al guion, desde el 2-sep.** Con el
+  comando de «Acceso a datos» (`ssh ender-vps "docker exec eko-realestate-db
+  psql -U eko -d eko_realestate -X -A -F'|' -c \"SET app.current_org_id='1';
+  …\""`):
+  ```sql
+  SELECT id, status, kind, language, created_at::date AS d,
+         right(scenes->>'narration', 70)  AS narr_tail,
+         right(script, 60)                AS script_tail,
+         position('story dot com' in lower(scenes->>'narration')) > 0 AS narr_has_domain,
+         position('story dot com' in lower(script)) > 0               AS script_has_domain,
+         position('denver home story' in lower(scenes->>'narration')) > 0 AS narr_has_brand,
+         scenes IS NULL AS sin_plan, media_path IS NOT NULL AS con_video, rendered_at,
+         left(rejected_reason, 60)        AS reason
+    FROM content_pieces
+   WHERE kind='generated' AND created_at >= '2026-09-02'
+   ORDER BY id;
+  ```
+  **El dominio y la marca son columnas distintas a propósito:** «…with Denver
+  Home Story.» (pieza 67) es la marca sin el dominio, y «…Denver Home Story
+  dot com» (72) es el dominio; confundirlas es lo que este apartado existe
+  para evitar. Y `sin_plan = t` con `con_video = t` es una pieza **hecha a
+  mano** (`worker/static_piece.py`, que no pasa por el obrero): fuera del
+  diagnóstico. Las 41/43/45 son de esas — `fin41.png` es suyo, no del motor.
+  Esperado: `narr_has_domain = t` en todas las generadas con escenas desde el
+  2-sep; `script_has_domain = t` solo donde el modelo lo escribió (67, 69).
+  **Explicar la 69** (`narration == script`): mirar `created_at`, si pasó por
+  `POST /api/v1/content` (`create_draft`, `content.py:413-431`, que no llama a
+  `_with_cta`) o si el modelo escribió las palabras y el dedupe exacto de
+  `_with_cta:379` no las vio. La respuesta decide lo estricto del predicado de
+  la Fase 1.
+- [ ] **0.2 VPS — las piezas de hoy.** `SELECT id, status, hook,
+  rejected_reason, updated_at FROM content_pieces WHERE status IN
+  ('needs_approval','rejected') AND updated_at >= '2026-09-15' ORDER BY id;`
+  → identificar la pieza calculada en espera (la 74 ya está) y los dos
+  rechazos del 16 con su motivo literal. Guardar como pre-imagen para G2.
+- [ ] **0.3 ROG — lo que lee el motor.** Primero `ssh <alias-del-rog>
+  hostname` y anotar el nombre real (el alias no identifica la máquina:
+  `feedback_el_alias_del_ssh_no_identifica_la_maquina`). Luego, con la ruta
+  que dé `grep -n '^RENDER_' ~/.eko-render.env` (solo nombres de variables;
+  **no imprimir valores que parezcan secretos**):
+  `sed -n '53,90p' <RENDER_BITTRADER_AGENTS>/render_externo.py` (la función
+  `guion_desde_spec` entera) → confirmar la línea `spec.get("script") or
+  escenas.get("narration")`, **y** `grep -n "on_screen_text\|brokerage"
+  <mismo fichero>`: la copia del Mac no pasa ninguno de los dos, y de eso
+  depende G1 (si el `master` del ROG sí lee `on_screen_text`, una escena de
+  cierre con el dominio es una línea en `_with_cta` y va en la Fase 1); y
+  `python3 -c "import json,glob; g=json.load(open(glob.glob('<data_dir>/guiones_latest.json')[0])); print(g['scripts'][0]['script'][-160:])"`
+  → el texto literal que narró el último render. Esperado: sin «Denver Home
+  Story dot com». Si el ROG ya lee `narration` primero, la Fase 1 sigue
+  (es correcta igual) pero el diagnóstico cambia y se reescribe §1.
+  **Si el ROG no responde** (el portátil duerme): 0.3 queda pendiente, se
+  sigue con la Fase 1 — que es correcta lea el motor el campo que lea — y se
+  reintenta al cerrarla. No es parada.
+- [ ] **0.4 VPS — ¿lleva el vídeo la línea de correduría?** Tomar el
+  `media_path` de una pieza **hecha por el obrero** (con escenas) desde el
+  10-sep — la 72 o la 68, **nunca 41/43/45**, que son de `static_piece.py` —, sacar
+  tres fotogramas (a 2 s, a mitad y a `duración − 2 s`) con el `ffmpeg` del
+  contenedor backend (`docker exec eko-realestate-backend ffmpeg -ss … -i
+  <ruta> -frames:v 1 /tmp/f.png`; si la imagen no trae `ffmpeg`, `scp` del
+  mp4 al scratchpad y el `ffmpeg` del Mac), copiarlos al scratchpad de sesión
+  y **mirarlos con `Read`**. Anotar: ¿línea de correduría?, ¿dominio?, ¿marca?
+  Si no hay línea de correduría en ninguno → **G3, PARADA**.
+- [ ] **0.5 VPS — `CONTENT_CTA_URL` está puesta** (`docker exec
+  eko-realestate-backend printenv CONTENT_CTA_URL`; es una URL pública, no un
+  secreto). Sin ella `_with_cta:373` no añade nada y la Fase 1 no arregla eso.
+- [ ] **0.6 VPS — `calculator_check` de una pieza calculada** (`SELECT id,
+  calculator_check FROM content_pieces WHERE calculator_check IS NOT NULL
+  ORDER BY id DESC LIMIT 2;`) → ¿lleva `rent` y el campo de la serie para
+  reconstruir el `Plan` (`content_calculated.plan_for`, que hoy solo acepta un
+  índice)? Decide si las calculadas se reescriben o solo se rehacen (Fase 3).
+- [ ] **0.7** Tabla en `PROJECT_STATUS.md` con los seis resultados y la
+  conclusión de §1 confirmada o corregida. **Advisor** antes de la Fase 1.
+
+### Fase 1 — El CTA llega al vídeo por construcción (backend; en 0.110.0)
+
+Rama `feat/el-cta-llega-al-narrador`. Un commit. Sin migración.
+
+**Cambios**
+
+1. `backend/app/api/v1/render_jobs.py:249-259` (`job_input`): el campo
+   `script` del `JobInput` pasa a ser **lo que el narrador debe decir**:
+   ```python
+   plan = piece.scenes if isinstance(piece.scenes, dict) else {}
+   spoken = (plan.get("narration") or "").strip() or piece.script
+   …
+   script=spoken,
+   ```
+   Comentario de una frase con el porqué: el motor externo lee `script` antes
+   que `scenes.narration` (`render_externo.py:56`), y la despedida hablada
+   solo vive en `narration`. `scenes` se sigue mandando entero.
+2. `backend/app/services/content_writer.py`: predicado público
+   `carries_spoken_domain(text: str | None, language: ContentLanguage) -> bool`
+   sobre `_SPOKEN_DOMAIN` (`:246-249`), normalizando minúsculas, puntuación
+   y espacios — también los internos, para que «denverhomestory dot com»
+   cuente (una línea del modelo como «Denver Home Story dot com slash
+   contact» cuenta; «with Denver Home Story.» a secas **no**, porque no dice
+   el dominio — salvo que la 0.1 obligue a aflojarlo, y entonces se documenta).
+   Usarlo en **tres** sitios:
+   - el dedupe de `_with_cta` (`:379`, hoy `if sign_off not in spoken`): si el
+     modelo ya dijo el dominio, no se añade una segunda despedida;
+   - `job_input`: si `spoken` no lo lleva, `log.warning("Piece %s: the text
+     sent to the narrator carries no spoken domain", piece.id)` — **avisar, no
+     rechazar**: las piezas anteriores al 2-sep y las de CTA propio del modelo
+     tienen que seguir renderizando;
+   - el bucle de la Fase 3 (verificación de `no_cta`).
+3. Nada en `worker/`: el espec ya viaja entero y `produce.py:360` lee
+   `narration` primero. **Nada en BitTrader.**
+
+**Tests** (`backend/tests/test_render_jobs.py`, `test_content_writer.py`):
+
+- `test_the_narrator_gets_the_text_with_the_sign_off`: pieza con
+  `scenes.narration` que lleva la despedida y `script` sin ella → `GET
+  /api/v1/internal/render-jobs/{id}/input` devuelve `script` con «Denver Home
+  Story dot com». Mutación: volver a `script=piece.script` → rojo.
+- `test_a_piece_without_a_plan_still_sends_its_script`: `scenes = NULL` →
+  `script == piece.script`, sin excepción.
+- `test_a_model_that_already_spoke_the_domain_gets_no_second_sign_off` y
+  `test_the_brand_name_alone_is_not_the_domain` (predicado en las dos
+  direcciones; la segunda es la que la 0.1 puede cambiar).
+- `test_job_input_warns_when_the_narrator_would_not_say_the_domain`
+  (`caplog`, y el contrario: sin aviso cuando sí lo lleva).
+- Cada test visto en rojo con su mutación; `md5` del fuente idéntico después.
+
+**Checklist de cierre:** `pytest -q` ≥ 2082 + nuevos, 0 saltados; `ruff check
+app tests`; auditoría de solo lectura (seguridad: el `JobInput` sigue sin
+datos de la agencia; corrección: `scenes` no-dict, `narration` vacía, pieza
+sin escenas; regresión: `worker/tests/test_engine_bittrader.py` verde sin
+tocar); advisor; commit `feat(render): el narrador recibe la despedida que el
+escritor ya escribía`; `PROJECT_STATUS.md`.
+
+**Después (no en esta fase):** el bump a 0.110.0 va con PLAN (6) Fase 4 en el
+último commit antes del despliegue; el `CHANGELOG.md` y `version.ts` llevan
+una entrada por esta fase. Tras el despliegue: **G2** (rehacer 74 y la
+calculada; mirar el primer vídeo que vuelva — el narrador dice el dominio y
+los subtítulos amarillos lo muestran en los últimos segundos; si no, la
+Fase 1 no ha arreglado nada y se para).
+
+### Fase 2 — El rechazo se registra y se diagnostica (backend + migración)
+
+Rama `feat/el-rechazo-se-registra`. Un commit. Migración «siguiente a la
+cabeza».
+
+**Modelo y migración** (`backend/app/models/content.py`, `app/models/__init__.py`,
+`backend/migrations/versions/`; patrón RLS de `20260819_1500_content_rail.py:66-80`):
+
+- `content_rejections`: `id`, `org_id` (RLS), `piece_id` FK → `content_pieces`
+  (`ondelete=CASCADE`), `reason` text, `category` text NULL, `finding` jsonb
+  NULL, `action` text NULL, `snapshot` jsonb (`hook`, `script`, `caption`,
+  `scenes`, `media_path` de la versión rechazada — la fila se reutiliza, la
+  historia vive aquí), `created_at`, `resolved_at` NULL. Índices `org_id`,
+  `(piece_id, created_at)`.
+- `content_lessons`: `id`, `org_id` (RLS), `category` text, `text`
+  varchar(300), `source_piece_id` NULL, `active` bool default true,
+  `created_at`. Índice `org_id`.
+- `test_every_org_table_has_rls.py` tiene que seguir verde **con** las dos
+  tablas; y un test de aislamiento propio (patrón
+  `test_content_rail_is_tenant_isolated.py`): la agencia 2 no ve los rechazos
+  de la 1.
+
+**Servicio nuevo `backend/app/services/content_corrections.py`:**
+
+- `CATEGORIES = ("no_cta", "figure", "language", "fair_housing", "visual",
+  "audio", "other")`.
+- `classify(reason) -> str`: primero reglas por palabras (sin LLM):
+  `cta|call to action|llamada|enlace|link|url|sitio|web|dominio|domain` →
+  `no_cta`; `número|cifra|figure|\$|precio|price` → `figure`; `idioma|
+  language|spanish|english|español|inglés` → `language`; `fair|housing|
+  familia|famil|discrim` → `fair_housing`; `imagen|foto|visual|escena|picture|
+  image|scene` → `visual`; `voz|audio|voice|música|music|sonido` → `audio`.
+  Sin coincidencia → `generate_reply(json_mode=True)` con la lista cerrada y
+  un modelo Pydantic `Verdict(category: Literal[...])`; respuesta inválida o
+  excepción → `other` (nunca revienta; regla LLM de `CLAUDE.md`).
+- `verify(piece, category) -> dict` — **la parte de «mirar la falla»**:
+  - `no_cta`: `{"narration_has_domain": carries_spoken_domain(...),
+    "script_has_domain": ..., "caption_has_link": caption_carries_link(caption,
+    url)}` — el vídeo en sí no se inspecciona: si la narración lleva el
+    dominio, un render nuevo (tras la Fase 1) lo dice, y el tope de una
+    regeneración por rechazo impide girar;
+  - `figure`: `unexplained_figures(claimed_text(...), calculator_check)`
+    (`content_figures.py`);
+  - `language`: `wrong_language(narration or script, language)`;
+  - `fair_housing`: `text_violations(...)` (`content_studio.py:154-204`);
+  - `visual` / `audio` / `other`: `{}` (no hay comprobación mecánica; se dice).
+- `decide(piece, category, finding) -> action` ∈ `rebuild` (`no_cta` con
+  narración que ya lleva el dominio; `visual`; `audio`), `rematerialise`
+  (narración sin dominio: volver a pasar `_with_cta` sobre un `DraftPayload`
+  construido desde la fila, y rehacer), `rewrite` (`figure`, `language`,
+  `fair_housing`, `other`: el modelo corrige **su propio borrador** con el
+  motivo), `manual` (clip subido a mano — `kind != generated` — o calculada
+  sin `Plan` reconstruible y acción `rewrite`), `given_up` (topes de G4).
+
+**Endpoint** (`content.py:585-601`, `reject_piece`): en la misma transacción,
+`db.add(ContentRejection(piece_id=…, reason=payload.reason, snapshot=…))`. La
+clasificación **no** corre aquí (un LLM en una petición de la consola es un
+timeout esperando a pasar): la hace el bucle de la Fase 3. `PieceOut` gana
+`correction: CorrectionOut | None` (`reason`, `category`, `finding`, `action`,
+`at`) con la última fila de la pieza — relación `ContentPiece.rejections`
+con `lazy="selectin"` para que el listado no dispare N consultas.
+
+**Tests** (`test_content_corrections.py` nuevo; `test_content_api.py`):
+`classify` por palabras en las dos lenguas y con acentos; el LLM parcheado
+(`app.services.content_corrections.generate_reply`) devolviendo una categoría
+válida, una inválida y una excepción → `other` en los dos últimos; `verify`
+de `no_cta` con las colas reales de la 72/73 (narración con dominio, guion
+sin él) → `narration_has_domain=True, script_has_domain=False`; el rechazo
+crea la fila con la instantánea completa y `resolved_at IS NULL`; RLS.
+Mutaciones: quitar una regla de palabras → rojo; `snapshot` sin `scenes` →
+rojo.
+
+**Checklist de cierre:** como la Fase 1, más `alembic upgrade head` y
+`downgrade -1` en `eko-t3` ida y vuelta; advisor; commit `feat(content): el
+rechazo con motivo se registra y se diagnostica`.
+
+### Fase 3 — La corrección y la regeneración (backend)
+
+Rama `feat/el-rechazo-se-corrige`. Un commit. Sin migración nueva.
+
+**Dónde corre:** `backend/app/main.py:553-571` (`_content_studio_loop`): antes
+de `run_for_every_org(generate_draft)`, `await run_for_every_org(correct_rejected)`.
+Mismo intervalo (`CONTENT_STUDIO_INTERVAL_SECONDS`, mín. 300 s); misma
+puerta `not_our_rail()`; misma tolerancia a fallos (una pieza que revienta
+no para el barrido: `log.exception` y siguiente).
+
+**`correct_rejected(db)` en `content_corrections.py`:**
+
+1. Elegibles: `content_rejections.resolved_at IS NULL` cuya pieza sigue en
+   `REJECTED`. Si la pieza ya no está en `REJECTED` (alguien pulsó «Retry» o
+   la editó), la fila se cierra con `action='superseded'` y no se toca nada.
+   Los 22 rechazos anteriores a esta release no tienen fila y **no se
+   procesan**: los de hoy los cubre G2 a mano. Topes de G4 contados **en la tabla** (`action IN ('rebuild',
+   'rematerialise','rewrite')` por pieza; por agencia y día). Al agotarse:
+   `action='given_up'`, `resolved_at`, **un** `send_operator_alert(...)`
+   (`ops_alert.py:90`) con id, motivo y las acciones ya intentadas; la pieza
+   queda `rejected`.
+2. `category = classify(reason)` si es NULL; `finding = verify(...)`;
+   `action = decide(...)`; los tres se escriben en la fila **antes** de actuar
+   (si la acción revienta a medias, la fila cuenta lo que se intentó).
+3. Acciones:
+   - `rebuild`: `advance(piece, DRAFT)`; `media_path = None`, `render_error =
+     None`, `approved_by/at = None`; encolar el render **con el mismo helper
+     que usa `rebuild_piece`** (`content.py:747-763`): extraer
+     `_requeue_render(piece, db)` a `content_render.py` y que los dos lo
+     llamen (dos copias es como una se olvida). El helper **hereda las dos
+     cosas** que `rebuild_piece` ya hace: rechaza una lista de planos que no
+     esté en inglés (`content.py:721-731`, `stored_shot_list_language`) — si
+     no, el bucle re-renderiza la pieza de prompts en español de
+     `content_render.py:485-490` —, y **crea** el `RenderJob` cuando no
+     existe (una pieza rechazada siendo `DRAFT` con `violations` nunca tuvo
+     uno), no solo resetea el que hay. La pieza se queda en `DRAFT`: la
+     entrega del render la sube a `NEEDS_APPROVAL` (`render_jobs.py:405`).
+     **Y `enqueue_generated` (`content_render.py:455-471`) también la querrá
+     encolar** al verla en `DRAFT` sin `media_path`: un test fija que tras
+     `correct_rejected` más una pasada de `enqueue_generated` hay
+     **exactamente un** `RenderJob` para la pieza.
+   - `rematerialise`: `DraftPayload` desde la fila (`hook`, `script`,
+     `caption`, `scenes[*]` → `Scene`, `narration`); `_with_cta(draft,
+     language, await rotation_index(db), plan)`; guardar `caption` y
+     `scenes=_scene_plan(draft)`; luego `rebuild`.
+   - `rewrite`: función nueva `_ask_correction(previous: DraftPayload,
+     reason: str, language, cta_index, plan) -> DraftPayload | None` en
+     `content_writer.py`, hermana de `_ask` (`:185-214`): mismo `_SYSTEM`,
+     mensaje de usuario con **el JSON del borrador rechazado** y el motivo
+     entre comillas («The reviewer rejected this draft: "…". Return the
+     corrected draft in the same JSON shape; keep what was not objected
+     to»), y la misma cola `_with_plan → _with_cta`. Después
+     `_all_violations`; si hay, **una** repetición con `_feedback(violations)`
+     añadido; si sigue sucia, se guarda como `DRAFT` con `violations`
+     (igual que `generate_draft:657-665`) y `action='rewritten_with_findings'`
+     — la persona la ve en la consola con sus hallazgos. Si está limpia:
+     `hook/script/caption/scenes` nuevos, `advance(DRAFT)`, `media_path =
+     None`, `_requeue_render`. **No se salta el filtro**: es el mismo camino
+     que una generación.
+   - `manual`: `resolved_at`, `finding` con la razón («clip filmado: no se
+     regenera», «pieza calculada sin plan reconstruible»); la pieza queda
+     `rejected`.
+4. `resolved_at = now()`; commit por pieza.
+5. **Topic:** la fila no guarda el tema (`next_topic` rota contando filas,
+   `content_topics.py:247-288`); por eso la reescritura parte del propio
+   borrador y **no** crea una fila nueva (una fila nueva movería la rotación
+   de temas y de despedidas).
+
+**Tests** (`test_content_corrections.py`, con `generate_reply` parcheado y
+`send_operator_alert` parcheado; `database_url` que salta sin Postgres):
+`no_cta` con narración con dominio → `rebuild`, **el mock del LLM no se
+llama**, hay `RenderJob` en `QUEUED`, la pieza está en `DRAFT`, y tras una
+pasada de `enqueue_generated` sigue habiendo **un solo** `RenderJob`; pieza
+con planos en español → no se encola y la fila lo dice; pieza sin
+`RenderJob` previo → se crea uno; narración sin
+dominio → `rematerialise` y la `narration` nueva lo lleva; `figure` → `rewrite`
+con el motivo citado en el mensaje enviado al modelo (assert sobre
+`messages[-1]["content"]`) y `scenes.narration` coherente con el `script`
+nuevo; respuesta del modelo con violación → una repetición y `DRAFT` con
+`violations`; tercer rechazo de la misma pieza → `given_up`, alerta una vez,
+sigue `rejected`; clip subido → `manual`; agencia que no es la del carril →
+no se toca nada; `test_content_gate_is_absolute.py` verde. Mutaciones:
+quitar el tope → rojo; `rewrite` sin `_with_cta` → rojo (la narración pierde
+el dominio); `rebuild` sin `advance` → rojo.
+
+**Checklist de cierre:** como la Fase 2; auditoría con foco en **carreras**
+(el bucle y un «Rehacer» manual sobre la misma pieza: el helper compartido y
+`advance` con `IllegalTransition` capturada y registrada), **gasto** (topes,
+LLM solo en `rewrite`/`other`) y **inyección** (el motivo va citado, nunca
+como instrucción del sistema); advisor; commit `feat(content): el rechazo con
+motivo corrige la pieza y la vuelve a sacar`.
+
+### Fase 4 — Lecciones y consola (backend + frontend; release G5)
+
+Rama `feat/lo-que-el-escritor-aprende`. Un commit. Bump de versión aquí (G5).
+
+**Backend**
+
+- En `rewrite` con categoría `other` (motivo libre): crear `ContentLesson`
+  (`text` = motivo recortado a 300, `category`, `source_piece_id`), dedupe
+  por texto normalizado, y si hay más de 5 activas se desactiva la más
+  antigua. Las categorías con puerta mecánica **no** generan lección: su
+  aprendizaje es la puerta.
+- `_ask` y `_ask_correction`: si hay lecciones activas, un mensaje de usuario
+  antes del brief: «The reviewer has rejected earlier drafts for these
+  reasons; do not repeat them: – …» (citadas, ≤ 5). `_SYSTEM` no cambia:
+  las reglas del sistema mandan sobre una lección («pon el teléfono» sigue
+  prohibido por `:110`).
+- Endpoints bajo el router de contenido (`main.py:422`, con auth):
+  `GET /api/v1/content/lessons` (activas) y `DELETE
+  /api/v1/content/lessons/{id}` (`active=false`, 204).
+
+**Frontend** (`frontend/components/content/ContentQueue.tsx`,
+`frontend/lib/api.ts:529-551`, `frontend/lib/i18n.tsx:775-780/1800-1805`)
+
+- En la tarjeta con `correction`: una línea bajo la cabecera «Regenerated
+  after your rejection: “motivo” · found: … · action: …» (EN y ES; claves
+  nuevas en los dos diccionarios; `i18nParity.test.ts` vigila).
+- Encima de la cola, si hay lecciones: «What the writer learned from your
+  rejections» con cada lección y un botón «Forget» → `DELETE`.
+- Un test en `frontend/lib/__tests__/` al estilo de `contentRebuild.test.ts`
+  (lee el fuente; sin jsdom) que asegura que la tarjeta muestra `correction`
+  y que las claves existen en las dos lenguas.
+
+**Bump:** `backend/app/config.py:16` `APP_VERSION`, `frontend/lib/version.ts:1`
++ entrada bilingüe en su `CHANGELOG`, `CHANGELOG.md` (`## [0.113.0] —
+2026-09-XX`, `### Añadido`), `test_version_is_one_number.py` verde.
+
+**Checklist de cierre:** backend y frontend completos (`vitest`, `tsc`, `next
+lint` sin avisos, `next build`); auditoría (autorización de los endpoints de
+lecciones: mismo `_auth` que el resto; RLS; el texto de una lección se
+renderiza como texto, no como HTML); advisor; commit `feat(content): lo que
+el escritor aprende de los rechazos, a la vista`.
+
+### Fase 5 — Pre-despliegue y parada (sin desplegar)
+
+- [ ] Pre-imagen: `git rev-parse HEAD` del VPS, `alembic current`,
+  `/api/v1/health`, `pg_dump` (procedimiento de `PROJECT_STATUS.md:2807-2872`:
+  bundle → scp → `fetch` + `reset --hard origin/main` → `build` → **`alembic
+  upgrade head` con la imagen nueva antes de levantar** → `up -d backend
+  frontend`).
+- [ ] Rollback escrito: `alembic downgrade -1` (las dos tablas nuevas son
+  aditivas; `downgrade` las borra con sus filas), bundle anterior,
+  `reset --hard <hash previo>`, `up -d --build`.
+- [ ] Variables de entorno nuevas: **ninguna**. Migraciones: la de la Fase 2.
+- [ ] Orden: 0.110.0 (PLAN (6) Fase 4 + PLAN (7) Fase 1) primero, antes del
+  22-sep 08:07; G2 después; 0.113.0 cuando Ender la pida.
+- [ ] Avisar a la sesión de PLAN (4) antes de G2 y antes de cada despliegue.
+- [ ] Mensaje final: `PLAN COMPLETADO` o `PARADA:` con las dos salidas.
+
+## 5. Verificación (resumen ejecutable)
+
+```bash
+# la base de tests tiene que estar viva, o "0 saltados" es mentira
+pg_isready -h 127.0.0.1 -p 55434
+# backend (worktree), base eko-t3 en 062 (o la cabeza que haya)
+cd backend && DATABASE_URL=postgresql+asyncpg://eko:eko@127.0.0.1:55434/eko_realestate \
+  DATABASE_URL_APP=postgresql+asyncpg://eko_app:eko_app_local_pass@127.0.0.1:55434/eko_realestate \
+  REDIS_URL=redis://127.0.0.1:6381/0 .venv/bin/python -m pytest -q --tb=short
+cd backend && .venv/bin/ruff check app tests
+# worker (sin cambios, pero se corre)
+python -m pytest worker/tests -q
+# frontend
+cd frontend && npx vitest run && npx tsc --noEmit && npx next lint && npx next build
+# producción, solo lectura, tras 0.110.0 y G2: el narrador dice el dominio
+ssh ender-vps "docker exec eko-realestate-db psql -U eko -d eko_realestate -X -A -F'|' \
+  -c \"SET app.current_org_id='1'; SELECT id, status, rendered_at, right(scenes->>'narration',60) FROM content_pieces WHERE id IN (74, <calculada>);\""
+# y un fotograma a duración−2 s del vídeo rehecho, mirado con Read: subtítulo amarillo con «Denver Home Story dot com»
+# tras 0.113.0: rechazar una pieza con motivo → en ≤ 2 barridos hay fila en content_rejections con category/finding/action,
+# la pieza está en draft con RenderJob queued (o needs_approval cuando el ROG entregue), y la tarjeta muestra la corrección
+```
+
+## 6. Ficheros que se tocan
+
+| fase | fichero | qué |
+|---|---|---|
+| 1 | `backend/app/api/v1/render_jobs.py:249-259` | `script` = narración con despedida; aviso sin dominio |
+| 1 | `backend/app/services/content_writer.py:372-384` | `carries_spoken_domain`; dedupe con él |
+| 1 | `backend/tests/test_render_jobs.py`, `test_content_writer.py` | 5 tests |
+| 2 | `backend/migrations/versions/<siguiente>_content_rejections.py` | dos tablas + RLS |
+| 2 | `backend/app/models/content.py`, `app/models/__init__.py` | `ContentRejection`, `ContentLesson`, relación |
+| 2 | `backend/app/services/content_corrections.py` (nuevo) | `classify`, `verify`, `decide` |
+| 2 | `backend/app/api/v1/content.py:118-140, 585-601` | `CorrectionOut`; fila al rechazar |
+| 3 | `backend/app/services/content_corrections.py` | `correct_rejected` y acciones |
+| 3 | `backend/app/services/content_writer.py` | `_ask_correction` |
+| 3 | `backend/app/services/content_render.py`, `content.py:747-763` | `_requeue_render` compartido |
+| 3 | `backend/app/main.py:553-571` | llamada en el bucle |
+| 4 | `content_corrections.py`, `content_writer.py:185-214`, `content.py` | lecciones, prompt, endpoints |
+| 4 | `frontend/components/content/ContentQueue.tsx`, `lib/api.ts`, `lib/i18n.tsx`, `lib/__tests__/` | tarjeta y lista |
+| 4 | `backend/app/config.py:16`, `frontend/lib/version.ts`, `CHANGELOG.md` | 0.113.0 |
+| todas | `PROJECT_STATUS.md` (arriba), `PLAN.md` (no se reescribe) | estado |
+
+## 7. Riesgos, y hallazgos que no son de este plan
+
+- **La línea de correduría bajo BitTrader** (G3). Si falta, cada vídeo desde
+  el 10-sep incumple la Regla 6.10. No se concluye hasta ver los fotogramas.
+- **`render_externo.py` puede cambiar en BitTrader** y volver a preferir otro
+  campo; la Fase 1 manda el texto correcto por los dos (`script` y
+  `scenes.narration`), así que el orden deja de importar. Anotar para la
+  sesión de BitTrader: (a) leer `narration` antes que `script`; (b) si Ender
+  quiere rótulo final, el perfil DHS `cta_overlay` (hoy `null`, y la caja es
+  roja: habría que cambiar el estilo) o leer `on_screen_text`.
+- **«Editar» no toca `scenes.narration`** (`content.py:151-167`): el narrador
+  sigue diciendo el texto viejo tras una edición del guion. Preexistente; el
+  bucle **no** lo hereda porque reescribe `scenes` con `_scene_plan`. Backlog
+  con evidencia; no es de este plan.
+- **`_SPOKEN_CTA` no distingue carril**: una pieza calculada (comprador) oye
+  la despedida de vendedor. Menor; backlog.
+- **Gasto**: cada `rebuild` cuesta narración e imágenes en el ROG; cada
+  `rewrite` un LLM más eso. Los topes de G4 son el freno; sin ellos un motivo
+  ambiguo podría girar dos veces al día.
+- **Carrera con «Rehacer» manual**: el helper compartido y `IllegalTransition`
+  capturada. Y con la sesión de PLAN (4): avisar.
+- **Fase 0.1 puede desmentir el diagnóstico** (si el ROG ya lee `narration`).
+  Entonces la causa es otra y se vuelve al advisor antes de escribir la Fase 1.

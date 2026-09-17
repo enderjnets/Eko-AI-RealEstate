@@ -5,6 +5,104 @@ Estado de ejecución del plan `~/.claude/plans/si-haz-el-plan-jazzy-sifakis.md`
 v0.56.0 y anteriores vive en git y en el plan.
 
 ---
+# PLAN (7) — el vídeo sin CTA y el rechazo que no enseñaba nada
+
+Ejecuta Claude Opus 5 desde el 17-sep-2026 (`PLAN.md`, sección «PLAN (7)»).
+Método autónomo de Ender del 17-sep. Es un estado, no un diario.
+
+## 🔴 PARA ENDER — G3: los vídeos no llevan la línea de correduría (Regla 6.10)
+
+Medido, no supuesto. Fotogramas de la pieza 72 (hecha por el obrero el 16-sep)
+a 0,3 s, 0,8 s, 2 s, 16 s, 31,2 s, 32,2 s, 32,7 s y **33,0 s de 33,21 s**:
+solo aparece **la marca E&V** arriba a la derecha. Ni la línea de correduría,
+ni el dominio, ni tarjeta final.
+
+- `assemble.py` es lo único que quema esa línea, y con `RENDER_ENGINE=bittrader`
+  (activo en el ROG desde el 10-sep, verificado hoy en `~/.eko-render.env`)
+  **no se llama**: `worker/main.py:268-285`.
+- El `JobInput` **sí** manda `brokerage_line`, pero `render_externo.py` del ROG
+  no lo lee: `grep "brokerage"` solo lo encuentra en un comentario.
+- La puerta de publicación solo exige que la línea **exista en Ajustes**, nunca
+  que aparezca en el vídeo o en el caption: `content_studio.py:260-270`.
+- En el caption la llevan **2 de 30** piezas renderizadas (las que el modelo
+  escribió por su cuenta). `brokerage_line` = «Engel & Völkers».
+
+Fuera del alcance de este plan: el arreglo vive en el perfil DHS de BitTrader
+(otro proyecto) o en el pie del caption. **Decisión tuya.**
+
+## Fase 0 — medición (cerrada; solo lectura, nada escrito en producción)
+
+| # | resultado |
+|---|---|
+| 0.1 | Desde el 10-sep, **toda** pieza generada tiene la despedida en `scenes.narration` y **no** en `script` (`narr_dom=t`, `scr_dom=f`). Excepción: la 69, que la escribió el modelo en los dos. Las 67/68 llevan la marca sin el dominio. Las 32-57 son de `static_piece.py` (sin plan, hechas a mano): fuera del diagnóstico |
+| 0.2 | **Cuatro rechazos por CTA**: 66 («There is not call to action at the end, like visit: DenverHomeStory.com»), 70, 71 («NO esta cerrando con un CTA»), 73 («CTA missing»). Y la 67 pidió el dominio en la última imagen. Las dos de hoy en espera, **74 y 75**, tienen la despedida en `narration` y no en `script`: saldrían otra vez sin CTA |
+| 0.3 | **Causa confirmada en la máquina real** (`ender-rog`): `render_externo.py:56` es `texto = str(spec.get("script") or escenas.get("narration") or "")` — lee `script` **primero**, y ahí no está la despedida. No lee `on_screen_text` ni `brokerage`. `guiones_latest.json` lo vacía el productor, no sirve de prueba |
+| 0.4 | Ocho fotogramas de la 72: subtítulo final **«matter for your situation»**, el final del `script`. La despedida de `narration` no se pronuncia. Sin línea de correduría → **G3 arriba** |
+| 0.5 | `CONTENT_CTA_URL=https://www.denverhomestory.com`, `CONTENT_STUDIO_ENABLED=true`, `RENDER_WORKER_ENABLED=true`. El escritor hace su parte |
+| 0.6 | `calculator_check` de la 75 trae `series` e `inputs` (`rent`, `savings`, `credit`): un `Plan` es reconstruible, pero `plan_for` solo acepta un índice. Decide la Fase 3 |
+
+**Conclusión:** la despedida hablada se escribe bien desde el 2-sep y **nunca ha
+llegado al narrador bajo el motor de BitTrader**. Es una línea en `job_input`.
+
+## Hallazgos abiertos (backlog, con evidencia)
+
+1. **Tres piezas del 14-sep con `narration` idéntica a `script`** (67, 68, 69:
+   533, 533 y 636 caracteres en los dos campos), o sea que `_with_cta` no
+   añadió despedida, aunque tenían seis escenas y el caption sí lleva enlace y
+   aviso de IA. La 66 (02:21) y la 70 (01:58 del día siguiente) sí la llevan,
+   con el mismo código. **Causa no establecida**; el enlace del caption pudo
+   escribirlo el modelo, y el aviso de IA no depende de `CONTENT_CTA_URL`, así
+   que no prueban que la URL estuviera puesta. Remedio ya previsto: la acción
+   `rematerialise` de la Fase 3 las repara sin tocar la Fase 1.
+2. **Carteles inventados por la IA en el vídeo.** Fotograma a 2 s de la pieza
+   72: un cartel de «FOR SALE» generado dice **«FORE WOLF FORE SALE»** y
+   **«www.raefes.com»** — texto ilegible y un dominio que no es nuestro, en un
+   anuncio de una correduría con licencia. `scratchpad` de sesión, `p72_2.png`.
+   Ender no lo ha visto. No es de este plan.
+3. **La puerta de publicación no mira el vídeo**: `content_studio.py:260-270`
+   solo exige que la línea de correduría exista en Ajustes. Ver G3.
+
+## Puertas decididas (consenso Opus + advisor; MiniMax ausente)
+
+`./scripts/ask-minimax.sh` **no existe en este repo** (comprobado en `scripts/`
+y en `~`), así que el consenso va sin él en todas las fases.
+
+| puerta | decisión | quién |
+|---|---|---|
+| G1 | **Basta la despedida hablada.** El ROG no lee `on_screen_text`, así que un rótulo exigiría tocar BitTrader. Ender pidió el 14-sep (rechazo de la 67) el dominio «en la última imagen»: la despedida hablada lo pone en el **subtítulo amarillo final**, que es la misma petición servida por otra vía. **Si el primer vídeo rehecho no lo muestra ahí, G1 se reabre** | advisor (Opus proponía condicionarlo a 0.3; la 0.3 respondió) |
+| G3 | **Parada para Ender** (arriba) | advisor |
+| G4 | Topes: 1 regeneración por rechazo, 2 por pieza, 3 por agencia y día; 5 lecciones activas | Opus, sin objeción del advisor |
+| G5 | Versión **0.113.0** para las Fases 2-4 | Opus |
+| G2, G6 | Van en la parada final: exigen 0.110.0 viva | advisor |
+
+## Desviaciones del plan
+
+1. **Rama `docs/plan-7`** para una fase de solo medición, en vez de `feat/<fase>`.
+2. **El plan se corrigió antes del primer commit**, tras el arranque con el
+   advisor: yo había escrito que `fin41.png` demostraba algo sobre el motor.
+   Es falso — la pieza 41 **no tiene escenas**, luego nunca pasó por el obrero:
+   ese fotograma es de `worker/static_piece.py`, que se corre a mano. Con él se
+   fue el «enigma del rótulo» de la 0.3. También se separó el dominio de la
+   marca en la consulta de la 0.1, porque «Denver Home Story» a secas casa con
+   las dos cosas y esa distinción es justo lo que la 0.1 mide.
+3. **0.110.0 no la construye este plan.** La Fase 1 cierra **sin bump**: la
+   release la arma PLAN (6) Fase 4, que nadie ha ejecutado, y vence el
+   **22-sep a las 08:07**.
+
+## Consultas al advisor
+
+| motivo | decisión |
+|---|---|
+| Arranque: validar orden, dependencias y riesgos | Orden correcto. Cinco ajustes, incluida la corrección de `fin41.png` (que él mismo había sugerido antes y retiró con la evidencia del propio transcript) |
+
+## Siguiente paso
+
+Fase 1: `job_input` manda al narrador la narración con la despedida, más
+`carries_spoken_domain`. **Recordatorio permanente:** 0.110.0 la arma PLAN (6)
+Fase 4, plazo 22-sep 08:07; G2 (rehacer 74 y 75) solo con 0.110.0 viva.
+
+---
+
 
 # PLAN (6) — las correcciones de la auditoría del 16-sep
 
