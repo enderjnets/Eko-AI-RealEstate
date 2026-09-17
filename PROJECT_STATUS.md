@@ -5,6 +5,56 @@ Estado de ejecución del plan `~/.claude/plans/si-haz-el-plan-jazzy-sifakis.md`
 v0.56.0 y anteriores vive en git y en el plan.
 
 ---
+# 17-sep — 0.115.0 desplegada, y la 74 rechazada por el rótulo que falta
+
+Con tu autorización («4. despliega»). `main` en **`d5c4d23`**, tag `v0.115.0`,
+**sin migración** (sigue en `063_content_rejections`). Salud sirviendo
+**`0.115.0`**, panel público **307 → /leads**, **cero** trazas desde el
+arranque, el obrero del ROG latiendo.
+
+| paso | lo que se midió |
+|---|---|
+| Foto previa | VPS `dedc774`, rama `main`, alembic `063 (head)`, salud `0.114.0` |
+| Ida a `main` | `git push origin HEAD:main` **probado con `ls-remote`** (`d5c4d23`), no con el «ok ✓» de rtk |
+| Bundle | `dedc774..main`, 24.446 bytes, `git bundle verify` limpio; VPS `dedc774bf → d5c4d2366` |
+| Construcción | `docker compose build backend frontend`, **1 m 43 s**, sin cortar nada |
+| Cambio de contenedor | **esperado a un hueco sin entrega en vuelo**: el job 36 estaba reclamado, se vigiló cada 15 s y se cambió al soltarse |
+| Salud | `0.115.0` · `status: ok` · `env: production` · `llm_fallback: ok` |
+| Alembic | `063_content_rejections (head)`, **sin tocar** |
+| Trazas tras arrancar | **0** |
+
+**Vuelta atrás:** `git reset --hard dedc774 && docker compose up -d --build
+backend frontend`. Nada que deshacer en la base.
+
+## Lo que apareció mientras se desplegaba
+
+1. 🔴 **G1 se reabre: Ender rechazó la 74 a las 19:33 UTC** — «al final no
+   muestra la página en el vídeo, o sea debería terminar con el CTA en imagen
+   mostrando la dirección». Saqué el fotograma final del vídeo ya renderizado:
+   **la despedida hablada sí llegó** (subtítulo amarillo «Story dot com»), lo
+   que falta es el **rótulo escrito**. La decisión de G1 del 14-sep decía
+   textualmente «si el primer vídeo rehecho no lo muestra ahí, G1 se reabre»;
+   lo muestra en el subtítulo y aun así no es lo que pidió. **El rótulo no lo
+   puede poner este repo**: el ROG no lee `on_screen_text`, vive en BitTrader.
+
+2. 🔴 **Ese mismo fotograma trae «FORE SALE»** y un documento con letras
+   inventadas — exactamente el fallo que 0.115.0 arregla, en el vídeo de hoy.
+   Guardado en el scratchpad de sesión (`f74/p74_fin.png`).
+
+3. 🔴 **El clasificador me desmintió.** Predije `no_cta → rebuild`; el barrido
+   de las 19:46 clasificó **`other`** y eligió **`rewrite`** — modelo **más**
+   render, la acción cara, sobre una queja que el sistema no puede satisfacer.
+   El motivo contiene «CTA» en mayúsculas y aun así no casó la regla de
+   palabras. **Sin verificar por qué**: es la primera fila real de
+   `content_rejections` (id=1) y merece mirarse antes de que llegue la segunda.
+
+4. 🔴 **Los dos renders fallan con `SSLV3_ALERT_BAD_RECORD_MAC`.** Jobs 36 y 37
+   en `queued` con `attempts` 1 y 2 de 3. **No lo causó el despliegue**: el
+   fallo del 36 quedó sellado a las **20:04:14**, siete segundos antes de tocar
+   los contenedores, y el mismo error mató el job 14 el **7-sep**. Es el enlace
+   TLS entre el ROG y el panel, y a los tres intentos la pieza muere.
+
+---
 # 0.115.0 — nada en el encuadre lleva texto legible
 
 La causa estaba en **nuestras propias instrucciones**: `_SYSTEM` ofrecía «a
