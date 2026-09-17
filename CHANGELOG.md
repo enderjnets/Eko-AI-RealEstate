@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.114.0] - 2026-09-17
+
+### Corregido
+
+**Todo anuncio nombra la correduría, y ahora la pone el código.**
+
+Colorado exige que la publicidad inmobiliaria identifique a la correduría de
+forma clara y visible. Había un ajuste para ello, una puerta de publicación que
+leía el ajuste, una tarjeta final que el montador quemaba en los últimos
+segundos y un prompt que le pedía al modelo que firmara. El 17-sep, de las
+veinticuatro piezas vivas, **cuatro no la llevaban en el caption y tres de
+ellas no la nombraban en ningún sitio**. La cuarta la sigue llevando quemada en
+el vídeo, de antes del cambio de motor.
+
+La puerta comprobaba que el **ajuste** estuviera relleno, que es un hecho
+distinto de que el **anuncio** la lleve. La tarjeta final era la parte que de
+verdad funcionaba, y dejó de funcionar el 10-sep, cuando los vídeos pasaron a
+montarse con un motor externo al que nunca se le manda la línea. Quedaba el
+caption, donde salía cuando al modelo le daba por escribirla.
+
+- La línea la añade ahora el código, debajo del enlace y encima del aviso de
+  voz sintética: un caption se corta a las dos líneas y una identificación a la
+  que nadie baja no está a la vista. (El prompt pide captions sin etiquetas y
+  nada lo comprueba; si algún día el modelo las escribe, la línea quedaría por
+  debajo. Anotado.)
+- La puerta de publicación lee el anuncio, no la fila de ajustes, y rechaza una
+  pieza que no nombra a nadie por muy llena que esté la página de Ajustes.
+- Una misma correduría se escribe de tres formas según la mano — el registro de
+  la Comisión dice «Voelkers», esta instalación dice «Völkers», y los captions
+  han llevado las dos. Las tres cuentan. Plegar solo la diéresis no bastaba y
+  habría rechazado la grafía registrada; lo cazó un test antes de salir.
+- Sin línea en el registro, el escritor ya no gasta una llamada al modelo.
+
+Nada publicado hasta hoy se queda sin identificar. Las doce publicadas cuyo
+caption no la nombra son todas anteriores al 10-sep y llevan la correduría
+quemada en el vídeo, comprobado fotograma a fotograma una por una; el resto la
+lleva escrita en el caption.
+
+En una pieza **generada** la pone el código. Un clip filmado y subido a mano no
+pasa por el escritor, así que su caption la tiene que escribir la persona; la
+puerta lo rechaza si falta y ahora lo dice en vez de callarlo.
+
 ## [0.113.0] - 2026-09-17
 
 ### Añadido

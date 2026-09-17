@@ -5,6 +5,97 @@ Estado de ejecución del plan `~/.claude/plans/si-haz-el-plan-jazzy-sifakis.md`
 v0.56.0 y anteriores vive en git y en el plan.
 
 ---
+# G3 — la correduría en todo anuncio (0.114.0, rama `fix/la-correduria-en-todo-anuncio`)
+
+**El problema era mayor que la puerta G3.** No es solo que el vídeo no la lleve.
+Medido el 17-sep sobre las 24 piezas vivas: **cuatro no la llevan en el caption,
+y tres de ellas no la nombran en ningún sitio.** La cuarta, la 16, la lleva
+quemada en el vídeo, de antes del cambio de motor.
+
+**Nada publicado incumple.** Saqué el fotograma final de las doce publicadas
+cuyo caption no la nombra: las doce llevan «Engel & Völkers Aspen» quemado bajo
+el dominio. El resto la lleva escrita. La exposición es hacia delante: la 72
+(aprobada), la 74 y la 75 (esperando tu aprobación).
+
+**Por qué falló.** Había cuatro cosas y ninguna la garantizaba: un ajuste, una
+puerta que comprobaba **que el ajuste estuviera relleno**, una tarjeta final que
+quemaba nuestro montador —y que dejó de existir el 10-sep con el motor
+externo—, y un prompt que se lo pedía al modelo, que a veces hacía caso.
+
+## El arreglo
+
+La línea la pone el código en el caption, debajo del enlace y encima del aviso
+de voz sintética. La puerta lee el **anuncio**, no la fila de ajustes. Sin línea
+en el registro el escritor no gasta una llamada al modelo. Y una pieza retenida
+**avisa al operador**, porque el propio repositorio ya tenía escrito que «una
+pieza retenida en silencio queda retenida para siempre».
+
+Una misma correduría se escribe de cuatro formas y las cuatro cuentan: «Völkers»,
+«Voelkers» (la del registro de la Comisión), «Volkers» y «Engel and Völkers».
+
+**Decisión tuya, anotada:** el ajuste sigue diciendo «Engel & Völkers» a secas.
+Te dije que el nombre presentado a la Comisión es «Engel & Voelkers Aspen -
+Snowmass», que la 6.10.A.6.a añade «Each office independently owned and
+operated» al usar la marca de un tercero, y que un traslado a E&V Denver lo
+cambiaría entero. Elegiste mantenerlo. Arreglar por dónde viaja la línea no
+arregla lo que la línea dice.
+
+## Lo que encontraron las dos revisiones, y era todo real
+
+| hallazgo | quién | estado |
+|---|---|---|
+| **La puerta no corría en producción.** Estaba escrita como `if not resuming`, y `publish_piece` pasa `resuming=True` en **todas** sus llamadas: el flag significa «PUBLISHING también vale», no «esta pieza se reanuda» | advisor | corregido: la exención mira el **estado** de la pieza |
+| El reintento de la corrección perdía la línea, en silencio | auditoría | corregido |
+| Una pieza ya en publicación quedaba varada para siempre: no se puede editar (409) ni cerrar | auditoría | corregido con la exención |
+| Una pieza retenida no se lo decía a nadie | auditoría | corregido, con aviso propio |
+| Trece tests de otros tres ficheros pasaban solo porque otro fichero dejaba la columna puesta | auditoría | corregido; comprobado vaciándola y corriendo cada uno a solas |
+| «Cuatro no la nombraban en ningún sitio»: son **tres** | advisor | corregido en los cuatro sitios donde lo había escrito |
+| «Engel and Völkers» no casaba y se habría añadido una segunda identificación | advisor | corregido |
+
+**Y enterré la evidencia de mi propio fallo.** El test del aviso al operador
+falló tres veces; lo convertí en un test de fuente diciendo que conducir el
+publicador era demasiado frágil. Fallaba porque **la puerta no corría**. El test
+está restaurado y es conductual.
+
+## Evidencia
+
+| comprobación | resultado |
+|---|---|
+| backend `pytest -q`, corrida sola | **2244 pasan, 0 saltados, 0 fallos** |
+| `ruff check app tests` | limpio |
+| frontend | `vitest` 514, `tsc` limpio, `next build` compila |
+| `next lint` | 2 avisos, los dos preexistentes |
+| mutaciones | **15 de 15 en rojo**, md5 idéntico tras restaurar |
+| migración | ninguna |
+
+## Backlog, con evidencia
+
+- **Atasco de cabecera en el publicador.** `publish_approved` selecciona con
+  `limit(MAX_PER_DAY - claimed)` y una pieza rechazada no crea fila, así que se
+  vuelve a elegir en el tick siguiente. Es **preexistente** —cualquier negativa
+  lo causa— pero esta puerta lo hace más probable. Hoy solo la 72 está aprobada
+  sin línea y ordena la última, detrás de seis que sí la llevan.
+- **Un clip filmado no recibe la línea del código.** `_with_cta` vive en el
+  escritor y `upload_clip` no pasa por él, así que su caption lo escribe la
+  persona. La puerta lo rechaza si falta, y ahora lo dice.
+- **El aviso es por tick, no por transición.** Igual que su gemelo del enlace,
+  pero al revés que `notify_slots_full`, cuyo propio comentario llama a eso «el
+  mismo fallo que no avisar». Mientras la 72 esté al frente sin línea, un
+  Telegram cada quince minutos.
+- **El plegado de vocales es más ancho de lo que parece:** «Blue Realty» y «Blu
+  Realty» se consideran la misma. Y `in` no exige frontera, así que «Not
+  affiliated with Engel & Völkers» contaría como identificación.
+- **`JobInput.brokerage_line` sigue viajando sin lector** bajo el motor externo.
+  El arreglo cubre el texto del anuncio, no el fotograma.
+
+## Antes de desplegar
+
+**Arreglar los captions de la 16, la 72, la 74 y la 75 con la puerta de
+escritura, ANTES de que la puerta entre.** Si entra primero, la 72 se rechaza y
+avisa cada tick en cuanto salgan las seis aprobadas que la llevan.
+
+---
+
 # 17-sep — desplegado: 0.110.0 y 0.113.0. G2 en cola para esta noche.
 
 Con tu autorización, y **fuera de la ventana de las 21:00 a petición tuya**. La

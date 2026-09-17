@@ -65,6 +65,7 @@ from app.models import (
     PublicationStatus,
 )
 from app.services.content_studio import (
+    NotIdentified,
     NotPublishable,
     advance,
     ensure_publishable,
@@ -72,6 +73,7 @@ from app.services.content_studio import (
 )
 from app.services.publish_followup import (
     caption_carries_link,
+    notify_held_without_brokerage,
     notify_held_without_link,
     notify_published,
     notify_slots_full,
@@ -2067,6 +2069,16 @@ async def publish_approved(db: AsyncSession) -> int:
         except QuotaReached as exc:
             log.warning("Stopping this publish tick: %s", exc)
             break
+        except NotIdentified as exc:
+            # NOT ordinary, and the distinction is the whole reason this kind
+            # exists: a piece whose caption names no brokerage will be picked
+            # up and put back every fifteen minutes for ever, because nothing
+            # about it changes on its own. The twin refusal — no link in the
+            # caption — is announced a few hundred lines up for exactly this
+            # reason, and the sentence there is "a piece held in silence is
+            # held forever".
+            log.warning("Piece %s names no brokerage, so it is held: %s", piece.id, exc)
+            await notify_held_without_brokerage(piece.id, piece.hook or "")
         except NotPublishable as exc:
             # Ordinary: a piece edited back into NEEDS_APPROVAL between the
             # query and the gate. Nothing to fix, nothing to alarm about.

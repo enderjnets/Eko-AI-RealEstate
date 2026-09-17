@@ -101,7 +101,10 @@ async def _cleanup() -> None:
         await db.commit()
 
 
-async def _brokerage(value: str = "Engel & Völkers Aspen") -> None:
+BROKERAGE = "Engel & Völkers Aspen"
+
+
+async def _brokerage(value: str = BROKERAGE) -> None:
     async with get_bypass_session_factory()() as db:
         row = (await db.execute(text("SELECT id FROM agent_settings WHERE org_id=1"))).first()
         if row is None:
@@ -123,7 +126,12 @@ async def _approved_piece(kind: ContentKind = ContentKind.GENERATED) -> int:
             status=ContentStatus.APPROVED,
             hook="What a Denver home is worth today.",
             script="Three numbers decide the price.",
-            caption="Three numbers decide the price.",
+            # The publish gate now reads the advertisement, not the settings
+            # row: a caption that names nobody is refused however full the
+            # Settings page is. The line here has to be the one `_brokerage`
+            # puts on record, in full — a caption saying "Engel & Völkers"
+            # under a setting of "Engel & Völkers Aspen" does not name it.
+            caption=f"Three numbers decide the price.\n\n{BROKERAGE}",
             media_path="a" * 32 + ".mp4",
             approved_by="office",
         )
@@ -2068,7 +2076,7 @@ async def test_the_three_posts_leave_with_three_different_sources(
         # in production `_with_cta` appends it as the piece is written.
         async with get_bypass_session_factory()() as db:
             piece = await db.get(ContentPiece, piece_id)
-            piece.caption = f"Three numbers decide the price. {CTA}"
+            piece.caption = f"Three numbers decide the price. {CTA}\n\n{BROKERAGE}"
             await db.commit()
 
         with org_scope(ORG):
@@ -2096,7 +2104,7 @@ async def _piece_with_window(window: date | None) -> ContentPiece:
             status=ContentStatus.APPROVED,
             hook="Twelve places near Denver, sorted by elevation.",
             script="Twelve places near Denver, sorted by elevation.",
-            caption="Twelve places near Denver, sorted by elevation.",
+            caption=f"Twelve places near Denver, sorted by elevation.\n\n{BROKERAGE}",
             media_path="b" * 32 + ".mp4",
             approved_by="office",
             publish_window_start=window,

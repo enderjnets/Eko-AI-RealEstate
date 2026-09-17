@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.113.0";
+export const CURRENT_VERSION = "0.114.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.114.0",
+    date: "2026-09-17",
+    title: {
+      en: "Every advert names the brokerage, because the code puts it there",
+      es: "Todo anuncio nombra la correduría, porque la pone el código",
+    },
+    changes: [
+      { en: "Colorado asks that real estate advertising identify the brokerage firm clearly and conspicuously. This installation had a setting for it, a publish gate that read the setting, an end card the renderer burned into the last seconds, and a prompt that asked the model to sign off — and on 17-sep, of the twenty-four pieces then alive, four had it in no caption and three of those named it nowhere at all. The gate was checking that the SETTING was filled in, which is a different fact from the advertisement carrying it.", es: "Colorado exige que la publicidad inmobiliaria identifique a la correduría de forma clara y visible. Esta instalación tenía un ajuste para ello, una puerta de publicación que leía el ajuste, una tarjeta final que el montador quemaba en los últimos segundos, y un prompt que le pedía al modelo que firmara — y el 17-sep, de las veinticuatro piezas vivas, cuatro no la llevaban en el caption y tres de ellas no la nombraban en ningún sitio. La puerta comprobaba que el AJUSTE estuviera relleno, que es un hecho distinto de que el anuncio la lleve." },
+      { en: "The end card was the part that really worked, and it stopped working on 10-sep when the videos began to be built by an external engine that is never sent the line. That left the caption, where it appeared when the model happened to write it. Now the code puts it there: below the link and above the synthetic-voice notice, because a caption is cut off after a couple of lines and an identification nobody scrolls to is not conspicuous.", es: "La tarjeta final era la parte que de verdad funcionaba, y dejó de funcionar el 10-sep, cuando los vídeos pasaron a montarse con un motor externo al que nunca se le manda la línea. Quedaba el caption, donde salía cuando al modelo le daba por escribirla. Ahora la pone el código: debajo del enlace y encima del aviso de voz sintética, porque un caption se corta a las dos líneas y una identificación a la que nadie baja no está a la vista." },
+      { en: "The publish gate now reads the advertisement instead of the settings row, and refuses a piece that names nobody however full the Settings page is. One firm is written three ways by three different hands — the Commission's register says \"Voelkers\", this installation says \"Völkers\", captions have carried both — and all three count as naming it. Folding the diaeresis alone was not enough and would have refused the registered spelling; a test caught that before it shipped.", es: "La puerta de publicación lee ahora el anuncio en vez de la fila de ajustes, y rechaza una pieza que no nombra a nadie por muy llena que esté la página de Ajustes. Una misma correduría se escribe de tres formas según la mano — el registro de la Comisión dice «Voelkers», esta instalación dice «Völkers», y los captions han llevado las dos — y las tres cuentan como nombrarla. Plegar solo la diéresis no bastaba y habría rechazado la grafía registrada; lo cazó un test antes de salir." },
+      { en: "And with no line on record the writer no longer spends a model call: the gate would refuse whatever came back, so the reason is in the log before the bill instead of after it.", es: "Y sin línea en el registro el escritor ya no gasta una llamada al modelo: la puerta rechazaría lo que volviera, así que el motivo queda en el registro antes de la factura y no después." },
+    ],
+  },
   {
     version: "0.113.0",
     date: "2026-09-17",

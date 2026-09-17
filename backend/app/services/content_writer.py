@@ -40,7 +40,12 @@ from app.models import (
 )
 from app.services.content_calculated import SAVINGS, Plan, plan_for, scene_fields
 from app.services.content_figures import claimed_text, unexplained_figures
-from app.services.content_studio import advance, not_our_rail, text_violations
+from app.services.content_studio import (
+    advance,
+    caption_carries_brokerage,
+    not_our_rail,
+    text_violations,
+)
 from app.services.content_topics import (
     Topic,
     calculated_index,
@@ -49,6 +54,7 @@ from app.services.content_topics import (
 )
 from app.services.lang_guard import not_english_prompt, wrong_language
 from app.services.llm import generate_reply
+from app.services.tenant_context import get_org_id
 
 log = logging.getLogger(__name__)
 
@@ -244,7 +250,8 @@ async def _ask(topic: Topic, language: ContentLanguage,
                feedback: str | None = None,
                cta_index: int = 0,
                plan: Plan | None = None,
-               lessons: Sequence[str] = ()) -> DraftPayload | None:
+               lessons: Sequence[str] = (),
+               brokerage: str = "") -> DraftPayload | None:
     brief = topic.brief_en if language is ContentLanguage.EN else topic.brief_es
     messages: list[dict[str, Any]] = []
     # Before the brief: what not to do, then what to do.
@@ -297,12 +304,13 @@ async def _ask(topic: Topic, language: ContentLanguage,
             cta_index=cta_index,
             plan=plan,
             lessons=lessons,
+            brokerage=brokerage,
         )
     if typed:
         log.warning("Content writer: the draft for %s still carried contact "
                     "details; dropping it", topic.key)
         return None
-    return _with_cta(_with_plan(draft, plan), language, cta_index, plan)
+    return _with_cta(_with_plan(draft, plan), language, cta_index, plan, brokerage)
 
 
 #: A web address, in any of the shapes a model writes one. The same shape
@@ -383,6 +391,7 @@ async def _ask_correction(
     plan: Plan | None = None,
     feedback: str | None = None,
     lessons: Sequence[str] = (),
+    brokerage: str = "",
 ) -> DraftPayload | None:
     """The same draft, corrected for what the reviewer objected to.
 
@@ -471,6 +480,7 @@ async def _ask_correction(
             plan=plan,
             feedback=_NO_CONTACT_DETAILS.format(named=named),
             lessons=lessons,
+            brokerage=brokerage,
         )
     if typed:
         # Twice, with the addresses named. Not a loop, and not something to
@@ -480,7 +490,7 @@ async def _ask_correction(
             "dropping it"
         )
         return None
-    return _with_cta(_with_plan(draft, plan), language, cta_index, plan)
+    return _with_cta(_with_plan(draft, plan), language, cta_index, plan, brokerage)
 
 
 # The sentence that turns a view into a visit. Kept OUT of the model's hands on
@@ -601,8 +611,9 @@ def _with_cta(
     language: ContentLanguage,
     cta_index: int = 0,
     plan: Plan | None = None,
+    brokerage: str = "",
 ) -> DraftPayload | None:
-    """Append the call to action to the caption.
+    """Append the call to action, and the brokerage line, to the caption.
 
     Applied HERE, before the caller runs `find_violations`, so the filter sees
     the caption that will actually be published. Appending it afterwards would
@@ -660,6 +671,24 @@ def _with_cta(
         else:
             sentence = (_CALCULATED_CTA if plan is not None else _CTA)[language]
             caption = f"{caption}\n\n{sentence.format(url=link)}"
+
+    # Colorado 6.10.A.4: every advertisement carries the brokerage firm's name.
+    # Here, and not in the prompt, because a prompt is a request and this is an
+    # obligation — for three weeks it was left to the model and it wrote the
+    # line on some pieces and not others, which is the worst of both: it looked
+    # handled.
+    #
+    # Above the synthetic-voice disclosure and below the link, which is where
+    # the model put it on the pieces that had it, and which matters: on
+    # Instagram and TikTok a caption is cut off after a couple of lines, so an
+    # identification pushed below the hashtags is not conspicuous, and
+    # conspicuous is what the rule asks for.
+    #
+    # The end card our own renderer burns is the other half of this and is not
+    # a substitute: since 10-sep the videos are built by an external engine
+    # that is never sent the line.
+    if brokerage.strip() and not caption_carries_brokerage(caption, brokerage):
+        caption = f"{caption}\n\n{brokerage.strip()}"
 
     # Only when there is a plan to generate pictures from. A clip somebody
     # filmed is not AI-generated, and saying it is would be a false statement
@@ -936,7 +965,26 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
     from app.services.content_corrections import active_lessons
 
     lessons = await active_lessons(db)
-    draft = await _ask(topic, language, cta_index=cta_index, plan=plan, lessons=lessons)
+    # Read once and handed down, rather than looked up inside `_with_cta`:
+    # that function is pure and tests hold it directly, and a database call
+    # hidden in it would make every one of them need a session.
+    settings_row = (
+        await db.execute(
+            select(AgentSettings).where(AgentSettings.org_id == get_org_id())
+        )
+    ).scalar_one_or_none()
+    brokerage = (settings_row.brokerage_line or "").strip() if settings_row else ""
+    if not brokerage:
+        # The publish gate refuses a piece with no brokerage line anyway, so
+        # writing one now would only buy a model call for text that cannot go
+        # out. Said here because the console shows nothing about it.
+        log.warning(
+            "Content writer: no brokerage line on record, so nothing written "
+            "today could be published; set it in Settings"
+        )
+        return None
+    draft = await _ask(topic, language, cta_index=cta_index, plan=plan,
+                       lessons=lessons, brokerage=brokerage)
     if draft is None:
         return None
 
@@ -955,6 +1003,7 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
             plan=plan,
             feedback=_feedback(violations),
             lessons=lessons,
+            brokerage=brokerage,
         )
         if rewritten is not None:
             draft = rewritten

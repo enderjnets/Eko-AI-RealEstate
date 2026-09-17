@@ -35,6 +35,34 @@ from app.services.tenant_context import org_scope
 
 ORG = 1
 
+@pytest.fixture(autouse=True)
+async def _a_brokerage_line_on_record():
+    """`generate_draft` will not write a draft without one, so these need it.
+
+    Seeded rather than assumed. Before this existed, thirteen tests across
+    three files passed only because some other file, earlier in the alphabet,
+    had left the column set — measured by emptying `brokerage_line` and running
+    each file on its own. That is the same failure this suite's conftest
+    already documents about an environment variable: green for whoever had it,
+    red for everyone else.
+    """
+    from sqlalchemy import select as _select
+
+    from app.models import AgentSettings as _AgentSettings
+
+    async with get_bypass_session_factory()() as _db:
+        row = (
+            await _db.execute(_select(_AgentSettings).where(_AgentSettings.org_id == ORG))
+        ).scalar_one_or_none()
+        if row is None:
+            _db.add(_AgentSettings(org_id=ORG, agency_name="Denver Home Story",
+                                   brokerage_line="Engel & Völkers"))
+        elif not (row.brokerage_line or "").strip():
+            row.brokerage_line = "Engel & Völkers"
+        await _db.commit()
+    yield
+
+
 #: A real one from the live rail, and the only kind that may become a lesson:
 #: no word rule places it, and no gate exists that could check it.
 UNPLACEABLE = (

@@ -136,6 +136,24 @@ async def notify_held_without_link(piece_id: int, hook: str) -> bool:
     )
 
 
+async def notify_held_without_brokerage(piece_id: int, hook: str) -> bool:
+    """A piece was refused for not naming the brokerage. Twin of the one above.
+
+    Same reason it is said out loud: `publish_approved` treats a refusal as
+    ordinary and logs it, and this particular refusal never clears itself. The
+    piece stays approved, keeps being picked up, and keeps being put back —
+    silently — until somebody edits its caption.
+    """
+    return await _say(
+        "Piece held: the caption does not name the brokerage",
+        f"Piece {piece_id} — “{(hook or '').strip()[:90]}” — was not published.\n\n"
+        "Colorado asks that every advertisement identify the brokerage firm, "
+        "and this caption names nobody. Add the line from Settings to the "
+        "caption and approve it again.",
+        piece_id,
+    )
+
+
 async def notify_slots_full(piece_id: int, hook: str, platform: str) -> bool:
     """A platform is waiting because Buffer's queue for it is full.
 

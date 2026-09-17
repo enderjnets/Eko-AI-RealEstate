@@ -452,7 +452,8 @@ async def _piece(window: date | None) -> int:
             status=ContentStatus.APPROVED,
             hook="What a Denver home is worth today.",
             script="Three numbers decide the price.",
-            caption="Three numbers decide the price. denverhomestory.com",
+            caption="Three numbers decide the price. denverhomestory.com"
+        "\n\nEngel & Völkers",
             media_path="a" * 32 + ".mp4",
             approved_by="office",
             publish_window_start=window,

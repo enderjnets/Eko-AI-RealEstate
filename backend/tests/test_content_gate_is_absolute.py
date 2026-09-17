@@ -151,6 +151,12 @@ async def _seed(status: ContentStatus, **kw) -> int:
             language=ContentLanguage.EN,
             status=status,
             hook=kw.pop("hook", CLEAN_HOOK),
+            # The gate now reads the advertisement, not the settings row: a
+            # piece whose caption names nobody is refused however full the
+            # Settings page is. Every seed here goes through that gate, so the
+            # default caption carries the line and the tests that care about
+            # the caption pass their own.
+            caption=kw.pop("caption", f"A clean caption.\n\n{BROKERAGE}"),
             **kw,
         )
         db.add(piece)
@@ -245,7 +251,9 @@ async def test_the_filter_runs_again_at_publish_time() -> None:
 async def test_the_filter_sees_the_caption_and_the_script_too() -> None:
     """A hook is what gets reviewed hardest; the caption is what gets pasted."""
     await _org_with_brokerage(BROKERAGE)
-    caption_id = await _seed(ContentStatus.APPROVED, caption="Great schools nearby!")
+    caption_id = await _seed(
+        ContentStatus.APPROVED, caption=f"Great schools nearby!\n\n{BROKERAGE}"
+    )
     script_id = await _seed(ContentStatus.APPROVED, script="Ideal para familias.")
     try:
         with org_scope(ORG):

@@ -24,6 +24,8 @@ lands it has to be declared, and every caller of it has to consult this gate.
 from __future__ import annotations
 
 import logging
+import re
+import unicodedata
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,6 +55,19 @@ class IllegalTransition(Exception):
 class NotPublishable(Exception):
     """The gate said no. Carries why, because the operator has to be able to
     fix it rather than guess."""
+
+
+class NotIdentified(NotPublishable):
+    """Refused because the advertisement does not name the brokerage firm.
+
+    A kind of its own rather than a message, because the two refusals want
+    different handling downstream: "edited back to NEEDS_APPROVAL between the
+    query and the gate" is ordinary and resolves itself, while this one is a
+    piece that will never publish until a person changes its text. The
+    publisher tells somebody about this one. A piece held in silence is held
+    for ever, and that sentence is already written in this codebase about the
+    missing-link refusal, which is this one's twin.
+    """
 
 
 # Declared transitions. A piece walks DRAFT → NEEDS_APPROVAL → APPROVED →
@@ -219,6 +234,56 @@ def advance(piece: ContentPiece, to: ContentStatus) -> None:
     piece.status = to
 
 
+def caption_carries_brokerage(caption: str | None, brokerage: str) -> bool:
+    """Whether this text already identifies the brokerage firm.
+
+    Containment rather than equality, and that direction is deliberate: the
+    configured line is the shortest acceptable form, so a caption that says
+    "Engel & Voelkers Aspen" satisfies a setting of "Engel & Voelkers" and a
+    person who writes the longer, registered name is not overruled by a
+    narrower setting.
+
+    Case, whitespace and the German vowels are all folded, because this one
+    firm is written three ways by three different hands and all three identify
+    it: the Commission's register says "Voelkers", the setting on this
+    installation says "Völkers", and captions have carried both. Stripping the
+    diaeresis alone is not enough — it turns "Völkers" into "Volkers" and
+    leaves "Voelkers" untouched, so the registered spelling would have been
+    refused. That was caught by a test before this shipped, not after.
+
+    So the fold goes one step further: "oe", "ue" and "ae" collapse to their
+    bare vowel, on BOTH sides. Two firms whose names differ only by that one
+    letter would be treated as the same name here; a brokerage called "Moeller"
+    and one called "Moller" is the price, and the cost of the confusion is
+    accepting a caption that identifies an almost identical firm, which is
+    smaller than refusing every correctly identified one.
+
+    An empty `brokerage` returns False: the caller has already refused that
+    case, and answering True here would make this function say "identified"
+    about a piece that names nobody.
+    """
+    if not brokerage.strip():
+        return False
+    return _folded(brokerage) in _folded(caption or "")
+
+
+def _folded(text: str) -> str:
+    """Case, accents, German vowel pairs and runs of whitespace, all flattened."""
+    bare = "".join(
+        ch
+        for ch in unicodedata.normalize("NFKD", text)
+        if not unicodedata.combining(ch)
+    )
+    bare = re.sub(r"\s+", " ", bare).strip().casefold()
+    for pair, vowel in (("oe", "o"), ("ue", "u"), ("ae", "a")):
+        bare = bare.replace(pair, vowel)
+    # "Engel and Völkers" is the same firm as "Engel & Völkers", and the model
+    # writes the caption freely. Without this the gate would refuse a caption
+    # that names the brokerage perfectly well, and worse, `_with_cta` would
+    # decide it was missing and add a SECOND identification underneath.
+    return bare.replace(" and ", " & ")
+
+
 async def ensure_publishable(
     db: AsyncSession, piece_id: int, *, resuming: bool = False
 ) -> ContentPiece:
@@ -267,6 +332,47 @@ async def ensure_publishable(
         raise NotPublishable(
             "this organisation has no brokerage line on record, and real "
             "estate advertising has to identify the brokerage"
+        )
+    # Having a line on record is not the same as publishing it, and for three
+    # weeks it was treated as if it were. Colorado 6.10.A.4 asks that the
+    # advertising itself carry the brokerage firm's name; this gate only asked
+    # whether the SETTING was filled in. What actually carried it was the end
+    # card our own renderer burns — and since 10-sep the videos are built by an
+    # external engine that never receives the line, so the only remaining place
+    # it could appear was the caption, where it appeared when the model happened
+    # to write it and not otherwise. Measured on 17-sep: of the twenty-four
+    # pieces alive at the time, four had it in no caption, and three of those
+    # had it nowhere at all — the fourth still carries it burned into its video
+    # from before the engine changed.
+    #
+    # Checked against the TEXT, like the Fair Housing filter beside it, and for
+    # the same reason: the field the reviewer approved is the field that goes
+    # out.
+    #
+    # Exempt only a piece ALREADY PUBLISHING, and the condition is on the
+    # piece's state rather than on `resuming`. That distinction is the whole
+    # bug the first version of this shipped with: `publish_piece` passes
+    # `resuming=True` on EVERY call — the flag means "PUBLISHING is also an
+    # acceptable state", not "this piece is being resumed" — so a guard written
+    # as `not resuming` never ran in the only path that publishes anything.
+    # The tests passed because they call this function directly and get the
+    # default.
+    #
+    # The exemption itself is narrow and deliberate. A piece in PUBLISHING got
+    # there by passing this gate, is already public on at least one platform,
+    # and cannot be repaired: `edit_piece` answers 409 for PUBLISHING, and the
+    # ways out of that state need every platform to reach a terminal one.
+    # Refusing there would turn a caption problem into a piece stranded for
+    # ever, with the "published" notice never sent, and would not unpublish
+    # anything. Pieces written from this release carry the line by
+    # construction, so the only rows this can concern entered PUBLISHING
+    # before it.
+    if piece.status is not ContentStatus.PUBLISHING and not caption_carries_brokerage(
+        piece.caption, brokerage
+    ):
+        raise NotIdentified(
+            f"piece {piece_id} does not name the brokerage anywhere in its "
+            "caption, and real estate advertising has to identify it"
         )
 
     # Again, not once. The filter ran when the draft was written; the text has

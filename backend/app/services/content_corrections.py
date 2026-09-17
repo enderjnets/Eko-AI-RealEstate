@@ -723,6 +723,18 @@ async def _rewrite(db, row, piece) -> bool:
     plan = reconstructed_plan(piece) if piece.calculator_check is not None else None
     cta_index = await rotation_index(db)
     lessons = await active_lessons(db)
+    # Same reason as the first draft: the brokerage line is put in by code, so
+    # a corrected draft that loses it would be refused at the publish gate and
+    # the correction would have bought a model call for nothing.
+    from sqlalchemy import select
+
+    from app.models import AgentSettings
+    settings_row = (
+        await db.execute(
+            select(AgentSettings).where(AgentSettings.org_id == piece.org_id)
+        )
+    ).scalar_one_or_none()
+    brokerage = (settings_row.brokerage_line or "").strip() if settings_row else ""
     draft = await _ask_correction(
         previous,
         row.reason,
@@ -730,6 +742,7 @@ async def _rewrite(db, row, piece) -> bool:
         cta_index=cta_index,
         plan=plan,
         lessons=lessons,
+        brokerage=brokerage,
     )
     if draft is None:
         # A provider outage, or a reply that is not a draft. Leaving the row
@@ -760,6 +773,7 @@ async def _rewrite(db, row, piece) -> bool:
             plan=plan,
             feedback=_feedback(violations),
             lessons=lessons,
+            brokerage=brokerage,
         )
         if again is not None:
             draft = again
