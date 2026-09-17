@@ -212,10 +212,22 @@ sesiones de pytest sobre una sola base de datos no miden nada.
 **Fase 2:** tablas `content_rejections` y `content_lessons` con RLS, más
 `classify` / `verify` / `decide` en `content_corrections.py`.
 
-**Ahora: PLAN (6) Fase 4**, con el sí de Ender, en rama desde `55695c4` (la
-punta de la Fase 1) — **no** desde la Fase 2, porque la composición que él
-aprobó es «0.110.0 = PLAN (6) Fase 4 + PLAN (7) Fase 1» y la Fase 2 lleva una
-migración que no estaba en esa foto. Después vuelvo a la Fase 3.
+**PLAN (6) Fase 4 está cerrada** en `feat/clasificar-parejas-de-enlace`
+(`ae880e8`, ramificada desde `55695c4`, la punta de la Fase 1, **no** desde esta
+Fase 2, porque la composición que Ender aprobó es «0.110.0 = PLAN (6) Fase 4 +
+PLAN (7) Fase 1» y la Fase 2 lleva una migración que no estaba en esa foto).
+Ahí vive **el pre-despliegue de 0.110.0**, que espera su autorización.
+
+**Orden de fusión, que no es obvio.** Hay **dos** `PROJECT_STATUS.md` distintos
+vivos, uno por rama, y ninguno lo tiene todo: esta rama guarda la Fase 2, su
+auditoría y la tabla de las cuatro decisiones de Ender; la otra guarda PLAN (6)
+Fase 4, su auditoría y el pre-despliegue. Primero **la otra a `main`**, con el
+sí de Ender; **esta encima, después**, en otra release. Al fusionarla el único
+fichero que choca es este, y se resuelve **conservando las dos secciones**,
+nunca eligiendo una. La Fase 2 no toca `config.py`, `version.ts` ni
+`CHANGELOG.md`, así que el bump no entra en conflicto.
+
+**Ahora: PLAN (7) Fase 3**, sobre esta rama. No espera al despliegue.
 
 **Desviación de orden** (sin cambio de alcance): PLAN (6) Fase 4 se adelanta a
 PLAN (7) Fase 3. Cada generación diaria saca otro vídeo sin CTA hasta que
@@ -224,11 +236,12 @@ PLAN (7) Fase 3. Cada generación diaria saca otro vídeo sin CTA hasta que
 🔴 **La migración 063 la tomó este plan.** PLAN (6) Fase 5 la tenía reservada:
 **pasa a 064**. Quien ejecute ese plan no leerá este.
 
-**Recordatorio permanente (sobrevive a un `/compact`):** la entrada de
-`CHANGELOG.md` y de `frontend/lib/version.ts` de la Fase 1 y de la Fase 2 va en
-el bump de 0.110.0. **G2** (rehacer las piezas 74 y 75) solo tiene sentido con
-0.110.0 ya desplegada, y el primer vídeo rehecho tiene que mostrar el dominio
-en el subtítulo final o **G1 se reabre**.
+**Recordatorio permanente (sobrevive a un `/compact`):** en 0.110.0 entró la
+entrada de `CHANGELOG.md` de la **Fase 1**, no la de la Fase 2: esta rama no va
+en esa release, así que su párrafo se quitó del changelog y va en **0.113.0**
+(G5). **G2** (rehacer las piezas 74 y 75) solo tiene sentido con 0.110.0 ya
+desplegada, y el primer vídeo rehecho tiene que mostrar el dominio en el
+subtítulo final o **G1 se reabre**.
 
 **Nota para la Fase 4 (lecciones):** una lección solo puede nacer de un motivo
 con `finding == {"matched": []}` — nadie pudo colocarlo. Nunca de una queja
