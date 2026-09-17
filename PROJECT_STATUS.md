@@ -140,6 +140,25 @@ tras restaurar) y reincidencia anotada en la ficha.
   El barrido de corrección corre cada 3600 s **desde el arranque del backend**
   (22:13:43 UTC tras este despliegue): el próximo cae hacia las **23:13 UTC =
   17:13 de Denver**, y el ROG reclama en la hora 17.
+
+  **Lo que pasó después (22:55–22:58 UTC), con Ender en la consola:**
+  - **Rechazó las dos** («errores ya hablados en terminal»). La 75 contra mi
+    recomendación de dejarla esperando: sus planos están limpios (0 de 4) y sus
+    dos fallos son del motor (titular quemado y tarjeta ausente), así que un
+    render nuevo saldría igual. Su decisión; quedó dicho.
+  - **La orden de la 75 (fila 2) la cerré yo como `manual`** a las 22:56:26,
+    con su sí y con guarda (fila abierta + pieza en `rejected`): `category=
+    'visual'`, `finding.closed_by_operator` = «engine-side…». Nada se re-encola,
+    nada se paga; la pieza queda rechazada.
+  - **La orden de la 74 (fila 3) llegó sin el texto preparado.** Con un motivo
+    que no casa ninguna regla, el clasificador pregunta al modelo, y un
+    `visual` habría sido `rebuild`: la misma lista de seis planos, sin escritor,
+    gastando su último intento. Con su sí, a las 22:58:16: `category='other'`
+    (va directo a `rewrite`, sin modelo) y `reason` = el texto de los seis
+    planos, también en `rejected_reason`. Guarda: fila abierta, `category IS
+    NULL`, pieza en `rejected`. Verificado después: fila 3 `other/ABIERTO`.
+  - Los dos SQL viven en el scratchpad (`pieza75_cerrar_manual.sql`,
+    `pieza74_fila3.sql`); deshacer = `action=NULL, resolved_at=NULL` en la fila 2.
 - **El SQL para reescribirla lo abortó su propia guarda** a las 21:03:06 UTC —
   «job 36 no esta como en la foto previa (filas=0)» — porque el ROG la había
   reclamado a las 21:00:31. **Cero filas escritas.** La cola es un blanco
