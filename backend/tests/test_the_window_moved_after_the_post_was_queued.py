@@ -32,9 +32,11 @@ Three properties:
 
 from __future__ import annotations
 
+import logging
 import os
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from unittest.mock import AsyncMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import text
@@ -50,7 +52,11 @@ from app.models import (
     PublicationPlatform,
     PublicationStatus,
 )
-from app.services.buffer_publisher import BufferRefused, realign_windows
+from app.services.buffer_publisher import (
+    BufferRefused,
+    publish_approved,
+    realign_windows,
+)
 from app.services.tenant_context import org_scope
 
 ORG = 1
@@ -365,5 +371,305 @@ async def test_nothing_is_asked_of_buffer_when_it_is_simulated(
             with patch("app.services.buffer_publisher.edit_scheduled_text", new=edit):
                 assert await _run() == 0
         assert not read.called and not edit.called
+    finally:
+        await _cleanup()
+
+
+# ──────────────────── the window with nowhere left inside it ───────────────
+
+
+async def _occupy(when: datetime) -> None:
+    """Another piece already holding a YouTube slot at that instant."""
+    async with get_bypass_session_factory()() as db:
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHING,
+            hook="Someone else was here first.",
+            script="This one holds the slot.",
+            caption="This one holds the slot. denverhomestory.com",
+            media_path="b" * 32 + ".mp4",
+            approved_by="office",
+        )
+        db.add(piece)
+        await db.flush()
+        db.add(
+            ContentPublication(
+                org_id=ORG,
+                piece_id=piece.id,
+                platform=PublicationPlatform.YOUTUBE,
+                status=PublicationStatus.SCHEDULED,
+                external_id="post-held",
+                scheduled_at=when,
+            )
+        )
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_post_far_outside_a_full_window_still_moves_closer(
+    database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Piece 42 of the 16-sep incident, as a test.
+
+    Ten days before its own window, on a window whose every slot is spent. A
+    rule of "inside the window or nowhere" leaves it exactly there: published
+    ten days early, and still holding the date the perishable piece was waiting
+    for. The day after the window closes is not inside it either, but it is
+    nine days closer — and it frees the early slot, which is half of what this
+    function is for.
+    """
+    monkeypatch.setattr(get_settings(), "CONTENT_SLOT_YOUTUBE", "17:30", raising=False)
+    await _cleanup()
+    try:
+        zone = ZoneInfo("America/Denver")
+        only_day = datetime.now(zone).date() + timedelta(days=3)
+        await _occupy(
+            datetime.combine(only_day, time(17, 30), tzinfo=zone).astimezone(UTC)
+        )
+        _, row_id = await _queued(
+            opens=only_day,
+            closes=only_day,
+            scheduled_at=datetime.combine(
+                only_day + timedelta(days=9), time(17, 30), tzinfo=zone
+            ).astimezone(UTC),
+        )
+
+        read, edit = _buffer_that_answers()
+        with patch("app.services.buffer_publisher.read_scheduled_post", new=read):
+            with patch("app.services.buffer_publisher.edit_scheduled_text", new=edit):
+                assert await _run() == 1
+
+        assert edit.called, "a post nine days further out was left where it was"
+        landed = await _scheduled_at(row_id)
+        assert landed is not None
+        assert landed.astimezone(zone).date() == only_day + timedelta(days=1)
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_post_already_as_close_as_it_can_get_is_left_alone(
+    database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The guard itself, and the walk it ends.
+
+    `next_free_slot` has no upper bound, and `_free_slots` counts this row's own
+    slot as taken — so the date handed out last tick is occupied by this very
+    post on the next one, and the answer is one slot further along. Every
+    fifteen minutes, two Buffer requests at a time, a post drifting away from
+    its window by the machinery meant to bring it back.
+    """
+    monkeypatch.setattr(get_settings(), "CONTENT_SLOT_YOUTUBE", "17:30", raising=False)
+    await _cleanup()
+    try:
+        zone = ZoneInfo("America/Denver")
+        only_day = datetime.now(zone).date() + timedelta(days=3)
+        await _occupy(
+            datetime.combine(only_day, time(17, 30), tzinfo=zone).astimezone(UTC)
+        )
+        # Already the best any slot can do: the day after a one-day window whose
+        # own slot is spent. The next free one is the day after that, further out.
+        _, row_id = await _queued(
+            opens=only_day,
+            closes=only_day,
+            scheduled_at=datetime.combine(
+                only_day + timedelta(days=1), time(17, 30), tzinfo=zone
+            ).astimezone(UTC),
+        )
+        before = await _scheduled_at(row_id)
+
+        caplog.set_level(logging.DEBUG, logger="app.services.buffer_publisher")
+        read, edit = _buffer_that_answers()
+        with patch("app.services.buffer_publisher.read_scheduled_post", new=read):
+            with patch("app.services.buffer_publisher.edit_scheduled_text", new=edit):
+                assert await _run() == 0
+
+        assert not edit.called, "the post was walked one slot further from its window"
+        assert await _scheduled_at(row_id) == before
+        assert any(
+            "no free" in r.getMessage() and "closer to its window" in r.getMessage()
+            for r in caplog.records
+        ), [r.getMessage() for r in caplog.records]
+    finally:
+        await _cleanup()
+
+
+# ─────────────────── the post Buffer has already let go ────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_post_buffer_already_sent_is_not_moved(database_url: str) -> None:
+    """Buffer's ten only drop when a post is SENT, so one can go out between
+    the query that found it drifted and the edit. Editing `dueAt` on something
+    already published rewrites history, and our row would then disagree with
+    what the channel actually shows. The reconciler closes it properly."""
+    await _cleanup()
+    try:
+        zone = ZoneInfo("America/Denver")
+        opens = datetime.now(zone).date() + timedelta(days=2)
+        _, row_id = await _queued(
+            opens=opens,
+            closes=opens + timedelta(days=8),
+            scheduled_at=datetime.now(UTC) + timedelta(days=20),
+        )
+        before = await _scheduled_at(row_id)
+
+        read = AsyncMock(
+            return_value={"id": "post-1", "text": "as queued", "status": "sent"}
+        )
+        edit = AsyncMock(return_value={"id": "post-1"})
+        with patch("app.services.buffer_publisher.read_scheduled_post", new=read):
+            with patch("app.services.buffer_publisher.edit_scheduled_text", new=edit):
+                assert await _run() == 0
+
+        assert read.called, "the post's state was never asked for"
+        assert not edit.called, "a post Buffer had already sent was edited"
+        assert await _scheduled_at(row_id) == before
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_post_buffer_closed_with_an_error_is_not_moved(
+    database_url: str,
+) -> None:
+    """The other half of the same rule: `sent` is not the only state that is
+    not in flight, and a post Buffer failed is the reconciler's to close."""
+    await _cleanup()
+    try:
+        zone = ZoneInfo("America/Denver")
+        opens = datetime.now(zone).date() + timedelta(days=2)
+        _, row_id = await _queued(
+            opens=opens,
+            closes=opens + timedelta(days=8),
+            scheduled_at=datetime.now(UTC) + timedelta(days=20),
+        )
+        read = AsyncMock(
+            return_value={"id": "post-1", "text": "as queued", "status": "error"}
+        )
+        edit = AsyncMock(return_value={"id": "post-1"})
+        with patch("app.services.buffer_publisher.read_scheduled_post", new=read):
+            with patch("app.services.buffer_publisher.edit_scheduled_text", new=edit):
+                assert await _run() == 0
+        assert not edit.called
+    finally:
+        await _cleanup()
+
+
+# ────────────────────────── and the tick calls it ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_tick_realigns_before_claiming(database_url: str) -> None:
+    """The wiring. A correct `realign_windows` that nothing calls is a
+    function, not a fix — and the tick is the only caller it has."""
+    await _cleanup()
+    try:
+        zone = ZoneInfo("America/Denver")
+        opens = datetime.now(zone).date() + timedelta(days=2)
+        await _queued(
+            opens=opens,
+            closes=opens + timedelta(days=8),
+            scheduled_at=datetime.now(UTC) + timedelta(days=20),
+        )
+        read, edit = _buffer_that_answers()
+        s = get_settings()
+        with patch.object(s, "CONTENT_PUBLISH_ENABLED", True):
+            with patch("app.services.buffer_publisher.read_scheduled_post", new=read):
+                with patch(
+                    "app.services.buffer_publisher.edit_scheduled_text", new=edit
+                ):
+                    with patch(
+                        "app.services.buffer_publisher.verify_organization",
+                        new=AsyncMock(),
+                    ):
+                        with patch(
+                            "app.services.buffer_publisher._send",
+                            new=AsyncMock(return_value="post-new"),
+                        ):
+                            with org_scope(ORG):
+                                async with get_session_factory()() as db:
+                                    await publish_approved(db)
+
+        assert read.called, "the tick never asked Buffer what it held"
+        assert edit.called, "the tick never moved the drifted post"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_post_buffer_is_sending_right_now_is_not_moved(
+    database_url: str,
+) -> None:
+    """The state the reconciler's question and this one answer differently.
+
+    `sending` means "ask again later" when the question is whether the post
+    landed. It means "do not touch" when the question is whether it is safe to
+    hand it a new date: Buffer may complete the send anyway, and our row would
+    then hold a future date for something the channel has already published —
+    the piece stuck in PUBLISHING, the panel with no link, and the slot it
+    moved to spending real capacity on a post that will never use it.
+    """
+    await _cleanup()
+    try:
+        zone = ZoneInfo("America/Denver")
+        opens = datetime.now(zone).date() + timedelta(days=2)
+        _, row_id = await _queued(
+            opens=opens,
+            closes=opens + timedelta(days=8),
+            scheduled_at=datetime.now(UTC) + timedelta(days=20),
+        )
+        before = await _scheduled_at(row_id)
+
+        read = AsyncMock(
+            return_value={"id": "post-1", "text": "as queued", "status": "sending"}
+        )
+        edit = AsyncMock(return_value={"id": "post-1"})
+        with patch("app.services.buffer_publisher.read_scheduled_post", new=read):
+            with patch("app.services.buffer_publisher.edit_scheduled_text", new=edit):
+                assert await _run() == 0
+
+        assert not edit.called, "a post on its way out was given a new date"
+        assert await _scheduled_at(row_id) == before
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_state_buffer_invented_is_loud(
+    database_url: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A name this rail does not know is not a row to skip quietly. If Buffer
+    renames a state, every row stops moving — the safe direction, but nothing
+    else in the system would say so, and the same call is already made a few
+    hundred lines up for the same reason."""
+    await _cleanup()
+    try:
+        zone = ZoneInfo("America/Denver")
+        opens = datetime.now(zone).date() + timedelta(days=2)
+        await _queued(
+            opens=opens,
+            closes=opens + timedelta(days=8),
+            scheduled_at=datetime.now(UTC) + timedelta(days=20),
+        )
+        caplog.set_level(logging.DEBUG, logger="app.services.buffer_publisher")
+        read = AsyncMock(
+            return_value={"id": "post-1", "text": "as queued", "status": "parked"}
+        )
+        edit = AsyncMock(return_value={"id": "post-1"})
+        with patch("app.services.buffer_publisher.read_scheduled_post", new=read):
+            with patch("app.services.buffer_publisher.edit_scheduled_text", new=edit):
+                assert await _run() == 0
+
+        assert not edit.called
+        errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert errors, [r.getMessage() for r in caplog.records]
+        assert "parked" in errors[0].getMessage()
     finally:
         await _cleanup()

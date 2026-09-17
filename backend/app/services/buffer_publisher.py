@@ -113,6 +113,14 @@ _BUFFER_ERROR = "error"
 #: Still on its way. A post genuinely sits in `sending` for minutes, and a
 #: transient `error` object attached to one of these is not a verdict.
 _BUFFER_IN_FLIGHT = frozenset({"draft", "needs_approval", "scheduled", "sending"})
+#: Every state this rail knows the name of. Anything else means Buffer changed
+#: something under us, which is worth an error rather than a shrug.
+_BUFFER_KNOWN_STATES = _BUFFER_IN_FLIGHT | {_BUFFER_SENT, _BUFFER_ERROR}
+#: Safe to hand a new `dueAt`. A narrower question than "is this final?", and
+#: the answer differs on exactly one state: a post already on its way out must
+#: not be rescheduled — Buffer may send it anyway, and our row would then hold
+#: a future date for something the channel has already published.
+_SAFE_TO_RESCHEDULE = frozenset({"draft", "needs_approval", "scheduled"})
 
 _CHANNELS = """
 query Channels($input: ChannelsInput!) {
@@ -1686,6 +1694,24 @@ async def backfill_links(db: AsyncSession) -> int:
 _REALIGN_BATCH = 4
 
 
+def _days_outside_window(
+    day: date_cls, opens: date_cls, closes: date_cls | None
+) -> int:
+    """How far outside its window a date falls, in days. Zero means inside.
+
+    The measure `realign_windows` moves by. "Inside or not at all" reads like
+    the stricter rule and is in fact the weaker one: `next_free_slot` never
+    answers before the window opens, so that rule can only ever refuse a move
+    to a date *past* the close — and a post sitting ten days before its window
+    is further out than one sitting a day after it.
+    """
+    if day < opens:
+        return (opens - day).days
+    if closes is not None and day > closes:
+        return (day - closes).days
+    return 0
+
+
 async def realign_windows(db: AsyncSession) -> int:
     """Move a queued post that no longer falls inside its piece's window.
 
@@ -1772,8 +1798,69 @@ async def realign_windows(db: AsyncSession) -> int:
         if due_at == row.scheduled_at:
             # The only free slot inside the window is the one it already holds.
             continue
+
+        # A move has to be an improvement, and `next_free_slot` cannot promise
+        # one: it walks forward until it finds a free slot and has no upper
+        # bound of its own — `_from_when` says where to start, nothing says
+        # where to stop — so on a window whose every slot is spent it answers
+        # with a date past the close.
+        #
+        # Without this the post walked. `_free_slots` counts the row's own slot
+        # as taken, so the date this handed out last tick is occupied by this
+        # very post on the next one, the window is still full, and the answer is
+        # one slot further along. Every fifteen minutes, two Buffer requests a
+        # time, for as long as the window stayed full — a post drifting away
+        # from its window by the machinery meant to bring it back.
+        #
+        # Measured in days outside the window rather than "inside or not at
+        # all": a post ten days early is further out than one a day late, and
+        # the move that trades the first for the second is the one the 16-sep
+        # incident needed. It also frees the early date for the perishable
+        # piece that was waiting for it.
+        assert piece.publish_window_start is not None  # the query said so
+        local_new = due_at.astimezone(zone).date()
+        local_old = row.scheduled_at.astimezone(zone).date()
+        if _days_outside_window(
+            local_new, piece.publish_window_start, piece.publish_window_end
+        ) >= _days_outside_window(
+            local_old, piece.publish_window_start, piece.publish_window_end
+        ):
+            log.warning(
+                "Piece %s: no free %s slot closer to its window %s-%s than %s; "
+                "leaving it there",
+                piece.id, row.platform.value,
+                piece.publish_window_start, piece.publish_window_end,
+                row.scheduled_at.isoformat() if row.scheduled_at else "?",
+            )
+            continue
+
         try:
             current = await read_scheduled_post(post_id)
+            # Buffer's ten are a count of scheduled posts and only drop when one
+            # is SENT, so a post can go out between the query above and this
+            # line. Editing `dueAt` on something already sent — or that Buffer
+            # closed with an error — would be rewriting history, and our row
+            # would then disagree with what the channel actually published. The
+            # reconciler reads it on the next tick and closes it properly.
+            state = (current.get("status") or "").lower()
+            if state not in _SAFE_TO_RESCHEDULE:
+                # A state we know is terminal is ordinary news: the reconciler
+                # owns that row. A state we do not recognise at all is not —
+                # same call as `reconcile_scheduled` makes, and for the same
+                # reason: if Buffer renamed something, every row here stops
+                # moving and nothing else would say so.
+                if state in _BUFFER_KNOWN_STATES:
+                    log.info(
+                        "Piece %s: the %s post is %s in Buffer, not moving it",
+                        piece.id, row.platform.value, state,
+                    )
+                else:
+                    log.error(
+                        "Piece %s: Buffer reports the %s post as %r, which this "
+                        "rail does not recognise; not moving it. Somebody has to look.",
+                        piece.id, row.platform.value, state or "",
+                    )
+                continue
             await edit_scheduled_text(
                 piece,
                 row.platform,

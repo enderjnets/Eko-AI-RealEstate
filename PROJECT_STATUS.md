@@ -50,7 +50,7 @@ Ender cuando abra G1 (regla 9 del «⛔ Para el ejecutor»).
 |---|---|---|
 | 0 — la cola antes de la cuota | 🔴 **bloqueada en G1/G2** (y 0.2 no es ejecutable hasta las 09:15 del 17) | — |
 | 1 — Buffer ve las dos ventanas | ✅ **cerrada**, APROBADO del advisor | ver abajo |
-| 2 — `realign_windows` dentro de la ventana | ⏳ | — |
+| 2 — `realign_windows`: **más cerca** de la ventana, no «dentro o nada» | ✅ **cerrada** | ver abajo |
 | 3 — el carril calculado enlaza con la cifra | ⏳ | — |
 | 4 — el clasificador ve las parejas | ⏳ (antes del 22) | — |
 | 5 — la ficha del socio | ⏳ | — |
@@ -136,7 +136,69 @@ de `Retry-After` usa tres cantidades distinguibles (5 s cabecera, 900 s suelo,
 2400 s `Retry-After`) para que no pueda pasar con el suelo; y la rama «ninguna
 política declara `r`» tiene test propio.
 
+## Auditoría de la Fase 2 (un revisor independiente)
+
+Declaró **dos bloqueantes**, y el primero cambió el diseño de la fase.
+
+**El criterio del plan estaba mal afinado.** `_from_when` devuelve `max(ahora,
+medianoche del inicio)`, así que `next_free_slot` **nunca** devuelve una fecha
+anterior al inicio de la ventana: la guarda «dentro de la ventana o no se
+mueve» solo podía dispararse por el final, y en ese caso el post ya estaba
+fuera y el hueco nuevo siempre era ≥ el inicio. Es decir, **bloqueaba justo los
+movimientos que acercaban el post a su ventana**. Con la pieza 42 del 16-sep
+(18-sep, ventana 28-sep→5-oct, llena) la habría dejado publicándose diez días
+antes y ocupando el hueco que la pieza 24 necesitaba.
+
+**Decisión (consenso; el advisor eligió C):** el criterio pasa a ser **«más
+cerca»** — se mueve solo si la distancia en días al intervalo `[inicio, fin]`
+baja. Dentro → distancia 0 → siempre mueve. 18-sep (10) → 6-oct (1): mueve.
+1-oct (1) → 6-oct (6): no mueve, que es lo que el plan temía. MiniMax no opinó:
+`./scripts/ask-minimax.sh` no existe en este repositorio.
+
+**Y con eso salió a la luz algo peor que lo que la fase venía a arreglar.**
+`_free_slots` **no excluye la propia fila**, así que el hueco al que el código
+base movía un post quedaba ocupado por ese mismo post, la ventana seguía llena
+y al tic siguiente lo movía un hueco más allá. Un post fuera de una ventana
+llena **caminaba hacia delante indefinidamente, cada 15 min, a 2 peticiones de
+Buffer por tic** — alejándose de su ventana por obra de la función que existe
+para acercarlo. El criterio «más cerca» lo para en seco.
+
+Los otros dos hallazgos aceptados: **`sending` fuera del conjunto editable**
+(`_BUFFER_IN_FLIGHT` responde «¿es final?», no «¿es seguro cambiarle la
+fecha?»; un post que Buffer está enviando puede completarse igual y dejar la
+fila con fecha futura para algo ya publicado), y **un estado que este carril no
+reconoce se registra en ERROR**, como ya hace `reconcile_scheduled`.
+
 ## Hallazgos abiertos (backlog, con evidencia)
+
+- 🔴 **La fila que Buffer cerró antes de hora no la sana nadie.**
+  `reconcile_scheduled` filtra `scheduled_at <= now` y `realign_windows` filtra
+  `> now`, y son los **dos únicos** barridos de filas `SCHEDULED` de toda la
+  app. Una fila cuyo post Buffer marcó `sent` (alguien pulsó *Share Now*) o
+  `error` mientras nuestra fecha sigue a 20 días vista se queda ahí. Es
+  preexistente —el código base también la reintentaba cada tic, con 2
+  peticiones en vez de 1— pero lo que **sí** es nuevo: con la guarda de estado
+  la fila nunca sale del conjunto desviado, y con `_REALIGN_BATCH = 4` tres
+  filas atascadas (una pieza × tres canales) dejan **una** plaza útil y cuatro
+  dejan **ninguna**: realign muerto para todos los demás. **Forma del arreglo:**
+  que `reconcile_scheduled` deje de exigir `<= now` para las filas que realign
+  encontró cerradas en Buffer, o que realign las estampe (`last_error`) para
+  que salgan del lote.
+- 🟡 **Aviso por fila y por tic**, contra la convención que este mismo fichero
+  declara en `reconcile_scheduled` («*a tick every fifteen minutes would
+  otherwise write a line per waiting post forever*»). Mientras una ventana siga
+  llena son 96 WARNING al día por fila. La forma correcta es la de `ops_alert`:
+  avisar al **cambiar de estado**, no en cada tic.
+- 🟡 **La misma inanición del lote, por otra causa.** Una fila en su mejor
+  posición fuera de una ventana llena (distancia 1, bloqueada por la guarda)
+  **sigue en `drifted` cada tic** y ocupa una plaza de `_REALIGN_BATCH = 4`.
+  Cuesta 0 peticiones de Buffer —la guarda dispara antes del `read`— pero
+  ordenadas por `id` ascendente, cuatro así dejan a realign sin procesar a
+  nadie más. No es regresión (el criterio del plan hacía lo mismo y el código
+  base era peor), y el arreglo del punto anterior **no** lo cubre: esta fila no
+  está cerrada en Buffer, está legítimamente esperando. **Forma:** llevar la
+  comparación de distancias al bucle de detección, antes del corte del lote.
+
 
 - 🔴 **Al desplegar, el freno proactivo se enciende por primera vez.** Medido:
   con la cabecera real de dos ventanas el parser devolvía `(None, None)`, así
@@ -189,11 +251,22 @@ política declara `r`» tiene test propio.
 | secretos / `print` en el diff | ninguno (barrido sobre las líneas añadidas) |
 | migración | no hace falta en esta fase |
 
+## Checklist real de la Fase 2
+
+| comprobación | resultado |
+|---|---|
+| `pytest -q` | **2073 passed**, 0 saltados (2066 + 7 nuevos) |
+| `ruff check app tests` | *All checks passed!* |
+| tests nuevos vistos en rojo | **8 de 8**, incluida la mutación «criterio del plan», que prueba que el criterio nuevo no es cosmético |
+| `md5` del fuente tras la batería | `6a3a0f39c2df2eb917534aa113da0cb6`, idéntico |
+| secretos / `print` en el diff | ninguno |
+| migración | no hace falta |
+
 ## Siguiente paso
 
-**Fase 2** — `realign_windows`: cota de ventana por el otro lado y no mover un
-post que Buffer ya envió. En paralelo, **G1 sigue esperando a Ender** y vence a
-las 08:57.
+**Fase 3** — el carril calculado enlaza con la cifra que promete
+(`content_writer.py`). Las tres piezas que ya existen (41, 43, 45) están dentro
+de G1. En paralelo, **G1 sigue esperando a Ender** y vence a las 08:57.
 
 ---
 
