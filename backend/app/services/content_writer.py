@@ -248,6 +248,48 @@ _SPOKEN_DOMAIN = {
     ContentLanguage.ES: "Denver Home Story punto com",
 }
 
+# Everything that is not a letter or a digit, so "Denver Home Story dot com."
+# and "denverhomestory  dot  com" are the same question.
+_NOT_A_WORD = re.compile(r"[^0-9a-z]+")
+
+
+def carries_spoken_domain(text: str | None, language: ContentLanguage) -> bool:
+    """Does this text say the address out loud?
+
+    The BRAND is not the address. Measured on the live rail: piece 67 ends
+    "See what your home could sell for with Denver Home Story" and piece 69
+    ends "Request a personalized estimate at Denver Home Story dot com slash
+    contact". The first is a sign-off the owner rejected for having no call to
+    action; the second is one he approved. A check on the brand name alone
+    would have called them both fine.
+
+    Deliberately not a check for one of the three lines in `_SPOKEN_CTA`: a
+    model that writes its own address, as 69 did, has already done the job, and
+    a second sign-off after it would be two.
+    """
+    domain = _SPOKEN_DOMAIN.get(language)
+    if not text or not domain:
+        return False
+    return _NOT_A_WORD.sub("", domain.lower()) in _NOT_A_WORD.sub("", str(text).lower())
+
+
+def with_sign_off(script: str | None, language: ContentLanguage, cta_index: int) -> str:
+    """What the narrator should say for this script. The single definition.
+
+    Used when a draft is written AND when a person rewrites the script in the
+    console, because those two have to agree: the narration is what the video
+    actually says, and until now nothing kept it in step with an edit.
+    """
+    spoken = (str(script or "")).rstrip()
+    url = (get_settings().CONTENT_CTA_URL or "").strip()
+    lines = _SPOKEN_CTA.get(language)
+    domain = _SPOKEN_DOMAIN.get(language)
+    if not spoken or not url or not lines or not domain:
+        return spoken
+    if carries_spoken_domain(spoken, language):
+        return spoken
+    return f"{spoken} {lines[cta_index % len(lines)].format(domain=domain)}".strip()
+
 # Three sign-offs, rotated. One fixed line would be heard thirty times a month
 # by anyone who follows the channel; a line the model invents each day is a
 # line that one day promises more than the funnel delivers. Written by hand,
@@ -371,13 +413,15 @@ def _with_cta(
     # video that says nothing but "Buying or selling in Denver?".
     narration = draft.narration
     if draft.scenes and url:
-        lines = _SPOKEN_CTA[language]
-        sign_off = lines[cta_index % len(lines)].format(
-            domain=_SPOKEN_DOMAIN[language]
+        # The question the dedupe asks is whether the ADDRESS is already
+        # spoken, not whether THIS line is. A model that wrote its own — "…at
+        # Denver Home Story dot com slash contact", which is what piece 69 did
+        # — has done the job, and appending ours after it would say it twice.
+        spoken = with_sign_off(
+            draft.narration or draft.script, language, cta_index
         )
-        spoken = (draft.narration or draft.script or "").rstrip()
-        if sign_off not in spoken:
-            narration = f"{spoken} {sign_off}".strip()
+        if spoken != (draft.narration or draft.script or "").rstrip():
+            narration = spoken
 
     if caption == draft.caption and narration == draft.narration:
         return draft

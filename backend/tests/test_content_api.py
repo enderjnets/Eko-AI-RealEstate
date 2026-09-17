@@ -18,7 +18,7 @@ import app.main as main_module
 from app.config import get_settings
 from app.db.base import get_bypass_session_factory
 from app.main import app
-from app.models import ContentKind, ContentPiece, ContentStatus
+from app.models import ContentKind, ContentLanguage, ContentPiece, ContentStatus
 
 
 @pytest.fixture
@@ -1339,4 +1339,57 @@ async def test_a_negative_view_count_is_refused(database_url: str) -> None:
             )
             assert bad.status_code == 422
     finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_editing_the_script_changes_what_the_narrator_says(
+    database_url: str, monkeypatch
+) -> None:
+    """The hole a human edit fell into.
+
+    The narration is materialised once when the draft is written; it is not
+    shown in the console, cannot be edited, and "Rebuild the video" rebuilds
+    from the stored plan. So correcting a wrong figure in the script and
+    pressing rebuild gave back a video still saying the wrong figure — and the
+    yellow captions with it, since those are transcribed from the audio.
+    """
+    from app.config import get_settings
+
+    monkeypatch.setenv("CONTENT_CTA_URL", "https://www.denverhomestory.com")
+    get_settings.cache_clear()
+    async with get_bypass_session_factory()() as db:
+        piece = ContentPiece(
+            org_id=1,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.NEEDS_APPROVAL,
+            hook="A hook",
+            script="The old script.",
+            caption="A caption",
+            scenes={
+                "narration": "The old script. Let's talk about your numbers. "
+                "Denver Home Story dot com.",
+                "scenes": [{"visual_prompt": "A street", "on_screen_text": "Denver"}],
+            },
+        )
+        db.add(piece)
+        await db.commit()
+        piece_id = piece.id
+    try:
+        async with _client() as client:
+            resp = await client.patch(
+                f"/api/v1/content/{piece_id}", json={"script": "The corrected script."}
+            )
+        assert resp.status_code == 200, resp.text
+        async with get_bypass_session_factory()() as db:
+            fresh = await db.get(ContentPiece, piece_id)
+            spoken = fresh.scenes["narration"]
+        assert spoken.startswith("The corrected script.")
+        assert "old script" not in spoken
+        # And it still says the address: an edit must not cost the call to
+        # action either.
+        assert "Denver Home Story dot com" in spoken
+    finally:
+        get_settings.cache_clear()
         await _cleanup()

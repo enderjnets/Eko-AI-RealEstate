@@ -62,6 +62,54 @@ llegado al narrador bajo el motor de BitTrader**. Es una línea en `job_input`.
 3. **La puerta de publicación no mira el vídeo**: `content_studio.py:260-270`
    solo exige que la línea de correduría exista en Ajustes. Ver G3.
 
+## Fase 1 — el CTA llega al narrador (código escrito; checklist en verde)
+
+Rama `feat/el-cta-llega-al-narrador`, commit **`83c990d`**.
+
+- `render_jobs.py:job_input` — `JobInput.script` pasa a ser lo que el narrador
+  **debe decir**: `scenes["narration"]` si la hay, si no `piece.script`. Más un
+  `log.warning` cuando el texto que sale hacia el narrador no dice el dominio.
+- `content_writer.py` — `carries_spoken_domain(text, language)` sobre
+  `_SPOKEN_DOMAIN`, normalizando todo lo que no sea letra o dígito. El dedupe
+  de `_with_cta` pasa a usarlo: antes preguntaba si **nuestra** línea estaba,
+  que es la pregunta equivocada cuando el modelo escribe la suya (pieza 69).
+
+| comprobación | resultado real |
+|---|---|
+| `pytest -q` | **2092 pasan, 0 saltados, 0 fallos** (2082 antes + 10 nuevos) |
+| `ruff check app tests` | limpio (un `I001` de orden de imports, corregido con `--fix`) |
+| `pytest worker/tests` | **112 pasan** |
+| mutaciones | **10 de 10 en rojo** (6 del cambio + 4 de las correcciones de auditoría); `md5` de los tres fuentes idéntico tras restaurar |
+| diff | sin secretos, sin `print`, sin `console.log` |
+| verificación real | con las filas **74 y 75 de producción**, `job_input` pasa de no decir el dominio a decirlo |
+
+El predicado con datos reales: `False` en la 67 («…with Denver Home Story»,
+que Ender rechazó por no tener CTA) y `True` en la 69 («…Denver Home Story dot
+com slash contact», que aprobó). Esos dos son los casos de prueba.
+
+## Auditoría de la Fase 1 (un revisor independiente, solo lectura)
+
+Seis hallazgos. **Los tres primeros corregidos en la misma fase**, con test y
+mutación cada uno; los tres menores restantes al backlog.
+
+| # | severidad | hallazgo | qué se hizo |
+|---|---|---|---|
+| A1 | **bloqueante** | `ruff I001`: el import nuevo quedó por encima de `content_studio` y `ruff check app` es el primer paso de CI, así que el job se ponía rojo antes de pytest | corregido con `--fix` mientras el auditor trabajaba; `ruff check app tests` limpio |
+| B1 | **importante** | **Una edición humana del guion dejaba de llegar al vídeo.** La narración se materializa una sola vez al escribir el borrador, no se muestra en la consola, no se puede editar, y «Rehacer el vídeo» rehace desde el plan. Con mi cambio, corregir una cifra mal en el guion y rehacer devolvía un vídeo **diciendo todavía la cifra vieja** — y los subtítulos con ella, porque se transcriben del audio. El texto del botón (`i18n.tsx:780`) pasaba a mentir | `edit_piece` rematerializa `scenes["narration"]` cuando cambia el guion, con `with_sign_off`, que es ahora la **única** definición de «el texto con su despedida» y la comparte `_with_cta` |
+| B2 | **importante** | El aviso nuevo saltaba en **todos** los trabajos de carril A, donde es falso: un clip filmado no tiene narración y `assemble.py` sí le quema el dominio. «Un aviso que salta siempre no es un aviso» — lo dice el propio test que escribí | el aviso se limita a `PRODUCE_B`, con su test contrapeso |
+| A2 | menor | `scenes` es JSONB: `{"narration": 123}` daba `AttributeError` → 500 → un intento perdido de los tres | `str(...)`, como ya hacen `content_studio` y `content_figures` sobre el mismo campo |
+| A5 | menor | Un tercer idioma daría `KeyError` en la ruta del obrero | `_SPOKEN_DOMAIN.get(...)`, devuelve `False` |
+| B3 | menor | Una narración en blanco sigue matando el motor `eko` (`worker/produce.py:360`) | **backlog**: ese motor no está en producción |
+
+El auditor comprobó y descartó, con evidencia: longitud de la narración
+(no hay límite en `JobInput.script`), piezas en español, `scenes` nulo, vacío,
+lista o con `narration` nula, el carril A en `worker/`, los tests existentes de
+`_with_cta`, y los tres puntos de seguridad (el aviso solo lleva `piece.id`;
+`scenes` ya viajaba entero, así que no se expone un byte nuevo; la frontera del
+token no cambia). Señaló además que mi test del dedupe asertaba sobre
+`out.narration or out.script`, y ese `or` tapaba la rama: **corregido**, ahora
+asierta sobre `_scene_plan(out)["narration"]`, que es lo que llega a la columna.
+
 ## Puertas decididas (consenso Opus + advisor; MiniMax ausente)
 
 `./scripts/ask-minimax.sh` **no existe en este repo** (comprobado en `scripts/`
@@ -95,11 +143,26 @@ y en `~`), así que el consenso va sin él en todas las fases.
 |---|---|
 | Arranque: validar orden, dependencias y riesgos | Orden correcto. Cinco ajustes, incluida la corrección de `fin41.png` (que él mismo había sugerido antes y retiró con la evidencia del propio transcript) |
 
+## Notas para las Fases 2 y 3
+
+- `with_sign_off` (`content_writer.py`) es **la** primitiva del texto hablado.
+  La acción `rematerialise` de la Fase 3 la llama; no se copia.
+- `_requeue_render` (Fase 3) tendrá **tres** llamadores, no dos: `rebuild_piece`,
+  el bucle de corrección y **`edit_piece`** cuando cambie el guion de una pieza
+  que ya tiene `media_path` — hoy una edición deja un vídeo viejo aprobable
+  hasta que alguien pulse «Rehacer». Preexistente; la Fase 3 lo cierra barato.
+
 ## Siguiente paso
 
-Fase 1: `job_input` manda al narrador la narración con la despedida, más
-`carries_spoken_domain`. **Recordatorio permanente:** 0.110.0 la arma PLAN (6)
-Fase 4, plazo 22-sep 08:07; G2 (rehacer 74 y 75) solo con 0.110.0 viva.
+**Fase 2:** tablas `content_rejections` y `content_lessons` con RLS, más
+`classify` / `verify` / `decide` en `content_corrections.py`.
+
+**Recordatorio permanente (sobrevive a un `/compact`):** esta fase cierra **sin
+bump de versión**. La release **0.110.0** la arma **PLAN (6) Fase 4**, que nadie
+ha ejecutado y vence el **22-sep a las 08:07 de Denver**. Quien ejecute ese plan
+no leerá este, así que: **la entrada de `CHANGELOG.md` y de
+`frontend/lib/version.ts` correspondiente a esta fase va en ese bump.** Y **G2**
+(rehacer las piezas 74 y 75) solo tiene sentido con 0.110.0 ya desplegada.
 
 ---
 

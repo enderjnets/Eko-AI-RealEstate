@@ -462,6 +462,24 @@ async def edit_piece(
             changed = True
 
     if changed:
+        if "script" in payload.model_fields_set and isinstance(piece.scenes, dict):
+            # What the narrator SAYS has to follow what the person just wrote.
+            # It did not, and that is a hole a human edit fell straight into:
+            # the narration is materialised once when the draft is written, it
+            # is not shown in the console, it cannot be edited, and "Rebuild
+            # the video" rebuilds from the plan. So correcting a wrong figure
+            # in the script and pressing rebuild gave back a video still saying
+            # the wrong figure — and the yellow captions with it, because they
+            # are transcribed from the audio.
+            from app.services.content_topics import rotation_index
+            from app.services.content_writer import with_sign_off
+
+            piece.scenes = {
+                **piece.scenes,
+                "narration": with_sign_off(
+                    piece.script, piece.language, await rotation_index(db)
+                ),
+            }
         _refresh_violations(piece)
         # The person approved the OLD text. Through the declared edge, so an
         # illegal path here is a crash rather than a silent status write.

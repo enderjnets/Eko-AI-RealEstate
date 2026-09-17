@@ -53,6 +53,7 @@ from app.models import (
 )
 from app.services.content_render import RenderRefused, check_output, probe_media
 from app.services.content_studio import advance
+from app.services.content_writer import carries_spoken_domain
 from app.services.fair_housing import PEOPLE_IN_PICTURES
 
 log = logging.getLogger(__name__)
@@ -246,6 +247,37 @@ async def job_input(job_id: int) -> JobInput:
             )
         ).scalar_one_or_none()
         brokerage = (settings_row.brokerage_line or "").strip() if settings_row else ""
+        # What the narrator must SAY, which is not always what the piece says.
+        # `_with_cta` materialises the spoken sign-off into `scenes.narration`
+        # and leaves `script` as the written text, and the external engine
+        # reads `script` first (`render_externo.py`: `spec.get("script") or
+        # escenas.get("narration")`), so the fallback that would have saved it
+        # is never reached. Measured: every generated piece since 10-sep says
+        # the address in `narration` and not in `script`, and eight frames of
+        # piece 72 end on the last words of the script with no sign-off. Four
+        # rejections — 66, 70, 71, 73 — were this.
+        plan = piece.scenes if isinstance(piece.scenes, dict) else {}
+        # `str()` because this is JSONB: the column will hold a number as
+        # happily as a string, and the two neighbours that read the same field
+        # (`content_studio.text_violations`, `content_figures.claimed_text`)
+        # already coerce it. A 500 here costs the piece one of its three
+        # attempts.
+        spoken = str(plan.get("narration") or "").strip() or piece.script
+        # Lane B only. A filmed clip has no narration to carry a sign-off, and
+        # `assemble.py` burns the address on its end card anyway, so warning
+        # about it would be both constant and false — and a warning that always
+        # fires is not a warning.
+        if job.kind is RenderJobKind.PRODUCE_B and not carries_spoken_domain(
+            spoken, piece.language
+        ):
+            # Not a refusal: pieces written before the sign-off existed have to
+            # keep rendering. But nobody was watching this, and that is why it
+            # ran for a week.
+            log.warning(
+                "Piece %s: the text going to the narrator does not say the "
+                "site out loud; this video will have no spoken call to action",
+                piece.id,
+            )
         return JobInput(
             piece_id=piece.id,
             kind=job.kind,
@@ -253,7 +285,7 @@ async def job_input(job_id: int) -> JobInput:
             brokerage_line=brokerage,
             has_media=bool(piece.media_path),
             hook=piece.hook,
-            script=piece.script,
+            script=spoken,
             scenes=piece.scenes,
             people_words=list(PEOPLE_IN_PICTURES),
         )

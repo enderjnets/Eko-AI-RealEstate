@@ -18,7 +18,7 @@ from sqlalchemy import select, text
 from app.config import get_settings
 from app.db.base import get_bypass_session_factory, get_session_factory
 from app.models import ContentKind, ContentLanguage, ContentPiece, ContentStatus
-from app.services.content_writer import generate_draft
+from app.services.content_writer import carries_spoken_domain, generate_draft
 from app.services.llm import LLMResult
 from app.services.tenant_context import org_scope
 
@@ -582,3 +582,66 @@ def test_the_english_denylist_still_bites_under_a_spanish_piece() -> None:
     found = cw._all_violations(draft, ContentLanguage.ES)
 
     assert any(v["category"] == "people_in_pictures" for v in found), found
+
+
+# ── The brand is not the address ─────────────────────────────────────────
+
+
+def test_the_brand_name_alone_is_not_the_domain() -> None:
+    """Piece 67, live: "See what your home could sell for with Denver Home
+    Story." The owner rejected it for having no call to action. A check on the
+    brand name would have called it fine."""
+    assert not carries_spoken_domain(
+        "See what your home could sell for with Denver Home Story.",
+        ContentLanguage.EN,
+    )
+
+
+def test_an_address_the_model_wrote_itself_counts() -> None:
+    """Piece 69, live, and approved: the model wrote its own sign-off."""
+    assert carries_spoken_domain(
+        "Request a personalized estimate at Denver Home Story dot com slash contact.",
+        ContentLanguage.EN,
+    )
+
+
+def test_the_domain_is_read_through_punctuation_and_spacing() -> None:
+    assert carries_spoken_domain("...  DENVER   home story, dot com!", ContentLanguage.EN)
+    assert carries_spoken_domain("Hablemos. Denver Home Story punto com.", ContentLanguage.ES)
+    # Each language asks for its own wording, not the other's.
+    assert not carries_spoken_domain("Denver Home Story punto com", ContentLanguage.EN)
+
+
+def test_nothing_said_is_not_the_domain() -> None:
+    assert not carries_spoken_domain(None, ContentLanguage.EN)
+    assert not carries_spoken_domain("", ContentLanguage.EN)
+
+
+def test_a_model_that_already_spoke_the_domain_gets_no_second_sign_off(
+    monkeypatch,
+) -> None:
+    """Two sign-offs in one video is worse than the bug this fixes.
+
+    Piece 69 is the live case: the model wrote "Request a personalized estimate
+    at Denver Home Story dot com slash contact" by itself. The dedupe used to
+    ask whether OUR line was already there, which it never was.
+    """
+    from app.config import get_settings
+    from app.services import content_writer as cw
+
+    monkeypatch.setenv("CONTENT_CTA_URL", "https://www.denverhomestory.com")
+    get_settings.cache_clear()
+    try:
+        script = (
+            "Denver moves fast. Request a personalized estimate at Denver Home "
+            "Story dot com slash contact."
+        )
+        out = cw._with_cta(_drafted(script=script), ContentLanguage.EN, 0)
+        # Through `_scene_plan`, which is what actually reaches the column and
+        # therefore the narrator. Reading `out.narration or out.script` would
+        # pass whether or not this branch left `narration` alone.
+        spoken = cw._scene_plan(out)["narration"]
+        assert spoken.count("dot com") == 1
+        assert spoken == script
+    finally:
+        get_settings.cache_clear()

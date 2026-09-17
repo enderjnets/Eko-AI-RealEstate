@@ -813,3 +813,187 @@ async def test_a_doorbell_that_fails_does_not_cost_the_video(
         assert job_status == "done"
     finally:
         await _cleanup()
+
+
+# ── What the narrator is actually told to say ────────────────────────────
+#
+# `_with_cta` materialises the spoken sign-off into `scenes.narration` and
+# leaves `script` as the written text. The external engine reads `script`
+# first, so for a week every video ended on the last words of the script and
+# the address was never spoken. The owner rejected four pieces for it before
+# anybody looked at the field.
+
+
+async def _lane_b_piece(narration: str | None, script: str) -> tuple[int, int]:
+    """A generated piece with a shot list, and its queued render job."""
+    async with get_bypass_session_factory()() as db:
+        plan: dict | None = None
+        if narration is not None:
+            plan = {
+                "narration": narration,
+                "scenes": [
+                    {"visual_prompt": "A Denver street", "on_screen_text": "Denver"}
+                ],
+            }
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.DRAFT,
+            hook="What decides your home's value",
+            script=script,
+            caption="A caption",
+            scenes=plan,
+        )
+        db.add(piece)
+        await db.commit()
+        job = RenderJob(org_id=ORG, piece_id=piece.id, kind=RenderJobKind.PRODUCE_B)
+        db.add(job)
+        await db.commit()
+        return piece.id, job.id
+
+
+@pytest.mark.asyncio
+async def test_the_narrator_gets_the_text_with_the_sign_off(
+    database_url: str, worker_token: str
+) -> None:
+    """The whole bug, in one assertion.
+
+    Piece 72 in production: `script` ends "…which numbers matter for your
+    situation and why." and `narration` ends "…start at Denver Home Story dot
+    com." The video ended on the first. This is the field that decides it.
+    """
+    await _brokerage()
+    script = "A lender's appraisal and an online estimate answer different questions."
+    narration = f"{script} If you want to know what your home is worth today, start at Denver Home Story dot com."
+    piece_id, job_id = await _lane_b_piece(narration, script)
+    try:
+        async with _client() as client:
+            body = (await client.get(f"/api/v1/internal/render-jobs/{job_id}/input")).json()
+        assert "Denver Home Story dot com" in body["script"]
+        assert body["script"] == narration
+        # The shot list still travels whole: the engine draws from it.
+        assert body["scenes"]["narration"] == narration
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_piece_without_a_plan_still_sends_its_script(
+    database_url: str, worker_token: str
+) -> None:
+    """A filmed clip has no shot list, and must still render."""
+    await _brokerage()
+    piece_id, job_id = await _lane_b_piece(None, "Just the written script.")
+    try:
+        async with _client() as client:
+            body = (await client.get(f"/api/v1/internal/render-jobs/{job_id}/input")).json()
+        assert body["script"] == "Just the written script."
+        assert body["scenes"] is None
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_empty_narration_falls_back_to_the_script(
+    database_url: str, worker_token: str
+) -> None:
+    """A shot list whose narration is blank is not an instruction to say
+    nothing — the engine would refuse the job outright."""
+    await _brokerage()
+    piece_id, job_id = await _lane_b_piece("   ", "The written script.")
+    try:
+        async with _client() as client:
+            body = (await client.get(f"/api/v1/internal/render-jobs/{job_id}/input")).json()
+        assert body["script"] == "The written script."
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_job_input_warns_when_the_narrator_would_not_say_the_domain(
+    database_url: str, worker_token: str, caplog
+) -> None:
+    """Nobody was watching this, and that is why it ran for a week."""
+    await _brokerage()
+    piece_id, job_id = await _lane_b_piece("No address here at all.", "Same.")
+    try:
+        with caplog.at_level("WARNING"):
+            async with _client() as client:
+                await client.get(f"/api/v1/internal/render-jobs/{job_id}/input")
+        assert any("does not say the site out loud" in r.getMessage() for r in caplog.records)
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_no_warning_when_the_narrator_does_say_it(
+    database_url: str, worker_token: str, caplog
+) -> None:
+    """The counterweight: a warning that always fires is not a warning."""
+    await _brokerage()
+    piece_id, job_id = await _lane_b_piece(
+        "Let's talk about your numbers. Denver Home Story dot com.", "Let's talk."
+    )
+    try:
+        with caplog.at_level("WARNING"):
+            async with _client() as client:
+                await client.get(f"/api/v1/internal/render-jobs/{job_id}/input")
+        assert not any(
+            "does not say the site out loud" in r.getMessage() for r in caplog.records
+        )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_filmed_clip_is_not_warned_about_a_sign_off_it_cannot_have(
+    database_url: str, worker_token: str, caplog
+) -> None:
+    """Lane A has no narration and does not need one: `assemble.py` burns the
+    address on its end card. Warning about it would fire on every single
+    subtitle job and say something false — and a warning that always fires is
+    not a warning."""
+    await _brokerage()
+    piece_id, job_id = await _piece_with_job()
+    try:
+        with caplog.at_level("WARNING"):
+            async with _client() as client:
+                await client.get(f"/api/v1/internal/render-jobs/{job_id}/input")
+        assert not any(
+            "does not say the site out loud" in r.getMessage() for r in caplog.records
+        )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_narration_that_is_not_text_does_not_break_the_queue(
+    database_url: str, worker_token: str
+) -> None:
+    """`scenes` is JSONB: it holds a number as happily as a string, and a 500
+    here costs the piece one of its three attempts."""
+    await _brokerage()
+    async with get_bypass_session_factory()() as db:
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.DRAFT,
+            hook="A hook",
+            script="The written script.",
+            scenes={"narration": 123, "scenes": []},
+        )
+        db.add(piece)
+        await db.commit()
+        job = RenderJob(org_id=ORG, piece_id=piece.id, kind=RenderJobKind.PRODUCE_B)
+        db.add(job)
+        await db.commit()
+        job_id = job.id
+    try:
+        async with _client() as client:
+            resp = await client.get(f"/api/v1/internal/render-jobs/{job_id}/input")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["script"] == "123"
+    finally:
+        await _cleanup()
