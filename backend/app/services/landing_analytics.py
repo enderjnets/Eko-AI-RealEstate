@@ -24,6 +24,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy import and_, bindparam, delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.models.landing import LANDING_SECTIONS, LandingEvent, LandingSession
 
@@ -179,6 +180,21 @@ PUBLISH_PREVIEW_SECONDS = 90
 # nothing until they scroll — and judging them at the moment the beacon lands
 # would file every slow reader as a machine.
 SETTLED_MINUTES = 60
+
+
+# Two checkers following the same link arrive within a second of each other;
+# the widest real gap on record is 21 seconds, and the batch that produced it
+# spanned eight minutes overall. A minute is wide enough for a slow one and
+# far too narrow for two people who happened to watch the same short.
+PAIRED_CHECK_SECONDS = 60
+
+# How far back the pairing looks. The sweep runs every five minutes, so a row
+# is judged within the hour of settling and this only ever excludes rows a long
+# outage left behind. It is here because nothing purges `landing_sessions` and
+# the join is quadratic inside each campaign: without a floor, every row ever
+# recorded would be compared against every other one, for ever, on every tick.
+PAIRED_CHECK_LOOKBACK_DAYS = 30
+
 
 
 def is_publish_preview(gap_seconds: float | None, event_count: int) -> bool:
@@ -487,6 +503,129 @@ async def classify_publish_previews(db: AsyncSession) -> int:
     )
     await db.commit()
     log.info("Classified %d landing session(s) as publish previews", len(candidates))
+    return len(candidates)
+
+
+async def classify_paired_link_checks(db: AsyncSession) -> int:
+    """Mark the visits that were two machines fetching the same link at once.
+
+    A link posted or edited on a platform is fetched by several checkers within
+    seconds, each from a different egress point, and each arrives here as a
+    separate session in a separate city. Measured on the live rail, twice:
+    sixteen rows on 16-sep after descriptions were edited, and ten rows on
+    15-sep between 21:59 and 22:07 UTC on five videos published ten days
+    earlier. The trigger is not recorded anywhere — those edits are made by
+    hand in YouTube Studio — so the signature is what carries this, not a log.
+
+    **Different cities is the whole rule**, and it is why this is not
+    `one_shot_no_scroll` under another name. One person opening a link twice is
+    one city; two people in two cities opening the same link inside a minute,
+    both bouncing without scrolling, touching nothing and filling nothing, is
+    not two people. The sharpest pair on record is 24 MILLISECONDS apart, New
+    York and Denver, on the same video.
+
+    And it is why there is no list of cities here. Denver appears in that pair,
+    and a rule that excused it by name would be blind exactly where a machine
+    room with a Denver address is. The two real Denver visits in the same range
+    fall outside on their own terms: one carries no UTM, the other scrolled.
+
+    Like its neighbours, it only ever writes over `unknown`.
+    """
+    from app.services.tenant_context import get_org_id
+
+    org_id = get_org_id()
+    if org_id is None:
+        log.warning("Paired link-check sweep skipped — no organization is bound")
+        return 0
+
+    now = datetime.now(UTC)
+    settled = now - timedelta(minutes=SETTLED_MINUTES)
+    lookback = now - timedelta(days=PAIRED_CHECK_LOOKBACK_DAYS)
+    other = aliased(LandingSession)
+
+    def _did_nothing(row):
+        return (
+            func.coalesce(row.max_scroll_pct, 0) == 0,
+            row.cta_clicks == 0,
+            row.tel_clicks == 0,
+            row.form_started_at.is_(None),
+            # A session attached to a LEAD is never a machine, whatever the
+            # rest of its row says — and it can look exactly like one. The
+            # public capture endpoint creates a session row for a form post
+            # that carries a key the beacon never registered, which happens
+            # whenever a content blocker eats the tracking call and lets the
+            # form through. That row is born with no scroll, no clicks and no
+            # form_started_at, and it carries the campaign of the link the
+            # person followed — so a link checker fetching the same link from
+            # another city within the minute would have taken the two of them
+            # down together. A false `automated` throws away the only kind of
+            # row that matters.
+            row.lead_id.is_(None),
+            # And the row where the two disagree: `merge_values` writes
+            # form_submitted_at from the beacon's own form_submit event, so
+            # "pressed send and no lead ever arrived" — a captcha refusal, a
+            # dropped connection — is a row with a submission and no lead. It
+            # has nothing else to distinguish it from a checker.
+            row.form_submitted_at.is_(None),
+            row.traffic_class == "unknown",
+            row.last_seen_at < settled,
+            # Not indexable — the time test is between two rows, not against a
+            # constant — so this is the one predicate that keeps the join from
+            # growing without limit. Sessions are never purged, and without a
+            # floor a row from September 2026 would be re-paired against every
+            # other row every five minutes for ever.
+            row.first_seen_at > lookback,
+            row.org_id == org_id,
+            row.city.is_not(None),
+        )
+
+    candidates = (
+        await db.execute(
+            select(LandingSession.id)
+            .join(
+                other,
+                and_(
+                    # Both halves are marked, so the join is written once and
+                    # read from either side rather than `a.id < b.id`.
+                    other.id != LandingSession.id,
+                    other.utm_source == LandingSession.utm_source,
+                    other.utm_content == LandingSession.utm_content,
+                    # NULL never equals NULL in SQL, so a session with no
+                    # campaign can never pair — which is right: without a link
+                    # there is nothing for a checker to have followed.
+                    LandingSession.utm_source.is_not(None),
+                    LandingSession.utm_content.is_not(None),
+                    other.city != LandingSession.city,
+                    func.abs(
+                        func.extract(
+                            "epoch",
+                            LandingSession.first_seen_at - other.first_seen_at,
+                        )
+                    )
+                    <= PAIRED_CHECK_SECONDS,
+                    *_did_nothing(other),
+                ),
+            )
+            .where(*_did_nothing(LandingSession))
+            # A link fetched by three checkers pairs each row with two others.
+            .distinct()
+        )
+    ).scalars().all()
+
+    if not candidates:
+        return 0
+
+    await db.execute(
+        update(LandingSession)
+        .where(LandingSession.org_id == org_id, LandingSession.id.in_(candidates))
+        .values(
+            traffic_class="automated",
+            traffic_class_reason="paired_link_check",
+            traffic_classified_at=datetime.now(UTC),
+        )
+    )
+    await db.commit()
+    log.info("Classified %d landing session(s) as paired link checks", len(candidates))
     return len(candidates)
 
 

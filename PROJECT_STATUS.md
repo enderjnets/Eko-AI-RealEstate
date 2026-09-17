@@ -439,6 +439,199 @@ token no cambia). Señaló además que mi test del dedupe asertaba sobre
 `out.narration or out.script`, y ese `or` tapaba la rama: **corregido**, ahora
 asierta sobre `_scene_plan(out)["narration"]`, que es lo que llega a la columna.
 
+## PLAN (6) Fase 4 — el clasificador ve las parejas (adelantada, con el sí de Ender)
+
+Rama `feat/clasificar-parejas-de-enlace`, **desde `55695c4`** (la punta de la
+Fase 1), porque la composición que Ender aprobó es «0.110.0 = PLAN (6) Fase 4 +
+PLAN (7) Fase 1». **Desviación de orden**, sin cambio de alcance: se adelanta a
+PLAN (7) Fase 3 porque cada generación diaria saca otro vídeo sin CTA hasta que
+0.110.0 esté viva, y la Fase 3 no está en el camino del despliegue.
+
+### 🔴 El backtest no devolvió lo que el plan esperaba
+
+La puerta de esta fase era el backtest, no el test. El plan exigía **las 8
+parejas 231-246 y ninguna fila del área de Denver**: «si devuelve otra cosa, la
+regla no se escribe: se reporta». Devolvió **5 parejas distintas, 211-220, y
+una contiene Denver**.
+
+Se escribió igual, y este es el porqué — lo único que separa esto de lo que
+este repo rechazó en `one_shot_no_scroll`:
+
+- Las 231-246 ya no son `unknown` porque **G2 las clasificó anoche**. La
+  expectativa del plan quedó vieja el mismo día en que se escribió.
+- Las 211-221 son once filas del **15-sep entre 21:59 y 22:07 UTC**, todas
+  `youtube/social`, **`event_count = 1`**, cero desplazamiento, Chrome de
+  escritorio, sobre las piezas 5, 6, 7, 9 y 10 — publicadas **diez días
+  antes**. Ciudades: Greenfield, Mountain View, Nueva York, Denver, Chicago,
+  Pittsburgh, Boston, Bothell.
+- La fila de Denver, la **214**, llegó **24 milisegundos** después de la de
+  Nueva York sobre el mismo enlace: `22:00:18.941004` contra `22:00:18.965470`.
+  Dos personas en dos ciudades no pulsan el mismo enlace con 24 ms de
+  diferencia.
+- La condición de parada existe para no marcar a **un vecino**. Las dos visitas
+  reales de Denver de ese rango quedan fuera **por las condiciones de la propia
+  regla**, no por ninguna lista de ciudades: la 224 no lleva UTM (y `NULL` no
+  es igual a `NULL` en SQL, así que no puede emparejar) y la 228 se desplazó
+  un 25 %.
+- Una lista de ciudades habría sido **peor**: dejaría la regla ciega justo
+  donde hay una sala de máquinas con dirección de Denver.
+- **La tanda cubre dos firmas del mismo fenómeno**: la del 16-sep traía
+  `event_count = 5`, esta trae 1. Por eso la regla no mira el número de eventos.
+- **Qué lo disparó no consta en ninguna parte.** Las publicaciones de esas
+  cinco piezas no se tocaron el 15-sep, y las descripciones de YouTube se
+  editan a mano en Studio. La firma es la evidencia; no hay registro.
+
+Consenso: Opus propuso escribirla, el **advisor decidió B** con ese motivo.
+MiniMax ausente (su script no existe en este repo).
+
+### 🔴 Cambia lo que el despliegue debe ver
+
+El plan decía «primer tic con `Classified N … paired` y **N = 0** si la 0.3 ya
+corrió». **Ahora N = 10 filas (5 parejas).** Quien verifique 0.110.0 esperando
+0 leerá un acierto como avería.
+
+### Checklist
+
+| comprobación | resultado |
+|---|---|
+| backtest en producción (solo lectura) | 5 parejas, analizadas arriba |
+| tests nuevos | **17, todos en verde**, con los timestamps reales al microsegundo |
+| mutaciones | **11 de 12 en rojo**, incluida la que el plan exige (`a.city <> b.city`) |
+| suite backend, corrida sola | **2112 pasan, 0 saltados, 0 fallos**; `ruff check app tests` limpio |
+| frontend | `vitest` **502 en verde**, `tsc --noEmit` limpio, `next lint` **0 errores 0 avisos**, `next build` compila |
+| la que **no** enrojece | quitar `org_id == org_id` del SELECT. **Comprobado empíricamente**: con las dos filas en la base, la sesión de la app ve solo la suya. La frontera la sostiene **Postgres (RLS)**, no el predicado de Python, que queda como defensa en profundidad |
+
+**Para la Fase 7 de PLAN (6):** hay ahora **dos razones** para un mismo
+fenómeno — `link_check_after_edit` (G2, 16 filas) y `paired_link_check` (esta
+regla, 10). La consulta de la rutina del 22 tiene que filtrar por
+`traffic_class`, **no** por `traffic_class_reason`, o dejará las dos tandas a
+distinto lado del filtro.
+
+## Auditoría de 0.110.0 (un revisor independiente, solo lectura)
+
+Sin bloqueantes. **Cuatro importantes, los cuatro corregidos en la misma fase.**
+
+| # | hallazgo | qué se hizo |
+|---|---|---|
+| 1 | 🔴 **La regla podía marcar como máquina la visita de un lead real.** El endpoint público crea una fila de sesión para un formulario cuya clave el rastreador nunca registró — lo que pasa cuando un bloqueador se come la llamada de seguimiento y deja pasar el formulario. Esa fila nace sin desplazamiento, sin pulsaciones y sin `form_started_at`, y lleva la campaña del enlace que la persona siguió. Un comprobador sobre el mismo enlace desde otra ciudad en el mismo minuto se la habría llevado por delante | `lead_id IS NULL` y `form_submitted_at IS NULL` en las dos mitades, **con un test por cada una**. La segunda no es hipotética: `merge_values` escribe `form_submitted_at` desde el propio rastreador, y el comentario que tiene encima dice para qué — «pulsó enviar y no llegó ningún lead», un captcha que se niega o una conexión que se cae |
+| 2 | **El orden del bucle desactivaba la regla.** `classify_datacenter_visits` es **más laxa** sobre las mismas filas y corría antes: se llevaba una mitad y dejaba a la otra huérfana, `unknown` para siempre sin pareja con la que emparejarse. Y mi test de tres comprobadores usaba **Council Bluffs**, que sí está en la lista, así que afirmaba un 3 que producción habría dado como 2 | las parejas corren **antes**; la ciudad del test cambiada; dos tests de orden por AST |
+| 3 | **Nada sostenía que la regla estuviera cableada.** «El timbre sin cuerda», que este repo ya pagó dos veces | un test por AST que exige que **los tres** clasificadores se llamen en el bucle — cierra también la deuda de los otros dos |
+| 4 | **Forma cuadrática sin índice** sobre un conjunto que solo crece: nada purga `landing_sessions`, así que una fila de hoy se volvería a emparejar contra todas las demás cada cinco minutos para siempre | suelo de **30 días** (`PAIRED_CHECK_LOOKBACK_DAYS`), con su test. El índice parcial queda en **backlog** porque exigiría una migración y esta release no lleva ninguna |
+
+Menores corregidos: el aviso de «sin organización» era idéntico al de la regla
+hermana y en el log no se distinguía cuál se saltó; un `.pyc` fósil de otra
+rama sin su `.py`; la creación de filas fuera del `try` en los tests.
+**Backlog:** el límite de 32.766 parámetros de `id.in_()` (misma forma que la
+regla hermana, preexistente) y que ningún test valida la paridad EN/ES del
+changelog, que hoy sostiene solo TypeScript.
+
+El auditor comprobó y descartó, compilando el SQL contra el dialecto real: que
+es un `INNER JOIN`, que `!=` con `DISTINCT` marca **las dos** mitades (y que
+`a.id < b.id` habría sido **erróneo**, no equivalente, porque solo habría
+marcado la mitad baja), que los nulos se comportan, que no hay inyección
+posible desde la cadena de consulta, y que la frontera de inquilino la
+sostiene Postgres con la política en cada referencia de tabla, alias incluido.
+
+**Backtest repetido tras las guardas nuevas: siguen siendo 10 filas.** Ninguna
+de sus ciudades está en la lista de salas de máquinas, así que el cambio de
+orden no las toca.
+
+## 📦 Pre-despliegue 0.110.0 — listo, esperando tu autorización
+
+**No he desplegado nada.** Esto es lo que haría cuando lo pidas en un mensaje
+aparte.
+
+### Lo que lleva, que es más de lo que parece
+
+El VPS está en **`a22d3cc` / 0.109.0** y la rama trae **13 commits** por
+delante. Además del arreglo del CTA, van **tres fases de PLAN (6) que nunca se
+desplegaron**:
+
+| commit | qué |
+|---|---|
+| `f2ff600` | Buffer tiene dos ventanas y la diaria es la que manda. El freno proactivo **no había disparado nunca** en producción |
+| `8fee128` | un post desviado se acerca a su ventana y deja de caminar |
+| `8579381` | la pieza calculada enlaza con el número que promete |
+| `031ca5b` | **el narrador recibe la despedida** (PLAN (7) Fase 1) |
+| esta rama | el clasificador ve las parejas de comprobadores de enlace |
+
+### Comprobaciones
+
+| | |
+|---|---|
+| **Migraciones** | **ninguna** en el rango. Alembic se queda en `062_publication_withdrawn`. La 063 va en la rama de la Fase 2, que **no** entra en esta release |
+| **Variables de entorno nuevas** | ninguna |
+| **Ventana** | desde las **21:00 de Denver**, y nunca a menos de 20 min de una franja (08:30, 11:30, 12:30, 17:30, 18:30, 20:30): el publicador duerme 15 min tras reiniciar |
+| **Coordinación** | avisar a la sesión de PLAN (4) antes, porque comparte la cola y el Buffer |
+
+### Pasos
+
+**Paso 0, y sin él los demás no hacen nada.** El `origin` del VPS es un bundle,
+y un bundle solo lleva las ramas que se le nombren. Con `a22d3cc..<rama>` en el
+VPS aparecería `origin/feat/clasificar-parejas-de-enlace` y **`origin/main` se
+quedaría donde está**: el `reset --hard origin/main` dejaría el HEAD intacto, el
+build reconstruiría el código viejo y `/health` seguiría diciendo 0.109.0.
+Parecería que el despliegue falló. El código vive en una rama y la regla es que
+**yo nunca toco `main`**, así que el tronco lo mueves tú, o me das el sí:
+
+```bash
+# Necesita tu autorización explícita: es un merge a main.
+# El `fetch` primero: un `main` local «al día» sin traerse el remoto no lo está,
+# y sin él el --ff-only falla con un mensaje que no dice por qué.
+git fetch origin
+git checkout main && git merge --ff-only feat/clasificar-parejas-de-enlace
+git tag -a v0.110.0 -m "0.110.0" && git push origin main && git push origin v0.110.0
+```
+`--ff-only` se puede hoy: `main` (`8579381`) es antepasado de la rama. Si
+alguien mueve `main` entretanto, falla en vez de fabricar un merge, que es lo
+que se quiere. El tag `v0.110.0` **no existe todavía** (el último es
+`v0.109.0`), por eso se crea aquí y no se le pide al bundle.
+
+```bash
+# 1. Llevar el tronco (el `origin` del VPS es /tmp/eko.bundle, no GitHub)
+git bundle create /tmp/eko.bundle a22d3cc..main
+scp /tmp/eko.bundle ender-vps:/tmp/
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && git fetch /tmp/eko.bundle "refs/heads/*:refs/remotes/origin/*" && git reset --hard origin/main && git rev-parse --short HEAD'
+# El hash que imprima tiene que ser el de main, no `a22d3cc`. Si es `a22d3cc`,
+# el paso 0 no se hizo y no tiene sentido seguir.
+# 2. Construir y levantar (sin migración que correr)
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && docker compose up -d --build backend frontend'
+```
+
+**Orden de las dos ramas.** Esta va a `main` primero. La Fase 2
+(`feat/el-rechazo-se-registra`, commit `5cb1146`) va **encima**, después y en
+otra release: trae la migración 063 y no entra en 0.110.0. Al fusionarla
+chocará **un solo fichero**, este: sus dos versiones se conservan, nunca se
+elige una. La Fase 2 no toca `config.py`, `version.ts` ni `CHANGELOG.md`, así
+que el bump no entra en conflicto.
+
+### Verificación (solo lectura, nada de leads de prueba)
+
+1. `/api/v1/health` responde **`0.110.0`**.
+2. A los 15 min: `docker logs eko-realestate-backend --since 20m` sin
+   `QuotaReached` ni «failed during a sweep».
+3. 🔴 **Primer tic del monitor: `Classified 10 landing session(s) as paired
+   link checks`.** El plan decía que debía ser **0**; ya no lo es, porque G2
+   dejó otras filas y el backtest encontró una tanda anterior. **Diez es el
+   acierto, no la avería.**
+4. En cuanto el obrero renderice una pieza nueva: el subtítulo amarillo final
+   dice «Denver Home Story dot com». Si no lo dice, **el arreglo no funcionó**
+   y hay que parar antes de aprobar nada.
+
+### Vuelta atrás
+
+Sin migración, así que basta el código:
+```bash
+ssh ender-vps 'cd ~/Eko-AI-RealEstate && git reset --hard a22d3cc && docker compose up -d --build backend frontend'
+```
+`/api/v1/health` vuelve a decir 0.109.0. Nada que deshacer en la base.
+
+### Después del despliegue: **G2**
+
+Rehacer las piezas **74 y 75** desde la consola, una a una. Cuesta una
+narración y sus imágenes por pieza en el ROG. **Si el primer vídeo rehecho no
+muestra el dominio en el subtítulo final, G1 se reabre.**
+
 ## Puertas decididas (consenso Opus + advisor; MiniMax ausente)
 
 `./scripts/ask-minimax.sh` **no existe en este repo** (comprobado en `scripts/`
@@ -538,8 +731,10 @@ sesiones de pytest sobre una sola base de datos no miden nada.
 
 ## Siguiente paso
 
-**Fase 2:** tablas `content_rejections` y `content_lessons` con RLS, más
-`classify` / `verify` / `decide` en `content_corrections.py`.
+**PLAN (7) Fase 3**, sobre `feat/el-rechazo-se-registra`: `correct_rejected` en
+el bucle del estudio, las cinco acciones, `_ask_correction` y el
+`_requeue_render` compartido por sus tres llamadores. **No espera al
+despliegue.**
 
 **PLAN (6) Fase 4 está cerrada** en `feat/clasificar-parejas-de-enlace`
 (`ae880e8`, ramificada desde `55695c4`, la punta de la Fase 1, **no** desde esta
@@ -588,6 +783,22 @@ compuesta, y nunca de un texto que lleve el dominio dentro: `_SYSTEM` prohíbe
 que el modelo escriba direcciones web, y una lección que se lo pida haría que
 `caption_carries_link` dejara de añadir el enlace del caption. Esa es
 exactamente la regresión de la sesión anterior.
+**Orden de fusión, que no es obvio y hay que respetarlo.** Hay **dos**
+`PROJECT_STATUS.md` distintos vivos, uno por rama, y ninguno lo tiene todo:
+
+| rama | lo que solo está ahí |
+|---|---|
+| `feat/clasificar-parejas-de-enlace` | PLAN (6) Fase 4, su auditoría, este pre-despliegue |
+| `feat/el-rechazo-se-registra` (`5cb1146`) | PLAN (7) Fase 2, su auditoría, la tabla de tus cuatro decisiones |
+
+Primero esta rama a `main` (con tu sí, paso 0 de arriba). La Fase 2 encima,
+después. Al fusionarla, **el único fichero que choca es este**, y se resuelve
+**conservando las dos secciones**, nunca eligiendo una. La Fase 2 no toca
+`config.py`, `version.ts` ni `CHANGELOG.md`.
+
+**Recordatorio permanente (sobrevive a un `/compact`):** **G2** (rehacer las
+piezas 74 y 75) solo tiene sentido con 0.110.0 ya desplegada, y la release
+vence el **22-sep a las 08:07 de Denver**.
 
 ---
 

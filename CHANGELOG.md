@@ -48,6 +48,34 @@ dejaba con un vídeo nuevo en `rejected`, de donde no salía sin un UPDATE a
 mano, porque la entrega del render solo sube `draft → needs_approval`.
 Preexistente; ahora los tres caminos que rehacen un vídeo comparten el mismo
 ayudante.
+## [0.110.0] - 2026-09-17
+
+### Corregido
+
+**Los vídeos vuelven a decir la dirección en voz alta.**
+
+La despedida hablada se escribía en `scenes.narration` desde el 2-sep y el
+motor de render lee `script`, que no la lleva. El respaldo que la habría
+salvado nunca se alcanzaba. Medido antes de tocar nada: desde el 10-sep toda
+pieza generada dice el dominio en la narración y no en el guion, y ocho
+fotogramas de la pieza 72 terminan en las últimas palabras del guion. Ender
+rechazó cuatro piezas por esto — 66, 70, 71 y 73 — en tres días.
+
+**Una edición del guion ya llega al vídeo.** La narración se materializaba una
+sola vez al escribir el borrador, no se muestra en la consola, no se puede
+editar, y «Rehacer el vídeo» rehace desde el plan guardado. Corregir una cifra
+mal y rehacer devolvía un vídeo diciendo todavía la cifra vieja, con los
+subtítulos incluidos porque se transcriben del audio.
+
+### Añadido
+
+**El clasificador ve las parejas que buscaron el mismo enlace.** Dos visitas
+desde dos ciudades sobre el mismo enlace en menos de un minuto, ninguna de las
+cuales se desplazó, pulsó nada ni empezó el formulario, son comprobadores de
+enlace. La pareja más ajustada medida está a **24 milisegundos**, Nueva York y
+Denver, sobre el mismo vídeo. No hay lista de ciudades a propósito: una sala de
+máquinas puede tener dirección de Denver, y las visitas reales de Denver quedan
+fuera por las condiciones de la regla, no por su nombre.
 
 ## [0.109.0] - 2026-09-16
 

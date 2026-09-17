@@ -28,6 +28,45 @@ export const CHANGELOG: VersionEntry[] = [
       { en: "The reviewer's words are data, never an instruction. They travel quoted, capped, under the same system prompt that governs a first draft, and everything that comes back goes through the Fair Housing filter again. If the model writes a web address or a phone number it is asked once more with them named, and if it insists the draft is dropped: one of the real rejections carries the domain inside it, and copying that into a caption would replace our tracked, seeded link with one an LLM typed.", es: "Las palabras del revisor son dato, nunca instrucci\u00f3n. Viajan entre comillas, recortadas, bajo el mismo sistema que gobierna un primer borrador, y todo lo que vuelve pasa otra vez por el filtro de Fair Housing. Si el modelo escribe una direcci\u00f3n web o un tel\u00e9fono se le pide una correcci\u00f3n m\u00e1s nombr\u00e1ndolos, y si insiste el borrador se descarta: uno de los rechazos reales lleva el dominio dentro, y copiarlo a un caption sustituir\u00eda nuestro enlace con seguimiento y semilla por uno tecleado por un modelo." },
       { en: "A reason nobody could place, that the model then acted on cleanly, becomes standing guidance: the writer carries it into every future draft until somebody revokes it. Five at most, and only from a reason with no mechanical gate of its own \u2014 where a gate exists, the gate IS the lesson. The console shows them, says that each one enters every new draft, names the piece each came from, and has a Forget button, because a complaint about one piece must not steer the channel for ever.", es: "Un motivo que nadie pudo colocar, sobre el que el modelo luego actu\u00f3 limpiamente, se convierte en gu\u00eda permanente: el escritor la lleva a todos los borradores futuros hasta que alguien la revoque. Cinco como m\u00e1ximo, y solo desde un motivo sin puerta mec\u00e1nica propia \u2014 donde hay puerta, la puerta ES la lecci\u00f3n. La consola las muestra, dice que cada una entra en todos los borradores nuevos, nombra la pieza de la que sali\u00f3 cada una, y tiene un bot\u00f3n de Olvidar, porque una queja sobre una pieza no debe dirigir el canal para siempre." },
       { en: "A piece that comes back into the queue after a rejection now says why, and says it per action: three of the six outcomes regenerate nothing, and \"regenerated after your rejection\" over a piece nobody could fix is worse than silence. And editing a script now asks for a new video \u2014 the narration is materialised once and is not shown anywhere, so correcting a figure and pressing rebuild used to give back a video still saying the old one, captions included, because they are transcribed from the audio.", es: "Una pieza que vuelve a la cola tras un rechazo dice ahora por qu\u00e9, y lo dice por acci\u00f3n: tres de los seis desenlaces no regeneran nada, y \"regenerado tras tu rechazo\" sobre una pieza que nadie pudo arreglar es peor que el silencio. Y editar un guion pide ahora un v\u00eddeo nuevo \u2014 la narraci\u00f3n se materializa una sola vez y no se muestra en ning\u00fan sitio, as\u00ed que corregir una cifra y pulsar rehacer devolv\u00eda un v\u00eddeo diciendo todav\u00eda la vieja, subt\u00edtulos incluidos, porque se transcriben del audio." },
+    version: "0.110.0",
+    date: "2026-09-17",
+    title: {
+      en: "The videos say the address out loud again",
+      es: "Los vídeos vuelven a decir la dirección en voz alta",
+    },
+    changes: [
+      {
+        en:
+          "The narrator is given the text that carries the sign-off. It was " +
+          "written into the shot list and the engine was reading the script, " +
+          "so for a week every video ended on the last words of the script " +
+          "and nobody was asked to visit the site.",
+        es:
+          "El narrador recibe el texto que lleva la despedida. Se escribía en " +
+          "el plan de escenas y el motor leía el guion, así que durante una " +
+          "semana los vídeos terminaban en las últimas palabras del guion y a " +
+          "nadie se le invitaba a visitar la web.",
+      },
+      {
+        en:
+          "Editing a script now changes what the video says. It did not: the " +
+          "narration was written once and rebuilding used the stored plan, so " +
+          "a corrected figure came back spoken exactly as it was.",
+        es:
+          "Editar un guion ya cambia lo que dice el vídeo. Antes no: la " +
+          "narración se escribía una sola vez y rehacer usaba el plan " +
+          "guardado, así que una cifra corregida volvía dicha igual que antes.",
+      },
+      {
+        en:
+          "Two visits following the same link from two cities within a " +
+          "minute, neither of which scrolled or touched anything, are " +
+          "counted as the link checkers they are and not as readers.",
+        es:
+          "Dos visitas que siguen el mismo enlace desde dos ciudades en menos " +
+          "de un minuto, sin desplazarse ni tocar nada, se cuentan como los " +
+          "comprobadores de enlace que son y no como lectores.",
+      },
     ],
   },
   {
