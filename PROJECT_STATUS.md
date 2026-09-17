@@ -5,6 +5,56 @@ Estado de ejecución del plan `~/.claude/plans/si-haz-el-plan-jazzy-sifakis.md`
 v0.56.0 y anteriores vive en git y en el plan.
 
 ---
+# 17-sep — desplegado: 0.110.0 y 0.113.0. G2 en cola para esta noche.
+
+Con tu autorización, y **fuera de la ventana de las 21:00 a petición tuya**. La
+otra condición sí se respetó: la franja más cercana era las 11:30 y el
+despliegue terminó con 40 minutos de margen.
+
+| | 0.110.0 | 0.113.0 |
+|---|---|---|
+| commit en `main` | `56dca59` | `df19812` |
+| tag | `v0.110.0` | `v0.113.0` |
+| alembic | 062 (sin migración) | **063 aplicada** |
+| salud tras levantar | 200, `0.110.0` | 200, `0.113.0` |
+| panel público | 200 | 200 |
+| errores en registros | ninguno | ninguno |
+
+Antes de cada uno: `pg_dump` de pre-imagen dentro del contenedor de base, y
+copia del `.env`. El commit previo para la vuelta atrás era `a22d3cc4`.
+
+**La fusión rompió el frontend y la suite sobre el árbol fusionado lo cazó.** Al
+conservar las dos entradas del changelog, la lista de cambios de 0.113.0 quedó
+sin cerrar y la de 0.110.0 empezaba dentro: `tsc` daba cinco errores de sintaxis
+y `next build` no compilaba. **`vitest` pasaba igual**, porque sus tests leen el
+fuente como texto y no lo parsean. Corregido en `df19812`. El advisor había
+pedido justo esta comprobación y no era teórica.
+
+Tras la fusión, sobre `main`: backend **2218 pasan**, frontend **514**, `tsc`
+limpio, build compila, `next lint` con los dos avisos preexistentes.
+
+Las dos tablas nuevas existen con `FORCE ROW LEVEL SECURITY` y su política de
+aislamiento. Comprobado en producción.
+
+## G2: las piezas 74 y 75 están en cola, no rehechas
+
+Las dos se re-encolaron con el SQL exacto que replica «Rehacer el vídeo»
+(`media_path`, `render_error`, `approved_by`, `approved_at` a NULL; el trabajo a
+`queued` con `worker`, `claimed_at`, `attempts`, `last_error`, `stage` y
+`progress` limpios). Pre-imagen en el scratchpad de sesión. La puerta del idioma
+de los planos se comprobó con el código del propio contenedor: verde en las dos.
+
+**No se han renderizado, y no es un fallo.** El obrero `rog-1` reclama **solo
+entre las 20:59 y las 21:19 de Denver**: los 29 renders hechos siguen ese patrón
+sin una sola excepción. Los dos arrancarán esta noche.
+
+**Queda por verificar lo único que importa de la Fase 1:** un fotograma de los
+últimos segundos del primer vídeo que vuelva, para ver si el subtítulo amarillo
+dice el dominio. Hasta entonces, que el CTA llegue al narrador está probado por
+los tests y por el código desplegado, **no por un vídeo**.
+
+---
+
 # PLAN (7) Fase 5 — pre-despliegue. **Nada desplegado.**
 
 Fase 4 cerrada en **`edcc0dd`** y empujada. Suite backend tras el commit, corrida
