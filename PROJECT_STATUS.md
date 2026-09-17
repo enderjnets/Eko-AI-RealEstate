@@ -88,11 +88,19 @@ está restaurado y es conductual.
 - **`JobInput.brokerage_line` sigue viajando sin lector** bajo el motor externo.
   El arreglo cubre el texto del anuncio, no el fotograma.
 
-## Antes de desplegar
+## Antes de desplegar — ✅ hecho el 17-sep
 
-**Arreglar los captions de la 16, la 72, la 74 y la 75 con la puerta de
-escritura, ANTES de que la puerta entre.** Si entra primero, la 72 se rechaza y
-avisa cada tick en cuanto salgan las seis aprobadas que la llevan.
+Los captions de la 16, la 72, la 74 y la 75 llevan ya la línea, escritos con la
+puerta de escritura: pre-imagen en el scratchpad de sesión, SQL a la vista, tu
+sí, y relectura. `UPDATE 4`, con guarda para no duplicarla, y la línea queda
+entre el enlace y el aviso de voz sintética, exactamente donde la pone el
+código. **Cero piezas vivas sin la correduría**, comprobado después.
+
+Iba primero a propósito: con la puerta desplegada antes, la 72 se habría
+rechazado y te habría mandado un aviso cada quince minutos en cuanto salieran
+las seis aprobadas que van por delante.
+
+Commit del cambio: `a91fa51`, empujado. Queda solo tu sí al despliegue.
 
 ---
 
