@@ -36,6 +36,27 @@ limpio, build compila, `next lint` con los dos avisos preexistentes.
 Las dos tablas nuevas existen con `FORCE ROW LEVEL SECURITY` y su política de
 aislamiento. Comprobado en producción.
 
+## Hallazgo nuevo al mirar el fotograma de referencia (pieza 73)
+
+Saqué tres fotogramas de la 73 para tener la línea base, y la confirma: el vídeo
+**termina a media frase**, «an over-improved one at», sin despedida ninguna.
+
+Pero en ese mismo fotograma hay dos cosas que no sabíamos:
+
+- **El cartel de la imagen generada dice «FOIR SALE»**, no «FOR SALE». La letra
+  la inventa el generador de imágenes y sale mal. En un anuncio inmobiliario eso
+  se lee como descuido.
+- **Ese cartel lleva un teléfono inventado, «1-927-4556».** Un número de
+  teléfono fabricado dentro de un anuncio inmobiliario es un problema distinto y
+  peor que el tipo de letra. No es nuestro número, no es el de nadie, y está en
+  la imagen, no en el texto, así que **ningún filtro nuestro lo mira**: la puerta
+  de direcciones y teléfonos que añadimos en la Fase 4 revisa lo que escribe el
+  modelo, no lo que dibuja el generador de imágenes.
+
+Ninguna de las dos es de este plan. Las dos son de la fábrica de imágenes, que
+vive en BitTrader. Anotadas aquí porque salieron mirando, y porque la segunda
+toca publicidad inmobiliaria real.
+
 ## G2: las piezas 74 y 75 están en cola, no rehechas
 
 Las dos se re-encolaron con el SQL exacto que replica «Rehacer el vídeo»
