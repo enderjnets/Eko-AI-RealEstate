@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.109.0";
+export const CURRENT_VERSION = "0.110.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,48 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.110.0",
+    date: "2026-09-17",
+    title: {
+      en: "The videos say the address out loud again",
+      es: "Los vídeos vuelven a decir la dirección en voz alta",
+    },
+    changes: [
+      {
+        en:
+          "The narrator is given the text that carries the sign-off. It was " +
+          "written into the shot list and the engine was reading the script, " +
+          "so for a week every video ended on the last words of the script " +
+          "and nobody was asked to visit the site.",
+        es:
+          "El narrador recibe el texto que lleva la despedida. Se escribía en " +
+          "el plan de escenas y el motor leía el guion, así que durante una " +
+          "semana los vídeos terminaban en las últimas palabras del guion y a " +
+          "nadie se le invitaba a visitar la web.",
+      },
+      {
+        en:
+          "Editing a script now changes what the video says. It did not: the " +
+          "narration was written once and rebuilding used the stored plan, so " +
+          "a corrected figure came back spoken exactly as it was.",
+        es:
+          "Editar un guion ya cambia lo que dice el vídeo. Antes no: la " +
+          "narración se escribía una sola vez y rehacer usaba el plan " +
+          "guardado, así que una cifra corregida volvía dicha igual que antes.",
+      },
+      {
+        en:
+          "Two visits following the same link from two cities within a " +
+          "minute, neither of which scrolled or touched anything, are " +
+          "counted as the link checkers they are and not as readers.",
+        es:
+          "Dos visitas que siguen el mismo enlace desde dos ciudades en menos " +
+          "de un minuto, sin desplazarse ni tocar nada, se cuentan como los " +
+          "comprobadores de enlace que son y no como lectores.",
+      },
+    ],
+  },
   {
     version: "0.109.0",
     date: "2026-09-16",

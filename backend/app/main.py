@@ -480,6 +480,7 @@ async def _llm_monitor_loop() -> None:
     from app.services.fair_housing_watch import run_fair_housing_tick
     from app.services.landing_analytics import (
         classify_datacenter_visits,
+        classify_paired_link_checks,
         classify_publish_previews,
         purge_landing_events,
     )
@@ -537,6 +538,26 @@ async def _llm_monitor_loop() -> None:
         except Exception as exc:  # noqa: BLE001 — same reason as above
             logger.error("Landing traffic classification failed: %s", exc)
 
+        # The pairing rule, BEFORE the data-centre one, and the order is the
+        # rule rather than a detail. This one needs BOTH halves of a pair to
+        # still be `unknown`; the data-centre rule is looser on the same rows —
+        # a listed city and no scroll, with nothing said about clicks or forms
+        # — so running it first takes one half and leaves the other orphaned,
+        # `unknown` for ever with no partner left to pair with. Marked whole or
+        # not at all. Both write `automated`, so the funnel counts the same
+        # either way; only the recorded reason differs.
+        #
+        # Its own try, for the reason the fair-housing watch has one: a failure
+        # here must not be reported as, or hide, a failure of the sweep before
+        # it. Different evidence again — two visits in two cities following the
+        # same link within a minute, neither of which did anything.
+        try:
+            await run_for_every_org(classify_paired_link_checks)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — same reason as above
+            logger.error("Paired link-check classification failed: %s", exc)
+
         # The second classifier, in its own try for the reason the fair-housing
         # watch has one: a failure here must not be reported as, or hide, a
         # failure of the preview sweep. Different rule, different evidence — a
@@ -548,6 +569,7 @@ async def _llm_monitor_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001 — same reason as above
             logger.error("Data-centre traffic classification failed: %s", exc)
+
 
 
 async def _content_studio_loop() -> None:
