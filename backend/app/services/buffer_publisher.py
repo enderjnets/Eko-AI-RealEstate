@@ -604,9 +604,23 @@ async def edit_scheduled_text(
 # its last request posting cannot afterwards ask how the post went.
 _QUOTA_FLOOR = 2
 
+# How long the brake may hold, whatever Buffer says. The daily window refills
+# thirteen hours out, and a rejected request costs no quota — so holding for
+# the full `Retry-After` buys nothing and risks the opposite: one wrong number
+# from Buffer, or a reset that lands earlier than advertised, and this rail is
+# dead in process memory until the container restarts. An hour of quiet is
+# what the brake is actually for; past that, ask again and be refused cheaply.
+_QUOTA_BRAKE_MAX_SECONDS = 3600
+
+# And how long it holds when Buffer refuses without saying for how long — no
+# readable `Retry-After`, no readable `ratelimit`. One tick of this worker,
+# which is also the shortest window Buffer publishes.
+_QUOTA_BRAKE_FALLBACK_SECONDS = 900
+
 # Buffer counts per API client, not per endpoint, so this is deliberately
 # module state rather than per-call: every caller in this file draws on the
-# same hundred requests per fifteen minutes.
+# same two windows — a hundred requests per fifteen minutes and two hundred
+# and fifty per day.
 _quota_remaining: int | None = None
 _quota_refills_at: float = 0.0
 
@@ -623,24 +637,97 @@ def slots_are_full(message: str) -> bool:
 
 
 def parse_rate_limit(header: str | None) -> tuple[int | None, int | None]:
-    """What is left in the window, read from Buffer's own `ratelimit` header.
+    """What is left in the tightest window, read from Buffer's `ratelimit` header.
 
-    The header reads `"100-in-15min"; r=98; t=897`: `r` is what remains and
-    `t` is the seconds until it refills. Anything that does not parse returns
-    `(None, None)` on purpose — an unreadable header is not news that the
-    quota is spent, and reading it as zero would stop the rail over a string.
+    There are **two** windows, not one, and they arrive in a single header
+    separated by a comma — measured off a real 429 on 16-sep-2026:
+
+        "100-in-15min"; r=98; t=146, "250-in-1day"; r=0; t=47729
+
+    `r` is what remains and `t` the seconds until that policy refills. The
+    daily one is the one that ran out that day, and the one this returns: the
+    window that binds is the window with the least left, together with **its
+    own** `t` — pairing a spent quota with the other policy's refill is how a
+    thirteen-hour wall gets read as two minutes. On a tie the longer `t` wins,
+    for the same reason.
+
+    Anything that does not parse returns `(None, None)` on purpose — an
+    unreadable header is not news that the quota is spent, and reading it as
+    zero would stop the rail over a string.
     """
     if not header:
         return None, None
-    found: dict[str, int] = {}
-    for part in header.split(";"):
-        key, _, raw = part.strip().partition("=")
-        if key in ("r", "t"):
-            try:
-                found[key] = int(raw)
-            except ValueError:
-                return None, None
-    return found.get("r"), found.get("t")
+    policies: list[tuple[int | None, int | None]] = []
+    for policy in header.split(","):
+        found: dict[str, int] = {}
+        for part in policy.split(";"):
+            key, _, raw = part.partition("=")
+            # The header's own grammar allows space around the `=`. Buffer does
+            # not use it today; reading it costs one `strip` and not reading it
+            # would drop the field silently, which looks exactly like a header
+            # that carries no remainder at all.
+            name = key.strip()
+            if name in ("r", "t"):
+                try:
+                    found[name] = int(raw)
+                except ValueError:
+                    return None, None
+        policies.append((found.get("r"), found.get("t")))
+    if not policies:
+        return None, None
+    # A policy that does not state what is left cannot be the one that binds;
+    # with none of them stating it there is no brake to apply either way, and
+    # the first `t` is kept so a header carrying only a refill still answers.
+    binding = [(r, t) for r, t in policies if r is not None]
+    if not binding:
+        return None, policies[0][1]
+    return min(binding, key=lambda rt: (rt[0], -(rt[1] if rt[1] is not None else -1)))
+
+
+def _seconds_or_none(raw: str | None) -> int | None:
+    """`Retry-After` as a whole number of seconds, or nothing.
+
+    The header is also allowed to carry an HTTP date. Buffer sends seconds and
+    that is what is handled; a date parses as no answer rather than as zero,
+    because zero here would mean "ask again immediately".
+    """
+    try:
+        value = int((raw or "").strip())
+    except ValueError:
+        return None
+    return value if value >= 0 else None
+
+
+def _refused_window(resp: httpx.Response) -> str | None:
+    """Which of Buffer's windows the refusal was about, from the body.
+
+    Names the policy ("24h", "15m") for the log line only. It is not the wait —
+    `Retry-After` is — and the distinction is the whole reason the daily window
+    went unnoticed on 16-sep: a body saying `24h` was read as a description of
+    a fifteen-minute rail.
+    """
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    errors = payload.get("errors")
+    if not isinstance(errors, list):
+        return None
+    for error in errors:
+        if not isinstance(error, dict):
+            continue
+        extensions = error.get("extensions")
+        if not isinstance(extensions, dict):
+            continue
+        window = extensions.get("window")
+        if isinstance(window, str) and window:
+            # Server-supplied text on its way into a log line: capped and
+            # flattened, like every other borrowed string in this file. A
+            # newline here would forge a log record.
+            return " ".join(window.split())[:40]
+    return None
 
 
 async def _graphql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
@@ -682,13 +769,50 @@ async def _graphql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
     remaining, refills_in = parse_rate_limit(resp.headers.get("ratelimit"))
     if remaining is not None:
         _quota_remaining = remaining
-        _quota_refills_at = monotonic() + (refills_in or 0)
+        # Clamped at both ends. Above, so one bad number cannot park the rail
+        # for thirteen hours; below, because a refill already in the past is
+        # the brake disarmed, and `t` is a number Buffer chooses, not us.
+        _quota_refills_at = monotonic() + max(
+            0, min(refills_in or 0, _QUOTA_BRAKE_MAX_SECONDS)
+        )
 
     if resp.status_code == 429:
-        # Retry-After is the truth. The body names the window that ran out
-        # ("15m"/"24h"/"30d"), which is not the same question. A rejected
-        # request costs no quota, so the counter above is not adjusted here.
-        raise QuotaReached(f"Buffer quota reached; retry-after={resp.headers.get('Retry-After')}")
+        # Retry-After is the truth, and it **overrides** whatever the header
+        # said a line above: they can disagree, and this is the one Buffer
+        # commits to. The body names the window that ran out ("15m"/"24h"),
+        # which is a different question and belongs in the message, not in the
+        # timing. A rejected request costs no quota, so `_quota_remaining` is
+        # set to zero not to account for this call but so the *next* tick
+        # stops at the check above without sending anything at all — which is
+        # what was missing on 16-sep, when every tick for fourteen hours spent
+        # a request to be told the same thing.
+        retry_after = _seconds_or_none(resp.headers.get("Retry-After"))
+        _quota_remaining = 0
+        if retry_after is not None:
+            _quota_refills_at = monotonic() + min(retry_after, _QUOTA_BRAKE_MAX_SECONDS)
+        else:
+            # A refusal this rail cannot time. Without a floor the brake is
+            # armed on one side only — `_quota_remaining` is zero but the
+            # refill stays in the past — and the pre-check needs both, so
+            # every tick would go back out to be refused again: the exact
+            # 16-sep behaviour. `Retry-After` can legitimately arrive as an
+            # HTTP date, and a proxy in front of Buffer sends neither header.
+            # Fifteen minutes is the shortest window Buffer publishes and one
+            # tick of this worker, so being wrong costs a single skipped tick.
+            #
+            # Assigned, not `max`ed with what the header left here. The header's
+            # `t` says when that policy refills, which is not how long this
+            # refusal lasts — and a 429 that is not about the quota at all (a
+            # proxy in front of Buffer, say) would otherwise inherit the daily
+            # window's hour and stop the rail for every agency at once, where
+            # before the change it cost one tick. With no timing from Buffer,
+            # the only honest answer is the shortest one.
+            _quota_refills_at = monotonic() + _QUOTA_BRAKE_FALLBACK_SECONDS
+        window = _refused_window(resp)
+        raise QuotaReached(
+            f"Buffer quota reached{f' on its {window} window' if window else ''}; "
+            f"retry-after={(resp.headers.get('Retry-After') or '')[:40] or 'unstated'}"
+        )
     if resp.status_code >= 400:
         raise BufferRefused(f"HTTP {resp.status_code}: {resp.text[:300]}")
     return resp.json()
@@ -1554,7 +1678,8 @@ async def backfill_links(db: AsyncSession) -> int:
 
 # How many drifted posts one tick moves. Each move is two Buffer requests — the
 # post is read before it is edited, so a caption corrected by hand is not
-# overwritten — and the whole rail draws on one hundred per fifteen minutes.
+# overwritten — and the whole rail draws on the same two windows, a hundred
+# per fifteen minutes and two hundred and fifty a day.
 # Small on purpose: six drifted posts are back inside their windows within half
 # an hour, and the tick that moves them can still afford to ask how the posts
 # that were due this morning went.
@@ -1720,25 +1845,42 @@ async def publish_approved(db: AsyncSession) -> int:
         log.warning("Not publishing: %s", blocked)
         return 0
 
-    # Before anything is queued, find out what already went out. A scheduled
-    # post is one Buffer holds, so the only way to learn it published — or
-    # failed — is to ask. Done first so a piece whose last platform landed this
-    # minute is closed before the tick decides what is still owed.
-    await reconcile_scheduled(db)
-
-    # And what went out before the queue existed, which nothing else revisits.
-    await backfill_links(db)
-
-    # Before anything new claims a slot, and deliberately before the daily cap
-    # is read: the day the post was sitting on becomes free in OUR calendar, so
-    # the piece that day belongs to can take it as soon as there is room.
+    # A spent quota is a budget, not a fault of this tenant's data. Until this
+    # was caught, `QuotaReached` from the reconcile or the backfill below rose
+    # to `run_for_every_org`, which logs "org 1 failed during a sweep" with a
+    # traceback — every fifteen minutes, for the fourteen hours of 16-sep,
+    # saying "this organization is broken" about a rail that was merely
+    # waiting for the clock. One warning and an empty tick is the truth.
     #
-    # "As soon as there is room" is the honest half. Buffer's ten are a count of
-    # scheduled posts, not of days — a post moved from the 18th to the 28th is
-    # still one of the ten, and that count only drops when a post is SENT. So
-    # this frees a date, never a Buffer slot, and on a full queue the piece that
-    # date belongs to still waits for the next send to drain one.
-    await realign_windows(db)
+    # `realign_windows` is inside for symmetry, not because it can raise: it
+    # already stops on its own quota (see its `break`). The org is named
+    # because the quota is per API client, not per tenant — every agency in
+    # the sweep brakes on the same tick, and N identical lines with no
+    # discriminator is worse than the one count this replaced.
+    try:
+        # Before anything is queued, find out what already went out. A scheduled
+        # post is one Buffer holds, so the only way to learn it published — or
+        # failed — is to ask. Done first so a piece whose last platform landed
+        # this minute is closed before the tick decides what is still owed.
+        await reconcile_scheduled(db)
+
+        # And what went out before the queue existed, which nothing else revisits.
+        await backfill_links(db)
+
+        # Before anything new claims a slot, and deliberately before the daily
+        # cap is read: the day the post was sitting on becomes free in OUR
+        # calendar, so the piece that day belongs to can take it as soon as
+        # there is room.
+        #
+        # "As soon as there is room" is the honest half. Buffer's ten are a
+        # count of scheduled posts, not of days — a post moved from the 18th to
+        # the 28th is still one of the ten, and that count only drops when a
+        # post is SENT. So this frees a date, never a Buffer slot, and on a full
+        # queue the piece that date belongs to still waits for a send to drain one.
+        await realign_windows(db)
+    except QuotaReached as exc:
+        log.warning("Buffer quota reached (org %s); skipping this tick: %s", get_org_id(), exc)
+        return 0
 
     claimed = await _claimed_today(db)
     if claimed >= settings.CONTENT_PUBLISH_MAX_PER_DAY:
@@ -1819,8 +1961,16 @@ async def publish_approved(db: AsyncSession) -> int:
     if not settings.BUFFER_SIMULATED:
         # Once per tick, not once per post: the answer cannot change between
         # two posts of the same batch, and it costs a request against the same
-        # quota the posts need.
-        await verify_organization()
+        # quota the posts need. Which is why it needs the same guard as the
+        # three steps above — it is a Buffer call on the far side of them, and
+        # on a tick with nothing to reconcile it is the *first* one.
+        try:
+            await verify_organization()
+        except QuotaReached as exc:
+            log.warning(
+                "Buffer quota reached (org %s); skipping this tick: %s", get_org_id(), exc
+            )
+            return 0
 
     attempted = 0
     for piece in pending:

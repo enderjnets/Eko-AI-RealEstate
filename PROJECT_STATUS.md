@@ -6,6 +6,197 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+# PLAN (6) — las correcciones de la auditoría del 16-sep
+
+Estado de la ejecución de **PLAN (6) — Las correcciones de la auditoría del
+16-sep** (`PLAN.md:1182-1578`). Ejecutor: Claude Opus 5. Es un **estado**, no un
+diario: se actualiza al cerrar cada fase para que el progreso sobreviva a un
+`/compact`.
+
+---
+
+## 🔴 Lo primero: G1 sigue sin respuesta y tiene reloj
+
+**Antes de las 08:57 de Denver del 17-sep** vuelve la cuota diaria de Buffer y
+el primer tic entrega. La pregunta a Ender es: **¿retengo 41/43/45/72 con
+ventana `2026-10-06 → 2026-10-31`?**
+
+«continua» **no es el sí de G1**: es una escritura en producción y la pregunta
+con reloj quedó sin contestar. La Fase 0 está **preparada, no ejecutada**.
+
+Preparado ya (solo lectura, en el scratchpad de sesión):
+
+| fichero | qué tiene |
+|---|---|
+| `fase0_preimagen_pieces.txt` | 41 `approved`, 43 y 45 `publishing`, 72 `approved`, **ventana NULL en las cuatro** — coincide con el plan |
+| `fase0_publicaciones.txt` | las filas de `content_publications` de los 13 candidatos |
+| `fase0_preimagen_sessions.txt` | filas 231-246: **16 filas, 16 `unknown`** |
+
+**Lo que el tic entregaría hoy, medido:** `24, 41, 43, 45, 72` → **13 posts**
+(24 solo YouTube, que está `pending`; 41 y 72 sin filas; 43 y 45 con las tres
+`pending`). Con el `UPDATE` de G1 quedaría **solo la 24**, que es lo que el
+plan busca. El resto de piezas `publishing` (16, 25, 26, 27, 33, 40, 46, 69)
+ya están en Buffer y el filtro de publicaciones las descarta.
+
+**Coordinación con la sesión de PLAN (4):** no hay ninguna viva a la que avisar
+— `Eko Ai Realtors [9975e8]` está **offline**. El aviso tendrá que pasar por
+Ender cuando abra G1 (regla 9 del «⛔ Para el ejecutor»).
+
+---
+
+## Fases
+
+| fase | estado | commit |
+|---|---|---|
+| 0 — la cola antes de la cuota | 🔴 **bloqueada en G1/G2** (y 0.2 no es ejecutable hasta las 09:15 del 17) | — |
+| 1 — Buffer ve las dos ventanas | ✅ **cerrada**, APROBADO del advisor | ver abajo |
+| 2 — `realign_windows` dentro de la ventana | ⏳ | — |
+| 3 — el carril calculado enlaza con la cifra | ⏳ | — |
+| 4 — el clasificador ve las parejas | ⏳ (antes del 22) | — |
+| 5 — la ficha del socio | ⏳ | — |
+| 6 — frontend menor | ⏳ | — |
+| 7 — la rutina del 22 (G3) | ⏳ (antes del 22, 08:07) | — |
+| 8 — limpieza (G5) | ⏳ | — |
+
+Puertas abiertas: **G1, G2, G3, G4, G5, G6** — ninguna respondida.
+
+---
+
+## Desviaciones del plan
+
+1. **Ramas en vez de `main`.** PLAN (6) §0 dice «worktree en `main`»; la
+   instrucción de Ender en esta sesión dice rama `feat/<fase>`, nunca commits a
+   `main`, push a remoto, sin merge ni PR. Se ejecuta en ramas encadenadas
+   (`feat/buffer-dos-ventanas` la primera); el merge lo decide él. §0 describe
+   el entorno de partida, no dónde commitear.
+2. **Se arranca por la Fase 1, no por la Fase 0.** La Fase 0 son escrituras en
+   producción detrás de G1/G2 y su 0.2 exige el barrido vivo del 17. El §1 solo
+   ordena «PLAN (6) Fase 0 antes que **PLAN (5)** Fase 0»; la Fase 1 es código y
+   no depende del estado de la cola.
+3. **Cota superior al freno de cuota (Fase 1).** `_QUOTA_BRAKE_MAX_SECONDS =
+   3600`, aplicada al `t` de la cabecera y al `Retry-After`. Sin ella un
+   `Retry-After: 47729` deja el carril muerto **13 h** en memoria de proceso, y
+   una petición rechazada no gasta cuota: el freno evita ruido, no protege
+   cuota. Decisión del advisor.
+4. **La Fase 1 tiene que cubrir `verify_organization()`.** El plan nombra los
+   tres pre-pasos (`reconcile_scheduled`, `backfill_links`, `realign_windows`),
+   pero `publish_approved:1822` llama a `verify_organization()`, que es otra
+   petición a Buffer y **tampoco está protegida**; el bucle de entrega sí lo
+   está ya (`:1830`). Sin esto el traceback que la fase quiere quitar sobrevive
+   por la otra puerta.
+5. **La consulta de verificación del §4 está incompleta.** Le falta el filtro de
+   `content_publications` del `publish_approved` real, así que devuelve 13 filas
+   y nunca «solo la 24». La faithful está en `fase0_publicaciones.txt`.
+
+---
+
+## Consultas al advisor
+
+| motivo | decisión |
+|---|---|
+| Arranque: lectura del plan, orden, ramas, riesgo del freno de 13 h | Lectura validada; arrancar por Fase 1 con Fase 0 bloqueada; ramas `feat/<fase>`; **sí** a la cota de 1 h; pre-escenificar la Fase 0 con las lecturas; y cuatro huecos (empate en `r`, `Retry-After` pisa la cabecera, el bucle de entrega, ERROR→WARNING) |
+
+---
+
+## Auditoría de la Fase 1 (dos revisores independientes, solo lectura)
+
+Sin bloqueantes declarados por ellos. **Dos hallazgos derrotaban el objetivo de
+la propia fase, así que los traté como bloqueantes y se corrigieron dentro:**
+
+1. **`_refused_window` lanzaba `AttributeError`/`TypeError`** con un cuerpo de
+   429 cuyo `extensions` no fuera un dict, o cuyo `errors` no fuera una lista.
+   Ocurre **dentro** del manejador del 429, antes del `raise`, así que salía una
+   excepción que **no** es `QuotaReached`, se colaba por los dos `except` nuevos
+   y producía exactamente el traceback «org 1 failed during a sweep» que la fase
+   quita. Reproducido aquí con `httpx.Response` reales. Corregido con dos
+   `isinstance`; test con siete cuerpos deformes.
+2. **El freno se armaba a medias.** `_quota_remaining = 0` es incondicional pero
+   `_quota_refills_at` solo se fijaba con un `Retry-After` entero, y la
+   comprobación previa exige **las dos**. Con `Retry-After` como fecha HTTP
+   (legal) o con un proxy delante de Buffer que no manda ninguna cabecera, el
+   freno no engancha nunca y cada tic vuelve a salir a la red: el 16-sep otra
+   vez, por la otra puerta. Corregido con `_QUOTA_BRAKE_FALLBACK_SECONDS = 900`
+   (un tic de este worker, y la ventana más corta que Buffer publica).
+3. **Defecto que introduje yo y el segundo revisor cazó:** ese suelo estaba
+   escrito como `max(_quota_refills_at, …)`, así que un 429 **ajeno a la cuota**
+   heredaba la hora de la ventana diaria y paraba el carril de **todas** las
+   agencias (el estado de cuota es del cliente de API, no del inquilino) donde
+   antes costaba un tic. Cambiado a asignación directa del suelo.
+
+Menores corregidos de paso: espacios alrededor del `=` en la cabecera (el
+borrador IETF los permite); `t` negativa que dejaba el refill en el pasado y
+desarmaba el freno; texto del servidor recortado a 40 y aplanado antes de
+entrar en un log (un `\n` en `window` falsifica una línea de log); los dos
+avisos nombran la organización; y un comentario mío que afirmaba de más sobre
+`realign_windows`, que ya traga `QuotaReached` por su cuenta.
+
+Tres tests que podían ponerse verdes por la razón equivocada, apretados: el de
+`verify_organization` ahora mira el mensaje y no solo el número de avisos; el
+de `Retry-After` usa tres cantidades distinguibles (5 s cabecera, 900 s suelo,
+2400 s `Retry-After`) para que no pueda pasar con el suelo; y la rama «ninguna
+política declara `r`» tiene test propio.
+
+## Hallazgos abiertos (backlog, con evidencia)
+
+- 🔴 **Al desplegar, el freno proactivo se enciende por primera vez.** Medido:
+  con la cabecera real de dos ventanas el parser devolvía `(None, None)`, así
+  que `_quota_remaining` y `_quota_refills_at` **nunca se escribieron en
+  producción** y `_QUOTA_FLOOR = 2` no se disparó jamás. A partir de 0.110.0 sí.
+  Ese suelo de 2 se escribió pensando en la ventana de 15 min, no en la diaria.
+  Es **vigilancia, no riesgo**: con la diaria en ≤ 2 el freno para todo por
+  igual, y la sonda que lo levanta cada hora es el primer `_graphql` del tic,
+  que es `reconcile_scheduled` → `_post_states`; los 2 de reserva no se guardan
+  para reconciliar, pero tampoco se desperdician, porque cada sonda reconcilia.
+  **Lo que la Fase 1.4 tiene que medir** no es solo el total del día: son las
+  peticiones por hora **con la diaria en ≤ 2**.
+- 🔴 **Nadie oye una cuota agotada.** `run_for_every_org` (`tenant_context.py:77`)
+  solo hace `logger.exception`; no hay `ops_alert` ni `send_operator_telegram`
+  colgando de ahí, `buffer_publisher` no llama a ninguno, y
+  `content_window_alert` excluye `approved`/`publishing`/`published`, que son
+  justo los estados en que quedan las piezas atrapadas. Bajar a WARNING **no
+  silencia ningún aviso porque no existe** — pero por eso el 16-sep la cuota se
+  agotó a las 18:14 y nadie se enteró hasta la auditoría. Patrón «un buzón sin
+  cartero»; merece fase propia, no es de esta. **La forma que tendría:** un
+  `ops_alert` **por cambio de estado**, no por tic — cuando `_quota_remaining`
+  cruza a 0 en la ventana diaria —, que es la regla 1 de ese módulo («fire on a
+  change, never on a state»).
+
+- **Nadie oye una cuota agotada.** `run_for_every_org` (`tenant_context.py:77`)
+  solo hace `logger.exception`; no hay `ops_alert` ni `send_operator_telegram`
+  colgando de ahí. Bajar a WARNING en la Fase 1 **no silencia ningún aviso**
+  porque no existe — pero por eso mismo el 16-sep la cuota se agotó a las 18:14
+  y nadie se enteró hasta la auditoría. Es el patrón «un buzón sin cartero».
+  No es de esta fase.
+- **El consumidor de las 250 del 16-sep sigue sin identificar** (el log anterior
+  se perdió con el rebuild de las 17:59). La Fase 1.4 lo mide 24 h después del
+  despliegue; ninguna lógica de presupuesto antes de ese número.
+- **«`ruff` limpio» de la auditoría estaba acotado y no lo decía.** `ruff check
+  app tests` → *All checks passed!*; `ruff check .` desde `backend/` → **62
+  errores**, los 62 en `migrations/versions/` (`UP007` 42, `UP035` 14, `I001` 4,
+  `F541` 1, `E741` 1), todos preexistentes en `main` y ninguno en el diff de
+  esta fase. Corrige la afirmación del bloque de auditoría del 16-sep.
+
+---
+
+## Checklist real de la Fase 1
+
+| comprobación | resultado |
+|---|---|
+| `pytest -q` | **2066 passed**, 0 saltados (2050 + 16 nuevos) |
+| `ruff check app tests` | *All checks passed!* |
+| tests nuevos vistos en rojo | **16 de 16**, cada uno con su mutación |
+| `md5` del fuente tras la batería | `9c2805bc91ba75306df48aec2aec37db`, idéntico |
+| secretos / `print` en el diff | ninguno (barrido sobre las líneas añadidas) |
+| migración | no hace falta en esta fase |
+
+## Siguiente paso
+
+**Fase 2** — `realign_windows`: cota de ventana por el otro lado y no mover un
+post que Buffer ya envió. En paralelo, **G1 sigue esperando a Ender** y vence a
+las 08:57.
+
+---
+
 ## Idioma de los vídeos, una cifra de 48 h por vídeo y la tarjeta a 390 px
 
 Rama `feat/idioma-y-cifra-48h` desde `origin/main` `5243c16` (v0.97.0

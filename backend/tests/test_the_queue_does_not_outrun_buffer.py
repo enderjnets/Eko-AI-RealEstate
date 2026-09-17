@@ -33,6 +33,7 @@ quota is spent, and treating it as spent would stop publishing over a string.
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import date, timedelta
 from typing import Any
@@ -97,6 +98,109 @@ def test_a_header_with_only_a_remainder_still_answers() -> None:
     assert parse_rate_limit('"100-in-15min"; r=3') == (3, None)
 
 
+#: The header off the real 429 of 16-sep-2026, copied from the probe rather
+#: than paraphrased — two policies in one header, comma separated.
+TWO_WINDOWS = '"100-in-15min"; r=98; t=146, "250-in-1day"; r=0; t=47729'
+
+
+def test_the_daily_window_is_the_one_that_binds() -> None:
+    """The bug that let the rail run into a wall it was built to see coming.
+
+    Splitting on `;` alone makes ` t=146, "250-in-1day"` a fragment that is not
+    an integer, so the whole header read as `(None, None)`: no news, no brake,
+    and the daily ceiling discovered by hitting it every fifteen minutes for
+    fourteen hours. What binds is the policy with the least left — with **its
+    own** refill, not the other one's.
+    """
+    assert parse_rate_limit(TWO_WINDOWS) == (0, 47729)
+    # One policy still reads exactly as it did.
+    assert parse_rate_limit('"100-in-15min"; r=98; t=897') == (98, 897)
+    # And the tighter window is not always the daily one.
+    assert parse_rate_limit('"100-in-15min"; r=3; t=5, "250-in-1day"; r=200; t=10') == (
+        3,
+        5,
+    )
+
+
+def test_a_tie_between_the_windows_takes_the_longer_wait() -> None:
+    """Both spent at once is the case that punishes a careless `min`: it would
+    return the first policy, lift the brake after 146 seconds, and walk into a
+    thirteen-hour wall. The longer wait is the one that is true of both."""
+    assert parse_rate_limit('"100-in-15min"; r=0; t=146, "250-in-1day"; r=0; t=47729') == (
+        0,
+        47729,
+    )
+    assert parse_rate_limit('"250-in-1day"; r=0; t=47729, "100-in-15min"; r=0; t=146') == (
+        0,
+        47729,
+    )
+
+
+def test_the_space_the_grammar_allows_does_not_lose_the_field() -> None:
+    """The header's own grammar permits space around `=`. Buffer does not use
+    it, but dropping the field silently reads exactly like a header with no
+    remainder in it — no news, no brake."""
+    assert parse_rate_limit('  "100-in-15min" ;  r = 98 ;  t = 146 ') == (98, 146)
+
+
+@pytest.mark.asyncio
+async def test_a_refill_in_the_past_is_not_a_brake() -> None:
+    """`t` is a number Buffer chooses. A negative one puts the refill behind
+    us, and the pre-check needs it ahead: the brake would read as armed and
+    never engage, which is the same silence as having no brake at all."""
+
+    class _Resp:
+        status_code = 200
+        headers = {"ratelimit": '"100-in-15min"; r=0; t=-5'}
+
+        def json(self) -> dict:
+            return {"data": {"ok": True}}
+
+    class _Client:
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+        async def post(self, url: str, **kw: object) -> Any:
+            return _Resp()
+
+    before = buffer_publisher.monotonic()
+    with patch("app.services.buffer_publisher.httpx.AsyncClient", return_value=_Client()):
+        await buffer_publisher._graphql("query {}", {})
+
+    assert buffer_publisher._quota_remaining == 0
+    # Not "in the future" — the clamp floors it at the instant of the call, and
+    # microseconds pass. What must never happen is landing five seconds behind it.
+    assert buffer_publisher._quota_refills_at >= before
+
+
+def test_a_header_that_states_no_remainder_at_all_is_not_a_brake() -> None:
+    """The other way to reach `(None, …)`: every policy parses, none of them
+    says what is left. It has to stay "no news" — the same answer as garbage,
+    but reached by a different branch, and only one of the two was covered."""
+    assert parse_rate_limit('"100-in-15min"; t=897') == (None, 897)
+    assert parse_rate_limit('"100-in-15min"; t=897, "250-in-1day"; t=40000') == (None, 897)
+    assert parse_rate_limit("something else entirely") == (None, None)
+
+
+def test_a_policy_that_states_its_refill_wins_a_tie_with_one_that_does_not() -> None:
+    """A tie between a stated wait and an unstated one is not a real tie: the
+    number is the only thing that can hold the brake."""
+    assert parse_rate_limit('"a"; r=3, "b"; r=3; t=900') == (3, 900)
+    assert parse_rate_limit('"a"; r=3; t=900, "b"; r=3') == (3, 900)
+
+
+def test_one_unreadable_policy_still_means_no_news() -> None:
+    """A header this rail cannot fully parse is not evidence of an empty quota,
+    however many policies it carries."""
+    assert parse_rate_limit('"100-in-15min"; r=98; t=146, "250-in-1day"; r=lots') == (
+        None,
+        None,
+    )
+
+
 # ──────────────────────────── the proactive brake ──────────────────────────
 
 
@@ -155,6 +259,124 @@ async def test_the_brake_lifts_once_the_window_has_refilled() -> None:
         assert await buffer_publisher._graphql("query {}", {}) == {"data": {"ok": True}}
     assert sent, "the brake held past its own refill"
     assert buffer_publisher._quota_remaining == 99
+
+
+def _refusal(retry_after: str | None, ratelimit: str | None = None) -> Any:
+    """Buffer's 429, with the body it actually sends."""
+
+    class _Resp:
+        status_code = 429
+        headers = {
+            k: v
+            for k, v in (("Retry-After", retry_after), ("ratelimit", ratelimit))
+            if v is not None
+        }
+
+        def json(self) -> dict:
+            return {
+                "errors": [
+                    {
+                        "message": "Too many requests from this client. "
+                        "Please try again later.",
+                        "extensions": {
+                            "code": "RATE_LIMIT_EXCEEDED",
+                            "window": "24h",
+                        },
+                    }
+                ]
+            }
+
+    return _Resp
+
+
+@pytest.mark.asyncio
+async def test_a_429_stops_the_next_request_before_it_leaves() -> None:
+    """One refusal is a fact about the window, not about that one request.
+
+    Until this, a 429 raised and left `_quota_remaining` untouched, so the next
+    tick asked again — and the next, every fifteen minutes, all of 16-sep. The
+    request that is never sent is the whole point.
+    """
+    resp = _refusal("100")
+    calls: list[str] = []
+
+    class _Client:
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+        async def post(self, url: str, **kw: object) -> Any:
+            calls.append(url)
+            return resp()
+
+    with patch("app.services.buffer_publisher.httpx.AsyncClient", return_value=_Client()):
+        with pytest.raises(QuotaReached, match="24h"):
+            await buffer_publisher._graphql("query {}", {})
+        assert len(calls) == 1
+
+        with pytest.raises(QuotaReached):
+            await buffer_publisher._graphql("query {}", {})
+    assert len(calls) == 1, "the second tick spent a request to be told the same thing"
+
+
+@pytest.mark.asyncio
+async def test_the_brake_never_holds_longer_than_an_hour() -> None:
+    """Buffer's daily `Retry-After` is thirteen hours. Holding for all of it in
+    process memory is a rail that cannot come back if that number is wrong or
+    the reset lands early — and a rejected request costs no quota, so asking
+    again an hour later is cheap. The cap is the way back."""
+    resp = _refusal("47729")
+
+    class _Client:
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+        async def post(self, url: str, **kw: object) -> Any:
+            return resp()
+
+    with patch("app.services.buffer_publisher.httpx.AsyncClient", return_value=_Client()):
+        with pytest.raises(QuotaReached):
+            await buffer_publisher._graphql("query {}", {})
+
+    held = buffer_publisher._quota_refills_at - buffer_publisher.monotonic()
+    assert held <= buffer_publisher._QUOTA_BRAKE_MAX_SECONDS
+    assert held > 0, "the brake has to hold for something"
+
+
+@pytest.mark.asyncio
+async def test_retry_after_overrules_the_header_it_arrived_with() -> None:
+    """They can disagree, and `Retry-After` is the one Buffer commits to. The
+    header is read first, a few lines earlier, so without this the refusal
+    would be timed by the number it was meant to correct."""
+    resp = _refusal("2400", ratelimit='"100-in-15min"; r=0; t=5')
+
+    class _Client:
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+        async def post(self, url: str, **kw: object) -> Any:
+            return resp()
+
+    with patch("app.services.buffer_publisher.httpx.AsyncClient", return_value=_Client()):
+        with pytest.raises(QuotaReached):
+            await buffer_publisher._graphql("query {}", {})
+
+    held = buffer_publisher._quota_refills_at - buffer_publisher.monotonic()
+    # Three distinguishable numbers on purpose: 5s is the header, 900s is the
+    # fallback for a refusal with no timing, 2400s is what Retry-After says.
+    # Only the last one can land here, or the test would pass on the fallback.
+    assert 1200 < held <= buffer_publisher._QUOTA_BRAKE_MAX_SECONDS, (
+        f"neither the header ({5}s) nor the fallback "
+        f"({buffer_publisher._QUOTA_BRAKE_FALLBACK_SECONDS}s) may win: {held}s"
+    )
 
 
 # ───────────────────────── a full queue is not a failure ───────────────────
@@ -449,3 +671,245 @@ async def test_an_ordinary_refusal_does_not_ring_this_bell(database_url: str) ->
         assert rung == [], "an ordinary refusal rang the full-queue bell"
     finally:
         await _cleanup()
+
+
+# ───────────────── a spent quota is a budget, not a broken tenant ───────────
+
+
+@pytest.mark.asyncio
+async def test_a_quota_out_is_a_quiet_tick_not_an_org_failure(
+    database_url: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """What production actually logged every fifteen minutes on 16-sep.
+
+    `QuotaReached` from the reconcile step rose all the way to
+    `run_for_every_org`, which writes "org 1 failed during a sweep" with a
+    traceback at ERROR. Read at a glance that says this tenant's data is
+    broken; it was a rail waiting for a clock. One warning, no traceback, and
+    an empty tick is the honest shape.
+    """
+    await _cleanup()
+    try:
+        await _piece(None)
+        caplog.set_level(logging.DEBUG, logger="app.services.buffer_publisher")
+        with patch(
+            "app.services.buffer_publisher.reconcile_scheduled",
+            new=AsyncMock(side_effect=QuotaReached("Buffer quota reached on its 24h window")),
+        ):
+            with patch(
+                "app.services.buffer_publisher._send", new=AsyncMock(return_value="p-1")
+            ) as send:
+                with org_scope(ORG):
+                    async with get_session_factory()() as db:
+                        assert await publish_approved(db) == 0
+
+        assert not send.called, "the tick published with no quota to reconcile with"
+        mine = [r for r in caplog.records if r.name == "app.services.buffer_publisher"]
+        assert [r.levelno for r in mine if r.levelno >= logging.ERROR] == []
+        warnings = [r for r in mine if r.levelno == logging.WARNING]
+        assert len(warnings) == 1, [r.getMessage() for r in warnings]
+        assert "quota" in warnings[0].getMessage().lower()
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_identity_check_runs_out_of_quota_just_as_quietly(
+    database_url: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The door the plan did not name.
+
+    `verify_organization` is a Buffer call too, and it sits past the three
+    steps that were guarded — so on a tick with nothing to reconcile, nothing
+    to backfill and nothing to realign, it is the *first* request of the tick
+    and the only one that can raise. Guarding the other three and not this one
+    leaves exactly the traceback the fix was for.
+    """
+    await _cleanup()
+    try:
+        await _piece(None)
+        caplog.set_level(logging.DEBUG, logger="app.services.buffer_publisher")
+        with patch(
+            "app.services.buffer_publisher.reconcile_scheduled", new=AsyncMock()
+        ):
+            with patch("app.services.buffer_publisher.backfill_links", new=AsyncMock()):
+                with patch(
+                    "app.services.buffer_publisher.realign_windows", new=AsyncMock()
+                ):
+                    with patch(
+                        "app.services.buffer_publisher.verify_organization",
+                        new=AsyncMock(side_effect=QuotaReached("Buffer quota reached")),
+                    ):
+                        with patch(
+                            "app.services.buffer_publisher._send",
+                            new=AsyncMock(return_value="p-1"),
+                        ) as send:
+                            with org_scope(ORG):
+                                async with get_session_factory()() as db:
+                                    assert await publish_approved(db) == 0
+
+        assert not send.called, "a piece was posted without knowing whose rail this is"
+        mine = [r for r in caplog.records if r.name == "app.services.buffer_publisher"]
+        assert [r.levelno for r in mine if r.levelno >= logging.ERROR] == []
+        warnings = [r for r in mine if r.levelno == logging.WARNING]
+        # The message, not just the count: `publish_approved` has two other
+        # early exits that return 0 with exactly one warning ("configured but
+        # unusable", "not our rail"), so a count alone stays green on a tick
+        # that never reached the identity check at all.
+        assert len(warnings) == 1, [r.getMessage() for r in warnings]
+        assert "quota" in warnings[0].getMessage().lower()
+    finally:
+        await _cleanup()
+
+
+# ───────────── a refusal this rail cannot read is still a refusal ───────────
+
+
+@pytest.mark.asyncio
+async def test_a_429_that_says_nothing_still_arms_the_brake() -> None:
+    """`Retry-After` may legitimately be an HTTP date, and a proxy in front of
+    Buffer sends neither header. Zeroing the counter without a refill ahead
+    arms the brake on one side only — and the pre-check needs both, so every
+    tick would go back out to be refused again. That is the 16-sep behaviour
+    the fix exists to end, reached by the other door."""
+    calls: list[str] = []
+
+    class _Resp:
+        status_code = 429
+        headers = {"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"}
+
+        def json(self) -> dict:
+            return {"errors": []}
+
+    class _Client:
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+        async def post(self, url: str, **kw: object) -> Any:
+            calls.append(url)
+            return _Resp()
+
+    with patch("app.services.buffer_publisher.httpx.AsyncClient", return_value=_Client()):
+        with pytest.raises(QuotaReached):
+            await buffer_publisher._graphql("query {}", {})
+        with pytest.raises(QuotaReached):
+            await buffer_publisher._graphql("query {}", {})
+
+    assert len(calls) == 1, "a refusal with no timing let every tick back onto the network"
+
+
+@pytest.mark.asyncio
+async def test_a_body_this_rail_cannot_read_is_still_a_quota_refusal() -> None:
+    """The failure that would undo the whole phase. Reading the window out of
+    the body happens inside the 429 handler, before the raise — so a body
+    shaped unlike the one measured raised `AttributeError` instead of
+    `QuotaReached`, sailed past every `except QuotaReached`, and produced the
+    same "failed during a sweep" traceback the fix removes."""
+    for body in (
+        {"errors": [{"extensions": "nope"}]},
+        {"errors": [{"extensions": [1]}]},
+        {"errors": [{"extensions": None}]},
+        {"errors": 5},
+        {"errors": "boom"},
+        {"data": None},
+        [1, 2, 3],
+    ):
+
+        class _Resp:
+            status_code = 429
+            headers = {"Retry-After": "60"}
+
+            def json(self, _b: Any = body) -> Any:
+                return _b
+
+        class _Client:
+            async def __aenter__(self) -> "_Client":
+                return self
+
+            async def __aexit__(self, *a: object) -> None:
+                return None
+
+            async def post(self, url: str, **kw: object) -> Any:
+                return _Resp()
+
+        buffer_publisher._quota_remaining = None
+        buffer_publisher._quota_refills_at = 0.0
+        with patch(
+            "app.services.buffer_publisher.httpx.AsyncClient", return_value=_Client()
+        ):
+            with pytest.raises(QuotaReached):
+                await buffer_publisher._graphql("query {}", {})
+
+
+@pytest.mark.asyncio
+async def test_what_buffer_says_cannot_forge_a_log_line() -> None:
+    """The window is server-supplied text on its way into a log record. A
+    newline in it writes a second line that looks like ours."""
+
+    class _Resp:
+        status_code = 429
+        headers = {"Retry-After": "60"}
+
+        def json(self) -> dict:
+            return {
+                "errors": [
+                    {
+                        "extensions": {
+                            "window": "24h\nERROR the database was dropped" + "x" * 500
+                        }
+                    }
+                ]
+            }
+
+    class _Client:
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+        async def post(self, url: str, **kw: object) -> Any:
+            return _Resp()
+
+    with patch("app.services.buffer_publisher.httpx.AsyncClient", return_value=_Client()):
+        with pytest.raises(QuotaReached) as caught:
+            await buffer_publisher._graphql("query {}", {})
+
+    message = str(caught.value)
+    assert "\n" not in message, message
+    assert len(message) < 200, len(message)
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_with_no_timing_does_not_inherit_the_daily_hour() -> None:
+    """A 429 that is not about the quota — a proxy in front of Buffer, say —
+    arriving with a healthy `ratelimit` header. The header's `t` says when the
+    daily window refills, which is not how long this refusal lasts; taking the
+    longer of the two would stop the rail for **every** agency for an hour
+    (the quota state is per API client, not per tenant) where before the
+    change it cost a single tick."""
+    resp = _refusal(None, ratelimit='"100-in-15min"; r=95; t=700, "250-in-1day"; r=30; t=40000')
+
+    class _Client:
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+        async def post(self, url: str, **kw: object) -> Any:
+            return resp()
+
+    with patch("app.services.buffer_publisher.httpx.AsyncClient", return_value=_Client()):
+        with pytest.raises(QuotaReached):
+            await buffer_publisher._graphql("query {}", {})
+
+    held = buffer_publisher._quota_refills_at - buffer_publisher.monotonic()
+    assert held <= buffer_publisher._QUOTA_BRAKE_FALLBACK_SECONDS, (
+        f"a refusal with no stated wait inherited the daily window: {held}s"
+    )
