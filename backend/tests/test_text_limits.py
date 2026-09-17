@@ -89,6 +89,20 @@ HANDLED = {
     # would never have fired — and the answer is that there is no value to fit,
     # because there is no caller.
     "content_publications": (OURS, "withdrawn_reason is one module literal, written by a Core update"),
+    # Three bounded columns, and only one of them can be reached by anything a
+    # person types. `category` and `action` come from the closed tuples in
+    # `app.models.content` (32 is longer than every member), and `reason` is
+    # Text — unbounded here on purpose, because `RejectIn` already caps it at
+    # 2000 and truncating a reviewer's own words is how the sweep would end up
+    # diagnosing half a sentence. In the clip list all the same, because a
+    # category is one word and losing its tail is nothing, while losing the
+    # write would lose the record of why a person rejected a video.
+    "content_rejections": (MODEL_TRIM, "category/action are in the clip list; reason is Text"),
+    # `text` is a reviewer's sentence, capped at 300 and clipped rather than
+    # refused: a lesson is advice to a model, and three hundred characters of
+    # it is already more than `_SYSTEM` should be asked to carry. Losing the
+    # tail of a long one beats losing the lesson.
+    "content_lessons": (MODEL_TRIM, "category/text are in the clip list"),
 }
 
 def _models_with_bounded_text() -> list[type]:

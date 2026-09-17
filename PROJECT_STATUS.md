@@ -143,6 +143,61 @@ y en `~`), así que el consenso va sin él en todas las fases.
 |---|---|
 | Arranque: validar orden, dependencias y riesgos | Orden correcto. Cinco ajustes, incluida la corrección de `fin41.png` (que él mismo había sugerido antes y retiró con la evidencia del propio transcript) |
 
+## Fase 2 — el rechazo se registra y se diagnostica
+
+Rama `feat/el-rechazo-se-registra`. Migración **063**, dos tablas, un servicio.
+
+- **`content_rejections`** guarda el motivo y una **instantánea** del texto que
+  se juzgó: la corrección reutiliza la misma fila (una nueva movería
+  `next_topic` y la rotación de despedidas, que cuentan filas), así que este es
+  el único sitio donde el texto rechazado sobrevive.
+- **`content_lessons`**: guía permanente, acotada y revocable. No es una
+  columna del rechazo porque sobrevive a la pieza que la produjo.
+- **`content_corrections.py`**: `classify` (reglas de palabras, sin modelo),
+  `classify_with_model` (el modelo solo para lo que las palabras no colocan),
+  `verify` (qué puede comprobar la máquina) y `decide` (la acción más barata).
+- `POST /reject` deja la fila; `PieceOut` gana `correction`, así que la consola
+  puede decir **por qué** una pieza vuelve a la cola.
+
+**Clasificación contra los catorce motivos reales: 14 de 14.** Incluidos los
+cuatro de CTA, que son cuatro frases distintas en dos idiomas.
+
+## Auditoría de la Fase 2 (un revisor independiente, solo lectura)
+
+Trece hallazgos. Los dos bloqueantes ya estaban corregidos cuando llegó el
+informe; **de los cinco importantes, cuatro eran reales y están cerrados**.
+
+| # | severidad | hallazgo | qué se hizo |
+|---|---|---|---|
+| 1 | **bloqueante** | `ruff` rojo (`I001` + `F401`) | corregido con `--fix` |
+| 2 | **bloqueante** | `test_text_limits` exige que toda tabla con texto acotado esté declarada; mis dos no lo estaban | declaradas, con el porqué de cada columna |
+| 3 | **importante** | **La pieza 70 se clasificaba mal.** «no tiene CTA» eran los tres últimos caracteres de una queja cuyo asunto real era otro; la regla del CTA además se tragaba cualquier mención del sitio, así que «el link de la calculadora da otra cifra» salía como falta de CTA | la regla exige una **queja** sobre el CTA, no una mención; **dos reglas que casan → reescritura**, que es el remedio que cubre las dos; y un **segundo** rechazo por CTA sobre una pieza ya rehecha pasa a reescritura |
+| 4 | **importante** | `org_id` sin clave ajena: las dos únicas tablas de 22 que la omitían. Al borrar una agencia, sus instantáneas sobrevivían huérfanas | FK a `organizations` con `CASCADE`, en migración y modelo |
+| 5 | **importante** | `finding`/`snapshot` sin `none_as_null`: un `None` se guarda como el texto `null`, y `WHERE ... IS NULL` devuelve cero filas. **El mismo fichero documenta ese incidente 300 líneas más arriba** | `none_as_null=True` en las dos, con test que lo fija |
+| 6 | **importante** | Vaciar el guion dejaba `narration=""` → **vídeo mudo** | la narración solo se rehace si el guion nuevo tiene texto |
+| 7 | **importante** | La relación eager arrastraba la instantánea completa en cada lectura de pieza, incluida la ruta pública por la que Buffer descarga el vídeo | `snapshot` **diferido**: quien lo quiera lo pide |
+| 8-13 | menor | orden sin desempate; dos listas de la misma verdad; tuplas sin exportar; marcadores del prompt; deriva de `autogenerate`; bump | corregidos salvo la deriva de `autogenerate` (preexistente, **backlog**) |
+
+El auditor comprobó a fondo y **descartó** el riesgo que yo creía mayor: el
+validador de `PieceOut` no pierde ningún campo, funciona con diccionarios y no
+se traga un error de carga diferida. También verificó las seis firmas que
+`verify` llama, que no hay ciclos de importación, que `063` es la cabeza
+correcta y que la política RLS cumple lo que el guardián exige.
+
+**Un tropiezo mío que merece constar:** medí 41 fallos en la API y casi los doy
+por defecto de mi código. Era una **colisión con mi propia suite**, que corría
+en paralelo contra la misma base y tenía viva una organización de prueba. Dos
+sesiones de pytest sobre una sola base de datos no miden nada.
+
+## Lo que Ender decidió el 17-sep (preguntas una a una)
+
+| pregunta | respuesta |
+|---|---|
+| **G3**, la línea de correduría | **Solo anotarlo por ahora.** Sin cambio de código; queda el hallazgo con su evidencia y la decisión pendiente |
+| **0.110.0** | **Ejecutar también PLAN (6) Fase 4** para poder armar la release con el arreglo del CTA antes del 22-sep 08:07 |
+| **Topes del bucle (G4)** | **1 corrección por rechazo, 2 por pieza**, 3 por agencia y día; al agotarse, aviso y la pieza queda rechazada |
+| **Aviso al rendirse** | **Correo al operador** (`send_operator_alert`, el camino que ya existe) |
+
 ## Notas para las Fases 2 y 3
 
 - `with_sign_off` (`content_writer.py`) es **la** primitiva del texto hablado.
@@ -157,12 +212,30 @@ y en `~`), así que el consenso va sin él en todas las fases.
 **Fase 2:** tablas `content_rejections` y `content_lessons` con RLS, más
 `classify` / `verify` / `decide` en `content_corrections.py`.
 
-**Recordatorio permanente (sobrevive a un `/compact`):** esta fase cierra **sin
-bump de versión**. La release **0.110.0** la arma **PLAN (6) Fase 4**, que nadie
-ha ejecutado y vence el **22-sep a las 08:07 de Denver**. Quien ejecute ese plan
-no leerá este, así que: **la entrada de `CHANGELOG.md` y de
-`frontend/lib/version.ts` correspondiente a esta fase va en ese bump.** Y **G2**
-(rehacer las piezas 74 y 75) solo tiene sentido con 0.110.0 ya desplegada.
+**Ahora: PLAN (6) Fase 4**, con el sí de Ender, en rama desde `55695c4` (la
+punta de la Fase 1) — **no** desde la Fase 2, porque la composición que él
+aprobó es «0.110.0 = PLAN (6) Fase 4 + PLAN (7) Fase 1» y la Fase 2 lleva una
+migración que no estaba en esa foto. Después vuelvo a la Fase 3.
+
+**Desviación de orden** (sin cambio de alcance): PLAN (6) Fase 4 se adelanta a
+PLAN (7) Fase 3. Cada generación diaria saca otro vídeo sin CTA hasta que
+0.110.0 esté viva, y la Fase 3 no está en el camino del despliegue.
+
+🔴 **La migración 063 la tomó este plan.** PLAN (6) Fase 5 la tenía reservada:
+**pasa a 064**. Quien ejecute ese plan no leerá este.
+
+**Recordatorio permanente (sobrevive a un `/compact`):** la entrada de
+`CHANGELOG.md` y de `frontend/lib/version.ts` de la Fase 1 y de la Fase 2 va en
+el bump de 0.110.0. **G2** (rehacer las piezas 74 y 75) solo tiene sentido con
+0.110.0 ya desplegada, y el primer vídeo rehecho tiene que mostrar el dominio
+en el subtítulo final o **G1 se reabre**.
+
+**Nota para la Fase 4 (lecciones):** una lección solo puede nacer de un motivo
+con `finding == {"matched": []}` — nadie pudo colocarlo. Nunca de una queja
+compuesta, y nunca de un texto que lleve el dominio dentro: `_SYSTEM` prohíbe
+que el modelo escriba direcciones web, y una lección que se lo pida haría que
+`caption_carries_link` dejara de añadir el enlace del caption. Esa es
+exactamente la regresión de la sesión anterior.
 
 ---
 

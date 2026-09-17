@@ -32,7 +32,7 @@ from pathlib import Path
 import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,6 +46,7 @@ from app.models import (
     ContentLanguage,
     ContentPiece,
     ContentPublication,
+    ContentRejection,
     ContentStatus,
     PublicationPlatform,
 )
@@ -102,8 +103,44 @@ class PublicationOut(BaseModel):
     latest_metrics: MetricsOut | None = None
 
 
+class CorrectionOut(BaseModel):
+    """The last rejection of this piece, and what came of it.
+
+    Returned so the console can say WHY a piece it already rejected is back in
+    the queue. Until now a corrected piece reappeared looking like a new one,
+    which is the same as not telling anybody.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    reason: str
+    category: str | None = None
+    finding: dict | None = None
+    action: str | None = None
+    created_at: datetime
+    resolved_at: datetime | None = None
+
+
 class PieceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _latest_rejection(cls, data: object) -> object:
+        """Pydantic cannot read `correction` off the ORM object: the attribute
+        is called `rejections` and it is a list. Mapped here rather than in
+        every route that returns a piece."""
+        rows = getattr(data, "rejections", None)
+        if rows:
+            return {
+                **{
+                    name: getattr(data, name)
+                    for name in cls.model_fields
+                    if name != "correction" and hasattr(data, name)
+                },
+                "correction": rows[0],
+            }
+        return data
 
     id: int
     kind: ContentKind
@@ -134,6 +171,10 @@ class PieceOut(BaseModel):
     approved_by: str | None = None
     approved_at: datetime | None = None
     rejected_reason: str | None = None
+    # The most recent rejection of this piece, whatever its status now. Built
+    # from the eager `rejections` relationship, which is ordered newest first,
+    # so this costs no extra query per piece in the listing.
+    correction: CorrectionOut | None = None
     created_at: datetime
     updated_at: datetime
     publications: list[PublicationOut] = []
@@ -462,7 +503,11 @@ async def edit_piece(
             changed = True
 
     if changed:
-        if "script" in payload.model_fields_set and isinstance(piece.scenes, dict):
+        if (
+            "script" in payload.model_fields_set
+            and (piece.script or "").strip()
+            and isinstance(piece.scenes, dict)
+        ):
             # What the narrator SAYS has to follow what the person just wrote.
             # It did not, and that is a hole a human edit fell straight into:
             # the narration is materialised once when the draft is written, it
@@ -612,6 +657,29 @@ async def reject_piece(
     except IllegalTransition as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     piece.rejected_reason = payload.reason
+    # The reason stops being a note to nobody. Four pieces were rejected for
+    # the same missing call to action over three days, and the fifth came out
+    # with it missing too, because nothing ever read the string back.
+    #
+    # The snapshot is taken HERE because the correction reuses this same row —
+    # a new piece would shift `next_topic` and the sign-off rotation, which
+    # both count rows — so this is the only place the rejected text survives.
+    #
+    # Classified by the sweep, not here: it can cost a model call, and a person
+    # pressing Reject should not wait on a provider to find out it worked.
+    db.add(
+        ContentRejection(
+            piece_id=piece.id,
+            reason=payload.reason,
+            snapshot={
+                "hook": piece.hook,
+                "script": piece.script,
+                "caption": piece.caption,
+                "scenes": piece.scenes,
+                "media_path": piece.media_path,
+            },
+        )
+    )
     await db.commit()
     # `updated_at` is a server-side onupdate, so the flush expired it; touching
     # it during serialisation would be a lazy refresh from a sync context.

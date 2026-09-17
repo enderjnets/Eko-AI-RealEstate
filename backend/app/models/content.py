@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -30,6 +31,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy import text as text_sql
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -210,6 +212,19 @@ class ContentPiece(Base):
         back_populates="piece", cascade="all, delete-orphan", lazy="selectin"
     )
 
+    # Eager for the same reason, and ordered newest first so the console can
+    # read `rejections[0]` without sorting a list it did not ask for.
+    rejections: Mapped[list[ContentRejection]] = relationship(
+        back_populates="piece",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        # `id` breaks the tie: `created_at` is Postgres `now()`, the start of
+        # the transaction, so two rows written in one transaction are equal on
+        # it and `rejections[0]` — which is what `correction` returns — would
+        # not be deterministic.
+        order_by="desc(ContentRejection.created_at), desc(ContentRejection.id)",
+    )
+
     # The hook is written by a language model, which does not count characters
     # and will happily return 400 of them for a 300-character column. Losing a
     # draft to a database error is worse than losing its last few words, and a
@@ -355,3 +370,126 @@ class ContentMetric(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+# What a rejection can be about. Closed on purpose: an open vocabulary is one
+# more thing for a model to invent, and every value here has to map to a
+# decision the sweep knows how to take.
+REJECTION_CATEGORIES = (
+    "no_cta",       # the video does not ask for anything
+    "figure",       # a number the calculator will not stand behind
+    "language",     # written in the wrong language
+    "fair_housing", # words that cannot appear in housing advertising
+    "visual",       # the pictures
+    "audio",        # the voice or the music
+    "other",        # a reason in the reviewer's own words
+)
+
+# What the sweep did about it. `manual` and `given_up` are endings, not
+# failures: a filmed clip cannot be regenerated, and a piece that has already
+# had its two goes should stop costing renders.
+REJECTION_ACTIONS = (
+    "rebuild",         # the text is fine, the video was made before the fix
+    "rematerialise",   # the narration lost its sign-off; rebuild it, then render
+    "rewrite",         # ask the model to correct its own draft
+    "manual",          # nothing automatic can help
+    "given_up",        # the caps in G4 are spent
+    "superseded",      # somebody moved the piece before the sweep got to it
+)
+
+
+class ContentRejection(Base):
+    """One rejection, its diagnosis, and what was done about it.
+
+    The row it points at is REUSED by the correction — a new piece would shift
+    `next_topic` and the sign-off rotation, both of which count rows — so the
+    text that was rejected is overwritten upstairs and `snapshot` is the only
+    place it survives.
+
+    `category`, `finding` and `action` are filled by the sweep rather than by
+    the endpoint: classifying can cost an LLM call, and a person pressing
+    Reject should not wait on a provider to find out whether it worked.
+    """
+
+    __tablename__ = "content_rejections"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    org_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    piece_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("content_pieces.id", ondelete="CASCADE"), nullable=False
+    )
+    #: The reviewer's own words. Data, never an instruction: it is quoted into
+    #: the prompt and everything that comes back is filtered again.
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    #: What the machine could check about that reason, or `{}` when nothing
+    #: mechanical can answer it.
+    #: `none_as_null` on BOTH, and the reason is written down three hundred
+    #: lines above this one: without it a Python `None` is stored as the JSON
+    #: value `null`, which is not SQL NULL, and `WHERE finding IS NULL` returns
+    #: nothing — which is exactly how the lane B sweep once found no work to do,
+    #: silently. The sweep in the next phase queries on this column.
+    finding: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    action: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    #: Deferred: this is the whole rejected draft, and the relationship that
+    #: loads it is eager — so without this every read of a piece, including the
+    #: public route Buffer downloads the video through, would drag one copy of
+    #: the text per rejection for nobody.
+    snapshot: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True, deferred=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    piece: Mapped[ContentPiece] = relationship(back_populates="rejections")
+
+    _clip = clip_string_columns("category", "action")
+
+
+class ContentLesson(Base):
+    """Something the reviewer said once that the writer should not need told
+    twice.
+
+    Standing guidance, not history — which is why it is not a column on the
+    rejection. It outlives the piece that produced it, it is capped, and a
+    person can revoke it; a rejection is an event and cannot be any of those.
+
+    Only reasons with no mechanical gate become lessons. Where there is a gate
+    — a figure the calculator refuses, a sign-off that is missing — the gate IS
+    the lesson, and duplicating it in the prompt would be a rule the model can
+    talk itself out of.
+    """
+
+    __tablename__ = "content_lessons"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    org_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    category: Mapped[str] = mapped_column(String(32), nullable=False)
+    text: Mapped[str] = mapped_column(String(300), nullable=False)
+    source_piece_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("content_pieces.id", ondelete="SET NULL"), nullable=True
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean, server_default=text_sql("true"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    _clip = clip_string_columns("category", "text")

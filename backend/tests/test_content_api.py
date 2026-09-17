@@ -1393,3 +1393,46 @@ async def test_editing_the_script_changes_what_the_narrator_says(
     finally:
         get_settings.cache_clear()
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_clearing_the_script_does_not_leave_a_mute_video(
+    database_url: str, monkeypatch
+) -> None:
+    """Emptying the textarea makes `script` None. Rebuilding the narration from
+    that would store an empty string, and both the narrator and the queue would
+    then be handed nothing to say."""
+    from app.config import get_settings
+
+    monkeypatch.setenv("CONTENT_CTA_URL", "https://www.denverhomestory.com")
+    get_settings.cache_clear()
+    spoken = "The old script. Let's talk about your numbers. Denver Home Story dot com."
+    async with get_bypass_session_factory()() as db:
+        piece = ContentPiece(
+            org_id=1,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.NEEDS_APPROVAL,
+            hook="A hook",
+            script="The old script.",
+            caption="A caption",
+            scenes={
+                "narration": spoken,
+                "scenes": [{"visual_prompt": "A street", "on_screen_text": "Denver"}],
+            },
+        )
+        db.add(piece)
+        await db.commit()
+        piece_id = piece.id
+    try:
+        async with _client() as client:
+            resp = await client.patch(f"/api/v1/content/{piece_id}", json={"script": ""})
+        assert resp.status_code == 200, resp.text
+        async with get_bypass_session_factory()() as db:
+            fresh = await db.get(ContentPiece, piece_id)
+            assert fresh.script is None
+            # Left exactly as it was: there is nothing to rebuild it from.
+            assert fresh.scenes["narration"] == spoken
+    finally:
+        get_settings.cache_clear()
+        await _cleanup()
