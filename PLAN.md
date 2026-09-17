@@ -1168,3 +1168,401 @@ SELECT date_trunc('week', created_at) AS semana, source, count(*) AS humanas
 - `CHANGELOG.md`, `frontend/lib/version.ts`, `backend/app/config.py` — por
   despliegue.
 
+---
+
+# PLAN (6) — Las correcciones de la auditoría del 16-sep
+
+**Escrito el 16-sep-2026, 20:45 de Denver, por Fable 5.1. Ejecutor: Claude Opus 5.**
+Origen: el bloque «🔍 Auditoría del 16-sep-2026» de PLAN (5), que lleva la
+evidencia (fichero y línea) de cada punto; aquí se apunta a ella, no se repite.
+PLAN (5) sigue vivo: el orden entre los dos está en §1.
+
+## 0. Reglas (no negociables)
+
+Las diez del «⛔ Para el ejecutor» de PLAN (5) aplican tal cual: Protocolo
+Fable en la primera respuesta, las memorias listadas, nada de `cat`/`grep`
+multi-fichero/`git diff` para contar, los contenedores prohibidos, nada se
+envía sin Ender, inglés y tono de socio hacia fuera, `scratchpad/` ignorado,
+Ender sin licencia, coordinación con la sesión de PLAN (4) antes de tocar la
+cola, migrar antes de arrancar. Además:
+
+- **Método.** Una fase cada vez; máx. 3 intentos por fase y al tercero parar y
+  reportar con diagnóstico y dos salidas. Un commit convencional por fase; el
+  bump de versión en el último commit antes de cada despliegue. **Sin
+  despliegue sin que Ender lo pida en un mensaje aparte.** Subagentes: máx. 2,
+  solo lectura. Advisor: al arrancar, antes de la Fase 1 (toca el carril de
+  producción), tras el 2.º intento fallido de cualquier fase y al cierre.
+- **«Terminado» solo con salida real:** backend `pytest -q` verde sin saltados
+  (hoy 2050), `ruff` limpio; frontend `vitest`, `tsc`, `next lint`, `next
+  build`; cada test nuevo visto en rojo con su mutación y el fichero
+  restaurado con `md5` idéntico; diff sin secretos ni `print`/`console.log`.
+- **Toda escritura en producción (base o Buffer) es una puerta:** pre-imagen
+  al scratchpad de sesión, el SQL exacto a la vista, se ejecuta solo con el
+  «sí» de Ender y se verifica releyendo.
+- **Versiones propuestas, las confirma Ender (G6):** **0.110.0** backend
+  (Fases 1-4 y 5.1), **0.111.0** backend con migración 063 (Fase 5.2-5.3),
+  **0.112.0** frontend (Fase 6).
+- **Ventana de despliegue:** desde las 21:00 de Denver y nunca a menos de 20
+  min de una franja (08:30, 11:30, 12:30, 17:30, 18:30, 20:30): el publicador
+  duerme 15 min tras reiniciar.
+- **Entorno:** worktree en `main` desde `origin/main`; base de tests `eko-t3`
+  (127.0.0.1:55434, en 062); los comandos de PLAN (5) «Acceso a datos».
+
+## 1. Orden respecto a PLAN (5)
+
+1. **PLAN (6) Fase 0 va antes que PLAN (5) Fase 0** (la casa abierta): sin la
+   retención no hay hueco el jueves.
+2. La release backend 0.110.0 sale en la ventana de las 21:00 cuando Ender la
+   pida; si la casa abierta ya está en Buffer, el reinicio no la afecta.
+3. Las Fases 4 y 7 tienen que estar antes del **22-sep a las 08:07 de Denver**
+   para que la rutina no lea rastreadores.
+4. La release frontend 0.112.0 es independiente.
+5. El punto 5 de PLAN (5) Fase 0 ya lleva la corrección (la aritmética «7-8 el
+   jueves» era falsa).
+
+## 2. Puertas de Ender (decisiones; el ejecutor las presenta, no las cruza)
+
+| puerta | pregunta | recomendación | cuándo |
+|---|---|---|---|
+| G1 | Retener 41/43/45/72 fuera de la selección hasta que la casa abierta esté en Buffer | ventana `2026-10-06 → 2026-10-31` (dato, reversible) | antes de las 08:57 del 17 |
+| G2 | Clasificar las filas 231-246 como `automated` | sí, con el UPDATE de la auditoría (punto 3) | cuando quiera |
+| G3 | Actualizar el texto de la rutina del 22 | sí, con el texto de la Fase 7 | antes del 22, 08:07 |
+| G4 | Caducidad de las fichas de socio | 90 días para las nuevas; las vivas sin caducidad; revocación por script | Fase 5 |
+| G5 | Borrar tres ramas con commits huérfanos | sí, tras leer sus 7 commits | cuando quiera |
+| G6 | Versiones 0.110 / 0.111 / 0.112 | — | antes de cada bump |
+
+## 3. Fases
+
+### Fase 0 — Reloj: la cola antes de que vuelva la cuota (antes de las 08:57 del 17)
+
+**Por qué esa hora.** A las 08:57 vuelve la cuota diaria de Buffer y el primer
+tic de `publish_approved` entrega hasta 8 piezas por orden de aprobación
+(`buffer_publisher.py:1757-1810`, `CONTENT_PUBLISH_MAX_PER_DAY=8`). Una pieza
+**sin ventana** entra siempre (`:1774-1777`, a propósito) y una con ventana
+entra si abre dentro de `CONTENT_SCHEDULE_HORIZON_DAYS = 10`. **Mover un post
+libera una fecha, nunca un hueco de Buffer** (`:1750-1758`): los 10 por canal
+solo bajan cuando un post sale. Con 41/43/45/72 entregadas (12 posts) el cupo
+se rellena y la casa abierta choca con `LimitReachedError` el jueves.
+
+**0.1 Retener (G1).** Avisar a la sesión de PLAN (4). Pre-imagen al scratchpad:
+```
+SET app.current_org_id='1';
+SELECT id, status, publish_window_start, publish_window_end, approved_at
+  FROM content_pieces WHERE id IN (41,43,45,72);
+```
+(el 16-sep: 41 `approved`, 43 y 45 `publishing`, 72 `approved`; ventana NULL
+en las cuatro). Con el sí:
+```
+UPDATE content_pieces
+   SET publish_window_start='2026-10-06', publish_window_end='2026-10-31', updated_at=now()
+ WHERE id IN (41,43,45,72) AND org_id=1;
+```
+El 6-oct queda fuera del horizonte hasta el 26-sep, con la casa abierta ya
+resuelta. Comprobación: reproducir la selección del tic en SQL (§4) y que
+devuelva **solo la 24**. La 24 sí sale y está bien: su ventana (19-30 sep) es
+la que comparte con la casa abierta, YouTube tiene dos franjas al día y el
+cupo queda 8 → 9 con ella. Cuando la casa abierta esté en Buffer, Ender decide
+si adelantar la ventana de las cuatro.
+Alternativas descartadas: `needs_approval` por SQL salta la máquina de estados
+(`advance()`); una ventana ≤ 27-sep no retiene nada.
+**Si la Fase 0 llega tarde** (después del primer tic): nada en el código
+libera un hueco de Buffer. Queda esperar a que salgan posts o cancelar en la
+interfaz de Buffer, que es lo único que anula uno. Decirlo así.
+
+**0.2 Verificar el barrido vivo (desde las 09:15 del 17).** `docker logs
+eko-realestate-backend --since 1h` sin `QuotaReached` ni «failed during a
+sweep»; en `content_publications`, 69 IG (18:30 del 16), 46 YT (20:30 del 16)
+y 69 TT (08:30 del 17) en `published` con `external_url`. Si alguna sigue
+`scheduled` una hora después, leer `last_error` y Buffer antes de tocar nada.
+
+**0.3 Las 16 filas (G2).** Pre-imagen: `SELECT id, traffic_class,
+traffic_class_reason FROM landing_sessions WHERE id BETWEEN 231 AND 246;`
+(todas `unknown`). Con el sí, el UPDATE del punto 3 de la auditoría. Verificar:
+`unknown` baja 16 y la consulta de §4 devuelve 0 para `comment`.
+
+Commit `docs(plan): PLAN (6) Fase 0 — cola retenida y filas clasificadas`, con
+las salidas pegadas bajo esta fase (ids y estados, nada personal).
+
+### Fase 1 — Buffer: el parser ve las dos ventanas y el tic no se cae (backend)
+
+**Advisor antes de escribir:** es el carril por el que sale cada publicación.
+
+`backend/app/services/buffer_publisher.py`:
+1. `parse_rate_limit` (`:625-643`): partir primero por `,` (una política por
+   trozo) y dentro por `;`; devolver el `r` **mínimo** y el `t` de esa misma
+   política. Con la cabecera real del 16-sep,
+   `"100-in-15min"; r=98; t=146, "250-in-1day"; r=0; t=47729` → `(0, 47729)`.
+   Un trozo ilegible → `(None, None)` como hoy. Docstring: dos ventanas, y la
+   diaria es la que se agotó.
+2. `_graphql` (`:646-693`), al 429: `_quota_remaining = 0` y
+   `_quota_refills_at = monotonic() + int(Retry-After)` si es entero; el
+   mensaje de `QuotaReached` nombra `extensions.window` del cuerpo si existe.
+   Los tics siguientes paran en la comprobación previa **sin petición**.
+3. `publish_approved` (`:1700`): `try/except QuotaReached` alrededor de
+   `reconcile_scheduled`, `backfill_links` y `realign_windows` → **un**
+   `log.warning("Buffer quota reached; skipping this tick: %s", exc)` y
+   `return 0`. Hoy la excepción sube a `run_for_every_org` y se registra como
+   «org 1 failed during a sweep» con traceback cada 15 min: es presupuesto,
+   no una avería del inquilino.
+4. **Medir antes de presupuestar.** 24 h después del despliegue, en el VPS y a
+   fichero: `docker logs eko-realestate-backend --since 24h 2>&1 | grep "POST
+   https://api.buffer.com" | cut -c1-13 | uniq -c`, contado con `python3`. El
+   consumidor de las 250 del 16-sep **no está identificado** (el log anterior
+   se perdió con el rebuild; reconcile y backfill retornan sin llamar cuando no
+   hay filas). Ninguna lógica de presupuesto sin ese número.
+
+**Tests** (`backend/tests/test_the_queue_does_not_outrun_buffer.py`):
+- `test_the_daily_window_is_the_one_that_binds`: la cabecera literal →
+  `(0, 47729)`; una política → como hoy; `"100-in-15min"; r=3; t=5,
+  "250-in-1day"; r=200; t=10` → `(3, 5)`.
+- `test_a_429_stops_the_next_request_before_it_leaves`: `httpx.AsyncClient.post`
+  stubeado → 429 con `Retry-After: 100`; la segunda `_graphql` lanza
+  `QuotaReached` **sin** llamar al stub (contador en 1).
+- `test_a_quota_out_is_a_quiet_tick_not_an_org_failure`: `reconcile_scheduled`
+  stubeado lanza `QuotaReached` → `publish_approved` devuelve 0 sin lanzar;
+  `caplog` con un WARNING y ningún ERROR.
+Mutaciones: quitar la partición por `,` → rojo; no fijar `_quota_refills_at`
+→ rojo; quitar el `except` → rojo. Commit `fix(publisher): Buffer tiene dos
+ventanas y la diaria es la que manda`.
+
+### Fase 2 — `realign_windows`: dentro de la ventana o no se mueve (backend)
+
+`buffer_publisher.py:1644-1690`:
+1. Tras `due_at = await next_free_slot(...)` (`:1646`): `local_new =
+   due_at.astimezone(zone).date()`; si `local_new < start` o (`end` y
+   `local_new > end`) → `log.warning("Piece %s: no free %s slot inside its
+   window %s-%s; left at %s", …)` y `continue`.
+2. Tras `current = await read_scheduled_post(post_id)`: si
+   `(current.get("status") or "").lower() not in _BUFFER_IN_FLIGHT` (`:115`)
+   → `continue`: ya salió o Buffer lo cerró; el reconciliador lo verá.
+3. Test de cableado: `publish_approved` con `read_scheduled_post` y
+   `edit_scheduled_text` stubeados y una fila drifted → los dos llamados.
+   Borrar la llamada de `:1741` → rojo.
+
+Tests en `test_the_window_moved_after_the_post_was_queued.py`:
+`test_a_full_window_leaves_the_post_where_it_was` (todos los huecos entre
+`start` y `end` ocupados → 0 movidos, fila intacta, warning);
+`test_a_post_buffer_already_sent_is_not_moved` (`status: sent` → ningún
+`editPost`); `test_the_tick_realigns_before_claiming`. Mutaciones: quitar la
+cota → rojo; quitar el `status` → rojo. Commit `fix(publisher): un post no
+sale de su ventana por el otro lado`.
+
+### Fase 3 — El carril calculado enlaza con la cifra (backend)
+
+`backend/app/services/content_writer.py`:
+1. `_with_cta(draft, language, cta_index, plan=None)` (`:273`): con `plan`,
+   la URL es `f"{url}/calculator?rent={plan.rent}&savings={SAVINGS}"`
+   (`SAVINGS` de `content_calculated.py:60`, el mismo con el que se calculó la
+   cifra) y la línea es de quien alquila, no la de vender: EN «Run your own
+   number — nothing to fill in to see it: {url}», ES «Haz tu propio número —
+   no hay nada que rellenar para verlo: {url}». `_ask` (`:214`) le pasa
+   `plan`. El orden `_with_plan` → `_with_cta` no cambia (`:162-165`).
+2. La regla de la casa se cumple por construcción: la cifra del texto y la
+   del enlace salen de los mismos `inputs` (`content_calculated.py:270`), y
+   `find_violations` sigue viendo la caption final.
+
+**Tests:** en `test_the_figure_the_generator_computed.py`,
+`test_a_calculated_caption_lands_on_its_own_number` (la caption contiene
+`calculator?rent=2600&savings=60000`) y
+`test_a_prose_caption_keeps_the_selling_cta`; en `test_buffer_publisher.py`,
+junto a `:1911-1924`, `test_the_seed_survives_the_utm_tagging` con
+`rent=2600&savings=60000` literal (ejecutado a mano el 16-sep; falta el
+fixture). Mutación: construir la URL sin `savings` → rojo.
+
+**Las tres que ya existen (41, 43, 45), puerta dentro de G1:** verificar cada
+cifra con `build_snapshot({"rent": R, "savings": 60000, "credit": "good"},
+None, lang=None)["result"]["price"]` (lectura del 16-sep: 2.200 → 313k,
+3.000 → 408k, 4.000 → 527k; **recalcular, no copiar**); si cuadra, editar la
+caption por `PATCH /api/v1/content/{piece_id}` (`content.py:434`) o `psql`,
+cambiando `denverhomestory.com/calculator` por
+`denverhomestory.com/calculator?rent=R&savings=60000`; `find_violations`
+después; releer. Están `pending`, no en Buffer: el enlace viaja entero con
+`link_the_text_chose`. Commit `feat(content): la pieza calculada enlaza con el
+número que promete`.
+
+### Fase 4 — El clasificador ve las parejas (backend, antes del 22)
+
+`backend/app/services/landing_analytics.py`, junto a `classify_publish_previews`
+(`:424`) y con su forma: `classify_paired_link_checks(db) -> int`. Dos filas
+`unknown` de la misma org con el mismo `utm_source` y `utm_content`,
+`first_seen_at` a ≤ 60 s una de otra, **las dos** con
+`coalesce(max_scroll_pct,0) = 0`, `cta_clicks = 0`, `tel_clicks = 0`,
+`form_started_at IS NULL`, **ciudades distintas** (`city IS NOT NULL` y
+`a.city <> b.city`) y las dos asentadas (`last_seen_at < now -
+SETTLED_MINUTES`) → `automated`, razón `paired_link_check`. Self-join
+`a.id < b.id`, `distinct`, se marcan las dos. Registrado en `_llm_monitor_loop`
+(`main.py:545-550`) con su propio `try`, como las otras dos.
+
+**La puerta de esta fase es el backtest, no el test.** Antes de escribir
+código, la misma regla en SQL sobre producción (solo lectura):
+```
+SET app.current_org_id='1';
+WITH s AS (SELECT * FROM landing_sessions WHERE traffic_class='unknown')
+SELECT a.id, b.id, a.utm_content, a.city, b.city FROM s a JOIN s b
+  ON a.id<b.id AND a.utm_source=b.utm_source AND a.utm_content=b.utm_content
+ AND abs(extract(epoch from a.first_seen_at-b.first_seen_at))<=60
+ AND coalesce(a.max_scroll_pct,0)=0 AND coalesce(b.max_scroll_pct,0)=0
+ AND a.cta_clicks=0 AND b.cta_clicks=0 AND a.tel_clicks=0 AND b.tel_clicks=0
+ AND a.form_started_at IS NULL AND b.form_started_at IS NULL
+ AND a.city IS NOT NULL AND b.city IS NOT NULL AND a.city<>b.city
+ORDER BY a.id;
+```
+Debe devolver **exactamente las 8 parejas 231-246** (si la 0.3 aún no corrió)
+y **ninguna** fila del área de Denver ni de la app de Facebook. Si devuelve
+otra cosa, la regla no se escribe: se reporta. Es la misma disciplina con la
+que este repo rechazó `one_shot_no_scroll`.
+Alternativas descartadas: (a) ampliar los 90 s a «tras una edición» — no hay
+registro de ediciones, se hacen a mano en YouTube Studio; (b) marcar toda
+sesión de YouTube con 5 eventos y 0 scroll — es `one_shot_no_scroll` con otro
+nombre.
+
+**Tests** (nuevo `test_the_pair_that_fetched_the_same_link.py`, con los
+ayudantes de `test_the_datacenter_is_not_a_neighbour.py`): la pareja se marca;
+una sola fila no; una pareja donde una deslizó no; una pareja de la misma
+ciudad no; a 61 s no; nunca sobre `test`. Mutación: quitar `a.city<>b.city` →
+rojo.
+
+**El lado que mide:** `docs/analytics/weekly-funnel.sql` ya filtra; la
+consulta de la rutina (Fase 7) pasa a filtrar. Commit `feat(api): el
+clasificador ve la pareja que buscó el mismo enlace`. **Bump 0.110.0** (G6),
+`CHANGELOG.md` EN/ES y `version.ts` en el último commit de la release.
+
+**Despliegue 0.110.0** (cuando Ender lo pida; ventana 21:00; sin migración):
+bundle → scp → `fetch` + `reset --hard origin/main` en
+`/home/enderj/Eko-AI-RealEstate` → `docker compose up -d --build backend`;
+`/health` = 0.110.0; a los 15 min ni `QuotaReached` ni «failed during a
+sweep»; primer tic del monitor con `Classified N … paired` y N = lo que dijo el
+backtest (0 si la 0.3 ya corrió).
+
+### Fase 5 — La ficha del socio (backend)
+
+**5.1 (va en 0.110.0).** `backend/app/logging_redact.py`: patrón
+`_BRIEF_TOKEN_PATH = re.compile(r"(/api/v1/public/brief/)[A-Za-z0-9_-]{16,64}")`
+→ `\1<redacted>` en `_PATTERNS`; el filtro ya está en `uvicorn.access`
+(`:96-106`). Test en `test_log_redaction.py`: la línea de acceso `GET
+/api/v1/public/brief/<43 chars> HTTP/1.1` sale redactada; `/brief/` sin token
+no se toca. Commit `fix(logging): el token de la ficha no se escribe en el log
+de acceso`.
+
+**5.2 (0.111.0, migración 063).** `partner_briefs.expires_at` y `revoked_at`
+(`DateTime(timezone=True)`, nullable; las filas vivas quedan NULL = sin
+caducidad, nadie vivo se queda fuera). `_brief_org` (`public.py:1076`) añade
+`revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())`.
+`backend/scripts/create_brief.py` pone `expires_at = now + BRIEF_TTL_DAYS`
+(G4, 90) y un `revoke_brief.py <id>` nuevo estampa `revoked_at`. Tests en
+`test_partner_brief.py`: caducada → 404 con el mismo cuerpo; revocada → 404;
+viva → 200; el de aislamiento no cambia. **Migrar antes de arrancar**
+(`alembic upgrade head` → `063_partner_brief_expiry`).
+**5.3 (0.111.0).** `brief_save` (`public.py:1200-1245`): si `body.notify`,
+`answers` es igual a lo guardado y `answered_at` está dentro de
+`BRIEF_NOTIFY_QUIET`, no llamar a `notify_finished`. Test: dos pulsaciones
+idénticas → un `send_operator_telegram`. Commit `feat(brief): la ficha caduca,
+se revoca y no repite el timbre`. Bump 0.111.0.
+**No se toca:** el GET que estampa `opened_at` (auditoría, punto 13): cambiar
+el significado de «abierta» es decisión de producto; queda anotado.
+
+### Fase 6 — Frontend menor (0.112.0)
+
+1. `frontend/lib/sitemap.ts`: `SITEMAP_EXCLUDED = ["/start"] as const` y
+   `sitemapUrls` lo filtra; `sitemap.test.ts`: `/start` fuera, y un test de
+   texto fuente que `app/start/page.tsx` contiene `index: false` (la razón).
+2. `bioLinks.test.ts:106-112`: `const all = (await
+   nextConfig.redirects()).map((r) => r.source)`. Mutación: duplicar `/n` en
+   `next.config.js` → rojo.
+3. `app/brief/[token]/page.tsx:439-441`: `people` y `rows` en su propio
+   `useMemo`; `next lint` sin avisos.
+4. `app/calculator/page.tsx:229-266`: el id del temporizador en un `useRef`; el
+   efecto no devuelve cleanup; un efecto aparte `useEffect(() => () =>
+   window.clearTimeout(ref.current), [])`. `resultInView.test.ts` sigue verde;
+   test de forma: el fuente no contiene `return () => window.clearTimeout(id)`.
+Criterio: `vitest` ≥ 502 + nuevos, `tsc`, `next lint` **sin avisos**, `next
+build`. Bump 0.112.0. Commit `fix(frontend): sitemap sin /start, tests que
+pueden fallar y el salto que no se cancela`. Despliegue: `docker compose up -d
+--build frontend`; leer `sitemap.xml` **servido**.
+
+### Fase 7 — La rutina del 22 (G3)
+
+Con el sí, `RemoteTrigger update` sobre `trig_01RgALb3zNHEbhLeRwUgso1B`.
+**Las vistas de referencia se leen de vidIQ al actualizar** (`vidiq_video_stats`
+de `6hWbM1jDzIM`, `bHobGs2DkLE`, `ided3DCAv90`, `dSGptSU4dcE`), no se copian
+de hoy. Cambios al prompt: cuatro vídeos con comentario **fijado** (47, 48, 51,
+57; el 57 sin cifras a propósito); la consulta:
+```
+SELECT coalesce(utm_medium,'(ninguno)') AS medio, count(*) AS sesiones
+  FROM landing_sessions
+ WHERE first_seen_at >= '2026-09-16 18:35-06' AND utm_source = 'youtube'
+   AND coalesce(traffic_class,'') NOT IN ('automated','test')
+ GROUP BY 1 ORDER BY 2 DESC;
+```
+(el reloj arranca tras la última edición, 18:33 del 16); la advertencia de
+ciudades pasa a «`traffic_class` ya descuenta lo identificado; Boydton no está
+en nuestra lista de centros de datos»; el resto igual. Verificar con `get`:
+`enabled: true`, `next_run_at` = `2026-09-22T14:07:00Z`.
+
+### Fase 8 — Limpieza (G5)
+
+- Ramas: `fix/la-puerta-de-la-marca` (5 commits, 3-4 sep; leer el
+  `fix(worker)` `9127947` y comprobar si `main` ya lleva ese arreglo en el
+  instalador del worker), `feature/google-signin` (mayo; superada por
+  v0.16.0), `fix/voz-promesa-sin-respaldo` (24-ago; comprobar contra la ficha
+  `feedback_una_respuesta_vacia_no_es_una_respuesta`). Con el sí: `git branch
+  -D` y `git worktree remove` de los que existan. Nunca `git checkout -- .`.
+- La fila `failed` de la pieza 14 (IG, 8-sep) y `CONTENT_CALCULATED_EVERY`
+  ausente del `.env`: anotados, no se tocan.
+- Tras cada despliegue, marcar los puntos del bloque de auditoría (✅/⏳): es
+  lo que la siguiente sesión lee.
+
+## 4. Verificación (resumen ejecutable)
+
+```
+-- Fase 0: la selección del tic solo ve la 24
+SET app.current_org_id='1';
+SELECT id, status, publish_window_start FROM content_pieces
+ WHERE status IN ('approved','publishing') AND media_path IS NOT NULL
+   AND (publish_window_start IS NULL OR publish_window_start <= current_date + 10)
+ ORDER BY id;
+-- Fase 0.3 / 4 / 7: lo que leerá la rutina
+SELECT coalesce(utm_medium,'-') medio, count(*) FROM landing_sessions
+ WHERE first_seen_at >= '2026-09-16 18:35-06' AND utm_source='youtube'
+   AND coalesce(traffic_class,'') NOT IN ('automated','test') GROUP BY 1;
+-- Fase 1: sin cuota no hay traceback
+docker logs eko-realestate-backend --since 2h 2>&1 | grep -c "failed during a sweep"   # 0
+```
+Suites: backend `pytest -q` ≥ 2050 + nuevos y 0 saltados; frontend `vitest`
+≥ 502 + nuevos; `tsc`; `next lint` sin avisos; `next build`. Antes de cada
+despliegue, la sonda de Buffer de la ficha
+`project_eko_realtors_buffer_250_al_dia` (imprime `r` de las dos ventanas,
+nunca el token).
+
+## 5. Ficheros que se tocan
+
+- `backend/app/services/buffer_publisher.py` (F1, F2) ·
+  `backend/app/services/content_writer.py` (F3) ·
+  `backend/app/services/landing_analytics.py` + `backend/app/main.py` (F4) ·
+  `backend/app/logging_redact.py` (F5.1) · `backend/app/models/partner_brief.py`
+  + **nueva** `backend/migrations/versions/2026MMDD_HHMM_partner_brief_expiry.py`
+  (063) + `backend/app/api/v1/public.py` + `backend/scripts/create_brief.py` +
+  **nuevo** `backend/scripts/revoke_brief.py` (F5.2-5.3)
+- Tests: `test_the_queue_does_not_outrun_buffer.py`,
+  `test_the_window_moved_after_the_post_was_queued.py`,
+  `test_the_figure_the_generator_computed.py`, `test_buffer_publisher.py`,
+  **nuevo** `test_the_pair_that_fetched_the_same_link.py`,
+  `test_log_redaction.py`, `test_partner_brief.py`
+- Frontend: `lib/sitemap.ts`, `lib/__tests__/sitemap.test.ts`,
+  `lib/__tests__/bioLinks.test.ts`, `app/brief/[token]/page.tsx`,
+  `app/calculator/page.tsx`, `lib/__tests__/resultInView.test.ts`
+- `backend/app/config.py`, `frontend/lib/version.ts`, `CHANGELOG.md`,
+  `PLAN.md` — por despliegue.
+
+## 6. Riesgos
+
+1. La Fase 0 llega después del tic → ninguna retención por código; drenar o
+   cancelar en Buffer.
+2. El consumidor de las 250 del 16-sep sigue sin identificar; si es otra
+   sesión con el mismo token, la Fase 1 no lo evita, solo lo hace visible.
+3. La regla de parejas puede marcar a dos personas que pulsaron el mismo
+   enlace en el mismo minuto sin deslizar: el backtest es la defensa, y el
+   coste para el 30-sep es cero porque esa métrica ya exige scroll ≥ 50 %.
+4. Migración 063 sobre una tabla pequeña; migrar antes de arrancar.
+5. El test de forma del sitemap depende del texto de `start/page.tsx`; si
+   cambia la metadata, el test avisa, que es lo que se quiere.
