@@ -5,6 +5,30 @@ Estado de ejecución del plan `~/.claude/plans/si-haz-el-plan-jazzy-sifakis.md`
 v0.56.0 y anteriores vive en git y en el plan.
 
 ---
+# 17-sep — la línea de correduría, confirmada por quien tiene licencia
+
+**«Engel & Voelkers», sin «Aspen» y sin «Aspen - Snowmass».** Lo confirmó
+Natalia y lo trajo Ender. Era la única pieza de esto que yo no podía resolver:
+arreglar por dónde viaja la línea no arregla lo que la línea dice.
+
+Aplicado con la puerta de escritura, pre-imagen en el scratchpad: `UPDATE 1` en
+el ajuste y `UPDATE 23` en las piezas vivas. **Las publicadas no se tocan** — su
+texto ya salió, y reescribir la fila solo haría que el registro mintiera sobre
+lo que se publicó.
+
+Comprobado con el código **desplegado**, contra las filas reales: 23 piezas
+vivas, **ninguna que la puerta rechazaría**. El plegado de vocales es lo que
+hace que esto no rompa nada: «Völkers», «Voelkers» y «Volkers» son la misma
+cadena para el predicado, así que ni siquiera hacía falta reescribir las 23 —
+se hizo para que el canal no publique dos grafías durante semanas.
+
+🔴 **Lo que sigue sin cumplirse, y Natalia no lo respondió porque no se lo
+preguntamos:** la 6.10.A.6.a exige **«Each office independently owned and
+operated»** al usar la marca de un tercero, y hoy no aparece en ningún anuncio.
+Es una obligación distinta de nombrar la correduría. Preguntárselo aparte.
+
+---
+
 # 17-sep — 0.114.0 desplegada. La correduría ya no depende de la suerte.
 
 Con tu autorización. `main` en `dedc774`, tag `v0.114.0`, sin migración (sigue
