@@ -5,6 +5,45 @@ Estado de ejecución del plan `~/.claude/plans/si-haz-el-plan-jazzy-sifakis.md`
 v0.56.0 y anteriores vive en git y en el plan.
 
 ---
+# 🔴 17-sep — un anuncio publicado enseña el cartel de OTRA correduría
+
+Medido, no supuesto. Empecé buscando letras inventadas y encontré algo peor.
+
+**25 de las 33 piezas con escenas piden algo con texto** en su plano: «sign»
+aparece 29 veces, «document» 15, «screen» 10, «contract» 7. De las publicadas,
+**once tienen una escena que pide un cartel**. Saqué el fotograma **de esa
+escena exacta** en las once, calculando el segundo por el índice de la escena.
+
+**El hallazgo grave: la pieza 8, publicada.** Su cartel no es una imagen
+generada con letras borrosas: es una **foto real del cartel de RE/MAX**, nítido
+y legible, con el logo del globo, el nombre y apellido de **un agente de esa
+correduría**, **dos números de teléfono** y la línea «RE/MAX Infinity Realty
+Inc. · Independent member broker».
+
+Es decir: un anuncio de Denver Home Story, que debe identificarse como Engel &
+Voelkers, enseña el cartel de una correduría competidora con el teléfono de otro
+agente. La 6.10 pide que el anuncio sea **«accurate and not misleading to
+Consumers»**, y esto no lo es. Y puede haber una persona real detrás de ese
+nombre y esos números.
+
+**El otro problema, menor pero constante:** cuatro piezas (10, 7, 11 y la 73,
+rechazada) llevan carteles **generados** con letras inventadas — «FOIR SALE»,
+un «SOLD» encima de un «...ALE», un logotipo ilegible sobre un nombre que no
+existe. Queda amateur, pero no señala a nadie.
+
+**Por qué ningún filtro lo vio.** Todo esto vive en los píxeles. La puerta de
+direcciones y teléfonos que añadimos hoy mira lo que **escribe** el modelo, no
+lo que **dibuja** el generador ni lo que trae un clip de archivo. No hay ninguna
+comprobación sobre la imagen.
+
+**Dos orígenes distintos, y conviene no confundirlos:** las letras inventadas
+salen del generador de imágenes; el cartel de RE/MAX salió de un **clip de
+archivo**. El arreglo de uno no arregla el otro.
+
+Fotogramas en `/tmp/carteles/` de esta sesión. Decisión de Ender.
+
+---
+
 # 17-sep — la línea de correduría, confirmada por quien tiene licencia
 
 **«Engel & Voelkers», sin «Aspen» y sin «Aspen - Snowmass».** Lo confirmó
