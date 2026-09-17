@@ -830,6 +830,15 @@ lleguen. Si las fotos llegan el jueves por la mañana, sale el 18; si llegan el
 jueves por la tarde, sale el 19 en YouTube y TikTok (el 19 solo tiene Instagram
 ocupado). Si no llegan el jueves, **no se publica nada** y se le dice a Ender.
 
+> ✅ **Las fotos llegaron el 16-sep a las 18:43 de Denver** (mensaje
+> `1a0acd19c7be9dd7` del hilo), **ocho, como enlaces de Google Drive, no como
+> adjuntos**. El conector de Drive no las ve («Requested entity was not
+> found») y el enlace directo pide iniciar sesión: hay que bajarlas desde el
+> navegador con la sesión de Ender (o que las baje él) a
+> `scratchpad/casa-abierta-quebec/`, donde está el README con los ids y los
+> demás datos del hilo (incluido un cambio de precio que no va en este
+> fichero). Con las fotos ya en disco, la Fase 0 puede empezar.
+
 **Cómo:**
 1. Espera las fotos. Guárdalas en el scratchpad de sesión, nunca en el repo.
 2. Monta el vídeo **fuera del generador**: Ken Burns suave sobre 6-8 fotos, un
