@@ -22,10 +22,19 @@ hace que esto no rompa nada: «Völkers», «Voelkers» y «Volkers» son la mis
 cadena para el predicado, así que ni siquiera hacía falta reescribir las 23 —
 se hizo para que el canal no publique dos grafías durante semanas.
 
-🔴 **Lo que sigue sin cumplirse, y Natalia no lo respondió porque no se lo
-preguntamos:** la 6.10.A.6.a exige **«Each office independently owned and
-operated»** al usar la marca de un tercero, y hoy no aparece en ningún anuncio.
-Es una obligación distinta de nombrar la correduría. Preguntárselo aparte.
+✅ **Y la 6.10.A.6.a, cumplida el mismo día, por decisión tuya.** La línea es
+ahora **«Engel & Voelkers · Each office independently owned and operated»**, que
+es lo que la regla exige al usar la marca de un tercero. `UPDATE 1` en el ajuste
+y `UPDATE 23` en las vivas, misma transacción, con guarda para no repetir el
+descargo y pre-imagen aparte.
+
+**Y tenían que ir juntos:** la puerta exige que el caption contenga el ajuste
+**entero**, así que alargar el ajuste sin reescribir los captions habría dejado
+las 23 retenidas a la vez. Comprobado con el código desplegado después:
+ninguna rechazada, ninguna con el descargo duplicado.
+
+La redacción la elegimos nosotros. E&V suele tener fórmula propia; si su bróker
+prefiere otra, es otro UPDATE.
 
 ---
 
