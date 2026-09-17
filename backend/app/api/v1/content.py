@@ -24,6 +24,7 @@ Two decisions worth their comments:
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from datetime import UTC, date, datetime
@@ -60,6 +61,8 @@ from app.services.content_studio import (
 )
 from app.services.tenant_context import get_org_id
 from app.services.video_metrics import record_snapshot
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -472,6 +475,60 @@ async def create_draft(
     return PieceOut.model_validate(piece)
 
 
+async def _remake_the_video_for_the_new_words(
+    db: AsyncSession, piece: ContentPiece, script_changed: bool
+) -> None:
+    """A changed script means the video is now wrong. Ask for a new one.
+
+    Narrowly: only when the SCRIPT changed, only when there is a video to
+    replace, and only on a generated piece that carries a plan to rebuild
+    from. A new hook or a new caption never reaches the narrator, and neither
+    costs a render.
+
+    **It spends money, and that is the point rather than a side effect.** The
+    narration is materialised once, is not shown in the console, and cannot be
+    edited; "Rebuild the video" rebuilds from the stored plan. So correcting a
+    figure in the script and saving used to leave a video still saying the old
+    one — approvable, publishable, with the yellow captions agreeing with it
+    because they are transcribed from the audio. Somebody who changes what the
+    narrator says has asked for a different video; charging for one and saying
+    so beats shipping the old one quietly.
+
+    The one thing it will not do is throw the video away for nothing: if the
+    stored prompts are not English the render would buy six pictures of
+    something else, so the text is saved, the old video is kept, and the
+    reason is logged. Not a 409 — the person came here to edit words, and
+    refusing the edit would leave them with no way to fix anything.
+    """
+    from app.services.content_render import ShotListNotEnglish, requeue_render
+
+    if not (
+        script_changed
+        and piece.media_path
+        and piece.kind is ContentKind.GENERATED
+        and piece.scenes
+    ):
+        return
+    if piece.status is ContentStatus.REJECTED:
+        # A rejected piece belongs to the correction sweep, and to the person
+        # fixing it by hand. Taking its video away here would move it out of
+        # REJECTED, which silently closes its open rejection as "superseded"
+        # and charges a render nobody asked for — while the sweep, which knows
+        # what the reviewer actually objected to, never gets to look at it.
+        return
+    try:
+        await requeue_render(db, piece)
+    except ShotListNotEnglish as exc:
+        log.warning(
+            "Piece %s: the script changed but its shot list is not English "
+            "(%s), so the old video is kept rather than spent. The words are "
+            "saved; the video will not match them until the prompts are "
+            "rewritten in English and the video is rebuilt",
+            piece.id,
+            exc.reason,
+        )
+
+
 @router.patch("/{piece_id}", response_model=PieceOut)
 async def edit_piece(
     piece_id: int, payload: PieceEdit, db: AsyncSession = Depends(get_db)
@@ -487,6 +544,7 @@ async def edit_piece(
         )
 
     changed = False
+    script_changed = False
     for field in ("hook", "script", "caption", "calculator_check"):
         # `model_fields_set`, not `is not None`. The two are different questions
         # and only this one has an answer: "was this field sent?" versus "did it
@@ -501,6 +559,7 @@ async def edit_piece(
         if value != getattr(piece, field):
             setattr(piece, field, value)
             changed = True
+            script_changed = script_changed or field == "script"
 
     if changed:
         if (
@@ -526,6 +585,7 @@ async def edit_piece(
                 ),
             }
         _refresh_violations(piece)
+        await _remake_the_video_for_the_new_words(db, piece, script_changed)
         # The person approved the OLD text. Through the declared edge, so an
         # illegal path here is a crash rather than a silent status write.
         if piece.status is ContentStatus.APPROVED:
@@ -753,8 +813,7 @@ async def rebuild_piece(piece_id: int, db: AsyncSession = Depends(get_db)) -> Pi
     name — so the honest wording is the expensive one, which is also the one
     that cannot mislead somebody into a charge they did not expect.
     """
-    from app.models import RenderJob, RenderJobStatus
-    from app.services.content_render import stored_shot_list_language
+    from app.services.content_render import ShotListNotEnglish, requeue_render
 
     piece = await db.get(ContentPiece, piece_id)
     if piece is None:
@@ -770,6 +829,19 @@ async def rebuild_piece(piece_id: int, db: AsyncSession = Depends(get_db)) -> Pi
     if piece.status is ContentStatus.PUBLISHED:
         raise HTTPException(
             status_code=409, detail="this piece is published; nothing here can un-post it"
+        )
+    if piece.violations:
+        # A rebuild would remove the video and queue nothing, because the text
+        # still carries findings and `requeue_render` will not buy a render for
+        # words the filter refuses. Better to say so than to take the video
+        # away and leave the button looking broken.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "this piece's text still has findings against it; fix those "
+                "first, or the new video would be a video of text that cannot "
+                "be published"
+            ),
         )
     if piece.status is ContentStatus.PUBLISHING:
         # Buffer is holding this video for a future hour, and rebuilding clears
@@ -804,49 +876,22 @@ async def rebuild_piece(piece_id: int, db: AsyncSession = Depends(get_db)) -> Pi
     #
     # A refusal rather than a silent skip, because somebody is standing here
     # waiting for a video and deserves to be told why there will not be one.
-    shot_list = stored_shot_list_language(piece)
-    if shot_list is not None:
+    #
+    # That gate, the cleared file and the queued job now live in
+    # `requeue_render`, shared with the correction sweep and with an edit that
+    # changes what the narrator says.
+    try:
+        await requeue_render(db, piece)
+    except ShotListNotEnglish as exc:
         raise HTTPException(
             status_code=409,
             detail=(
                 "this piece's shot list is not in English, and the image "
                 f"service does not refuse those — it draws something else "
-                f"({shot_list}). Rewrite every visual_prompt in English "
+                f"({exc.reason}). Rewrite every visual_prompt in English "
                 "first; the words on screen and the narration stay as they are"
             ),
-        )
-
-    # An approval is a decision about a video. Take the video away and the
-    # decision no longer refers to anything — and since v0.67.6 a piece with no
-    # file cannot be approved at all, so leaving it APPROVED would strand it in
-    # exactly the state that gate exists to prevent.
-    if piece.status is ContentStatus.APPROVED:
-        advance(piece, ContentStatus.NEEDS_APPROVAL)
-    piece.approved_by = None
-    piece.approved_at = None
-    piece.media_path = None
-    piece.render_error = None
-
-    # `uq_render_job` is on (piece_id, kind), so the finished row would collide
-    # with the one the sweep wants to create. Reset it rather than delete it:
-    # the attempt count and the history belong to the piece.
-    job = (
-        await db.execute(
-            select(RenderJob).where(RenderJob.piece_id == piece_id)
-        )
-    ).scalars().first()
-    if job is not None:
-        job.status = RenderJobStatus.QUEUED
-        job.worker = None
-        job.claimed_at = None
-        job.attempts = 0
-        job.last_error = None
-        # The old job's last report belongs to the old job. Left behind, the
-        # console shows the new render sitting at whatever percentage the
-        # previous one died at until the worker gets far enough to say
-        # otherwise — which is the same lie in a smaller window.
-        job.stage = None
-        job.progress = None
+        ) from exc
 
     await db.commit()
     await db.refresh(piece)

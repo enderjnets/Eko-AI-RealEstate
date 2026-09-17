@@ -323,6 +323,52 @@ def plan_for(index: int, language: ContentLanguage) -> Plan:
     )
 
 
+def plan_from_check(
+    check: dict[str, Any] | None, language: ContentLanguage
+) -> Plan | None:
+    """The `Plan` that produced this `calculator_check`, or None.
+
+    `plan_for` takes an index and nothing else, so a stored piece could not be
+    put back on its own rail: the index is not written down anywhere. It does
+    not have to be. The rotation is a pure function of `(series, rent)` and
+    both are in the check — the series key because `calculated_index` counts
+    through it, the rent because the gate recomputes the figure from the
+    inputs — so the index is recoverable by asking where those two sit in the
+    tuples they came from.
+
+    This is what makes a REWRITE safe on the calculated rail. Without it a
+    correction would rebuild the draft with `plan=None`, and three things would
+    quietly change at once: the sign-off would become the seller's rather than
+    the renter's, the link would lose the seed that opens the page on the same
+    number the video says, and the on-screen figure would go back to being
+    whatever the model felt like writing. That is the $21,000-against-$52,210
+    defect, re-entering through the door built to repair it.
+
+    None means "do not rewrite this one" and the caller sends it to a person.
+    Returned for a check from another rail, a rent or a series that no longer
+    exists, and a figure the calculator will not state today.
+    """
+    if not isinstance(check, dict) or check.get("source") != CALCULATED_SOURCE:
+        return None
+    scenarios = check.get("scenarios")
+    inputs = (
+        scenarios[0].get("inputs")
+        if isinstance(scenarios, list) and scenarios and isinstance(scenarios[0], dict)
+        else None
+    )
+    rent = inputs.get("rent") if isinstance(inputs, dict) else None
+    keys = [series.key for series in SERIES]
+    if check.get("series") not in keys or rent not in RENTS:
+        return None
+    index = keys.index(str(check["series"])) * len(RENTS) + RENTS.index(int(rent))
+    try:
+        return plan_for(index, language)
+    except ValueError:
+        # The calculator has no figure for this rent any more. A piece cannot
+        # be rewritten around a number that no longer exists.
+        return None
+
+
 def scene_fields(plan: Plan) -> list[tuple[str, str]]:
     """`(visual_prompt, on_screen_text)` for each of the four shots.
 

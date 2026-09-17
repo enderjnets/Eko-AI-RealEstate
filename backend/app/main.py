@@ -551,12 +551,14 @@ async def _llm_monitor_loop() -> None:
 
 
 async def _content_studio_loop() -> None:
-    """Background worker: the daily generated drafts (v0.53).
+    """Background worker: the daily generated drafts (v0.53), and the
+    corrections owed to rejections that already happened.
 
     Hourly tick rather than a daily one, but the writer self-limits by the
     per-day cap, so a restart never doubles the day's output and a failed tick
     is retried within the hour instead of tomorrow.
     """
+    from app.services.content_corrections import correct_rejected
     from app.services.content_writer import generate_draft
     from app.services.tenant_context import run_for_every_org
 
@@ -564,6 +566,21 @@ async def _content_studio_loop() -> None:
     while True:
         try:
             await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            raise
+        # Corrections BEFORE new drafts, and in their own guard. Before,
+        # because a rejection is a piece of work somebody is waiting on and a
+        # new draft is not; separately, because these two spend from different
+        # budgets and a provider outage in one is no reason for the other not
+        # to run. The neighbouring loop learned that the expensive way: one
+        # classifier failing took its two siblings with it.
+        try:
+            await run_for_every_org(correct_rejected)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Content corrections tick failed: %s", exc)
+        try:
             await run_for_every_org(generate_draft)
         except asyncio.CancelledError:
             raise

@@ -5,6 +5,111 @@ Estado de ejecución del plan `~/.claude/plans/si-haz-el-plan-jazzy-sifakis.md`
 v0.56.0 y anteriores vive en git y en el plan.
 
 ---
+
+# PLAN (7) Fase 3 — el rechazo corrige la pieza y la vuelve a sacar
+
+Rama `feat/el-rechazo-se-corrige`, desde `827ec96`. **Sin migración.** Sin bump:
+esta fase entra en 0.113.0 con la Fase 4 (G5).
+
+## Qué hace ahora un rechazo
+
+El barrido `correct_rejected` corre en el bucle del estudio, **antes** de
+escribir borradores nuevos y en su propia guarda. Por cada rechazo sin resolver:
+clasifica el motivo, lo comprueba contra la pieza, decide la acción más barata
+que responda al hallazgo, la ejecuta y cierra la fila.
+
+| acción | cuándo | qué cuesta |
+|---|---|---|
+| `rebuild` | la narración ya dice el dominio: el texto está bien y el **vídeo** es viejo | una narración y seis imágenes |
+| `rematerialise` | la narración perdió la despedida; se rehace con `with_sign_off` y luego se renderiza | lo mismo |
+| `rewrite` | cifra, idioma, Fair Housing, o un motivo que nadie pudo colocar | lo anterior más una o dos llamadas al modelo |
+| `manual` | clip filmado, sin plan de escenas, o calculada cuyo `Plan` no se reconstruye | nada |
+| `given_up` | los topes están gastados | nada, y **un correo al operador** |
+| `superseded` | alguien la arregló a mano o pulsó Reintentar antes que el barrido | nada |
+
+**Topes (G4, tu decisión):** 1 por rechazo, 2 por pieza en toda su vida, 3 por
+agencia y día. Solo cuentan las tres acciones que gastan.
+
+**El motivo es dato, nunca instrucción.** Va entre comillas, recortado a 600
+caracteres, con el mismo `_SYSTEM` que gobierna un borrador nuevo, y todo lo que
+vuelve pasa otra vez por `_all_violations`.
+
+## Tres cosas que no estaban en el plan y hacían falta
+
+1. **`_requeue_render` compartido por tres llamadores** — el botón «Rehacer», el
+   barrido y una edición que cambia el guion. Trae consigo un arreglo
+   preexistente: el botón dejaba una pieza **rechazada** en `rejected` con un
+   vídeo nuevo, y de ahí no salía sin un UPDATE a mano, porque la entrega solo
+   sube `draft → needs_approval`.
+2. **`plan_from_check`** reconstruye el `Plan` de una pieza calculada desde
+   `(series, rent)`. Sin él una reescritura calculada perdía la despedida del
+   carril, la semilla del enlace y la cifra en pantalla: el defecto de los
+   $21.000 contra $52.210, volviendo a entrar por la puerta hecha para taparlo.
+   Si no se reconstruye, **no se reescribe**: va a una persona.
+3. **Una edición del guion pide vídeo nuevo** (consenso; el advisor decidió A y
+   corrigió mi análisis: la opción B no re-encolaba **nunca**, porque `_enqueue`
+   salta cualquier trabajo existente que no sea un fallo viejo). Acotado a que
+   cambie el **guion**, haya vídeo, sea generada y tenga plan. Un caption nuevo
+   no cuesta nada.
+
+## Evidencia
+
+| comprobación | resultado |
+|---|---|
+| tests nuevos | **35** (29 del barrido + 6 de la consola), contados sobre el diff con `git diff` por `python3`, no de memoria — **y es la segunda vez en esta fase que escribí este número mal antes de medirlo** |
+| mutaciones | **24 de 24 en rojo**, ficheros restaurados con md5 idéntico |
+| lo que la batería **no** cubre | el arreglo del bloqueante 1 (ids en vez de instancias) no tiene mutación propia. Quedó probado de otra forma, que vale igual: al reparar el test que lo tapaba, el código viejo levantó `MissingGreenlet` y el nuevo pasa |
+| suite backend, corrida sola | **2176 pasan, 0 saltados, 0 fallos** |
+| 🔴 un fallo que no supe reproducir | en una corrida completa anterior, `test_a_model_that_keeps_typing_the_address_is_not_published` falló una vez: la fila traía `violations_after_rewrite` donde debía traer `rewrite_failed`, lo que exige que el modelo devolviera un borrador limpio — imposible con ese simulacro. **No se reprodujo** en 8 intentos después, ni en fichero suelto ni con sus vecinos ni en la suite entera. Endurecí el simulacro (una función, no una lista de dos: una lista agotada levanta `StopIteration` dentro del `except` del escritor y convierte una predicción equivocada en otro verde). **Queda anotado como pregunta abierta, no como resuelto** |
+| frontend | **sin cambios en esta fase**; la última medida de la sesión sigue vigente: 502 tests, `tsc` limpio, `next lint` 0/0, `next build` compila |
+| `ruff check app tests` | limpio |
+| migración | ninguna |
+| secretos / `print` en el diff | ninguno (barrido por forma sobre las líneas añadidas) |
+
+## Auditoría de la Fase 3 (un revisor independiente, solo lectura)
+
+**Dos bloqueantes, y el primero lo tapaba un test mío.**
+
+| # | hallazgo | qué se hizo |
+|---|---|---|
+| 1 | 🔴 **El barrido moría dentro de su propio manejador de errores.** `rollback()` caduca **todos** los objetos de la sesión, la clave primaria incluida; leer `row.id` en el `except` dispara una carga perezosa desde contexto asíncrono y levanta `MissingGreenlet` **dentro del `except`**, que escapa y abandona todas las filas que venían detrás. El tic siguiente encuentra la misma primera y repite | el barrido selecciona **ids**, no instancias, y relee cada fila; el test que lo tapaba levantaba la excepción **antes de tocar la base**, así que no había transacción que caducar — ahora hace SQL primero |
+| 2 | 🔴 **Una acción a medias se reintentaba como una más cara.** `action` se escribía en un commit y `resolved_at` en otro; una fila que moría en medio se volvía a coger, `_previous_actions` leía **su propia** acción, `decide` la escalaba de `rebuild` a `rewrite` (modelo + render) por trabajo que nunca ocurrió, `_spent_on` le quemaba uno de los dos intentos y `_spent_today` no la veía. Dos contadores en desacuerdo, en direcciones opuestas | **un solo commit por fila**: nada se compra hasta que aterriza, porque un render es una fila encolada |
+| 3 | **Se compraba un render para texto que el filtro rechaza.** `enqueue_generated` excluye las piezas con `violations`, pero `claim_job` reparte cualquier trabajo encolado sin mirar la pieza | `decide` manda a reescribir cualquier pieza con `violations`; `requeue_render` quita el vídeo pero **no encola**; el botón «Rehacer» responde 409 |
+| 4 | **Regresión que introduje yo**: editar el guion de una pieza **rechazada** le quitaba el vídeo, la sacaba de `rejected` y con eso cerraba su rechazo como `superseded` sin que el barrido llegara a mirarlo | una pieza rechazada es del barrido: la edición guarda el texto y deja el vídeo |
+| 5 | **El motivo podía meter una URL del modelo en el caption.** Uno de los rechazos reales de Ender lleva el dominio dentro: «There is not call to action at the end , like visit: DenverHomeStory.com for». El modelo la copia, `_with_cta` ve que el caption ya tiene enlace y **no añade el nuestro**: sale una dirección tecleada por un LLM, sin esquema, sin UTM y sin la semilla de la calculada | se detecta y se pide **una** corrección más nombrando las direcciones; si insiste, el borrador se descarta y lo ve una persona. **Detectar, no recortar**: quitar «Start at denverhomestory.com or call (303) 555-0199.» de un guion deja «Start at or call.», y eso lo lee el narrador |
+| 6 | **Gasto de modelo que ningún tope veía.** Una reescritura que llamaba al modelo y volvía inservible se registraba como `manual`, que no cuenta | sigue siendo `rewrite`, con el fallo en `finding` |
+
+**Dos tests míos pasaban por la razón equivocada**, los dos corregidos: el de
+las dos colas no llegaba a la consulta que dice medir (`RENDER_WORKER_ENABLED`
+es `False` por defecto **y** no había línea de correduría, así que
+`enqueue_generated` salía en su primera línea), y el del barrido que sobrevive a
+una fila mala levantaba la excepción antes de abrir transacción.
+
+**Backlog, con evidencia:**
+
+- **Dos renders por una pieza.** `requeue_render` reencola un trabajo que un
+  obrero ya tiene `CLAIMED`; el primero paga, entrega, recibe 409 y su vídeo se
+  borra. Preexistente del botón «Rehacer», ahora alcanzable también desde el
+  barrido y desde un `PATCH`. **El arreglo barato, para cuando toque:** el
+  barrido es el único llamador que puede esperar — si el trabajo está `CLAIMED`
+  con `claimed_at` reciente, dejar la fila abierta y pasar a la siguiente. Los
+  otros dos llamadores exigirían una marca de vallado, que no cabe aquí.
+- **El primer borrador no pasa por la comprobación de direcciones.** Solo la
+  corrección. `_SYSTEM` lo prohíbe y nada lee la respuesta, así que un modelo
+  que escriba el dominio en un borrador nuevo suprime igual el CTA
+  determinista. No se tocó porque `_all_violations` corre **después** de
+  `_with_cta` y vería nuestra propia URL como infracción: el arreglo exige
+  mover ese orden, que no es de esta fase.
+- **`approve_piece` no mira `violations`.** Preexistente: una pieza ya en
+  `needs_approval` a la que una edición añade hallazgos puede aprobarse. Hoy la
+  frena que no tenga vídeo, que no es la misma cosa.
+- **`verify` calcula `caption_carries_link` y `decide` no lo lee.** Una pieza
+  cuyo caption perdió el enlace recibe un `rebuild`, que no cambia captions.
+- Un motivo de tres caracteres («meh») cae en `other` y cuesta una
+  clasificación, una o dos correcciones y un render entero.
+- `_tell_the_operator` descarta el booleano de `send_operator_alert`: si los dos
+  transportes fallan, el aviso de rendición se pierde y la fila ya está cerrada.
+
 # PLAN (7) — el vídeo sin CTA y el rechazo que no enseñaba nada
 
 Ejecuta Claude Opus 5 desde el 17-sep-2026 (`PLAN.md`, sección «PLAN (7)»).

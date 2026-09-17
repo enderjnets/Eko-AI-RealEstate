@@ -283,6 +283,15 @@ def decide(
         # A clip somebody filmed on their phone. Nothing here can re-shoot it.
         return "manual"
 
+    if piece.violations:
+        # Findings against the TEXT outrank whatever the reviewer was
+        # describing. A rebuild would buy a narration and six pictures for
+        # words the Fair Housing filter refuses, and the delivery endpoint
+        # would then refuse to advance the piece — so the money is spent and
+        # the video parks in DRAFT where nobody can approve it. The words are
+        # the problem; ask for new ones.
+        return "rewrite" if can_be_rewritten(piece) else "manual"
+
     if category == "no_cta":
         # The narration already says the address, so the text is right and the
         # VIDEO is what is stale — it was made before the fix reached the
@@ -295,7 +304,7 @@ def decide(
             # subject was that the opening gives no context. One wasted render
             # is the price of finding that out; two would be a loop.
             if "rebuild" in previous_actions:
-                return "rewrite" if piece.scenes else "manual"
+                return "rewrite" if can_be_rewritten(piece) else "manual"
             return "rebuild"
         return "rematerialise"
 
@@ -304,10 +313,485 @@ def decide(
         return "rebuild"
 
     if category in ("figure", "language", "fair_housing", FALLBACK_CATEGORY):
-        if not piece.scenes:
-            # Nothing to rebuild from, so a rewrite would leave a piece with a
-            # new script and a video of the old one.
-            return "manual"
-        return "rewrite"
+        return "rewrite" if can_be_rewritten(piece) else "manual"
 
     return "manual"
+
+
+def reconstructed_plan(piece: ContentPiece):
+    """This calculated piece's `Plan`, or None. None for a prose piece too.
+
+    A prose piece has no plan and needs none; the caller asks
+    `calculator_check is not None` first when the difference matters.
+    """
+    from app.services.content_calculated import plan_from_check
+
+    return plan_from_check(piece.calculator_check, piece.language)
+
+
+def can_be_rewritten(piece: ContentPiece) -> bool:
+    """Whether asking the model to correct this draft can end well.
+
+    Two ways it cannot, and the second is the expensive one.
+
+    **No scene plan**: a rewrite would leave the piece with a new script and a
+    video of the old one, because there is nothing to rebuild the video from.
+
+    **A calculated piece whose `Plan` will not come back**: the rewrite tail is
+    `_with_plan` then `_with_cta`, and both change behaviour when the plan is
+    missing. The sign-off becomes the seller's on a video made for somebody who
+    rents, the link loses the seed that opens the page on the figure the video
+    just said, and the on-screen text goes back to whatever the model writes.
+    That is the defect where five videos promised $21,000 against the
+    calculator's own $52,210 — re-entering through the door built to repair it.
+    A person can still fix the piece by hand; a machine should not guess.
+    """
+    if not piece.scenes:
+        return False
+    if piece.calculator_check is not None and reconstructed_plan(piece) is None:
+        return False
+    return True
+
+
+# ── The sweep ────────────────────────────────────────────────────────────────
+#
+# G4, decided by the owner on 17-sep-2026: one automatic regeneration per
+# rejection, two per piece in its whole life, three per agency per day. Then it
+# stops and tells a person.
+#
+# The numbers are small because each lap is a real charge — a narration and six
+# paid images on the render machine, plus a model call on the rewrite path —
+# and because a correction loop with no ceiling is not a loop that eventually
+# gets it right, it is a loop. The piece that proved the ceiling was needed is
+# 70, where "no tiene CTA" was the tail of a sentence whose real complaint was
+# the opening.
+
+#: Actions that cost a render. `manual`, `given_up` and `superseded` do not,
+#: and must not count against the caps, or a piece that nothing can be done
+#: about would use up the day.
+SPENDING_ACTIONS = ("rebuild", "rematerialise", "rewrite")
+
+#: Per piece, for its whole life.
+MAX_CORRECTIONS_PER_PIECE = 2
+
+#: Per agency, per UTC day. Same midnight the writer's daily cap uses, so the
+#: two ceilings cannot disagree about what "today" means.
+MAX_CORRECTIONS_PER_DAY = 3
+
+
+def _draft_from(piece: ContentPiece):
+    """The rejected piece as the payload the writer speaks in, or None.
+
+    None when the stored row will not validate as a draft — a script over the
+    field's limit, a scene with no prompt. Returning None rather than raising
+    keeps one malformed row from stopping the sweep for every other piece.
+    """
+    from pydantic import ValidationError
+
+    from app.services.content_writer import DraftPayload
+
+    plan = piece.scenes if isinstance(piece.scenes, dict) else {}
+    scenes = plan.get("scenes") if isinstance(plan.get("scenes"), list) else []
+    try:
+        return DraftPayload.model_validate(
+            {
+                "hook": piece.hook,
+                "script": piece.script,
+                "caption": piece.caption,
+                "scenes": [
+                    {
+                        "visual_prompt": scene.get("visual_prompt"),
+                        "on_screen_text": scene.get("on_screen_text"),
+                    }
+                    for scene in scenes
+                    if isinstance(scene, dict)
+                ],
+            }
+        )
+    except ValidationError:
+        log.warning(
+            "Piece %s: what is stored will not validate as a draft, so it "
+            "cannot be corrected by the model",
+            piece.id,
+        )
+        return None
+
+
+def _somebody_got_here_first(piece: ContentPiece, snapshot: Any) -> bool:
+    """Whether the piece has moved since it was rejected.
+
+    The status alone is not the question, and that is the whole point of
+    comparing the text. Editing a rejected piece leaves it REJECTED — nothing
+    in `edit_piece` advances it — so a person who read the reason and fixed the
+    script by hand would have their work handed to a model and rewritten on
+    top, which is worse than doing nothing.
+
+    `media_path` is deliberately not compared: a delivered render changes it
+    and that is not somebody getting here first.
+    """
+    if not isinstance(snapshot, dict):
+        # An older row with nothing to compare. The status is all there is.
+        return False
+    return any(
+        snapshot.get(field) != getattr(piece, field)
+        for field in ("hook", "script", "caption", "scenes")
+    )
+
+
+async def _spent_today(db) -> int:
+    from datetime import UTC, datetime, time
+
+    from sqlalchemy import func, select
+
+    from app.models import ContentRejection
+
+    midnight = datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)
+    return (
+        await db.execute(
+            select(func.count())
+            .select_from(ContentRejection)
+            .where(
+                ContentRejection.action.in_(SPENDING_ACTIONS),
+                ContentRejection.resolved_at >= midnight,
+            )
+        )
+    ).scalar_one()
+
+
+async def _spent_on(db, piece_id: int) -> int:
+    from sqlalchemy import func, select
+
+    from app.models import ContentRejection
+
+    return (
+        await db.execute(
+            select(func.count())
+            .select_from(ContentRejection)
+            .where(
+                ContentRejection.piece_id == piece_id,
+                ContentRejection.action.in_(SPENDING_ACTIONS),
+            )
+        )
+    ).scalar_one()
+
+
+async def _previous_actions(db, piece_id: int) -> tuple[str, ...]:
+    from sqlalchemy import select
+
+    from app.models import ContentRejection
+
+    rows = (
+        await db.execute(
+            select(ContentRejection.action).where(
+                ContentRejection.piece_id == piece_id,
+                ContentRejection.action.is_not(None),
+            )
+        )
+    ).scalars().all()
+    return tuple(str(action) for action in rows)
+
+
+async def correct_rejected(db) -> int:
+    """Read every unresolved rejection, and do something about it.
+
+    Returns how many rows it closed, which is what the log line reports.
+
+    **One rejection is one work order.** It is classified, checked against the
+    piece, acted on, and closed — and closed even when the answer is "nothing
+    automatic can help", because an open row is a promise to try again and that
+    is not true of a filmed clip.
+
+    Every piece is committed on its own. A provider outage on the fifth
+    rejection must not roll back the four before it, and a piece that raises
+    must not stop the sweep: the loop above this one restarts in five minutes
+    and would meet the same row first, for ever.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.orm import undefer
+
+    from app.config import get_settings
+    from app.models import ContentRejection
+    from app.services.content_studio import not_our_rail
+
+    if not get_settings().CONTENT_STUDIO_ENABLED:
+        return 0
+    # Whose rail this is. `run_for_every_org` visits every tenant by design,
+    # and a correction on the demo organization would spend a render on content
+    # nobody will ever look at.
+    if await not_our_rail() is not None:
+        return 0
+
+    # IDS, not instances, and the difference is a bug this sweep already had.
+    # `rollback()` expires every attribute of every object in the session —
+    # primary keys included — so a list of ORM rows held across the loop is a
+    # list of objects that, after one failure, raise MissingGreenlet the moment
+    # anything reads `.id`, from async context, inside the error handler, where
+    # it escapes and starves every row behind the one that failed. The next
+    # tick meets the same row first and does the same thing, for ever.
+    #
+    # Fetching each row fresh costs one primary-key lookup and owes nothing to
+    # what the previous iteration did to the session.
+    ids = (
+        (
+            await db.execute(
+                select(ContentRejection.id)
+                .where(ContentRejection.resolved_at.is_(None))
+                .order_by(ContentRejection.created_at, ContentRejection.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not ids:
+        return 0
+
+    closed = 0
+    for row_id in ids:
+        try:
+            row = (
+                await db.execute(
+                    select(ContentRejection)
+                    .options(undefer(ContentRejection.snapshot))
+                    .where(ContentRejection.id == row_id)
+                )
+            ).scalar_one_or_none()
+            if row is None or row.resolved_at is not None:
+                continue
+            if await _handle_one(db, row):
+                closed += 1
+        except Exception:  # noqa: BLE001 — one bad row must not stop the sweep
+            await db.rollback()
+            log.exception("Correcting rejection %s failed", row_id)
+    if closed:
+        log.info("Corrections: closed %d rejection(s)", closed)
+    return closed
+
+
+async def _handle_one(db, row) -> bool:
+    """One rejection, start to finish. True when the row was closed."""
+    from datetime import UTC, datetime
+
+    from app.models import ContentPiece, ContentStatus
+
+    piece = await db.get(ContentPiece, row.piece_id)
+    if piece is None:  # pragma: no cover — the FK cascades
+        return False
+
+    now = datetime.now(UTC)
+
+    if piece.status is not ContentStatus.REJECTED or _somebody_got_here_first(
+        piece, row.snapshot
+    ):
+        # Somebody pressed Retry, or read the reason and fixed it by hand.
+        # Their work stands; this row is history.
+        row.action = "superseded"
+        row.resolved_at = now
+        await db.commit()
+        return True
+
+    if row.category is None:
+        row.category = await classify_with_model(row.reason)
+    if row.finding is None:
+        row.finding = verify(piece, row.category, row.reason)
+    action = decide(
+        piece,
+        row.category,
+        row.finding or {},
+        await _previous_actions(db, piece.id),
+    )
+
+    if action in SPENDING_ACTIONS:
+        spent_on_piece = await _spent_on(db, piece.id)
+        spent_today = await _spent_today(db)
+        over = None
+        if spent_on_piece >= MAX_CORRECTIONS_PER_PIECE:
+            over = (
+                f"this piece has already had {spent_on_piece} automatic "
+                f"corrections, which is the limit"
+            )
+        elif spent_today >= MAX_CORRECTIONS_PER_DAY:
+            over = (
+                f"{spent_today} automatic corrections have run today, which is "
+                "the limit for one day"
+            )
+        if over is not None:
+            action = "given_up"
+            row.finding = {**(row.finding or {}), "gave_up_because": over}
+
+    # ONE commit for the row and for everything the action did, and the earlier
+    # version of this got it wrong in a way worth writing down. It stamped
+    # `action` in its own commit "so a half-finished action leaves a record",
+    # and stamped `resolved_at` in a second one. A process that died between
+    # the two left a row that was re-selected on the next tick and then counted
+    # its OWN action as a previous attempt: `decide` read "rebuild" and
+    # escalated to a rewrite — a model call and a render — for work that never
+    # happened, while `_spent_on` burned one of the piece's two lifetime goes
+    # and `_spent_today`, which filters on `resolved_at`, could not see it at
+    # all. Two counters disagreeing in opposite directions about one row.
+    #
+    # All or nothing is simpler and cheaper to be wrong about: nothing here
+    # buys anything until the commit lands, because a render is a queued ROW.
+    # The only thing that can be spent and rolled back is one model call.
+    row.action = action
+    handled = await _act(db, row, piece, action)
+    row.resolved_at = datetime.now(UTC)
+    final_action = row.action
+    await db.commit()
+    # After the commit, never before: an alert is a consequence of a fact.
+    if final_action == "given_up":
+        await _tell_the_operator(row, piece)
+    return handled
+
+
+async def _act(db, row, piece, action: str) -> bool:
+    """Carry out the decided action. The row is already stamped with it."""
+    from app.services.content_render import ShotListNotEnglish, requeue_render
+
+    if action in ("manual", "given_up", "superseded"):
+        return True
+
+    if action == "rematerialise":
+        from app.services.content_topics import rotation_index
+        from app.services.content_writer import with_sign_off
+
+        if (piece.script or "").strip() and isinstance(piece.scenes, dict):
+            piece.scenes = {
+                **piece.scenes,
+                "narration": with_sign_off(
+                    piece.script, piece.language, await rotation_index(db)
+                ),
+            }
+        else:
+            # Nothing to say. A blank narration is a mute video, and the
+            # engine fails the job rather than shipping silence.
+            row.action = "manual"
+            row.finding = {
+                **(row.finding or {}),
+                "manual_because": "there is no script to speak",
+            }
+            return True
+
+    if action == "rewrite" and not await _rewrite(db, row, piece):
+        return True
+
+    try:
+        await requeue_render(db, piece)
+    except ShotListNotEnglish as exc:
+        # The prompts stored on this piece are not English, and the image
+        # service does not refuse those — it draws something else. Six pictures
+        # of the wrong thing is the expensive failure this refuses to buy.
+        #
+        # A rewrite that already reached the model keeps its name: the money is
+        # spent whether or not the render followed, and only a `rewrite` is
+        # counted by the caps.
+        if row.action != "rewrite":
+            row.action = "manual"
+        row.finding = {
+            **(row.finding or {}),
+            "not_rendered_because": f"the shot list is not in English ({exc.reason})",
+        }
+    return True
+
+
+async def _rewrite(db, row, piece) -> bool:
+    """Ask the model to correct its own draft. True when a render should follow.
+
+    False means the piece was saved with findings against it and must NOT be
+    rendered: `enqueue_generated` skips a piece with violations for the same
+    reason, and a video of text that failed the Fair Housing filter is the one
+    thing this rail exists to prevent.
+    """
+    from app.models import ContentStatus
+    from app.services.content_studio import advance
+    from app.services.content_topics import rotation_index
+    from app.services.content_writer import (
+        _all_violations,
+        _ask_correction,
+        _feedback,
+        _scene_plan,
+    )
+
+    previous = _draft_from(piece)
+    if previous is None:
+        row.action = "manual"
+        row.finding = {
+            **(row.finding or {}),
+            "manual_because": "what is stored will not validate as a draft",
+        }
+        return False
+
+    plan = reconstructed_plan(piece) if piece.calculator_check is not None else None
+    cta_index = await rotation_index(db)
+    draft = await _ask_correction(
+        previous, row.reason, piece.language, cta_index=cta_index, plan=plan
+    )
+    if draft is None:
+        # A provider outage, or a reply that is not a draft. Leaving the row
+        # open is not the answer — it would be retried every five minutes for
+        # ever — so it is resolved here and a person sees it.
+        #
+        # And it stays a `rewrite`, not a `manual`. The call was made and the
+        # call was billed; `manual` is outside `SPENDING_ACTIONS`, so recording
+        # it that way would let a provider having a bad afternoon bill one call
+        # per rejection with the day's counter still reading zero.
+        row.finding = {
+            **(row.finding or {}),
+            "rewrite_failed": "the model did not return a usable draft",
+        }
+        return False
+
+    check = piece.calculator_check
+    violations = _all_violations(draft, piece.language, check)
+    if violations:
+        # One rewrite, with the phrases named. Not a loop: a model that failed
+        # twice with them in front of it is not going to converge, and every
+        # retry is billed.
+        again = await _ask_correction(
+            previous,
+            row.reason,
+            piece.language,
+            cta_index=cta_index,
+            plan=plan,
+            feedback=_feedback(violations),
+        )
+        if again is not None:
+            draft = again
+            violations = _all_violations(draft, piece.language, check)
+
+    piece.hook = draft.hook
+    piece.script = draft.script
+    piece.caption = draft.caption
+    piece.scenes = _scene_plan(draft)
+    piece.violations = violations or None
+    row.finding = {**(row.finding or {}), "violations_after_rewrite": violations}
+
+    if violations:
+        # A DRAFT wearing its findings, for a person. No render: the text did
+        # not pass, and a video of it would be the thing the filter exists to
+        # stop.
+        advance(piece, ContentStatus.DRAFT)
+        return False
+    return True
+
+
+async def _tell_the_operator(row, piece) -> None:
+    """One message, once, when the caps are spent.
+
+    A give-up that nobody hears is the same as no cap at all: the piece sits
+    rejected for ever and the next person to look at the queue finds a video
+    that was never fixed and never explained. This repo has already paid for a
+    detector with no bell.
+    """
+    from app.services.ops_alert import send_operator_alert
+
+    reason = str(row.reason or "").strip()[:300]
+    await send_operator_alert(
+        f"Content piece {piece.id} was rejected and cannot be fixed automatically",
+        (
+            f"Piece {piece.id} ({piece.language.value}) was rejected with this "
+            f"reason: {reason}\n\n"
+            f"Diagnosis: {row.category}. "
+            f"{(row.finding or {}).get('gave_up_because', '')}\n\n"
+            "It stays rejected. Nothing else will be spent on it automatically."
+        ),
+    )

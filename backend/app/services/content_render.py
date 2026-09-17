@@ -474,6 +474,112 @@ async def enqueue_generated(db: AsyncSession) -> int:
     return await _enqueue(db, rows, RenderJobKind.PRODUCE_B) if rows else 0
 
 
+class ShotListNotEnglish(Exception):
+    """This piece's stored `visual_prompt`s are not English.
+
+    Raised instead of returned because every caller has to stop: a render
+    started from these prompts buys six pictures of something else and the
+    money is gone before anybody sees the video.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+async def requeue_render(db: AsyncSession, piece: ContentPiece) -> bool:
+    """Throw this piece's video away and ask the worker for a new one.
+
+    Three callers, and that is the whole reason this exists: "Rebuild the
+    video" in the console, the correction sweep, and an edit that changes what
+    the narrator will say. Two copies of this is how one of them forgets a
+    step — and the steps are not decoration. Every one of them below was added
+    after something went wrong without it.
+
+    It does NOT commit. The caller owns the transaction, because the sweep
+    writes a rejection row in the same one and an endpoint answers from it.
+    Returns whether a render was actually asked for.
+
+    **The status edges are here rather than in the callers** for the reason the
+    delivery endpoint makes plain: it advances DRAFT to NEEDS_APPROVAL and
+    nothing else (`render_jobs.py`). A piece left in REJECTED therefore
+    receives its new video and stays rejected for ever, with no way out but an
+    UPDATE by hand. That was already true of the rebuild button before this
+    function existed; it is fixed for all three callers at once.
+    """
+    from sqlalchemy import select
+
+    from app.models import RenderJob, RenderJobKind, RenderJobStatus
+    from app.services.content_studio import advance
+
+    # Before anything is cleared. A refusal has to leave the piece exactly as
+    # it was, or a caller that catches it has already lost the video.
+    shot_list = stored_shot_list_language(piece)
+    if shot_list is not None:
+        raise ShotListNotEnglish(shot_list)
+
+    # An approval is a decision about a video. Take the video away and the
+    # decision refers to nothing — and a piece with no file cannot be approved
+    # at all, so leaving it APPROVED strands it in the state that gate exists
+    # to prevent.
+    if piece.status is ContentStatus.APPROVED:
+        advance(piece, ContentStatus.NEEDS_APPROVAL)
+    elif piece.status is ContentStatus.REJECTED:
+        advance(piece, ContentStatus.DRAFT)
+    piece.approved_by = None
+    piece.approved_at = None
+    piece.media_path = None
+    piece.render_error = None
+
+    # `uq_render_job` is on (piece_id, kind), so a finished row collides with
+    # the one a sweep would create. Reset it rather than delete it: the attempt
+    # count and the history belong to the piece.
+    #
+    # And CREATE one when there is none. A piece that never rendered — a draft
+    # that was rejected while it still carried violations — has no job at all,
+    # and `enqueue_generated` will not make one either while a DONE job from an
+    # earlier life is sitting there. Resetting what is not there is how a
+    # correction reports success and produces nothing.
+    # The video goes whatever happens — a stale video contradicting the text is
+    # the thing every caller came here to remove — but a render is only ASKED
+    # FOR when the text passed the filter. `enqueue_generated` excludes a piece
+    # with violations for this reason and `claim_job` hands out a queued job
+    # without ever reading the piece, so this is the only place left to say it:
+    # a narration and six paid images for words the filter refuses, and then a
+    # delivery that refuses to advance the piece, so the money is gone and the
+    # video parks where nobody can approve it.
+    if piece.violations:
+        log.info(
+            "Piece %s: the video is cleared but no render is queued — its text "
+            "still carries findings",
+            piece.id,
+        )
+        return False
+
+    job = (
+        await db.execute(
+            select(RenderJob).where(
+                RenderJob.piece_id == piece.id,
+                RenderJob.kind == RenderJobKind.PRODUCE_B,
+            )
+        )
+    ).scalars().first()
+    if job is None:
+        db.add(RenderJob(piece_id=piece.id, kind=RenderJobKind.PRODUCE_B))
+        return True
+    job.status = RenderJobStatus.QUEUED
+    job.worker = None
+    job.claimed_at = None
+    job.attempts = 0
+    job.last_error = None
+    # The old job's last report belongs to the old job. Left behind, the
+    # console shows the new render sitting at whatever percentage the previous
+    # one died at until the worker gets far enough to say otherwise.
+    job.stage = None
+    job.progress = None
+    return True
+
+
 def stored_shot_list_language(piece: ContentPiece) -> str | None:
     """Why this piece's stored `visual_prompt`s are not English, or None.
 

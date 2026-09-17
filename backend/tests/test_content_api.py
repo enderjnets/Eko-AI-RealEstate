@@ -1436,3 +1436,237 @@ async def test_clearing_the_script_does_not_leave_a_mute_video(
     finally:
         get_settings.cache_clear()
         await _cleanup()
+
+
+# ── An edit that changes what the narrator says ──────────────────────────
+#
+# The decision here is about money, and it was taken deliberately. Somebody who
+# changes the script has asked for a different video; leaving the old one
+# attached leaves an approvable, publishable video saying the words that were
+# just corrected — with the yellow captions agreeing with it, because they are
+# transcribed from the audio. A narration and six paid images is the price of
+# not shipping that.
+
+
+async def _a_rendered_piece(*, visual: str = "A quiet Denver street") -> int:
+    from app.models import RenderJob, RenderJobKind, RenderJobStatus
+
+    async with get_bypass_session_factory()() as db:
+        piece = ContentPiece(
+            org_id=1,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.NEEDS_APPROVAL,
+            hook="A hook",
+            script="The old script.",
+            caption="A caption",
+            media_path="0123456789abcdef0123456789abcdef.mp4",
+            scenes={
+                "narration": "The old script.",
+                "scenes": [{"visual_prompt": visual, "on_screen_text": "Denver"}],
+            },
+        )
+        db.add(piece)
+        await db.commit()
+        db.add(
+            RenderJob(
+                org_id=1,
+                piece_id=piece.id,
+                kind=RenderJobKind.PRODUCE_B,
+                status=RenderJobStatus.DONE,
+                attempts=2,
+            )
+        )
+        await db.commit()
+        return piece.id
+
+
+async def _job_of(piece_id: int):
+    from app.models import RenderJob
+
+    async with get_bypass_session_factory()() as db:
+        return (
+            await db.execute(select(RenderJob).where(RenderJob.piece_id == piece_id))
+        ).scalars().first()
+
+
+async def _drop_jobs() -> None:
+    async with get_bypass_session_factory()() as db:
+        await db.execute(text("DELETE FROM render_jobs"))
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_new_script_asks_for_a_new_video(database_url: str) -> None:
+    from app.models import RenderJobStatus
+
+    piece_id = await _a_rendered_piece()
+    try:
+        async with _client() as client:
+            resp = await client.patch(
+                f"/api/v1/content/{piece_id}", json={"script": "The corrected script."}
+            )
+        assert resp.status_code == 200, resp.text
+        async with get_bypass_session_factory()() as db:
+            fresh = await db.get(ContentPiece, piece_id)
+            # The old video is gone, so nobody can approve the video of the
+            # words that were just corrected.
+            assert fresh.media_path is None
+        job = await _job_of(piece_id)
+        assert job.status is RenderJobStatus.QUEUED
+        assert job.attempts == 0
+    finally:
+        await _drop_jobs()
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_new_caption_leaves_the_video_where_it_is(database_url: str) -> None:
+    """A caption is never spoken and never reaches the frame. Charging for a
+    render because somebody fixed a typo in it would be a bill for nothing."""
+    from app.models import RenderJobStatus
+
+    piece_id = await _a_rendered_piece()
+    try:
+        async with _client() as client:
+            resp = await client.patch(
+                f"/api/v1/content/{piece_id}", json={"caption": "A better caption"}
+            )
+        assert resp.status_code == 200, resp.text
+        async with get_bypass_session_factory()() as db:
+            fresh = await db.get(ContentPiece, piece_id)
+            assert fresh.media_path == "0123456789abcdef0123456789abcdef.mp4"
+        assert (await _job_of(piece_id)).status is RenderJobStatus.DONE
+    finally:
+        await _drop_jobs()
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_script_saved_over_a_spanish_shot_list_keeps_its_video(
+    database_url: str,
+) -> None:
+    """The image service does not refuse a Spanish prompt — it draws something
+    else, at full price. So the words are saved, the old video is kept, and
+    nothing is bought. Not a 409: the person came here to edit words, and
+    refusing the edit would leave them no way to fix anything at all."""
+    from app.models import RenderJobStatus
+
+    piece_id = await _a_rendered_piece(
+        visual="Una casa de ladrillo en una calle tranquila de Denver con "
+        "arboles altos y un cartel de se vende en el jardin delantero"
+    )
+    try:
+        async with _client() as client:
+            resp = await client.patch(
+                f"/api/v1/content/{piece_id}", json={"script": "The corrected script."}
+            )
+        assert resp.status_code == 200, resp.text
+        async with get_bypass_session_factory()() as db:
+            fresh = await db.get(ContentPiece, piece_id)
+            assert fresh.script == "The corrected script."
+            assert fresh.media_path == "0123456789abcdef0123456789abcdef.mp4"
+        assert (await _job_of(piece_id)).status is RenderJobStatus.DONE
+    finally:
+        await _drop_jobs()
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_script_edited_before_there_is_a_video_costs_nothing(
+    database_url: str,
+) -> None:
+    """There is no video to contradict, and the lane B sweep will build the
+    first one anyway. A job created here would be the same job, earlier."""
+    async with get_bypass_session_factory()() as db:
+        piece = ContentPiece(
+            org_id=1,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.DRAFT,
+            hook="A hook",
+            script="The old script.",
+            caption="A caption",
+            scenes={
+                "narration": "The old script.",
+                "scenes": [{"visual_prompt": "A street", "on_screen_text": "Denver"}],
+            },
+        )
+        db.add(piece)
+        await db.commit()
+        piece_id = piece.id
+    try:
+        async with _client() as client:
+            resp = await client.patch(
+                f"/api/v1/content/{piece_id}", json={"script": "The corrected script."}
+            )
+        assert resp.status_code == 200, resp.text
+        assert await _job_of(piece_id) is None
+    finally:
+        await _drop_jobs()
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_piece_keeps_its_video_when_somebody_edits_the_script(
+    database_url: str,
+) -> None:
+    """A rejected piece belongs to the correction sweep and to the person
+    fixing it by hand. Taking its video away here would move it out of
+    REJECTED, which silently closes its open rejection as superseded and
+    charges a render nobody asked for — while the sweep, which knows what the
+    reviewer objected to, never gets to look at it."""
+    from app.models import RenderJobStatus
+
+    piece_id = await _a_rendered_piece()
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text("UPDATE content_pieces SET status = 'rejected' WHERE id = :i"),
+            {"i": piece_id},
+        )
+        await db.commit()
+    try:
+        async with _client() as client:
+            resp = await client.patch(
+                f"/api/v1/content/{piece_id}", json={"script": "Fixed by hand."}
+            )
+        assert resp.status_code == 200, resp.text
+        async with get_bypass_session_factory()() as db:
+            fresh = await db.get(ContentPiece, piece_id)
+            assert fresh.script == "Fixed by hand."
+            assert fresh.media_path == "0123456789abcdef0123456789abcdef.mp4"
+            assert fresh.status is ContentStatus.REJECTED
+        assert (await _job_of(piece_id)).status is RenderJobStatus.DONE
+    finally:
+        await _drop_jobs()
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_rebuild_is_refused_while_the_text_still_has_findings(
+    database_url: str,
+) -> None:
+    """The rebuild would take the video away and queue nothing, because no
+    render is bought for words the filter refuses. Saying so beats leaving the
+    person with no video and a button that looks broken."""
+    from app.models import RenderJobStatus
+
+    piece_id = await _a_rendered_piece()
+    async with get_bypass_session_factory()() as db:
+        piece = await db.get(ContentPiece, piece_id)
+        piece.violations = [
+            {"phrase": "perfect for families", "category": "fair_housing"}
+        ]
+        await db.commit()
+    try:
+        async with _client() as client:
+            resp = await client.post(f"/api/v1/content/{piece_id}/rebuild")
+        assert resp.status_code == 409, resp.text
+        assert "findings" in resp.json()["detail"]
+        async with get_bypass_session_factory()() as db:
+            fresh = await db.get(ContentPiece, piece_id)
+            assert fresh.media_path == "0123456789abcdef0123456789abcdef.mp4"
+        assert (await _job_of(piece_id)).status is RenderJobStatus.DONE
+    finally:
+        await _drop_jobs()
+        await _cleanup()
