@@ -113,8 +113,18 @@ tras restaurar) y reincidencia anotada en la ficha.
   falsos y dominio falso («locverties.com»). En `needs_approval`, **sin
   rechazar** a las 22:07. El motivo que la manda por el camino barato
   (`figure`+`visual` → `other` → `rewrite`, sin pasar por el modelo para
-  clasificar) está entregado a Ender y guardado en el scratchpad
-  (`motivo_para_pegar_74.txt`).
+  clasificar) está entregado a Ender. **Texto literal, para pegar en
+  «Reject»** (en inglés porque se le cita al escritor):
+  > All six shots ask for an object that carries readable writing: a listing
+  > sheet, a for-sale sign, a desk calendar, a price-reduced rider, a listing
+  > screen, a signed offer document and an Engel & Voelkers business card. The
+  > image model invents the lettering. Keep the script, the caption and the
+  > message; rewrite only the shot list so nothing in the frame carries legible
+  > text: blank, unbranded objects, or shots with no writing at all.
+
+  El barrido de corrección corre cada 3600 s **desde el arranque del backend**
+  (22:13:43 UTC tras este despliegue): el próximo cae hacia las **23:13 UTC =
+  17:13 de Denver**, y el ROG reclama en la hora 17.
 - **El SQL para reescribirla lo abortó su propia guarda** a las 21:03:06 UTC —
   «job 36 no esta como en la foto previa (filas=0)» — porque el ROG la había
   reclamado a las 21:00:31. **Cero filas escritas.** La cola es un blanco
