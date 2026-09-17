@@ -354,6 +354,14 @@ de los planos se comprobó con el código del propio contenedor: verde en las do
 entre las 20:59 y las 21:19 de Denver**: los 29 renders hechos siguen ese patrón
 sin una sola excepción. Los dos arrancarán esta noche.
 
+> **Corregido el 17-sep a las 15:00 de Denver: esa franja era falsa.** Es
+> `RENDER_WORKER_HOURS=13,15,16,17,21,23,1,2` en `~/.eko-render.env` del ROG —
+> ocho horas, leídas de la variable, no del patrón. La 74 se reclamó a las
+> 13:00 y la 75 a las 13:36 de ese mismo día. Los 29 renders «sin una sola
+> excepción» eran los que cabían en la franja de las 21, y de ahí saqué una
+> regla que la configuración desmiente. La tarea programada de las 21:43 que
+> se apoyaba en esto se descargó y borró.
+
 **Queda por verificar lo único que importa de la Fase 1:** un fotograma de los
 últimos segundos del primer vídeo que vuelva, para ver si el subtítulo amarillo
 dice el dominio. Hasta entonces, que el CTA llegue al narrador está probado por

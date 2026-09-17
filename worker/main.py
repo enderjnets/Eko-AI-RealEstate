@@ -40,6 +40,12 @@ ASSETS = Path(__file__).resolve().parent / "assets"
 MARK = ASSETS / "dhs-mark.png"
 MUSIC_DIR = ASSETS / "bgm"
 
+# How many times the finished video is offered to the panel before the job is
+# reported failed. Three is the panel's own MAX_ATTEMPTS for a job; matching it
+# means a delivery is never given fewer chances than the render that made it.
+DELIVERY_ATTEMPTS = 3
+DELIVERY_BACKOFF_SECONDS = 5.0
+
 _FONT_CANDIDATES = (
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
@@ -172,9 +178,104 @@ class Panel:
                     handle.write(chunk)
 
     def deliver(self, job_id: int, video: Path) -> None:
-        with video.open("rb") as handle:
-            resp = self.http.put("/result", params={"job_id": job_id}, content=handle)
-        resp.raise_for_status()
+        """Upload the finished video, and try again when the transport drops it.
+
+        The upload is the one step whose failure throws away money already
+        spent: by the time this runs the narration and the pictures are paid
+        for, and `handle()` deletes the workdir the moment it returns. Measured
+        on 17-sep-2026 in this worker's own log: 3 of 43 deliveries were lost
+        right here, all with the same `SSLV3_ALERT_BAD_RECORD_MAC` while
+        reading the RESPONSE — the body had already left this machine — and two
+        of the three were fourteen minutes apart on one afternoon. None of them
+        had landed on the panel (`media_path` stayed NULL, the job went back to
+        the queue), so sending the same bytes again is safe.
+
+        Retried: transport errors and 5xx — a 502 from Cloudflare while the VPS
+        restarts is the same kind of accident. Nothing under 500 is retried:
+        400 is an empty body, 413 too large, 422 a video the panel refused and
+        already marked failed, 409 a job nobody is waiting on, and a 3xx would
+        be a redirect this client does not follow and the panel never sends.
+        The same bytes again answer none of those. The file is reopened on
+        every attempt: httpx announces the length from the file's SIZE, not its
+        position, so a handle the first attempt drained declares the whole
+        video and sends nothing — a request that can never complete, and three
+        of them would be three wasted attempts.
+
+        After the attempts the LAST exception comes out, whatever its kind.
+        `handle()` only asks whether it is a `verify.Rejected`, and none of
+        these are, so the job is reported as retryable exactly as before.
+
+        One case a retry can misreport, and it is said out loud rather than
+        fixed: the dropped answer may have been a 200. The panel then holds
+        the video, marks the job done, and refuses the second upload — and it
+        refuses BEFORE reading the body, so the refusal usually reaches this
+        side as a broken write rather than as a 409. Either way the job is not
+        re-queued (`/fail` refuses a job nobody is holding), so nothing is lost
+        or doubled; what is wrong is the word "failed" in this log for a video
+        that is sitting in the approval queue. Making it exact needs a status
+        endpoint on the panel, which does not exist today.
+
+        Each attempt is logged with its number. The retry does not fix the
+        transport, it measures it: a week of these lines says whether the
+        failure is transient (the retries land) or structural (all three fail),
+        and that decides whether the link itself has to be chased.
+        """
+        last: Exception | None = None
+        for attempt in range(1, DELIVERY_ATTEMPTS + 1):
+            try:
+                with video.open("rb") as handle:
+                    resp = self.http.put("/result", params={"job_id": job_id}, content=handle)
+                if resp.status_code == 409 and attempt > 1:
+                    # After a dropped response the FIRST upload may have landed:
+                    # the panel then marks the job done and answers 409 to the
+                    # second. Said distinctly, because a "failed" for a video
+                    # that is sitting in the approval queue sends somebody to
+                    # render it again.
+                    log.warning(
+                        "job %s: the panel no longer awaits a result (409) after "
+                        "attempt %d had failed; the earlier upload may have "
+                        "landed — check the piece before rendering it again",
+                        job_id,
+                        attempt - 1,
+                    )
+                resp.raise_for_status()
+                return
+            except httpx.TransportError as exc:
+                last = exc
+                log.warning(
+                    "job %s: delivery attempt %d/%d failed in transport: %s",
+                    job_id,
+                    attempt,
+                    DELIVERY_ATTEMPTS,
+                    exc,
+                )
+                if attempt > 1:
+                    # The refusal of a job that is already done arrives as a
+                    # broken write, not as a 409 (see the docstring), so this
+                    # is where "the earlier upload may have landed" has to be
+                    # said if it is ever going to be said.
+                    log.warning(
+                        "job %s: the earlier upload may have landed — the panel "
+                        "refuses a finished job before reading the body, which "
+                        "looks like this from here; check the piece before "
+                        "rendering it again",
+                        job_id,
+                    )
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code < 500:
+                    raise
+                last = exc
+                log.warning(
+                    "job %s: delivery attempt %d/%d answered %s",
+                    job_id,
+                    attempt,
+                    DELIVERY_ATTEMPTS,
+                    exc.response.status_code,
+                )
+            if attempt < DELIVERY_ATTEMPTS:
+                time.sleep(DELIVERY_BACKOFF_SECONDS)
+        assert last is not None
+        raise last
 
     def failed(self, job_id: int, error: str, *, terminal: bool = False) -> None:
         """`terminal` means another attempt would fail the same way."""

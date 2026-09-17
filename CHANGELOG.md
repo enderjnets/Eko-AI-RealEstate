@@ -1,5 +1,64 @@
 # Changelog
 
+## [0.116.0] - 2026-09-17
+
+### Corregido
+
+**Un vídeo terminado se le ofrece al panel tres veces, no una.**
+
+La máquina de render termina un vídeo, lo sube y lee la respuesta del panel.
+El 17-sep esa respuesta llegó corrupta dos veces en una tarde —
+`SSLV3_ALERT_BAD_RECORD_MAC`, un registro TLS con el MAC mal — y lo mismo había
+pasado una vez el 7-sep. Medido en el registro del propio obrero: **40 entregas
+buenas, 29 trabajos fallidos por cualquier causa, y 3 de esos fallos en
+`panel.deliver`**, la subida del vídeo terminado, todos con la misma traza en
+`_receive_response_headers`: el cuerpo ya había salido de la máquina; lo que
+nunca llegó entero fue la respuesta.
+
+Para entonces la narración y las imágenes ya están pagadas, y `handle()` borra
+la carpeta de trabajo en su `finally` en cuanto `deliver` levanta. Cada uno de
+esos tres fue un render pagado a la basura, y el reintento que el panel
+concedía pagaba la narración otra vez desde cero.
+
+- **La subida se intenta tres veces**, tantas como `MAX_ATTEMPTS` le da al
+  propio render, **releyendo el fichero en cada intento**: httpx toma el
+  `Content-Length` del TAMAÑO del fichero, no de su posición (medido:
+  `peek_filelike_length` sobre un descriptor ya leído sigue diciendo el fichero
+  entero), así que un descriptor consumido por el primer intento declara el
+  vídeo completo y manda cero bytes — una petición que nunca puede completarse,
+  y que se reintentaría hasta gastar los tres. El test que discrimina asegura
+  los BYTES que recibió cada intento, no el recuento; la versión obvia que abre
+  el fichero una vez fuera del bucle pasa un test de recuento y cae en este.
+- **Se reintentan los fallos de transporte y los 5xx** (un 502 de Cloudflare
+  mientras el VPS reinicia es el mismo accidente). **Nada por debajo de 500**:
+  400 es un cuerpo vacío, 413 demasiado grande, 422 un vídeo que el panel
+  rechazó y ya marcó fallido, 409 un trabajo que nadie espera, y un 3xx sería
+  una redirección que este cliente no sigue y el panel nunca envía. Los mismos
+  bytes otra vez no responden a ninguno.
+- **Al agotar los intentos sale la última excepción**, sea de transporte o de
+  estado, y `handle()` sigue decidiendo `terminal` exactamente como antes:
+  ninguna de ellas es un `verify.Rejected`. Nada por encima de `deliver`
+  cambia. (La auditoría cazó la primera redacción, que decía «la original»
+  mientras el código reasignaba en cada vuelta.)
+- **Un rechazo después de un intento fallido se dice en voz alta**: la
+  respuesta que se perdió pudo ser un 200, el panel tiene el vídeo y el trabajo
+  está hecho. El panel rechaza la segunda subida ANTES de leer el cuerpo, así
+  que desde el obrero eso se ve casi siempre como una escritura rota y a veces
+  como un 409; los dos casos llevan el mismo aviso. Ni se pierde ni se duplica
+  nada (`/fail` también rechaza un trabajo que nadie tiene), pero un «failed» a
+  secas para un vídeo que está en la cola de aprobación manda a alguien a
+  renderizarlo otra vez. Hacerlo exacto exige un endpoint de estado en el panel,
+  que hoy no existe; queda anotado.
+- **La espera entre intentos es real y está entre intentos**, no después del
+  último: un test la mide, porque el que solo la anula pasaría con una
+  implementación sin espera.
+- Cada intento queda en el registro con su número y su causa. **El reintento no
+  arregla el enlace, lo mide**: una semana de esas líneas dice si el fallo es
+  pasajero (los reintentos entran) o estructural (fallan los tres).
+
+Nada cambia en el backend ni en la interfaz; el obrero vive en `worker/` y se
+despliega aparte, en la máquina de render.
+
 ## [0.115.0] - 2026-09-17
 
 ### Corregido

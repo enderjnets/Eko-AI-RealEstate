@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.115.0";
+export const CURRENT_VERSION = "0.116.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.116.0",
+    date: "2026-09-17",
+    title: {
+      en: "A finished video is offered to the panel three times, not once",
+      es: "Un vídeo terminado se le ofrece al panel tres veces, no una",
+    },
+    changes: [
+      { en: "The render machine finishes a video, uploads it, and reads the panel's answer. On 17-sep that answer arrived corrupted twice in one afternoon — a TLS record with a bad MAC — and the same thing had happened once on 7-sep: three of forty-three deliveries, all lost at the same line. By then the narration and the pictures are paid for, and the worker deletes its working folder the moment the upload fails, so each of those was a paid render thrown away and a narration paid again on the retry the panel granted.", es: "La máquina de render termina un vídeo, lo sube y lee la respuesta del panel. El 17-sep esa respuesta llegó corrupta dos veces en una tarde — un registro TLS con el MAC mal — y lo mismo había pasado una vez el 7-sep: tres de cuarenta y tres entregas, todas perdidas en la misma línea. Para entonces la narración y las imágenes ya están pagadas, y el obrero borra su carpeta de trabajo en cuanto la subida falla, así que cada una fue un render pagado a la basura y una narración pagada otra vez en el reintento que el panel concedía." },
+      { en: "The upload is now tried three times — as many chances as the panel gives the render itself — with the file reread on every attempt, because a handle the first attempt drained declares the whole video and sends nothing, a request that can never complete. Transport failures and gateway errors are retried; a refusal from the panel is not, because the same bytes again cannot change an answer it has already read. After the attempts the last error comes out, so the job is reported as retryable exactly as before.", es: "La subida se intenta ahora tres veces — tantas oportunidades como el panel le da al propio render — releyendo el fichero en cada intento, porque un descriptor ya consumido por el primero declara el vídeo entero y no manda nada, una petición que nunca puede completarse. Los fallos de transporte y de pasarela se reintentan; un rechazo del panel no, porque los mismos bytes otra vez no cambian una respuesta que ya leyó. Al agotar los intentos sale el último error, así que el trabajo se reporta como reintentable exactamente igual que antes." },
+      { en: "Each attempt is written to the worker's log with its number and its cause. The retry does not repair the link, it measures it: a week of those lines says whether the failure is transient or structural, and that decides whether the link has to be chased.", es: "Cada intento queda en el registro del obrero con su número y su causa. El reintento no repara el enlace, lo mide: una semana de esas líneas dice si el fallo es pasajero o estructural, y eso decide si hay que perseguir el enlace." },
+    ],
+  },
   {
     version: "0.115.0",
     date: "2026-09-17",
