@@ -106,6 +106,21 @@ tras restaurar) y reincidencia anotada en la ficha.
   DHS, `cta_overlay` hoy `null`; ya salió «None» en caja roja en 8 vídeos):
   para esa sesión, con la frase de Ender del rechazo: «y lo que deba llevar
   de Engel & Völkers».
+
+  **Encargo exacto para BitTrader (medido en el ROG el 17-sep, solo lectura):**
+  `~/.openclaw/workspace/bittrader/agents/profiles/denver_home_story.json` tiene
+  `"cta_overlay": null` (l. 161) y `"hook_overlay_words": 5` (l. 177). Con eso,
+  `producer.py:576 add_hook_overlay` quema el gancho arriba 3 s pasando el hook
+  por `texto_de_gancho` (l. 508: quita las palabras de `_VACIAS` — *in, at, a,
+  with* — y llama a `thumbnail_agent._mrbeast_compress_headline`, hecho para
+  títulos cripto en español) y `ajusta_gancho` (l. 343). Resultado real en la 75:
+  **«¿RENTING DENVER $1,800 MONTH SAV»** — un `¿` español, cuatro palabras
+  quitadas y cortado — mientras nuestro `on_screen_text` del plano 1 decía
+  «Renting in Denver at $1,800 a month.» y nadie lo lee. Dos cambios en ESE
+  repo: (a) que el gancho del canal `en` sea el hook o el `on_screen_text`
+  literal, sin compresor ni `¿`, o `hook_overlay_words: 0`; (b) `cta_overlay`
+  con el dominio y «Engel & Voelkers», quemado con fuente al final. Nada de
+  esto se arregla rechazando o rehaciendo desde este repo.
 - **La 74, predicha y confirmada.** Reescrita a las 19:46 UTC bajo 0.114.0,
   siete minutos antes de que 0.115.0 existiera; sus **6 de 6 planos** pedían
   un objeto con letras. Entregó a las 21:13: «FUCH FOR LI SALE», «Fesh Frish
