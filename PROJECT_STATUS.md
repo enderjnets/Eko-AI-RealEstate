@@ -5,6 +5,112 @@ Estado de ejecución del plan `~/.claude/plans/si-haz-el-plan-jazzy-sifakis.md`
 v0.56.0 y anteriores vive en git y en el plan.
 
 ---
+# PLAN (7) Fase 5 — pre-despliegue. **Nada desplegado.**
+
+Fase 4 cerrada en **`edcc0dd`** y empujada. Suite backend tras el commit, corrida
+sola: **2201 pasan, 0 saltados, 0 fallos**. Frontend: **514 en 32 ficheros**,
+`tsc` limpio, `next build` compila, `next lint` con los 2 avisos preexistentes.
+
+## Lo que hay hoy en el VPS (medido el 17-sep, solo lectura)
+
+| | |
+|---|---|
+| commit | `a22d3cc4` en `main` |
+| alembic | `062_publication_withdrawn` |
+| `/api/v1/health` | **200**, `version: 0.109.0`, `llm_fallback: ok` |
+
+**El VPS está 10 commits por detrás de `origin/main`**, y tres de ellos son
+código, no documentación: los dos arreglos del publicador de Buffer (la ventana
+diaria manda; un post desviado se acerca a su ventana y deja de caminar) y el
+enlace de la pieza calculada al número que promete. Ninguno se desplegó nunca.
+
+**Y `origin/main` declara `0.109.0`, exactamente lo que el VPS sirve.** El
+número de versión **no distingue** lo que corre de lo que está en el tronco. Al
+desplegar 0.110.0 entran también esos tres cambios; hay que contarlos como parte
+de la release, no como ruido.
+
+Migraciones entre lo desplegado y `origin/main`: **ninguna**. La única es la 063.
+
+## Las dos ramas
+
+| rama | versión | commits sobre `origin/main` | migración |
+|---|---|---|---|
+| `feat/clasificar-parejas-de-enlace` | **0.110.0** | 5 (`1bd9f5c`, `031ca5b`, `55695c4`, `ae880e8`, `56dca59`) | ninguna |
+| `feat/lo-que-el-escritor-aprende` | **0.113.0** | 7 (`1bd9f5c`, `031ca5b`, `55695c4` compartidos con la otra rama, luego `5cb1146`, `827ec96`, `36ef404`, `edcc0dd`) | **063** |
+
+Las dos son `--ff-only` sobre `origin/main` **por separado**. La segunda deja de
+serlo en cuanto la primera entre: le faltarán `ae880e8` y `56dca59`.
+
+**El conflicto está medido, no supuesto.** Ensayo con `git merge-tree
+--write-tree` (no mueve ninguna rama, no toca el árbol): **cuatro ficheros**, y
+ninguno es código.
+
+| fichero | resolución |
+|---|---|
+| `CHANGELOG.md` | las dos entradas, 0.113.0 encima de 0.110.0 |
+| `PROJECT_STATUS.md` | las dos secciones de cabecera, la nueva arriba |
+| `backend/app/config.py` | `0.113.0` |
+| `frontend/lib/version.ts` | `0.113.0`, conservando las dos entradas del changelog |
+
+`main.py`, `content.py`, `content_writer.py`, `render_jobs.py` y sus tests
+fusionan sin conflicto: los **tres** commits que comparten las ramas son el mismo
+objeto. Pero «sin conflicto» es textual, no semántico: `merge-tree` dijo
+`Auto-merging backend/app/main.py`, y ahí `ae880e8` y la Fase 3 tocan el mismo
+fichero. **Nadie ha corrido la suite sobre ese árbol, y hoy no está medido.**
+Correr la suite backend y la de frontend sobre `main` **ya fusionado**, antes de
+construir la imagen, es un paso obligatorio del punto 3, no una comprobación
+opcional.
+
+## Rollback de la 063, verificado de verdad
+
+Contra `eko-t3`, ida y vuelta, `rc = 0` en los cuatro pasos:
+`063 → downgrade -1 → 062 → upgrade head → 063`. Las dos tablas son aditivas y
+el `downgrade` se las lleva **con sus filas**: los rechazos registrados y las
+lecciones aprendidas se pierden al revertir. No hay nada más que se pierda.
+
+## Ventana
+
+Desde las **21:00 de Denver**, y **nunca a menos de 20 minutos de una franja** de
+publicación. Quien ejecute esto no va a leer el plan: está aquí a propósito.
+
+## Orden, y qué autoriza cada paso
+
+0. **`pg_dump` de pre-imagen** antes de tocar nada, en los dos despliegues, y
+   antes de migrar. Va primero porque es lo único que no se puede rehacer.
+1. **0.110.0** — `git fetch origin`, merge `--ff-only` de
+   `feat/clasificar-parejas-de-enlace` a `main`, tag, bundle, despliegue. Sin
+   migración, pero **`alembic upgrade head` con la imagen nueva antes de
+   levantar** igual, que es el procedimiento. Antes del **22-sep 08:07**.
+   **Vuelta atrás:** no hay `downgrade` que dar; `reset --hard a22d3cc4` y
+   `up -d --build`.
+   Aviso para tu «sí»: esos tres commits de código nacieron sin bump, así que la
+   entrada 0.110.0 del `CHANGELOG.md` casi seguro **no los menciona**. Las notas
+   de esa release quedan cortas respecto a lo que de verdad entra.
+2. **G2** — rehacer las piezas 74 y 75 desde la consola, una a una, y mirar el
+   primer vídeo que vuelva: el narrador tiene que decir el dominio y el subtítulo
+   amarillo mostrarlo en los últimos segundos. Si no, la Fase 1 no arregló nada.
+3. **0.113.0** — merge de `feat/lo-que-el-escritor-aprende` resolviendo los
+   cuatro ficheros de arriba, **suite backend y frontend sobre el `main` ya
+   fusionado**, `alembic upgrade head` (aplica la 063) con la imagen nueva
+   **antes** de levantar, y `up -d backend frontend`.
+   **Vuelta atrás:** `alembic downgrade -1` con la imagen que sigue corriendo, y
+   luego `reset --hard 56dca59`, que es donde queda `main` tras el ff de 0.110.0,
+   y `up -d --build`.
+
+Variables de entorno nuevas: **ninguna**, en ninguna de las dos.
+
+**Avisar a la sesión de PLAN (4)** antes de G2 y antes de cada despliegue: come
+de la misma cola y del mismo Buffer.
+
+## Lo que sigue esperándote
+
+- El **sí al merge y al despliegue** de cada release, en un mensaje aparte.
+- **G2**, después de que 0.110.0 esté viva.
+- **G3**, la línea de correduría que falta en el vídeo (Regla 6.10). Decidiste
+  anotarlo por ahora; sigue anotado y sigue sin arreglar.
+
+---
+
 
 # PLAN (7) Fase 4 — lo que el escritor aprende, a la vista
 
