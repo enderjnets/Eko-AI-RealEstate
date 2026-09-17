@@ -5,6 +5,55 @@ Estado de ejecución del plan `~/.claude/plans/si-haz-el-plan-jazzy-sifakis.md`
 v0.56.0 y anteriores vive en git y en el plan.
 
 ---
+# 0.115.0 — nada en el encuadre lleva texto legible
+
+La causa estaba en **nuestras propias instrucciones**: `_SYSTEM` ofrecía «a
+document, a for-sale sign» como ejemplos de **buen** plano, que son justo los
+dos objetos que vuelven con letras inventadas. El modelo hacía lo que se le
+pedía.
+
+**El objeto se permite, el texto encima no.** Medido antes de elegir la regla:
+prohibir esos objetos habría rechazado **82 de los 180 planos** en producción,
+sobre 28 de 33 piezas, y un cartel de se vende es a lo que se parece un short
+inmobiliario. Así que el prompt enseña a pedirlo «blank, unbranded» y hay una
+**comprobación que lee la respuesta**, porque `_SYSTEM` siempre dijo «nunca
+escribas un teléfono» y el modelo los escribía igual.
+
+La comprobación nombra **qué plano** hay que cambiar y los lista **todos**, no
+solo el primero: solo hay una reescritura.
+
+**Lo que esto NO arregla, y conviene no venderlo:** el cartel de RE/MAX vino de
+un **clip de archivo**, y la elección del clip la hace el motor externo. Cambiar
+el plano lo hace menos probable; no lo impide. Eso vive en BitTrader.
+
+| comprobación | resultado |
+|---|---|
+| backend, corrida sola | **2265 pasan, 0 fallos** |
+| `ruff` | limpio |
+| frontend | 514, `tsc` limpio, build compila, lint con los 2 preexistentes |
+| mutaciones | **6 de 6 en rojo** |
+| migración | ninguna |
+
+Tres ficheros de test usaban «A document on a desk» y ahora dicen «with no
+legible text». Y un test afirmaba «ningún hallazgo sobre las escenas» cuando lo
+que quería decir era «ninguno de idioma»: afinado, o habría fallado por algo
+que nunca quiso vigilar.
+
+## 🔴 Un susto que casi rompe producción, y lo cuento
+
+Al subir la versión escribí `open(fichero,"w").write(open(fichero).read()...)`
+en una sola expresión. Python abre en escritura **antes** de leer, así que
+truncó `backend/app/config.py` a **0 bytes** — 39.118 bytes de configuración de
+producción. Lo delató la suite entera cayendo con `ImportError`, no el
+resultado de la escritura, que no dio error ninguno.
+
+Restaurado desde `HEAD` y comprobado línea a línea: **2 líneas de diferencia**,
+que son la vieja y la nueva versión. Es la misma familia que
+«[[feedback_crealo_si_no_existe_lo_sobrescribi]]»: la escritura silenciosa que
+solo se ve mirando el fichero después.
+
+---
+
 # 🔴 17-sep — un anuncio publicado enseña el cartel de OTRA correduría
 
 Medido, no supuesto. Empecé buscando letras inventadas y encontré algo peor.

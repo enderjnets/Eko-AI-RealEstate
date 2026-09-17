@@ -592,7 +592,14 @@ def test_an_english_shot_list_on_a_spanish_piece_is_exactly_right() -> None:
     draft = _drafted(script=_SPANISH_SCRIPT, scenes=_scenes(_REAL_ENGLISH_PROMPTS))
     found = cw._all_violations(draft, ContentLanguage.ES)
 
-    assert not [v for v in found if v.get("where") == "scenes"], found
+    # Scoped to the LANGUAGE finding, which is what this test is about. A
+    # bare `where == "scenes"` also catches the shot-text check added in
+    # 0.115.0, and then this would be failing for a reason it never meant
+    # to guard.
+    assert not [
+        v for v in found
+        if v.get("where") == "scenes" and v.get("category") == "language"
+    ], found
 
 
 def test_the_english_denylist_still_bites_under_a_spanish_piece() -> None:
@@ -686,7 +693,7 @@ def _draft(**over) -> dict:
         "caption": "The difference between the two, in one minute.",
         "scenes": [
             {"visual_prompt": "A quiet Denver street", "on_screen_text": "Denver"},
-            {"visual_prompt": "A document on a desk", "on_screen_text": "Appraisal"},
+            {"visual_prompt": "A document with no legible text on a desk", "on_screen_text": "Appraisal"},
         ],
     }
     body.update(over)

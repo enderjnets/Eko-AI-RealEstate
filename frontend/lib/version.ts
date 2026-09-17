@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.114.0";
+export const CURRENT_VERSION = "0.115.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.115.0",
+    date: "2026-09-17",
+    title: {
+      en: "Nothing in the frame carries readable writing",
+      es: "Nada en el encuadre lleva texto legible",
+    },
+    changes: [
+      { en: "A published short showed a RE/MAX sign — the balloon logo, a named agent of that firm, two telephone numbers, \"Independent member broker\". It was not an invented image: it was real stock footage, sharp and legible, standing in an advertisement that has to identify itself as a different brokerage. Colorado asks that advertising be accurate and not misleading to consumers, and a competitor's sign with somebody else's phone number is neither.", es: "Un short publicado enseñaba un cartel de RE/MAX — el logo del globo, el nombre de un agente de esa correduría, dos teléfonos, «Independent member broker». No era una imagen inventada: era un clip de archivo real, nítido y legible, dentro de un anuncio que tiene que identificarse como otra correduría. Colorado exige que la publicidad no induzca a error, y el cartel de una competidora con el teléfono de otro no cumple." },
+      { en: "The other half is smaller and constant: the image model invents lettering and gets it wrong. \"FOIR SALE\". A \"SOLD\" sticker printed over an \"...ALE\". An illegible agency logo above a name that does not exist. Three more of the eleven published pieces whose shot list asks for a sign.", es: "La otra mitad es menor y constante: el modelo de imagen se inventa las letras y las escribe mal. «FOIR SALE». Un «SOLD» impreso encima de un «...ALE». Un logotipo ilegible sobre un nombre que no existe. Tres más de las once piezas publicadas cuyo plano pide un cartel." },
+      { en: "The root cause was in our own instructions, which offered \"a document, a for-sale sign\" as examples of a good shot. Now the instructions forbid readable writing in the frame and say how to ask instead — a blank, unbranded sign — and a check reads the answer, because the instructions have always said \"never write a phone number in any field\" and the model wrote them anyway.", es: "La causa estaba en nuestras propias instrucciones, que ofrecían «a document, a for-sale sign» como ejemplos de buen plano. Ahora prohíben el texto legible en el encuadre y dicen cómo pedirlo — un cartel en blanco y sin marca — y una comprobación lee la respuesta, porque las instrucciones siempre dijeron «nunca escribas un teléfono» y el modelo los escribía igual." },
+      { en: "The object is allowed and the writing on it is not, and that distinction is deliberate: refusing signs outright would have refused 82 of the 180 shots in production, and a for-sale sign is what a real estate short looks like.", es: "El objeto se permite y el texto encima no, y la distinción es deliberada: prohibir los carteles habría rechazado 82 de los 180 planos en producción, y un cartel de se vende es a lo que se parece un short inmobiliario." },
+    ],
+  },
   {
     version: "0.114.0",
     date: "2026-09-17",

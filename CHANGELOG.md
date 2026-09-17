@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.115.0] - 2026-09-17
+
+### Corregido
+
+**Nada en el encuadre lleva texto legible.**
+
+Un short publicado enseñaba un **cartel de RE/MAX**: el logo del globo, el
+nombre de un agente de esa correduría, dos teléfonos y «Independent member
+broker». No era una imagen inventada — era un clip de archivo real, nítido,
+dentro de un anuncio que tiene que identificarse como Engel & Voelkers. La
+regla 6.10 exige que la publicidad no induzca a error.
+
+La otra mitad es menor y constante: el modelo de imagen se inventa las letras.
+«FOIR SALE». Un «SOLD» impreso encima de un «...ALE». Un logotipo ilegible
+sobre un nombre que no existe.
+
+Medido sobre las once piezas publicadas cuyo plano pide un cartel, sacando el
+fotograma de esa escena exacta: **una con marca ajena, tres con letras
+inventadas, siete correctas.**
+
+- La causa estaba en nuestras instrucciones, que ofrecían «a document, a
+  for-sale sign» como ejemplos de **buen** plano. El modelo hacía lo que se le
+  pedía.
+- Ahora se prohíbe el texto legible en el encuadre, se dice cómo pedirlo — un
+  cartel **en blanco y sin marca** — y **una comprobación lee la respuesta**.
+- El objeto se permite y el texto encima no: prohibir los carteles habría
+  rechazado 82 de los 180 planos en producción.
+
+**Lo que esto NO arregla:** el cartel de RE/MAX vino de un clip de archivo, y la
+elección del clip la hace el motor externo. Cambiar el plano lo hace menos
+probable, no imposible.
+
 ## [0.114.0] - 2026-09-17
 
 ### Corregido

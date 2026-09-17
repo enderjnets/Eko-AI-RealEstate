@@ -117,7 +117,7 @@ def _corrected(**over) -> dict:
         "caption": "The difference between the two, in one minute.",
         "scenes": [
             {"visual_prompt": "A quiet Denver street", "on_screen_text": "Denver"},
-            {"visual_prompt": "A document on a desk", "on_screen_text": "Appraisal"},
+            {"visual_prompt": "A document with no legible text on a desk", "on_screen_text": "Appraisal"},
         ],
     }
     body.update(over)

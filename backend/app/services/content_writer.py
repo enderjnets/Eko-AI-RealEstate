@@ -111,10 +111,15 @@ _SYSTEM = {
         "characters, script 60-120 words, caption 1-2 sentences with no "
         "hashtags, plus \"scenes\": 4 to 6 objects with \"visual_prompt\" and "
         "\"on_screen_text\". A visual_prompt describes a PLACE or an OBJECT — "
-        "a house, a street, the Front Range, keys, a document, a for-sale sign. "
+        "a house, a street, the Front Range, keys, an empty porch. "
         "NEVER describe people in it: no families, couples, children, "
         "professionals, retirees, or anyone's appearance or background. Never "
-        "write a web address or a phone number in any field."
+        "write a web address or a phone number in any field. And NOTHING IN "
+        "THE FRAME MAY CARRY READABLE WRITING: no signs, documents, contracts, "
+        "screens, newspapers or business cards with words on them. The image "
+        "model invents the lettering and gets it wrong, and stock footage "
+        "brings another brokerage's branding. If a shot needs a sign, say it "
+        "is blank and unbranded — \"a blank, unbranded for-sale sign\"."
     ),
     ContentLanguage.ES: (
         "Escribes guiones de vídeo corto (30-45 segundos) para dos agentes "
@@ -130,14 +135,19 @@ _SYSTEM = {
         "palabras, caption de 1-2 frases sin hashtags, más \"scenes\": de 4 a 6 objetos "
         "con \"visual_prompt\" y \"on_screen_text\". Un visual_prompt describe un "
         "LUGAR o un OBJETO — una casa, una calle, las montañas, unas llaves, un "
-        "documento, un cartel de se vende. El visual_prompt va SIEMPRE EN "
+        "porche vacío. El visual_prompt va SIEMPRE EN "
         "INGLÉS, aunque el resto del JSON vaya en español: no lo lee una "
         "persona, lo lee un modelo de imagen que solo entiende inglés y "
         "que ante un prompt en español devuelve otra cosa sin dar error. "
         "El on_screen_text sí va en español. NUNCA describas personas: ni "
         "familias, ni parejas, ni niños, ni profesionales, ni jubilados, ni el "
         "aspecto ni el origen de nadie. Nunca escribas una dirección web ni un "
-        "teléfono en ningún campo."
+        "teléfono en ningún campo. Y NADA EN EL ENCUADRE PUEDE LLEVAR TEXTO "
+        "LEGIBLE: ni carteles, ni documentos, ni contratos, ni pantallas, ni "
+        "periódicos, ni tarjetas con palabras. El modelo de imagen se inventa "
+        "las letras y las escribe mal, y los clips de archivo traen la marca de "
+        "otra correduría. Si una escena necesita un cartel, di que está en "
+        "blanco y sin marca — \"a blank, unbranded for-sale sign\"."
     ),
 }
 
@@ -739,6 +749,58 @@ def figure_text(draft: DraftPayload) -> str:
     )
 
 
+#: Objects that arrive in the frame carrying words. Two different failures
+#: share this list, and neither is hypothetical — both were measured on
+#: 17-sep-2026 across the eleven published pieces whose shot list asks for a
+#: sign.
+#:
+#: The image model invents lettering and gets it wrong: "FOIR SALE", a "SOLD"
+#: sticker printed over an "...ALE", an illegible agency logo above a name that
+#: does not exist. That is amateurish and nothing more.
+#:
+#: The other one is worse and it does not come from the image model at all. A
+#: shot asking for a for-sale sign was satisfied with STOCK FOOTAGE of a real
+#: RE/MAX sign — the balloon logo, a named agent of that firm, two phone
+#: numbers, "Independent member broker" — and it published. An advertisement
+#: that has to identify itself as one brokerage showed a competitor's sign and
+#: somebody else's telephone. Rule 6.10 asks that advertising be accurate and
+#: not misleading, and that is neither.
+#:
+#: No filter saw either one, because both live in the pixels: everything this
+#: project checks reads what the model WRITES.
+_TEXT_IN_SHOT = re.compile(
+    r"(?i)\b(sign|signs|signage|billboard|billboards|placard|banner|poster|"
+    r"marquee|nameplate|business card|brochure|flyer|leaflet|document|"
+    r"documents|paperwork|contract|contracts|invoice|receipt|report|reports|"
+    r"form|forms|statement|statements|newspaper|magazine|screen|screens|"
+    r"monitor|spreadsheet|dashboard|calendar)\b"
+)
+
+#: The way out, and it has to exist. A for-sale sign is a staple of this
+#: channel's imagery: measured against the 180 shots in production, forbidding
+#: those objects outright would have refused 82 of them. So the object is
+#: allowed and the WRITING on it is not, and the prompt says how to ask for it.
+_NO_TEXT_ON_IT = re.compile(
+    r"(?i)\b(blank|unbranded|unmarked|generic|no text|no lettering|no writing|"
+    r"no (?:visible|legible|readable) text|without text|without lettering|"
+    r"illegible|unreadable|out of focus|blurred|defocused)\b"
+)
+
+
+def readable_text_in_shot(visual_prompt: str | None) -> str | None:
+    """The word that would put legible writing in the frame, or None.
+
+    Returns the offending word rather than a bool so the rewrite can name it,
+    which is the difference between "try again" and "try again without the
+    sign".
+    """
+    text = visual_prompt or ""
+    found = _TEXT_IN_SHOT.search(text)
+    if found is None or _NO_TEXT_ON_IT.search(text):
+        return None
+    return found.group(0).lower()
+
+
 def _all_violations(
     draft: DraftPayload,
     language: ContentLanguage,
@@ -794,6 +856,24 @@ def _all_violations(
         found.append(
             {"phrase": reason, "category": "language", "where": "scenes"}
         )
+
+    # Nothing in the frame may carry readable writing, and this is checked
+    # rather than asked for. `_SYSTEM` says it now, but `_SYSTEM` has always
+    # said "never write a web address in any field" too, and the model wrote
+    # them anyway — a prompt is a request and this is the part that reads the
+    # answer.
+    #
+    # Per scene rather than over the joined prompts, because the rewrite has to
+    # name WHICH shot to change.
+    for position, scene in enumerate(draft.scenes, start=1):
+        word = readable_text_in_shot(scene.visual_prompt)
+        if word is not None:
+            found.append({
+                "phrase": f"shot {position} asks for a “{word}”, which arrives "
+                "with words written on it — say it is blank and unbranded",
+                "category": "shot",
+                "where": "scenes",
+            })
 
     # Every dollar figure has to be one the calculator accounts for — and for
     # a prose topic, where `check` is None, that means there may be none at
