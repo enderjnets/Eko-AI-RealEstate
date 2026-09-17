@@ -5,6 +5,21 @@ Estado de ejecución del plan `~/.claude/plans/si-haz-el-plan-jazzy-sifakis.md`
 v0.56.0 y anteriores vive en git y en el plan.
 
 ---
+# 17-sep — 0.114.0 desplegada. La correduría ya no depende de la suerte.
+
+Con tu autorización. `main` en `dedc774`, tag `v0.114.0`, sin migración (sigue
+en 063). Salud 200 sirviendo `0.114.0`, panel público 200, **cero errores** en
+los registros y **ninguna pieza retenida** por falta de correduría. Pre-imagen
+de la base tomada antes. Vuelta atrás: `reset --hard df19812ce` y reconstruir.
+
+Orden respetado: los cuatro captions primero, la puerta después. Al levantar,
+**cero piezas vivas sin la línea** — comprobado en la base, no supuesto.
+
+Commits del día en `main`: `56dca59` (0.110.0), `df19812` (0.113.0), `a91fa51`
+(el arreglo de la correduría) y `dedc774` (los captions, en el estado).
+
+---
+
 # G3 — la correduría en todo anuncio (0.114.0, rama `fix/la-correduria-en-todo-anuncio`)
 
 **El problema era mayor que la puerta G3.** No es solo que el vídeo no la lleve.
