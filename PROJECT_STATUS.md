@@ -44,7 +44,15 @@ salió el 16-sep— y dan **12 párrafos idénticos**. `verificar.py` va más le
 a cada carta le **deshace** sus sustituciones (calle, mes, variante) y exige que
 lo que queda sea, carácter a carácter, la carta aprobada. Las siete pasan, más:
 una sola página cada una, las dos líneas de pie, la firma entera, ningún
-símbolo de dólar, y en la 6 ningún nombre adivinado.
+símbolo de dólar, y en la 6 ningún nombre adivinado. El fichero unido se
+compara **página a página** con las siete sueltas —que salga del mismo
+generador no prueba nada— y sus páginas de dentro se han mirado en imagen, que
+es lo único que `sips` no enseña (solo rasteriza la primera).
+
+Los cuatro guiones (`generar.py`, `generar_uno.py`, `verificar.py`,
+`comparar_fuente.py`) y la transcripción del correo enviado viven en esa misma
+carpeta: cuando ella diga el nombre de la 6, es cambiar una línea y volver a
+generar.
 
 | lo que cambia | dónde | por qué |
 |---|---|---|
