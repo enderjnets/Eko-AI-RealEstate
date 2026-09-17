@@ -888,6 +888,16 @@ Sin esto, lo que mida el sábado no vale.
    formularios/llamadas. Es el número que se lee el 30-sep.
 3. **La rutina del 22-sep** que mide los comentarios con enlace en YouTube:
    verificar en `/routines` que existe y está activa; no recrearla.
+   🔴 **Mediría cero.** Ender confirma el 16-sep que **no ha pegado ni un solo
+   comentario** en dos semanas, aunque `publish_followup` se los manda por
+   Telegram con el texto ya hecho. Así que `utm_medium=comment` tiene cero
+   sesiones porque no existe el comentario, no porque no funcione.
+   Decisión del 16-sep: pega **tres** antes del 22 — piezas 51 (402 vistas),
+   47 (228) y 48 (208) — con el texto ya escrito en
+   `scratchpad/comentarios-youtube-para-pegar.md`. Ese texto **no es el de
+   Telegram**: el generado lleva el enlace sin `rent=`/`savings=` y promete
+   *«nothing to fill in to see it»* sobre una página que sí pedía rellenar.
+   Van fijados (*Pin*), o quedan enterrados y la lectura no dice nada.
 4. **Lectores de TikTok e Instagram**: siguen siendo manuales (decisión del
    dueño, aplazada). Antes del 30-sep hay que hacer **una** lectura manual de
    los dos para que el cuadro no compare YouTube con ceros.
