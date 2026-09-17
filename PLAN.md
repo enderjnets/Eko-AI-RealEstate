@@ -625,6 +625,151 @@ cd frontend && npx vitest run && npx tsc --noEmit
 la Fase 5 (lista de Land Title); la reevaluación de pago del 30-sep; cualquier
 cambio de cadencia de PLAN (4).
 
+## 🔍 Auditoría del 16-sep-2026 (19:50 Denver) — leer antes de la Fase 0
+
+Revisión de los 17 commits del día (7 con código, 3.612 líneas añadidas),
+del VPS, de YouTube, de la rutina y de la cola. Suites: backend **2050
+verdes, 0 saltados**, ruff limpio (base `eko-t3`, 062); frontend **vitest
+502**, `tsc` limpio. Sin secretos en lo añadido; `scratchpad/` ignorado (0
+ficheros trackeados); ningún `get_bypass_session_factory` nuevo fuera de
+tests; ningún `print`/`console.log`. Lo que sigue es lo que **no** está sano.
+
+### 🔴 Bloqueante
+
+1. **Buffer tiene una cuota DIARIA de 250 y el código no la conoce.** Sondeado
+   desde el contenedor a la 01:42 UTC: `ratelimit: "100-in-15min"; r=98 …
+   "250-in-1day"; r=0; t=47729`, cuerpo `window: "24h"`. Se agotó a las
+   **18:14 de Denver**; desde entonces **cada tic de `publish_approved` falla**
+   en `reconcile_scheduled` con `QuotaReached` («org 1 failed during a sweep»,
+   cada 15 min). Vuelve a las **08:57 del 17**. Los 30 posts ya entregados
+   (`external_id` puesto) los envía Buffer solo; lo que se para es la
+   reconciliación y las entregas nuevas. **Causa raíz en el código:**
+   `parse_rate_limit` (`buffer_publisher.py:625`) parte la cabecera por `;` y
+   con dos políticas devuelve `(None, None)` — verificado —, así que el freno
+   `_QUOTA_FLOOR` **nunca ha saltado**; el test (`test_the_queue_does_not_outrun_buffer.py:79`)
+   solo conoce una política. El consumo de base (96 tics × reconcile+backfill)
+   ya ronda los 192/día. Arreglo: leer el **mínimo `r`** entre políticas y
+   añadir el fixture real; presupuestar el día.
+2. **La Fase 0 no tiene hueco el jueves, y el plan cree que sí.** Al volver la
+   cuota (08:57), el primer tic de `publish_approved` toma hasta **8 piezas**
+   (`CONTENT_PUBLISH_MAX_PER_DAY=8`) por orden de aprobación, y **una pieza sin
+   ventana cuenta como «ya»** (`buffer_publisher.py:1771-1777`, a propósito):
+   **41, 43, 45 y 72** (sin ventana; 43/45 con enlace a `/calculator` **sin
+   semilla**) más **24 en YouTube** (ventana abre el 19) reclaman los primeros
+   huecos libres — 17, 18 y 19 — y los de Buffer que liberen 69, 46 y 16. El
+   vídeo de la casa abierta llegaría a una cola llena. **Mover un post libera
+   una fecha, nunca un hueco de Buffer** (`:1750-1758`): los 10 por canal solo
+   bajan cuando un post sale, así que una ventana dentro del horizonte de 10
+   días (`CONTENT_SCHEDULE_HORIZON_DAYS`) no retiene nada. Antes de las 08:57
+   del 17, **decisión de Ender**: ventana **fuera del horizonte** para
+   41/43/45/72 (p. ej. `2026-10-06`, dato reversible; PLAN (6) Fase 0),
+   `needs_approval` por el estado, o dejarlas salir y mover la casa abierta; y
+   el punto 5 de la Fase 0 se comprueba **justo antes** de aprobar, no la
+   víspera ([[feedback_la_cola_es_un_blanco_movil]]).
+
+### 🟠 Importante
+
+3. **Dieciséis rastreadores con etiqueta de comentario, todos `unknown`.**
+   Filas 231-246: por cada enlace que edité, dos sesiones en el mismo minuto
+   desde dos ciudades distintas (Nueva York/Akron, Boston/Shallotte…), 5
+   eventos, 0 scroll. `classify_publish_previews` mira ≤90 s tras la
+   **publicación**; estas llegaron ≤90 s tras una **edición**. `unknown` subió
+   177 → 193 en una tarde, y la consulta de la rutina del 22 (sin
+   `traffic_class`) ya devuelve **`comment = 8`** sin un solo lector.
+   Propuesta, que ejecuta quien Ender diga:
+   `UPDATE landing_sessions SET traffic_class='automated', traffic_class_reason='link_check_after_edit 16-sep', traffic_classified_at=now() WHERE id BETWEEN 231 AND 246 AND traffic_class='unknown';`
+4. **v0.109.0 se desplegó a las 17:59 de Denver** (contenedor arrancado
+   23:59:02 UTC, VPS en `a22d3cc`), **fuera** de la «ventana tranquila de las
+   21:00» que la nota de la Fase 3.1 fijaba, y la nota siguió diciendo «NO
+   desplegada». Corregida abajo. El reinicio cayó 31 min antes de la franja
+   de la 69 en Instagram (18:30): Buffer la envía igual; **verificar mañana**
+   con la reconciliación ya viva.
+5. **La ficha del socio (`/brief/<token>`), tres cosas pre-existentes que el
+   trabajo de hoy hace más usadas:** el token no caduca ni se revoca
+   (`partner_brief.py:78`, sin `expires_at`); uvicorn arranca sin
+   `--no-access-log` (`Dockerfile:20`), así que la ruta con el token va al
+   log del contenedor; y cada pulsación de «terminar» manda correo + Telegram
+   sin tope (`public.py:1180`, `:1242`; el botón solo se bloquea mientras
+   guarda). Ninguna es de hoy; anotadas para cuando se toque ese camino.
+6. **La rutina del 22 está activa** (`trig_01RgALb3zNHEbhLeRwUgso1B`, 08:07
+   Denver) pero su texto es del 15-sep: nombra 2 vídeos de 4, baseline 411 vs
+   402, su SQL no filtra `traffic_class` (ver 3; también entran las filas
+   `test` 230 y 247, que son nuestras: hoy leería **`comment = 9` con cero
+   personas**) y llama centro de datos a Boydton, que el clasificador excluye
+   a propósito. Lo decide Ender.
+7. **`realign_windows` no comprueba que el hueco nuevo caiga DENTRO de la
+   ventana.** `next_free_slot` (`buffer_publisher.py:951-980`) camina hacia
+   delante hasta 370 días y en `:1646-1649` solo se descarta «el mismo hueco».
+   Con la ventana llena — justo el estado que motivó el arreglo — el post se
+   mueve **más allá de `publish_window_end`** y se queda ahí (el tic siguiente
+   recalcula el mismo hueco y hace `continue`). Ningún test afirma `<= end`
+   (`test_the_window_moved_after_the_post_was_queued.py:173` solo `>= opens`).
+   Latente hoy: 42 y 44 se movieron bien. Arreglo: comparar la fecha local del
+   hueco con `start`/`end` antes del `editPost`, y un test con la ventana llena.
+8. **El carril calculado ya produce y su enlace es la portada.** Desde las
+   11:01 (`CONTENT_CALCULATED_EVERY=2`) cada pieza calculada promete una cifra
+   y su caption termina con `CONTENT_CTA_URL` a secas (`content_writer.py:294-296`;
+   en producción `https://www.denverhomestory.com`): ni `/calculator` ni
+   `rent=`/`savings=`. Es la omisión que la Fase 4 planifica, pero el carril
+   está vivo antes que la Fase 4. Hasta arreglarlo, revisar el enlace de cada
+   pieza calculada **antes de aprobarla**.
+
+### 🟡 Menor
+
+7. `sitemap.xml` lista `/start` y `/start` declara `robots: { index: false }`
+   (`frontend/app/start/page.tsx:17`): contradicción, no riesgo.
+8. `next lint`: dos avisos nuevos en `brief/[token]/page.tsx:439,441`
+   (`useMemo` deps).
+9. La Fase 1.3 decía `utm_content=p<id>`; el backend asocia por
+   `piece-<id>` (`landing_analytics.py:458`) y así están los enlaces.
+   Corregido en el texto.
+10. Tres ramas con commits que `main` no tiene: `fix/la-puerta-de-la-marca`
+    (5, del 3-4 sep, incluye un `fix(worker)`), `feature/google-signin` (1,
+    mayo), `fix/voz-promesa-sin-respaldo` (1, 24-ago). Fusionar o borrar;
+    ninguna toca lo de hoy.
+11. `content_publications` conserva una fila `failed` de la pieza 14 en
+    Instagram (8-sep, «post no longer exists in Buffer») con la pieza
+    `published`: residuo.
+12. `CONTENT_CALCULATED_EVERY` no está en el `.env` del VPS: corre con el
+    default 2 del compose, que es el valor querido. Solo una pieza generada
+    desde el despliegue (la 74, prosa): el carril calculado **aún no ha
+    producido nada en producción**.
+13. El primer GET de una ficha estampa `opened_at` y llama a Telegram
+    (`public.py:1132-1147`): una vista previa de enlace puede marcarla abierta.
+14. Ningún test cubre el cableado `publish_approved → realign_windows`: los
+    8 tests nuevos llaman a `realign_windows` directamente; borrar la llamada
+    de `:1741` deja la suite verde.
+15. `frontend/lib/__tests__/bioLinks.test.ts:106-112` («no short path is
+    claimed twice») compara una lista literal consigo misma; nunca lee
+    `redirects()`. No puede fallar.
+16. `calculator/page.tsx:260-266`: el cleanup del efecto cancela el salto de
+    respaldo de 150 ms si `result` cambia en ese intervalo (tocar un preset);
+    la ruta de la semilla no cae ahí.
+
+### ✅ Verificado sano
+
+- **Fase 4, comprobación previa hecha y POSITIVA:** `link_the_text_chose` y
+  `with_platform_utm` **conservan** `rent=2600&savings=40000` (ejecutadas con
+  el módulo del worktree; `_tag_site_link` solo sustituye las cuatro `utm_*`,
+  `buffer_publisher.py:269-280`, y normaliza `utm_content` a `piece-<id>`).
+- Calculadora: 16 constantes idénticas front/back (`calculator.ts:76-93` vs
+  `calculator.py:28-45`); `build_snapshot(2600, 40000)` = 343.475.
+- `lower()` de Postgres (`en_US.utf8`) baja `LuleÃ¥` a la forma que espera la
+  lista y esa fila **quedó clasificada** (1 de las 21).
+
+- VPS en `a22d3cc`; `/health` 0.109.0 en local y por Cloudflare; alembic 062
+  head; 4 contenedores arriba. `origin/main` = `3cd6175` (3 commits de
+  `PLAN.md` por delante, solo docs).
+- Clasificador: bajo RLS por organización, cada 300 s, solo sobre
+  `unknown`, SQL parametrizado; **21** marcados en el primer tic.
+- `/calculator?rent=2600&savings=40000` → **$343.000** en escritorio y en
+  390 px (desplaza hasta la cifra, `scrollY` 979). Mi visita con `eko_qa=1`
+  quedó `test/persistent_qa` (fila 247).
+- Sitemap servido = las 5 rutas públicas, sin `/brief`; `robots.txt` correcto;
+  `/n` `/r` `/e` → 307 con su `utm_content`.
+- Las 5 descripciones de YouTube siguen con la semilla (leídas del
+  `shortDescription` público a las 19:30).
+
 ## Contexto medido — 16-sep-2026, producción, con su fuente
 
 | hecho | valor | de dónde sale |
@@ -711,6 +856,10 @@ ocupado). Si no llegan el jueves, **no se publica nada** y se le dice a Ender.
 5. **Antes de aprobar**, verifica con una consulta que el 18 sigue vacío en
    los tres canales y que Buffer tiene < 10 programados por canal (46 y 69
    salen el 16, 16 el 17 → 7-8 el jueves). Avisa a la sesión de PLAN (4).
+   🔴 **Corregido el 16-sep (auditoría, punto 2):** esa aritmética ignoraba
+   que el primer tic tras volver la cuota entrega las piezas **sin ventana**
+   (41, 43, 45, 72) y rellena los 10. Sin la retención de **PLAN (6) Fase 0**
+   no hay hueco el jueves; la comprobación se hace **justo antes** de aprobar.
 6. Aprueba. El tick de `publish_approved` la programa en los tres canales (es lo
    que el correo prometió: **sin exclusiones manuales**). Verifica `dueAt` en
    Buffer, no solo la fila.
@@ -779,7 +928,9 @@ llega el sábado antes de las 11.
    mismos supuestos (`docs/content/calculator-consistency.md`). Test de
    `resultInView` sigue valiendo: el resultado tiene que estar en pantalla.
 3. **Captions de las piezas 47-57**: reescribir el enlace a
-   `denverhomestory.com/calculator?rent=<la renta del vídeo>&utm_source=youtube&utm_medium=social&utm_content=p<id>`.
+   `denverhomestory.com/calculator?rent=<la renta del vídeo>&utm_source=youtube&utm_medium=social&utm_content=piece-<id>`
+   (`piece-<id>`, no `p<id>`: es la forma que el backend asocia,
+   `landing_analytics.py:458`).
    ✅ **Hecho el 16-sep para las piezas 47-51.** Seis enlaces en total (la 48
    lleva dos, uno con `utm_medium=comment`), editados conduciendo Chrome sobre
    YouTube Studio — no por Buffer: las cinco están `published`, y vidIQ rechaza
@@ -823,10 +974,12 @@ Natalia: *«I like it. Let's get the other letters ready»*. Está pidiendo.
 
 ### Fase 3 — El instrumento (esta semana, en paralelo)
 
-> ✅ **3.1 ESCRITA Y PROBADA — commit `d843643`, v0.109.0. NO desplegada aún**
-> (es backend; la ventana tranquila empieza a las 21:00 de Denver). 2050 tests
-> verdes, ruff limpio, 6 mutantes muertos, **sin migración**:
-> `traffic_classified_at` ya existía.
+> ✅ **3.1 ESCRITA, PROBADA Y DESPLEGADA — commit `d843643` + `bf576a1`,
+> v0.109.0, contenedor arrancado a las 17:59 de Denver** (fuera de la ventana
+> tranquila de las 21:00 que esta nota fijaba; ver auditoría, punto 4). 2050
+> tests verdes, ruff limpio, 6 mutantes muertos, **sin migración**:
+> `traffic_classified_at` ya existía. Primer tic en producción: 21 sesiones
+> marcadas `datacenter_city`.
 >
 > **Se implementó `datacenter_city`. NO se implementó `one_shot_no_scroll`, y
 > la razón está medida.** Esa regla habría marcado como `automated` unas **33
@@ -919,7 +1072,7 @@ PLAN (4) fijó 7 educativas + 3 otoño + 3 calculadora por semana. La medición
 dice que las locales producen comentarios y las de calculadora vistas sin
 nadie detrás. **Propuesta, que Ender decide** (cambia la cadencia de otra
 sesión): 3 educativas + 5 locales/estacionales + 2 calculadora **con
-`?rent=` en el enlace**. 🔴 **Primera comprobación de esta fase, antes de generar nada:** que `with_platform_utm` / `link_the_text_chose` **conserven** un `rent=`/`savings=` que ya venga en la caption en vez de reconstruir la URL desde la base. Sin verificarlo, la semilla muere de camino a Buffer y se repite con vídeos nuevos el problema del 16-sep. Las locales: sitios concretos, fechas concretas, una
+`?rent=` en el enlace**. ✅ **Comprobación previa hecha el 16-sep (auditoría): `with_platform_utm` / `link_the_text_chose` conservan un `rent=`/`savings=` que ya venga en la caption** (ejecutado, no solo leído). Lo que falta es al revés: el generador **no pone** la semilla (auditoría, punto 8) y la CTA apunta a la portada. Las locales: sitios concretos, fechas concretas, una
 sola promesa por post (nunca «Comment FALL» y el enlace en la misma caption).
 
 ### Fase 5 — La lista de los viernes (propuesta a los socios; **no se ejecuta sin go**)
@@ -1014,3 +1167,4 @@ SELECT date_trunc('week', created_at) AS semana, source, count(*) AS humanas
   (salida a `scratchpad/`, nunca al repo).
 - `CHANGELOG.md`, `frontend/lib/version.ts`, `backend/app/config.py` — por
   despliegue.
+
