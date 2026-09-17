@@ -898,7 +898,7 @@ PLAN (4) fijó 7 educativas + 3 otoño + 3 calculadora por semana. La medición
 dice que las locales producen comentarios y las de calculadora vistas sin
 nadie detrás. **Propuesta, que Ender decide** (cambia la cadencia de otra
 sesión): 3 educativas + 5 locales/estacionales + 2 calculadora **con
-`?rent=` en el enlace**. Las locales: sitios concretos, fechas concretas, una
+`?rent=` en el enlace**. 🔴 **Primera comprobación de esta fase, antes de generar nada:** que `with_platform_utm` / `link_the_text_chose` **conserven** un `rent=`/`savings=` que ya venga en la caption en vez de reconstruir la URL desde la base. Sin verificarlo, la semilla muere de camino a Buffer y se repite con vídeos nuevos el problema del 16-sep. Las locales: sitios concretos, fechas concretas, una
 sola promesa por post (nunca «Comment FALL» y el enlace en la misma caption).
 
 ### Fase 5 — La lista de los viernes (propuesta a los socios; **no se ejecuta sin go**)
