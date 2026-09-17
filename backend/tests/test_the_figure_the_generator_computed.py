@@ -21,6 +21,7 @@ does, and the assertions are about where a draft lands and what it carries.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from unittest.mock import AsyncMock, patch
 
@@ -47,7 +48,7 @@ from app.services.content_topics import (
     next_topic,
     prose_index,
 )
-from app.services.content_writer import generate_draft
+from app.services.content_writer import DraftPayload, _with_cta, generate_draft
 from app.services.llm import LLMResult
 from app.services.tenant_context import org_scope
 
@@ -493,3 +494,188 @@ async def test_a_hand_stamped_record_does_not_advance_this_rail(
                 assert await calculated_index(db) == 1
     finally:
         await _cleanup()
+
+
+# --------------------------------------------------------------------------
+# The link the calculated piece promises
+# --------------------------------------------------------------------------
+
+
+def _draft(caption: str = "Every assumption behind it is a slider on the page.") -> DraftPayload:
+    return DraftPayload(hook="A hook.", script="A script.", caption=caption)
+
+
+def test_a_calculated_caption_lands_on_its_own_number(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The video says a number; the link has to open on that number.
+
+    `denverhomestory.com/calculator` with nothing after it opens an empty form
+    on the site's own defaults, and the defaults are not what the video was
+    computed from — which is how five videos came to promise $21,000 where the
+    page says $52,210. The two inputs travel in the URL because they are the
+    same two `plan` computed the figure from, not a copy of them.
+    """
+    monkeypatch.setattr(
+        get_settings(), "CONTENT_CTA_URL", "https://www.denverhomestory.com",
+        raising=False,
+    )
+    plan = plan_for(2, ContentLanguage.EN)
+    assert plan.rent == 2600, "this test is written around the $2,600 band"
+
+    out = _with_cta(_draft(), ContentLanguage.EN, 0, plan)
+
+    assert out is not None
+    assert "calculator?rent=2600&savings=60000" in out.caption, out.caption
+    # And it speaks to the person who is renting, not to a seller.
+    assert "Run your own number" in out.caption
+    assert "Thinking about selling" not in out.caption
+
+
+def test_the_spanish_calculated_caption_carries_the_same_seed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two languages, one link. A translated sentence with an untranslated —
+    or absent — seed is the same broken promise in another language."""
+    monkeypatch.setattr(
+        get_settings(), "CONTENT_CTA_URL", "https://www.denverhomestory.com",
+        raising=False,
+    )
+    plan = plan_for(2, ContentLanguage.ES)
+    out = _with_cta(_draft("Cada supuesto es un control en la página."),
+                    ContentLanguage.ES, 0, plan)
+    assert out is not None
+    assert "calculator?rent=2600&savings=60000" in out.caption, out.caption
+    assert "Haz tu propio número" in out.caption
+
+
+def test_a_prose_caption_keeps_the_selling_cta(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The other half. A piece about inspections has no figure to seed, and
+    sending its viewer to a pre-filled calculator would be answering a question
+    nobody asked. No plan, no seed, and the selling sentence stays."""
+    monkeypatch.setattr(
+        get_settings(), "CONTENT_CTA_URL", "https://www.denverhomestory.com",
+        raising=False,
+    )
+    out = _with_cta(_draft("A caption."), ContentLanguage.EN, 0, None)
+
+    assert out is not None
+    assert "calculator" not in out.caption, out.caption
+    assert "Thinking about selling in Denver? Start here:" in out.caption
+
+
+def test_no_url_configured_still_means_no_link_at_all(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """`CONTENT_CTA_URL` empty is the install that has no landing page yet, and
+    the rail is **inert** by design. A seeded path appended to an empty base
+    would publish `/calculator?rent=…` as an absolute nothing.
+
+    Inert is the word that matters, so the silence is asserted too: with no URL
+    configured, `caption_carries_link` answers "yes" to everything, and a guard
+    that leaned on it alone would reach this same empty caption by deciding the
+    model had written a link. Same output, different reason — and the reason is
+    what a later change would break."""
+    monkeypatch.setattr(get_settings(), "CONTENT_CTA_URL", "", raising=False)
+    caplog.set_level(logging.WARNING, logger="app.services.content_writer")
+    plan = plan_for(2, ContentLanguage.EN)
+    out = _with_cta(_draft("A caption."), ContentLanguage.EN, 0, plan)
+    assert out is not None
+    assert "calculator" not in out.caption
+    assert "Run your own number" not in out.caption
+    assert [r.getMessage() for r in caplog.records] == []
+
+
+@pytest.mark.asyncio
+async def test_a_calculated_draft_reaches_the_queue_carrying_its_link(
+    database_url: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End to end, because `_with_cta` being right is worth nothing if the
+    generator does not hand it the plan. And the caption it checks is the one
+    `find_violations` reads, since the CTA is appended before the gate runs."""
+    monkeypatch.setattr(
+        get_settings(), "CONTENT_CTA_URL", "https://www.denverhomestory.com",
+        raising=False,
+    )
+    try:
+        plan = plan_for(0, ContentLanguage.EN)
+        payload = {
+            "hook": (
+                f"Renting in Denver at ${plan.rent:,} a month? Five years of "
+                f"buying comes out about ${plan.figure:,} ahead."
+            ),
+            "script": "Rent, appreciation, the loan you pay down, the cost of selling.",
+            "caption": "Every assumption behind it is a slider on the page.",
+        }
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                with patch(
+                    "app.services.content_writer.generate_reply",
+                    AsyncMock(return_value=_reply(payload)),
+                ):
+                    piece = await generate_draft(db)
+
+        assert piece is not None
+        assert f"calculator?rent={plan.rent}&savings={SAVINGS}" in piece.caption, (
+            piece.caption
+        )
+        assert piece.status is ContentStatus.NEEDS_APPROVAL, piece.violations
+    finally:
+        await _cleanup()
+
+
+def test_a_model_that_wrote_its_own_link_does_not_get_a_second_one(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The regression the seed introduced, held down.
+
+    The old test was `url not in caption`, and a seeded link is never a
+    substring of the bare one the model might write. So a caption that already
+    carried `…/calculator` got a second link appended — and the publisher tags
+    and follows up on the FIRST one it finds, which is the model's. The viewer
+    would land on an empty form and the visit would arrive with no
+    `utm_content`: the defect this rail exists to close, plus an unattributable
+    click. Asked of `caption_carries_link`, the same function the publisher's
+    own gate uses, so the two cannot drift.
+    """
+    monkeypatch.setattr(
+        get_settings(), "CONTENT_CTA_URL", "https://www.denverhomestory.com",
+        raising=False,
+    )
+    plan = plan_for(2, ContentLanguage.EN)
+    caplog.set_level(logging.WARNING, logger="app.services.content_writer")
+
+    out = _with_cta(
+        _draft("Run the numbers yourself at denverhomestory.com/calculator."),
+        ContentLanguage.EN,
+        0,
+        plan,
+    )
+
+    assert out is not None
+    assert out.caption.lower().count("denverhomestory") == 1, out.caption
+    assert "rent=2600" not in out.caption
+    assert any("wrote its own site link" in r.getMessage() for r in caplog.records), (
+        "the model broke the prompt's rule and nothing said so"
+    )
+
+
+def test_a_configured_url_with_a_trailing_slash_does_not_double_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The seed is concatenated onto the configured URL, so one trailing slash
+    in the environment publishes `…com//calculator?…`. One character of
+    configuration away from a 404 on every calculated piece."""
+    monkeypatch.setattr(
+        get_settings(), "CONTENT_CTA_URL", "https://www.denverhomestory.com/",
+        raising=False,
+    )
+    plan = plan_for(2, ContentLanguage.EN)
+    out = _with_cta(_draft(), ContentLanguage.EN, 0, plan)
+    assert out is not None
+    assert "//calculator" not in out.caption, out.caption
+    assert "com/calculator?rent=2600&savings=60000" in out.caption

@@ -43,6 +43,7 @@ from app.services.buffer_publisher import (
     BufferRefused,
     QuotaReached,
     build_post_input,
+    link_the_text_chose,
     parse_create_post,
     publish_approved,
     publish_piece,
@@ -2662,3 +2663,35 @@ async def test_tick_selects_only_platforms_that_can_still_be_sent(
             assert (await _rows(old))["tiktok"].status == "publishing"
     finally:
         await _cleanup()
+
+
+def test_the_seed_survives_the_utm_tagging() -> None:
+    """The two halves of the promise have to survive each other.
+
+    The calculated rail writes `?rent=…&savings=…` so the page opens on the
+    number the video said; the publisher appends its own `utm_*` to every link
+    it sends. Either could have eaten the other's query string — this is the
+    one place both run on the same text, and it was checked by hand on
+    16-sep-2026 without a fixture to keep it checked.
+    """
+    text = f"Run your own number: {CTA}/calculator?rent=2600&savings=60000"
+    out = with_platform_utm(text, CTA, PublicationPlatform.YOUTUBE, 47, "video")
+
+    assert "rent=2600" in out, out
+    assert "savings=60000" in out, out
+    assert "utm_source=youtube" in out
+    assert "utm_content=piece-47" in out
+    # And the link the crawler will actually fetch is still one link.
+    assert out.count("?") == 1, out
+
+
+def test_the_seed_survives_the_link_the_text_chose() -> None:
+    """The other side of the same question: what `link_the_text_chose` hands
+    to the platforms that take a URL field rather than a caption. A seed
+    dropped here is a video promising a figure and a page showing another."""
+    text = f"Run your own number: {CTA}/calculator?rent=2600&savings=60000"
+    chosen = link_the_text_chose(
+        text, CTA, PublicationPlatform.YOUTUBE, 47, "video"
+    )
+    assert chosen is not None
+    assert "rent=2600" in chosen and "savings=60000" in chosen, chosen

@@ -15,7 +15,24 @@ diario: se actualiza al cerrar cada fase para que el progreso sobreviva a un
 
 ---
 
-## 🔴 Lo primero: G1 sigue sin respuesta y tiene reloj
+## ✅ G1 y G2: ejecutados el 16-sep por la noche, con el sí de Ender
+
+**G1.** `UPDATE 4` sobre `content_pieces` 41/43/45/72 →
+`publish_window_start='2026-10-06'`, `publish_window_end='2026-10-31'`.
+Verificado releyendo: la selección fiel del tic devuelve **solo la 24**, así que
+el vídeo de la casa abierta tiene hueco el jueves. **Reversible:** volver a
+poner las dos ventanas a NULL. Pre-imagen en `fase0_preimagen_pieces.txt` (las
+cuatro tenían ventana NULL; 41 y 72 `approved`, 43 y 45 `publishing`).
+
+**G2.** `UPDATE 16` sobre `landing_sessions` 231-246 → `traffic_class='automated'`,
+razón `link_check_after_edit`. Verificado: la consulta de la rutina del 22
+devuelve **0 filas**, ni un lector falso. Pre-imagen: 16 filas, 16 `unknown`.
+
+**Queda 0.2**, que no es ejecutable hasta las 09:15 del 17: barrido vivo sin
+`QuotaReached` ni «failed during a sweep», y 69 IG / 46 YT / 69 TT en
+`published` con `external_url`.
+
+## Contexto original de la puerta (histórico)
 
 **Antes de las 08:57 de Denver del 17-sep** vuelve la cuota diaria de Buffer y
 el primer tic entrega. La pregunta a Ender es: **¿retengo 41/43/45/72 con
@@ -48,10 +65,10 @@ Ender cuando abra G1 (regla 9 del «⛔ Para el ejecutor»).
 
 | fase | estado | commit |
 |---|---|---|
-| 0 — la cola antes de la cuota | 🔴 **bloqueada en G1/G2** (y 0.2 no es ejecutable hasta las 09:15 del 17) | — |
+| 0 — la cola antes de la cuota | ✅ **G1 y G2 ejecutados y verificados**; falta 0.2 (barrido vivo, desde las 09:15 del 17) | producción |
 | 1 — Buffer ve las dos ventanas | ✅ **cerrada**, APROBADO del advisor | ver abajo |
 | 2 — `realign_windows`: **más cerca** de la ventana, no «dentro o nada» | ✅ **cerrada** | ver abajo |
-| 3 — el carril calculado enlaza con la cifra | ⏳ | — |
+| 3 — el carril calculado enlaza con la cifra | ✅ **cerrada** | ver abajo |
 | 4 — el clasificador ve las parejas | ⏳ (antes del 22) | — |
 | 5 — la ficha del socio | ⏳ | — |
 | 6 — frontend menor | ⏳ | — |
@@ -169,7 +186,74 @@ fecha?»; un post que Buffer está enviando puede completarse igual y dejar la
 fila con fecha futura para algo ya publicado), y **un estado que este carril no
 reconoce se registra en ERROR**, como ya hace `reconcile_scheduled`.
 
+## Auditoría de la Fase 3 (un revisor independiente)
+
+**Una regresión mía, introducida y cerrada en la misma fase.** Le dije a Ender
+que el doble enlace era preexistente y **no lo era**: con el enlace escrito con
+esquema completo, antes `url in caption` era cierto y no se añadía nada; con la
+semilla el nuestro deja de ser subcadena, se añade, y quedan **dos** enlaces —
+y `with_platform_utm` y `link_the_text_chose` etiquetan y comentan **solo el
+primero**, que sería el del modelo. El espectador aterrizaría en el formulario
+vacío y la visita llegaría **sin `utm_content`**. Corregido preguntando a
+`caption_carries_link` (`publish_followup.py:49`), la misma función que usa la
+puerta del publicador, de modo que las dos no pueden divergir.
+
+**Desviación que no pedía el plan:** ese cambio afecta también al **carril de
+prosa** — antes, si el modelo escribía `denverhomestory.com` a pelo, el CTA se
+añadía igual y salían dos enlaces; ahora no se añade y se registra un aviso. El
+aviso hace visible por primera vez que el modelo rompe la regla del prompt
+(«never write a web address in any field»), en los dos carriles: `_all_violations`
+nunca lo comprobó.
+
+**Menor corregido:** `.rstrip("/")` en la URL configurada — con una barra final
+el enlace salía `…com//calculator?…`, a un carácter de configuración de un 404.
+
+**Verificado en vez de supuesto:** la puerta de las cifras da el mismo resultado
+con y sin semilla (`_FIGURE` exige un `$` literal, y `explainable` se construye
+solo desde el registro de la pieza, nunca desde el texto); y en producción **25
+de 25 captions llevan un solo enlace**, la más larga 507 de 1500 caracteres.
+
+## Checklist real de la Fase 3
+
+| comprobación | resultado |
+|---|---|
+| `pytest -q` | **2082 passed**, 0 saltados |
+| `ruff check app tests` | *All checks passed!* |
+| tests nuevos vistos en rojo | **11 de 11**; una se quedó verde por la razón equivocada y se apretó |
+| `md5` de los dos fuentes | idénticos tras la batería |
+| secretos / `print` en el diff | ninguno |
+| migración | no hace falta |
+
 ## Hallazgos abiertos (backlog, con evidencia)
+
+- 🟡 **No hay tope de caption en el momento de publicar.** `DraftPayload.caption`
+  declara `max_length=1500`, pero `model_copy` **no revalida** (medido con
+  pydantic 2.12.5: acepta 1653) y la columna es `Text`, el esquema de la API no
+  pone `max_length` y el textarea de la consola tampoco. El bloque que añade el
+  CTA pasa de 112 a 153 caracteres (159 en español), así que el techo real sube
+  a ~1659. Nada rompe hoy, pero el margen contra el límite de cada plataforma
+  **no está medido en ninguna parte**.
+- 🟡 **La frase del comentario está duplicada.** `publish_followup.py:113` lleva
+  «Run your own number — nothing to fill in to see it:» a mano, y ahora existe
+  también como `_CALCULATED_CTA[EN]`: dos copias que deben coincidir, en un repo
+  cuyo propio docstring avisa de que «two matchers drift». Además `comment_for`
+  **no tiene variante española**, así que una pieza calculada en español lleva
+  caption en español y comentario en inglés (preexistente). No se dedujo en esta
+  fase porque el import cruzado crearía un ciclo.
+
+- 🟡 **Solo se etiqueta el primer enlace de la caption.** `with_platform_utm` y
+  `link_the_text_chose` (`buffer_publisher.py:203` y `:241`) tocan **el primer**
+  enlace del sitio que encuentran en el texto. Si el modelo escribiera uno
+  propio, ganaría el suyo —sin semilla— y el nuestro saldría **sin
+  `utm_content`**, es decir sin atribución. Reproducido a mano.
+  **No es alcanzable hoy y no lo introduce la Fase 3:** medido en producción,
+  las 25 captions con dominio tienen **exactamente un enlace** (la más larga,
+  507 caracteres de 1500 permitidos), y `_CTA` ya añadía un segundo enlace en
+  ese mismo supuesto antes de este cambio. Lo que sí sube es el coste de que
+  ocurra, porque ahora el enlace que se perdería lleva la semilla. **Forma del
+  arreglo:** que el etiquetado prefiera el enlace con cadena de consulta, o que
+  etiquete todos los enlaces del sitio, no solo el primero. Es de
+  `buffer_publisher`, no de `content_writer`.
 
 - 🔴 **La fila que Buffer cerró antes de hora no la sana nadie.**
   `reconcile_scheduled` filtra `scheduled_at <= now` y `realign_windows` filtra
@@ -264,9 +348,10 @@ reconoce se registra en ERROR**, como ya hace `reconcile_scheduled`.
 
 ## Siguiente paso
 
-**Fase 3** — el carril calculado enlaza con la cifra que promete
-(`content_writer.py`). Las tres piezas que ya existen (41, 43, 45) están dentro
-de G1. En paralelo, **G1 sigue esperando a Ender** y vence a las 08:57.
+**Fase 4** — el clasificador de parejas, cuya puerta es un backtest contra
+producción: si la regla en SQL no devuelve exactamente las parejas conocidas, no
+se escribe. Ojo: la 0.3 ya corrió, así que el backtest debe devolver **0**.
+Fases 4 y 7 tienen que estar **antes del 22 a las 08:07**.
 
 ---
 

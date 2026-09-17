@@ -37,7 +37,7 @@ from app.models import (
     ContentPiece,
     ContentStatus,
 )
-from app.services.content_calculated import Plan, plan_for, scene_fields
+from app.services.content_calculated import SAVINGS, Plan, plan_for, scene_fields
 from app.services.content_figures import claimed_text, unexplained_figures
 from app.services.content_studio import advance, not_our_rail, text_violations
 from app.services.content_topics import (
@@ -211,7 +211,7 @@ async def _ask(topic: Topic, language: ContentLanguage,
         log.exception("Content writer: both providers failed for topic %s",
                       topic.key)
         return None
-    return _with_cta(_with_plan(_parse(result.text), plan), language, cta_index)
+    return _with_cta(_with_plan(_parse(result.text), plan), language, cta_index, plan)
 
 
 # The sentence that turns a view into a visit. Kept OUT of the model's hands on
@@ -220,6 +220,21 @@ async def _ask(topic: Topic, language: ContentLanguage,
 _CTA = {
     ContentLanguage.EN: "Thinking about selling in Denver? Start here: {url}",
     ContentLanguage.ES: "¿Estás pensando en vender en Denver? Empieza aquí: {url}",
+}
+
+# The calculated rail gets its own sentence, and it is not the selling one.
+# These videos answer "what could I buy on £X of rent" — the person watching
+# rents, and inviting them to start selling a home they do not own is the kind
+# of mismatch that reads as a template. The link carries the rent and the
+# savings the figure was computed from, so the page opens on the same number
+# the video just said instead of on an empty form: five videos promised
+# $21,000 where the calculator's own defaults give $52,210, and a link that
+# only says `/calculator` is how the two came apart.
+_CALCULATED_CTA = {
+    ContentLanguage.EN: "Run your own number — nothing to fill in to see it: {url}",
+    ContentLanguage.ES: (
+        "Haz tu propio número — no hay nada que rellenar para verlo: {url}"
+    ),
 }
 
 # The domain AS IT IS SPOKEN, and that is the whole trick. `worker/spoken.py`
@@ -274,6 +289,7 @@ def _with_cta(
     draft: DraftPayload | None,
     language: ContentLanguage,
     cta_index: int = 0,
+    plan: Plan | None = None,
 ) -> DraftPayload | None:
     """Append the call to action to the caption.
 
@@ -291,9 +307,48 @@ def _with_cta(
         return None
     caption = draft.caption.rstrip()
 
-    url = (get_settings().CONTENT_CTA_URL or "").strip()
-    if url and url not in caption:
-        caption = f"{caption}\n\n{_CTA[language].format(url=url)}"
+    # `rstrip("/")` because the seeded path is concatenated: a configured URL
+    # ending in a slash would publish `…com//calculator?…`, which is one
+    # character of configuration away from a 404. `public_media_url` in the
+    # publisher strips it for the same reason.
+    url = (get_settings().CONTENT_CTA_URL or "").strip().rstrip("/")
+    # Same two numbers the figure was computed from (`content_calculated`), so
+    # the page cannot disagree with the video: they are not copied across, they
+    # are the inputs of `plan`, and `SAVINGS` is the constant the whole series
+    # is built on. A seed nobody can see is the same defect as a figure with a
+    # hidden input, one click further along.
+    link = (
+        f"{url}/calculator?rent={plan.rent}&savings={SAVINGS}"
+        if url and plan is not None
+        else url
+    )
+    if link:
+        # Asked of the module that will choose the link, not with a substring.
+        # The publisher tags and follows up on the FIRST site link in the text
+        # (`_first_site_link`), so a caption carrying two of ours publishes the
+        # other one — and with a seeded link that means the viewer lands on an
+        # empty form and the visit arrives with no `utm_content` to count it.
+        # A substring test cannot see that: `…/calculator` written by the model
+        # is not a substring of `…/calculator?rent=…`, so both would be there.
+        #
+        # Imported inside the function, not at module scope: `publish_followup`
+        # reaches back into `buffer_publisher` — and does so from inside its own
+        # functions for the same reason. A module-level import here would be the
+        # first edge of that circle drawn at import time.
+        from app.services.publish_followup import caption_carries_link
+
+        if caption_carries_link(caption, url):
+            # The prompt says "never write a web address in any field" and
+            # nothing checked the answer. Now it is visible instead of being
+            # papered over with a second link.
+            log.warning(
+                "Content writer: the model wrote its own site link, so the "
+                "call to action was not appended%s",
+                " (the calculated seed was lost with it)" if plan is not None else "",
+            )
+        else:
+            sentence = (_CALCULATED_CTA if plan is not None else _CTA)[language]
+            caption = f"{caption}\n\n{sentence.format(url=link)}"
 
     # Only when there is a plan to generate pictures from. A clip somebody
     # filmed is not AI-generated, and saying it is would be a false statement
