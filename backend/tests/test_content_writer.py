@@ -645,3 +645,97 @@ def test_a_model_that_already_spoke_the_domain_gets_no_second_sign_off(
         assert spoken == script
     finally:
         get_settings.cache_clear()
+
+
+# ── The address the model writes itself ──────────────────────────────────
+
+
+def _draft(**over) -> dict:
+    body = {
+        "hook": "What an appraisal answers that an estimate cannot",
+        "script": "An appraisal is an opinion a lender will lend against. "
+        "An online estimate is a starting point. Here is what separates them.",
+        "caption": "The difference between the two, in one minute.",
+        "scenes": [
+            {"visual_prompt": "A quiet Denver street", "on_screen_text": "Denver"},
+            {"visual_prompt": "A document on a desk", "on_screen_text": "Appraisal"},
+        ],
+    }
+    body.update(over)
+    return body
+
+
+def _result(payload: dict) -> LLMResult:
+    return LLMResult(
+        text=json.dumps(payload),
+        provider="test",
+        model="test",
+        input_tokens=0,
+        output_tokens=0,
+    )
+
+
+def _topic():
+    from app.services.content_topics import SELLER, Topic
+
+    return Topic(
+        key="t",
+        brief_en="Write about appraisals.",
+        brief_es="Escribe sobre tasaciones.",
+        audience=SELLER,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_draft_that_types_its_own_address_is_asked_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_SYSTEM` forbids a web address in any field and nothing read the answer.
+
+    The cost is not cosmetic. `_all_violations` checks Fair Housing, language,
+    English prompts and figures — none of those is a URL — and `_with_cta`
+    appends the real, tracked, seeded link ONLY when the caption carries none.
+    So a caption the model ended with "denverhomestory.com/calculator" passes
+    every check and silently replaces our link with one an LLM typed: no
+    scheme, no UTM, and on the calculated rail no seed, which is the
+    $21,000-against-$52,210 defect.
+    """
+    from app.services.content_writer import _ask
+
+    monkeypatch.setattr(
+        get_settings(), "CONTENT_CTA_URL", "https://www.denverhomestory.com",
+        raising=False,
+    )
+    dirty = _result(_draft(caption="See the numbers at denverhomestory.com/calculator"))
+    clean = _result(_draft())
+    asked = AsyncMock(side_effect=[dirty, clean])
+    with patch("app.services.content_writer.generate_reply", asked):
+        draft = await _ask(_topic(), ContentLanguage.EN)
+    assert asked.await_count == 2
+    named = "\n".join(
+        str(message["content"]) for message in asked.await_args.args[0]
+    )
+    assert "denverhomestory.com/calculator" in named
+    assert "Never write a web address" in named
+    assert draft is not None
+    # Ours, appended by `_with_cta`, and exactly once.
+    assert draft.caption.lower().count("denverhomestory.com") == 1
+    assert "https://www.denverhomestory.com" in draft.caption
+
+
+@pytest.mark.asyncio
+async def test_a_model_that_keeps_typing_an_address_produces_no_draft() -> None:
+    """Twice, with the addresses named, and then nothing. Accepting the third
+    version means shipping a hand-typed URL in place of ours, and asking a
+    fourth time is a bill with no ceiling."""
+    from app.services.content_writer import _ask
+
+    stubborn = _result(_draft(caption="Call 303-555-0199 to talk it through."))
+
+    async def _always(*_args, **_kwargs):
+        return stubborn
+
+    asked = AsyncMock(side_effect=_always)
+    with patch("app.services.content_writer.generate_reply", asked):
+        assert await _ask(_topic(), ContentLanguage.EN) is None
+    assert asked.await_count == 2

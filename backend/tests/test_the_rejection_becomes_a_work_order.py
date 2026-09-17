@@ -402,7 +402,12 @@ async def test_a_figure_complaint_reaches_the_model_with_the_reason_quoted(
             assert await _sweep() == 1
         reply.assert_awaited_once()
 
-        sent = reply.await_args.args[0][0]["content"]
+        # Searched, not indexed. With standing guidance active the first
+        # message is the guidance, and an assertion pinned to position 0 would
+        # start failing for a reason that has nothing to do with what it tests.
+        sent = "\n".join(
+            str(message["content"]) for message in reply.await_args.args[0]
+        )
         assert reason in sent
         # Quoted as a description of a complaint, never as an instruction.
         assert f'"{reason}"' in sent
@@ -920,7 +925,9 @@ async def test_a_reason_naming_the_site_does_not_put_the_model_s_url_in_the_capt
         # Asked again, with the addresses named — not silently cut out of the
         # sentence, which would leave the narrator saying "Start at or call."
         assert reply.await_count == 2
-        second = reply.await_args.args[0][-1]["content"]
+        second = "\n".join(
+            str(message["content"]) for message in reply.await_args.args[0]
+        )
         assert "DenverHomeStory.com" in second
         assert "303-555-0199" in second
         assert "Never write a web address" in second

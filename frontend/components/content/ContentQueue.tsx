@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  type ContentLesson,
   type ContentPiece,
   type ContentStatus,
   type StudioStatus,
@@ -164,6 +165,8 @@ export function ContentQueue() {
         </div>
       )}
 
+      <Lessons readOnly={readOnly} />
+
       {pieces !== null && pieces.length > 0 && <StudioDiagnosis studio={studio} tab={tab} compact />}
 
       {pieces === null ? (
@@ -197,6 +200,80 @@ export function ContentQueue() {
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * What the reviewer has told the writer, and a way to take it back.
+ *
+ * Every line here is prepended to every future draft, so it is the one screen
+ * in this console where NOT showing something is the expensive option: a
+ * lesson born from a complaint about one piece ("repeats the days-on-market
+ * explanation already published in piece 10") would otherwise steer every
+ * generation for ever, and nothing anywhere would say why the drafts changed.
+ * The piece it came from is shown for the same reason — it is what a person
+ * needs in order to decide whether it was a rule or a one-off.
+ *
+ * Its own loader, and its own silence on failure: the queue is the job, and a
+ * lessons request that fails must not empty the screen somebody came to use.
+ */
+function Lessons({ readOnly }: { readOnly: boolean }) {
+  const { t } = useI18n();
+  const [lessons, setLessons] = useState<ContentLesson[] | null>(null);
+  const [busy, setBusy] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setLessons(await contentApi.lessons());
+    } catch {
+      setLessons([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (!lessons || lessons.length === 0) return null;
+
+  return (
+    <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-4">
+      <h3 className="text-sm font-medium text-amber-200">
+        {t("content.lessons.title")}
+      </h3>
+      <p className="mt-1 text-xs text-gray-400">{t("content.lessons.hint")}</p>
+      <ul className="mt-3 space-y-2">
+        {lessons.map((lesson) => (
+          <li key={lesson.id} className="flex items-start justify-between gap-3">
+            <span className="text-sm text-gray-300 break-words">
+              “{lesson.text}”
+              {lesson.source_piece_id !== null && (
+                <span className="ml-2 text-xs text-gray-500">
+                  {t("content.lessons.from")} {lesson.source_piece_id}
+                </span>
+              )}
+            </span>
+            {!readOnly && (
+              <button
+                disabled={busy === lesson.id}
+                onClick={async () => {
+                  setBusy(lesson.id);
+                  try {
+                    await contentApi.forgetLesson(lesson.id);
+                    await load();
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+                className="shrink-0 text-xs text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+              >
+                {t("content.lessons.forget")}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -616,6 +693,34 @@ function PieceCard({
       {piece.rejected_reason && piece.status === "rejected" && (
         <p className="mt-2 text-sm text-red-300">
           {t("content.rejectedBecause")}: {piece.rejected_reason}
+        </p>
+      )}
+
+      {/* Why a piece you already rejected is back in the queue — and, just as
+          importantly, why one you rejected is still sitting there.
+
+          The ACTION decides the sentence: three of the six regenerated
+          nothing, and "Regenerated after your rejection" over a piece nobody
+          could fix is worse than saying nothing. `finding` is a dict and is
+          never printed.
+
+          NOT hidden on a rejected piece, which is where the first version of
+          this went wrong. `manual`, `given_up` and a superseded hand-edit all
+          LEAVE the piece rejected, so scoping this line to the other statuses
+          hid it in exactly the two cases where it is the only signal there is
+          — an operator alert covers `given_up`, and `manual` has no other
+          channel at all. Two of the six sentences could never render. The
+          reason itself is dropped there because the red line above already
+          carries it. */}
+      {piece.correction?.action && (
+        <p className="mt-2 text-sm text-amber-300/90">
+          {t(`content.correction.${piece.correction.action}`)}
+          {piece.status !== "rejected" && (
+            <span className="text-gray-400">
+              {" · "}
+              {t("content.correction.reason")}: “{piece.correction.reason}”
+            </span>
+          )}
         </p>
       )}
 

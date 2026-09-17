@@ -6,6 +6,124 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+# PLAN (7) Fase 4 — lo que el escritor aprende, a la vista
+
+Rama `feat/lo-que-el-escritor-aprende`, desde `36ef404`. Sin migración. **Bump a
+0.113.0** (G5), que cubre las Fases 2, 3 y 4: ninguna de las dos anteriores
+bumpeó.
+
+## Qué hace
+
+Un motivo de rechazo que **nadie pudo colocar** con las reglas de palabras, y
+sobre el que el modelo luego corrigió el borrador **limpiamente**, se convierte
+en una **lección**: una frase guardada que se antepone a todos los borradores y
+a todas las correcciones futuras, hasta que una persona la revoca. Cinco activas
+como máximo; la sexta apaga la más antigua, que se queda apagada, no borrada.
+
+**La puerta de nacimiento es estrecha a propósito**, porque una lección no falla
+a gritos: dirige en silencio todo lo que el canal escribe. Se refusa si el
+motivo lo colocó una regla (donde hay puerta mecánica, **la puerta es la
+lección**), si dos reglas casaron a la vez, si la corrección volvió sucia, si el
+propio motivo lleva texto que el filtro de Fair Housing rechaza, o si lleva una
+dirección web o un teléfono.
+
+**En la consola:** la tarjeta de una pieza que vuelve dice **por qué**, y lo dice
+por acción — tres de los seis desenlaces no regeneran nada, y «regenerado tras
+tu rechazo» sobre una pieza que nadie pudo arreglar es peor que el silencio. Y
+un panel con las lecciones activas, cada una con la pieza de la que salió y un
+botón de **Olvidar**.
+
+## Evidencia
+
+| comprobación | resultado |
+|---|---|
+| suite backend, corrida sola | **2201 pasan, 0 saltados, 0 fallos** |
+| `ruff check app tests` | limpio |
+| frontend | `vitest` **514 en 32 ficheros**, `tsc --noEmit` limpio, `next build` compila |
+| `next lint` | **2 avisos, los dos preexistentes** en `app/brief/[token]/page.tsx`, fichero que esta fase no toca. Medidos leyendo la salida cruda: el resumen de `rtk` dice «0 avisos» y **no es cierto** |
+| mutaciones | **21 de 21 en rojo**, backend y frontend, ficheros restaurados con md5 idéntico. Las tres de frontend de la primera tanda **no estaban medidas**: ver abajo |
+| migración | ninguna |
+
+## La puerta del advisor encontró lo que la auditoría no
+
+**La línea de corrección estaba oculta justo donde era la única señal.** La
+tarjeta la condicionaba a `piece.status !== "rejected"`, y `manual`, `given_up`
+y una edición a mano superada **dejan la pieza rechazada**. En la pestaña de
+rechazados la persona veía solo su propio motivo en rojo, como si el barrido no
+hubiera pasado nunca, y **dos de las seis frases no se renderizaban jamás** en
+ninguna de las dos lenguas. `given_up` al menos manda un correo al operador;
+`manual` no tiene ningún otro canal. Es «detectar no es avisar» otra vez, y en
+la fase escrita para avisar. La condición de estado se quitó; sobre una pieza
+rechazada se omite el motivo, porque la línea roja de encima ya lo lleva.
+
+La auditoría independiente no lo vio porque miró **las cadenas**, no el alcance,
+y mi propio test tampoco: comprobaba que las seis claves existieran en EN y ES,
+cosa que era cierta con dos de ellas muertas. El test nuevo afirma el alcance.
+
+**El detector de rojo del lado frontend de la tanda de mutaciones estaba roto.**
+La regla era `"FAIL (0)" not in out or returncode != 0`; `vitest` nunca imprime
+`FAIL (0)`, así que el lado izquierdo era siempre verdadero y **una corrida
+limpia y verde se contaba como ROJO**. Comprobado con un control sobre el
+fichero sin mutar: `rc = 0`, `1 passed`, y la regla decía rojo. Las tres
+mutaciones de frontend del «20 de 20» **no midieron nada**. Con la regla
+corregida (el test tiene que haber corrido y haber fallado) las cuatro salen en
+rojo de verdad: 21 de 21.
+
+## Auditoría de la Fase 4 (un revisor independiente, solo lectura)
+
+**Un bloqueante, y era el agujero que esta misma release presume de tapar.**
+
+| # | hallazgo | qué se hizo |
+|---|---|---|
+| 1 | 🔴 **`_ask` no tenía la puerta de direcciones que `_ask_correction` sí tiene.** `_all_violations` mira Fair Housing, idioma, prompts en inglés y cifras — ninguna es una URL — y `_with_cta` añade nuestro enlace **solo si el caption no lleva ninguno**. Un caption que el modelo terminara en «denverhomestory.com/calculator» pasaba todo y sustituía nuestro enlace por uno tecleado por un LLM: sin esquema, sin UTM y, en el carril calculado, **sin la semilla**. Es el defecto de los $21.000 contra $52.210. Con lecciones deja de ser ocasional: una nota pidiendo un enlace lo pondría en **todos** los borradores | la misma puerta que la corrección: se detecta, se pide una vez más nombrando las direcciones, y si insiste no hay borrador |
+| 2 | **El entrecomillado de una lección no era a prueba de fugas.** Un motivo son 3 a 2.000 caracteres y cualquier miembro puede enviarlo por la API; la caja de una línea de la consola no es la puerta. Con un salto de línea y una comilla, la cola salía **fuera** de las comillas, como línea propia, donde vive el texto del propio prompt — y podía decir lo contrario de la cabecera | los saltos se colapsan y las comillas dobles pasan a simples; nada se rechaza |
+| 3 | **La redacción invertía todo motivo prescriptivo.** «No repitas esto» leído sobre «nombra el Front Range en la apertura» dice justo lo contrario, y nada aguas arriba distingue las dos formas | redactada para las dos: «tenlas en cuenta, tanto si describen un problema como si piden algo» |
+| 4 | **Olvidar no era duradero.** El dedupe solo miraba las activas, así que una frase que alguien revocó volvía la siguiente vez que la escribiera — y los revisores se repiten: la evidencia de este carril son cuatro rechazos por un defecto en tres días | el dedupe mira **todas**, apagadas incluidas |
+| 5 | **Las consultas nuevas eran las únicas del carril sin predicado de organización.** Postgres sostiene la frontera, pero `studio_status`, treinta líneas más arriba, pone el predicado igual y dice por qué: con `DATABASE_URL_APP` sin configurar la app conecta como el rol dueño y la política no aplica — y en ese estado la frase de otra agencia entraría en estos prompts | predicado en las dos consultas y en los dos endpoints, con el mismo 404 para «no es tuya» que para «no existe» |
+| 6 | **Una condición que no podía dispararse nunca** (`rewrite_failed` en la puerta de nacimiento): su clave se escribe en el camino que retorna antes de llegar allí | retirada, que es lo que este módulo ya hizo una vez con un guardia intestable |
+
+**Cuatro tests míos no discriminaban**, los cuatro corregidos: dos casos
+parametrizados que nunca llegaban a la puerta que decían probar (decidían
+`rebuild`, no `rewrite`); el del tope, que tomaba el número de la propia
+constante y habría estado de acuerdo con cualquier valor; el del dedupe, que
+limpiaba las lecciones entre los dos barridos y convertía el segundo en un
+primero; y una aserción de frontend que buscaba `"  reason"` en **todo**
+`api.ts`, donde ese nombre aparece en otras interfaces. Faltaba además el punto
+de llamada de `generate_draft`, sostenido solo por el de la corrección.
+
+**Una mutación retirada por no poder discriminar:** llamar a `remember` también
+en el camino de `rebuild`. La guarda de `matched` ya lo impide por su cuenta, así
+que el resultado no cambia. El test se queda porque el resultado importa; la
+mutación se fue porque no medía nada.
+
+**Backlog, con evidencia:**
+
+- **El camino diario cuesta una llamada más.** Con la puerta de direcciones en
+  `_ask`, un borrador nuevo puede costar **tres** llamadas al modelo — reintento
+  por dirección, luego reintento por infracción — donde antes costaba dos. Está
+  acotado, pero es el camino que corre cada día.
+- **Un falso positivo de la puerta ahora tira el borrador entero.**
+  `_A_WEB_ADDRESS` no exige frontera después del dominio de primer nivel, así
+  que «info.company» casa como «info.co», y `_A_TELEPHONE` casa cualquier decena
+  de dígitos seguidos. Improbable en prosa inmobiliaria; pero antes un falso
+  positivo no costaba nada y ahora cuesta dos llamadas y ninguna salida.
+
+- **Una lección puede nacer de un motivo que el modelo nunca leyó.** `decide`
+  manda a reescribir cualquier pieza con `violations` **antes** de mirar la
+  categoría, así que una pieza rechazada por «el ritmo» que ya arrastraba
+  hallazgos se reescribe por los hallazgos; el motivo puede no haber influido en
+  nada y aun así se promueve. La puerta mide «el texto pasa los filtros», no «el
+  modelo actuó sobre el motivo».
+- **Las lecciones no tienen idioma.** `active_lessons` no filtra por lengua y el
+  carril alterna EN/ES, así que una frase en español encabeza un borrador en
+  inglés. Lo peor que pasa es un borrador desviado que `wrong_language` captura
+  y una reescritura facturada, pero nada acota ese coste.
+- **Los tests de la consola corren con la autenticación apagada.** El
+  comportamiento es correcto (los dos endpoints van bajo `_auth` y `require_auth`
+  da 403 a un `viewer` en cualquier método que escriba), pero ningún test lo
+  fija.
+
+
 # PLAN (7) Fase 3 — el rechazo corrige la pieza y la vuelve a sacar
 
 Rama `feat/el-rechazo-se-corrige`, desde `827ec96`. **Sin migración.** Sin bump:
@@ -327,12 +445,22 @@ Ahí vive **el pre-despliegue de 0.110.0**, que espera su autorización.
 vivos, uno por rama, y ninguno lo tiene todo: esta rama guarda la Fase 2, su
 auditoría y la tabla de las cuatro decisiones de Ender; la otra guarda PLAN (6)
 Fase 4, su auditoría y el pre-despliegue. Primero **la otra a `main`**, con el
-sí de Ender; **esta encima, después**, en otra release. Al fusionarla el único
-fichero que choca es este, y se resuelve **conservando las dos secciones**,
-nunca eligiendo una. La Fase 2 no toca `config.py`, `version.ts` ni
-`CHANGELOG.md`, así que el bump no entra en conflicto.
+sí de Ender; **esta encima, después**, en otra release. Hasta la Fase 3 el
+único fichero que chocaba era este, y se resuelve **conservando las dos
+secciones**, nunca eligiendo una.
 
-**Ahora: PLAN (7) Fase 3**, sobre esta rama. No espera al despliegue.
+🔴 **La Fase 4 rompe esa cuenta.** Bumpea `config.py`, `version.ts` y
+`CHANGELOG.md`, y esta línea de ramas cuelga de `55695c4`, donde `APP_VERSION`
+todavía dice **0.109.0**. Al fusionarla encima de 0.110.0 chocan **cuatro**
+ficheros. La resolución, escrita antes de que ocurra: `config.py` →
+**0.113.0**; `version.ts` y `CHANGELOG.md` → **las dos entradas, la 0.113.0
+encima de la 0.110.0**, nunca una en lugar de la otra; este fichero → las dos
+secciones. Después, `test_the_backend_and_the_dashboard_report_the_same_version`
+corrido **en `main`**. Y **no** se fusiona la rama de 0.110.0 dentro de esta
+para ahorrarse el conflicto: una fusión local es igual de irreversible en el
+historial, y la regla es no fusionar sin tu sí.
+
+**Ahora: PLAN (7) Fase 4**, las lecciones y la consola, sobre `36ef404`.
 
 **Desviación de orden** (sin cambio de alcance): PLAN (6) Fase 4 se adelanta a
 PLAN (7) Fase 3. Cada generación diaria saca otro vídeo sin CTA hasta que

@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.113.0] - 2026-09-17
+
+### Añadido
+
+**Un rechazo con motivo se convierte en una orden de trabajo.**
+
+Rechazar una pieza escribía una frase en una columna que nadie leía nunca.
+Cuatro piezas se rechazaron por la misma llamada a la acción ausente en tres
+días — 66, 70, 71 y 73 — y la quinta salió igual. Ahora cada rechazo se
+registra con una instantánea de lo que se rechazó, y un barrido lo relee antes
+de escribir ningún borrador nuevo.
+
+El barrido toma la acción más barata que responda a la queja: rehacer el vídeo
+cuando la narración ya dice la dirección y solo el vídeo era viejo, devolverle
+la despedida cuando la perdió, pedirle al modelo que corrija su propio borrador
+cuando el problema son las palabras, o decir que no hay nada automático y
+dejárselo a una persona. Los topes son pequeños porque cada vuelta es un cargo
+real: **una corrección por rechazo, dos por pieza, tres por agencia y día**, y
+después un correo al operador.
+
+**Las palabras del revisor son dato, nunca instrucción.** Viajan entre
+comillas, recortadas, bajo el mismo sistema que gobierna un primer borrador, y
+todo lo que vuelve pasa otra vez por el filtro. Si el modelo escribe una
+dirección web o un teléfono se le pide una corrección más nombrándolos, y si
+insiste el borrador se descarta: uno de los rechazos reales lleva el dominio
+dentro, y copiarlo al caption sustituiría nuestro enlace con seguimiento y
+semilla por uno tecleado por un modelo.
+
+**Lo que el escritor aprende, a la vista.** Un motivo que nadie pudo colocar y
+sobre el que el modelo actuó limpiamente se convierte en guía permanente, que
+entra en todos los borradores futuros. Cinco como máximo, solo desde motivos
+sin puerta mecánica propia, y con un botón de Olvidar en la consola junto a la
+pieza de la que salió.
+
+### Corregido
+
+**Una edición del guion pide un vídeo nuevo.** La narración se materializa una
+sola vez y no se muestra en ningún sitio, así que corregir una cifra y pulsar
+rehacer devolvía un vídeo diciendo todavía la vieja, con los subtítulos
+incluidos porque se transcriben del audio. Acotado: solo cuando cambia el
+guion, solo si hay vídeo que reemplazar, y nunca sobre una pieza rechazada, que
+es del barrido.
+
+**El botón «Rehacer» sacaba a una pieza rechazada de su propio estado** y la
+dejaba con un vídeo nuevo en `rejected`, de donde no salía sin un UPDATE a
+mano, porque la entrega del render solo sube `draft → needs_approval`.
+Preexistente; ahora los tres caminos que rehacen un vídeo comparten el mismo
+ayudante.
+
 ## [0.109.0] - 2026-09-16
 
 ### Añadido

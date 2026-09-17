@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime, time
 from typing import Any
 
@@ -182,12 +183,75 @@ def _with_plan(draft: DraftPayload | None, plan: Plan | None) -> DraftPayload | 
     )
 
 
+#: How a reviewer's standing guidance is put to the model. A user message, so
+#: `_SYSTEM` still outranks it: "put the phone number in" stays forbidden by the
+#: system prompt however many times a person asks for it in a lesson.
+#: Worded so it survives BOTH shapes a rejection reason comes in. "Repeats the
+#: days-on-market explanation already published in piece 10" describes a fault;
+#: "name the Front Range in the opening" asks for something. Under "do not
+#: repeat these" the second one is read backwards, and nothing upstream can
+#: tell the two apart — a person writes whichever the moment calls for.
+_LESSONS = {
+    ContentLanguage.EN: (
+        "The reviewer wrote these notes when rejecting earlier drafts. Take "
+        "each of them into account, whether it describes a problem to avoid or "
+        "asks for something:\n{items}"
+    ),
+    ContentLanguage.ES: (
+        "El revisor escribió estas notas al rechazar borradores anteriores. "
+        "Ténlas todas en cuenta, tanto si describen un problema que evitar como "
+        "si piden algo:\n{items}"
+    ),
+}
+
+
+def lessons_message(
+    lessons: Sequence[str], language: ContentLanguage
+) -> dict[str, Any] | None:
+    """The standing guidance as one user message, or None when there is none.
+
+    Quoted line by line, and that is deliberate: it is text a person wrote,
+    travelling into every generation from here on, and it must read to the
+    model as something a reviewer said rather than as part of its instructions.
+    """
+    items = [_one_line(line) for line in lessons if (line or "").strip()]
+    items = [item for item in items if item]
+    if not items:
+        return None
+    body = "\n".join(f'- "{item}"' for item in items)
+    return {"role": "user", "content": _LESSONS[language].format(items=body)}
+
+
+def _one_line(text: str) -> str:
+    """One quoted line, that cannot stop being one.
+
+    A rejection reason is 3 to 2000 characters, trimmed only at the ends, and
+    any member can POST one straight to the API — the single-line box in the
+    console is not the gate. So a reason carrying a newline and a quotation
+    mark would render its tail OUTSIDE the quotes, as a line of its own, and
+    the line after `- "…"` in a prompt reads as the prompt's own text. The
+    header two lines up says "do not repeat these"; an escaped tail could say
+    the opposite and look like it came from us.
+
+    Newlines collapse and quotation marks become single ones. Nothing is
+    refused: the reviewer's sentence still arrives, on one line, inside its
+    quotes.
+    """
+    return re.sub(r"\s+", " ", str(text).replace('"', "'")).strip()
+
+
 async def _ask(topic: Topic, language: ContentLanguage,
                feedback: str | None = None,
                cta_index: int = 0,
-               plan: Plan | None = None) -> DraftPayload | None:
+               plan: Plan | None = None,
+               lessons: Sequence[str] = ()) -> DraftPayload | None:
     brief = topic.brief_en if language is ContentLanguage.EN else topic.brief_es
-    messages: list[dict[str, Any]] = [{"role": "user", "content": brief}]
+    messages: list[dict[str, Any]] = []
+    # Before the brief: what not to do, then what to do.
+    standing = lessons_message(lessons, language)
+    if standing is not None:
+        messages.append(standing)
+    messages.append({"role": "user", "content": brief})
     if feedback:
         messages.append({
             "role": "user",
@@ -211,7 +275,34 @@ async def _ask(topic: Topic, language: ContentLanguage,
         log.exception("Content writer: both providers failed for topic %s",
                       topic.key)
         return None
-    return _with_cta(_with_plan(_parse(result.text), plan), language, cta_index, plan)
+    draft = _parse(result.text)
+    # The same gate `_ask_correction` has, and the asymmetry was a real hole:
+    # `_all_violations` checks Fair Housing, language, English prompts and
+    # figures, and none of those is a web address. A caption the model ended
+    # with "denverhomestory.com/calculator" passes every check, and then
+    # `_with_cta` sees a link already there and does NOT append ours — so what
+    # ships has no scheme, no tracking, and on the calculated rail no seed.
+    # That is the $21,000-against-$52,210 defect, and standing guidance makes
+    # it permanent rather than occasional: one note asking for a link would put
+    # it in every draft from then on.
+    typed = contact_details_in(draft)
+    if typed and feedback is None:
+        named = ", ".join(f'"{item}"' for item in dict.fromkeys(typed))
+        log.info("Content writer: the draft for %s carried %s; asking once more",
+                 topic.key, named)
+        return await _ask(
+            topic,
+            language,
+            feedback=_NO_CONTACT_DETAILS.format(named=named),
+            cta_index=cta_index,
+            plan=plan,
+            lessons=lessons,
+        )
+    if typed:
+        log.warning("Content writer: the draft for %s still carried contact "
+                    "details; dropping it", topic.key)
+        return None
+    return _with_cta(_with_plan(draft, plan), language, cta_index, plan)
 
 
 #: A web address, in any of the shapes a model writes one. The same shape
@@ -291,6 +382,7 @@ async def _ask_correction(
     cta_index: int = 0,
     plan: Plan | None = None,
     feedback: str | None = None,
+    lessons: Sequence[str] = (),
 ) -> DraftPayload | None:
     """The same draft, corrected for what the reviewer objected to.
 
@@ -329,7 +421,11 @@ async def _ask_correction(
         ensure_ascii=False,
     )
     quoted = str(reason or "").strip()[:_REASON_IN_PROMPT]
-    messages: list[dict[str, Any]] = [
+    messages: list[dict[str, Any]] = []
+    standing = lessons_message(lessons, language)
+    if standing is not None:
+        messages.append(standing)
+    messages.append(
         {
             "role": "user",
             "content": (
@@ -344,7 +440,7 @@ async def _ask_correction(
                 "still apply to every word you write."
             ),
         }
-    ]
+    )
     if feedback:
         messages.append({"role": "user", "content": feedback})
     try:
@@ -374,6 +470,7 @@ async def _ask_correction(
             cta_index=cta_index,
             plan=plan,
             feedback=_NO_CONTACT_DETAILS.format(named=named),
+            lessons=lessons,
         )
     if typed:
         # Twice, with the addresses named. Not a loop, and not something to
@@ -834,7 +931,12 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
     topic = plan.topic if plan is not None else await next_topic(db)
     check = plan.check if plan is not None else None
 
-    draft = await _ask(topic, language, cta_index=cta_index, plan=plan)
+    # Imported here, not at module scope: `content_corrections` imports this
+    # module, and at the top the two would not load.
+    from app.services.content_corrections import active_lessons
+
+    lessons = await active_lessons(db)
+    draft = await _ask(topic, language, cta_index=cta_index, plan=plan, lessons=lessons)
     if draft is None:
         return None
 
@@ -852,6 +954,7 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
             cta_index=cta_index,
             plan=plan,
             feedback=_feedback(violations),
+            lessons=lessons,
         )
         if rewritten is not None:
             draft = rewritten

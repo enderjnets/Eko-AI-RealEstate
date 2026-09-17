@@ -545,9 +545,48 @@ export interface ContentPiece {
   approved_by: string | null;
   approved_at: string | null;
   rejected_reason: string | null;
+  /**
+   * The last rejection of this piece and what came of it.
+   *
+   * Present on any piece that has ever been rejected, whatever the sweep did
+   * about it — including `manual`, `given_up` and `superseded`, where nothing
+   * was regenerated. The card has to read the `action` before it says anything.
+   */
+  correction: ContentCorrection | null;
   created_at: string;
   updated_at: string;
   publications: ContentPublication[];
+}
+
+/** Mirrors `CorrectionOut` in `backend/app/api/v1/content.py`. */
+export interface ContentCorrection {
+  reason: string;
+  category: string | null;
+  /** What the machine could check. A shape per category — never rendered raw. */
+  finding: Record<string, unknown> | null;
+  action:
+    | "rebuild"
+    | "rematerialise"
+    | "rewrite"
+    | "manual"
+    | "given_up"
+    | "superseded"
+    | null;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+/**
+ * Standing guidance the writer carries into every draft, until somebody
+ * revokes it. Mirrors `LessonOut`.
+ */
+export interface ContentLesson {
+  id: number;
+  category: string;
+  text: string;
+  /** Which piece's rejection produced it — what a person needs to judge it. */
+  source_piece_id: number | null;
+  created_at: string;
 }
 
 /**
@@ -677,6 +716,12 @@ export const contentApi = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+
+  /** What the writer has been told, and is still being told. */
+  lessons: () => api<ContentLesson[]>(`/v1/content/lessons`),
+  /** Stop telling it this. Switched off, not deleted. */
+  forgetLesson: (id: number) =>
+    api<void>(`/v1/content/lessons/${id}`, { method: "DELETE" }),
 
   /** The clip itself, behind the same auth as everything else. */
   mediaUrl: (id: number) => `/api/v1/content/${id}/media`,

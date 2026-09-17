@@ -722,8 +722,14 @@ async def _rewrite(db, row, piece) -> bool:
 
     plan = reconstructed_plan(piece) if piece.calculator_check is not None else None
     cta_index = await rotation_index(db)
+    lessons = await active_lessons(db)
     draft = await _ask_correction(
-        previous, row.reason, piece.language, cta_index=cta_index, plan=plan
+        previous,
+        row.reason,
+        piece.language,
+        cta_index=cta_index,
+        plan=plan,
+        lessons=lessons,
     )
     if draft is None:
         # A provider outage, or a reply that is not a draft. Leaving the row
@@ -753,6 +759,7 @@ async def _rewrite(db, row, piece) -> bool:
             cta_index=cta_index,
             plan=plan,
             feedback=_feedback(violations),
+            lessons=lessons,
         )
         if again is not None:
             draft = again
@@ -764,6 +771,11 @@ async def _rewrite(db, row, piece) -> bool:
     piece.scenes = _scene_plan(draft)
     piece.violations = violations or None
     row.finding = {**(row.finding or {}), "violations_after_rewrite": violations}
+
+    # A reason nobody could place, that the model then acted on cleanly, is the
+    # only kind worth remembering. Everything else has a gate, is a compound
+    # complaint, or is the fault itself.
+    await remember(db, piece, row, violations)
 
     if violations:
         # A DRAFT wearing its findings, for a person. No render: the text did
@@ -795,3 +807,179 @@ async def _tell_the_operator(row, piece) -> None:
             "It stays rejected. Nothing else will be spent on it automatically."
         ),
     )
+
+
+# ── What the writer learns ───────────────────────────────────────────────
+#
+# A lesson is standing guidance, injected into every future prompt, written by
+# a person in their own words. That is a lot of power for one sentence, so the
+# gate is narrow and every condition below is there to keep something out.
+
+#: Five, decided by the owner. Past that the brief stops being a brief.
+MAX_ACTIVE_LESSONS = 5
+
+
+async def active_lessons(db) -> tuple[str, ...]:
+    """What the reviewer has already said, newest first, capped."""
+    from sqlalchemy import desc, select
+
+    from app.models import ContentLesson
+    from app.services.tenant_context import get_org_id
+
+    rows = (
+        (
+            await db.execute(
+                select(ContentLesson.text)
+                # The org predicate as well as the policy, which is what the
+                # rest of this rail does and why. Postgres holds the boundary
+                # — but with `DATABASE_URL_APP` unset the app connects as the
+                # owning role and RLS does not apply, and in that state this
+                # query would prepend ANOTHER agency's sentence to this
+                # agency's prompts. Belt and braces, on the one query whose
+                # output goes into a model.
+                .where(ContentLesson.org_id == get_org_id())
+                .where(ContentLesson.active.is_(True))
+                .order_by(desc(ContentLesson.created_at), desc(ContentLesson.id))
+                .limit(MAX_ACTIVE_LESSONS)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return tuple(str(text) for text in rows)
+
+
+def _why_this_is_not_a_lesson(piece, row, violations: list) -> str | None:
+    """Why this rejection must not become standing guidance, or None.
+
+    Six conditions, and each one is a way a lesson could quietly poison every
+    generation from here on.
+
+    **It has to be a reason nobody could place.** Where a mechanical gate
+    exists — a figure the calculator refuses, a sign-off that is missing — the
+    GATE is the lesson, and repeating it in the prompt is a rule the model can
+    talk itself out of. Two rules that matched is a compound complaint, and a
+    compound complaint compressed to one sentence is guidance about neither
+    half.
+
+    **The correction has to have worked.** A reason that made the model fail
+    twice is not a rule, it is the fault. Promoting it would put the fault in
+    every prompt.
+
+    **And the text itself has to be publishable.** `_SYSTEM` outranks a user
+    message, so a lesson saying "call it a safe neighborhood" cannot actually
+    make the model break Fair Housing — but it can make it try, once per
+    generation, for ever, and every one of those is billed and then refused.
+    A web address in a lesson is worse: `_with_cta` appends ours only when the
+    caption has none, so "always link to the calculator" is how the seeded link
+    stops being added.
+    """
+    from app.services.content_studio import text_violations
+
+    reason = (row.reason or "").strip()
+    if not reason:
+        return "there is nothing to learn from an empty reason"
+    # `matched` is produced by `verify` for `other` and for nothing else, so
+    # this one condition says both things: the category has no gate, and no
+    # word rule placed the reason. A separate category check read as a second
+    # guard and was not one — it could never fire on its own, which is the
+    # shape of a rule nobody can test.
+    if (row.finding or {}).get("matched") != []:
+        return (
+            f"{row.category} has a gate of its own, or the words placed this "
+            "reason and a rule already covers it"
+        )
+    if violations:
+        return "the rewrite did not come back clean; this is a fault, not a rule"
+    # There was a `rewrite_failed` check here and it could never fire: that key
+    # is written on the path that returns before `remember` is ever reached,
+    # and the row is resolved in the same transaction, so it is never swept
+    # again. A guard nobody can trigger is a guard nobody can test.
+
+    # The reason, judged as if it were going to be published — because it is,
+    # into every prompt.
+    found = text_violations(
+        hook=None, script=reason, caption=None, scenes=None, language=piece.language
+    )
+    if found:
+        return f"the reason itself carries {found[0]['phrase']!r}"
+    typed = _contact_details_in_text(reason)
+    if typed:
+        return f"the reason carries contact details ({typed[0]})"
+    # A dollar amount needs no check of its own: the word rules send anything
+    # carrying `$` to `figure`, and `figure` never reaches here.
+    return None
+
+
+def _contact_details_in_text(text: str) -> list[str]:
+    """`contact_details_in` takes a draft, and a reason is a bare string.
+
+    Wrapped through the writer's own validator rather than by exporting a
+    second copy of the pattern: one regex, one place, and a change to it cannot
+    leave this behind.
+    """
+    from pydantic import ValidationError
+
+    from app.services.content_writer import DraftPayload, contact_details_in
+
+    try:
+        draft = DraftPayload(hook="a hook", script=text[:4000], caption="a caption")
+    except ValidationError:  # pragma: no cover — a reason is 1-2000 characters
+        return []
+    return contact_details_in(draft)
+
+
+async def remember(db, piece, row, violations: list) -> bool:
+    """Turn this rejection into standing guidance. True if one was created.
+
+    Deduplicated on the same normalisation the domain check uses, so "No digas
+    eso." and "no digas eso" are one lesson. Over the cap, the oldest active
+    one is switched off rather than deleted: it is a record of something a
+    person said.
+    """
+    from sqlalchemy import select
+
+    from app.models import ContentLesson
+    from app.services.content_writer import _NOT_A_WORD
+
+    refused = _why_this_is_not_a_lesson(piece, row, violations)
+    if refused is not None:
+        log.info("Corrections: not learning from rejection %s — %s", row.id, refused)
+        return False
+
+    from app.services.tenant_context import get_org_id
+
+    text = (row.reason or "").strip()[:300]
+    key = _NOT_A_WORD.sub("", text.lower())
+    every = (
+        (
+            await db.execute(
+                select(ContentLesson).where(ContentLesson.org_id == get_org_id())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # Against EVERY lesson, switched off ones included, and that is what makes
+    # "Forget" mean something. Reviewers repeat themselves — this rail's own
+    # evidence is four rejections for one defect in three days — so a dedupe
+    # that only looked at the active ones would let a sentence a person
+    # deliberately revoked come straight back the next time they wrote it.
+    if any(_NOT_A_WORD.sub("", lesson.text.lower()) == key for lesson in every):
+        return False
+    existing = [lesson for lesson in every if lesson.active]
+
+    db.add(
+        ContentLesson(
+            category=row.category,
+            text=text,
+            source_piece_id=piece.id,
+        )
+    )
+    # Oldest first, so what is switched off is what has been standing longest.
+    for lesson in sorted(existing, key=lambda one: (one.created_at, one.id))[
+        : max(0, len(existing) + 1 - MAX_ACTIVE_LESSONS)
+    ]:
+        lesson.active = False
+    log.info("Corrections: learned from rejection %s", row.id)
+    return True

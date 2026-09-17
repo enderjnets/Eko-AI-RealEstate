@@ -31,7 +31,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import anyio
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import func, select
@@ -362,6 +362,71 @@ async def studio_status(db: AsyncSession = Depends(get_db)) -> StudioStatus:
         timezone=(row.timezone if row else None) or s.DEFAULT_TIMEZONE,
         counts=counts,
     )
+
+
+class LessonOut(BaseModel):
+    """One piece of standing guidance, as the console shows it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    category: str
+    text: str
+    source_piece_id: int | None
+    created_at: datetime
+
+
+@router.get("/lessons", response_model=list[LessonOut])
+async def list_lessons(db: AsyncSession = Depends(get_db)) -> list[LessonOut]:
+    """What the writer has been told, and is still being told.
+
+    Declared before the routes that take a piece id, in the same spirit as
+    `/status`: a fixed segment competing with a path parameter is decided by
+    declaration order, and "lessons" is not a number.
+    """
+    from sqlalchemy import desc
+
+    from app.models import ContentLesson
+    from app.services.tenant_context import get_org_id
+
+    rows = (
+        (
+            await db.execute(
+                select(ContentLesson)
+                # The org predicate as well as the policy, for the reason
+                # `studio_status` gives above: with `DATABASE_URL_APP` unset
+                # the app connects as the owning role and RLS does not apply.
+                .where(ContentLesson.org_id == get_org_id())
+                .where(ContentLesson.active.is_(True))
+                .order_by(desc(ContentLesson.created_at), desc(ContentLesson.id))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [LessonOut.model_validate(row) for row in rows]
+
+
+@router.delete("/lessons/{lesson_id}", status_code=204, response_class=Response)
+async def forget_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)) -> Response:
+    """Stop telling the writer this.
+
+    Switched off rather than deleted: a lesson is a record of something a
+    person said, and the row is what explains a month of drafts that read a
+    certain way. Idempotent — forgetting what is already forgotten is not an
+    error, and the console can be open in two tabs.
+    """
+    from app.models import ContentLesson
+    from app.services.tenant_context import get_org_id
+
+    lesson = await db.get(ContentLesson, lesson_id)
+    if lesson is None or lesson.org_id != get_org_id():
+        # The same 404 either way: a different answer for "not yours" than for
+        # "not there" is how an id becomes something to guess at.
+        raise HTTPException(status_code=404, detail="No such lesson")
+    lesson.active = False
+    await db.commit()
+    return Response(status_code=204)
 
 
 @router.get("", response_model=list[PieceOut])
