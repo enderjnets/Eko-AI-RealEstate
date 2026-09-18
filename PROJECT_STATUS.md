@@ -6,6 +6,58 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+# ✅ 18-sep 01:25 — 0.122.0: una calle tiene que decir dónde está
+
+`/api/v1/health` → `{"status":"ok","version":"0.122.0","env":"production","llm_fallback":"ok"}`,
+arranque con **0** errores. Comprobado en caliente dentro del contenedor, no por el test:
+el prompt del plano 3 de la 74 devuelve `'street'`, una calle que dice «Denver» devuelve
+`None`, y un porche devuelve `None`.
+
+**El hallazgo, y salió de un fotograma.** El plano 3 de la pieza 74 pedía *«a residential
+street lined with brick homes»* y el motor devolvió una **hilera inglesa**: ladrillo, vallas
+metálicas verdes, marcas viales británicas. Publicado bajo el nombre de una correduría de
+Colorado, en un canal llamado Denver Home Story. El cartel estaba en blanco — esa
+comprobación hizo su trabajo. **Nadie preguntó dónde estaba la calle.**
+
+**Y lo estrecho está medido**, sobre los 189 prompts de producción:
+
+| | |
+|---|---|
+| planos que enseñan calle, hilera, barrio u horizonte | **30** |
+| de esos, los que YA nombran Denver o el Front Range | **25** (83 %) |
+| los que se marcan | **5** |
+| de los marcados, en piezas vivas | **0** |
+
+Un primer intento más ancho marcaba *«a residential contract document on a kitchen
+counter»*, que es interior. Y un porche o un césped se ven igual en Denver que en Ohio:
+pedir la ciudad ahí rechazaría trabajo correcto sin cazar nada que un espectador pueda ver.
+**Lo que delata el sitio es la calle.**
+
+## 🔴 Y de paso, un test que llevaba rojo seis horas de cada veinticuatro
+
+`test_a_visit_after_two_posts_of_one_video_is_counted_once` falló en la suite de la noche.
+No era mi cambio — `test_analytics.py` no importa `content_writer`. Es que el rango `7d`
+son **seis días de calendario más hoy, desde medianoche local**, no 168 horas rodantes:
+
+```python
+today = datetime.now(tz).date()
+first = today - timedelta(days=7 - 1)     # 7d -> hace 6 días
+start = medianoche(first)                 # entre 144 y 168 h atrás, según la hora
+```
+
+Un post de prueba colocado a `-150h` cae **dentro por la tarde y fuera antes de las 06:00**.
+Medido hora a hora: **fuera 6 de las 24**. Verde cada mañana, rojo cada noche, y nadie había
+corrido la suite en esa franja hasta esta. Pasa a `-120h`, que entra a cualquier hora — y no
+más abajo, porque a `-100h` la ventana se tragaría la visita de `-60h` y el test dejaría de
+decir lo que dice.
+
+**Suite: 2.334 en verde**, ruff limpio, `tsc` sin errores. 23 tests nuevos y 6 mutaciones
+vistas en rojo — una de ellas reveló que la primera versión del test del prompt estaba
+**verde por la razón equivocada**: borraba la frase de la demanda y el test seguía pasando
+porque solo buscaba el ejemplo.
+
+---
+
 # ✅ 17-sep 23:40 — 0.120.0 desplegada: la rotación ya habla de Denver
 
 `docker compose exec -T backend curl -s localhost:8000/api/v1/health` →
