@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.119.0";
+export const CURRENT_VERSION = "0.120.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.120.0",
+    date: "2026-09-17",
+    title: {
+      en: "The rotation knows where it lives",
+      es: "La rotación sabe dónde vive",
+    },
+    changes: [
+      { en: "Twelve topics in the writer's rotation and not one of them local. The piece that travelled furthest — 20% of every view and 68% of every like TikTok has given us, 35% of Instagram's views, and the only one that produced a conversation — was about autumn in Colorado, and it came from outside the rotation. /fall is also the best-read page on the site: 63% average scroll against 31% for the home page, on 8 visits.", es: "Doce temas en la rotación del escritor y ninguno local. La pieza que más lejos llegó — el 20% de las vistas y el 68% de los likes que TikTok nos ha dado, el 35% de las vistas de Instagram, y la única que generó conversación — hablaba del otoño en Colorado, y no salió de la rotación. /fall es además la página mejor leída del sitio: 63% de scroll medio contra el 31% de la portada, con 8 visitas." },
+      { en: "Three local topics added, and all three declared BOTH rather than BUYER on purpose. The searches already bringing us people on TikTok are \"Aspen fall peak\" and \"Aspen current fall conditions\" — real traffic, wrong person. So two of the three are about the house and not the view: what 5,280 feet does to decks, shingles and window seals, and what hail, snow load and wildfire smoke mean for a roof and its insurance.", es: "Se añaden tres temas locales, y los tres declarados BOTH y no BUYER a propósito. Las búsquedas que ya nos traen gente en TikTok son «Aspen fall peak» y «Aspen current fall conditions» — tráfico real, persona equivocada. Por eso dos de los tres hablan de la casa y no del paisaje: qué le hacen 5.280 pies a terrazas, tejas y juntas de ventana, y qué significan granizo, carga de nieve y humo de incendios para un tejado y su seguro." },
+      { en: "No brief in the rotation may offer to send anybody anything. Six of the nine comments on that video said \"Fall\" because the caption promised a guide by hand; answering them is work that only happens when a person remembers, and the ninth waited three hours. The guide is a public page — a brief may point at it, never promise a delivery. Guarded by a test over all fifteen topics, in both languages.", es: "Ningún brief de la rotación puede ofrecerse a mandarle nada a nadie. Seis de los nueve comentarios de ese vídeo decían «Fall» porque el pie prometía una guía a mano; contestarlos es trabajo que solo ocurre cuando alguien se acuerda, y el noveno esperó tres horas. La guía es una página pública — un brief puede apuntar a ella, nunca prometer una entrega. Vigilado por un test sobre los quince temas, en los dos idiomas." },
+    ],
+  },
   {
     version: "0.119.0",
     date: "2026-09-17",

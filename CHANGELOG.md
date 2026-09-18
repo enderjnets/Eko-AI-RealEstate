@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.120.0] - 2026-09-17
+
+### Añadido
+
+**La rotación sabe dónde vive.**
+
+Doce temas en la rotación del escritor y **ninguno local**. La pieza que más
+lejos ha llegado del canal — el **20 % de las vistas y el 68 % de los likes**
+que TikTok nos ha dado, el **35 % de las vistas** de Instagram, y la única que
+ha generado conversación — hablaba del otoño en Colorado, y **no salió de
+esa tupla**. Y `/fall` es la página mejor leída del sitio: **63 % de scroll
+medio** contra el 31 % de la portada, con 8 visitas.
+
+Se añaden tres temas locales — `the_season_right_now`,
+`altitude_and_your_house` y `colorado_weather_and_the_roof` — y los tres van
+declarados `BOTH` y no `BUYER` **a propósito**. Las búsquedas que ya nos traen
+gente en TikTok son «Aspen fall peak» y «Aspen current fall conditions»:
+tráfico real, persona equivocada. Por eso dos de los tres hablan de **la casa
+y no del paisaje**.
+
+La regla de audiencia se mantiene: 12 de 15 temas llegan a quien vende, y la
+prueba que lo exige (dos tercios) sigue en verde con margen.
+
+### Corregido
+
+**Ningún brief puede ofrecerse a mandarle algo a alguien.** Seis de los nueve
+comentarios de aquel vídeo decían «Fall» porque el pie prometía entregar una
+guía a mano. Contestarlos es trabajo que solo ocurre cuando una persona se
+acuerda, y el noveno esperó tres horas. La guía **es una página pública**: un
+brief puede apuntar a ella, nunca prometer una entrega. Un test lo vigila sobre
+los quince temas y en los dos idiomas.
+
 ## [0.119.0] - 2026-09-17
 
 ### Corregido

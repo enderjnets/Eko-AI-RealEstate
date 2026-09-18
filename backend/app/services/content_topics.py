@@ -241,6 +241,82 @@ TOPICS: tuple[Topic, ...] = (
         ),
         audience=SELLER,
     ),
+    # ── Los tres locales ─────────────────────────────────────────────────
+    #
+    # Añadidos el 17-sep-2026 con los datos de las tres redes delante. La
+    # pieza que más lejos ha llegado del canal — 20 % de las vistas y 68 % de
+    # los likes de TikTok, 35 % de las vistas de Instagram, y la única que ha
+    # generado conversación — hablaba del otoño en Colorado, y NO salió de
+    # esta tupla. `/fall` es además la página mejor leída del sitio: 63 % de
+    # scroll medio contra el 31 % de la portada.
+    #
+    # Van declarados BOTH y no BUYER a propósito, y no es un truco para pasar
+    # el test de audiencia: los tres tienen que servirle a alguien que YA
+    # tiene casa aquí, porque ese es quien vende. Un tema local que solo le
+    # interese a quien viene de vacaciones trae vistas y la audiencia
+    # equivocada — las búsquedas que ya nos traen gente en TikTok son «Aspen
+    # fall peak» y «Aspen current fall conditions», y ese no es nuestro
+    # cliente. De ahí que dos de los tres hablen de la casa y no del paisaje.
+    Topic(
+        key="the_season_right_now",
+        brief_en=(
+            "What the season we are actually in looks like across Colorado's "
+            "elevations, and what that means for somebody who lives here: the "
+            "high passes turn first and Denver itself turns last, roughly six "
+            "weeks apart. Name the elevation bands, never a specific business, "
+            "and point to the guide on our own page instead of offering to "
+            "send anything to anybody."
+        ),
+        brief_es=(
+            "Qué aspecto tiene de verdad la estación en la que estamos a lo "
+            "largo de las elevaciones de Colorado, y qué significa para quien "
+            "vive aquí: los puertos altos cambian primero y Denver el último, "
+            "con unas seis semanas de diferencia. Nombrar las franjas de "
+            "altitud, nunca un negocio concreto, y remitir a la guía de "
+            "nuestra propia página en vez de ofrecerse a mandarle nada a nadie."
+        ),
+        audience=BOTH,
+    ),
+    Topic(
+        key="altitude_and_your_house",
+        brief_en=(
+            "What 5,280 feet actually changes about a house: how dry air and "
+            "hard sun age decks, roof shingles and window seals, why "
+            "evaporative cooling works here and barely anywhere else, what the "
+            "freeze-thaw cycle does to concrete and to a driveway. Useful to "
+            "somebody who already owns a home here and to somebody about to. "
+            "Describe the mechanism; do not put a price on the repair."
+        ),
+        brief_es=(
+            "Qué cambia de verdad en una casa estar a 5.280 pies: cómo el aire "
+            "seco y el sol fuerte envejecen terrazas, tejas y juntas de "
+            "ventana, por qué aquí funciona el enfriamiento evaporativo y casi "
+            "en ningún otro sitio, y qué le hace el ciclo de hielo y deshielo "
+            "al hormigón y a una entrada de coche. Útil a quien ya tiene casa "
+            "aquí y a quien está a punto. Describir el mecanismo; no poner "
+            "precio a la reparación."
+        ),
+        audience=BOTH,
+    ),
+    Topic(
+        key="colorado_weather_and_the_roof",
+        brief_en=(
+            "Hail, snow load and wildfire smoke, and what each one means for a "
+            "Colorado roof, its gutters and its insurance — including the "
+            "plain fact that a roof's age is among the first things a buyer's "
+            "inspector writes down. Speak in what happens and what to check, "
+            "never in what a policy will or will not pay."
+        ),
+        brief_es=(
+            "Granizo, carga de nieve y humo de incendios, y qué significa cada "
+            "uno para un tejado de Colorado, sus canalones y su seguro — "
+            "incluido el hecho llano de que la edad del tejado es de lo "
+            "primero que anota el inspector de quien compra. Hablar de qué "
+            "pasa y qué revisar, nunca de lo que una póliza pagará o dejará "
+            "de pagar."
+        ),
+        audience=BOTH,
+    ),
 )
 
 
