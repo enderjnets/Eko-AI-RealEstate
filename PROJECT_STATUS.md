@@ -38,22 +38,27 @@ v0.56.0 y anteriores vive en git y en el plan.
   **403** con la clave configurada. Puede ser lo normal si esa clave es la pública. Para
   apuntar el botón a Clara hace falta su número, que **solo puede dárnoslo Ender**.
 
-## Preparado y NO desplegado: `/ig` → `/fall` mientras dure el otoño
+## ✅ Desplegado 18-sep 00:15 — `/ig` → `/fall` mientras dure el otoño (0.121.0)
 
-`/ig` no es un ajuste de la cuenta de Instagram: es **una redirección nuestra**, un 307 a
-`/start?utm_source=instagram&utm_medium=bio&utm_campaign=profile`. Cambiar su destino es
-código, no tocar el perfil.
+`/ig` no es un ajuste de la cuenta de Instagram: es **una redirección nuestra**. Mandaba a
+`/start`, donde las tres sesiones que llegaron de Instagram se fueron con **0 % de scroll**.
+Ahora lleva a `/fall` con las mismas UTM.
 
-**La propuesta**: durante el otoño, que `/ig` lleve a `/fall` con las mismas UTM.
-- A favor: `/fall` es la página mejor leída del sitio (**63 %** de scroll medio) y ya tiene
-  el formulario de consulta debajo de la guía, así que no se pierde el camino al contacto.
-  Las 3 sesiones que llegaron de Instagram a `/start` se fueron con **0 % de scroll**.
-- En contra: son **5 sesiones en dos semanas**. El efecto absoluto esta noche es mínimo.
-- 🔴 **Caduca**: `/fall` habla de álamos, doce sitios por altitud. A partir de **1-nov** el
-  destino tiene que volver a `/start`, o la redirección envejece sola.
+`curl` contra producción: `/ig → 307 /fall?utm_source=instagram&utm_medium=bio&utm_campaign=profile`,
+y `/tt` y `/yt` siguen yendo a `/start`. Health `0.121.0`, arranque con 0 errores.
+Frontend: 515 tests en verde, `tsc` sin errores, 3 mutaciones vistas en rojo.
 
-**No se despliega de madrugada** por eso último: un cambio con fecha de caducidad necesita
-dueño, y el beneficio de esta noche no justifica adelantarlo. Decisión de Ender.
+**Por qué `/fall` y no `/start`**: es la página mejor leída del sitio — **63 % de scroll
+medio** contra el 31 % de la portada — y ya lleva el formulario de consulta debajo de la
+guía, así que no se pierde el camino al contacto. El etiquetado no se mueve: `utm_medium=bio`
+sigue distinguiendo un clic del perfil de un enlace del pie.
+
+🔴 **Caduca el 1-nov-2026, y la caducidad es un TEST.** `bioLinks.test.ts` se pone **rojo en
+la fecha** con un mensaje que dice qué decidir. Un comentario que dijera «revertir en
+noviembre» sería una regla que nadie ejecuta. Y a propósito **no** se automatiza en
+`next.config.js`: una redirección que cambia sola es una que nadie vuelve a leer, y lo que
+toca ese día — volver a `/start` o apuntar a la página de la estación siguiente — lo decide
+una persona.
 
 ## Lo que se decidió NO hacer, y por qué
 
