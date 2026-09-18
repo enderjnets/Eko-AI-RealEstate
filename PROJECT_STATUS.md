@@ -6,42 +6,75 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
-# 🔴 LO PRIMERO: el canal no publica nada hoy ni mañana, y 7 piezas terminadas están atascadas
+# ✅ 18-sep: el canal SÍ publica — y lo que de verdad estaba pasando
 
-Medido el 17-sep a las 21:25 de Denver. **No es un problema de contenido.**
+Medido el 17-sep a las 21:55 de Denver, **corrigiendo lo que decía esta misma
+sección dos horas antes**. La versión anterior afirmaba que 7 piezas estaban
+«atascadas» fuera del horizonte de 10 días. Es falso, y el error fue mirar la
+cola sin cruzarla con las ventanas de las piezas.
 
-**Los hechos.** La última publicación fue el **16-sep**; el 17 entero, cero.
-El calendario de Buffer que tenemos programado es:
+**Cómo funciona de verdad.** Cada pieza se publica el día de su
+`publish_window_start`, no «cuando haya sitio». Las 7 piezas en `pending`
+tienen ventana del **6-oct al 26-oct**: el horizonte las retiene **a
+propósito**, porque su contenido es de octubre. No están rotas ni atascadas;
+están aparcadas, que es exactamente lo que el código promete hacer.
 
-| día | posts | piezas |
-|---|---|---|
-| 17-sep (hoy) | **0** | 0 |
-| 18-sep (mañana) | **0** | 0 |
-| 19-sep | 2 | 1 |
-| 20-sep | 4 | 2 |
-| 21, 22, 24, 26, 28-sep | 3 cada uno | 1 cada uno |
-| **5-oct** | 3 | 1 |
+**El agujero real era otro, y más pequeño:** no existía ninguna pieza con
+fecha 18-sep, así que mañana no salía nada. Con la misma lógica quedan oscuros
+el 23, 25, 27, 29 y 30-sep y del 1 al 4-oct — días para los que todavía nadie
+ha escrito.
 
-Y detrás: **21 publicaciones en `pending`** (7 piezas × 3 plataformas) que nunca
-recibieron hueco, más **6 piezas aprobadas** con vídeo esperando.
+**Y se cerró solo.** Ender aprobó a las 21:52 y 21:53 las piezas **77** y
+**74**, las dos con `publish_window_start` NULL. El código trata una ventana
+nula como «permanente, y permanente significa ahora» (`_from_when`), y hay
+**dos huecos por canal y día**. Así que el 18-sep pasa de 0 a **6 posts**: la
+77 a las 08:30 / 11:30 / 12:30 y la 74 a las 17:30 / 18:30 / 20:30, hora de
+Denver. Comprobado a las 21:55: 0 de 8 piezas reclamadas hoy, publicación
+activa, Buffer con 8 de sus 10 por canal.
 
-**El mecanismo.** `CONTENT_SCHEDULE_HORIZON_DAYS=10`: el publicador solo coloca
-una pieza dentro de los próximos 10 días — hasta el 27-sep. La cola ya tiene
-fechas ocupadas **hasta el 5-oct**, fuera de ese horizonte. Y los diez posts
-programados de Buffer **solo se liberan cuando uno se ENVÍA**, no cuando pasa
-su fecha (lo dice el propio comentario de `publish_approved`). Con la cola
-llena y estirada más allá del horizonte, las 7 pendientes no pueden entrar
-nunca, y los huecos de hoy y mañana no los llena nadie.
+**Lo que queda en pie.** El 23, 25, 27, 29, 30-sep y del 1 al 4-oct siguen sin
+pieza. La salida barata es la misma que funcionó sin querer: una pieza perenne
+—las de calculadora no hablan de ninguna estación— aprobada **sin ventana**
+cae en el primer hueco libre. No hace falta tocar la base ni subir
+`CONTENT_SCHEDULE_HORIZON_DAYS`: subirlo sin reordenar solo empuja las nuevas
+más lejos todavía.
 
-**La salida, y es decisión de Ender, no mía.** Programar posts es publicar
-hacia fuera: no se toca sin su sí. Lo que habría que hacer es **traer los posts
-lejanos (5-oct, 28-sep, 26-sep) a los días vacíos de esta semana**, lo que
-libera sitio según se vayan enviando y deja entrar a las 7 pendientes. Se puede
-hacer desde la consola pieza a pieza, o subiendo `CONTENT_SCHEDULE_HORIZON_DAYS`
-— pero ojo: subirlo sin reordenar solo empuja las nuevas más lejos todavía.
+**La lección, y es de las caras:** conté `content_publications` sin mirar
+`publish_window_start`, y de ahí salió la palabra «atascadas». Un estado que
+dice «roto» exige mirar el campo que decide, no el síntoma.
 
-Mientras esto siga así, **ninguna mejora de guion o de imagen cambia las
-visitas**, porque los vídeos no salen.
+---
+
+# 17-sep 21:57 — 0.119.0 desplegada y verificada
+
+`docker compose exec -T backend curl -s localhost:8000/api/v1/health` →
+`{"status":"ok","app":"Eko AI Inmobiliario","version":"0.119.0","env":"production","captcha":"on","llm_fallback":"ok"}`
+
+- **Arranque limpio**: 0 coincidencias de `Traceback|ImportError|AttributeError|CRITICAL|ERROR` en los 4 min siguientes.
+- **Sin migración**: `alembic current` = `063_content_rejections (head)`, la misma de antes.
+- **Ventana**: a las 21:57 y no a las 22:05, porque el ROG ya había cerrado su
+  turno de las 21:00 — **0** trabajos `queued` o `claimed` y ninguna pieza
+  esperando render, así que nada podía aparecer antes de las 23:00.
+- **Vuelta atrás escrita**: `ssh ender-vps 'cd ~/Eko-AI-RealEstate && git reset --hard 8ba562f && docker compose up -d --build backend frontend'`.
+
+**0.118.0 probada VIVA, no por su test.** Ejecutando `with_sign_off` dentro
+del contenedor de producción sobre un guion real, la despedida entra entre la
+segunda y la tercera frase y **quedan 147 caracteres (37 % del texto) hablando
+después de ella**. Hasta hoy iba pegada al final, donde ya no queda nadie.
+
+**La 74, rehecha y comprobada EN EL VÍDEO.** Seis fotogramas mirados. El plano
+4 —el que arreglé— es ahora un reloj de arena sobre madera, sin una sola
+letra. El cartel del plano 3 está en blanco de verdad. Ni marca inventada ni
+dominio falso, y los subtítulos amarillos bien escritos.
+
+🔴 **Hallazgo nuevo, ajeno a este despliegue: la calle del plano 3 no es
+Denver.** Casas adosadas de ladrillo, vallas metálicas verdes y marcas viales
+británicas. El prompt pedía «a residential street lined with brick homes» sin
+decir dónde, y el motor puso una calle inglesa. No es ilegal ni rompe nada,
+pero un canal llamado Denver Home Story enseñando Inglaterra es un problema de
+credibilidad. Arreglo probable: anclar la ciudad en los prompts de exterior.
+**No tocado**: es cambio de generador y merece medirse sobre las piezas ya
+publicadas antes de escribir una línea.
 
 ---
 
