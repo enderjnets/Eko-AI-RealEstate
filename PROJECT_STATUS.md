@@ -6,6 +6,50 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+# ✅ 18-sep 07:30 — 0.123.0 y el scorecard al día
+
+`/api/v1/health` → `0.123.0`, arranque con **0** errores, y la frase leída dentro del
+contenedor: `en: Narrated with a synthetic voice. Images are AI-generated.` ·
+`es: Narrado con una voz sintética. Las imágenes están generadas con IA.`
+
+## 🔴 Por qué se cambió: la declaración se había quedado corta
+
+El pie declaraba la narración sintética y **no las imágenes**. Desde
+`RENDER_ENGINE=bittrader` el 10-sep las dibuja `fal-ai/flux/schnell`:
+`worker/pictures.py` es «fal.ai primero, Pexels detrás», y en el carril generado **el stock
+no interviene**. La calle de la pieza 74 se dibujó, no se fotografió.
+
+La frase ya había estado mal **en la dirección contraria** — decía «Contains AI-generated
+visuals» cuando todo eran fotos de Pexels — y la nota que quedó escrita decía que los
+visuales vuelven a la frase si algo llega a dibujarlos. Algo los dibuja, y estuvo corta
+ocho días. **La declaración a las plataformas fue correcta todo el tiempo**
+(`kind=GENERATED` manda `isAiGenerated` por Buffer); lo corto era la mitad que lee una
+persona.
+
+## El scorecard, actualizado a mano (18-sep por la mañana)
+
+TikTok e Instagram no se leen por máquina: **hay que teclearlos**. 49 filas escritas con
+`captured_on = 2026-09-18`, que **no pisan** las de ayer — el panel ya puede comparar días.
+
+| red | publicadas | con métricas | vistas hoy | ayer | Δ |
+|---|---|---|---|---|---|
+| YouTube | 28 | **28 / 28** | **6.405** | 5.961 | **+444** |
+| TikTok | 28 | 27 | **4.078** | 4.062 | +16 |
+| Instagram | 27 | 22 | **1.866** | 1.866 | **0** |
+
+**12.349 vistas.** Tres cosas que dicen los deltas:
+
+- **YouTube crece solo**: +444 vistas en catorce horas, sin publicar nada nuevo. Y su
+  cobertura ya es completa: la API recogió las 3 que faltaban.
+- **Instagram está plano: +0.** Con 15 seguidores no hay a quién alcanzar.
+- **TikTok +16**, y los comentarios pasan de 17 a **18** — el decimoctavo es la respuesta
+  que se publicó anoche a `mary.jane.smith5`. El campeón del otoño sube a **814 vistas**.
+
+Las 5 de Instagram y 1 de TikTok sin métricas **no son un fallo**: esos posts ya no existen
+en la red.
+
+---
+
 # ✅ 18-sep 01:25 — 0.122.0: una calle tiene que decir dónde está
 
 `/api/v1/health` → `{"status":"ok","version":"0.122.0","env":"production","llm_fallback":"ok"}`,
