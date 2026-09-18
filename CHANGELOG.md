@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.130.0] - 2026-09-18
+
+### Añadido
+
+**`/contact` ya se mide: era la única página pública que no emitía nada.**
+
+Sin `LandingTracker` no hay eventos, sin eventos no hay fila en
+`landing_sessions`, y el embudo se construye sobre `landing_sessions`. Por eso
+**sus visitas no estaban entre las 237** de los catorce días medidos: no es que
+no convirtiera, es que no se contaba. «No convierte» y «no se mide» se leen
+igual desde fuera, y esa ambigüedad es lo que cierra esta release — la 0.129.0
+la dejó abierta a propósito y escrita.
+
+Tres cosas, no una:
+
+1. **La visita cuenta.** `<LandingTracker variant="contact" sections={[]} />`.
+   La lista vacía es deliberada: la página es una tarjeta y no tiene secciones;
+   heredar los cinco ids de la portada sería observar elementos que no existen.
+2. **El lead va atado a su recorrido.** El formulario manda ya `session_id`, así
+   que `_claim_landing_session` puede unirlo a la sesión. La atribución sale del
+   **contexto del propio contador** y no de una segunda lectura de la url: con
+   un contador montado, dos atribuciones para la misma visita es como un embudo
+   empieza a mentir.
+3. **Los dos muros dejan de ser silencio.** Faltan datos de contacto o el
+   captcha no ha resuelto: antes se devolvía sin registrar nada, así que un
+   Turnstile que no resuelve —todo el mundo bloqueado— se medía **exactamente
+   igual que un día tranquilo**.
+
+**Bajo Global Privacy Control** esta página pasa a comportarse como el
+formulario de la portada: sin sesión y sin `utm`. El lead no se descarta nunca;
+lo que alguien escribió y pulsó enviar es suyo.
+
+Y una regla de test ampliada con cuidado, no aflojada: `sections={[]}` estaba
+prohibido porque una lista que *parece* poblada y no lo está deja el bucle que
+la comprueba sin comprobar nada. Una lista **literalmente vacía** es otra cosa:
+es una página declarando que no tiene secciones. Lo demás sigue exigido igual.
+
 ## [0.129.0] - 2026-09-18
 
 ### Añadido

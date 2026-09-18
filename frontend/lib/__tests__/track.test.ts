@@ -786,6 +786,13 @@ describe("every section a page reports is one the server keeps", () => {
       const src = readFileSync(file, "utf8");
       for (const m of src.matchAll(/sections=\{\[([^\]]*)\]/g)) {
         const found = names(m[1]);
+        // A literally empty list is a page saying it HAS no sections, which is
+        // true of `/contact`: one card, nothing to observe, and saying so beats
+        // inheriting the landing's five ids and silently observing elements
+        // that do not exist. The assertion below stays for every other case —
+        // a list that looks populated and parses to nothing would make the loop
+        // that follows vacuous, which is the failure this guard exists for.
+        if (m[1].trim() === "") continue;
         expect(found.length, file).toBeGreaterThan(0);
         for (const n of found) expect(serverSections.has(n), `${file}: ${n}`).toBe(true);
       }

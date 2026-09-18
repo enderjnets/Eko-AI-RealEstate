@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.129.0";
+export const CURRENT_VERSION = "0.130.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.130.0",
+    date: "2026-09-18",
+    title: {
+      en: "The contact page is measured too",
+      es: "La página de contacto también se mide",
+    },
+    changes: [
+      { en: "It emitted nothing at all: no tracker, so its visits never became sessions and were not among the 237 the funnel counted in fourteen days. \"/contact does not convert\" and \"/contact is not measured\" read identically from outside, and that is the ambiguity this closes — 0.129.0 left it open on purpose.", es: "No emitía absolutamente nada: sin contador, sus visitas nunca llegaban a ser sesiones y no estaban entre las 237 que contó el embudo en catorce días. «/contact no convierte» y «/contact no se mide» se leen igual desde fuera, y esa es la ambigüedad que esto cierra — la 0.129.0 la dejó abierta a propósito." },
+      { en: "Its lead now travels with the session that produced it, so the journey behind a form submission is visible instead of only its utm. The attribution comes from the tracker's own context rather than a second reading of the url: two attributions for one visit is how a funnel starts lying.", es: "Su lead viaja ahora con la sesión que lo produjo, así que el recorrido detrás de un envío se ve, y no solo su utm. La atribución sale del contexto del propio contador y no de una segunda lectura de la url: dos atribuciones para una misma visita es como un embudo empieza a mentir." },
+      { en: "Both walls that used to return silently — no contact details, captcha not resolved — now record a form_error. A Turnstile widget that never resolves blocks every visitor and, until now, measured exactly like a quiet day.", es: "Los dos muros que devolvían en silencio —sin datos de contacto, captcha sin resolver— registran ahora un form_error. Un Turnstile que no resuelve bloquea a todo el mundo y, hasta ahora, se medía exactamente igual que un día tranquilo." },
+      { en: "Under Global Privacy Control this page now behaves like the landing form: no session and no utm. The lead is never dropped — what somebody typed and sent is theirs to send.", es: "Bajo Global Privacy Control esta página se comporta ya como el formulario de la portada: sin sesión y sin utm. El lead no se descarta nunca — lo que alguien escribió y envió es suyo y se envía." },
+    ],
+  },
   {
     version: "0.129.0",
     date: "2026-09-18",

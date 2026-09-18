@@ -115,3 +115,44 @@ describe("the public forms ask for a full name", () => {
     });
   }
 });
+
+/**
+ * The two forms must measure the same funnel, not only ask the same fields.
+ *
+ * `/contact` shipped for months emitting nothing at all: no tracker, no
+ * session. Its visits never reached `landing_sessions` — they were not among
+ * the 237 the funnel counted over fourteen days — and a lead from it arrived
+ * with its utm but with no journey behind it, because the payload carried no
+ * `session_id` for `_claim_landing_session` to tie it to. "/contact does not
+ * convert" and "/contact is not measured" read identically from the outside.
+ *
+ * Written as a rule over both files for the reason this whole file exists: the
+ * failure is one form being changed and the other forgotten.
+ */
+describe("the public forms measure the same funnel", () => {
+  for (const { file } of FORMS) {
+    it(`${file} records every step, including the two walls`, () => {
+      const src = read(file);
+      expect(src).toContain('record("form_start")');
+      expect(src).toContain('record("form_submit")');
+      // The walls matter most: both used to return having recorded nothing, so
+      // a Turnstile that never resolves — every visitor blocked — measures
+      // exactly like a quiet day.
+      expect(src).toContain('record("form_error", { reason: "contact" })');
+      expect(src).toContain('record("form_error", { reason: "captcha_pending" })');
+      expect(src).toContain('reason: outcome.reason || "generic"');
+      // `form_start` fires on the first field touched, and the listener is on
+      // the form itself: per-field handlers are what get forgotten on the field
+      // added next.
+      expect(src).toContain("onFocusCapture={onFirstTouch}");
+    });
+
+    it(`${file} ties the lead it sends to the visit that produced it`, () => {
+      const src = read(file);
+      expect(src).toContain("session_id: sessionId");
+      // From the tracker's own context, not a second reading of the url: two
+      // attributions for one visit is how a funnel starts lying.
+      expect(src).toContain("trackingContext(");
+    });
+  }
+});

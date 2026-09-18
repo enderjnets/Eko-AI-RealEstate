@@ -135,11 +135,12 @@ describe("the call line", () => {
     expect(component).toMatch(/data-track=\{where\}/);
     expect(calculator).toMatch(/<CallLine where="calculator"/);
     expect(fall).toMatch(/<CallLine where="fall"/);
-    // `/contact` carries its `where` too, but it is the one public page with no
-    // `LandingTracker`: nothing is listening there, so a tap on its number is
-    // not recorded yet. Said out loud rather than asserted, because the day the
-    // page is instrumented this comment is what has to go, not a red test.
     expect(contact).toMatch(/<CallLine where="contact"/);
+    // `/contact` was instrumented in the same release, and the pair is what
+    // matters: `data-track` with no tracker mounted is a no-op, and the page
+    // would go on reading as one nobody ever calls from — which is the exact
+    // wrong conclusion the zero on `/calculator` produced.
+    expect(contact).toMatch(/<LandingTracker variant=\{VARIANT\}/);
   });
 
   it("renders nothing at all when no number is configured", () => {

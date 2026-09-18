@@ -19,19 +19,23 @@
  * anything that looks like an address field.
  */
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
 import { submitPublicLead, type CaptureOutcome } from "@/lib/api";
-import { collectAttribution } from "@/lib/capture";
 import { useI18n } from "@/lib/i18n";
+import { LandingTracker } from "@/components/landing/LandingTracker";
+import { getTracker, trackingContext } from "@/lib/track";
 import { NAME_FIELD_MAX, fullName } from "@/lib/leadName";
 import { CallLine } from "@/components/landing/CallLine";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { TURNSTILE_SITE_KEY, Turnstile } from "@/components/ui/Turnstile";
 
 const FORM_KEY = process.env.NEXT_PUBLIC_CAPTURE_FORM_KEY || undefined;
+
+/** What the funnel calls this page, for the tracker and for the lead alike. */
+const VARIANT = "contact";
 
 function ContactForm() {
   const { t } = useI18n();
@@ -47,21 +51,54 @@ function ContactForm() {
   });
   const [consent, setConsent] = useState(false);
   const [utm, setUtm] = useState<Record<string, string>>({});
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+  // Refs, not state, for the same reason `ConsultForm` explains at length: read
+  // inside a guard, never rendered, and as state a burst of focus events in one
+  // tick all read `false` and all recorded — 222 `form_start` from six visits.
+  const started = useRef(false);
+  const trackingEnabled = useRef(false);
+  const qaDeviceRef = useRef(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Read once on mount, through the pure helper so the rule that decides
-    // which video gets credited for a lead is testable on its own.
-    setUtm(
-      collectAttribution(
-        params,
-        typeof document !== "undefined" ? document.referrer : null,
-      ),
+    if (typeof window === "undefined") return;
+    // The same context the tracker on this page reads, and that is the whole
+    // point of the change. Until now this form read the CURRENT url and nothing
+    // on `/contact` persisted a first touch, so there was no second opinion to
+    // disagree with. With a tracker mounted there is one, and two attributions
+    // for the same visit is how a funnel starts lying.
+    //
+    // Under Global Privacy Control it yields nothing — no session, no utm —
+    // exactly as the landing form does. The lead itself is never dropped: what
+    // the visitor typed is what they chose to send.
+    const context = trackingContext(
+      navigator,
+      params,
+      document.referrer,
+      () => window.sessionStorage,
+      () => window.localStorage,
     );
+    trackingEnabled.current = context.allowed;
+    qaDeviceRef.current = context.qa;
+    if (!context.allowed) {
+      setUtm({});
+      setSessionId(undefined);
+      return;
+    }
+    setUtm({ landing_variant: VARIANT, ...context.attribution });
+    setSessionId(context.session);
   }, [params]);
+
+  // The step between "opened the page" and "sent it": without it an abandoned
+  // form cannot be told from a visit that never looked at it.
+  const onFirstTouch = () => {
+    if (started.current) return;
+    started.current = true;
+    getTracker()?.record("form_start");
+  };
 
   const set =
     (k: keyof typeof f) =>
@@ -75,8 +112,13 @@ function ContactForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (loading) return;
+    // Both of these used to return having recorded nothing, and that gap is why
+    // "0 submits, 0 errors" reads the same as "nobody pressed send". If the
+    // Turnstile widget ever fails to resolve, every visitor sees an error,
+    // nobody can submit, and the funnel looks like a quiet day.
     if (!f.email.trim() && !f.phone.trim()) {
       setError(t("contact.errorContact"));
+      getTracker()?.record("form_error", { reason: "contact" });
       return;
     }
     if (TURNSTILE_SITE_KEY && !captchaToken) {
@@ -84,6 +126,7 @@ function ContactForm() {
       // verify that you're human" without ever having been shown a challenge
       // to fail.
       setError(t("contact.errorCaptchaPending"));
+      getTracker()?.record("form_error", { reason: "captcha_pending" });
       return;
     }
     setLoading(true);
@@ -98,15 +141,24 @@ function ContactForm() {
       consent,
       consent_text: consent ? consentWording : undefined,
       utm,
+      session_id: sessionId,
+      webdriver:
+        trackingEnabled.current && navigator.webdriver === true ? true : undefined,
+      qa: qaDeviceRef.current ? true : undefined,
       turnstile_token: captchaToken || undefined,
       website: f.website || undefined,
     });
 
     setLoading(false);
     if (outcome.ok) {
+      // Recorded here as well as by the server's own link: the two disagreeing
+      // is the interesting case, and a submission the server never saw is
+      // invisible if only the successful path writes it.
+      getTracker()?.record("form_submit");
       setDone(true);
       return;
     }
+    getTracker()?.record("form_error", { reason: outcome.reason || "generic" });
     // A Turnstile token is single-use. Whatever went wrong, the one in hand is
     // spent, so drop it and let the widget issue another.
     setCaptchaToken(null);
@@ -139,6 +191,7 @@ function ContactForm() {
   return (
     <form
       onSubmit={handleSubmit}
+      onFocusCapture={onFirstTouch}
       className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-950"
     >
       <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-50">
@@ -322,6 +375,13 @@ function Field({
 export default function ContactPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-gray-50 px-4 py-12 dark:bg-black">
+      {/* Until 0.129.0 this page emitted nothing at all: its visits never
+          reached `landing_sessions`, so they were not among the 237 the funnel
+          counted, and "/contact does not convert" could not be told apart from
+          "/contact is not measured". `sections={[]}` because it has none —
+          passing the landing's ids would observe elements that do not exist
+          and report a page nobody scrolled. */}
+      <LandingTracker variant={VARIANT} sections={[]} />
       {/* useSearchParams needs a Suspense boundary or the whole route opts out
           of static rendering and the build warns. */}
       <Suspense fallback={<Loader2 className="h-5 w-5 animate-spin text-gray-400" />}>
