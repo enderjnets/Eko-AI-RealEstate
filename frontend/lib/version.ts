@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.127.0";
+export const CURRENT_VERSION = "0.128.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.128.0",
+    date: "2026-09-18",
+    title: {
+      en: "The start page groups its number too",
+      es: "La página de entrada también agrupa su número",
+    },
+    changes: [
+      { en: "0.127.0 grouped the number on /calculator and /fall and missed /start, which is where it matters most: that page has a phone and no form, so the number is the only way out of it, and it is where the three personal share links land — the warmest traffic there is. A test now requires every page that PRINTS the number to group it, with /start named in it.", es: "La 0.127.0 agrupó el número en /calculator y /fall y se dejó /start, que es donde más importa: esa página tiene teléfono y no tiene formulario, así que el número es la única salida, y es donde aterrizan los tres enlaces personales — el tráfico más cálido que existe. Ahora un test exige que toda página que IMPRIMA el número lo agrupe, con /start nombrada en él." },
+    ],
+  },
   {
     version: "0.127.0",
     date: "2026-09-18",

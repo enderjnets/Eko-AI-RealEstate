@@ -7,7 +7,7 @@ import { LandingTracker } from "@/components/landing/LandingTracker";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { collectAttribution, withAttribution } from "@/lib/capture";
 import { useI18n } from "@/lib/i18n";
-import { LANDING, dialable } from "@/lib/landing";
+import { LANDING, dialable, readableUsPhone } from "@/lib/landing";
 
 type StartSearchValue = string | string[] | undefined;
 export type StartSearchParams = Record<string, StartSearchValue>;
@@ -48,7 +48,11 @@ export function Start({ searchParams = {} }: { searchParams?: StartSearchParams 
           </p>
           {phone && (
             <p className="mt-1 text-[13px] tracking-[0.08em] text-ln-canvas/85 sm:text-[14px]">
-              {LANDING.phone}
+              {/* Grouped, for the same reason as `/calculator` and `/fall`: the
+                  number is here to be READ off a desktop and keyed into a
+                  handset, and this page has no form — the phone is the only way
+                  out of it. It shipped as eleven unbroken characters. */}
+              {readableUsPhone(LANDING.phone)}
             </p>
           )}
           <span className="mt-3 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-ln-canvas/80 [@media(max-height:700px)]:mt-1 lg:mt-auto lg:pt-7">

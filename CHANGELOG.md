@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.128.0] - 2026-09-18
+
+### Corregido
+
+**`/start` también imprimía el número sin agrupar, y ahí es la única salida.**
+
+La 0.127.0 arregló `/calculator` y `/fall` y **se dejó `/start`**, que llevaba
+`+17208249313` en pantalla desde antes. Es la página donde más importa: tiene
+teléfono y **no tiene formulario**, así que el número es la única forma de salir
+de ella — y es donde aterrizan `/n`, `/r` y `/e`, los tres enlaces que comparten
+Natalia, Robbie y Ender en persona, que es el tráfico más cálido que existe.
+
+Lo encontró otra sesión mirando el HTML servido, no un test. Ahora hay un test
+que exige que **toda página que IMPRIMA el número lo agrupe**, y `/start` está
+nombrada en él: la portada queda fuera a propósito, porque su teléfono es un
+botón con etiqueta y no enseña dígitos.
+
+El formateador se mueve de `CallLine.tsx` a `lib/landing.ts`, al lado de
+`dialable`: dos páginas distintas lo necesitaban y una ayuda compartida no vive
+dentro de un componente.
+
 ## [0.127.0] - 2026-09-18
 
 ### Corregido

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { readableUsPhone } from "../../components/landing/CallLine";
+import { readableUsPhone } from "../landing";
 
 /**
  * The phone on the two pages that had a form and no phone.
@@ -22,6 +22,7 @@ const component = read("components", "landing", "CallLine.tsx");
 const calculator = read("app", "calculator", "page.tsx");
 const fall = read("app", "fall", "page.tsx");
 const i18n = read("lib", "i18n.tsx");
+const start = read("components", "landing", "Start.tsx");
 
 describe("the call line", () => {
   it("is on both pages that had a form and no phone", () => {
@@ -67,6 +68,19 @@ describe("the call line", () => {
     // label. The anchor still works on a phone and the page looks finished,
     // and the majority of visitors are left with nothing to dial.
     expect(component).toMatch(/>\s*\{readableUsPhone\(LANDING\.phone\)\}/);
+  });
+
+  it("every page that PRINTS the number groups it, including /start", () => {
+    // `/start` was missed the first time and shipped `+17208249313` for another
+    // ten minutes. It is the page that matters most for this: it has a phone
+    // and NO form, so the number is the only way out of it, and it is where the
+    // three personal share links (`/n`, `/r`, `/e`) land — the warmest traffic
+    // there is.
+    //
+    // The home page is deliberately absent: its phone is a button with a label,
+    // so there are no digits on screen to group.
+    expect(start).toMatch(/\{readableUsPhone\(LANDING\.phone\)\}/);
+    expect(start).not.toMatch(/>\s*\{LANDING\.phone\}\s*</);
   });
 
   it("still links, because the twelve on a phone are the ones who tap", () => {
