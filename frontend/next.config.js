@@ -16,10 +16,29 @@ const nextConfig = {
     // Next emits a temporary 307 here. A permanent redirect would be cached
     // hard by browsers, and the day the campaign changes we would be fighting
     // caches on devices we cannot reach.
+    // `to` exists because a bio link is a bet on which page suits the person
+    // arriving from that network, and the bet is not the same all year.
+    //
+    // Instagram's points at the autumn guide as of 18-sep-2026, measured:
+    // `/fall` is the best-read page on the site — 63% average scroll against
+    // 31% for the home page — while the three sessions that did reach `/start`
+    // from Instagram left at 0%. The tagging does not change, and that is the
+    // point: `utm_medium=bio` is what tells a profile click from a caption
+    // link, so the two stay countable apart even though they now land together.
+    //
+    // EXPIRES 1-nov-2026. `/fall` is twelve places sorted by the elevation
+    // their aspens turn at; in November it is a guide to something that already
+    // happened, and a visitor who followed a profile link would land on last
+    // month. On that date Instagram goes back to `/start`. Deliberately NOT
+    // automated on a date check: a redirect that changes by itself is a
+    // redirect nobody re-reads, and this one deserves a person deciding
+    // whether the next season has a page of its own. The reminder lives in
+    // PROJECT_STATUS, and the test below fails if the date passes unattended.
     const bio = (network) => ({
       source: `/${network.short}`,
       destination:
-        `/start?utm_source=${network.source}&utm_medium=bio&utm_campaign=profile`,
+        `${network.to || "/start"}?utm_source=${network.source}` +
+        `&utm_medium=bio&utm_campaign=profile`,
       permanent: false,
     });
 
@@ -67,11 +86,11 @@ const nextConfig = {
     return [
       bio({ short: "yt", source: "youtube" }),
       bio({ short: "tt", source: "tiktok" }),
-      bio({ short: "ig", source: "instagram" }),
+      bio({ short: "ig", source: "instagram", to: "/fall" }),
       // Spelled-out aliases, for anywhere the two letters look like a typo.
       bio({ short: "youtube", source: "youtube" }),
       bio({ short: "tiktok", source: "tiktok" }),
-      bio({ short: "instagram", source: "instagram" }),
+      bio({ short: "instagram", source: "instagram", to: "/fall" }),
       partner({ short: "n", name: "natalia" }),
       partner({ short: "r", name: "robbie" }),
       partner({ short: "e", name: "ender" }),

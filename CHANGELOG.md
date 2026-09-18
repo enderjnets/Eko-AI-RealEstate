@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.121.0] - 2026-09-18
+
+### Cambiado
+
+**El enlace de Instagram aterriza donde sí se lee.**
+
+`/ig` — que no es un ajuste del perfil sino **una redirección nuestra** —
+mandaba a `/start`. Las tres sesiones que llegaron de Instagram a esa página se
+fueron con **0 % de scroll**. `/fall` es la página **mejor leída del sitio**:
+**63 % de scroll medio** contra el 31 % de la portada, y ya lleva el formulario
+de consulta debajo de la guía, así que no se pierde el camino al contacto.
+
+El etiquetado no se mueve: `utm_medium=bio` es lo que distingue un clic del
+perfil de un enlace del pie. Solo cambia Instagram; YouTube, TikTok y los tres
+enlaces de socio siguen yendo a `/start`.
+
+🔴 **Caduca el 1-nov-2026, y la caducidad es un test, no un comentario.** La
+guía son doce sitios ordenados por la altitud a la que cambian sus álamos; en
+noviembre describe algo que ya pasó. Un comentario que dice «revertir en
+noviembre» es una regla que nadie ejecuta, así que `bioLinks.test.ts` se pone
+**rojo en la fecha** con un mensaje que dice qué hay que decidir. A propósito
+**no** se automatiza en `next.config.js`: una redirección que cambia sola es una
+que nadie vuelve a leer, y lo que toca hacer ese día — volver a `/start` o
+apuntar a la página de la estación siguiente — es una decisión de una persona.
+
 ## [0.120.0] - 2026-09-17
 
 ### Añadido

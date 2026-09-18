@@ -21,22 +21,53 @@ const nextConfig = createRequire(import.meta.url)("../../next.config.js");
 describe("bio short links", () => {
   it("every network has a short path that carries its own source", async () => {
     const redirects = await nextConfig.redirects();
-    for (const [path, source] of [
-      ["/yt", "youtube"],
-      ["/youtube", "youtube"],
-      ["/tt", "tiktok"],
-      ["/tiktok", "tiktok"],
-      ["/ig", "instagram"],
-      ["/instagram", "instagram"],
+    // The landing page is per network now, not one for all: Instagram's bio
+    // points at the autumn guide (see `next.config.js`). The tag is what this
+    // test is really about and it does not move — a bio click has to stay
+    // tellable apart from a caption link wherever it lands.
+    for (const [path, source, landing] of [
+      ["/yt", "youtube", "/start"],
+      ["/youtube", "youtube", "/start"],
+      ["/tt", "tiktok", "/start"],
+      ["/tiktok", "tiktok", "/start"],
+      ["/ig", "instagram", "/fall"],
+      ["/instagram", "instagram", "/fall"],
     ] as const) {
       const rule = redirects.find((r: { source: string }) => r.source === path);
       expect(rule, `${path} is missing`).toBeDefined();
       const destination = new URL(rule.destination, "https://example.test");
-      expect(destination.pathname).toBe("/start");
+      expect(destination.pathname, `${path} lands somewhere else`).toBe(landing);
       expect(destination.searchParams.get("utm_source")).toBe(source);
       expect(destination.searchParams.get("utm_medium")).toBe("bio");
       expect(destination.searchParams.get("utm_campaign")).toBe("profile");
     }
+  });
+
+  it("the seasonal bio link is reconsidered before the season is over", async () => {
+    // A comment that says "revert on 1-nov" is a rule nobody executes; this
+    // repo has been bitten by exactly that before. A test that turns red on the
+    // date is a rule that executes itself, and the message says what to do.
+    //
+    // It is not automatic in `next.config.js` on purpose: a redirect that
+    // changes by itself is a redirect nobody re-reads. What should happen on
+    // that date is a decision — back to `/start`, or on to whatever page the
+    // next season gets — and a person makes it.
+    const CADUCA = new Date("2026-11-01T00:00:00Z");
+    const redirects = await nextConfig.redirects();
+    const ig = redirects.find((r: { source: string }) => r.source === "/ig");
+    const destino = new URL(ig.destination, "https://example.test").pathname;
+    if (destino === "/fall" && new Date() >= CADUCA) {
+      throw new Error(
+        "/ig still points at /fall and it is November or later. The autumn " +
+          "guide is twelve places sorted by the elevation their aspens turn " +
+          "at — a visitor arriving from the Instagram profile now lands on " +
+          "last month. Decide: back to /start, or point it at the page the " +
+          "current season has. Then update this test and PROJECT_STATUS.",
+      );
+    }
+    // Before the date, the only thing asserted is that the expiry is real:
+    // whoever changes the destination has to come here and say so.
+    expect(["/fall", "/start"]).toContain(destino);
   });
 
   it("no two networks share a source", () => {

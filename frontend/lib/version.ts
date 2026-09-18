@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.120.0";
+export const CURRENT_VERSION = "0.121.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.121.0",
+    date: "2026-09-18",
+    title: {
+      en: "The Instagram link lands where people actually read",
+      es: "El enlace de Instagram aterriza donde sí se lee",
+    },
+    changes: [
+      { en: "The Instagram profile link now lands on the autumn guide instead of the sign-up page. /fall is the best-read page on the site — 63% average scroll against 31% for the home page — and it already carries the consult form under the guide, so nothing is lost on the way to a contact. The three sessions that did reach /start from Instagram left at 0% scroll.", es: "El enlace del perfil de Instagram aterriza ahora en la guía de otoño y no en la página de captación. /fall es la página mejor leída del sitio — 63% de scroll medio contra el 31% de la portada — y ya lleva el formulario de consulta debajo de la guía, así que no se pierde el camino al contacto. Las tres sesiones que sí llegaron a /start desde Instagram se fueron con 0% de scroll." },
+      { en: "The tagging does not move: utm_medium=bio is what tells a profile click from a caption link, so the two stay countable apart even though they now land on the same page. Only Instagram changed; YouTube, TikTok and the three partner links still go to /start.", es: "El etiquetado no se mueve: utm_medium=bio es lo que distingue un clic del perfil de un enlace del pie, así que los dos siguen contando por separado aunque ahora aterricen en la misma página. Solo cambió Instagram; YouTube, TikTok y los tres enlaces de socio siguen yendo a /start." },
+      { en: "It expires on 1 November 2026, and the expiry is a test rather than a comment. The guide is twelve places sorted by the elevation their aspens turn at; in November it describes something that already happened. A comment saying \"revert in November\" is a rule nobody executes, so the test turns red on the date with a message saying what to decide. Deliberately not automated in the config: a redirect that changes by itself is one nobody re-reads.", es: "Caduca el 1 de noviembre de 2026, y la caducidad es un test y no un comentario. La guía son doce sitios ordenados por la altitud a la que cambian sus álamos; en noviembre describe algo que ya pasó. Un comentario que dice «revertir en noviembre» es una regla que nadie ejecuta, así que el test se pone rojo en la fecha con un mensaje que dice qué decidir. A propósito no se automatiza en la configuración: una redirección que cambia sola es una que nadie vuelve a leer." },
+    ],
+  },
   {
     version: "0.120.0",
     date: "2026-09-17",
