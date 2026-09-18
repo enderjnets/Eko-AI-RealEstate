@@ -1189,7 +1189,19 @@ async def test_a_visit_after_two_posts_of_one_video_is_counted_once() -> None:
                 post(video.id, PublicationPlatform.YOUTUBE, 30),
                 post(video.id, PublicationPlatform.TIKTOK, 18),
                 post(other.id, PublicationPlatform.INSTAGRAM, 100),
-                post(gapped.id, PublicationPlatform.YOUTUBE, 150),
+                # 120 and not 150, and the number is load-bearing. `range=7d` is
+                # six calendar days back plus today, from LOCAL MIDNIGHT — not a
+                # rolling 168 hours — so the window opens between 144 and 168
+                # hours ago depending on the time of day. A post at -150h is
+                # inside it in the evening and outside it before 06:00 local:
+                # this test passed every morning and failed every night, and it
+                # was caught at 01:15 by a run that had nothing to do with it.
+                #
+                # It cannot be lowered much further either. At -100h the window
+                # [-100h, -52h] would swallow the -60h visit and this piece's
+                # union would read 2, which is not what "days apart, and the gap
+                # belongs to neither" means. At -120h it holds none, at any hour.
+                post(gapped.id, PublicationPlatform.YOUTUBE, 120),
                 post(gapped.id, PublicationPlatform.TIKTOK, 20),
                 visit("first-only", 29),   # after the first post, before the second
                 visit("overlap", 10),      # inside BOTH of the video's windows

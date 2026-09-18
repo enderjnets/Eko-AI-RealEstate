@@ -119,7 +119,11 @@ _SYSTEM = {
         "screens, newspapers or business cards with words on them. The image "
         "model invents the lettering and gets it wrong, and stock footage "
         "brings another brokerage's branding. If a shot needs a sign, say it "
-        "is blank and unbranded — \"a blank, unbranded for-sale sign\"."
+        "is blank and unbranded — \"a blank, unbranded for-sale sign\". "
+        "And ANY SHOT THAT SHOWS A STREET, a row of homes, a neighbourhood "
+        "or a skyline MUST SAY WHERE IT IS: \"a Denver street\", \"a Front "
+        "Range skyline\". Unplaced, the image model picks a country at "
+        "random and it has picked England."
     ),
     ContentLanguage.ES: (
         "Escribes guiones de vídeo corto (30-45 segundos) para dos agentes "
@@ -147,7 +151,11 @@ _SYSTEM = {
         "periódicos, ni tarjetas con palabras. El modelo de imagen se inventa "
         "las letras y las escribe mal, y los clips de archivo traen la marca de "
         "otra correduría. Si una escena necesita un cartel, di que está en "
-        "blanco y sin marca — \"a blank, unbranded for-sale sign\"."
+        "blanco y sin marca — \"a blank, unbranded for-sale sign\". "
+        "Y TODO PLANO QUE ENSEÑE UNA CALLE, una hilera de casas, un barrio "
+        "o un horizonte TIENE QUE DECIR DÓNDE ESTÁ: \"a Denver street\", "
+        "\"a Front Range skyline\". Sin sitio, el modelo de imagen elige "
+        "un país al azar, y ya ha elegido Inglaterra."
     ),
 }
 
@@ -877,6 +885,50 @@ def readable_text_in_shot(visual_prompt: str | None) -> str | None:
     return found.group(0).lower()
 
 
+#: A shot where the viewer can judge the city: the street, the row of houses,
+#: the skyline. Measured on 17-sep-2026 over the 189 stored prompts — 30 match,
+#: and 25 of those already name the place, so this asks for what the writer
+#: does right five times out of six.
+#:
+#: Deliberately NARROW. A porch, a lawn or a for-sale sign in a yard looks the
+#: same in Denver and in Ohio: demanding a city there would refuse correct work
+#: to catch nothing a viewer could see. The wider pattern was tried first and
+#: flagged "a residential contract document on a kitchen counter", which is
+#: indoors. What gives a place away is the STREET.
+_STREETSCAPE = re.compile(
+    r"(?i)\b(street|streets|streetscape|sidewalk|avenue|neighborhood|"
+    r"neighbourhood|skyline|rooftops|(?:block|row|street) of (?:homes|houses)|"
+    r"city block|downtown)\b"
+)
+
+#: The places this channel is about. Not a general gazetteer: naming Seattle
+#: would satisfy a check that exists because the video has to look like Denver.
+_NAMES_THE_PLACE = re.compile(
+    r"(?i)\b(denver|colorado|rocky|front range|mile high|aspen|boulder)\b"
+)
+
+
+def unplaced_streetscape(visual_prompt: str | None) -> str | None:
+    """The word that shows a street with no city attached, or None.
+
+    The defect this reads is not hypothetical. Piece 74's third shot asked for
+    "a residential street lined with brick homes, a single unbranded post with
+    a blank sign slot" and the engine returned a British terrace: brick
+    terraced houses, green metal railings, UK road markings — published under a
+    Colorado brokerage's name on a channel called Denver Home Story. The sign
+    was blank, which is what the other check asks for; nothing asked where the
+    street was.
+
+    Returns the offending word rather than a bool, for the same reason
+    `readable_text_in_shot` does: the rewrite has to be told what to fix.
+    """
+    text = visual_prompt or ""
+    found = _STREETSCAPE.search(text)
+    if found is None or _NAMES_THE_PLACE.search(text):
+        return None
+    return found.group(0).lower()
+
+
 def stored_violations(
     *,
     hook: str | None,
@@ -997,6 +1049,17 @@ def _all_violations(
             found.append({
                 "phrase": f"shot {position} asks for a “{word}”, which arrives "
                 "with words written on it — say it is blank and unbranded",
+                "category": "shot",
+                "where": "scenes",
+            })
+
+        # Same loop, same reason it is per scene: the rewrite has to be told
+        # WHICH shot has no city in it.
+        place = unplaced_streetscape(scene.visual_prompt)
+        if place is not None:
+            found.append({
+                "phrase": f"shot {position} shows a “{place}” but never says "
+                "where — name the city, as in “a Denver street”",
                 "category": "shot",
                 "where": "scenes",
             })

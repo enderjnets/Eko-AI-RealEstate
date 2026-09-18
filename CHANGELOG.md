@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.122.0] - 2026-09-18
+
+### Añadido
+
+**Una calle tiene que decir dónde está.**
+
+El tercer plano de la pieza 74 pedía *«a residential street lined with brick
+homes, a single unbranded post with a blank sign slot»* y el motor devolvió una
+**hilera inglesa**: ladrillo, vallas metálicas verdes, marcas viales
+británicas. Se publicó bajo el nombre de una correduría de Colorado, en un
+canal llamado Denver Home Story. El cartel estaba en blanco — la comprobación
+que existía hizo su trabajo. **Nadie preguntó dónde estaba la calle.**
+
+`unplaced_streetscape` es hermana de `readable_text_in_shot`: el prompt lo pide
+y la comprobación lee la respuesta, en los dos idiomas.
+
+**Lo estrecho está medido, no supuesto.** Sobre los 189 prompts de producción:
+
+- 30 enseñan calle, hilera, barrio u horizonte — y **25 ya nombran Denver o el
+  Front Range**. La regla pide lo que el escritor ya hace cinco de cada seis veces.
+- Se marcan **5**, y **ninguno está en una pieza viva**: el despliegue no mete
+  texto rojo nuevo en la consola de nadie.
+- Un primer intento más ancho marcaba *«a residential contract document on a
+  kitchen counter»*, que es interior. Un porche o un césped se ven igual en
+  Denver que en Ohio: pedir la ciudad ahí rechazaría trabajo correcto sin cazar
+  nada que un espectador pueda ver. **Lo que delata el sitio es la calle.**
+
+### Corregido
+
+**Un test que llevaba rojo seis horas de cada veinticuatro.** El rango `7d` de
+analíticas son seis días de calendario más hoy **desde medianoche local**, no
+168 horas rodantes, así que su ventana abre entre 144 y 168 horas atrás según
+la hora. Un post de prueba a `-150h` caía dentro por la tarde y **fuera antes de
+las 06:00**. Verde cada mañana, rojo cada noche; nadie había corrido la suite
+en esa franja hasta esta. Pasa a `-120h`, que entra a cualquier hora — y no más
+abajo, porque a `-100h` la ventana se tragaría la visita de `-60h` y el test
+dejaría de decir lo que dice.
+
 ## [0.121.0] - 2026-09-18
 
 ### Cambiado

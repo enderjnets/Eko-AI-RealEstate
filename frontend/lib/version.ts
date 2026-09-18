@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.121.0";
+export const CURRENT_VERSION = "0.122.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.122.0",
+    date: "2026-09-18",
+    title: {
+      en: "A street has to say where it is",
+      es: "Una calle tiene que decir dónde está",
+    },
+    changes: [
+      { en: "A shot that shows a street now has to say which city's street it is. Piece 74's third shot asked for \"a residential street lined with brick homes\" and the engine returned a British terrace — brick terraces, green railings, UK road markings — published under a Colorado brokerage's name on a channel called Denver Home Story. The sign was blank, which is what the other check asks for; nothing asked where the street was.", es: "Un plano que enseña una calle tiene que decir de qué ciudad es. El tercer plano de la pieza 74 pedía «a residential street lined with brick homes» y el motor devolvió una hilera inglesa — ladrillo, vallas verdes, marcas viales británicas — publicada bajo el nombre de una correduría de Colorado en un canal llamado Denver Home Story. El cartel estaba en blanco, que es lo que pide la otra comprobación; nadie preguntó dónde estaba la calle." },
+      { en: "The rule is narrow, and the narrowness was measured over the 189 prompts in production rather than guessed. Thirty show a street, a row of homes, a neighbourhood or a skyline, and twenty-five of those already name Denver or the Front Range. Five are caught and none of them is in a live piece. A wider first attempt flagged \"a residential contract document on a kitchen counter\", which is indoors — and a porch or a lawn looks the same in Denver and in Ohio, so those are left alone.", es: "La regla es estrecha, y lo estrecho se midió sobre los 189 prompts de producción en vez de suponerlo. Treinta enseñan una calle, una hilera de casas, un barrio o un horizonte, y veinticinco ya nombran Denver o el Front Range. Se marcan cinco y ninguno está en una pieza viva. Un primer intento más ancho marcaba «a residential contract document on a kitchen counter», que es interior — y un porche o un césped se ven igual en Denver que en Ohio, así que esos se dejan en paz." },
+      { en: "And a test that had been failing six hours out of every twenty-four was fixed. The analytics range \"7d\" is six calendar days back plus today, from local midnight — not a rolling 168 hours — so its window opens between 144 and 168 hours ago depending on the time of day. A fixture post placed at -150h was inside it in the evening and outside it before 06:00 local. It was green every morning and red every night, and nobody had run the suite in that window until now.", es: "Y se arregla un test que llevaba fallando seis horas de cada veinticuatro. El rango «7d» de analíticas son seis días de calendario más hoy, desde medianoche local — no 168 horas rodantes — así que su ventana abre entre 144 y 168 horas atrás según la hora del día. Un post de prueba colocado a -150h estaba dentro por la tarde y fuera antes de las 06:00 locales. Estaba verde cada mañana y rojo cada noche, y nadie había corrido la suite en esa franja hasta ahora." },
+    ],
+  },
   {
     version: "0.121.0",
     date: "2026-09-18",
