@@ -6,6 +6,45 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+# 🔴 LO PRIMERO: el canal no publica nada hoy ni mañana, y 7 piezas terminadas están atascadas
+
+Medido el 17-sep a las 21:25 de Denver. **No es un problema de contenido.**
+
+**Los hechos.** La última publicación fue el **16-sep**; el 17 entero, cero.
+El calendario de Buffer que tenemos programado es:
+
+| día | posts | piezas |
+|---|---|---|
+| 17-sep (hoy) | **0** | 0 |
+| 18-sep (mañana) | **0** | 0 |
+| 19-sep | 2 | 1 |
+| 20-sep | 4 | 2 |
+| 21, 22, 24, 26, 28-sep | 3 cada uno | 1 cada uno |
+| **5-oct** | 3 | 1 |
+
+Y detrás: **21 publicaciones en `pending`** (7 piezas × 3 plataformas) que nunca
+recibieron hueco, más **6 piezas aprobadas** con vídeo esperando.
+
+**El mecanismo.** `CONTENT_SCHEDULE_HORIZON_DAYS=10`: el publicador solo coloca
+una pieza dentro de los próximos 10 días — hasta el 27-sep. La cola ya tiene
+fechas ocupadas **hasta el 5-oct**, fuera de ese horizonte. Y los diez posts
+programados de Buffer **solo se liberan cuando uno se ENVÍA**, no cuando pasa
+su fecha (lo dice el propio comentario de `publish_approved`). Con la cola
+llena y estirada más allá del horizonte, las 7 pendientes no pueden entrar
+nunca, y los huecos de hoy y mañana no los llena nadie.
+
+**La salida, y es decisión de Ender, no mía.** Programar posts es publicar
+hacia fuera: no se toca sin su sí. Lo que habría que hacer es **traer los posts
+lejanos (5-oct, 28-sep, 26-sep) a los días vacíos de esta semana**, lo que
+libera sitio según se vayan enviando y deja entrar a las 7 pendientes. Se puede
+hacer desde la consola pieza a pieza, o subiendo `CONTENT_SCHEDULE_HORIZON_DAYS`
+— pero ojo: subirlo sin reordenar solo empuja las nuevas más lejos todavía.
+
+Mientras esto siga así, **ninguna mejora de guion o de imagen cambia las
+visitas**, porque los vídeos no salen.
+
+---
+
 # 17-sep noche — 0.117.0 desplegada, 0.118.0 y 0.119.0 listas; dos reglas de YouTube MEDIDAS y descartadas
 
 ## Desplegado y verificado
@@ -35,6 +74,23 @@ mutaciones.
 kitchen table») pasó todas las puertas y Buffer la publicó esa tarde con un
 hombre de traje en el encuadre. 10 tests, una mutación. Rechaza 2 de 99 prompts
 guardados.
+
+## 🔴 Tercera hipótesis descartada, y un contador ciego
+
+**«Los vídeos son demasiado largos».** En el panel, los tres shorts de 13 s son
+los tres más vistos (1.045, 1.039, 1.030) y los de 24-35 s se quedan en
+682/403/393. Parecía claro. Contra nuestras propias métricas **no se sostiene**:
+mediana de vistas en TikTok **102** para ≤20 s contra **98** para >20 s; en
+YouTube 1 contra 47. No se toca la longitud del guion.
+
+**Pero al medirlo salió otra cosa.** `content_metrics` cubre **50 de 129
+publicaciones (39 %)** y la pieza más nueva con datos es la **68**. Las que se
+llevaron las ~1.000 visitas —la serie «Renting at $X», piezas 71 y siguientes—
+**no tienen ninguna métrica capturada**. Por eso nuestros números internos dicen
+50-132 vistas donde el panel dice mil: el embudo está ciego justo donde hubo
+tráfico, y cualquier decisión tomada con esa tabla mide la parte vieja del
+canal. Es el cuarto contador que miente; los otros tres están en
+`project_eko_realtors_indice`.
 
 ## 🔴 Dos reglas de YouTube que NO se implementaron, y por qué
 
