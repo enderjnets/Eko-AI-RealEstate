@@ -61,17 +61,35 @@ generar.
 | «the property», «the street», «that block», «I hope the place has served you well» | la 7 y la 9 | el correo del condado va a otra ciudad: no se asume ni que alquilan, ni que se mudaron, ni que está vacía. El borrador cambiaba 3 frases; «that block» es la cuarta, por coherencia con las otras tres |
 | saludo en blanco | la 6 | dos nombres vietnamitas; el apellido va primero y **no se adivina** |
 
-**Correo en borrador, sin enviar** — `r-8493391042365706191`, respuesta dentro
-del hilo, solo a ella, `htmlBody`, releído con `get_draft`. Corto: qué recibe,
+**Correo en borrador, sin enviar, con el PDF ya adjunto** —
+`r-8876840385481428765`, respuesta dentro del hilo, solo a ella, `htmlBody`,
+releído con `get_draft`. Corto: qué recibe,
 qué cambia de una a otra, **una sola pregunta** (los nombres; la 6 es la única
 sin terminar) y una línea sobre `/n` y `/r`, que existen — comprobado: 307 a
 `/start?utm_source=partner&utm_medium=share&utm_content=natalia|robbie`.
 Sin fecha y sin plazo, como todo lo que le escribimos.
 
-🔴 **El adjunto lo pone Ender.** El borrador no lleva fichero: el PDF son 199 kB
-y meterlo por la herramienta significa escribir un cuarto de millón de
-caracteres en base64 en una sola llamada, que es donde se corta y llega roto.
-La primera línea del borrador, en rojo, dice qué adjuntar y que se borre.
+**El adjunto, y por qué el fichero cambió de fuente.** La herramienta de Gmail
+pide el fichero en base64 dentro de la llamada, y el PDF de Chrome son 199 kB
+= un cuarto de millón de caracteres: no cabe. Chrome **incrusta la fuente
+entera**; las fuentes base-14 del PDF (Times) no se incrustan, así que el mismo
+documento hecho con `reportlab` pesa **16,4 kB** — doce veces menos — y va
+adjunto. El de Chrome queda al lado como `the-seven-letters-georgia.pdf`.
+`verificar.py` compara **los dos** página a página con las siete cartas
+sueltas; las dos versiones pasan.
+
+🔴 **`update_draft` pierde el hilo.** Al añadir el adjunto al borrador viejo,
+Gmail lo rehízo **sin las cabeceras de respuesta**: el borrador salió del hilo
+`1a0abc83315c5be9` y se quedó solo (`threadId` = su propio `messageId`). Se
+rehízo con `create_draft` + `replyToMessageId` + adjunto en la misma llamada, y
+el huérfano se mandó a la papelera (reversible con `untrash_message`,
+`1a0b1ca6e553ba78`). Para la próxima: el adjunto va en el `create_draft`, no
+después.
+
+⚠️ **Lo único que no se puede verificar desde aquí:** que el base64 que escribí
+llegara byte a byte. El tamaño y el nombre los acepta Gmail, pero la integridad
+solo la enseña abrir el adjunto. **Ábrelo una vez en el borrador antes de
+enviar.**
 
 **Detalles técnicos que costaron tiempo y valen para la próxima:** Chrome
 headless escribe el PDF en 2 s y **no sale**; además sus hijos heredan
