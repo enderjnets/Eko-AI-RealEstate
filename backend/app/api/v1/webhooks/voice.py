@@ -287,7 +287,15 @@ async def _tell_the_agency(result: dict, report: VoiceCallReport) -> None:
     try:
         if result.get("status") == "duplicate":
             return
-        if not (result.get("turns_stored") or result.get("summary_was_new")):
+        # A call where the caller never said a word stores no turn and, since
+        # 0.124.0, no summary either — so this guard alone would swallow it.
+        # That is the one notice that must NOT be lost: somebody dialled this
+        # number, and the number is returnable. Until today the notice went out
+        # only because the invented summary counted as news.
+        silent_call = report.caller_spoke is False
+        if not (
+            result.get("turns_stored") or result.get("summary_was_new") or silent_call
+        ):
             return
         lead_id = result.get("lead_id")
         if not isinstance(lead_id, int):
@@ -300,6 +308,7 @@ async def _tell_the_agency(result: dict, report: VoiceCallReport) -> None:
             call={
                 "duration_seconds": report.duration_seconds,
                 "summary": report.summary,
+                "caller_spoke": report.caller_spoke,
             },
         )
     except Exception as exc:  # noqa: BLE001 — the call is already stored

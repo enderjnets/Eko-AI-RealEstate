@@ -78,6 +78,9 @@ class VoiceCallReport:
     # renamed could not be parsed.
     duration_seconds: float | None = None
     ended_reason: str | None = None
+    #: Did the CALLER say anything? `None` when the report carried no transcript
+    #: at all, which is not the same fact as a transcript showing silence.
+    caller_spoke: bool | None = None
     recording_url: str | None = None
     cost: float | None = None
     started_at: datetime | None = None
@@ -203,7 +206,14 @@ def parse_end_of_call_report(payload: dict[str, Any]) -> VoiceCallReport | None:
     artifact = msg.get("artifact") if isinstance(msg.get("artifact"), dict) else {}
     raw_turns = artifact.get("messages")
     if not isinstance(raw_turns, list):
-        raw_turns = msg.get("messages") if isinstance(msg.get("messages"), list) else []
+        raw_turns = msg.get("messages")
+    # Absent and empty are different facts, and the difference decides whether a
+    # name may be thrown away below. A report with no transcript array tells us
+    # nothing about whether the caller spoke; an empty one says plainly that
+    # nobody did.
+    transcript_present = isinstance(raw_turns, list)
+    if not transcript_present:
+        raw_turns = []
 
     turns: list[tuple[str, str]] = []
     for t in raw_turns:
@@ -230,11 +240,37 @@ def parse_end_of_call_report(payload: dict[str, Any]) -> VoiceCallReport | None:
     if isinstance(name, str) and name.strip():
         from_name = name.strip()
 
+    # ── Nobody spoke, so nothing here is about them ──────────────────────
+    # Measured on a real call, 18-sep-2026: three seconds, the caller hung up,
+    # and VAPI's extractor still filled `structuredData.name` — with the
+    # ASSISTANT'S OWN NAME, because that is the only name in the conversation.
+    # The lead went into the inbox called "Clara Natalia", and the summary
+    # said the call "was initiated by AI Clara Natalia" when it was inbound.
+    #
+    # Both fields are the vendor's model writing about a transcript that does
+    # not exist. The rule needs no threshold in seconds: if the transcript is
+    # there and holds not one turn from the caller, the caller said nothing,
+    # and a name or a summary drawn from that silence is invention. The
+    # identifier, the duration and the ended reason are facts and are kept —
+    # that is what makes the call still worth returning.
+    caller_spoke = any(role == "user" for role, _ in turns) if transcript_present else None
+    if caller_spoke is False:
+        from_name = None
+        summary = None
+        # The WHOLE extraction, not just the name. `_apply_voice_structured`
+        # copies `structuredData` onto the lead — intent, zone, budget,
+        # property type, timeline — and the first version of this fix cleared
+        # `from_name` alone, so the assistant's name walked back onto the lead
+        # through that second door and a test caught it. Every one of those
+        # fields was read out of the same silence; none of them is evidence.
+        structured = {}
+
     return VoiceCallReport(
         call_id=call_id,
         from_identifier=from_identifier,
         from_name=from_name,
         summary=summary,
+        caller_spoke=caller_spoke,
         turns=turns,
         structured=structured,
         **_call_extras(msg, call),

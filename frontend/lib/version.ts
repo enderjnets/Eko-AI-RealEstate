@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.123.0";
+export const CURRENT_VERSION = "0.124.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.124.0",
+    date: "2026-09-18",
+    title: {
+      en: "A call where nobody spoke says so",
+      es: "Una llamada donde nadie habló lo dice",
+    },
+    changes: [
+      { en: "A three-second call reached the agency as a lead named after the assistant herself. With no transcript to read, the voice provider's extractor filled the caller's name with the only name in the conversation — Clara's — and its summariser described an inbound call as one the AI had placed. Both lines were the vendor's, stored faithfully, and both were false.", es: "Una llamada de tres segundos llegaba a la agencia como un lead con el nombre de la propia asistente. Sin transcripción que leer, el extractor del proveedor de voz rellenó el nombre de quien llama con el único nombre de la conversación — el de Clara — y su resumidor describió una llamada entrante como una que había hecho la IA. Las dos líneas eran del proveedor, guardadas fielmente, y las dos eran falsas." },
+      { en: "The rule needs no threshold in seconds, which matters because a number chosen by eye is how this has gone wrong before. The transcript already carries roles: if it is there and holds not one turn from the caller, the caller said nothing, and any name or summary drawn from that silence is invention. The whole extraction goes with it — intent, zone, budget — because all of it was read from the same silence.", es: "La regla no necesita ningún umbral en segundos, y eso importa porque un número puesto a ojo es como esto ya ha salido mal antes. La transcripción ya trae los papeles: si está y no contiene ni un turno de quien llama, quien llama no dijo nada, y cualquier nombre o resumen sacado de ese silencio es invención. Se cae con ello la extracción entera — intento, zona, presupuesto — porque todo salió del mismo silencio." },
+      { en: "What stays is what makes the call worth returning: the number, the duration and the reason it ended. And the notice still goes out even when there is nothing left to report. The webhook only tells anybody when a turn or a summary was stored: on the 18-sep call Clara's greeting is a stored turn, so that one would have survived — but when the transcript arrives EMPTY there is no turn, the summary is dropped as invention, and without this clause nobody would ever learn that the phone rang. It now says plainly that the caller hung up without speaking, and stops promising a transcript that does not exist.", es: "Se conserva lo que hace que valga la pena devolver la llamada: el número, la duración y la razón por la que terminó. Y el aviso sigue saliendo incluso cuando no queda nada que contar. El webhook solo avisa si se guardó un turno o un resumen: en la llamada del 18-sep el saludo de Clara es un turno guardado, así que ese habría sobrevivido — pero cuando la transcripción llega VACÍA no hay turno, el resumen se cae por inventado, y sin esta cláusula nadie se enteraría de que el teléfono sonó. Ahora dice claramente que quien llamaba colgó sin hablar, y deja de prometer una transcripción que no existe." },
+    ],
+  },
   {
     version: "0.123.0",
     date: "2026-09-18",

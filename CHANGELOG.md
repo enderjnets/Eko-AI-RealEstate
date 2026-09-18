@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.124.0] - 2026-09-18
+
+### Corregido
+
+**Una llamada donde nadie habló ya no llega con nombre y con historia.**
+
+Medido en una llamada real, no en una sospecha. El dueño marcó el número de la
+agencia para comprobar que Clara contesta. Contestó, él colgó a los tres
+segundos, y el aviso que llegó decía:
+
+    Name: Clara Natalia
+    Summary: The call was initiated by AI Clara Natalia.
+
+Las dos líneas son falsas y ninguna la escribió este repo. Sin transcripción,
+el extractor de VAPI rellenó `analysis.structuredData.name` con **el nombre de
+la propia asistente** —el único nombre de la conversación— y su resumidor
+describió una llamada **entrante** como una que había hecho la IA.
+`parse_end_of_call_report` guardaba lo que dijera el proveedor, fielmente.
+
+No es cosmético: `conversation.py` copia ese nombre al lead, así que **quien
+cuelga pronto se archiva con el nombre de la asistente**, y varias llamadas así
+son filas indistinguibles en la bandeja. Y el resumen es la primera frase que
+lee una persona para decidir si devuelve la llamada.
+
+**La regla no necesita ningún umbral en segundos** — un número puesto a ojo es
+como este repo ya se ha equivocado antes. La transcripción trae los papeles: si
+está y no contiene ni un turno de quien llama, quien llama no dijo nada, y
+cualquier nombre o resumen sacado de ese silencio es invención. Se cae también
+`structuredData` **entero** (intento, zona, presupuesto): todo salió del mismo
+silencio, y limpiar solo el nombre dejaba una segunda puerta abierta por
+`_apply_voice_structured` — lo encontró un test, no una lectura.
+
+Se conserva lo que hace que valga la pena devolver la llamada: **el número, la
+duración y la razón por la que terminó**.
+
+**Y el aviso sigue saliendo**, incluso cuando no queda nada que contar. La
+guarda del webhook solo avisa si se guardó un turno o un resumen. En la llamada
+del 18-sep el saludo de Clara **sí** es un turno guardado, así que ese aviso
+habría salido igual; pero cuando VAPI manda la transcripción **vacía**, no hay
+turno, el resumen se cae por inventado, y sin esta cláusula nadie se enteraría
+nunca de que el teléfono sonó. El número es el lead entero.
+
+Eso último lo destapó una mutación, no una lectura: el primer test escrito para
+esta cláusula **seguía verde con la cláusula borrada**, porque incluía el
+saludo. Hace falta un segundo test con la transcripción vacía para que la
+guarda esté sujeta de verdad.
+
+El aviso dice ahora lo que pasó —«Clara contestó y quien llamaba colgó sin decir
+nada»— y deja de prometer una transcripción que no existe.
+
+2.352 tests en verde. Tres mutaciones vistas en rojo y el fuente restaurado con
+el mismo `md5` cada vez.
+
 ## [0.123.0] - 2026-09-18
 
 ### Corregido

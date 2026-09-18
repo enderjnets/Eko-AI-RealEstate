@@ -402,3 +402,80 @@ async def test_a_web_call_is_not_reported_as_an_email_address() -> None:
         assert f"{PANEL}/leads/" in body
     finally:
         await _cleanup(identifier)
+
+
+@pytest.mark.asyncio
+async def test_a_call_where_nobody_spoke_still_tells_the_agency_and_says_so() -> None:
+    """The notice that matters most, and the one this change nearly deleted.
+
+    Until 0.124.0 a three-second call reached the agency only because VAPI's
+    invented summary counted as news: the guard in the webhook sends nothing
+    unless a turn or a summary was stored, and a silent call now stores
+    neither. Somebody dialled this number — that is the whole lead, and losing
+    it would have been a worse bug than the one being fixed.
+
+    So two assertions, and the second is why the first is worth having: the
+    notice goes out, and it describes silence as silence instead of handing
+    over the assistant's own name and a story about a call nobody had.
+    """
+    phone = "+13035550148"
+    report = _report("call_no_words", phone, turns=False, summary=False)
+    report["message"]["durationSeconds"] = 3
+    report["message"]["endedReason"] = "customer-ended-call"
+    # Transcript present, and only Clara in it. This is the shape that arrived.
+    report["message"]["artifact"] = {
+        "messages": [{"role": "bot", "message": "Denver Home Story, this is Clara."}]
+    }
+    report["message"]["analysis"] = {
+        "summary": "The call was initiated by AI Clara Natalia.",
+        "structuredData": {"name": "Clara Natalia"},
+    }
+    try:
+        assert await _post(report) == 200
+        rows = await _internal_rows(phone)
+        assert rows, "nobody was told that the phone rang"
+        subject = rows[-1]["subject"] or ""
+        body = rows[-1]["content"] or ""
+        assert "said nothing" in subject, subject
+        assert "hung up without saying" in body, body
+        # The two inventions, gone from the text a person reads.
+        assert "Clara Natalia" not in body, "the assistant's name is still on the lead"
+        assert "initiated by AI" not in body
+        # And no promise of a transcript that does not exist.
+        assert "full transcript" not in body
+        assert phone in body, "the one fact worth keeping is missing"
+    finally:
+        await _cleanup(phone)
+
+
+@pytest.mark.asyncio
+async def test_an_empty_transcript_still_tells_the_agency() -> None:
+    """The case the sibling test above does NOT cover, and it took a mutation
+    to notice.
+
+    That test gives Clara a greeting, so a turn IS stored and the webhook's
+    guard passes on `turns_stored` alone — it stayed green with the
+    `silent_call` clause deleted. Green for the wrong reason.
+
+    This is the shape that actually needs the clause: VAPI sends the transcript
+    array and it is EMPTY. No turn is stored, the summary is dropped as
+    invention, and without `silent_call` nothing would ever tell anybody that
+    the phone rang. The number is the whole lead.
+    """
+    phone = "+13035550149"
+    report = _report("call_empty_transcript", phone, turns=False, summary=False)
+    report["message"]["durationSeconds"] = 2
+    report["message"]["endedReason"] = "customer-ended-call"
+    report["message"]["artifact"] = {"messages": []}
+    report["message"]["analysis"] = {
+        "summary": "The call was initiated by AI Clara Natalia.",
+        "structuredData": {"name": "Clara Natalia"},
+    }
+    try:
+        assert await _post(report) == 200
+        rows = await _internal_rows(phone)
+        assert rows, "an empty transcript silenced the notice entirely"
+        assert "said nothing" in (rows[-1]["subject"] or "")
+        assert phone in (rows[-1]["content"] or "")
+    finally:
+        await _cleanup(phone)

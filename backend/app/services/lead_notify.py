@@ -357,9 +357,24 @@ async def _send_and_record(
         who = lead.name or phone or email or f"lead {lead.id}"
         facts = call if isinstance(call, dict) else {}
         if origin == "call":
-            subject = f"New call answered by Clara — {who}"
+            # Said plainly, in the first line and in the subject, because this
+            # is the whole triage: a call with words is a conversation to read,
+            # and a call without them is a number to ring back. The notice used
+            # to describe the second as if it were the first.
+            silent = facts.get("caller_spoke") is False
+            subject = (
+                f"Clara answered, the caller said nothing — {who}"
+                if silent
+                else f"New call answered by Clara — {who}"
+            )
             body = (
-                "Clara answered a call.\n\n"
+                (
+                    "Clara answered, and the caller hung up without saying "
+                    "anything. There is no transcript and no summary — only "
+                    "the number, which is worth a call back.\n\n"
+                    if silent
+                    else "Clara answered a call.\n\n"
+                )
                 + _line("Name", lead.name)
                 + _line("Phone", phone)
                 + _line("Email", email)
@@ -367,7 +382,13 @@ async def _send_and_record(
                 + _line("Summary", (facts.get("summary") or None))
                 + _line("Came from", attribution)
                 + _line("Calculator", _calculator_line(lead))
-                + "\nThe full transcript and the recording are in the panel.\n"
+                # Promising a transcript that does not exist is how a person
+                # stops believing the rest of the notice.
+                + (
+                    "\nThe recording is in the panel.\n"
+                    if silent
+                    else "\nThe full transcript and the recording are in the panel.\n"
+                )
             )
         else:
             subject = f"New lead from the website — {who}"
