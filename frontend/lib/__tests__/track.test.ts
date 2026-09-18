@@ -796,6 +796,18 @@ describe("every section a page reports is one the server keeps", () => {
         expect(found.length, file).toBeGreaterThan(0);
         for (const n of found) expect(serverSections.has(n), `${file}: ${n}`).toBe(true);
       }
+      // And the constant form, which until now nothing checked: the pattern
+      // above only ever saw an inline literal, so `/calculator` — the page with
+      // the most sections, passing `sections={SECTIONS}` with the list defined
+      // beside it — was the one page this rule never read. Found while widening
+      // the literal case for `/contact`; the hole is older than that change.
+      for (const m of src.matchAll(/sections=\{(\w+)\}/g)) {
+        const def = src.match(new RegExp(`const ${m[1]}[^=]*=\\s*\\[([^\\]]*)\\]`));
+        expect(def, `${file}: sections={${m[1]}} with no list to read`).toBeTruthy();
+        const found = names(def?.[1] ?? "");
+        expect(found.length, `${file}: ${m[1]}`).toBeGreaterThan(0);
+        for (const n of found) expect(serverSections.has(n), `${file}: ${n}`).toBe(true);
+      }
     }
   });
 });
