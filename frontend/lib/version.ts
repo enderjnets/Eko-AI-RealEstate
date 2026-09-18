@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.117.0";
+export const CURRENT_VERSION = "0.118.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.118.0",
+    date: "2026-09-17",
+    title: {
+      en: "The sign-off is said where there is still somebody",
+      es: "La despedida se dice donde todavía hay alguien",
+    },
+    changes: [
+      { en: "The spoken sign-off used to be appended to the end of the script. YouTube's own retention curves for this channel say the end is empty: retention holds through second 4, then falls from 105% to 60.6% by second 6.1 of a 13-second Short, and 93.8% of the audience never leaves the Shorts player. 6,100 views in 28 days produced 14 visits to the channel page — 0.23% — and 4 subscribers.", es: "La despedida hablada se añadía al final del guion. Las curvas de retención de YouTube para este canal dicen que el final está vacío: aguanta hasta el segundo 4 y cae de 105% a 60,6% en el 6,1 de un short de 13 segundos, y el 93,8% del público no sale nunca del reproductor. 6.100 visitas en 28 días dieron 14 visitas a la página del canal — el 0,23% — y 4 suscriptores." },
+      { en: "Now it is said in the middle, after the sentence that first carries more than 40% of the words. That is the only surface this repo controls that a viewer actually sees: the render engine ignores per-scene on-screen text entirely, and the yellow captions are transcribed from the audio — so what is spoken is what appears on screen.", es: "Ahora se dice en medio, tras la frase que primero supera el 40% de las palabras. Es la única superficie que este repo controla y que un espectador ve de verdad: el motor de render ignora por completo el texto por escena, y los subtítulos amarillos se transcriben del audio — así que lo hablado es lo que aparece en pantalla." },
+      { en: "A script of fewer than three sentences is still appended to, because there is no middle to put anything in. And the line is never dropped into the middle of a list: walking forward past every continuation turned the change into a no-op on this channel's signature format (\"Three things shape what your home is worth. First… Second… Third…\"), where every later seam opens a continuation, so the seam closest to the target is used instead.", es: "Un guion de menos de tres frases se sigue añadiendo al final, porque no hay medio donde meter nada. Y la línea nunca parte una enumeración: caminar hacia delante esquivando continuaciones convertía el cambio en un no-op en el formato insignia del canal («Tres cosas deciden lo que vale tu casa. Primero… Segundo… Tercero…»), donde toda costura posterior abre una continuación, así que se usa la más cercana al objetivo." },
+    ],
+  },
   {
     version: "0.117.0",
     date: "2026-09-17",

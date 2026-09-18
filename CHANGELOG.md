@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.118.0] - 2026-09-17
+
+### Cambiado
+
+**La despedida se dice donde todavía hay alguien.**
+
+Se añadía al final del guion. Las curvas de retención de YouTube para este
+canal dicen que el final está vacío: aguanta hasta el segundo 4 (pierde menos
+del 9 %) y cae de **105 % a 60,6 % en el segundo 6,1** de un short de 13; el
+**93,8 %** del público no sale nunca del reproductor. 6.100 visitas en 28 días
+dieron **14** visitas a la página del canal (0,23 %) y 4 suscriptores.
+
+- **Entra tras la frase que primero supera el 40 % de las palabras.** Y es la
+  única superficie que este repo controla y que se ve: el motor **ignora
+  `on_screen_text`** (el puente toma solo `visual_prompt`), y los subtítulos
+  amarillos los transcribe **del audio**, así que lo hablado es lo que aparece.
+- **Menos de tres frases se sigue añadiendo al final**: no hay medio.
+- **Nunca parte una enumeración.** Caminar hacia delante esquivando
+  continuaciones convertía el cambio en un no-op justo en el formato insignia
+  del canal («Tres cosas… Primero… Segundo… Tercero»), donde toda costura
+  posterior abre continuación; se usa la costura **aceptable más cercana** al
+  objetivo y, en empate, la anterior.
+- Nueve tests, en rojo con dos mutaciones distintas.
+
 ## [0.117.0] - 2026-09-17
 
 ### Corregido
