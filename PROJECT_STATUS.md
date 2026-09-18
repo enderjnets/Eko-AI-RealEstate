@@ -6,6 +6,90 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+# 📊 17-sep, noche — las tres redes medidas de punta a punta, y por qué 11.889 vistas dan 0 leads
+
+Datos completos y su procedencia en `scratchpad/datos_redes_17sep.md` (no versionado).
+Leídos a mano de TikTok Studio, del perfil de Instagram y de YouTube Studio entre las
+22:50 y las 23:25 de Denver, y cruzados con `content_metrics`, `landing_sessions`,
+`leads`, `visits` y `call_logs` de producción. **49 filas escritas en el panel**
+(27 de TikTok, 22 de Instagram), que estaba a 1 de 27 en Instagram.
+
+## Lo que hay
+
+| red | publicadas | vistas | likes | comentarios | **seguidores** |
+|---|---|---|---|---|---|
+| YouTube | 28 | 5.961 | 30 | 9 | **4** |
+| TikTok | 28 | 4.062 | 114 | 17 | **10** |
+| Instagram | 27 | 1.866 | sin medir | sin medir | **16** |
+| **total** | 83 | **11.889** | | | **30** |
+
+Y al final del embudo: **0 leads, 0 visitas agendadas, 0 llamadas registradas.**
+
+## Por qué. Los tres caminos a la web están cerrados, cada uno por su motivo
+
+1. **TikTok no puede mandar tráfico.** La biografía dice `denverhomestory.com/tt` **en
+   texto plano**: TikTok no hace pulsable el enlace de la bio hasta los **1.000
+   seguidores**, y hay 10. El pie tampoco es pulsable. Resultado: 4.062 vistas → 13
+   visitas al perfil → **0 sesiones en la web**. No es un fallo nuestro; es una regla de
+   la plataforma. **Medir TikTok por visitas a la web es medirlo por algo que hoy no puede hacer.**
+2. **Instagram sí tiene enlace pulsable** (`/ig` en la bio) y aun así trae **5 sesiones
+   de 1.866 vistas**. Con 16 seguidores, el alcance no da para más.
+3. **YouTube es el único que manda gente: 46 sesiones.** Pero **aterrizan y se van**:
+   4 % de scroll medio en `/` y **2 % en `/calculator`**. Llegan y no leen nada.
+
+## Y el único camino que una persona sí intentó, no llega
+
+Tres sesiones pulsaron el botón de llamar. El `tel:` de la página en vivo **no es el
+número de Twilio que contesta Clara** (comparados en el VPS sin imprimir ninguno).
+Por eso `call_logs` está a 0 y **nadie sabe si esas tres llamadas se atendieron**.
+Puede ser deliberado —la línea directa de Natalia o Robbie— pero entonces el sistema
+nunca las verá. **Es decisión de Ender, no arreglo mío.**
+
+Las 8 sesiones que «empezaron el formulario» son **7 bots y una prueba** (Boardman,
+Clonee, Luleå, Prineville: centros de datos de AWS y Meta). **Ningún humano ha empezado
+nunca el formulario.** Las 8 con clic en CTA o teléfono sí son personas: todas de
+Colorado —Denver ×2, Parker ×2, El Jebel, Greeley, Ken Caryl—.
+
+## Lo que el contenido dice, y es lo más útil de la noche
+
+**El otoño gana en TikTok e Instagram. La calculadora gana en YouTube.** No es opinión:
+
+- La pieza **18** («Aspens turn from the top down») es el **20 % de las vistas y el 68 %
+  de los likes** de todo TikTok, y el **35 % de las vistas** de todo Instagram. Es la
+  única que ha generado conversación: **9 comentarios, 6 de ellos pidiendo la guía**.
+- En YouTube mandan los cinco de la serie de calculadora de ~13 s: **3.574 vistas** con
+  60–431 % de porcentaje visto. Más del 100 % significa que **lo vuelven a ver**.
+- Y en la web, **`/fall` es la página mejor leída con diferencia: 63 % de scroll medio**,
+  contra 31 % de la portada y 20 % de la calculadora. **Recibe 8 visitas.**
+
+Tres medidas independientes apuntan al mismo sitio: **lo que funciona es el contenido
+local y de temporada, y la página que lo recibe es la mejor del sitio y está vacía.**
+
+## Recomendaciones, ordenadas por efecto esperado sobre CONTACTOS (no sobre vistas)
+
+1. **Decidir a dónde llama el botón de llamar.** Es el único camino que tres personas ya
+   intentaron. Si debe ser Clara, es una variable de entorno. Si debe ser la línea de
+   Natalia, entonces `call_logs` nunca contará y hay que medirlo de otra forma.
+2. **Volcar el otoño sobre `/fall`.** Es el imán probado en dos redes y la página mejor
+   leída del sitio, y ya está construida. Cada pieza de otoño debe apuntar allí, y `/fall`
+   debe llevar el camino al contacto — hoy informa y no pide nada.
+3. **YouTube: la descripción es el ÚNICO enlace pulsable de las tres redes.** Ya trae 46
+   sesiones. El problema no es traerlos, es que rebotan al 2 % de scroll: lo que prometen
+   los 13 segundos y lo que ofrece la página aterrizada no casan.
+4. **Dejar de pedirle tráfico a TikTok.** Su trabajo hasta los 1.000 seguidores es alcance
+   y seguidores, y el otoño es lo que los trae (77 likes contra 0-2 de la calculadora).
+5. **Mezcla por plataforma** (consenso con el advisor y MiniMax M2.7): calculadora en
+   YouTube, otoño y local en TikTok e Instagram. No cruzarlas.
+6. **NO subir `CONTENT_MAX_DRAFTS_PER_DAY`.** Consenso de los tres. Con 0 leads de 11.889
+   vistas, el cuello no es el volumen; subirlo multiplica lo que ya no convierte.
+7. **Un comentario sin responder:** `mary.jane.smith5` escribió «Fall» hace dos horas.
+   Los otros 8 están contestados. Responder es hablar en nombre de la agencia: **necesita
+   el sí de Ender**.
+8. **Los posts anteriores al 14-sep llevan el enlace sin UTM**, así que su tráfico cae en
+   «sin utm» y es indistinguible del directo. Explica parte de las 185 sesiones sin fuente.
+
+---
+
 # ✅ 18-sep: el canal SÍ publica — y lo que de verdad estaba pasando
 
 Medido el 17-sep a las 21:55 de Denver, **corrigiendo lo que decía esta misma
