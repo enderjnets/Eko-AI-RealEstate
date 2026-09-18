@@ -271,9 +271,16 @@ export function AnalyticsView() {
           )}
         </Card>
 
-        <Card title={t("analytics.content")} hint={t("analytics.contentHint")}>
-          <ContentTable rows={data.content} timezone={data.range.timezone} />
-        </Card>
+        {/* The whole width, because it is the only card on this page with no
+            ceiling: every card above it is a fixed handful of bars, and this one
+            grows a row per video for as long as the agency keeps publishing. In
+            half a column it made the left side several screens taller than the
+            right, and stranded "Per person" beside a wall of zeros. */}
+        <div className="lg:col-span-2">
+          <Card title={t("analytics.content")} hint={t("analytics.contentHint")}>
+            <ContentTable rows={data.content} timezone={data.range.timezone} />
+          </Card>
+        </div>
 
         <Card title={t("analytics.byAgent")}>
           <AgentsTable rows={data.by_agent} />

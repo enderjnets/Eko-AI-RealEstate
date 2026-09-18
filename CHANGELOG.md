@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.131.0] - 2026-09-18
+
+### Cambiado
+
+**El marcador de contenido deja de crecer: una línea por vídeo, y los nueve
+rótulos dichos una sola vez.**
+
+Cada publicación pintaba doce números —tres contadores y los nueve pasos de
+atribución exacta— y **cada paso deletreaba su propio rótulo**. Un vídeo en tres
+plataformas costaba así 36 números y **27 rótulos**, y en producción los 27
+valores son cero. Metido en media columna (`lg:grid-cols-2`), era la única
+sección de la página **sin techo**: las demás son un puñado fijo de barras, y
+esta añade una fila por cada vídeo publicado. El resultado es el que se ve: la
+página se alarga cada día y el panel de al lado queda varado arriba.
+
+Lo que cambia:
+
+1. **Una fila por vídeo, no por publicación.** Las plataformas son fichas con su
+   contador; el vídeo más reciente viene abierto, porque es el que se viene a
+   mirar.
+2. **Los nueve nombres, en una cabecera.** Aparecen una vez al abrir la fila, no
+   una vez por publicación. El nombre completo sigue en el `title` de cada
+   columna, que es lo que obliga el español: «Visitantes que eligieron el
+   siguiente paso» son 42 caracteres y hay nueve.
+3. **Un embudo entero a cero se dice en una frase.** «Aún ninguna visita
+   etiquetada» en lugar de nueve ceros con rótulo. Nada se renombra y nada se
+   pierde: los nueve están, con su nombre, a una pulsación.
+4. **La tarjeta ocupa el ancho entero y se detiene en cinco vídeos**, con el
+   resto a un clic.
+5. **Dos cifras nuevas**: lo que produjeron todos los enlaces etiquetados del
+   rango, y cuántas publicaciones tienen un contador que nadie ha leído — con
+   entrada para escribir los que van a mano, y **sin botón donde una persona no
+   puede ayudar**: un contador de YouTube sin leer es un reloj que no ha corrido,
+   no una casilla que rellenar.
+
+**Lo que se suma y lo que no, ahora con un test que lo sostiene.** La atribución
+exacta se agrupa en el servidor por `(pieza, plataforma)` sobre el `utm_content`
+y el `source` de la sesión, y una sesión —como el primer contacto de un lead—
+tiene **exactamente una** fuente: las plataformas de un vídeo son disjuntas y sus
+contadores suman. La asociación de 48 h **no**: ya viene contada una sola vez
+sobre la unión de las ventanas del vídeo, y sumar las filas pondría en la página
+gente que nunca existió. El primer test de la suma estaba **verde por la razón
+equivocada** —la franja de totales de arriba daba la misma cadena que la fila—
+y se reescribió con dos vídeos de sumas distintas.
+
+**Legibilidad.** Varios rótulos y los enlaces «verlo en» se pintaban a 2,6:1 y
+3,4:1 sobre el negro de esta página. Un número que nadie puede leer es un número
+sin nombre, que es exactamente lo que esta tarjeta existe para evitar. Lo que
+distingue ahora un paso que se movió no es el brillo, es el peso y el color.
+
+### Lo que esto NO cambia
+
+Ningún número cambia de valor ni de nombre. Las tres jerarquías siguen separadas
+y dichas: los contadores de la plataforma son **medición**, la atribución exacta
+es **atribución**, y las 48 h son **asociación**. El lápiz sigue solo donde
+ninguna máquina nuestra puede leer el contador (TikTok e Instagram), y sigue
+diciendo si un número se leyó o se escribió, y cuándo.
+
 ## [0.130.0] - 2026-09-18
 
 ### Añadido

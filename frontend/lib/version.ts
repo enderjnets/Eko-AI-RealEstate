@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.130.0";
+export const CURRENT_VERSION = "0.131.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,21 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.131.0",
+    date: "2026-09-18",
+    title: {
+      en: "The content scorecard stops growing",
+      es: "El marcador de contenido deja de crecer",
+    },
+    changes: [
+      { en: "Every post printed twelve numbers and every one of the nine exact-attribution stages spelled out its own caption, so a video on three platforms cost thirty-six numbers and twenty-seven captions — and in production every one of those twenty-seven is a zero. It is now one line per video: the stage names move into a single heading that appears when the row is opened, and a funnel that is entirely zero is said in a sentence instead of nine captioned zeros. All nine are still there, under their own names, one key press away.", es: "Cada publicación pintaba doce números y cada uno de los nueve pasos de atribución exacta deletreaba su propio rótulo, así que un vídeo en tres plataformas costaba treinta y seis números y veintisiete rótulos — y en producción los veintisiete son cero. Ahora es una línea por vídeo: los nombres de los pasos pasan a una única cabecera que aparece al abrir la fila, y un embudo entero a cero se dice en una frase en vez de en nueve ceros con rótulo. Los nueve siguen ahí, con su nombre, a una pulsación." },
+      { en: "The card takes the whole width and stops at five videos, with the rest one click away. It is the only section of the page with no ceiling — every other card is a fixed handful of bars — so in half a column each video published pushed the rest of the report further down and stranded the panel beside it.", es: "La tarjeta ocupa el ancho entero y se detiene en cinco vídeos, con el resto a un clic. Es la única sección de la página sin techo — las demás son un puñado fijo de barras — así que en media columna cada vídeo publicado empujaba el resto del informe hacia abajo y dejaba varado el panel de al lado." },
+      { en: "Two figures the card never had: what every tagged link across the range actually produced, and how many posts have a counter nobody has read — with a way in to type the ones a person has to type, and no button where no person can help (a YouTube counter nobody has read is a tick that has not run).", es: "Dos cifras que la tarjeta no tenía: qué produjeron de verdad todos los enlaces etiquetados del rango, y cuántas publicaciones tienen un contador que nadie ha leído — con una entrada para escribir los que hay que escribir a mano, y sin botón donde una persona no puede ayudar (un contador de YouTube sin leer es un reloj que no ha corrido)." },
+      { en: "Exact attribution is added across a video's platforms and the 48-hour association is not, and a test now holds that line: the server groups the exact half by piece and platform, and one session — like a lead's first touch — has exactly one source, so the platforms are disjoint and their counters add. The 48-hour figure is already counted once over the union of the video's windows; adding the rows up would put people on the page who never existed.", es: "La atribución exacta se suma entre las plataformas de un vídeo y la asociación de 48 h no, y ahora un test sostiene esa línea: el servidor agrupa la mitad exacta por pieza y plataforma, y una sesión — como el primer contacto de un lead — tiene exactamente una fuente, así que las plataformas son disjuntas y sus contadores suman. La cifra de 48 h ya está contada una vez sobre la unión de las ventanas del vídeo; sumar las filas pondría en la página gente que nunca existió." },
+      { en: "And a legibility fix the redesign uncovered: several captions and the \"watch on\" links were drawn in greys at 2.6:1 and 3.4:1 against this page's black. A number nobody can read is a number with no name, which is the one thing this card exists to avoid.", es: "Y un arreglo de legibilidad que destapó el rediseño: varios rótulos y los enlaces «verlo en» se pintaban en grises a 2,6:1 y 3,4:1 sobre el negro de esta página. Un número que nadie puede leer es un número sin nombre, que es justo lo que esta tarjeta existe para evitar." },
+    ],
+  },
   {
     version: "0.130.0",
     date: "2026-09-18",
