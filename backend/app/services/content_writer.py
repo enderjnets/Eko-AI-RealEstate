@@ -577,7 +577,83 @@ def with_sign_off(script: str | None, language: ContentLanguage, cta_index: int)
         return spoken
     if carries_spoken_domain(spoken, language):
         return spoken
-    return f"{spoken} {lines[cta_index % len(lines)].format(domain=domain)}".strip()
+    return _sign_off_where_they_still_are(
+        spoken, lines[cta_index % len(lines)].format(domain=domain)
+    )
+
+
+#: A sentence boundary. Kept deliberately simple: the narration is written by a
+#: model asked for 60-120 words of plain speech, not for prose with citations
+#: or decimals mid-sentence, and a cleverer splitter would be a second thing to
+#: be wrong.
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+#: Where the sign-off goes, as a fraction of the script's words. Not chosen:
+#: the drop-off starts at second 4 of a 13-second Short and the audience is
+#: halved by second 6, so the line has to be spoken before the midpoint. 0.40
+#: puts it just before, with the payoff still after it.
+_SIGN_OFF_AT = 0.40
+
+
+#: A sentence that belongs to the one before it. Inserting anything in front of
+#: these breaks an enumeration or a contrast in half.
+_CONTINUES = re.compile(
+    r"(?i)^\s*(second|third|fourth|fifth|next|then|also|and|but|finally|"
+    r"segundo|tercero|cuarto|quinto|luego|despu\u00e9s|adem\u00e1s|y|pero|"
+    r"finalmente|por \u00faltimo)\b"
+)
+
+
+def _sign_off_where_they_still_are(spoken: str, line: str) -> str:
+    """The sign-off, spoken in the middle rather than at the end.
+
+    It used to be appended to the tail, which is where nobody is. Measured on
+    the channel on 17-sep-2026: retention holds through second 4 (losing under
+    9%), then falls from 105% to 60.6% by second 6.1 — and **93.8% of the
+    audience never leaves the Shorts player at all**. 6,100 views produced 14
+    visits to the channel page, 0.23%. A closing line on a 13-second Short is
+    heard by the few who stayed; said in the middle it is heard by most of
+    them, and the yellow captions are transcribed from the audio, so what is
+    SPOKEN is also what appears on screen.
+
+    Placed after the sentence that first carries more than `_SIGN_OFF_AT` of
+    the words, so the piece still ends on its own point rather than on an
+    advertisement. A script of fewer than three sentences is appended to as
+    before: there is no middle to put anything in, and splitting a two-sentence
+    script would leave the line either first or last anyway.
+    """
+    sentences = [s for s in _SENTENCE_END.split(spoken) if s.strip()]
+    words = len(spoken.split())
+    if len(sentences) < 3 or not words:
+        return f"{spoken} {line}".strip()
+    running = 0
+    cut = len(sentences) - 1
+    for index, sentence in enumerate(sentences):
+        running += len(sentence.split())
+        if running / words > _SIGN_OFF_AT:
+            cut = index + 1
+            break
+    # Never the tail: that is the position this function exists to leave. With
+    # three sentences or more there is always an interior seam to use.
+    cut = min(max(cut, 1), len(sentences) - 1)
+    # And never mid-enumeration. Position alone picked the seam between
+    # "First: recent comparable sales." and "Second: your home condition.",
+    # which reads as an advertisement interrupting a list — the one thing a
+    # listener notices.
+    #
+    # Walking FORWARD from there was the obvious fix and it was wrong: this
+    # channel's signature script is "Three things shape what your home is
+    # worth. First… Second… Third…", where every seam after the first opens a
+    # continuation, so forward-walking fell off the end and appended — a no-op
+    # on exactly the format that matters most. So: take the acceptable seam
+    # CLOSEST to the target, and on a tie the earlier one, because earlier is
+    # heard by more people. Here that is the seam before "First:", which is
+    # where a person would have put it.
+    seams = [i for i in range(1, len(sentences)) if not _CONTINUES.match(sentences[i])]
+    if not seams:
+        return f"{spoken} {line}".strip()
+    cut = min(seams, key=lambda index: (abs(index - cut), index))
+    return " ".join(sentences[:cut] + [line] + sentences[cut:]).strip()
 
 # Three sign-offs, rotated. One fixed line would be heard thirty times a month
 # by anyone who follows the channel; a line the model invents each day is a
