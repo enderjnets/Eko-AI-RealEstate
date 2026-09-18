@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { readableUsPhone } from "../../components/landing/CallLine";
+
 /**
  * The phone on the two pages that had a form and no phone.
  *
@@ -36,6 +38,24 @@ describe("the call line", () => {
     }
   });
 
+  it("prints the number in a shape a person can read off and dial", () => {
+    // Shipped unformatted the first time: the page said `+17208249313`, one
+    // unbroken run of eleven characters. That undercuts the only reason the
+    // digits are there — somebody on a desktop reads them and keys them into a
+    // handset, and an ungrouped run is what makes a person mistype the last
+    // four. The dialling href keeps the E.164 form, which is what `tel:` wants.
+    expect(readableUsPhone("+17208249313")).toBe("(720) 824-9313");
+    expect(readableUsPhone("7208249313")).toBe("(720) 824-9313");
+  });
+
+  it("prints an unrecognised number exactly as configured", () => {
+    // A guess at grouping a number we do not understand is worse than showing
+    // what the operator typed. An install outside the US must not have its
+    // number rearranged into a shape that does not dial.
+    expect(readableUsPhone("+34 600 123 456")).toBe("+34 600 123 456");
+    expect(readableUsPhone("")).toBe("");
+  });
+
   it("prints the number as text and not only as a link", () => {
     // The load-bearing half. Thirty-six of those 48 sessions were on desktop,
     // where tapping a `tel:` link does nothing a person can use — they read
@@ -46,7 +66,7 @@ describe("the call line", () => {
     // Mutation this catches: replacing `{LANDING.phone}` with a translated
     // label. The anchor still works on a phone and the page looks finished,
     // and the majority of visitors are left with nothing to dial.
-    expect(component).toMatch(/>\s*\{LANDING\.phone\}/);
+    expect(component).toMatch(/>\s*\{readableUsPhone\(LANDING\.phone\)\}/);
   });
 
   it("still links, because the twelve on a phone are the ones who tap", () => {

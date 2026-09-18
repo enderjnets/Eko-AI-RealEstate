@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.127.0] - 2026-09-18
+
+### Corregido
+
+**El número se lee: `(720) 824-9313`, no `+17208249313`.**
+
+0.126.0 puso el teléfono en `/calculator` y `/fall` porque **36 de las 48
+sesiones de alta intención son de escritorio**, donde un `tel:` no hace nada y
+los dígitos son lo único con lo que una persona puede actuar. Y salió pintando
+**once caracteres seguidos sin separar**, que es exactamente lo que hace que
+alguien se equivoque en los últimos cuatro al teclearlos en el móvil que tiene
+al lado. El arreglo llegaba a la página y se quedaba corto en lo único que
+justificaba ponerlo.
+
+El enlace sigue llevando la forma E.164, que es lo que `tel:` necesita; lo que
+cambia es lo que se ve. Un número que no reconocemos como estadounidense se
+imprime **tal cual está configurado**: adivinar la agrupación de un número ajeno
+es peor que enseñar lo que escribió el operador.
+
 ## [0.126.0] - 2026-09-18
 
 ### Corregido

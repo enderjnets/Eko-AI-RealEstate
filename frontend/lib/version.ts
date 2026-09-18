@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.126.0";
+export const CURRENT_VERSION = "0.127.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.127.0",
+    date: "2026-09-18",
+    title: {
+      en: "The number reads as a number",
+      es: "El número se lee como un número",
+    },
+    changes: [
+      { en: "0.126.0 put the phone on the two pages because 36 of the 48 high-intent sessions are on desktop, where the digits are the only usable thing — and then printed eleven unbroken characters, which is what makes a person mistype the last four. It now reads (720) 824-9313. The link keeps the E.164 form that tel: needs; a number we do not recognise as US is printed exactly as configured.", es: "0.126.0 puso el teléfono en las dos páginas porque 36 de las 48 sesiones de alta intención son de escritorio, donde los dígitos son lo único utilizable — y lo pintó como once caracteres seguidos, que es lo que hace que alguien se equivoque en los últimos cuatro. Ahora se lee (720) 824-9313. El enlace mantiene la forma E.164 que necesita tel:; un número que no reconocemos como estadounidense se imprime tal cual está configurado." },
+    ],
+  },
   {
     version: "0.126.0",
     date: "2026-09-18",

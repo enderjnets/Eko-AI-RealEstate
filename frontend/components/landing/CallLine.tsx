@@ -29,6 +29,23 @@ import { Phone } from "lucide-react";
 import { LANDING, dialable } from "@/lib/landing";
 import { useI18n } from "@/lib/i18n";
 
+/**
+ * `+17208249313` → `(720) 824-9313`.
+ *
+ * Shipped unformatted first, and it undercut the only reason the digits are on
+ * the page: somebody on a desktop has to READ them and key them into a handset,
+ * and an unbroken run of eleven characters is what makes a person mistype the
+ * last four. Anything that is not a plain US number is printed exactly as
+ * configured — a guess at grouping a number we do not recognise is worse than
+ * showing what the operator typed.
+ */
+export function readableUsPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  const local = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  if (local.length !== 10) return raw;
+  return `(${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`;
+}
+
 export function CallLine({
   where,
   tone = "dark",
@@ -53,7 +70,7 @@ export function CallLine({
         className={`inline-flex min-h-[44px] items-center gap-2 font-medium underline underline-offset-4 ${strong} hover:opacity-80`}
       >
         <Phone className="h-3.5 w-3.5" aria-hidden />
-        {LANDING.phone}
+        {readableUsPhone(LANDING.phone)}
       </a>
     </p>
   );
