@@ -27,6 +27,54 @@ imágenes; o dejarla parada.
 
 ---
 
+# 17-sep — Segunda revisión de las cartas: un defecto, y dos comprobadores que lo tapaban
+
+Ender pidió repasarlas «asegurando que todos los datos estén correctos y que no
+tengan ningún tipo de error». Salió **un** defecto en el texto y **dos** fallos
+en mis propias comprobaciones — que es lo que hace que el defecto sobreviviera.
+
+**El defecto.** La cita de su firma salía con comillas **curvas** y con la
+atribución en la misma línea tras una raya: `“…them.” — Chris Grosser`. En el
+correo que ella aprobó —y en su firma real— son comillas **rectas** y
+`Chris Grosser` va **en su propia línea**, sin raya. Además yo había puesto su
+nombre en negrita; en su firma no lo está (la correduría sí). Corregido en las
+siete.
+
+**Fallo 1 del comprobador: `verificar.py` normalizaba las comillas** curvas a
+rectas *antes* de comparar. Por eso daba verde sobre una diferencia real. Una
+normalización es exactamente donde se esconde lo que buscas: ahora hay
+`revision2.py`, que compara **sin indultar nada** y dice qué carácter, en qué
+posición y con qué nombre Unicode. Las siete: idénticas.
+
+**Fallo 2: `comparar_fuente.py` cortaba el bloque por números de línea fijos.**
+Al añadir una línea al borrador de trabajo, el bloque comparado se quedó corto y
+soltó dos diferencias falsas. Ahora localiza los bloques por su encabezado.
+
+**Los datos, contrastados contra la fuente y no contra mi ojo** —
+`revision2_datos.py` lee el TSV del condado y comprueba, uno por uno: quién
+lleva carta (del 3 al 9; el 1 y el 2 fuera), la calle desarrollada («E Dorado
+Pl» → «East Dorado Place»), el mes y el año de la compra, qué versión toca
+según viva allí o reciba el correo en otro sitio, la dirección del **sobre**
+(la postal, no la de la casa), la nota de «the house» solo en el 7 y el 9, y la
+forma del nombre en el registro. **Todo cuadra.** El único aviso que saltó era
+del comprobador: el condado escribe `#507` en la propiedad y `Apt 507` en el
+correo — el mismo sitio.
+
+**Repaso de forma:** ni un dólar, ni un porcentaje, ni un paréntesis, ni un
+espacio doble, ni una palabra partida; 14 comillas rectas (dos por carta) y
+ninguna curva; la raya larga y la `ö` solo donde tocan. Las **dos líneas de
+pie** (6.10.A.6.a y la de NAR) están en las siete y **no** en la hoja de
+sobres, que no es un anuncio.
+
+**Sigue igual, y por decisión de Ender:** la firma va con «Engel & Völkers
+Aspen» tal como ella la usa, no con el nombre registrado en la Comisión; el
+saludo de la 6 en blanco; «your place» en la 5 y «that block» en la 7 y la 9.
+
+Fichero nuevo: `the-seven-letters.pdf`, 16.438 bytes, md5 `4ee734ee…`, copiado
+también a `~/Downloads`.
+
+---
+
 # 17-sep — Las siete cartas, en PDF, y el correo en borrador
 
 Natalia contestó el 16-sep *«I like it. Let's [have the] other letters ready»*
