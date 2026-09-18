@@ -60,6 +60,30 @@ noviembre» sería una regla que nadie ejecuta. Y a propósito **no** se automat
 toca ese día — volver a `/start` o apuntar a la página de la estación siguiente — lo decide
 una persona.
 
+## ✅ 18-sep 00:35 — las dos biografías reescritas
+
+**TikTok** gastaba sus 80 caracteres —todo su espacio— en `denverhomestory.com/tt`, una URL
+que **nadie puede pulsar** hasta los 1.000 seguidores, y hay 10. Ahora dice (74/80):
+
+> Denver real estate, explained straight.
+> Natalia & Robbie · Engel & Völkers
+
+**Instagram** (135/150) cambia su segunda línea para empujar al enlace, que desde hace un
+rato lleva a `/fall`:
+
+> Denver real estate, explained straight.
+> Fall color by elevation — guide below ↓
+> Natalia & Robbie — Engel & Völkers
+> Licensed in Colorado
+
+Las dos mantienen **Engel & Völkers** visible, que es lo que exige la Regla 6.10, y la de
+Instagram conserva «Licensed in Colorado». Verificadas leyendo los dos perfiles después de
+guardar, no por el botón de guardar.
+
+🔴 **La segunda línea de Instagram caduca el 1-nov-2026**, igual que la redirección de `/ig`.
+A diferencia de aquella, **esta no tiene test que la vigile**: un perfil de Instagram no lo
+puede leer la suite. Queda aquí escrito y en el mismo día del calendario que la otra.
+
 ## Lo que se decidió NO hacer, y por qué
 
 - **No subir `CONTENT_MAX_DRAFTS_PER_DAY`.** Consenso de Claude, del advisor y de MiniMax
