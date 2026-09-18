@@ -27,6 +27,27 @@ imágenes; o dejarla parada.
 
 ---
 
+# 18-sep, 00:24 UTC — las siete cartas ENVIADAS
+
+Las mandó Ender desde su correo, con el PDF adjunto a mano: mensaje
+`1a0b1e6802a596bd` dentro del hilo `1a0abc83315c5be9`, a Natalia y **con Robbie
+en copia** (decisión suya; la muestra del 16 había ido solo a ella). La línea
+roja del borrador no salió — el mensaje empieza en «Natalia —».
+
+**Lo que queda, y no es nuestro:** que ella confirme los nombres. La 6 va con el
+saludo en blanco a propósito. Cuando conteste:
+
+1. cambiar el saludo en `SIETE` (y el nombre del sobre en `SOBRES` si corrige
+   alguno) en `scratchpad/cartas/generar.py`;
+2. `generar.py`, `generar_uno.py` y `generar_ligero.py` — en ese orden — y
+   `verificar.py` + `revision2.py` + `revision2_datos.py` en verde;
+3. mandarle **solo esa página**, no las ocho otra vez.
+
+Fase 2 de PLAN (5) cerrada salvo eso. Ni la carta ni el correo llevan un solo
+número de mercado, y nada de la tabla del condado ha salido de `scratchpad/`.
+
+---
+
 # 17-sep — Segunda revisión de las cartas: un defecto, y dos comprobadores que lo tapaban
 
 Ender pidió repasarlas «asegurando que todos los datos estén correctos y que no
