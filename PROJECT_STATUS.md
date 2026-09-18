@@ -61,9 +61,9 @@ generar.
 | «the property», «the street», «that block», «I hope the place has served you well» | la 7 y la 9 | el correo del condado va a otra ciudad: no se asume ni que alquilan, ni que se mudaron, ni que está vacía. El borrador cambiaba 3 frases; «that block» es la cuarta, por coherencia con las otras tres |
 | saludo en blanco | la 6 | dos nombres vietnamitas; el apellido va primero y **no se adivina** |
 
-**Correo en borrador, sin enviar, con el PDF ya adjunto** —
-`r-8876840385481428765`, respuesta dentro del hilo, solo a ella, `htmlBody`,
-releído con `get_draft`. Corto: qué recibe,
+**Correo en borrador, sin enviar** — `r4430636804489235159`, respuesta dentro
+del hilo, solo a ella, `htmlBody`, releído con `get_draft`. **El adjunto lo
+pone Ender**, y el porqué está medido abajo. Corto: qué recibe,
 qué cambia de una a otra, **una sola pregunta** (los nombres; la 6 es la única
 sin terminar) y una línea sobre `/n` y `/r`, que existen — comprobado: 307 a
 `/start?utm_source=partner&utm_medium=share&utm_content=natalia|robbie`.
@@ -86,10 +86,21 @@ el huérfano se mandó a la papelera (reversible con `untrash_message`,
 `1a0b1ca6e553ba78`). Para la próxima: el adjunto va en el `create_draft`, no
 después.
 
-⚠️ **Lo único que no se puede verificar desde aquí:** que el base64 que escribí
-llegara byte a byte. El tamaño y el nombre los acepta Gmail, pero la integridad
-solo la enseña abrir el adjunto. **Ábrelo una vez en el borrador antes de
-enviar.**
+🔴 **Y el adjunto llegó roto — medido, no supuesto.** Ender abrió el PDF del
+borrador y la página 7 (la 9, Douglas y Leann) se cortaba en «If you » y saltaba
+a un trozo del párrafo anterior. El fichero local está intacto (misma página
+extraída entera y mirada en imagen); la copia que bajó del borrador pesa **los
+mismos 16.406 bytes** y difiere en **482 bytes a partir del 13.655** — dentro
+del flujo de esa página. Es decir: al escribir los 21.876 caracteres de base64
+dentro de la llamada, un tramo salió distinto **y del mismo largo**, que es
+justo lo que un control de tamaño no ve.
+
+**Conclusión para la próxima: por esta herramienta no se adjunta un fichero
+copiándolo a mano.** No hay forma de leer el adjunto de vuelta (`get_message`
+no sirve para borradores y no existe una herramienta de adjuntos), así que no
+es verificable. El borrador va sin fichero, con una línea en rojo que dice qué
+arrastrar, y la copia buena queda en `~/Downloads/the-seven-letters.pdf`
+(md5 `a01d900b…`, comprobada tras copiarla).
 
 **Detalles técnicos que costaron tiempo y valen para la próxima:** Chrome
 headless escribe el PDF en 2 s y **no sale**; además sus hijos heredan
