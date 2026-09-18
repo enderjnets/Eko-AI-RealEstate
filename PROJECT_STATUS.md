@@ -42,9 +42,17 @@ siete.
 
 **Fallo 1 del comprobador: `verificar.py` normalizaba las comillas** curvas a
 rectas *antes* de comparar. Por eso daba verde sobre una diferencia real. Una
-normalización es exactamente donde se esconde lo que buscas: ahora hay
-`revision2.py`, que compara **sin indultar nada** y dice qué carácter, en qué
-posición y con qué nombre Unicode. Las siete: idénticas.
+normalización es exactamente donde se esconde lo que buscas: se le ha **quitado
+ese indulto** —para que la próxima vez que alguien regenere una carta no vuelva
+a pasar— y además hay `revision2.py`, que compara sin normalizar nada y dice
+qué carácter, en qué posición y con qué nombre Unicode. Las siete: idénticas,
+con los dos comprobadores.
+
+**De qué es «idéntica».** El patrón es mi transcripción del correo que salió el
+16-sep; esa transcripción la coteja `comparar_fuente.py` con el borrador de
+trabajo (12 párrafos, iguales) y yo la he leído contra el correo enviado. Lo
+que no existe es una forma de traer el texto de Gmail al disco sin volver a
+teclearlo: eso último es ojo, no script.
 
 **Fallo 2: `comparar_fuente.py` cortaba el bloque por números de línea fijos.**
 Al añadir una línea al borrador de trabajo, el bloque comparado se quedó corto y
