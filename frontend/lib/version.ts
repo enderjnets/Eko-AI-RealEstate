@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.122.0";
+export const CURRENT_VERSION = "0.123.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.123.0",
+    date: "2026-09-18",
+    title: {
+      en: "The disclosure says what the pipeline does",
+      es: "La declaración dice lo que el sistema hace",
+    },
+    changes: [
+      { en: "The caption declared the synthetic narration and not the pictures, and since 10-sep the pictures are drawn. `worker/pictures.py` is \"fal.ai first, Pexels behind it\" on flux/schnell, and on the generated lane stock never runs at all — piece 74's street was drawn, not photographed, which is how it came back a British terrace.", es: "El pie declaraba la narración sintética y no las imágenes, y desde el 10-sep las imágenes se dibujan. `worker/pictures.py` es «fal.ai primero, Pexels detrás» sobre flux/schnell, y en el carril generado el stock no interviene — la calle de la pieza 74 se dibujó, no se fotografió, y por eso salió una hilera inglesa." },
+      { en: "This string has now been wrong twice, in opposite directions. It once read \"Contains AI-generated visuals\" while every picture was a licensed Pexels photograph, and was cut back correctly — a disclosure that overstates is a false statement on the channel of two licensed agents. The note left behind said the visuals belong back in the sentence if anything ever draws them. Something does, and for eight days it understated.", es: "Esta frase ya ha estado mal dos veces, en direcciones opuestas. Un día decía «Contains AI-generated visuals» con todas las imágenes siendo fotos con licencia de Pexels, y se recortó con razón: una declaración que exagera es una afirmación falsa en el canal de dos agentes con licencia. La nota que quedó decía que los visuales vuelven a la frase si algo llega a dibujarlos. Algo los dibuja, y durante ocho días la frase se quedó corta." },
+      { en: "The platform declaration was correct throughout — `kind=GENERATED` sends `isAiGenerated` through Buffer to all three networks. What was short is the half a person reads. Four tests now assert that both things the pipeline does are named, in both languages, and that the sentence stays short enough to be read rather than scrolled past.", es: "La declaración a las plataformas fue correcta todo el tiempo — `kind=GENERATED` manda `isAiGenerated` por Buffer a las tres redes. Lo que se quedó corto es la mitad que lee una persona. Ahora cuatro tests exigen que se nombren las dos cosas que hace el sistema, en los dos idiomas, y que la frase siga siendo corta para que se lea en vez de pasarse de largo." },
+    ],
+  },
   {
     version: "0.122.0",
     date: "2026-09-18",

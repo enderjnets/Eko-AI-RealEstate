@@ -686,17 +686,35 @@ _SPOKEN_CTA = {
 # than being asked. All three platforms take `isAiGenerated` through Buffer as
 # well, and it is sent; the caption is where a viewer can actually read it.
 #
-# **It names the voice, not the pictures, because that is what is true.** This
-# read "Contains AI-generated visuals" until a published caption was checked
-# against the video it described: every picture in it is a licensed photograph
-# from Pexels, and nothing in the frame was generated. The narration is
-# synthetic in every piece this lane makes, whatever draws the pictures. A
-# disclosure that overstates is still a false statement on the channel of two
-# licensed agents — and this one was about to go out three times.
-# If Kling ever draws the scenes, the visuals belong back in this sentence.
+# **It names the voice AND the pictures, because both are true now.** This has
+# been wrong twice, in opposite directions, and both corrections are worth
+# keeping.
+#
+# It first read "Contains AI-generated visuals" and was cut back to the voice
+# alone, because a published caption was checked against the video it described
+# and every picture in it was a licensed photograph from Pexels. That was right
+# then: a disclosure that overstates is still a false statement on the channel
+# of two licensed agents.
+#
+# The note left behind said "if Kling ever draws the scenes, the visuals belong
+# back in this sentence". Something does. Since `RENDER_ENGINE=bittrader` on
+# 10-sep-2026 the pictures come from `worker/pictures.py`, which is "fal.ai
+# first, Pexels behind it" on `fal-ai/flux/schnell` — and on the generated lane
+# stock never runs at all. Piece 74's street was drawn, not photographed, which
+# is how it came back a British terrace.
+#
+# So the sentence understated for eight days. The platform declaration was
+# always correct — `kind=GENERATED` sends `isAiGenerated` through Buffer — but
+# this is the half a person reads, and it is the half that was short.
+#
+# The lesson under both corrections is the same: **this string describes a
+# pipeline that changes, and it does not change with it.** Whoever swaps the
+# picture source swaps this too.
 _AI_DISCLOSURE = {
-    ContentLanguage.EN: "Narrated with a synthetic voice.",
-    ContentLanguage.ES: "Narrado con una voz sintética.",
+    ContentLanguage.EN: "Narrated with a synthetic voice. Images are AI-generated.",
+    ContentLanguage.ES: (
+        "Narrado con una voz sintética. Las imágenes están generadas con IA."
+    ),
 }
 
 

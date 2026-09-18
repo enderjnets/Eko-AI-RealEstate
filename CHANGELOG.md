@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.123.0] - 2026-09-18
+
+### Corregido
+
+**La declaración de IA dice lo que el sistema hace.**
+
+El pie declaraba la narración sintética y **no las imágenes**. Desde que
+`RENDER_ENGINE=bittrader` el 10-sep, las imágenes las dibuja
+`fal-ai/flux/schnell`: `worker/pictures.py` es «fal.ai primero, Pexels
+detrás», y en el carril generado **el stock no interviene**. La calle de la
+pieza 74 se dibujó, no se fotografió — por eso salió una hilera inglesa.
+
+Ahora dice **«Narrated with a synthetic voice. Images are AI-generated.»** y
+«Narrado con una voz sintética. Las imágenes están generadas con IA.»
+
+Esta frase ya había estado mal **en la dirección contraria**: decía
+«Contains AI-generated visuals» cuando todas las imágenes eran fotografías con
+licencia de Pexels, y se recortó con razón — una declaración que exagera es
+una afirmación falsa en el canal de dos agentes con licencia. La nota que
+quedó escrita decía que los visuales vuelven a la frase si algo llega a
+dibujarlos. Algo los dibuja, y durante ocho días la frase se quedó corta.
+
+La declaración **a las plataformas fue correcta todo el tiempo**:
+`kind=GENERATED` manda `isAiGenerated` por Buffer a las tres redes. Lo que se
+quedó corto es la mitad que lee una persona.
+
+Cuatro tests nuevos exigen que se nombren **las dos cosas** que hace el sistema,
+en **los dos idiomas**, y que la frase siga siendo corta para que se lea en vez
+de pasarse de largo. Una de las mutaciones que los valida es **volver a la frase
+que había en producción**, y enrojece.
+
 ## [0.122.0] - 2026-09-18
 
 ### Añadido
