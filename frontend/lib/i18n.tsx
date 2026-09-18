@@ -863,6 +863,9 @@ const EN: Record<string, string> = {
     "{brand} is {advisors} — real estate advisors working both sides of Colorado: the mountain towns and the Denver metro. In English or Spanish.",
   "landing.hero.cta": "Book a 15-min consult",
   "landing.hero.callUs": "Or just call us",
+  // Rendered beside the number itself, not as a button label: on desktop a
+  // `tel:` link does nothing and the digits are the only usable thing.
+  "landing.call.or": "Or just call us:",
   "landing.hero.scroll": "Scroll to play",
   "landing.hero.who.eyebrow": "Who we are",
   "landing.hero.who.titleA": "Two advisors.",
@@ -1899,6 +1902,7 @@ const ES: Record<string, string> = {
     "{brand} son {advisors} — asesores inmobiliarios en los dos lados de Colorado: los pueblos de montaña y el área metropolitana de Denver. En inglés o en español.",
   "landing.hero.cta": "Agenda 15 minutos",
   "landing.hero.callUs": "O llámanos ahora",
+  "landing.call.or": "O llámanos:",
   "landing.hero.scroll": "Desplázate para verlo",
   "landing.hero.who.eyebrow": "Quiénes somos",
   "landing.hero.who.titleA": "Dos asesores.",

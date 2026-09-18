@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.125.0";
+export const CURRENT_VERSION = "0.126.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.126.0",
+    date: "2026-09-18",
+    title: {
+      en: "A phone on the pages that had none",
+      es: "Teléfono en las páginas que no lo tenían",
+    },
+    changes: [
+      { en: "Over fourteen days, 48 sessions reached a figure on the calculator — the highest-intent event this site records. One started the form, zero clicked a CTA and zero clicked a phone. That last zero was not indifference: there was no phone on the page to click. Forty-five of the 48 landed straight on /calculator and never saw the home page, which was the only one carrying both a form and a number.", es: "En catorce días, 48 sesiones llegaron a ver una cifra en la calculadora — el evento de más intención que registra este sitio. Una empezó el formulario, cero pulsaron un CTA y cero pulsaron un teléfono. Ese último cero no era desinterés: no había teléfono en la página que pulsar. 45 de las 48 aterrizaron directamente en /calculator y nunca vieron la portada, la única con formulario y número." },
+      { en: "The number is written out, not only linked, and that is the whole design: 36 of those 48 sessions were on desktop, where a tel: link does nothing usable and the digits are the only thing a person can act on. The link stays for the twelve on a phone. One shared component rather than two copies, and it carries the tracking attribute, so the click that was missing can now be counted.", es: "El número se escribe, no solo se enlaza, y ese es el diseño entero: 36 de esas 48 sesiones eran de escritorio, donde un tel: no sirve de nada y los dígitos son lo único con lo que se puede actuar. El enlace se queda para las doce que van en móvil. Un componente compartido en vez de dos copias, y lleva el atributo de seguimiento, así que el clic que faltaba ya se puede contar." },
+    ],
+  },
   {
     version: "0.125.0",
     date: "2026-09-18",

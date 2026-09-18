@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 
+import { CallLine } from "@/components/landing/CallLine";
 import { ConsultForm } from "@/components/landing/ConsultForm";
 import { LandingTracker } from "@/components/landing/LandingTracker";
 import { LANDING, homeScreenName } from "@/lib/landing";
@@ -443,6 +444,9 @@ export default function FallGuidePage() {
                 is distinguishable in the Inbox from one that came off the
                 landing. */}
             <ConsultForm variant="fall" />
+          {/* Same reason as `/calculator`: this page has the form and had no
+              phone, and it is where the Instagram bio link lands. */}
+          <CallLine where="fall" tone="light" />
           </div>
         </div>
       </section>

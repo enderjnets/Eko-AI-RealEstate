@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.126.0] - 2026-09-18
+
+### Corregido
+
+**El teléfono, en las dos páginas que tenían formulario y no lo tenían.**
+
+Medido en catorce días de producción. **48 sesiones llegaron a ver una cifra en
+la calculadora** — el evento de más intención que este sitio registra. De esas 48:
+**1** empezó el formulario, **0** pulsaron un CTA y **0** pulsaron un teléfono.
+
+Ese cero no era desinterés: **no había teléfono en la página que pulsar**.
+`/calculator` y `/fall` llevan el mismo `ConsultForm` que la portada, pero el
+número solo estaba en `/` y en `/start`. Y **45 de las 48 aterrizaron
+directamente en `/calculator`**, así que nunca pasaron por la portada, que era la
+única página con las dos puertas. Veinte de ellas venían de YouTube.
+
+**El número se escribe, no solo se enlaza, y ese es el diseño entero.** De esas
+48 sesiones, **36 eran de escritorio**, donde un `tel:` no hace nada que una
+persona pueda usar: tiene que leer los dígitos y marcarlos en el móvil que tiene
+al lado. Un botón que diga «llámanos» y esconda el número no le sirve a tres
+cuartas partes de la gente para la que existe esta línea. El enlace se queda para
+las doce que van en móvil, donde pulsar es justo lo que se quiere.
+
+Un solo componente para las dos páginas, no dos copias. Lleva `data-track`, así
+que a partir de ahora el clic aparece como `tel_click` — el cero que motivó el
+cambio empieza a poder contestarse. Si la instalación no tiene número
+configurado, no se pinta nada.
+
+Cuatro mutaciones vistas en rojo, incluida la que sustituye el número por una
+etiqueta traducida: la página seguiría pareciendo terminada y el visitante de
+escritorio se quedaría sin nada que marcar.
+
 ## [0.125.0] - 2026-09-18
 
 ### Añadido

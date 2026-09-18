@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { CallLine } from "@/components/landing/CallLine";
 import { ConsultForm } from "@/components/landing/ConsultForm";
 import { LandingTracker } from "@/components/landing/LandingTracker";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
@@ -801,6 +802,12 @@ export default function CalculatorPage() {
           <div className="mt-8 [&_button[type=submit]]:bg-ln-cream [&_button[type=submit]]:text-ln-dark [&_input:not([type=checkbox])]:border-ln-cream/25 [&_input:not([type=checkbox])]:bg-ln-cream/[0.05] [&_input:not([type=checkbox])]:px-3">
             <ConsultForm variant="calculator" calculator={payload} />
           </div>
+          {/* Forty-five of the 48 sessions that reached a figure here landed
+              straight on this page, so they never saw the home page — the only
+              one carrying a phone. Zero of them clicked one, because there was
+              none to click. Thirty-six were on desktop, which is why the line
+              shows the digits and does not just link them. */}
+          <CallLine where="calculator" />
         </div>
       </section>
       <footer className="border-t border-ln-hair bg-ln-canvas px-5 py-10 sm:px-8">
