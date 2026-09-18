@@ -6,6 +6,72 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+# 17-sep — lo que dicen los datos de YouTube, y qué se puede hacer con ellos
+
+Sesión con el panel «Ask Studio» del canal Denver Home Story (las respuestas
+quedan guardadas allí como «Optimizing Shorts Retention»). Las cifras son de
+YouTube, no mías.
+
+## Lo medido
+
+| qué | valor |
+|---|---|
+| Retención 0–4 s | cae menos del 9 %: **el gancho funciona** |
+| Retención 4–6 s | **105 % → 60,6 % en 2,1 s** (short de 13 s) |
+| Público que nunca sale del reproductor de Shorts | **93,8 %** |
+| Visitas a la página del canal | **14**, de 6.100 visitas = **0,23 %** |
+| Suscriptores / 1.000 visitas | «fall color» (58 visitas): **17,2** · «over-estimate the deposit» (403): **5,0** |
+| Short «Renting at $3.500» | 1.034 visitas, **0 suscriptores**, **0 visitas en 48 h** |
+| 28 días | 6.100 visitas → **6,6 horas** (≈3,9 s por visita) y **4 suscriptores** |
+
+Tres lecturas: el gancho retiene y **el segundo 4 es donde se cae**, porque
+una vez leída la cifra inicial no aparece ningún estímulo nuevo; **la llamada
+a la acción va hablada al final**, es decir después de que se haya ido el 94 %,
+y eso explica las 14 visitas a la página; y lo que mejor convierte no es la
+calculadora sino una pieza local de otoño — muestra minúscula (58 visitas, 1
+suscriptor), suficiente para probar, no para reponderar nada.
+
+## 🔴 El obstáculo, medido en la máquina: `on_screen_text` es un campo muerto
+
+El consejo central de YouTube —«el rótulo quemado en el vídeo es lo ÚNICO que
+se ve con seguridad antes de que alguien deslice»— **no se puede implementar
+desde este repo**. El puente del ROG
+(`/home/enderj/.openclaw/workspace/bittrader/agents/render_externo.py:61-65`,
+máquina `ender-rog`) toma de cada escena **solo `visual_prompt`**. Un
+`grep -rn on_screen_text` en todo BitTrader solo lo encuentra en un comentario
+de cabecera y en dos ficheros de test: **ninguna ruta de producción lo lee**.
+
+O sea que el panel genera `on_screen_text` para cada escena, lo guarda en
+`scenes`, lo pasa por el filtro de Fair Housing (`text_violations:215-217`)
+— y no se dibuja nunca. Lo que sí llega al motor: `script` (la narración con
+la despedida), `hook` (que se convierte en el rótulo blanco de arriba),
+`caption` y los `visual_prompt`. Los subtítulos amarillos los transcribe el
+motor **del audio**, que es por lo que lo hablado sí acaba en pantalla.
+
+## Qué hacer, y qué NO
+
+- **Para el rótulo de llamada a la acción hay que tocar BitTrader**, no este
+  repo: que `render_externo.py` pase `on_screen_text`, y que el perfil DHS lo
+  dibuje. Es otro proyecto y afecta a los demás canales; va a la sesión de
+  BitTrader con esta evidencia. Escribir aquí una línea que nadie dibuja sería
+  el mismo defecto que el campo muerto que acabamos de encontrar.
+- **No copiar la plantilla de la IA tal cual.** (a) Se **inventó** el desglose
+  (+$38.000 de principal, +$12.000 de impuestos, −$21.500 de gastos) para que
+  sumara +$28.500: `unexplained_figures` lo rechazaría, y hace bien. (b)
+  Propone un plano con «mock calculator UI», o sea una imagen generada **con
+  texto**: es exactamente lo que produjo el `www.raefes.com` de la 72.
+- **Sin verificar:** afirma que YouTube ya no hace clicables los enlaces
+  externos en descripciones ni comentarios fijados de Shorts. No construir
+  nada sobre eso sin comprobarlo.
+- **Lo que sí queda pendiente de decidir aquí:** el «giro» en el segundo 4. En
+  términos de este repo sería exigir que la segunda frase de la narración sea
+  una reversión («aquí está la trampa»), con una comprobación mecánica en
+  `_all_violations`. **No se escribió**: sin un predicado que sepa distinguir
+  un giro de una frase cualquiera, sería un cambio de prompt sin quien lea la
+  respuesta — el patrón contra el que avisa el propio código.
+
+---
+
 # 17-sep — la consola borraba los hallazgos del escritor (0.117.0, SIN desplegar)
 
 Salió de mirar por qué la **74** estaba parada, y es más grande que la 74.
@@ -46,13 +112,69 @@ incompleta deja los seis. Los dos fuentes volvieron con el `md5` idéntico
 `fix/el-hallazgo-del-plano-no-se-lava`, **sin desplegar**: falta que Ender lo
 autorice en un mensaje aparte, ventana desde las 21:00 de Denver.
 
-**La 74, aparte.** Sigue en `draft` con su hallazgo y con el vídeo **viejo**
-colgado (el barrido la reescribió el 17 a las 23:14 y no encoló render). El
-plano 4 pedía un monitor. La escritura propuesta —cambiarlo por un reloj de
-arena, que no lleva superficie donde escribir, y poner `violations` a NULL— se
-le pasó a Ender como SQL condicionado al texto exacto; **pendiente de que la
-corra**. Después: botón «Rehacer el vídeo» (el SQL solo no basta: `_enqueue`
-ve el trabajo ya hecho y no encola; `requeue_render` es quien lo resetea).
+**La 72 y la 74, arregladas y reencoladas (17-sep, 19:4x Denver).** Las dos
+llevaban planos que piden objetos con letra. La **72 estaba APROBADA y en la
+cola de publicación**, y dos fotogramas de su vídeo lo dicen todo: el plano 1
+lleva un cartel de jardín inventado que dice «FORE / WOLF FORE / SALE» con una
+web fabricada debajo, **`www.raefes.com`**, y el plano 4 un calendario cuyos
+días de la semana son «Nau / Tusi / Mird / Then / Flay / Son». Se escribió antes
+de que existiera la regla del 17-sep y se aprobó el 16.
+
+Hecho, con la escritura condicionada al valor exacto de cada fila y releída
+después: la 72 pasa a `needs_approval` (sale de la cola: las aprobadas bajan de
+7 a 6), se le reescriben los **cinco** planos señalados sin ningún objeto que
+atraiga letras — casa desde la acera, tres casas de ladrillo en fila, salón
+vacío con la luz de la mañana, encimera con llaves y un metro, ventana con la
+línea del Front Range —, y la 74 cambia el monitor por un reloj de arena. Las
+dos: `media_path` a NULL, `violations` a NULL y su `render_job` de vuelta a
+`queued`, que es exactamente lo que hace `requeue_render`. Comprobadas con
+`stored_violations` **antes** de escribir: cero hallazgos, inglés correcto.
+
+**Cuando vuelvan los vídeos: mirar el primer fotograma de la 72 antes de
+aprobarla.** Si sigue habiendo letras inventadas, el problema no son los
+prompts sino el motor.
+
+## 🔴 Pendiente: 13 piezas YA PUBLICADAS con planos que atraen letras
+
+Medido el 17-sep. Cada una tiene **3 publicaciones** (las tres plataformas), o
+sea **39 posts vivos**. Nadie ha mirado sus fotogramas: la v0.115.0 midió once
+con cartel y encontró texto inventado en cuatro, y lo que añade la 72 es que el
+invento puede ser **una dirección web que no existe**. Decisión de Ender qué
+hacer con las que estén mal; **no se borra ningún vídeo de YouTube**.
+
+| pieza | estado | publicaciones | planos señalados (palabra que lo dispara) |
+|---|---|---|---|
+| 3 | published | 3 | 2 (sign), 3 (contract) |
+| 5 | published | 3 | 1 (sign), 3 (contract), 6 (report) |
+| 6 | published | 3 | 1 (sign), 2 (document), 4 (document), 5 (documents), 6 (form) |
+| 7 | published | 3 | 1 (contract), 3 (documents), 4 (calendar), 5 (contract), 6 (sign) |
+| 8 | published | 3 | 3 (sign), 4 (documents) |
+| 9 | published | 3 | 5 (form), 6 (sign) |
+| 10 | published | 3 | 1 (calendar), 3 (sign), 5 (screen) |
+| 11 | published | 3 | 3 (sign), 4 (calendar), 5 (screen) |
+| 12 | published | 3 | 5 (sign) |
+| 14 | published | 3 | 1 (sign), 2 (calendar), 3 (sign), 4 (screen), 5 (document), 6 (signs) |
+| 16 | publishing | 3 | 4 (documents), 5 (sign) |
+| 19 | published | 3 | 1 (contract), 2 (sign), 3 (screen), 4 (documents), 5 (calendar), 6 (screen) |
+| 68 | published | 3 | 1 (calendar), 2 (calendar) |
+
+Para revisarlas: `media_path` de la fila, `ffmpeg -ss <t> -i /data/media/<f>
+-frames:v 1` dentro del contenedor `backend` (tiene `ffmpeg` en
+`/usr/bin/ffmpeg`, y el medio vive en `/data/media`), y mirar el PNG. El plano
+N cae hacia `duración/6*(N-0,5)`.
+
+**El orden importa, y no es obvio.** `requeue_render` (content_render.py:490)
+**quita el vídeo ANTES de mirar `violations`**: si se pulsa «Rehacer» con un
+hallazgo puesto, la pieza se queda sin vídeo y sin render encolado. Por eso el
+SQL que pone `violations` a NULL tiene que ir primero. Y `_enqueue` no sirve de
+relevo: si ya existe un `RenderJob` para (pieza, `produce_b`) que no sea un
+fallo caducado, no hace nada — por eso limpiar `media_path` a secas no
+re-renderiza nunca, y hay que devolver el trabajo a `queued`.
+
+**Sobre la 76.** Sigue parada, en `draft`, con un hallazgo guardado
+(`people_in_pictures`) y dos planos que piden objetos con letra. Después de
+0.117.0, quien la abra y pulse «Enviar» verá **tres** hallazgos donde antes
+veía uno: eso es el arreglo funcionando, no una regresión.
 
 ---
 # 17-sep, 23:14 UTC — el barrido reescribió la 74 y la dejó parada
