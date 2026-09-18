@@ -1,29 +1,59 @@
 #!/usr/bin/env bash
-# Nightly Postgres backup for Eko AI Realtors (custom-format dump), with retention.
+# Copia nocturna de la base de Eko AI Realtors (formato personalizado), con
+# retención.
 #
-# Runs ON THE VPS, where production lives since the 27-ago-2026 cutover. Install:
+# Corre EN EL VPS, donde vive producción desde la mudanza del 27-ago-2026:
 #   crontab -e →  15 4 * * *  /home/enderj/Eko-AI-RealEstate/deploy/backup-db.sh >> /home/enderj/eko-realtors-backup.log 2>&1
 #
-# Why this exists at all: until 27-ago-2026 this product had NO backup of any
-# kind. Not on the ROG (timeshift excludes `/var/lib/docker/*` as a built-in
-# rule that `timeshift.json` cannot override — measured in the snapshot's own
-# exclude.list), and not on the VPS. 38 leads and 72 messages belonging to real
-# clients of a licensed broker sat on a single volume with no second copy.
+# Por qué existe: hasta el 27-ago-2026 este producto no tenía copia de ninguna
+# clase. Ni en el ROG (timeshift excluye `/var/lib/docker/*` por una regla
+# interna que `timeshift.json` no puede sobrescribir — medido en el propio
+# `exclude.list` de la instantánea), ni en el VPS. 38 leads y 72 mensajes de
+# clientes reales de una correduría con licencia vivían en un único volumen sin
+# segunda copia.
 #
-# Modelled on `~/Black-Volt-Mobility/deploy/backup-db.sh`, which has run nightly
-# on this same machine since June, with one addition explained at `_usable`.
-#
-# ── HOW TO RESTORE (the order matters, and step 2 is the one that gets missed) ─
-#   1. Bring up an empty postgres:16-alpine and create the database.
-#   2. Apply the ROLES file FIRST, then give eko_app a password:
-#        psql -U eko -d postgres -f eko-roles-<stamp>.sql
+# ── RESTAURAR (el orden importa, y el paso 2 es el que se salta todo el mundo) ─
+#   1. Levantar un postgres:16-alpine vacío y crear la base.
+#   2. Aplicar el fichero de ROLES PRIMERO, y darle contraseña a eko_app:
+#        psql -U eko -d postgres -f eko-roles-<marca>.sql
 #        psql -U eko -d postgres -c "ALTER ROLE eko_app WITH PASSWORD '<nueva>'"
-#      Skipping this restores every row and NONE of the row-level security, and
-#      nothing warns you: pg_restore prints the errors and exits 0.
-#   3. pg_restore -U eko -d eko_realestate --no-owner eko-realtors-<stamp>.dump
-#   4. Put that same password in DATABASE_URL_APP in `.env`.
-#   5. Verify with row counts AND with a tenant check — that a session bound to
-#      one org cannot see another's leads — not just that the app starts.
+#      Saltárselo restaura todas las filas y NINGUNA de las políticas de
+#      aislamiento, y nada avisa: pg_restore imprime los errores y sale 0.
+#   3. pg_restore -U eko -d eko_realestate --no-owner eko-realtors-<marca>.dump
+#   4. Esa misma contraseña va en DATABASE_URL_APP del `.env`.
+#   5. Comprobar con recuentos de filas Y con una prueba de inquilino — que una
+#      sesión atada a una organización no vea los leads de otra —, no solo con
+#      que la aplicación arranque.
+#
+# ── Qué cambió el 18-sep-2026, y por qué no era una manía ─────────────────────
+#
+# Este guion ya verificaba antes de rotar, tenía suelo de tamaño y aparcaba los
+# volcados malos: de los tres del VPS, era con diferencia el mejor. Pero
+# compartía con los otros dos el agujero de fondo: `docker exec ... pg_dump >
+# "$OUT"` escribía sobre el NOMBRE DEFINITIVO. El `>` crea el fichero antes de
+# que pg_dump diga una palabra, así que un volcado que muere a la mitad deja un
+# `.dump` truncado con la fecha de hoy. `set -e` aborta el guion, sí — pero el
+# fichero se queda, con nombre de copia buena, y `_usable` no llegó a mirarlo.
+# A la noche siguiente la retención lo cuenta como una de las catorce y el Mac
+# se lo lleva como la más nueva.
+#
+# Ahora el nombre definitivo se lo gana al final. Y tres cosas más, medidas en
+# el guion gemelo de Zorros:
+#
+#   - **`docker exec` se bebe la entrada estándar.** Llamado desde otro guion
+#     que llega por una tubería (`ssh vps 'bash -s' < guion.sh`), lo que se bebe
+#     es el resto del guion que lo llamó. Cada `docker exec` lleva `< /dev/null`.
+#   - **Verificar sobre un flujo da falsos negativos.** `pg_restore -l < "$f"`
+#     lee una tubería; `pg_restore` quiere un fichero con posición. Ahora el
+#     volcado se hace y se verifica DENTRO del contenedor, sobre un fichero.
+#   - **`printf ... | grep -q` bajo `pipefail` MIENTE**: grep sale al encontrar
+#     la coincidencia, printf muere con SIGPIPE y pipefail devuelve ese fallo
+#     aunque la tabla estuviera. Se comprueba con `case`.
+#
+# Y el volcado y sus roles se promueven JUNTOS, al final. Antes, si el
+# `pg_dumpall` fallaba, el `.dump` ya tenía nombre bueno y quedaba una copia sin
+# sus roles: restaurable en filas, y sin una sola política de aislamiento. Media
+# copia es peor que ninguna, porque parece entera.
 set -euo pipefail
 
 CONTAINER="${EKO_DB_CONTAINER:-eko-realestate-db}"
@@ -32,90 +62,101 @@ DB_NAME="${POSTGRES_DB:-eko_realestate}"
 OUT_DIR="${EKO_BACKUP_DIR:-$HOME/eko-realtors-backups}"
 KEEP="${EKO_BACKUP_KEEP:-14}"
 
-# A dump smaller than this is not a small database, it is a broken dump. The
-# real one is ~112 KB; an empty-but-valid schema-only dump is around 30 KB.
-# Deliberately well under the real size so that a genuinely shrinking database
-# (a purge, a client leaving) does not trip it — this floor is here to catch
-# "the container came up on an empty volume", not to police size.
+# Un volcado por debajo de esto no es una base pequeña, es un volcado roto. El
+# real anda por 112 KB; uno válido pero solo-esquema, por 30 KB. El suelo está
+# deliberadamente muy por debajo del tamaño real para que una base que encoge de
+# verdad (una purga, un cliente que se va) no lo dispare: esto atrapa «el
+# contenedor arrancó sobre un volumen vacío», no vigila el tamaño.
 MIN_BYTES="${EKO_BACKUP_MIN_BYTES:-20000}"
+
+# Las tablas sin las cuales esto no sirve de nada: los leads son el producto,
+# las propiedades y las organizaciones son de quién es cada cosa, y las cuentas
+# son quién entra. Si el índice no las nombra, el volcado es de otra base.
+MUST_HAVE="${EKO_BACKUP_TABLES:-leads properties organizations accounts}"
+
+say() { echo "$(date -Is) $*"; }
 
 mkdir -p "$OUT_DIR"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+# El temporal lleva PID además de la marca: la marca tiene resolución de
+# segundo y dos corridas del mismo segundo se pisarían.
+UNIQ="$STAMP-$$"
+TMP_DUMP="$OUT_DIR/.eko-realtors-$UNIQ.part"
+TMP_ROLES="$OUT_DIR/.eko-roles-$UNIQ.part"
 OUT="$OUT_DIR/eko-realtors-$STAMP.dump"
-
-# Custom format: compressed, and restorable selectively with pg_restore.
-docker exec "$CONTAINER" pg_dump -U "$DB_USER" -Fc "$DB_NAME" > "$OUT"
-
-# ── Is this dump usable? Asked BEFORE anything old is deleted. ───────────────
-#
-# `set -e` already aborts on a pg_dump that exits non-zero, so the case this
-# guards is the other one: a dump that succeeds and is worthless. If the db
-# container ever comes up on a fresh/empty volume, pg_dump returns 0 and writes
-# a valid file containing nothing — and the retention step below would then
-# delete fourteen good backups to make room for it. That is how a backup system
-# eats itself, and it does it silently, on the one night you needed it.
-#
-# Two cheap questions, neither of which restores anything:
-#   - is there enough bytes for it to be real?
-#   - does pg_restore agree it is a dump, and does it list actual tables?
-_usable() {
-  local f="$1" size entries
-  size="$(wc -c < "$f")"
-  if [ "$size" -lt "$MIN_BYTES" ]; then
-    echo "$(date -Is) FATAL: dump is $size bytes, under the $MIN_BYTES floor — keeping older backups untouched" >&2
-    return 1
-  fi
-  # `pg_restore -l` reads the table of contents without touching any database.
-  # A real dump of this schema lists dozens of entries; a corrupt file makes
-  # pg_restore exit non-zero, and `|| true` keeps `set -e` from hiding which of
-  # the two checks actually failed.
-  entries="$(docker exec -i "$CONTAINER" pg_restore -l < "$f" 2>/dev/null | grep -c '^[0-9]' || true)"
-  if [ "${entries:-0}" -lt 10 ]; then
-    echo "$(date -Is) FATAL: pg_restore lists only ${entries:-0} entries — dump is not usable, keeping older backups untouched" >&2
-    return 1
-  fi
-  echo "$(date -Is) verified $entries table-of-contents entries"
-  return 0
-}
-
-if ! _usable "$OUT"; then
-  # The bad dump is kept, not deleted: it is the evidence of what went wrong,
-  # and it is named with a timestamp so it cannot be mistaken for a good one by
-  # the pull side, which checks the same two things.
-  mv "$OUT" "$OUT.rejected"
-  echo "$(date -Is) rejected dump parked at $OUT.rejected — NO retention ran" >&2
-  exit 1
-fi
-
-echo "$(date -Is) wrote $OUT ($(du -h "$OUT" | cut -f1))"
-
-# ── The roles, which the data dump does NOT contain ──────────────────────────
-#
-# Measured, not assumed: restoring this dump into a clean cluster produces
-# exactly 36 errors, and all 36 are `role "eko_app" does not exist`. The dump
-# carries 49 POLICY/ACL entries — every tenant-isolation policy is in there —
-# but a policy that names a role Postgres has never heard of cannot be applied.
-# `pg_dump` of one database is database-scoped; roles are cluster-scoped and
-# live in `pg_dumpall`. Without this file, a 3am recovery restores the rows and
-# silently loses the isolation between agencies, which is the one thing this
-# schema must never lose.
-#
-# `--no-role-passwords` on purpose: this writes role names, attributes and
-# memberships, and NOT the password hashes. Recovery creates `eko_app` with a
-# fresh password and puts the same one in DATABASE_URL_APP — a backup file is
-# the wrong place to keep credentials that are already in `.env`.
 ROLES="$OUT_DIR/eko-roles-$STAMP.sql"
-docker exec "$CONTAINER" pg_dumpall -U "$DB_USER" --roles-only --no-role-passwords > "$ROLES"
-if ! grep -q 'CREATE ROLE eko_app' "$ROLES"; then
-  echo "$(date -Is) FATAL: roles dump does not define eko_app — a restore from this set would come back without RLS" >&2
-  mv "$ROLES" "$ROLES.rejected"
+IN_BOX="/tmp/eko-backup-$UNIQ.dump"
+
+limpiar() {
+  rm -f "$TMP_DUMP" "$TMP_ROLES"
+  docker exec "$CONTAINER" rm -f "$IN_BOX" < /dev/null > /dev/null 2>&1 || true
+}
+trap limpiar EXIT
+
+# ── el volcado, dentro del contenedor ────────────────────────────────────────
+docker exec "$CONTAINER" sh -c "pg_dump -U $DB_USER -Fc $DB_NAME > $IN_BOX" < /dev/null
+
+# (1) ¿se puede leer el índice? Si no, no es restaurable.
+TOC="$(docker exec "$CONTAINER" pg_restore --list "$IN_BOX" < /dev/null)"
+
+# (2) ¿trae el producto? Un volcado de una base vacía supera el paso anterior.
+for tbl in $MUST_HAVE; do
+  case "$TOC" in
+    *"TABLE DATA public $tbl "*) ;;
+    *)
+      say "ABORTADO: el volcado no contiene la tabla '$tbl' — no se promueve"
+      exit 1
+      ;;
+  esac
+done
+
+docker cp "$CONTAINER:$IN_BOX" "$TMP_DUMP" > /dev/null
+SIZE="$(wc -c < "$TMP_DUMP" | tr -d ' ')"
+if [ "$SIZE" -lt "$MIN_BYTES" ]; then
+  # El malo se aparca, no se borra: es la prueba de qué salió mal. Y se aparca
+  # con un nombre que NO casa con ningún patrón de copia buena, así que ni la
+  # retención ni el Mac lo confunden con una.
+  mv "$TMP_DUMP" "$OUT_DIR/eko-realtors-$STAMP.rechazado"
+  say "ABORTADO: el volcado pesa $SIZE bytes, por debajo del suelo de $MIN_BYTES — aparcado, y la retención NO corre"
   exit 1
 fi
-echo "$(date -Is) wrote $ROLES ($(wc -l < "$ROLES") lines)"
 
-# Retention: keep the newest $KEEP good dumps. Rejected ones are not matched by
-# these globs (`*.rejected`), so a run of failures cannot rotate away the last
-# known-good backup — it just accumulates evidence until someone looks.
+# ── los roles, que el volcado de datos NO contiene ───────────────────────────
+#
+# Medido, no supuesto: restaurar este volcado en un clúster limpio produce
+# exactamente 36 errores, y los 36 son `role "eko_app" does not exist`. El
+# volcado lleva 49 entradas POLICY/ACL —todas las políticas de aislamiento entre
+# agencias están ahí dentro— pero una política que nombra un rol que Postgres
+# nunca ha oído no se puede aplicar. `pg_dump` de una base es de ámbito base;
+# los roles son de ámbito clúster y viven en `pg_dumpall`. Sin este fichero, una
+# recuperación a las 3 de la mañana restaura las filas y pierde en silencio el
+# aislamiento entre agencias, que es lo único que este esquema no puede perder.
+#
+# `--no-role-passwords` a propósito: esto escribe nombres, atributos y
+# pertenencias, NO los hashes. La recuperación crea `eko_app` con una contraseña
+# nueva y la pone en DATABASE_URL_APP — un fichero de copia es el sitio
+# equivocado para guardar credenciales que ya están en el `.env`.
+docker exec "$CONTAINER" pg_dumpall -U "$DB_USER" --roles-only --no-role-passwords < /dev/null > "$TMP_ROLES"
+if ! grep -q 'CREATE ROLE eko_app' "$TMP_ROLES"; then
+  say "ABORTADO: el fichero de roles no define eko_app — una restauración de este juego volvería sin RLS"
+  exit 1
+fi
+
+# ── promover los dos JUNTOS ──────────────────────────────────────────────────
+# Hasta aquí no existe ningún fichero con nombre de copia buena. Los dos se
+# ganan el nombre a la vez, porque para restaurar Eko hacen falta los dos y una
+# pareja descabalada se lee desde fuera como una copia entera.
+mv "$TMP_DUMP" "$OUT"
+mv "$TMP_ROLES" "$ROLES"
+
+TABLAS="$(printf '%s\n' "$TOC" | grep -c 'TABLE DATA' || true)"
+say "escrito $OUT ($(du -h "$OUT" | cut -f1)), $TABLAS tablas con datos"
+say "escrito $ROLES ($(wc -l < "$ROLES" | tr -d ' ') líneas)"
+
+# Retención: solo sobre ficheros ya verificados. Ni los `.part` ni los
+# `.rechazado` casan con estos patrones, así que una racha de fallos no puede
+# rotar fuera a la última copia buena — solo acumula pruebas hasta que alguien
+# mire.
 ls -1t "$OUT_DIR"/eko-realtors-*.dump 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
 ls -1t "$OUT_DIR"/eko-roles-*.sql 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
-echo "$(date -Is) retention: kept newest $KEEP in $OUT_DIR"
+say "retención: se guardan las $KEEP más nuevas ($(ls -1 "$OUT_DIR"/eko-realtors-*.dump 2>/dev/null | wc -l | tr -d ' ') presentes)"
