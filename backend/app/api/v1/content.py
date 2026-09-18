@@ -57,8 +57,8 @@ from app.services.content_studio import (
     PUBLISHING_AVAILABLE,
     IllegalTransition,
     advance,
-    text_violations,
 )
+from app.services.content_writer import stored_violations
 from app.services.tenant_context import get_org_id
 from app.services.video_metrics import record_snapshot
 
@@ -240,18 +240,23 @@ def _refresh_violations(piece: ContentPiece) -> None:
     Stored, not recomputed by readers, so the console can show WHY a draft is
     stuck without running the filter per row per page load.
     """
-    # Every field, through the one function that knows which fields there are.
-    # Recomputing from hook/script/caption alone WIPED the findings against a
-    # scene: a person who edited any text — or simply pressed Submit — laundered
-    # a refused image prompt into the approval queue, and the render was then
-    # paid for.
+    # Every field and every CHECK, through the one function that knows which
+    # there are. Recomputing from hook/script/caption alone wiped the findings
+    # against a scene: a person who edited any text — or simply pressed Submit
+    # — laundered a refused image prompt into the approval queue, and the
+    # render was then paid for. Passing `scenes` closed that for Fair Housing
+    # and left the identical hole open for the other four checks the writer
+    # makes, because they live in `_all_violations` and this called
+    # `text_violations`. Piece 74 lost its "monitor" finding that way on
+    # 17-sep-2026, and Submit would have advanced it.
     piece.violations = (
-        text_violations(
+        stored_violations(
             hook=piece.hook,
             script=piece.script,
             caption=piece.caption,
             scenes=piece.scenes,
             language=piece.language,
+            check=piece.calculator_check,
         )
         or None
     )

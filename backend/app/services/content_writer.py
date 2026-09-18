@@ -801,6 +801,56 @@ def readable_text_in_shot(visual_prompt: str | None) -> str | None:
     return found.group(0).lower()
 
 
+def stored_violations(
+    *,
+    hook: str | None,
+    script: str | None,
+    caption: str | None,
+    scenes: dict | None,
+    language: ContentLanguage,
+    check: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    """Everything wrong with a piece AS STORED — the writer's own opinion.
+
+    The console used to form its own with `content_studio.text_violations`,
+    which is the Fair Housing filter and nothing else. `_all_violations` makes
+    four more kinds of finding — a shot that arrives with writing in it, a
+    narration in the wrong language, a shot list an image model cannot read,
+    and a dollar figure the calculator cannot account for — and not one of them
+    survived a PATCH or a Submit, because `_refresh_violations` overwrote the
+    column with the Fair Housing answer.
+
+    That is not a cosmetic loss. Pressing Submit on a draft refused for a
+    "monitor" CLEARED the finding and advanced the piece, and `enqueue_generated`
+    then bought a narration and six images for the shot a person had already
+    refused. Measured on piece 74 on 17-sep-2026.
+
+    One implementation, reached two ways: the draft the model just returned,
+    and the row as it sits in the table. `model_construct` rather than the
+    validating constructor, because the row may hold text a person typed
+    through the console and a script one character over the model's limit has
+    to be CHECKED, not turned into a 500 in the face of whoever is trying to
+    fix it.
+    """
+    plan = scenes if isinstance(scenes, dict) else {}
+    narration = plan.get("narration")
+    draft = DraftPayload.model_construct(
+        hook=hook or "",
+        script=script or "",
+        caption=caption or "",
+        scenes=[
+            Scene.model_construct(
+                visual_prompt=str(row.get("visual_prompt") or ""),
+                on_screen_text=str(row.get("on_screen_text") or ""),
+            )
+            for row in (plan.get("scenes") or [])
+            if isinstance(row, dict)
+        ],
+        narration=str(narration) if narration else None,
+    )
+    return _all_violations(draft, language, check)
+
+
 def _all_violations(
     draft: DraftPayload,
     language: ContentLanguage,

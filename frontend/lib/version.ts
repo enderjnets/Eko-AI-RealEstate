@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.116.0";
+export const CURRENT_VERSION = "0.117.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.117.0",
+    date: "2026-09-17",
+    title: {
+      en: "A finding the writer made is not erased by a button",
+      es: "Un hallazgo del escritor no lo borra un botón",
+    },
+    changes: [
+      { en: "The console formed its own opinion of a piece with the Fair Housing filter alone. The writer makes four more kinds of finding — writing in a shot, a narration in the wrong language, a shot list an image model cannot read, and a dollar figure the calculator cannot account for — and not one of them survived an edit or a Submit: the row was overwritten with the Fair Housing answer, which had no opinion about any of them.", es: "La consola se formaba su propia opinión de una pieza con el filtro de Fair Housing y nada más. El escritor hace cuatro clases más de hallazgo — texto dentro de un plano, una narración en otro idioma, una lista de planos que el modelo de imagen no sabe leer, y una cifra en dólares que la calculadora no respalda — y ninguno sobrevivía a una edición ni a un «Enviar»: la fila se sobrescribía con la respuesta de Fair Housing, que no tiene opinión sobre ninguno de ellos." },
+      { en: "That was not a display problem. The Submit route recomputed the findings and then DECIDED with them, so pressing Submit on a refused draft cleared the refusal and advanced the piece — and a piece in the queue with no findings and no video is one the sweep buys a narration and six images for. Measured on piece 74 on 17-sep: refused for a monitor that arrives with words written on it, one button away from paying for the shot a person had already refused.", es: "No era un problema de pantalla. La ruta de «Enviar» recalculaba los hallazgos y luego DECIDÍA con ellos, así que pulsar «Enviar» en un borrador rechazado borraba el rechazo y adelantaba la pieza — y una pieza en la cola sin hallazgos y sin vídeo es de las que el barrido paga con una narración y seis imágenes. Medido en la pieza 74 el 17-sep: rechazada por un monitor que llega con letras escritas, a un botón de pagar el plano que una persona ya había rechazado." },
+      { en: "One function now, reached two ways: the draft the model just returned and the row as it sits in the table go through the same checks. It is built from the columns without validating them, on purpose — a piece whose text somebody typed longer than the model's own limit has to be CHECKED, not turned into an error in the face of whoever is trying to fix it.", es: "Ahora es una sola función a la que se llega por dos caminos: el borrador que acaba de devolver el modelo y la fila tal como está en la tabla pasan por las mismas comprobaciones. Se arma desde las columnas sin validarlas, y es a propósito: una pieza cuyo texto alguien escribió más largo que el límite del propio modelo tiene que COMPROBARSE, no convertirse en un error en la cara de quien intenta arreglarla." },
+    ],
+  },
   {
     version: "0.116.0",
     date: "2026-09-17",

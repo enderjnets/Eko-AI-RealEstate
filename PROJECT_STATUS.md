@@ -5,6 +5,56 @@ Estado de ejecución del plan `~/.claude/plans/si-haz-el-plan-jazzy-sifakis.md`
 v0.56.0 y anteriores vive en git y en el plan.
 
 ---
+
+# 17-sep — la consola borraba los hallazgos del escritor (0.117.0, SIN desplegar)
+
+Salió de mirar por qué la **74** estaba parada, y es más grande que la 74.
+
+**Lo que estaba roto.** `_refresh_violations` (`backend/app/api/v1/content.py`)
+recalculaba `violations` con `text_violations`, que es el filtro de Fair
+Housing **y nada más**. El escritor hace cuatro clases más de hallazgo, todas
+en `_all_violations` (`backend/app/services/content_writer.py`): texto legible
+dentro de un plano (`readable_text_in_shot`), narración en otro idioma, lista
+de planos que el modelo de imagen no sabe leer, y cifra en dólares sin
+respaldo. Ninguna sobrevivía a una edición ni a un «Enviar».
+
+**Por qué no es cosmético.** `submit_for_approval` **recalcula y luego decide
+con lo recalculado**: pulsar «Enviar» en un borrador rechazado borraba el
+rechazo y lo subía a `needs_approval`. Y una pieza ahí, sin hallazgos y sin
+vídeo, es justo la que `enqueue_generated` recoge — una narración y seis
+imágenes pagadas por el plano que una persona ya había rechazado. No hacía
+falta ni editar: bastaba el botón.
+
+**El arreglo.** `stored_violations` en `content_writer.py`: arma el borrador
+desde las columnas con `model_construct` (sin validar — una fila puede llevar
+texto que una persona escribió más largo que el límite del modelo, y eso hay
+que comprobarlo, no convertirlo en un 500) y lo pasa por el **mismo**
+`_all_violations`. El comprobador no se tocó; cambió quién lo llama.
+
+**Medido.** Backend **2271 pasados**, 0 fallos, 0 saltados (eran 2265 antes de
+los seis nuevos), `ruff check app tests` limpio. Frontend: `tsc` rc 0, **514
+tests**, `next lint` rc 0 (dos avisos preexistentes en
+`app/brief/[token]/page.tsx`, fichero no tocado), `next build` rc 0.
+
+**Los seis tests, en rojo con dos mutaciones distintas.** Devolver
+`_refresh_violations` a `text_violations` deja en rojo exactamente los dos de
+las rutas (enviar y editar); devolver `stored_violations` a la opinión
+incompleta deja los seis. Los dos fuentes volvieron con el `md5` idéntico
+(`114095f5…`, `2eb667c7…`).
+
+**Dónde está.** Worktree `~/eko-plano-limpio`, rama
+`fix/el-hallazgo-del-plano-no-se-lava`, **sin desplegar**: falta que Ender lo
+autorice en un mensaje aparte, ventana desde las 21:00 de Denver.
+
+**La 74, aparte.** Sigue en `draft` con su hallazgo y con el vídeo **viejo**
+colgado (el barrido la reescribió el 17 a las 23:14 y no encoló render). El
+plano 4 pedía un monitor. La escritura propuesta —cambiarlo por un reloj de
+arena, que no lleva superficie donde escribir, y poner `violations` a NULL— se
+le pasó a Ender como SQL condicionado al texto exacto; **pendiente de que la
+corra**. Después: botón «Rehacer el vídeo» (el SQL solo no basta: `_enqueue`
+ve el trabajo ya hecho y no encola; `requeue_render` es quien lo resetea).
+
+---
 # 17-sep, 23:14 UTC — el barrido reescribió la 74 y la dejó parada
 
 Lo que hizo la orden de trabajo que le puse a las 22:58 (`category='other'`,

@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.117.0] - 2026-09-17
+
+### Corregido
+
+**Un hallazgo del escritor no lo borra un botón.**
+
+La consola se formaba su propia opinión de una pieza con `text_violations`, que
+es el filtro de Fair Housing y nada más. El escritor hace **cuatro clases más**
+de hallazgo — texto legible dentro de un plano, una narración en otro idioma,
+una lista de planos que el modelo de imagen no sabe leer, y una cifra en
+dólares que la calculadora no respalda — y ninguna sobrevivía, porque
+`_refresh_violations` sobrescribía la columna con la respuesta de Fair Housing.
+
+No era un problema de pantalla. `submit_for_approval` **recalcula los hallazgos
+y luego decide con ellos**, así que pulsar «Enviar» en un borrador rechazado
+borraba el rechazo y adelantaba la pieza a `needs_approval`. Y una pieza ahí,
+sin hallazgos y sin vídeo, es exactamente la que `enqueue_generated` recoge:
+una narración y seis imágenes pagadas por el plano que una persona ya había
+rechazado.
+
+Medido en la **pieza 74**, el 17-sep: rechazada por *«shot 4 asks for a
+"monitor", which arrives with words written on it»*, parada en `draft`, a un
+botón de distancia de pagarlo.
+
+- **Una sola función, a la que se llega por dos caminos.** `stored_violations`
+  arma el borrador desde las columnas y lo pasa por el **mismo**
+  `_all_violations` que usa el escritor, así que la fila y el borrador no
+  pueden discrepar sobre la misma pieza. El comprobador no se tocó: lo que
+  cambió es quién lo llama.
+- **Se arma sin validar, y es a propósito.** Una fila puede contener texto que
+  una persona escribió por la consola; un guion un carácter más largo que el
+  límite del modelo tiene que **comprobarse**, no convertirse en un 500 en la
+  cara de quien intenta arreglarlo. De ahí `model_construct`.
+- **Seis tests, cada uno visto en rojo con su mutación.** Dos mutaciones
+  distintas: devolver `_refresh_violations` a `text_violations` deja en rojo
+  exactamente los dos de las rutas (enviar y editar); devolver
+  `stored_violations` a la opinión incompleta deja los seis. Los fuentes
+  volvieron con el mismo `md5`.
+
 ## [0.116.0] - 2026-09-17
 
 ### Corregido
