@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.118.0";
+export const CURRENT_VERSION = "0.119.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.119.0",
+    date: "2026-09-17",
+    title: {
+      en: "A prompt may not ask for somebody by their job",
+      es: "Un plano no puede pedir a alguien por su oficio",
+    },
+    changes: [
+      { en: "The people filter named every demographic word a model reaches for — families, couples, children, professionals, men, women — and not one job title. Piece 16 asked for \"a real estate agent reviewing documents at a kitchen table\", passed every gate, rendered a man in a suit, and was published to three platforms.", es: "El filtro de personas nombraba todas las palabras demográficas que un modelo usa — familias, parejas, niños, profesionales, hombres, mujeres — y ningún oficio. La pieza 16 pedía «a real estate agent reviewing documents at a kitchen table», pasó todas las puertas, dibujó a un hombre de traje y se publicó en tres plataformas." },
+      { en: "Three words added: agent, realtor, broker, with their Spanish and plural forms. Only three, and that was measured: appraiser, inspector, contractor, buyer and seller arrive in this channel's prompts as possessives or abstractions — \"an appraiser's report\", \"fields for buyer comments\" — where nobody is in frame, and adding them would refuse four correct prompts to catch none. The change refuses 2 of the 99 stored prompts, and both are right.", es: "Se añaden tres palabras: agent, realtor y broker, con sus formas en español y en plural. Solo tres, y está medido: appraiser, inspector, contractor, buyer y seller llegan en los prompts de este canal como posesivos o abstracciones — «an appraiser's report», «fields for buyer comments» — donde no hay nadie en el encuadre, y añadirlas rechazaría cuatro prompts correctos sin cazar ninguno. El cambio rechaza 2 de los 99 prompts guardados, y los dos con razón." },
+    ],
+  },
   {
     version: "0.118.0",
     date: "2026-09-17",

@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.119.0] - 2026-09-17
+
+### Corregido
+
+**Un plano no puede pedir a alguien por su oficio.**
+
+`PEOPLE_IN_PICTURES` nombraba todas las palabras demográficas que un modelo
+usa —familias, parejas, niños, profesionales, hombres, mujeres— y **ningún
+oficio**. La pieza 16 pedía *«a real estate agent reviewing documents at a
+kitchen table»*, pasó el filtro del escritor, dibujó a un hombre de traje y
+Buffer la publicó en tres plataformas la tarde del 17-sep.
+
+- **Tres palabras: `agent`, `realtor`, `broker`**, con sus formas en español y
+  en plural. Solo tres, y está **medido** sobre los 99 prompts guardados:
+  `appraiser`, `inspector`, `contractor`, `buyer` y `seller` llegan en este
+  canal como posesivos o abstracciones —«an appraiser's report», «a home
+  inspector's clipboard», «fields for buyer comments»— donde no hay nadie en
+  el encuadre. Añadirlas costaría cuatro prompts correctos y no cazaría
+  ninguno. Una palabra entra aquí por describir a **una persona haciendo
+  algo**, no por nombrar un oficio.
+- El cambio rechaza **2 de 99** prompts guardados, y los dos con razón.
+- Diez tests, en rojo con la mutación que quita las tres palabras.
+
 ## [0.118.0] - 2026-09-17
 
 ### Cambiado

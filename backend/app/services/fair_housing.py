@@ -206,6 +206,22 @@ PEOPLE_IN_PICTURES = (
     "portrait", "portraits", "retrato", "faces", "face", "cara", "rostro",
     "smiling", "sonriente", "sonriendo",
     "neighbors", "neighbours", "vecinos",
+    # The people a real estate prompt asks for by JOB, which the demographic
+    # words above do not reach. Measured on 17-sep-2026 against the 99 stored
+    # `visual_prompt`s: piece 16 asked for "a real estate agent reviewing
+    # documents at a kitchen table", passed every filter, rendered a man in a
+    # suit, and Buffer published it to three platforms that evening.
+    #
+    # Only these three. "appraiser", "inspector", "contractor", "buyer" and
+    # "seller" were measured too and left out on purpose: in this channel's
+    # prompts they arrive as possessives or as abstractions — "an appraiser's
+    # report", "a home inspector's clipboard", "fields for buyer comments" —
+    # where nobody is in the frame, and adding them would refuse four correct
+    # prompts to catch none. A word earns its place here by describing a
+    # person DOING something, not by naming a trade.
+    "agent", "agents", "agente", "agentes",
+    "realtor", "realtors",
+    "broker", "brokers", "corredor", "corredores",
     "church", "churchgoers", "iglesia", "temple", "synagogue", "mosque",
     "school", "schools", "escuela", "escuelas", "colegio",
 )
