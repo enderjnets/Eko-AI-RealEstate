@@ -36,14 +36,30 @@ export function CallLine({
 }: {
   /** Goes into the event's `where`, so the funnel can tell the pages apart. */
   where: string;
-  /** `dark` sits on the cream-on-night panels; `light` on the canvas pages. */
-  tone?: "dark" | "light";
+  /**
+   * `dark` sits on the cream-on-night panels, `light` on the canvas pages, and
+   * `page` on `/contact`, which is not a landing page at all: it is the
+   * product's own grey card and it has a real dark mode. The `ln-` palette is
+   * fixed warm ink — `ln-body` is #57503F — so under `.dark` the number would
+   * be present and unreadable, which is worse than absent.
+   */
+  tone?: "dark" | "light" | "page";
 }) {
   const { t } = useI18n();
   if (!LANDING.phone) return null;
 
-  const muted = tone === "dark" ? "text-ln-canvas/70" : "text-ln-muted";
-  const strong = tone === "dark" ? "text-ln-cream" : "text-ln-body";
+  const muted =
+    tone === "dark"
+      ? "text-ln-canvas/70"
+      : tone === "page"
+        ? "text-gray-500 dark:text-gray-400"
+        : "text-ln-muted";
+  const strong =
+    tone === "dark"
+      ? "text-ln-cream"
+      : tone === "page"
+        ? "text-gray-900 dark:text-gray-100"
+        : "text-ln-body";
 
   return (
     <p className={`mt-6 text-[13px] leading-[1.7] ${muted}`}>

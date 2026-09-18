@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.129.0] - 2026-09-18
+
+### Añadido
+
+**`/contact` ya ofrece el teléfono: era la única página pública sin salida
+directa.**
+
+La página que se llama «contacto» no tenía teléfono de ninguna clase —ni escrito
+ni enlazado— y su único camino era el formulario. Ahora lleva la misma línea de
+llamada que `/calculator` y `/fall`, **bajo la tarjeta del formulario**, que es
+donde mira quien acaba de decidir que prefiere hablar con una persona.
+
+Va **fuera del `<Suspense>`** a propósito. `ContactForm` lee la query, así que
+Next hornea el *fallback* en el HTML estático y todo lo que quede dentro existe
+solo después de hidratar: el número no saldría en el HTML servido, que es
+precisamente donde se cazaron los dos fallos anteriores de este número, y
+desaparecería en el mismo fallo de JavaScript que rompe el formulario. Fuera, el
+HTML servido ya trae `tel:+17208249313` (una vez, en el `href`) y
+`(720) 824-9313` visible — medido en el `build`.
+
+Un tono nuevo, `page`, y el porqué: `/contact` no es una página de marketing,
+es la tarjeta gris del producto y **tiene modo oscuro de verdad**. La paleta
+`ln-` es tinta cálida fija (`ln-body` es `#57503F`), así que sobre su fondo negro
+el número habría quedado **presente e ilegible**, que es peor que ausente.
+
+**Lo que este cambio NO arregla, dicho aquí para que no se descubra tarde:**
+`/contact` sigue sin `LandingTracker`. Sus visitas no entran en el embudo y **una
+pulsación sobre el número no se registra**. El lead sí llega —con su `utm`, por
+`collectAttribution`— pero huérfano de recorrido: ese formulario no manda
+`session_id`, así que `_claim_landing_session` no puede atarlo a ninguna sesión.
+Es decir, `/contact` no es un agujero negro para leads, sino para lo que pasa
+antes del lead.
+
+Y un test escrito alrededor de **la regla** y no del cambio: parte de
+`PUBLIC_PATHS`, así que una sexta página pública no puede serle invisible, y
+resuelve un nivel de indirección porque `/` y `/start` delegan la página entera
+en un componente — que es exactamente por donde `/start` se escapó dos veces.
+
 ## [0.128.0] - 2026-09-18
 
 ### Corregido

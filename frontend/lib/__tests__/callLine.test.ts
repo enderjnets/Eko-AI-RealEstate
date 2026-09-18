@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { PUBLIC_PATHS } from "../hosts";
 import { readableUsPhone } from "../landing";
 
 /**
@@ -23,12 +24,25 @@ const calculator = read("app", "calculator", "page.tsx");
 const fall = read("app", "fall", "page.tsx");
 const i18n = read("lib", "i18n.tsx");
 const start = read("components", "landing", "Start.tsx");
+const contact = read("app", "contact", "page.tsx");
+
+/** The route file behind each public path, so the rule below can read it. */
+const PAGE_OF: Record<string, string[]> = {
+  "/": ["app", "page.tsx"],
+  "/contact": ["app", "contact", "page.tsx"],
+  "/fall": ["app", "fall", "page.tsx"],
+  "/calculator": ["app", "calculator", "page.tsx"],
+  "/start": ["app", "start", "page.tsx"],
+};
 
 describe("the call line", () => {
-  it("is on both pages that had a form and no phone", () => {
+  it("is on the three pages whose only door was a form", () => {
+    // `/contact` joined them on 18-sep: the page named after making contact
+    // offered no way of making it except the form.
     for (const [name, source] of [
       ["calculator", calculator],
       ["fall", fall],
+      ["contact", contact],
     ] as const) {
       expect(source, `${name} does not import it`).toMatch(
         /import \{ CallLine \} from "@\/components\/landing\/CallLine"/,
@@ -83,6 +97,32 @@ describe("the call line", () => {
     expect(start).not.toMatch(/>\s*\{LANDING\.phone\}\s*</);
   });
 
+  it("every public page offers the number, whoever ends up printing it", () => {
+    // The rule, not the change. Twice now a page was missed because the test
+    // only knew about the files that release had touched: this one starts from
+    // `PUBLIC_PATHS`, so a sixth public page cannot be invisible to it.
+    //
+    // One level of indirection is resolved on purpose: `/` and `/start` hand
+    // the whole page to a landing component, so the number is never in the
+    // route file — which is exactly how `/start` slipped through.
+    for (const path of PUBLIC_PATHS) {
+      const parts = PAGE_OF[path];
+      expect(parts, `${path} is public and this test does not know its file`).toBeTruthy();
+      let source = read(...parts);
+      for (const spec of source.match(/@\/components\/landing\/\w+/g) ?? []) {
+        const name = spec.split("/").pop() as string;
+        // Only if it is actually rendered: an import left behind by a deleted
+        // line would otherwise vouch for a page that shows nothing.
+        if (new RegExp(`<${name}[\\s/>]`).test(source)) {
+          source += read("components", "landing", `${name}.tsx`);
+        }
+      }
+      expect(source, `${path} gives a visitor no number to call`).toMatch(
+        /LANDING\.phone/,
+      );
+    }
+  });
+
   it("still links, because the twelve on a phone are the ones who tap", () => {
     expect(component).toMatch(/href=\{`tel:\$\{dialable\(LANDING\.phone\)\}`\}/);
   });
@@ -95,6 +135,11 @@ describe("the call line", () => {
     expect(component).toMatch(/data-track=\{where\}/);
     expect(calculator).toMatch(/<CallLine where="calculator"/);
     expect(fall).toMatch(/<CallLine where="fall"/);
+    // `/contact` carries its `where` too, but it is the one public page with no
+    // `LandingTracker`: nothing is listening there, so a tap on its number is
+    // not recorded yet. Said out loud rather than asserted, because the day the
+    // page is instrumented this comment is what has to go, not a red test.
+    expect(contact).toMatch(/<CallLine where="contact"/);
   });
 
   it("renders nothing at all when no number is configured", () => {

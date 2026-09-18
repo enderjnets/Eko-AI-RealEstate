@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.128.0";
+export const CURRENT_VERSION = "0.129.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.129.0",
+    date: "2026-09-18",
+    title: {
+      en: "The contact page can be contacted",
+      es: "A la página de contacto se la puede contactar",
+    },
+    changes: [
+      { en: "/contact had no phone of any kind — not written, not linked — so the page named after making contact offered exactly one way of doing it. It now carries the same call line as /calculator and /fall, below the form card and OUTSIDE the Suspense boundary — inside it, the number would exist only after hydration and would vanish in the same JS failure that breaks the form. It does NOT yet record the tap: /contact is the one public page with no LandingTracker, so its visits never reach the funnel. A lead from it still arrives, with its utm, but with no session behind it.", es: "/contact no tenía teléfono de ninguna clase — ni escrito ni enlazado — así que la página que se llama «contacto» ofrecía exactamente una forma de hacerlo. Ahora lleva la misma línea de llamada que /calculator y /fall, bajo la tarjeta del formulario y FUERA del Suspense — dentro, el número existiría solo tras hidratar y desaparecería en el mismo fallo de JavaScript que rompe el formulario. Lo que todavía NO hace es registrar la pulsación: /contact es la única página pública sin LandingTracker, así que sus visitas no llegan al embudo. Un lead suyo sí entra, con su utm, pero sin recorrido detrás." },
+      { en: "A new tone for it, because /contact is not a landing page: it is the product's own grey card and it has a real dark mode, where the fixed warm ink of the landing palette would have been present and unreadable.", es: "Un tono nuevo para ella, porque /contact no es una página de marketing: es la tarjeta gris del producto y tiene modo oscuro de verdad, donde la tinta cálida fija de la paleta de marketing habría quedado presente e ilegible." },
+      { en: "And a test that starts from PUBLIC_PATHS instead of from the files a release touched: every public page must offer a number, resolving one level of indirection because / and /start hand the whole page to a component — which is how /start slipped through twice.", es: "Y un test que parte de PUBLIC_PATHS en vez de los ficheros que tocó la release: toda página pública tiene que ofrecer un número, resolviendo un nivel de indirección porque / y /start delegan la página entera en un componente — que es por donde se escapó /start dos veces." },
+    ],
+  },
   {
     version: "0.128.0",
     date: "2026-09-18",

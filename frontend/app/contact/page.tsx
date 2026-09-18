@@ -27,6 +27,7 @@ import { submitPublicLead, type CaptureOutcome } from "@/lib/api";
 import { collectAttribution } from "@/lib/capture";
 import { useI18n } from "@/lib/i18n";
 import { NAME_FIELD_MAX, fullName } from "@/lib/leadName";
+import { CallLine } from "@/components/landing/CallLine";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { TURNSTILE_SITE_KEY, Turnstile } from "@/components/ui/Turnstile";
 
@@ -326,6 +327,16 @@ export default function ContactPage() {
       <Suspense fallback={<Loader2 className="h-5 w-5 animate-spin text-gray-400" />}>
         <ContactForm />
       </Suspense>
+
+      {/* The page called "contact" had no way of making contact except the
+          form. This sits OUTSIDE the boundary above on purpose: `ContactForm`
+          reads the query string, so Next bakes the fallback into the static
+          HTML and anything inside it exists only after hydration. Out here the
+          number is in the served HTML — it survives the JS failure that would
+          break the form itself, and it can be read from outside the app, which
+          is how both defects in this number were caught. */}
+      <CallLine where="contact" tone="page" />
+
       <LanguageSwitcher />
     </main>
   );
