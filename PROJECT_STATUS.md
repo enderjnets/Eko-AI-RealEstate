@@ -6,6 +6,72 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+# ✅ 17-sep 23:40 — 0.120.0 desplegada: la rotación ya habla de Denver
+
+`docker compose exec -T backend curl -s localhost:8000/api/v1/health` →
+`{"status":"ok","app":"Eko AI Inmobiliario","version":"0.120.0","env":"production","captcha":"on","llm_fallback":"ok"}`
+
+- **Arranque limpio**: 0 coincidencias de `Traceback|ImportError|AttributeError|CRITICAL|ERROR`.
+- **Verificado en caliente, no por el test**: `docker compose exec backend python -c` sobre
+  `TOPICS` imprime **15 temas**, y los tres últimos son `both the_season_right_now`,
+  `both altitude_and_your_house`, `both colorado_weather_and_the_roof`.
+- Suite completa antes de subir: **2.311 en verde**, `ruff` limpio, 4 mutaciones vistas en
+  rojo y `md5` del fuente idéntico después. Sin migración.
+- **Vuelta atrás**: `git reset --hard 4e5221d && docker compose up -d --build backend frontend`.
+
+## Lo demás que se hizo esta noche
+
+- **El panel de analíticas, relleno**: 49 filas escritas (27 de TikTok, 22 de Instagram).
+  Instagram estaba a **1 de 27**. Los likes y comentarios de Instagram van `NULL` y no cero:
+  Meta reserva ese panel al móvil y no se midieron. El modelo los admite opcionales
+  justamente para esto.
+- **El comentario pendiente, contestado.** `mary.jane.smith5` llevaba tres horas esperando.
+  Respuesta publicada con el sí de Ender: *«Here you go — the full guide, 12 places by
+  elevation with the drive from Denver and the week to go: denverhomestory.com/fall»*.
+  **Nueve de nueve.** Ojo al detalle que casi lo estropea: TikTok corta a 150 caracteres y
+  la primera redacción se comió justo el enlace — 150/150 y el texto terminaba en
+  «no email needed:». La segunda entra en 124.
+- **El botón de llamar: resuelto y NO es un fallo.** Marca `agency_phone`, la misma línea
+  de la agencia guardada en `agent_settings`. Ender confirma que lo han probado y funciona.
+  Lo que no hace es pasar por Clara, y **Clara no está en Twilio sino en VAPI**: las tres
+  rutas de gestión de VAPI (`/assistant`, `/phone-number`, el asistente concreto) devuelven
+  **403** con la clave configurada. Puede ser lo normal si esa clave es la pública. Para
+  apuntar el botón a Clara hace falta su número, que **solo puede dárnoslo Ender**.
+
+## Preparado y NO desplegado: `/ig` → `/fall` mientras dure el otoño
+
+`/ig` no es un ajuste de la cuenta de Instagram: es **una redirección nuestra**, un 307 a
+`/start?utm_source=instagram&utm_medium=bio&utm_campaign=profile`. Cambiar su destino es
+código, no tocar el perfil.
+
+**La propuesta**: durante el otoño, que `/ig` lleve a `/fall` con las mismas UTM.
+- A favor: `/fall` es la página mejor leída del sitio (**63 %** de scroll medio) y ya tiene
+  el formulario de consulta debajo de la guía, así que no se pierde el camino al contacto.
+  Las 3 sesiones que llegaron de Instagram a `/start` se fueron con **0 % de scroll**.
+- En contra: son **5 sesiones en dos semanas**. El efecto absoluto esta noche es mínimo.
+- 🔴 **Caduca**: `/fall` habla de álamos, doce sitios por altitud. A partir de **1-nov** el
+  destino tiene que volver a `/start`, o la redirección envejece sola.
+
+**No se despliega de madrugada** por eso último: un cambio con fecha de caducidad necesita
+dueño, y el beneficio de esta noche no justifica adelantarlo. Decisión de Ender.
+
+## Lo que se decidió NO hacer, y por qué
+
+- **No subir `CONTENT_MAX_DRAFTS_PER_DAY`.** Consenso de Claude, del advisor y de MiniMax
+  M2.7: con 0 leads de 11.889 vistas el cuello no es el volumen.
+- **No meter `landing_path` en `Topic`.** Era la forma obvia de que las piezas de temporada
+  aterrizaran en `/fall`, y es escribir hoy el fallo de noviembre: la rotación es de todo el
+  año y la página es de dos meses. Si alguna vez hace falta, es `Topic.active_window` con
+  fechas — una función con plan, no un parche de madrugada.
+- **No anclar la ciudad en los prompts de imagen todavía.** La calle inglesa del plano 3 de
+  la 74 es **una de seis fotogramas**: hay que medirlo sobre las piezas ya publicadas antes
+  de tocar el generador.
+- **No tocar las descripciones de YouTube ya publicadas.** Son ediciones hacia fuera, y el
+  2 % de scroll en `/calculator` todavía no tiene hipótesis: puede significar que se fueron
+  satisfechos porque el número estaba arriba del todo.
+
+---
+
 # 📊 17-sep, noche — las tres redes medidas de punta a punta, y por qué 11.889 vistas dan 0 leads
 
 Datos completos y su procedencia en `scratchpad/datos_redes_17sep.md` (no versionado).
