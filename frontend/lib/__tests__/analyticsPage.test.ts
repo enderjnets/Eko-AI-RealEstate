@@ -431,7 +431,19 @@ describe("the measurable content scorecard", () => {
       React.createElement(
         LanguageProvider,
         null,
-        React.createElement(ContentTable, { rows: [row], timezone: "America/Denver" }),
+        React.createElement(ContentTable, {
+          rows: [row],
+          timezone: "America/Denver",
+          // The range's own totals, which the card no longer infers from its
+          // rows: `content` sends the newest twenty videos and the strip above
+          // the list says "in range".
+          window: {
+            videos: 1,
+            posts: 1,
+            shown_videos: 1,
+            tagged: row.attribution,
+          },
+        }),
       ),
     );
     const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");

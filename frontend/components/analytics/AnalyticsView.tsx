@@ -278,7 +278,11 @@ export function AnalyticsView() {
             right, and stranded "Per person" beside a wall of zeros. */}
         <div className="lg:col-span-2">
           <Card title={t("analytics.content")} hint={t("analytics.contentHint")}>
-            <ContentTable rows={data.content} timezone={data.range.timezone} />
+            <ContentTable
+              rows={data.content}
+              timezone={data.range.timezone}
+              window={data.content_window}
+            />
           </Card>
         </div>
 

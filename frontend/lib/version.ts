@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.131.0";
+export const CURRENT_VERSION = "0.132.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.132.0",
+    date: "2026-09-18",
+    title: {
+      en: "The scorecard totals the range, not the slice of it it was sent",
+      es: "El marcador suma el rango, no el trozo que le mandaron",
+    },
+    changes: [
+      { en: "The analytics query returns the twenty newest videos, so on an agency publishing daily the card held a slice of the range while the figure above it said \"in range\". That figure is now counted on the server over every publication in the window, through the very same query the rows use — never a second copy of it, because two copies is how a total and the rows under it start disagreeing while both look plausible.", es: "La consulta de analítica devuelve los veinte vídeos más recientes, así que en una agencia que publica a diario la tarjeta tenía un trozo del rango mientras la cifra de arriba decía «del rango». Esa cifra se cuenta ahora en el servidor sobre todas las publicaciones de la ventana, con la MISMA consulta que usan las filas — nunca una segunda copia, porque dos copias es como un total y las filas de debajo empiezan a no coincidir pareciendo las dos razonables." },
+      { en: "And when the range holds more videos than arrived, the card says which it has: \"the newest 20 of 25 videos in this range\". No button there can fetch the rest — the cut happened before the card existed — so saying it is the fix.", es: "Y cuando el rango tiene más vídeos de los que llegaron, la tarjeta dice cuáles tiene: «los 20 vídeos más recientes de 25 en este rango». Ningún botón puede traer el resto — el corte ocurrió antes de que la tarjeta existiera — así que decirlo es el arreglo." },
+    ],
+  },
   {
     version: "0.131.0",
     date: "2026-09-18",

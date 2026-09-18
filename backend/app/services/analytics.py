@@ -749,6 +749,12 @@ async def deals(db: AsyncSession, w: Window, *, with_value: bool) -> dict:
 # ── Content: what each published piece was followed by ───────────────────
 
 
+# How many VIDEOS the card is handed. It lives here, once, because the totals
+# beside the list are computed against the same number: two copies would let the
+# card say "the newest 20 of 25" while actually holding a different 20.
+CONTENT_VIDEO_LIMIT = 20
+
+
 def _empty_attribution() -> dict[str, int]:
     return {
         "sessions": 0,
@@ -817,131 +823,26 @@ def _normalized_first_touch_source() -> ColumnElement[str]:
     )
 
 
-async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
-    """Recent publications and what happened in the two days after each.
+def _first_touch_content() -> ColumnElement[str]:
+    """The piece tag a lead arrived carrying, on its FIRST touch."""
+    return func.json_extract_path_text(Lead.meta, "attribution", "utm_content")
 
-    **This is association, not attribution, and the difference is the whole
-    honesty of the section.** A link in a Shorts description is not clickable
-    and Instagram strips the referrer, so most people who see a video and come
-    to the site arrive typing the domain — indistinguishable from anyone else.
-    What can be said truthfully is "these visits happened in the 48 hours after
-    this went out". The response says `association` so the page cannot round it
-    up into a claim it does not support.
 
-    Anchored on `published_at`, never `scheduled_at`: a post still queued has
-    not been seen by anybody, and a window starting at its scheduled time would
-    hand it visits that happened before it existed.
+async def _attribution_by_key(
+    db: AsyncSession, w: Window, publication_keys: set[tuple[int, str]]
+) -> dict[tuple[int, str], dict[str, int]]:
+    """The nine exact counters per (piece, platform) — and the only place they
+    are computed.
 
-    `limit` counts videos rather than posts, because the page groups by video:
-    counting posts ends the list inside a video and drops the platforms that
-    did not fit, which reads as "we never posted it there".
-
-    **The association is per VIDEO, over the union of its posts' windows.**
-    The platforms of one video go out half a day apart, so their 48-hour
-    windows overlap for most of their length; counted per post, a visit in the
-    overlap sat on both rows and the owner adding the rows up got a number of
-    people that never existed. Every row of a video carries the same block, so
-    the payload keeps its shape and the card shows it once.
+    Extracted on 18-sep-2026 so the card's per-row figures and the range totals
+    beside them come from the SAME query. Two copies of this is how a strip and
+    the rows under it start disagreeing while both look plausible, which is the
+    one defect this whole section exists to prevent.
     """
-    recent = (
-        select(ContentPublication.piece_id)
-        .where(
-            ContentPublication.published_at.is_not(None),
-            w.within(ContentPublication.published_at),
-        )
-        .group_by(ContentPublication.piece_id)
-        .order_by(
-            func.max(ContentPublication.published_at).desc(),
-            ContentPublication.piece_id.desc(),
-        )
-        .limit(limit)
-    )
-    rows = (
-        await db.execute(
-            select(
-                ContentPublication.id,
-                ContentPublication.piece_id,
-                ContentPublication.platform,
-                ContentPublication.published_at,
-                ContentPublication.external_url,
-                ContentPiece.hook,
-            )
-            .join(ContentPiece, ContentPiece.id == ContentPublication.piece_id)
-            .where(
-                ContentPublication.published_at.is_not(None),
-                w.within(ContentPublication.published_at),
-                ContentPublication.piece_id.in_(recent),
-            )
-            .order_by(
-                ContentPublication.published_at.desc(), ContentPublication.id.desc()
-            )
-        )
-    ).all()
-
-    if not rows:
-        return []
-
-    starts_by_piece: dict[int, list[datetime]] = {}
-    for _publication_id, piece_id, _platform, published_at, _url, _hook in rows:
-        starts_by_piece.setdefault(piece_id, []).append(published_at)
-
-    publication_keys = {
-        (
-            piece_id,
-            platform.value if hasattr(platform, "value") else str(platform),
-        )
-        for _publication_id, piece_id, platform, _published_at, _url, _hook in rows
-    }
     attribution_by_key = {key: _empty_attribution() for key in publication_keys}
-    association_by_piece = {
-        piece_id: {"window_hours": 48, "sessions": 0, "leads": 0} for piece_id in starts_by_piece
-    }
-    leads_tagged_by_piece = {piece_id: 0 for piece_id in starts_by_piece}
-    windows = _publication_windows(starts_by_piece)
+    if not publication_keys:
+        return attribution_by_key
     keys = _publication_keys(publication_keys)
-
-    # Every result below is bounded by the number of displayed pieces or
-    # publications. PostgreSQL scans and aggregates the underlying visitors;
-    # the API worker never materialises a year's worth of session JSON and
-    # never performs sessions × pieces comparisons in Python.
-    session_associations = (
-        await db.execute(
-            select(
-                windows.c.piece_id,
-                func.count(distinct(LandingSession.id)),
-            )
-            .select_from(windows)
-            .join(
-                LandingSession,
-                and_(
-                    LandingSession.first_seen_at >= windows.c.start_at,
-                    LandingSession.first_seen_at < windows.c.end_at,
-                    _measured_session(),
-                ),
-            )
-            .group_by(windows.c.piece_id)
-        )
-    ).all()
-    for piece_id, count in session_associations:
-        association_by_piece[piece_id]["sessions"] = count
-
-    lead_associations = (
-        await db.execute(
-            select(windows.c.piece_id, func.count(distinct(Lead.id)))
-            .select_from(windows)
-            .join(
-                Lead,
-                and_(
-                    Lead.created_at >= windows.c.start_at,
-                    Lead.created_at < windows.c.end_at,
-                    _measured_lead(),
-                ),
-            )
-            .group_by(windows.c.piece_id)
-        )
-    ).all()
-    for piece_id, count in lead_associations:
-        association_by_piece[piece_id]["leads"] = count
 
     engaged = or_(
         LandingSession.max_scroll_pct >= 50,
@@ -1025,19 +926,7 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
         ):
             counters[field] = count
 
-    first_touch_content = func.json_extract_path_text(Lead.meta, "attribution", "utm_content")
-    tagged_leads = (
-        await db.execute(
-            select(keys.c.piece_id, func.count(distinct(Lead.id)))
-            .select_from(keys)
-            .join(Lead, first_touch_content == keys.c.content_tag)
-            .where(w.within(Lead.created_at), _measured_lead())
-            .group_by(keys.c.piece_id)
-        )
-    ).all()
-    for piece_id, count in tagged_leads:
-        leads_tagged_by_piece[piece_id] = count
-
+    first_touch_content = _first_touch_content()
     exact_leads = (
         await db.execute(
             select(
@@ -1065,6 +954,148 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
         counters["leads"] = leads_count
         counters["appointments_set"] = appointments_set
         counters["appointments_held"] = appointments_held
+
+    return attribution_by_key
+
+
+async def content(db: AsyncSession, w: Window, limit: int = CONTENT_VIDEO_LIMIT) -> list[dict]:
+    """Recent publications and what happened in the two days after each.
+
+    **This is association, not attribution, and the difference is the whole
+    honesty of the section.** A link in a Shorts description is not clickable
+    and Instagram strips the referrer, so most people who see a video and come
+    to the site arrive typing the domain — indistinguishable from anyone else.
+    What can be said truthfully is "these visits happened in the 48 hours after
+    this went out". The response says `association` so the page cannot round it
+    up into a claim it does not support.
+
+    Anchored on `published_at`, never `scheduled_at`: a post still queued has
+    not been seen by anybody, and a window starting at its scheduled time would
+    hand it visits that happened before it existed.
+
+    `limit` counts videos rather than posts, because the page groups by video:
+    counting posts ends the list inside a video and drops the platforms that
+    did not fit, which reads as "we never posted it there".
+
+    **The association is per VIDEO, over the union of its posts' windows.**
+    The platforms of one video go out half a day apart, so their 48-hour
+    windows overlap for most of their length; counted per post, a visit in the
+    overlap sat on both rows and the owner adding the rows up got a number of
+    people that never existed. Every row of a video carries the same block, so
+    the payload keeps its shape and the card shows it once.
+    """
+    recent = (
+        select(ContentPublication.piece_id)
+        .where(
+            ContentPublication.published_at.is_not(None),
+            w.within(ContentPublication.published_at),
+        )
+        .group_by(ContentPublication.piece_id)
+        .order_by(
+            func.max(ContentPublication.published_at).desc(),
+            ContentPublication.piece_id.desc(),
+        )
+        .limit(limit)
+    )
+    rows = (
+        await db.execute(
+            select(
+                ContentPublication.id,
+                ContentPublication.piece_id,
+                ContentPublication.platform,
+                ContentPublication.published_at,
+                ContentPublication.external_url,
+                ContentPiece.hook,
+            )
+            .join(ContentPiece, ContentPiece.id == ContentPublication.piece_id)
+            .where(
+                ContentPublication.published_at.is_not(None),
+                w.within(ContentPublication.published_at),
+                ContentPublication.piece_id.in_(recent),
+            )
+            .order_by(
+                ContentPublication.published_at.desc(), ContentPublication.id.desc()
+            )
+        )
+    ).all()
+
+    if not rows:
+        return []
+
+    starts_by_piece: dict[int, list[datetime]] = {}
+    for _publication_id, piece_id, _platform, published_at, _url, _hook in rows:
+        starts_by_piece.setdefault(piece_id, []).append(published_at)
+
+    publication_keys = {
+        (
+            piece_id,
+            platform.value if hasattr(platform, "value") else str(platform),
+        )
+        for _publication_id, piece_id, platform, _published_at, _url, _hook in rows
+    }
+    attribution_by_key = await _attribution_by_key(db, w, publication_keys)
+    association_by_piece = {
+        piece_id: {"window_hours": 48, "sessions": 0, "leads": 0} for piece_id in starts_by_piece
+    }
+    leads_tagged_by_piece = {piece_id: 0 for piece_id in starts_by_piece}
+    windows = _publication_windows(starts_by_piece)
+    keys = _publication_keys(publication_keys)
+
+    # Every result below is bounded by the number of displayed pieces or
+    # publications. PostgreSQL scans and aggregates the underlying visitors;
+    # the API worker never materialises a year's worth of session JSON and
+    # never performs sessions × pieces comparisons in Python.
+    session_associations = (
+        await db.execute(
+            select(
+                windows.c.piece_id,
+                func.count(distinct(LandingSession.id)),
+            )
+            .select_from(windows)
+            .join(
+                LandingSession,
+                and_(
+                    LandingSession.first_seen_at >= windows.c.start_at,
+                    LandingSession.first_seen_at < windows.c.end_at,
+                    _measured_session(),
+                ),
+            )
+            .group_by(windows.c.piece_id)
+        )
+    ).all()
+    for piece_id, count in session_associations:
+        association_by_piece[piece_id]["sessions"] = count
+
+    lead_associations = (
+        await db.execute(
+            select(windows.c.piece_id, func.count(distinct(Lead.id)))
+            .select_from(windows)
+            .join(
+                Lead,
+                and_(
+                    Lead.created_at >= windows.c.start_at,
+                    Lead.created_at < windows.c.end_at,
+                    _measured_lead(),
+                ),
+            )
+            .group_by(windows.c.piece_id)
+        )
+    ).all()
+    for piece_id, count in lead_associations:
+        association_by_piece[piece_id]["leads"] = count
+
+    first_touch_content = _first_touch_content()
+    tagged_leads = (
+        await db.execute(
+            select(keys.c.piece_id, func.count(distinct(Lead.id)))
+            .select_from(keys)
+            .join(Lead, first_touch_content == keys.c.content_tag)
+            .where(w.within(Lead.created_at), _measured_lead())
+            .group_by(keys.c.piece_id)
+        )
+    ).all()
+    for piece_id, count in tagged_leads:
+        leads_tagged_by_piece[piece_id] = count
 
     newest = await video_metrics.latest_metrics(db, [row[0] for row in rows])
 
@@ -1124,6 +1155,60 @@ async def content(db: AsyncSession, w: Window, limit: int = 20) -> list[dict]:
 # himself often works: filtering it would make his own actions vanish from his
 # own report. It appears as a row named `office`, which is at least the truth.
 _NOT_A_PERSON = ("vapi", "system")
+
+
+
+async def content_window(
+    db: AsyncSession, w: Window, limit: int = CONTENT_VIDEO_LIMIT
+) -> dict:
+    """What the RANGE holds, against what the card was handed.
+
+    `content()` returns the newest `limit` videos, so on an agency that publishes
+    daily the card has been showing a slice of the range while its headings said
+    "in range". A total that quietly covers less than its caption claims is the
+    one thing this section is built to never do, so the numbers the card totals
+    are computed here over EVERY publication in the range — through the same
+    `_attribution_by_key` the rows use, never a second copy of that query — and
+    the card is told how many videos it is actually holding.
+    """
+    videos, posts = (
+        await db.execute(
+            select(
+                func.count(distinct(ContentPublication.piece_id)),
+                func.count(ContentPublication.id),
+            ).where(
+                ContentPublication.published_at.is_not(None),
+                w.within(ContentPublication.published_at),
+            )
+        )
+    ).one()
+
+    pairs = (
+        await db.execute(
+            select(ContentPublication.piece_id, ContentPublication.platform)
+            .where(
+                ContentPublication.published_at.is_not(None),
+                w.within(ContentPublication.published_at),
+            )
+            .distinct()
+        )
+    ).all()
+    keys = {
+        (piece_id, platform.value if hasattr(platform, "value") else str(platform))
+        for piece_id, platform in pairs
+    }
+
+    tagged = _empty_attribution()
+    for counters in (await _attribution_by_key(db, w, keys)).values():
+        for field in tagged:
+            tagged[field] += counters[field]
+
+    return {
+        "videos": int(videos),
+        "posts": int(posts),
+        "shown_videos": min(int(videos), limit),
+        "tagged": tagged,
+    }
 
 
 async def by_agent(db: AsyncSession, w: Window) -> list[dict]:

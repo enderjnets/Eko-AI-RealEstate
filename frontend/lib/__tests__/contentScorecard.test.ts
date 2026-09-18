@@ -52,27 +52,60 @@ function row(over: Partial<Row> & Pick<Row, "piece_id" | "publication_id" | "pla
   } as Row;
 }
 
-/** The markup as a person reads it: tags gone, whitespace collapsed. */
-function text(rows: Row[]): string {
-  const html = renderToStaticMarkup(
-    React.createElement(
-      LanguageProvider,
-      null,
-      React.createElement(ContentTable, { rows, timezone: "America/Denver" }),
+type Window = Analytics["content_window"];
+
+/**
+ * The range totals the server would send for exactly these rows.
+ *
+ * The default is the un-truncated case — everything in the range arrived — so a
+ * test that is not about truncation reads the same numbers it would read on the
+ * page. `test(rows, window)` overrides it where the cut is the point.
+ */
+function wholeRange(rows: Row[]): Window {
+  const videos = new Set(rows.map((r) => r.piece_id)).size;
+  return {
+    videos,
+    posts: rows.length,
+    shown_videos: videos,
+    tagged: rows.reduce(
+      (total, r) => ({
+        sessions: total.sessions + r.attribution.sessions,
+        engaged: total.engaged + r.attribution.engaged,
+        cta_clickers: total.cta_clickers + r.attribution.cta_clickers,
+        contact_intents: total.contact_intents + r.attribution.contact_intents,
+        form_starts: total.form_starts + r.attribution.form_starts,
+        form_submits: total.form_submits + r.attribution.form_submits,
+        leads: total.leads + r.attribution.leads,
+        appointments_set: total.appointments_set + r.attribution.appointments_set,
+        appointments_held: total.appointments_held + r.attribution.appointments_held,
+      }),
+      { ...ZERO },
     ),
-  );
-  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  };
 }
 
-/** The markup itself, because a heading's full name lives in an attribute. */
-function markup(rows: Row[]): string {
+function render(rows: Row[], window?: Window): string {
   return renderToStaticMarkup(
     React.createElement(
       LanguageProvider,
       null,
-      React.createElement(ContentTable, { rows, timezone: "America/Denver" }),
+      React.createElement(ContentTable, {
+        rows,
+        timezone: "America/Denver",
+        window: window ?? wholeRange(rows),
+      }),
     ),
   );
+}
+
+/** The markup as a person reads it: tags gone, whitespace collapsed. */
+function text(rows: Row[], window?: Window): string {
+  return render(rows, window).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+}
+
+/** The markup itself, because a heading's full name lives in an attribute. */
+function markup(rows: Row[]): string {
+  return render(rows);
 }
 
 const occurrences = (haystack: string, needle: string) =>
@@ -264,6 +297,39 @@ describe("the missing counters", () => {
     // Three posts of one video with no reading is three numbers to go and
     // fetch, and saying "1" would understate the work by two thirds.
     expect(text(threePosts)).toContain("3 of 3 posts below");
+  });
+});
+
+describe("the range the card cannot see", () => {
+  it("totals what the server counted, not what it was handed", () => {
+    // `content` sends the newest twenty videos. Adding the rows up under a
+    // heading that says "in range" would cover less than it claims — so the
+    // strip prints the server's figure even when it is bigger than anything
+    // the rows below can account for.
+    const read = text(threePosts, {
+      videos: 25,
+      posts: 60,
+      shown_videos: 20,
+      tagged: { ...ZERO, sessions: 31, leads: 2 },
+    });
+    expect(read).toContain("31 visits · 2 leads");
+    expect(read).toContain("Tagged links, every post in range");
+  });
+
+  it("says so when the server sent fewer videos than the range holds", () => {
+    // No button here can bring the rest back: the cut happened before the card
+    // existed. Saying it is the whole fix.
+    const read = text(threePosts, {
+      videos: 25,
+      posts: 60,
+      shown_videos: 20,
+      tagged: { ...ZERO },
+    });
+    expect(read).toContain("The newest 1 of 25 videos in this range");
+  });
+
+  it("stays quiet when the whole range arrived", () => {
+    expect(text(threePosts)).not.toContain("videos in this range");
   });
 });
 

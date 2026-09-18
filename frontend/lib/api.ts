@@ -1319,6 +1319,19 @@ export interface Analytics {
      *  number has not been typed in yet. */
     views: { count: number | null; captured_on: string; source: string } | null;
   }[];
+  /** What the RANGE holds, against what `content` was able to send.
+   *
+   *  `content` returns the newest twenty VIDEOS, so on an agency publishing
+   *  daily it is a slice of the range. Totalling the rows under a heading that
+   *  says "in range" would cover less than it claims, so the totals are counted
+   *  server-side over every publication in the window — through the same query
+   *  the rows use — and `shown_videos` says how much of it arrived. */
+  content_window: {
+    videos: number;
+    posts: number;
+    shown_videos: number;
+    tagged: ContentAttribution;
+  };
   by_agent: { email: string; calls_logged: number; appointments: number; won: number }[];
 }
 

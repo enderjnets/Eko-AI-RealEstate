@@ -53,6 +53,7 @@ class AnalyticsOut(BaseModel):
     appointments: dict
     deals: dict
     content: list[dict]
+    content_window: dict
     by_agent: list[dict]
 
 
@@ -138,5 +139,10 @@ async def analytics(
         # service takes a boolean and cannot be tricked into deciding.
         deals=await svc.deals(db, window, with_value=role == "admin"),
         content=await svc.content(db, window),
+        # What the range holds, next to what `content` was able to send: it
+        # returns the newest CONTENT_VIDEO_LIMIT videos, and a card whose
+        # headings say "in range" while holding a slice of it is a number with
+        # the wrong name.
+        content_window=await svc.content_window(db, window),
         by_agent=await svc.by_agent(db, window),
     )

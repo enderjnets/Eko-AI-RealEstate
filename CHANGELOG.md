@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.132.0] - 2026-09-18
+
+### Cambiado
+
+**El marcador suma el rango, no el trozo del rango que le mandaron.**
+
+`analytics.content()` devuelve los **20 vídeos más recientes** y el router no lo
+sube, así que en una agencia que publica a diario la tarjeta tenía un trozo del
+rango mientras la franja de arriba decía «del rango». La 0.131.0 lo tapó
+cambiando el rótulo («en las publicaciones de abajo»), que era honesto pero
+incompleto: la pregunta que se abre esa tarjeta —«¿han producido algo los
+enlaces etiquetados?»— seguía sin respuesta para el rango entero.
+
+Ahora el servidor manda `content_window`: cuántos vídeos y publicaciones tiene
+la ventana, cuántos vídeos cupieron, y los **nueve contadores de atribución
+exacta sumados sobre todas las publicaciones del rango**.
+
+**La parte que importa del cómo:** ese total sale de la **misma** consulta que
+las filas. El cálculo por `(pieza, plataforma)` se extrajo a
+`_attribution_by_key()` y lo llaman los dos. Una segunda copia de esa consulta
+es exactamente como un total y las filas de debajo empiezan a no coincidir
+pareciendo las dos razonables — el defecto que esta sección existe para evitar.
+
+Y cuando el rango tiene más vídeos de los que llegaron, la tarjeta lo dice:
+«los N vídeos más recientes de M en este rango». Ningún botón de ahí puede
+traer el resto: el corte ocurre antes de que la tarjeta exista.
+
+El tope vive ahora en **una** constante, `CONTENT_VIDEO_LIMIT`, porque el total
+se calcula contra ese mismo número: dos copias dejarían a la tarjeta diciendo
+«los 20 más recientes de 25» mientras sostiene otros 20.
+
 ## [0.131.0] - 2026-09-18
 
 ### Cambiado

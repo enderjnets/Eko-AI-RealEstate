@@ -2444,3 +2444,111 @@ async def test_exact_lead_attribution_normalizes_the_first_touch_source() -> Non
         assert row["attribution"]["appointments_held"] == 1
     finally:
         await _cleanup()
+@pytest.mark.asyncio
+async def test_the_range_total_covers_the_videos_the_list_could_not_carry() -> None:
+    """`content` sends the newest N videos; the totals beside it send the range.
+
+    Written on 18-sep-2026, after the card was rebuilt. `content()` returns the
+    newest `CONTENT_VIDEO_LIMIT` videos, and the card totalled the rows it was
+    handed under a heading that said "in range". On an agency publishing daily
+    that caption covers less than it claims, and a total that quietly means
+    something narrower than its name is the exact defect this whole section
+    exists to prevent.
+
+    So the seeded tagged visit belongs to the video the limit CUTS. The list
+    must not see it; the range total must.
+    """
+    from app.db.base import get_session_factory
+    from app.models import (
+        ContentKind,
+        ContentLanguage,
+        ContentPiece,
+        ContentPublication,
+        ContentStatus,
+        PublicationPlatform,
+        PublicationStatus,
+    )
+    from app.services import analytics as svc
+    from app.services.tenant_context import org_scope
+
+    await _fresh()
+    now = datetime.now(UTC)
+    made: list[int] = []
+    async with get_bypass_session_factory()() as db:
+        for label, days in (("older video", 5), ("newer video", 1)):
+            piece = ContentPiece(
+                org_id=ORG,
+                kind=ContentKind.GENERATED,
+                language=ContentLanguage.EN,
+                status=ContentStatus.PUBLISHED,
+                hook=label,
+            )
+            db.add(piece)
+            await db.flush()
+            for platform in (PublicationPlatform.YOUTUBE, PublicationPlatform.TIKTOK):
+                db.add(
+                    ContentPublication(
+                        org_id=ORG,
+                        piece_id=piece.id,
+                        platform=platform,
+                        status=PublicationStatus.PUBLISHED,
+                        published_at=now - timedelta(days=days),
+                    )
+                )
+            made.append(piece.id)
+
+        at = now - timedelta(days=4)
+        db.add(
+            LandingSession(
+                org_id=ORG,
+                session_key="range-total-older",
+                first_seen_at=at,
+                last_seen_at=at,
+                landing_path="/start",
+                utm_source="youtube",
+                utm_medium="social",
+                # The video the limit is about to cut out of the list.
+                utm_content=f"piece-{made[0]}",
+                source="youtube",
+                traffic_class="unknown",
+                device="phone",
+                max_scroll_pct=75,
+                sections_viewed=["about", "consult"],
+                cta_clicks=1,
+                tel_clicks=0,
+                event_count=5,
+            )
+        )
+        await db.commit()
+
+    try:
+        window = svc.Window(
+            start=now - timedelta(days=10), end=now + timedelta(days=1), tz=svc.DEFAULT_TZ
+        )
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                rows = await svc.content(db, window, limit=1)
+                totals = await svc.content_window(db, window, limit=1)
+
+        assert {r["hook"] for r in rows} == {"newer video"}, "the limit cut the older one"
+        assert sum(r["attribution"]["sessions"] for r in rows) == 0, (
+            "the visit belongs to the video that was cut, so the list cannot see it"
+        )
+
+        assert totals["videos"] == 2
+        assert totals["posts"] == 4
+        assert totals["shown_videos"] == 1
+        assert totals["tagged"]["sessions"] == 1, (
+            "the range total has to carry the visit the list dropped"
+        )
+        assert totals["tagged"]["engaged"] == 1
+        assert totals["tagged"]["cta_clickers"] == 1
+        assert totals["tagged"]["leads"] == 0
+    finally:
+        async with get_bypass_session_factory()() as db:
+            for piece_id in made:
+                await db.execute(
+                    text("DELETE FROM content_pieces WHERE id = :i"), {"i": piece_id}
+                )
+            await db.commit()
+        await _cleanup()

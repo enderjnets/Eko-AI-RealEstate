@@ -401,9 +401,15 @@ function Metrics({
 export function ContentTable({
   rows,
   timezone,
+  window,
 }: {
   rows: Analytics["content"];
   timezone: string;
+  /** The range's own totals. Required, and that is the point: the strip's
+   *  caption says "in range", and the rows are only the newest twenty videos of
+   *  it. Adding the rows up under that caption is a number with the wrong name,
+   *  so the figure comes from the server, counted over the whole window. */
+  window: Analytics["content_window"];
 }) {
   const { t, lang, locale } = useI18n();
   // Local, because the page fetches on a range change and re-typing counters to
@@ -418,13 +424,11 @@ export function ContentTable({
   const videos = groupByPiece(rows);
   const openId = opened === null ? videos[0].piece_id : opened;
   const shown = showAll ? videos : videos.slice(0, SHOWN_AT_FIRST);
-  // Across what the card HOLDS, which is not the same as across the range:
-  // `analytics.content()` returns the newest 20 VIDEOS and the router does not
-  // raise it, so a thirty-day range with more than twenty videos arrives
-  // already cut. The captions say "the posts below" for that reason — a total
-  // labelled "in range" would be a number with the wrong name, which is the one
-  // thing this card exists to avoid.
-  const tagged = addUp(rows);
+  // From the server, over every publication in the window — NOT `addUp(rows)`,
+  // which would cover only the newest twenty videos while the caption said "in
+  // range". Same query as the rows use, so the strip and the list can never
+  // drift apart.
+  const tagged = window.tagged;
   const unread = rows.filter((row) => reading(row) === null);
   // The button only appears where pressing it can achieve something: a YouTube
   // counter nobody has read is a tick that has not run, not a box to fill in.
@@ -687,6 +691,15 @@ export function ContentTable({
           );
         })}
       </div>
+
+      {window.videos > videos.length && (
+        // The server cut the list before the card ever saw it, so no button
+        // here can bring the rest back. Saying so is the whole fix: the reader
+        // now knows the strip above covers more than the rows below.
+        <p className="text-[11px] text-gray-400">
+          {t("analytics.newestOf", { shown: videos.length, total: window.videos })}
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         {videos.length > SHOWN_AT_FIRST && (
