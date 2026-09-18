@@ -6,6 +6,58 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+# 17-sep noche — 0.117.0 desplegada, 0.118.0 y 0.119.0 listas; dos reglas de YouTube MEDIDAS y descartadas
+
+## Desplegado y verificado
+
+**0.117.0 viva a las 21:00 de Denver.** `/api/v1/health` →
+`{"status":"ok","version":"0.117.0","env":"production","llm_fallback":"ok"}`.
+Arranque con **0** `Traceback|ImportError|AttributeError|CRITICAL`, los diez
+obreros arriba. Sin migración: head `063` antes y después. Vuelta atrás escrita:
+`git reset --hard d1eeef2 && docker compose up -d --build backend frontend`.
+
+**La 72, rehecha y comprobada EN EL VÍDEO.** El ROG la cogió a las 21:00:24
+(así supimos que `RENDER_WORKER_HOURS=13,15,16,17,21,23,1,2` son horas **de
+Denver**, no UTC) y entregó a los ~20 min. Fotogramas a 2 s y 12 s: casa limpia
+desde la acera y una cocina; **ni cartel inventado, ni `www.raefes.com`, ni
+letras** fuera del rótulo quemado y los subtítulos amarillos, los dos bien
+escritos. La 74 estaba renderizando al cierre.
+
+## Lo que sí se implementó
+
+**0.118.0 — la despedida se dice donde todavía hay alguien.** Entra tras la
+frase que primero supera el 40 % de las palabras, nunca parte una enumeración
+y con menos de tres frases se sigue añadiendo al final. 9 tests, dos
+mutaciones.
+
+**0.119.0 — un plano no puede pedir a alguien por su oficio.** `agent`,
+`realtor`, `broker`. La pieza 16 («a real estate agent reviewing documents at a
+kitchen table») pasó todas las puertas y Buffer la publicó esa tarde con un
+hombre de traje en el encuadre. 10 tests, una mutación. Rechaza 2 de 99 prompts
+guardados.
+
+## 🔴 Dos reglas de YouTube que NO se implementaron, y por qué
+
+Las dos se midieron antes de escribirlas, que es la disciplina que las mató.
+
+| regla | qué proponía | medición | veredicto |
+|---|---|---|---|
+| «cambio de escenario en el plano 3» | que los planos 1-3 no sean todos del mismo tipo | **0 de 18** piezas lo incumplen: las listas **ya alternan** interior/exterior | control que no dispara nunca: **descartada** |
+| «conector de contraste en la ventana 4-6 s» | `but/except/until/unless/instead/because` entre las palabras de esa franja | **34 de 35** narraciones (97 %) fallarían | puerta que rechaza casi todo y paga una reescritura por pieza: **descartada como puerta** |
+
+**Y un dato que corrige a YouTube:** asume **2,5 palabras/s**. Medido sobre 8
+vídeos entregados (palabras de `scenes.narration` ÷ duración real por
+`ffprobe`): **3,41 palabras/s**, un 36 % más rápido. La ventana de 4-6 s son
+las palabras **14-20**, no la 10-20. Y estos vídeos duran **24-35 s**; los de
+13 s eran la serie «Renting at $X».
+
+El 97 % no dice que la idea sea mala: dice que **hoy no hay ningún giro** donde
+la gente se va. La forma segura, para otra sesión: instrucción en `_SYSTEM`
+**más un contador que no bloquee**, para medir si el modelo obedece y si la
+retención se mueve, antes de convertirlo en puerta.
+
+---
+
 # 17-sep — lo que dicen los datos de YouTube, y qué se puede hacer con ellos
 
 Sesión con el panel «Ask Studio» del canal Denver Home Story (las respuestas
