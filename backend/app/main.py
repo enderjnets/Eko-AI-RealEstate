@@ -444,6 +444,7 @@ _content_render_task: asyncio.Task | None = None
 _content_publish_task: asyncio.Task | None = None
 _content_window_task: asyncio.Task | None = None
 _content_metrics_task: asyncio.Task | None = None
+_buffer_metrics_task: asyncio.Task | None = None
 _delivery_retry_task: asyncio.Task | None = None
 _listings_sync_task: asyncio.Task | None = None
 _llm_monitor_task: asyncio.Task | None = None
@@ -694,6 +695,31 @@ async def _content_metrics_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.error("Content metrics tick failed: %s", exc)
+
+
+async def _buffer_metrics_loop() -> None:
+    """Background worker: TikTok and Instagram counts, through Buffer (v0.125).
+
+    Its own loop rather than a branch of the six-hourly one above, because the
+    right cadence is different and hiding that inside a shared tick is how a
+    quota gets spent four times over for the same number. Buffer refreshes
+    these about once a day; see `CONTENT_BUFFER_METRICS_INTERVAL_SECONDS`.
+
+    A failure costs the pass, never the process: the next one asks again, and
+    nothing was written for the posts it could not read.
+    """
+    from app.services.tenant_context import run_for_every_org
+    from app.services.video_metrics import snapshot_buffer
+
+    interval = max(3600, settings.CONTENT_BUFFER_METRICS_INTERVAL_SECONDS)
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await run_for_every_org(snapshot_buffer)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Buffer metrics tick failed: %s", exc)
 
 
 async def _enrichment_loop() -> None:
@@ -1430,6 +1456,21 @@ async def _startup() -> None:
             settings.CONTENT_METRICS_INTERVAL_SECONDS,
         )
 
+        # Same switch, separate task: both are "read how the posts did", and an
+        # operator who turns content metrics off means both of them.
+        global _buffer_metrics_task
+        _buffer_metrics_task = asyncio.create_task(_buffer_metrics_loop())
+        if get_settings().BUFFER_SIMULATED:
+            logger.info(
+                "Buffer metrics worker started but BUFFER_SIMULATED is on: "
+                "TikTok and Instagram counts still have to be typed in"
+            )
+        else:
+            logger.info(
+                "Buffer metrics worker started (every %ds)",
+                settings.CONTENT_BUFFER_METRICS_INTERVAL_SECONDS,
+            )
+
     if settings.DELIVERY_RETRY_ENABLED:
         global _delivery_retry_task
         _delivery_retry_task = asyncio.create_task(_delivery_retry_loop())
@@ -1448,7 +1489,7 @@ async def _startup() -> None:
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task, _content_studio_task, _content_render_task, _content_publish_task, _content_window_task, _content_metrics_task, _llm_monitor_task):
+    for task in (_followups_task, _enrichment_task, _delivery_retry_task, _listings_sync_task, _content_studio_task, _content_render_task, _content_publish_task, _content_window_task, _content_metrics_task, _buffer_metrics_task, _llm_monitor_task):
         if task is not None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

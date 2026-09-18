@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.124.0";
+export const CURRENT_VERSION = "0.125.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.125.0",
+    date: "2026-09-18",
+    title: {
+      en: "TikTok and Instagram counts arrive by themselves",
+      es: "Las cifras de TikTok e Instagram llegan solas",
+    },
+    changes: [
+      { en: "Those two numbers used to arrive one way only: somebody opened the app, read the count off their phone and typed it in. That was true of the native APIs, which hand counts to nobody but a reviewed first-party app — but Buffer is such an app and its token was already configured for publishing. Fifty-six publications were being typed in every day.", es: "Esos dos números llegaban de una sola forma: alguien abría la app, leía la cifra en el móvil y la tecleaba. Era cierto de las APIs nativas, que solo dan métricas a una app propia revisada — pero Buffer es una de ellas y su token ya estaba puesto para publicar. Eran 56 publicaciones tecleadas cada día." },
+      { en: "The reading is filed under the day BUFFER read it, not today. Buffer refreshes these about once a day, so its answer at noon is a count it took the evening before, and storing that under today would claim a reading nobody took. One consequence, deliberate: a number typed today survives, because Buffer's lands on an earlier day. Both are kept, each with its own date and source.", es: "El dato se guarda bajo el día en que BUFFER lo leyó, no bajo hoy. Buffer refresca del orden de una vez al día, así que su respuesta al mediodía es una cifra de la tarde anterior, y guardarla bajo hoy afirmaría una lectura que nadie hizo. Una consecuencia, buscada: lo que se teclee hoy sobrevive, porque lo de Buffer cae en un día anterior. Se conservan las dos, cada una con su fecha y su fuente." },
+      { en: "It also answers something the typed numbers could not. One publication was typed as 94 on three consecutive days — either a post that did not move or somebody copying yesterday's figure, and nothing in the data told them apart. Worth saying plainly: these are views ON THE PLATFORM, not arrivals at the site. TikTok has 4,078 views and zero web sessions in fourteen days; both are true at once.", es: "También contesta algo que los números tecleados no podían. Una publicación estaba tecleada como 94 tres días seguidos — o el post no se movió, o alguien copió la cifra de ayer, y nada en los datos los distinguía. Conviene decirlo claro: esto son visualizaciones EN LA PLATAFORMA, no llegadas al sitio. TikTok tiene 4.078 visualizaciones y cero sesiones web en catorce días; las dos cosas son ciertas a la vez." },
+    ],
+  },
   {
     version: "0.124.0",
     date: "2026-09-18",

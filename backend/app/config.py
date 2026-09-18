@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.124.0"
+    APP_VERSION: str = "0.125.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -433,6 +433,13 @@ class Settings(BaseSettings):
     YOUTUBE_DATA_API_KEY: str = ""
     CONTENT_METRICS_ENABLED: bool = False
     CONTENT_METRICS_INTERVAL_SECONDS: int = 21600
+    # Buffer refreshes TikTok and Instagram counts about once a day — both
+    # posts measured on 18-sep carried a `metricsUpdatedAt` from the evening
+    # before — so asking three times a day returns the same number three times
+    # and spends three times the quota. Daily by default, and the readings are
+    # idempotent anyway: they are filed under the day Buffer read them, so a
+    # second pass rewrites the same row with the same values.
+    CONTENT_BUFFER_METRICS_INTERVAL_SECONDS: int = 86_400
     # PIECES per day, not posts: one piece is three platforms, and counting
     # posts would let a single video eat three days of budget.
     CONTENT_PUBLISH_MAX_PER_DAY: int = 4

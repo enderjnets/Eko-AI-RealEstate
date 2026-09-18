@@ -106,6 +106,31 @@ mutation CreatePost($input: CreatePostInput!) {
 # `publish_piece`.
 _POST_STATE = """{ status sentAt externalLink error { message } }"""
 
+#: What a post can tell us about how it performed. Asked for separately from
+#: `_POST_STATE` because the publisher reads a post to learn whether it went
+#: out, and that path runs every fifteen minutes: hanging analytics off it
+#: would multiply the payload of the rail that must never be slow.
+#:
+#: `metrics` is a LIST of `{type, value}`, not an object with fixed fields, and
+#: which types arrive depends on the channel — TikTok answered with
+#: `totalTimeWatched` and no `saves`, Instagram the reverse. Measured on two
+#: real posts on 18-sep-2026, not read off the schema: the enum lists sixteen
+#: types and says nothing about which of them a given channel fills in.
+_POST_METRICS = """{ status metricsUpdatedAt metrics { type value } }"""
+
+#: Our three columns, and the Buffer metric names that can fill each, **in
+#: order of preference**. `likes` is the trap: the enum HAS a `likes` type and
+#: neither TikTok nor Instagram returns it — both answer `reactions`. Mapping
+#: our column straight onto the same-sounding name would have left `likes` NULL
+#: for ever with every layer reporting success; accepting only `reactions`
+#: would drop the number the day a channel does send `likes`. So: both, with
+#: the one that was actually measured winning if a channel ever sends both.
+_METRIC_SOURCES = {
+    "views": ("views",),
+    "likes": ("reactions", "likes"),
+    "comments": ("comments",),
+}
+
 # Buffer's own labels, read out of the schema by introspection rather than
 # guessed: PostStatus is draft | error | needs_approval | scheduled | sending |
 # sent. Only two of those are answers; the rest mean "ask again later", and a
@@ -1384,7 +1409,7 @@ async def publish_piece(db: AsyncSession, piece_id: int) -> None:
 
 
 async def _post_states(
-    rows: list[ContentPublication], what: str
+    rows: list[ContentPublication], what: str, selection: str = _POST_STATE
 ) -> list[tuple[str, ContentPublication, dict[str, Any] | None, dict[str, Any] | None]] | None:
     """One aliased read for a whole batch: `(alias, row, post, error)` per row.
 
@@ -1412,7 +1437,7 @@ async def _post_states(
         + ", ".join(f"${alias}: PostId!" for alias in aliases)
         + ") {\n"
         + "\n".join(
-            f"  {alias}: post(input: {{id: ${alias}}}) {_POST_STATE}"
+            f"  {alias}: post(input: {{id: ${alias}}}) {selection}"
             for alias in aliases
         )
         + "\n}"
@@ -1477,6 +1502,102 @@ async def _post_states(
         (alias, row, data.get(alias), by_alias.get(alias))
         for alias, row in aliases.items()
     ]
+
+
+def parse_post_metrics(post: dict[str, Any] | None) -> tuple[dict[str, int], datetime | None]:
+    """One post's numbers and the moment Buffer read them.
+
+    Returns `({column: value}, read_at)`. An empty dict means the post carried
+    no metric we store — which is a fact, not a failure: a post published
+    minutes ago has none yet.
+
+    Everything here is defensive on purpose. These values cross a vendor
+    boundary, `value` arrives as a float for the time metrics (`4.49` seconds
+    watched) and as a whole number for counts, and a single malformed entry
+    must cost that entry rather than the whole batch: the caller writes every
+    other post in the same pass.
+    """
+    if not isinstance(post, dict):
+        return {}, None
+
+    # Read every entry first, resolve columns after. Doing it the other way
+    # round makes the answer depend on the ORDER Buffer happens to list its
+    # metrics in, which is not something it promises.
+    seen: dict[str, int] = {}
+    entries = post.get("metrics")
+    if isinstance(entries, list):
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            name = str(entry.get("type") or "").strip()
+            if not name:
+                continue
+            try:
+                # `int(float(...))` rather than `int(...)`. The measured
+                # reason is narrow: Buffer sends floats on this field —
+                # `averageTimeWatched` came back as 4.49 — and `int()` already
+                # handles those. What the extra `float()` buys is the case
+                # nobody has seen, a count serialised as the STRING "94.0",
+                # where `int()` raises. Kept because it costs nothing; not
+                # claimed as observed, and no test pretends to prove it.
+                #
+                # Bool is excluded above because `True` is an int in Python and
+                # would otherwise be stored as one view. That one IS tested.
+                raw = entry.get("value")
+                if isinstance(raw, bool) or raw is None:
+                    continue
+                seen[name] = int(float(raw))
+            except (TypeError, ValueError, OverflowError):
+                log.info("Buffer metric %r has an unreadable value", name)
+
+    values: dict[str, int] = {}
+    for column, names in _METRIC_SOURCES.items():
+        for name in names:
+            if name in seen:
+                values[column] = seen[name]
+                break
+
+    read_at = _moment_utc(post.get("metricsUpdatedAt"))
+    return values, read_at
+
+
+def _moment_utc(raw: Any) -> datetime | None:
+    """Buffer's ISO timestamp, or None. Its `Z` suffix needs replacing."""
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+async def read_post_metrics(
+    rows: list[ContentPublication],
+) -> list[tuple[ContentPublication, dict[str, int], datetime | None]] | None:
+    """The numbers for a batch of published posts, or `None` if we could not ask.
+
+    `None` and `[]` are different answers and the caller depends on it: nothing
+    is written when the question never reached Buffer.
+    """
+    answers = await _post_states(rows, "post metrics", selection=_POST_METRICS)
+    if answers is None:
+        return None
+
+    out: list[tuple[ContentPublication, dict[str, int], datetime | None]] = []
+    for _alias, row, post, error in answers:
+        if error is not None:
+            # Per alias, exactly like the publisher's reader: one id Buffer
+            # cannot find must not discard the numbers of the other five.
+            log.info(
+                "Buffer has no metrics for publication %s: %s",
+                row.id, str(error.get("message"))[:120],
+            )
+            continue
+        values, read_at = parse_post_metrics(post)
+        if values:
+            out.append((row, values, read_at))
+    return out
 
 
 async def reconcile_scheduled(db: AsyncSession) -> int:

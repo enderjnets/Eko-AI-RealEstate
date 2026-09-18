@@ -46,6 +46,7 @@ from app.models import (
     PublicationPlatform,
     PublicationStatus,
 )
+from app.services.buffer_publisher import read_post_metrics
 from app.services.tenant_context import get_org_id
 
 log = logging.getLogger(__name__)
@@ -157,6 +158,23 @@ async def fetch_youtube_stats(
     return out
 
 
+async def agency_zone(db: AsyncSession) -> ZoneInfo:
+    """The office's zone, falling back to the default when it is unset or junk.
+
+    Split out of `agency_today` when a second caller appeared: Buffer's
+    readings are dated by the moment IT read them, and turning that moment into
+    a day needs the same zone. Two copies of this lookup is how one of them
+    ends up falling back to UTC and filing a Denver evening on the next day.
+    """
+    name = (
+        await db.execute(select(AgentSettings.timezone).limit(1))
+    ).scalar_one_or_none()
+    try:
+        return ZoneInfo((name or "").strip() or DEFAULT_TZ)
+    except (ZoneInfoNotFoundError, ValueError):
+        return ZoneInfo(DEFAULT_TZ)
+
+
 async def agency_today(db: AsyncSession) -> date:
     """Today's date in the office's zone.
 
@@ -164,14 +182,7 @@ async def agency_today(db: AsyncSession) -> date:
     grouping by the server's date would file two consecutive evening readings
     under one bucket and leave the day between them empty.
     """
-    name = (
-        await db.execute(select(AgentSettings.timezone).limit(1))
-    ).scalar_one_or_none()
-    zone = (name or "").strip() or DEFAULT_TZ
-    try:
-        return datetime.now(ZoneInfo(zone)).date()
-    except (ZoneInfoNotFoundError, ValueError):
-        return datetime.now(ZoneInfo(DEFAULT_TZ)).date()
+    return datetime.now(await agency_zone(db)).date()
 
 
 async def record_snapshot(
@@ -350,3 +361,104 @@ async def latest_metrics(
     for row in rows:
         out.setdefault(row.publication_id, row)
     return out
+
+
+#: Six aliases per request is what `reconcile_scheduled` already sends and what
+#: Buffer was measured to answer without complaint. Kept the same on purpose:
+#: a second, larger number here would discover Buffer's ceiling on the rail
+#: that reads analytics, and pay for it with the rail that publishes.
+BUFFER_BATCH = 6
+
+#: The two networks that hand numbers to nobody but an approved first-party
+#: app. YouTube is deliberately absent: its own API answers us directly, it is
+#: read every few hours instead of once a day, and letting a daily Buffer pass
+#: overwrite that would make the one platform we can read properly the stalest.
+BUFFER_PLATFORMS = (PublicationPlatform.TIKTOK, PublicationPlatform.INSTAGRAM)
+
+
+async def snapshot_buffer(db: AsyncSession) -> int:
+    """Read TikTok and Instagram counts through Buffer, dated when IT read them.
+
+    Returns how many publications got a reading, so "nothing to read" and "read
+    nothing" stay distinguishable.
+
+    **Why this exists.** TikTok and Instagram hand view counts only to a
+    first-party app that has passed platform review, so until now the only way
+    a number arrived for those two was a person opening the app and typing it
+    into the console. Buffer IS such an app and we already hold its token.
+
+    **Why the date comes from Buffer and not from the clock.** Buffer refreshes
+    these roughly once a day, so its answer at noon is a reading it took the
+    evening before. Filing that under today would put a correct number in the
+    wrong frame — the scorecard would say "today: 94" about a count nobody read
+    today — and it is the exact shape of mistake this codebase has shipped
+    before. `metricsUpdatedAt` is the only source that says when the number was
+    actually looked at, which also means a stale reading shows as stale instead
+    of impersonating a fresh one.
+
+    That has a consequence worth stating: a typed reading from today survives,
+    because Buffer's lands on an earlier day. Both are visible, each with its
+    own date and its own `source`.
+
+    **Why a reading with no timestamp is skipped.** Without it there is no
+    honest day to file under, and inventing one would undo the whole point.
+    """
+    settings = get_settings()
+    if settings.BUFFER_SIMULATED or not (settings.BUFFER_ACCESS_TOKEN or "").strip():
+        # A dev install must not reach the real API to read analytics, and an
+        # install with no token would spend every pass discovering that with a
+        # 401. Neither is an error worth a warning every day.
+        log.info("Buffer metrics: not configured for live reads; nothing read")
+        return 0
+
+    org_id = get_org_id()
+    if org_id is None:
+        log.warning("Buffer metrics ran with no org in context; nothing read")
+        return 0
+
+    rows = list(
+        (
+            await db.execute(
+                select(ContentPublication).where(
+                    ContentPublication.platform.in_(BUFFER_PLATFORMS),
+                    ContentPublication.status == PublicationStatus.PUBLISHED,
+                    ContentPublication.external_id.is_not(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        return 0
+
+    zone = await agency_zone(db)
+    written = 0
+    for start in range(0, len(rows), BUFFER_BATCH):
+        answers = await read_post_metrics(rows[start : start + BUFFER_BATCH])
+        if answers is None:
+            # The question never reached Buffer. Nothing is written, and the
+            # next pass asks again — the same choice `_post_states` documents.
+            continue
+        for row, values, read_at in answers:
+            if read_at is None:
+                log.info(
+                    "Buffer gave metrics for publication %s with no read time; "
+                    "skipped rather than dated by our clock",
+                    row.id,
+                )
+                continue
+            await record_snapshot(
+                db,
+                org_id=org_id,
+                publication_id=row.id,
+                captured_on=read_at.astimezone(zone).date(),
+                source="buffer_api",
+                values=values,
+            )
+            written += 1
+
+    if written:
+        await db.commit()
+    log.info("Buffer metrics: %s of %s publications read", written, len(rows))
+    return written

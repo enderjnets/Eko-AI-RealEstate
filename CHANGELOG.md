@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.125.0] - 2026-09-18
+
+### Añadido
+
+**Las métricas de TikTok e Instagram las trae Buffer, fechadas cuando Buffer las leyó.**
+
+Hasta hoy esos dos números llegaban de una sola forma: una persona abría la app,
+leía la cifra en el móvil y la tecleaba en la consola. Eso era cierto de las
+**APIs nativas** —TikTok e Instagram solo dan métricas a una app propia que haya
+pasado revisión de plataforma—, pero Buffer **es** una de esas apps y su token ya
+estaba puesto. Son 56 publicaciones cuyo número se tecleaba cada día.
+
+**Medido sobre dos posts reales, no leído del esquema.** El enum tiene dieciséis
+tipos de métrica y no dice cuáles rellena cada canal. Lo que vuelve de verdad:
+
+- TikTok: `views` 94, `reach` 92, `comments` 0, `reactions` 0, `totalTimeWatched`
+  7,27, `averageTimeWatched` 4,49
+- Instagram: `views` 7, `reach` 5, `comments` 0, `reactions` 0, `saves` 0,
+  `follows` 0
+
+Tres cosas salieron de ahí, y cada una tiene su test:
+
+1. **No existe `likes`.** Los dos canales contestan `reactions`. Mapear nuestra
+   columna al nombre que se parece la habría dejado en NULL para siempre, con
+   todas las capas informando de éxito. Se aceptan los dos nombres, con
+   `reactions` ganando si llegaran ambos.
+2. **`metrics` es una LISTA de pares `{type, value}` y varía por canal** — TikTok
+   mandó el tiempo de visionado y ningún `saves`; Instagram al revés. Leída como
+   objeto de forma fija funcionaría en una red y no en la otra.
+3. **`metricsUpdatedAt` era de ayer en los dos.** Buffer refresca del orden de una
+   vez al día.
+
+**Por eso el dato se fecha por cuándo lo leyó Buffer, no por el reloj.** Guardar
+bajo hoy una lectura de ayer sería el número correcto en el marco equivocado: el
+scorecard diría «hoy: 94» de una cifra que hoy no miró nadie. Tiene una
+consecuencia que se dice en voz alta y está fijada por un test: **lo que se teclee
+hoy sobrevive**, porque la lectura de Buffer aterriza en un día anterior. Las dos
+conviven, cada una con su fecha y su `source`, y el panel enseña la más reciente
+con ambas. Una lectura **sin** marca de tiempo no se guarda: sin ella no hay día
+honesto bajo el que archivarla, e inventarlo desharía el propósito entero.
+
+Y contesta algo que los números tecleados no podían: la misma publicación estaba
+tecleada como 94 **tres días seguidos**. Eso es un post que no se movió o alguien
+copiando la cifra de ayer, y nada en los datos los distinguía. `metricsUpdatedAt` sí.
+
+Una pasada al día (`CONTENT_BUFFER_METRICS_INTERVAL_SECONDS`, 86.400 s), en su
+propio bucle: preguntar tres veces devuelve el mismo número tres veces y gasta el
+triple de cuota. YouTube se queda con su propia API, que contesta directamente y
+se lee cada pocas horas. En instalación simulada o sin token no se llama a nadie.
+
+**Lo que esto NO mide, dicho aquí porque es fácil darlo por cubierto:** son
+visualizaciones **en la plataforma**, no llegadas al sitio. TikTok tiene 4.078
+visualizaciones y **0 sesiones** en la web en catorce días. Las dos cosas son
+ciertas a la vez, y este cambio solo hace exacta la primera.
+
+Nueve mutaciones vistas en rojo y el fuente restaurado con el mismo `md5` cada
+vez — una décima resultó equivalente y se dice aquí en vez de contarla.
+
 ## [0.124.0] - 2026-09-18
 
 ### Corregido
