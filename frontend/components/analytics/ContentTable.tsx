@@ -212,7 +212,7 @@ function StageValue({ value }: { value: number }) {
   const { locale } = useI18n();
   return (
     <span
-      className={`text-right tabular-nums ${
+      className={`tabular-nums ${
         value > 0 ? "font-semibold text-eko-green" : "text-gray-400"
       }`}
     >
@@ -418,6 +418,12 @@ export function ContentTable({
   const videos = groupByPiece(rows);
   const openId = opened === null ? videos[0].piece_id : opened;
   const shown = showAll ? videos : videos.slice(0, SHOWN_AT_FIRST);
+  // Across what the card HOLDS, which is not the same as across the range:
+  // `analytics.content()` returns the newest 20 VIDEOS and the router does not
+  // raise it, so a thirty-day range with more than twenty videos arrives
+  // already cut. The captions say "the posts below" for that reason — a total
+  // labelled "in range" would be a number with the wrong name, which is the one
+  // thing this card exists to avoid.
   const tagged = addUp(rows);
   const unread = rows.filter((row) => reading(row) === null);
   // The button only appears where pressing it can achieve something: a YouTube
@@ -668,7 +674,7 @@ export function ContentTable({
                         </p>
 
                         {own_stages.map((stage) => (
-                          <span key={stage.long} className="hidden text-xs sm:block">
+                          <span key={stage.long} className="hidden text-right text-xs sm:block">
                             <StageValue value={stage.value} />
                           </span>
                         ))}

@@ -263,7 +263,7 @@ describe("the missing counters", () => {
   it("counts the unread posts, not the videos", () => {
     // Three posts of one video with no reading is three numbers to go and
     // fetch, and saying "1" would understate the work by two thirds.
-    expect(text(threePosts)).toContain("3 of 3 posts");
+    expect(text(threePosts)).toContain("3 of 3 posts below");
   });
 });
 

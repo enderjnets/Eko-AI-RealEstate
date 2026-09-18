@@ -45,6 +45,14 @@ gente que nunca existió. El primer test de la suma estaba **verde por la razón
 equivocada** —la franja de totales de arriba daba la misma cadena que la fila—
 y se reescribió con dos vídeos de sumas distintas.
 
+**Los rótulos solo hablan de lo que la tarjeta tiene.** `analytics.content()`
+devuelve **los 20 vídeos más recientes** (`limit: int = 20`, y el router no lo
+sube), así que un rango de 30 días con más de veinte vídeos llega ya recortado.
+Por eso la franja dice «en las publicaciones de abajo» y no «del rango»: un
+total rotulado «del rango» sería un número con el nombre equivocado, que es
+exactamente lo que esta tarjeta existe para evitar. El recorte es previo a esta
+release y sigue ahí; lo que cambia es que ya no se afirma lo contrario.
+
 **Legibilidad.** Varios rótulos y los enlaces «verlo en» se pintaban a 2,6:1 y
 3,4:1 sobre el negro de esta página. Un número que nadie puede leer es un número
 sin nombre, que es exactamente lo que esta tarjeta existe para evitar. Lo que
