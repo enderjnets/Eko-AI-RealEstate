@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.136.3] - 2026-09-19
+
+### Changed
+- The options email now goes out as text **and** HTML. The unsubscribe hides
+  behind the word `Unsubscribe`; the postal address and the brokerage line stay
+  visible text, because that is what CAN-SPAM and Colorado's Rule 6.10.A.4 ask
+  to be on the page. Both halves are in the same send.
+- The Fair Housing screen reads both bodies and merges the flags. A gate on one
+  of two bodies is a gate on half the message.
+- The tour link prints its host beside it (`Virtual tour (my.matterport.com)`).
+  The MLS field is the *unbranded* one and the branded variant is not in the
+  export at all, but one of the first eight real listings pointed at the listing
+  agent's own YouTube channel, Subscribe button included.
+
+### Security
+- A tour URL whose scheme is not `http`/`https` is dropped from both halves.
+  It comes from another brokerage's MLS row and now lands inside an `href`.
+- Every value taken from the export is HTML-escaped before it is rendered.
+
 ## [0.136.2] - 2026-09-19
 
 ### «Wash Park» es Washington Park

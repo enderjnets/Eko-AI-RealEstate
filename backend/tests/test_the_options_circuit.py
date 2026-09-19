@@ -47,6 +47,7 @@ from app.services.listing_requests import (
     build_options_email,
     clean_callback_text,
     open_request,
+    strip_tags,
 )
 from app.services.tenant_context import org_scope, set_org_id
 
@@ -231,7 +232,7 @@ def test_the_shortlist_never_carries_what_the_other_broker_wrote() -> None:
         source = PropertySource.MLS
         title = "482 S Gilpin Street"
 
-    _, body = build_options_email(
+    _, body, _html = build_options_email(
         lead_name="Ender",
         zone="Wash Park",
         properties=[P()],
@@ -837,3 +838,253 @@ def test_the_zone_matcher_still_says_no() -> None:
     # An unknown zone on either side cannot answer, so it does not filter.
     assert zone_matches(None, "Washington Park")
     assert zone_matches("Wash Park", None)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# The HTML half
+#
+# Added after the first real send was read in a normal inbox: the plain-text
+# body has to print every link in full, so the message ended on two seventy
+# character URLs. The fix is a second body, not a different one — and a second
+# body is a second place for a screen to miss something, which is what most of
+# these tests are about.
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def _one(**over: object):  # noqa: ANN202
+    class P:
+        id = 7
+        address = "352 S Lafayette Street Unit 402"
+        city = "Denver"
+        state = "CO"
+        zip_code = "80209"
+        price = 254900
+        bedrooms = 1
+        bathrooms = 1
+        sqft = 633
+        url = "https://unbranded.virtuance.com/listing/352-s-lafayette"
+        raw = {"list_office_name": "Compass - Denver"}
+        source = PropertySource.MLS
+        title = "352 S Lafayette Street"
+
+    for name, value in over.items():
+        setattr(P, name, value)
+    return P()
+
+
+def test_the_html_half_says_the_same_things_as_the_text() -> None:
+    """Both bodies go out in one request, so both are read by somebody.
+
+    The danger is not that the HTML looks wrong — it is that it says something
+    the text does not, because then every existing assertion on `body_text`
+    keeps passing while the reader sees a different message. Stripped of its
+    tags the HTML has to carry the same facts.
+    """
+    _, body, html = build_options_email(
+        lead_name="Ender",
+        zone="Wash Park",
+        properties=[_one()],
+        agent_name="Natalia",
+        page_url="https://example.test/api/v1/public/options/tok",
+    )
+    stripped = strip_tags(html)
+    for fact in (
+        "Hi Ender,",
+        "Natalia went through what's active and picked these in Wash Park.",
+        "352 S Lafayette Street Unit 402, Denver CO 80209",
+        "$254,900 · 1 bd · 1 ba · 633 sq ft",
+        # Rule 6.10.A.4 has to survive the second rendering too.
+        "Listed by Compass - Denver",
+        "Not what you had in mind, or would you rather talk it through?",
+    ):
+        assert fact in body, fact
+        assert fact in stripped, f"missing from the HTML half: {fact}"
+
+
+def test_the_reader_is_told_where_the_tour_link_goes() -> None:
+    """The MLS field is called *unbranded*; the page on the other end is not ours.
+
+    Measured on the first real import: one of the eight tours was the listing
+    agent's own YouTube channel, Subscribe button and all. We cannot see
+    through the link at send time, so the host is printed beside it and the
+    reader decides.
+    """
+    _, _body, html = build_options_email(
+        lead_name=None,
+        zone=None,
+        properties=[_one()],
+        agent_name=None,
+        page_url=None,
+    )
+    assert ">Virtual tour</a>" in html
+    assert "(unbranded.virtuance.com)" in strip_tags(html)
+    # And the URL itself is not printed twice — that was the whole complaint.
+    assert html.count("unbranded.virtuance.com/listing") == 1
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    [
+        "javascript:alert(document.domain)",
+        "data:text/html;base64,PHNjcmlwdD4=",
+        "  JavaScript:alert(1)",
+    ],
+)
+def test_a_tour_link_that_is_not_http_never_reaches_the_reader(hostile: str) -> None:
+    """`url` arrives from another firm's MLS row and now lands inside an href.
+
+    In plain text a `javascript:` URL is inert rubbish. Rendered as an anchor
+    it is a link somebody can click, so it is dropped from BOTH halves rather
+    than from the one that happens to be dangerous.
+    """
+    _, body, html = build_options_email(
+        lead_name=None,
+        zone=None,
+        properties=[_one(url=hostile)],
+        agent_name=None,
+        page_url=None,
+    )
+    assert "javascript" not in html.lower()
+    assert "data:text/html" not in html.lower()
+    assert "javascript" not in body.lower()
+    assert "Virtual tour" not in html
+
+
+def test_the_mls_row_cannot_become_markup() -> None:
+    """An address or a brokerage name carrying a `<` is data, not a tag.
+
+    Nobody plans this one: it is a export column with a stray character in it.
+    But the values come from outside and are about to be rendered as a
+    document, and `raw=dict(row)` is exactly the shortcut this module refused
+    to take in the first place.
+    """
+    _, _body, html = build_options_email(
+        lead_name=None,
+        zone=None,
+        properties=[
+            _one(
+                address='352 S <script>alert("x")</script> Lafayette',
+                raw={"list_office_name": "Compass <b>Denver</b>"},
+            )
+        ],
+        agent_name=None,
+        page_url=None,
+    )
+    assert "<script>" not in html
+    assert "<b>Denver" not in html
+    assert "&lt;script&gt;" in html
+    assert "&lt;b&gt;Denver" in html
+
+
+def test_the_unsubscribe_hides_behind_one_word_and_the_address_does_not() -> None:
+    """Only the URL hides. The law's own words stay visible.
+
+    CAN-SPAM wants the opt-out clear and conspicuous, which the word
+    Unsubscribe as a link is; it also wants a physical postal address, which
+    behind a link is an address nobody reads. Same for the brokerage line under
+    Colorado's Rule 6.10.A.4.
+    """
+    from app.services.email_compliance import build_footer_html, unsubscribe_url
+
+    html = build_footer_html(
+        lead_id=1267, brokerage_line="Engel & Voelkers · Denver", lang=None
+    )
+    assert f'href="{unsubscribe_url(1267)}"' in html
+    assert ">Unsubscribe</a>" in html
+    # The raw link is nowhere in the visible text.
+    stripped = strip_tags(html)
+    assert "https://" not in stripped
+    assert ADDRESS in stripped
+    assert "Engel & Voelkers · Denver" in stripped
+
+
+def test_the_html_footer_refuses_without_a_postal_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The text half already refuses. A second renderer that did not would be
+    the hole: the same send, the same law, one body compliant and one not."""
+    from app.config import get_settings
+    from app.services.email_compliance import MissingPostalAddress, build_footer_html
+
+    monkeypatch.setenv("POSTAL_ADDRESS", "")
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(MissingPostalAddress):
+            build_footer_html(lead_id=1, brokerage_line=None, lang=None)
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_the_provider_is_given_both_halves(database_url: str) -> None:
+    """`text` and `html` in the same request, not one instead of the other.
+
+    A client that renders no HTML — and every downstream test that reads
+    `Message.content` — still has to get the whole message.
+    """
+    from app.services.listing_requests import send_options_email
+
+    set_org_id(ORG)
+    external = f"circuit-{uuid.uuid4().hex[:8]}"
+    lead_id, _conv_id, _ = await _seed_lead("both@circuit.test")
+    try:
+        property_id = await _seed_property(external)
+        request_id, _ = await open_request(lead_id, origin="message")
+
+        sender = AsyncMock(return_value={"id": "resend.both", "simulated": False})
+        with patch("app.services.email.send_email", new=sender):
+            result = await send_options_email(
+                request_id, [property_id], agent_name="Natalia"
+            )
+        assert result["status"] == "sent", result
+
+        kwargs = sender.await_args.kwargs
+        assert kwargs["body_text"], "the plain-text half must still be sent"
+        assert kwargs["body_html"], "the HTML half must be sent"
+        assert kwargs["body_html"].startswith("<!doctype html>")
+        # The footer is in both, and in the HTML it is a word, not a URL.
+        assert ADDRESS in kwargs["body_text"]
+        assert ADDRESS in strip_tags(kwargs["body_html"])
+        assert ">Unsubscribe</a>" in kwargs["body_html"]
+    finally:
+        await _cleanup(external)
+
+
+@pytest.mark.asyncio
+async def test_fair_housing_screens_the_html_half_too(database_url: str) -> None:
+    """A phrase the text does not carry is still a phrase the reader sees.
+
+    The gate used to read `body_text` alone. With two bodies that is a gate on
+    half the message, and the half it does not read is the one most people
+    open.
+    """
+    from app.services import listing_requests as mod
+    from app.services.listing_requests import send_options_email
+
+    set_org_id(ORG)
+    external = f"circuit-{uuid.uuid4().hex[:8]}"
+    lead_id, _conv_id, _ = await _seed_lead("fh@circuit.test")
+    try:
+        property_id = await _seed_property(external)
+        request_id, _ = await open_request(lead_id, origin="message")
+
+        real = mod.build_options_email
+
+        def only_in_the_html(**kw: object):  # noqa: ANN202
+            subject, text, html = real(**kw)
+            return subject, text, html + "<p>Walk to the good schools.</p>"
+
+        sender = AsyncMock(return_value={"id": "resend.fh", "simulated": False})
+        with (
+            patch.object(mod, "build_options_email", only_in_the_html),
+            patch("app.services.email.send_email", new=sender),
+        ):
+            result = await send_options_email(
+                request_id, [property_id], agent_name="Natalia"
+            )
+
+        assert result["status"] == "blocked_fair_housing", result
+        assert any(f["phrase"] == "good schools" for f in result["flags"])
+        sender.assert_not_awaited()
+    finally:
+        await _cleanup(external)

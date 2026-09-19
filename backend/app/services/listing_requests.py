@@ -33,7 +33,10 @@ someone else's sentence.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import UTC, datetime
+from html import escape, unescape
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -51,6 +54,7 @@ __all__ = [
     "open_request",
     "options_url",
     "send_options_email",
+    "strip_tags",
 ]
 
 
@@ -192,12 +196,48 @@ def _facts_line(prop: object) -> str | None:
     return " · ".join(bits) or None
 
 
-def _option_lines(prop: object, index: int) -> list[str]:
-    """One listing, as the client will read it. An ALLOW-LIST — see the module
-    docstring for what is on the other side of it."""
-    lines = [f"{index}. {_address_of(prop)}"]
-    if (facts := _facts_line(prop)) is not None:
-        lines.append(f"   {facts}")
+def _safe_url(raw: object) -> str | None:
+    """An `http(s)` link, or nothing.
+
+    The value arrives from another brokerage's MLS row and now ends up inside
+    an `href`. In plain text a `javascript:` or `data:` URL is inert rubbish;
+    rendered as an anchor it is a link a client can click. Anything that is not
+    plainly http or https is dropped rather than printed, on both halves — a
+    scheme we do not recognise is not a tour.
+    """
+    url = (str(raw).strip() if raw is not None else "")
+    if not url:
+        return None
+    try:
+        scheme = urlsplit(url).scheme.lower()
+    except ValueError:
+        return None
+    return url if scheme in ("http", "https") else None
+
+
+def _tour_host(url: str) -> str:
+    """`my.matterport.com` out of the full link, `www.` dropped.
+
+    Printed beside the link on purpose. The MLS field is called *unbranded* and
+    the branded variant does not even exist in the export — but the page on the
+    other end is still somebody else's, and measured on the first real import
+    one of the eight was a listing agent's own YouTube channel, Subscribe
+    button and all. We cannot see through the link, so we say where it goes.
+    """
+    try:
+        host = urlsplit(url).netloc.lower()
+    except ValueError:
+        return ""
+    return host[4:] if host.startswith("www.") else host
+
+
+def _option_fields(prop: object, index: int) -> dict[str, object]:
+    """One listing reduced to the handful of facts a client may see.
+
+    An ALLOW-LIST — see the module docstring for what is on the other side of
+    it — and the single source both renderings read. Text and HTML that each
+    assembled their own would be two places for a Fair Housing screen to miss.
+    """
     # Colorado Rule 6.10.A.4: the advertisement names the brokerage. On a
     # listing that belongs to another firm this is not a courtesy, it is the
     # condition on which we are allowed to put it in front of a consumer at all.
@@ -205,11 +245,88 @@ def _option_lines(prop: object, index: int) -> list[str]:
 
     raw = getattr(prop, "raw", None)
     office = raw.get("list_office_name") if isinstance(raw, dict) else None
-    if (broker := listing_broker(office, getattr(prop, "source", None))) :
-        lines.append(f"   Listed by {broker}")
-    if url := (getattr(prop, "url", None) or "").strip():
-        lines.append(f"   {url}")
+    return {
+        "n": index,
+        "address": _address_of(prop),
+        "facts": _facts_line(prop),
+        "broker": listing_broker(office, getattr(prop, "source", None)) or None,
+        "url": _safe_url(getattr(prop, "url", None)),
+    }
+
+
+def _option_lines(prop: object, index: int) -> list[str]:
+    """One listing, as the client will read it in a text-only mail client."""
+    f = _option_fields(prop, index)
+    lines = [f"{f['n']}. {f['address']}"]
+    if f["facts"] is not None:
+        lines.append(f"   {f['facts']}")
+    if f["broker"]:
+        lines.append(f"   Listed by {f['broker']}")
+    if f["url"]:
+        lines.append(f"   {f['url']}")
     return lines
+
+
+def _option_html(prop: object, index: int) -> str:
+    """The same listing for the HTML half. Every value escaped.
+
+    These strings came out of another firm's MLS row and are about to be
+    rendered as a document: an address or a brokerage name carrying a `<` is
+    not an attack anyone planned, it is just data, and either way it must not
+    become markup.
+    """
+    f = _option_fields(prop, index)
+    rows = [
+        f'<div style="font-weight:600;">{f["n"]}. {escape(str(f["address"]))}</div>'
+    ]
+    if f["facts"] is not None:
+        rows.append(
+            f'<div style="color:#444;">{escape(str(f["facts"]))}</div>'
+        )
+    if f["broker"]:
+        rows.append(
+            '<div style="font-size:12px;color:#6b6b6b;font-style:italic;">'
+            f'Listed by {escape(str(f["broker"]))}</div>'
+        )
+    if f["url"]:
+        url = str(f["url"])
+        host = _tour_host(url)
+        where = f" <span style=\"color:#8a8a8a;\">({escape(host)})</span>" if host else ""
+        rows.append(
+            f'<div style="font-size:13px;"><a href="{escape(url, quote=True)}" '
+            f'style="color:#7a1f3d;">Virtual tour</a>{where}</div>'
+        )
+    return (
+        '<div style="margin:0 0 18px 0;padding:12px 14px;'
+        'border-left:3px solid #e6d9c2;background:#fbfaf8;">'
+        + "".join(rows)
+        + "</div>"
+    )
+
+
+def _document(inner: str) -> str:
+    """The whole HTML mail. Inline styles only, no external anything.
+
+    Gmail strips `<style>` blocks and `@font-face`, so chasing the brand font
+    would produce a brand font in the one client nobody reads mail in. A system
+    serif is what actually arrives looking deliberate.
+    """
+    return (
+        "<!doctype html><html><body "
+        'style="margin:0;padding:24px;background:#ffffff;color:#1a1a1a;'
+        "font-family:Georgia,'Times New Roman',serif;font-size:15px;"
+        'line-height:1.55;">'
+        f'<div style="max-width:560px;">{inner}</div>'
+        "</body></html>"
+    )
+
+
+def strip_tags(html: str) -> str:
+    """The words out of an HTML body, for screening it as if it were text."""
+    text = re.sub(r"<br\s*/?>", "\n", html, flags=re.I)
+    text = re.sub(r"</(div|p|tr|li|h[1-6])>", "\n", text, flags=re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    return unescape(text)
 
 
 def build_options_email(
@@ -219,11 +336,18 @@ def build_options_email(
     properties: list,
     agent_name: str | None,
     page_url: str | None,
-) -> tuple[str, str]:
-    """`(subject, body)` for the shortlist. No footer — the caller adds it.
+) -> tuple[str, str, str]:
+    """`(subject, text, html)` for the shortlist. No footer — the caller adds it.
 
     Kept separate from the send so the whole text can be screened, asserted on
     and read in a test without a mail provider anywhere near it.
+
+    Two bodies, one set of facts. The HTML exists because the plain-text half
+    has to print every link in full, and a message that ends in two seventy
+    character URLs reads like a machine wrote it — which is the opposite of
+    what this message claims, that a person went through the listings. Both are
+    sent: `send_email` puts `text` and `html` in the same request, so a client
+    that renders neither HTML nor our styling still gets the whole message.
     """
     who = (lead_name or "").strip().split(" ")[0]
     where = (zone or "").strip()
@@ -238,25 +362,33 @@ def build_options_email(
         if picked_by
         else "We went through what's active and picked these"
     )
-    parts = [
-        f"Hi {who}," if who else "Hi,",
-        "",
-        f"{opening}{f' in {where}' if where else ''}.",
-        "",
+    greeting = f"Hi {who}," if who else "Hi,"
+    intro = f"{opening}{f' in {where}' if where else ''}."
+
+    parts = [greeting, "", intro, ""]
+    blocks = [
+        f'<p style="margin:0 0 6px 0;">{escape(greeting)}</p>',
+        f'<p style="margin:0 0 20px 0;">{escape(intro)}</p>',
     ]
     for index, prop in enumerate(properties, start=1):
         parts.extend(_option_lines(prop, index))
         parts.append("")
+        blocks.append(_option_html(prop, index))
+
     if page_url:
-        parts.extend(
-            [
-                "Not what you had in mind, or would you rather talk it through?",
-                "Both from here:",
-                page_url,
-                "",
-            ]
-        )
-    return subject, "\n".join(parts)
+        ask = "Not what you had in mind, or would you rather talk it through?"
+        parts.extend([ask, "Both from here:", page_url, ""])
+        link = _safe_url(page_url)
+        if link:
+            blocks.append(
+                f'<p style="margin:22px 0 0 0;">{escape(ask)}<br>'
+                f'<a href="{escape(link, quote=True)}" style="color:#7a1f3d;">'
+                "Both from here</a>.</p>"
+            )
+        else:
+            blocks.append(f'<p style="margin:22px 0 0 0;">{escape(ask)}</p>')
+
+    return subject, "\n".join(parts), "".join(blocks)
 
 
 async def send_options_email(
@@ -288,6 +420,7 @@ async def send_options_email(
     from app.services.email_compliance import (
         MissingPostalAddress,
         build_footer,
+        build_footer_html,
         unsubscribe_url,
     )
     from app.services.fair_housing import find_violations
@@ -334,7 +467,7 @@ async def send_options_email(
                 select(AgentSettings).where(AgentSettings.org_id == get_org_id())
             )
         ).scalar_one_or_none()
-        subject, body = build_options_email(
+        subject, body, html_body = build_options_email(
             lead_name=lead.name,
             zone=lead.zone,
             properties=properties,
@@ -346,18 +479,29 @@ async def send_options_email(
             page_url=options_url(row.token),
         )
 
+        brokerage = getattr(cfg, "brokerage_line", None) or None
         try:
             footer = build_footer(
-                lead_id=lead.id,
-                brokerage_line=(getattr(cfg, "brokerage_line", None) or None),
-                lang=None,
+                lead_id=lead.id, brokerage_line=brokerage, lang=None
+            )
+            footer_html = build_footer_html(
+                lead_id=lead.id, brokerage_line=brokerage, lang=None
             )
         except MissingPostalAddress as exc:
             log.error("Lead %d: no options email — %s", lead.id, exc)
             return {"status": "blocked_no_postal_address"}
         body = f"{body}\n{footer}"
+        html_body = _document(html_body + footer_html)
 
-        flags = find_violations(body, None)
+        # Screened on BOTH halves, not on the one the gate happens to read. The
+        # text body is what `Message.content` stores and what every existing
+        # test inspects; the HTML is what most people will actually see. A
+        # phrase that reached only one of them would be a phrase that reached
+        # the reader, so the two are checked and the flags are merged.
+        flags = find_violations(body, None) + [
+            f for f in find_violations(strip_tags(html_body), None)
+            if f not in find_violations(body, None)
+        ]
         if flags:
             # Blocked, and she is told rather than the message quietly not
             # going. The phrase is almost always in an address or a brokerage
@@ -373,6 +517,7 @@ async def send_options_email(
                 to=to,
                 subject=subject,
                 body_text=body,
+                body_html=html_body,
                 unsubscribe_url=unsubscribe_url(lead.id),
             )
             external_id = (result or {}).get("id")

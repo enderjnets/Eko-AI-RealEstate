@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.136.2";
+export const CURRENT_VERSION = "0.136.3";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.136.3",
+    date: "2026-09-19",
+    title: {
+      en: "The email stops printing its own links",
+      es: "El correo deja de imprimir sus propios enlaces",
+    },
+    changes: [
+      { en: "Read in a normal inbox after the first real send, the shortlist ended on two seventy-character URLs — the unsubscribe and the page with the two buttons, both printed in full because plain text has no other way to carry a link. The message now goes out with an HTML half as well, where the link hides behind one word and the postal address and the brokerage line stay visible text, which is what the law asks to be on the page. Both halves travel in the same send, so a client that renders no HTML still gets the whole message, and the Fair Housing screen now reads both — a gate on one of two bodies is a gate on half the message.", es: "Leída en una bandeja normal tras el primer envío real, la lista terminaba en dos URLs de setenta caracteres — la baja y la página de los dos botones, impresas enteras porque el texto plano no sabe llevar un enlace de otra forma. Ahora el mensaje sale también con una mitad HTML, donde el enlace se esconde detrás de una palabra y la dirección postal y la correduría siguen siendo texto visible, que es lo que la ley pide que esté en la página. Las dos mitades viajan en el mismo envío, así que un cliente que no pinte HTML recibe el mensaje completo, y la pantalla de Fair Housing lee las dos — un guardia sobre uno de dos cuerpos es un guardia sobre medio mensaje." },
+      { en: "The tour link now says where it goes. The MLS field is called Virtual Tour URL Unbranded and the branded variant does not exist in the export at all, but the page on the other end is still somebody else's: measured on the first real import, one of the eight was the listing agent's own YouTube channel with a Subscribe button beside the video. We cannot see through a link at send time, so the host is printed next to it and the reader decides.", es: "El enlace del tour ahora dice adónde va. El campo del MLS se llama Virtual Tour URL Unbranded y la versión con marca no existe en el export, pero la página del otro lado sigue siendo de otro: medido en la primera importación real, uno de los ocho era el canal de YouTube de la agente que lista, con su botón de suscripción al lado del vídeo. No podemos ver a través de un enlace al enviarlo, así que se imprime el anfitrión junto a él y decide quien lee." },
+      { en: "A tour URL that is not plainly http or https is now dropped from both halves. The value arrives from another firm's MLS row and lands inside an href: inert rubbish in plain text, a clickable link once it is rendered.", es: "Un enlace de tour que no sea claramente http o https se descarta ahora en las dos mitades. El valor llega de la fila del MLS de otra firma y acaba dentro de un href: basura inofensiva en texto plano, un enlace pulsable en cuanto se pinta." },
+    ],
+  },
   {
     version: "0.136.2",
     date: "2026-09-19",

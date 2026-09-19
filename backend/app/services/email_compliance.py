@@ -37,6 +37,8 @@ import base64
 import hashlib
 import hmac
 import logging
+from dataclasses import dataclass
+from html import escape
 
 from app.config import get_settings
 
@@ -45,6 +47,7 @@ log = logging.getLogger(__name__)
 __all__ = [
     "MissingPostalAddress",
     "build_footer",
+    "build_footer_html",
     "lead_id_from_token",
     "unsubscribe_token",
     "unsubscribe_url",
@@ -119,6 +122,61 @@ def unsubscribe_url(lead_id: int) -> str:
     return f"{base}/api/v1/public/unsubscribe/{unsubscribe_token(lead_id)}"
 
 
+@dataclass(frozen=True)
+class _FooterParts:
+    """The facts a compliant footer is made of, before anyone renders them.
+
+    Text and HTML are two renderings of ONE set of facts, not two templates. A
+    footer whose HTML half quietly lost the postal address while the text half
+    kept it would pass every test that reads `body_text` and still be the
+    violation, so neither renderer is allowed its own source of truth.
+    """
+
+    #: The full sentence the plain-text footer uses, link on the next line.
+    stop: str
+    #: The same invitation with the link taken out of it, for HTML, where the
+    #: URL hides behind `word` instead of being printed.
+    ask: str
+    #: What the link says in HTML. CAN-SPAM wants the opt-out "clear and
+    #: conspicuous"; the word Unsubscribe as a link is the standard form of it.
+    word: str
+    url: str
+    #: Empty when the agency has not set one.
+    brokerage: str
+    address: str
+
+
+def _footer_parts(
+    *, lead_id: int, brokerage_line: str | None, lang: str | None
+) -> _FooterParts:
+    """Raises `MissingPostalAddress` — see `build_footer`."""
+    address = (get_settings().POSTAL_ADDRESS or "").strip()
+    if not address:
+        raise MissingPostalAddress(
+            "POSTAL_ADDRESS is empty. CAN-SPAM requires a valid physical postal "
+            "address in every commercial message, so no compliant footer can be "
+            "built and nothing may be sent. Set POSTAL_ADDRESS to the agency's "
+            "mailing address to turn the automated email channel on."
+        )
+    spanish = lang == "es"
+    return _FooterParts(
+        stop=(
+            "Si no quieres volver a recibir correos nuestros, cancela la suscripción aquí:"
+            if spanish
+            else "Don't want these emails? Unsubscribe here:"
+        ),
+        ask=(
+            "¿No quieres volver a recibir correos nuestros?"
+            if spanish
+            else "Don't want these emails?"
+        ),
+        word="Cancelar suscripción" if spanish else "Unsubscribe",
+        url=unsubscribe_url(lead_id),
+        brokerage=(brokerage_line or "").strip(),
+        address=address,
+    )
+
+
 def build_footer(*, lead_id: int, brokerage_line: str | None, lang: str | None = None) -> str:
     """The block every automated commercial email to a lead has to end with.
 
@@ -132,23 +190,38 @@ def build_footer(*, lead_id: int, brokerage_line: str | None, lang: str | None =
     requires the name the Commission holds — which is a fact about the agency,
     not a string this module is entitled to invent or correct.
     """
-    address = (get_settings().POSTAL_ADDRESS or "").strip()
-    if not address:
-        raise MissingPostalAddress(
-            "POSTAL_ADDRESS is empty. CAN-SPAM requires a valid physical postal "
-            "address in every commercial message, so no compliant footer can be "
-            "built and nothing may be sent. Set POSTAL_ADDRESS to the agency's "
-            "mailing address to turn the automated email channel on."
-        )
-    spanish = lang == "es"
-    stop = (
-        "Si no quieres volver a recibir correos nuestros, cancela la suscripción aquí:"
-        if spanish
-        else "Don't want these emails? Unsubscribe here:"
-    )
-    parts = [stop, unsubscribe_url(lead_id)]
-    line = (brokerage_line or "").strip()
-    if line:
-        parts.append(line)
-    parts.append(address)
+    p = _footer_parts(lead_id=lead_id, brokerage_line=brokerage_line, lang=lang)
+    parts = [p.stop, p.url]
+    if p.brokerage:
+        parts.append(p.brokerage)
+    parts.append(p.address)
     return "\n".join(parts)
+
+
+def build_footer_html(
+    *, lead_id: int, brokerage_line: str | None, lang: str | None = None
+) -> str:
+    """The same footer for the HTML half. Raises `MissingPostalAddress` too.
+
+    Only the URL hides — behind one word. The brokerage line and the postal
+    address stay VISIBLE text, because they are what the law asks to be on the
+    page; a mailing address behind a link is an address nobody reads.
+
+    Styles are inline and the stack is a system serif: Gmail strips `<style>`
+    blocks and `@font-face`, so a brand font here would look like a brand font
+    only in the one client nobody uses.
+    """
+    p = _footer_parts(lead_id=lead_id, brokerage_line=brokerage_line, lang=lang)
+    rows = [
+        f'{escape(p.ask)} <a href="{escape(p.url, quote=True)}" '
+        f'style="color:#6b6b6b;">{escape(p.word)}</a>.'
+    ]
+    if p.brokerage:
+        rows.append(escape(p.brokerage))
+    rows.append(escape(p.address))
+    inner = "<br>".join(rows)
+    return (
+        '<div style="margin-top:28px;padding-top:14px;'
+        'border-top:1px solid #e0e0e0;font-size:12px;color:#6b6b6b;">'
+        f"{inner}</div>"
+    )
