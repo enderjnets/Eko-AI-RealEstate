@@ -76,6 +76,17 @@ MUST_HAVE="${EKO_BACKUP_TABLES:-leads properties organizations accounts}"
 
 say() { echo "$(date -Is) $*"; }
 
+# Este volcado lleva los clientes de las agencias, sus direcciones y sus
+# operaciones. Iba en claro mientras sus hermanos (estado, repos) sí se cifraban,
+# y el disco del VPS no está cifrado: cualquiera con una instantánea del volumen
+# leía la cartera entera. Misma frase que todo el sistema de copias, para que una
+# restauración de emergencia siga necesitando UNA sola.
+KEYFILE="${EKO_BACKUP_KEYFILE:-$HOME/.config/vps-backup.key}"
+
+# Sin frase no hay copia. Un aviso en lugar de una parada sería volver a escribir
+# los datos en claro la primera noche que falte el fichero, sin que nadie se entere.
+[ -r "$KEYFILE" ] || { say "ABORTADO: no hay frase de cifrado en $KEYFILE"; exit 1; }
+
 mkdir -p "$OUT_DIR"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 # El temporal lleva PID además de la marca: la marca tiene resolución de
@@ -83,12 +94,13 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 UNIQ="$STAMP-$$"
 TMP_DUMP="$OUT_DIR/.eko-realtors-$UNIQ.part"
 TMP_ROLES="$OUT_DIR/.eko-roles-$UNIQ.part"
-OUT="$OUT_DIR/eko-realtors-$STAMP.dump"
+TMP_CIF="$OUT_DIR/.eko-realtors-$UNIQ.part.gpg"
+OUT="$OUT_DIR/eko-realtors-$STAMP.dump.gpg"
 ROLES="$OUT_DIR/eko-roles-$STAMP.sql"
 IN_BOX="/tmp/eko-backup-$UNIQ.dump"
 
 limpiar() {
-  rm -f "$TMP_DUMP" "$TMP_ROLES"
+  rm -f "$TMP_DUMP" "$TMP_ROLES" "$TMP_CIF"
   docker exec "$CONTAINER" rm -f "$IN_BOX" < /dev/null > /dev/null 2>&1 || true
 }
 trap limpiar EXIT
@@ -116,7 +128,11 @@ if [ "$SIZE" -lt "$MIN_BYTES" ]; then
   # El malo se aparca, no se borra: es la prueba de qué salió mal. Y se aparca
   # con un nombre que NO casa con ningún patrón de copia buena, así que ni la
   # retención ni el Mac lo confunden con una.
-  mv "$TMP_DUMP" "$OUT_DIR/eko-realtors-$STAMP.rechazado"
+  # Se cifra también: «rechazado» significa ilegible o corto, que no es lo mismo
+  # que vacío — puede llevar filas de clientes de verdad.
+  gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase-file "$KEYFILE" \
+      -o "$OUT_DIR/eko-realtors-$STAMP.rechazado.gpg" "$TMP_DUMP" 2>/dev/null || true
+  rm -f "$TMP_DUMP"
   say "ABORTADO: el volcado pesa $SIZE bytes, por debajo del suelo de $MIN_BYTES — aparcado, y la retención NO corre"
   exit 1
 fi
@@ -146,7 +162,27 @@ fi
 # Hasta aquí no existe ningún fichero con nombre de copia buena. Los dos se
 # ganan el nombre a la vez, porque para restaurar Eko hacen falta los dos y una
 # pareja descabalada se lee desde fuera como una copia entera.
-mv "$TMP_DUMP" "$OUT"
+# Cifrar, y comprobar que el descifrado vuelve a ser el original byte a byte. Un
+# gpg que sale con cero dice que escribió un fichero, no que ese fichero se pueda
+# volver a abrir — y una copia que no abre se ve idéntica a una buena hasta el
+# día que hace falta.
+gpg --batch --yes --symmetric --cipher-algo AES256 \
+    --passphrase-file "$KEYFILE" -o "$TMP_CIF" "$TMP_DUMP"
+if [ "$(sha256sum "$TMP_DUMP" | cut -d' ' -f1)" != \
+     "$(gpg --batch --quiet --decrypt --passphrase-file "$KEYFILE" "$TMP_CIF" 2>/dev/null | sha256sum | cut -d' ' -f1)" ]; then
+  say "ABORTADO: el volcado cifrado no vuelve a ser el original — no se promueve"
+  exit 1
+fi
+rm -f "$TMP_DUMP"
+
+# El fichero de roles NO se cifra, y es deliberado: se escribe con
+# `--no-role-passwords`, así que lleva nombres, atributos y pertenencias y
+# ninguna credencial. Comprobado sobre el fichero vivo: cero líneas con
+# PASSWORD. Cifrarlo solo añadiría una frase más que recordar a las 3 de la
+# mañana sin proteger nada.
+
+mv "$TMP_CIF" "$OUT"
+chmod 600 "$OUT"
 mv "$TMP_ROLES" "$ROLES"
 
 TABLAS="$(printf '%s\n' "$TOC" | grep -c 'TABLE DATA' || true)"
@@ -157,6 +193,6 @@ say "escrito $ROLES ($(wc -l < "$ROLES" | tr -d ' ') líneas)"
 # `.rechazado` casan con estos patrones, así que una racha de fallos no puede
 # rotar fuera a la última copia buena — solo acumula pruebas hasta que alguien
 # mire.
-ls -1t "$OUT_DIR"/eko-realtors-*.dump 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
+ls -1t "$OUT_DIR"/eko-realtors-*.dump.gpg 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
 ls -1t "$OUT_DIR"/eko-roles-*.sql 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
-say "retención: se guardan las $KEEP más nuevas ($(ls -1 "$OUT_DIR"/eko-realtors-*.dump 2>/dev/null | wc -l | tr -d ' ') presentes)"
+say "retención: se guardan las $KEEP más nuevas ($(ls -1 "$OUT_DIR"/eko-realtors-*.dump.gpg 2>/dev/null | wc -l | tr -d ' ') presentes)"
