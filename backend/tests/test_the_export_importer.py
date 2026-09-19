@@ -154,7 +154,7 @@ async def test_an_export_becomes_listings_with_their_broker(
 
         assert row.source == PropertySource.MLS
         assert row.status == PropertyStatus.ACTIVE
-        assert row.address == "100 S Nowhere Street"
+        assert row.address == "100 S Nowhere Street"  # a house: no unit to add
         assert row.city == "Denver"
         # "Colorado" is what the export writes; the column takes two characters,
         # and storing "Co" would be two letters of a longer word.
@@ -202,6 +202,32 @@ async def test_uploading_the_same_search_again_updates_rather_than_doubles(
                 )
             ).scalars().all()
         assert len(total) == 2
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_condo_keeps_its_unit_number(
+    database_url: str, export_text: str
+) -> None:
+    """Found on the first import that mattered, with real data.
+
+    The eight Washington Park listings a lead with $315,000 could actually buy
+    were six condos in two buildings — four at 352/400 S Lafayette Street and
+    two at 21 N Washington Street. Dropping `Unit Number` made four of them read
+    as two addresses, and would have sent somebody to look at a building.
+    """
+    set_org_id(1)
+    try:
+        async with get_bypass_session_factory()() as db:
+            await import_export_csv(export_text, db)
+            row = (
+                await db.execute(
+                    select(Property).where(Property.external_id == "TEST0002")
+                )
+            ).scalar_one()
+        assert row.address == "205 Invented Avenue Unit 504"
+        assert row.title == "205 Invented Avenue Unit 504"
     finally:
         await _cleanup()
 

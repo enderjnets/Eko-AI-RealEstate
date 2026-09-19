@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.136.1] - 2026-09-19
+
+### El número de unidad
+
+Encontrado con datos reales, que es la única forma en que se encuentran estas
+cosas. La primera importación que importaba de verdad —las ocho activas de
+Washington Park que un lead con $315.000 puede comprar hoy— eran **seis
+condominios en dos edificios**: cuatro en 352/400 S Lafayette Street y dos en
+21 N Washington Street.
+
+Sin `Unit Number`, cuatro de ellas salían como dos direcciones repetidas, y el
+correo habría mandado a una persona a mirar **un edificio**. Ahora la columna
+entra en la lista blanca y se imprime; en las casas, donde el export la deja
+vacía, la línea no cambia. Dos mutaciones vistas en rojo: quitarla de la lista
+blanca, y dejar de concatenarla.
+
 ## [0.136.0] - 2026-09-19
 
 ### El circuito de opciones

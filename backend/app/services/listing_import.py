@@ -83,6 +83,7 @@ COLUMNS = {
     "Street Dir Prefix": "street_dir",
     "Street Name": "street_name",
     "Street Suffix": "street_suffix",
+    "Unit Number": "unit_number",
     "City": "city",
     "State Or Province": "state",
     "Postal Code": "zip_code",
@@ -152,13 +153,29 @@ def _date(value: object) -> datetime | None:
 
 
 def _address(row: dict[str, str]) -> str:
+    """Street address including the unit, when there is one.
+
+    The unit is not a detail here. Measured on the first real import that
+    mattered — the eight listings in Washington Park a lead with $315,000 could
+    actually buy — SIX of the eight were condos in two buildings: four at
+    352/400 S Lafayette Street and two at 21 N Washington Street. Without the
+    unit the email would have offered the same address twice and told somebody
+    to go and look at a building.
+
+    Empty on houses, where the export leaves the column blank, so nothing is
+    appended and the line is unchanged.
+    """
     parts = [
         _clean(row.get("street_number")),
         _clean(row.get("street_dir")),
         _clean(row.get("street_name")),
         _clean(row.get("street_suffix")),
     ]
-    return " ".join(p for p in parts if p)
+    street = " ".join(p for p in parts if p)
+    unit = _clean(row.get("unit_number"))
+    if street and unit:
+        return f"{street} Unit {unit}"
+    return street
 
 
 def _listing_type(row: dict[str, str]) -> str:

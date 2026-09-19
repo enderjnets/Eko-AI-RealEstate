@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.136.0";
+export const CURRENT_VERSION = "0.136.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.136.1",
+    date: "2026-09-19",
+    title: {
+      en: "The unit number, found by importing real listings",
+      es: "El número de unidad, encontrado al importar propiedades reales",
+    },
+    changes: [
+      { en: "The first import that mattered was the eight listings in Washington Park a lead with $315,000 could actually buy, and six of them were condos in two buildings. Without the unit number four of them read as two addresses — and the email would have told somebody to go and look at a building. The column is now read and printed; houses, where the export leaves it blank, are unchanged.", es: "La primera importación que importaba de verdad eran las ocho propiedades de Washington Park que un lead con $315.000 puede comprar, y seis eran condominios en dos edificios. Sin el número de unidad, cuatro de ellas salían como dos direcciones — y el correo habría mandado a alguien a mirar un edificio. Ahora se lee y se imprime; las casas, donde el export deja la columna vacía, no cambian." },
+    ],
+  },
   {
     version: "0.136.0",
     date: "2026-09-19",
