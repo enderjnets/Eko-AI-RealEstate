@@ -122,6 +122,30 @@ function ConsultFormInner({
   // The wording rendered beside the checkbox is the wording stored as evidence.
   const consentWording = t("contact.consent");
 
+  // `/calculator` asks at a different moment, so it asks for a different thing.
+  // The visitor has just moved sliders anonymously; "Book the consult" is a
+  // scheduled conversation with a stranger, and the section they scrolled into
+  // already promises something smaller — "Leave your email and she'll reach
+  // out". Measured over 90 days: 48 sessions reached a figure on that page and
+  // not one ever focused a field here.
+  //
+  // Labels and `required` only. The consent wording, the honeypot, the
+  // Turnstile and the endpoint stay identical for every variant — the header
+  // of this file explains why a second, subtly different capture form is how a
+  // TCPA record ends up describing a sentence nobody read.
+  const onCalculator = variant === "calculator";
+  const submitLabel = onCalculator ? t("calculator.form.submit") : t("landing.form.submit");
+  const thanksTitle = onCalculator
+    ? t("calculator.form.thanksTitle")
+    : t("landing.form.thanksTitle");
+  const thanksBody = onCalculator
+    ? t("calculator.form.thanksBody")
+    : t("landing.form.thanksBody");
+  // Only the address is demanded there, because only the address is promised.
+  // The backend refuses a lead without one anyway (`CAPTURE_REQUIRE_EMAIL`), so
+  // this drops the two the markup added on top of it, not the one that matters.
+  const nameRequired = !onCalculator;
+
   // Each chip carries the sentence it becomes. The chip label is a fragment
   // meant to be read under "I'm…", so sending it as the message produced
   // "I'm… Selling" in the inbox — which tells the advisor nothing and reads
@@ -222,8 +246,8 @@ function ConsultFormInner({
   if (done) {
     return (
       <div className="border border-ln-cream/25 bg-ln-dark/40 p-8 text-center backdrop-blur sm:p-10">
-        <h3 className="font-ln-serif text-2xl text-ln-cream">{t("landing.form.thanksTitle")}</h3>
-        <p className="mt-3 text-sm leading-relaxed text-ln-canvas/70">{t("landing.form.thanksBody")}</p>
+        <h3 className="font-ln-serif text-2xl text-ln-cream">{thanksTitle}</h3>
+        <p className="mt-3 text-sm leading-relaxed text-ln-canvas/70">{thanksBody}</p>
       </div>
     );
   }
@@ -239,7 +263,11 @@ function ConsultFormInner({
         {/* Both halves of the name share the row, and the phone moves down to
             its own. Required in the markup for the same reason the email is:
             the browser saying so in place beats a round-trip, and an agent
-            calling a seller needs more than a first name to look them up.
+            calling a seller needs more than a first name to look them up —
+            EXCEPT under `/calculator`, where `nameRequired` is false because
+            the section above the form promises the address and nothing else.
+            The trade is deliberate: a lead with no surname is worth more than
+            the lead that was never left, and she can ask for it in her reply.
             `maxLength` is not decoration — the server takes ONE `name` field
             capped at 160, and 79 + 1 + 79 is 159. */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -251,7 +279,7 @@ function ConsultFormInner({
             autoComplete="given-name"
             maxLength={NAME_FIELD_MAX}
             name
-            required
+            required={nameRequired}
           />
           <LandingField
             id="ln-lastname"
@@ -261,7 +289,7 @@ function ConsultFormInner({
             autoComplete="family-name"
             maxLength={NAME_FIELD_MAX}
             name
-            required
+            required={nameRequired}
           />
         </div>
         <LandingField
@@ -359,7 +387,7 @@ function ConsultFormInner({
           disabled={loading}
           className="flex w-full items-center justify-center gap-3 bg-ln-gold px-6 py-5 text-[11px] font-medium uppercase tracking-[0.16em] text-ln-cream transition-opacity hover:opacity-90 disabled:opacity-60"
         >
-          {loading ? t("landing.form.sending") : t("landing.form.submit")}
+          {loading ? t("landing.form.sending") : submitLabel}
           <ArrowRight className="h-[15px] w-[15px]" />
         </button>
         <p className="text-center text-[11px] tracking-[0.06em] text-ln-canvas/55">

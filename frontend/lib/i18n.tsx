@@ -1012,7 +1012,23 @@ const EN: Record<string, string> = {
   "calculator.result.ceiling": "$5,000,000+",
   "calculator.result.down": "Down payment",
   "calculator.result.loan": "Loan",
-  "calculator.result.cta": "Talk to Natalia about this",
+  // The button lands on `#consult`, whose heading already offers "options in
+  // this range". It used to say "Talk to Natalia about this" — a scheduled
+  // conversation with a stranger, asked of someone who had just moved sliders
+  // anonymously. Measured over 90 days: 48 sessions reached a figure here, 6
+  // clicked a CTA anywhere on the site, and not one ever focused a form field.
+  // The button now names what the section actually delivers.
+  "calculator.result.cta": "See what this buys in Denver",
+  // Calculator-only copy for the shared form. New keys rather than edits to
+  // `landing.form.*`, which `/`, `/fall` and `/contact` also render: the ask
+  // that fits after a calculation does not fit those pages.
+  "calculator.form.submit": "Send me options",
+  "calculator.form.thanksTitle": "Got it — Natalia is on it.",
+  // One line, deliberately. `test_calculator_copy.py` extracts these with a
+  // regex that needs the key and its value on the SAME line, so a value wrapped
+  // onto a second line is silently never screened by `find_violations` — the
+  // guard keeps passing and stops covering the string. Caught on this very key.
+  "calculator.form.thanksBody": "She'll come back to you this week with what your number buys in Denver right now.",
   "calculator.monthly.heading": "What that costs per month",
   "calculator.monthly.pi": "Principal and interest",
   "calculator.monthly.tax": "Property tax",
@@ -1059,7 +1075,11 @@ const EN: Record<string, string> = {
   "calculator.cta.body": "Leave your email and she'll reach out.",
   "calculator.cta.headingPriced": "Want Natalia to send you options near {price}?",
   "calculator.cta.luxury": "Buying above $1 million? That is their market too \u2014 tell Natalia what you are looking for and she will take it from there.",
-  "calculator.cta.reassure": "Three fields. Natalia answers you \u2014 not a robot.",
+  // The count is gone on purpose: it said three, the markup demanded three
+  // (first name, last name, email) and the heading above it promised one
+  // ("Leave your email and she'll reach out"). Only the email is required now,
+  // so any number printed here would contradict either the form or the promise.
+  "calculator.cta.reassure": "Natalia answers you \u2014 not a robot.",
   // social entry
   "start.eyebrow": "Your next move in Colorado",
   "start.title": "What brings you here?",
@@ -2075,7 +2095,10 @@ const ES: Record<string, string> = {
   "calculator.result.ceiling": "$5,000,000+",
   "calculator.result.down": "Enganche (down payment)",
   "calculator.result.loan": "Pr\u00e9stamo",
-  "calculator.result.cta": "Habla con Natalia de esto",
+  "calculator.result.cta": "Mira qué compra esto en Denver",
+  "calculator.form.submit": "Mándame opciones",
+  "calculator.form.thanksTitle": "Recibido — Natalia se encarga.",
+  "calculator.form.thanksBody": "Esta semana te escribe con lo que tu cifra compra hoy en Denver.",
   "calculator.monthly.heading": "Lo que cuesta al mes",
   "calculator.monthly.pi": "Capital e inter\u00e9s",
   "calculator.monthly.tax": "Impuesto predial",
@@ -2122,7 +2145,7 @@ const ES: Record<string, string> = {
   "calculator.cta.body": "Deja tu correo y ella te escribe.",
   "calculator.cta.headingPriced": "\u00bfQuieres que Natalia te mande opciones cerca de {price}?",
   "calculator.cta.luxury": "\u00bfBuscas por encima del mill\u00f3n? Tambi\u00e9n es su mercado \u2014 dile a Natalia qu\u00e9 buscas y ella se encarga.",
-  "calculator.cta.reassure": "Tres campos. Te contesta Natalia, no un robot.",
+  "calculator.cta.reassure": "Te contesta Natalia, no un robot.",
   // entrada desde redes sociales
   "start.eyebrow": "Tu pr\u00f3ximo paso en Colorado",
   "start.title": "\u00bfQu\u00e9 te trae por aqu\u00ed?",
