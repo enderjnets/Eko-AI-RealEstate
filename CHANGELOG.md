@@ -1,5 +1,92 @@
 # Changelog
 
+## [0.136.0] - 2026-09-19
+
+### El circuito de opciones
+
+**Alguien pide ver propiedades, y una persona las elige.**
+
+La primera pregunta de verdad que recibió el canal de correo —*«I'm renting at
+$2,400 in Wash Park and I have around $35,000 saved. What would that actually
+buy right now?»*— se contestó con nueve párrafos de consejos y ni una propiedad.
+No era mala redacción: la tabla de listings tenía condominios simulados de
+Miami, `match_properties_for_lead` no tenía una sola fila de Denver que
+devolver, y un modelo sin nada que ofrecer rellena el hueco con prosa.
+
+Este producto **no tiene API del MLS.** Los datos de REcolorado salen de Matrix
+a mano, bajo la suscripción de una persona, contra una franquicia que esta misma
+tarde se leyó en su pantalla: **500 registros cada 30 días**, 0 gastados, y la
+sanción por abusar cae sobre **su licencia**, no sobre este software. Así que el
+paso del medio es una persona, y el trabajo del sistema es llevarle el encargo y
+traer de vuelta la respuesta.
+
+**1. El encargo es una fila con estado.** Pedir opciones abre un
+`ListingRequest`, se avisa a la agencia con un enlace a su pantalla, ella marca
+hasta seis y salen por correo a su nombre. El disparador es un **campo booleano
+de la salida estructurada del clasificador** (`wants_listings`), nunca una frase
+del texto generado: el modelo opina, el código decide — la misma regla que
+ordenó v0.135.0.
+
+**2. Una sola petición abierta por lead, impuesta por un índice único parcial.**
+Sin él, cuatro correos en cuatro minutos son cuatro búsquedas, y quien escribe a
+`hello@` decide cuánto cupo ajeno se gasta. El aviso entra además en
+`_STRANGER_ORIGINS` con `message` y `qualified`; **`callback` no**, porque es el
+punto de conversión y un presupuesto que un desconocido pueda agotar en su
+nombre sería otra vez el interruptor de apagado de `public.py`.
+
+**3. La lista corta viaja en el CORREO y se queda ahí.** §11.2 de REcolorado
+permite reproducir y distribuir información de listings a un comprador
+potencial, y prohíbe exhibirla o publicarla sin permiso escrito previo. Un
+correo a quien preguntó es distribución; una URL que abre cualquiera es
+publicación. Por eso la página del cliente lleva **dos botones y ni un dato**:
+ni dirección, ni precio, ni habitaciones, ni correduría. Hay un test cuyo único
+trabajo es que siga siendo verdad.
+
+**4. Lista blanca de columnas, nunca lista negra.** El export Full que se leyó
+hoy trae **394 columnas**, y `Private Remarks` (9 de 10 filas),
+`Showing Contact Phone` (10), `List Agent Email` (10), `Contract Min Earnest`
+(10) y `Exclusions` (10) son notas entre corredores sobre el cliente de otro.
+Se nombran una a una las que pueden salir. `Public Remarks` **no está**: es
+copia publicitaria de otra correduría y es justo donde un agente escribe «great
+schools», que el filtro de Fair Housing de este producto bloquea en el carril de
+correo desde v0.135.0 — nos estaríamos bloqueando por la frase de otro.
+
+**5. La respuesta de Clara se acorta sola.** Cuando la lista viene en camino, el
+prompt le pide tres frases: que llega por correo, que la elige una persona, y una
+sola pregunta si falta algo imprescindible. Inventarse una dirección queda
+prohibido por escrito.
+
+### El importador del export
+
+**6. Se sube el CSV por el panel, y sólo entran las columnas nombradas.**
+`COLUMNS` es la lista blanca; `raw` se construye con claves nombradas y no con
+`dict(row)`, que es el atajo obvio y el que dejaría el precio de suelo del
+vendedor en nuestra base con una plantilla de distancia hasta el correo de un
+consumidor. El fixture de los tests lleva **la cabecera real de 394 columnas** y
+**filas inventadas**: una cabecera es una forma, no el listing de nadie, y una
+lista blanca no se puede probar con un fichero que nunca contuvo lo que debe
+dejar fuera.
+
+**7. Un fichero con más de 500 filas se rechaza entero, no se trunca.**
+REcolorado permite 500 registros de Property cada 30 días, así que un fichero
+mayor no pudo salir dentro de la franquicia — importar los primeros 500 sería
+bendecir en silencio un export que ya se pasó. También se rechaza, antes de
+escribir nada, el export «Single Line», que es el formato por defecto de Matrix
+y el error que se comete una vez al mes.
+
+**8. `properties` no tiene `org_id`, y la subida lo dice en voz alta.** La
+tabla se comparte a propósito —hay un solo feed de REcolorado—, lo cual está
+bien con una agencia y es una escritura entre inquilinos con dos. La ruta se
+niega si existe una segunda agencia real, en vez de documentar el peligro y
+confiar. *(El inquilino `Demo` no cuenta: lo siembra la propia instalación. La
+primera versión de esta valla lo contaba y habría rechazado todas las subidas
+de un install normal — medido, porque pasó.)*
+
+### Sabido y dicho
+
+La pantalla de selección sale vacía hasta que se suba el primer export. El
+importador ya existe; lo que falta es el fichero.
+
 ## [0.135.0] - 2026-09-19
 
 ### Seguridad

@@ -37,6 +37,12 @@ from app.models.landing import (
 )
 from app.models.lead import WON_KINDS, Lead, LeadIntent, LeadStatus
 from app.models.lead_event import LEAD_EVENT_TYPES, LeadEvent
+from app.models.listing_request import (
+    CALLBACK_TEXT_MAX,
+    MAX_SELECTED,
+    ListingRequest,
+    ListingRequestStatus,
+)
 from app.models.message import (
     Message,
     MessageDirection,
@@ -102,6 +108,10 @@ __all__: list[str] = [
     "Lead",
     "LeadIntent",
     "LeadStatus",
+    "ListingRequest",
+    "ListingRequestStatus",
+    "CALLBACK_TEXT_MAX",
+    "MAX_SELECTED",
     "Message",
     "MessageDirection",
     "MessageSender",

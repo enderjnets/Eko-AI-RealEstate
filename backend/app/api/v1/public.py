@@ -1369,3 +1369,246 @@ async def unsubscribe(token: str, db: AsyncSession = Depends(get_db)) -> HTMLRes
         await db.commit()
         log.info("Lead %d unsubscribed from email", lead_id)
     return done
+
+
+# ── The options page: two buttons, and not one fact about a listing ──────
+#
+# The shortlist travels in the EMAIL and stops there. REcolorado's rules let a
+# Participant reproduce and distribute listing information to a prospective
+# purchaser (§11.2) and forbid displaying or publishing it without prior
+# written consent — and a URL anybody can open is publishing, whoever we
+# expected to open it. So this page knows the person's name and nothing else:
+# no address, no price, no beds, no broker, no link to a listing.
+#
+# `test_the_options_page_shows_no_listing_data` is what keeps that true. It is
+# not a stylistic test; it is the licence.
+
+_OPTIONS_TOKEN = re.compile(r"[A-Za-z0-9_-]{16,64}")
+
+#: Their own words about when to be called. The same ceiling the column has,
+#: checked here so an oversized body is refused before it reaches the row.
+MAX_CALLBACK_TEXT = 200
+
+
+def _options_page(title: str, body_html: str) -> HTMLResponse:
+    """One self-contained page, in the shape `_unsubscribe_page` established.
+
+    No stylesheet, no script, no pixel. The reader is a person we emailed who
+    is deciding whether to keep talking to us; measuring them on the way to
+    that decision is not something to build in.
+    """
+    return HTMLResponse(
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<meta name="robots" content="noindex">'
+        f"<title>{title}</title></head>"
+        '<body style="font-family:Georgia,serif;max-width:34rem;margin:10vh auto;'
+        'padding:0 1.5rem;line-height:1.6">'
+        f'<h1 style="font-weight:400">{title}</h1>{body_html}</body></html>'
+    )
+
+
+async def _options_target(token: str) -> tuple[int, int] | None:
+    """Map a token to `(request id, org id)`, or None.
+
+    The third query in this module that runs outside a tenant, and like the two
+    above it reads two integers: a stranger with a token has to be resolved to
+    an organization before anything can be scoped to one.
+    """
+    from app.models import ListingRequest
+
+    if not _OPTIONS_TOKEN.fullmatch(token or ""):
+        return None
+    async with get_bypass_session_factory()() as meta:
+        row = (
+            await meta.execute(
+                select(ListingRequest.id, ListingRequest.org_id).where(
+                    ListingRequest.token == token
+                )
+            )
+        ).first()
+    return (int(row[0]), int(row[1])) if row else None
+
+
+async def _lead_thread(lead_id: int, db: AsyncSession) -> int | None:
+    """The conversation a notice about this lead is filed in, newest first.
+
+    Filed, not created: a lead who reached an options email has an email thread
+    already. None is survivable — the notice still sends — but it costs the
+    internal trace row, and that row is what the daily cap counts.
+    """
+    from app.models import Conversation
+
+    return (
+        await db.execute(
+            select(Conversation.id)
+            .where(Conversation.lead_id == lead_id)
+            .order_by(Conversation.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+@router.get("/options/{token}", response_class=HTMLResponse)
+async def options_page(token: str, db: AsyncSession = Depends(get_db)) -> HTMLResponse:
+    """Ask, do not act — the same rule the unsubscribe page follows.
+
+    Both buttons are POSTs. A GET that opened a new request would be pressed by
+    every link scanner that walks an email before its recipient does, and each
+    one of those would be a search asked of a human being.
+    """
+    found = await _options_target(token)
+    generic = _options_page(
+        "This link has expired",
+        "<p>Reply to the email we sent you and we will pick it up from there.</p>",
+    )
+    if found is None:
+        return generic
+    request_id, org_id = found
+    set_org_id(org_id)
+
+    from app.models import ListingRequest
+
+    row = (
+        await db.execute(select(ListingRequest).where(ListingRequest.id == request_id))
+    ).scalar_one_or_none()
+    if row is None:
+        return generic
+
+    if row.opened_at is None:
+        # Stamped once and never refreshed: the question is "did they see it",
+        # and that stops changing the moment it is yes.
+        row.opened_at = datetime.now(UTC)
+        try:
+            await db.commit()
+        except Exception:  # noqa: BLE001 — reading must not depend on writing
+            await db.rollback()
+
+    action = f"/api/v1/public/options/{token}"
+    return _options_page(
+        "What next?",
+        "<p>Those are the ones we picked. If none of them are right, we will "
+        "put another set together — or you can just talk to us.</p>"
+        f'<form method="post" action="{action}/more" style="margin:2rem 0">'
+        '<button type="submit" style="font:inherit;padding:.6rem 1rem">'
+        "Show me a different set</button></form>"
+        f'<form method="post" action="{action}/call">'
+        '<p><label>Call me — when suits you?<br>'
+        f'<input name="when" maxlength="{MAX_CALLBACK_TEXT}" '
+        'placeholder="Thursday after 4pm, or any time Friday" '
+        'style="font:inherit;width:100%;padding:.5rem;margin-top:.4rem"></label></p>'
+        '<button type="submit" style="font:inherit;padding:.6rem 1rem">'
+        "Ask for a call</button></form>",
+    )
+
+
+@router.post("/options/{token}/more", response_class=HTMLResponse)
+async def options_more(token: str, db: AsyncSession = Depends(get_db)) -> HTMLResponse:
+    """They want a different set. Opens a new request — under the same rules.
+
+    Everything that guards the first ask guards this one: `open_request` will
+    hand back an already-open row rather than making a second, and the notice
+    goes out as a capped stranger origin. The button is reachable by anybody
+    holding a link, so it gets no more trust than an inbound email does.
+    """
+    done = _options_page(
+        "We are on it",
+        "<p>We are putting another set together. You will get an email when it "
+        "is ready, with a link to the new one.</p>",
+    )
+    found = await _options_target(token)
+    if found is None:
+        return done
+    request_id, org_id = found
+    set_org_id(org_id)
+
+    from app.models import ListingRequest, ListingRequestStatus
+    from app.services.listing_requests import open_request
+
+    row = (
+        await db.execute(select(ListingRequest).where(ListingRequest.id == request_id))
+    ).scalar_one_or_none()
+    if row is None:
+        return done
+    lead_id = int(row.lead_id)
+    if row.status == ListingRequestStatus.SENT:
+        # Closed before the next one opens, or the partial unique index refuses
+        # the insert and the person gets a promise nobody received.
+        row.status = ListingRequestStatus.MORE_REQUESTED
+        row.responded_at = datetime.now(UTC)
+        await db.commit()
+
+    new_id, created = await open_request(lead_id, origin="more")
+    if created and new_id is not None:
+        from app.services.lead_notify import send_new_lead_notice
+
+        # The thread is passed on purpose. Without it the notice still sends and
+        # then returns before writing its internal trace row — and that row is
+        # what `_notices_in_24h` counts, so an uncounted notice is a capped
+        # origin that silently escapes its cap. A button anyone holding a link
+        # can press is exactly the origin that must not escape it.
+        await send_new_lead_notice(
+            lead_id,
+            None,
+            origin="options",
+            conversation_id=await _lead_thread(lead_id, db),
+            request_id=new_id,
+        )
+    return done
+
+
+@router.post("/options/{token}/call", response_class=HTMLResponse)
+async def options_call(
+    token: str, request: Request, db: AsyncSession = Depends(get_db)
+) -> HTMLResponse:
+    """They asked for a call. Their words are stored, quoted, and nothing else.
+
+    Nothing is booked. This product does not hold a slot on anybody's calendar
+    from a public form, and a parsed "Thursday" that lands on the wrong
+    Thursday is worse than the sentence it came from — so what she receives is
+    what they typed.
+
+    NOT capped, unlike the origins a stranger can reach with nothing but an
+    email address. This is the conversion point of the whole circuit, and it
+    costs one mail about a person who has already read a shortlist.
+    """
+    done = _options_page(
+        "She will call you",
+        "<p>Thanks — we have passed that on. If you need to add anything, just "
+        "reply to the email we sent you.</p>",
+    )
+    form = await request.form()
+    raw = form.get("when")
+
+    found = await _options_target(token)
+    if found is None:
+        return done
+    request_id, org_id = found
+    set_org_id(org_id)
+
+    from app.models import ListingRequest, ListingRequestStatus
+    from app.services.listing_requests import clean_callback_text
+
+    row = (
+        await db.execute(select(ListingRequest).where(ListingRequest.id == request_id))
+    ).scalar_one_or_none()
+    if row is None:
+        return done
+
+    row.callback_text = clean_callback_text(raw if isinstance(raw, str) else None)
+    row.status = ListingRequestStatus.CALLBACK_REQUESTED
+    row.responded_at = datetime.now(UTC)
+    lead_id = int(row.lead_id)
+    thread_id = await _lead_thread(lead_id, db)
+    await db.commit()
+
+    from app.services.lead_notify import send_new_lead_notice
+
+    await send_new_lead_notice(
+        lead_id,
+        None,
+        origin="callback",
+        conversation_id=thread_id,
+        request_id=request_id,
+    )
+    return done

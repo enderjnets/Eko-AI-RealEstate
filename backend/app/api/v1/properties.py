@@ -4,13 +4,13 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.auth import require_platform_admin
-from app.db.base import get_db
+from app.api.v1.auth import require_admin, require_platform_admin
+from app.db.base import get_bypass_session_factory, get_db
 from app.models import Lead, Property, PropertySource, PropertyStatus, SyncState
 from app.services.listings import (
     RESO_SOURCE_KEY,
@@ -165,6 +165,101 @@ async def sync_properties(
     """
     result = await sync_listings(db, city=city)
     return SyncResult(**result)
+
+
+class ImportResult(BaseModel):
+    created: int
+    updated: int
+    skipped: int
+    problems: list[str] = []
+
+
+#: A Full export of 500 listings is about 2.6 MB. Ten leaves room for a wider
+#: search without letting an upload become a way to spend the server's memory.
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+@router.post(
+    "/import",
+    response_model=ImportResult,
+    dependencies=[Depends(require_admin)],
+)
+async def import_listings(
+    file: UploadFile = File(...), db: AsyncSession = Depends(get_db)
+) -> ImportResult:
+    """Upload a REcolorado Matrix "Full" export.
+
+    This is the agency's own work — she runs the search under her own
+    subscription and uploads what she downloaded — so it sits behind
+    `require_admin` and not `require_platform_admin`, unlike `/sync`, which
+    spends the operator's shared feed quota.
+
+    ⚠️ **`properties` has no `org_id`.** It is deliberately shared, because
+    there is one REcolorado feed. That is fine with one agency on the install
+    and becomes a cross-tenant write the moment there are two: agency B would
+    see, and overwrite, the listings agency A exported under A's own licence.
+    So the route refuses when a second organization exists, rather than
+    documenting the hazard and hoping. Adding `org_id` to `properties` is the
+    precondition for lifting this, not a nice-to-have.
+    """
+    from app.models import DEMO_ORG_ID, Organization
+    from app.services.listing_import import ExportRejected, import_export_csv
+
+    # Counted on a BYPASS session, and the first version of this was wrong for
+    # a reason worth keeping: `get_db` is the tenant-scoped session, RLS filters
+    # `organizations` down to the caller's own, and the count came back 1 on an
+    # install with two agencies — so the guard passed exactly when it mattered.
+    # A question about how many tenants exist cannot be asked from inside one.
+    async with get_bypass_session_factory()() as meta:
+        # The demo tenant is excluded, and that is not a loophole: it is seeded
+        # by the install itself, has no licence, no subscription and nobody
+        # exporting under it. Counting it would refuse every upload on a
+        # perfectly ordinary single-agency install — measured, because it did.
+        tenants = (
+            await meta.execute(
+                select(func.count())
+                .select_from(Organization)
+                .where(Organization.id != DEMO_ORG_ID)
+            )
+        ).scalar_one()
+    if tenants > 1:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "listings are stored in a table shared by every agency on this "
+                "install, so an upload would cross the tenant boundary. Give "
+                "`properties` an `org_id` before enabling this for more than "
+                "one organization."
+            ),
+        )
+
+    # Read through the module so a test can lower it, and so the value is the
+    # one this module holds now rather than the one imported at start-up.
+    ceiling = globals()["MAX_UPLOAD_BYTES"]
+    payload = await file.read(ceiling + 1)
+    if len(payload) > ceiling:
+        raise HTTPException(status_code=413, detail="file_too_large")
+    try:
+        text = payload.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        # Matrix writes UTF-8; Excel round-trips are the ones that arrive as
+        # cp1252, and a listing with a mangled street name is worse than a
+        # refusal a person can act on.
+        try:
+            text = payload.decode("cp1252")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="unreadable_encoding") from None
+
+    try:
+        report = await import_export_csv(text, db)
+    except ExportRejected as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return ImportResult(
+        created=report.created,
+        updated=report.updated,
+        skipped=report.skipped,
+        problems=report.problems,
+    )
 
 
 class SyncStatusOut(BaseModel):

@@ -857,6 +857,32 @@ def _greeting_note(agent_cfg: AgentSettings) -> str:
 
 
 
+def _options_coming_note() -> str:
+    """What to say when a person has asked to see places.
+
+    This exists because of a message a real person received on 2026-09-19: they
+    asked "what would that actually buy right now?" and got nine paragraphs of
+    advice with no property in them. The model had nothing to offer — the
+    listings table held simulated Miami condos — and filled the space with
+    prose, which is what a model does when it cannot answer the question.
+
+    So the answer is taken away from it. A shortlist is coming from a person,
+    the reply says so in three sentences, and inventing an address is named as
+    forbidden rather than left to the persona's general good manners.
+
+    Written in Spanish like the rest of the persona; the language steering line
+    already appended above decides what the lead actually reads.
+    """
+    return (
+        "\n\nHAN PEDIDO VER PROPIEDADES. Ya se ha abierto el encargo y una "
+        "persona del equipo va a elegir a mano una lista corta y enviarla por "
+        "correo. Dilo en TRES FRASES COMO MUCHO: que la lista llega por correo, "
+        "que la elige una persona, y una sola pregunta si te falta algo "
+        "imprescindible. NO enumeres propiedades, NO inventes direcciones ni "
+        "precios, y NO des una charla sobre el mercado."
+    )
+
+
 # Words that mean the lead is trying to arrange a time, in the two languages
 # the agent speaks. Deliberately a plain list: this only decides whether to
 # spend one calendar call, and a missed match costs a generic answer rather
@@ -1274,6 +1300,75 @@ async def _agency_brokerage_line(db: AsyncSession) -> str | None:
     return (row or "").strip() or None
 
 
+async def _open_options_request(
+    lead_id: int, *, message_id: int | None, conversation_id: int | None
+) -> bool:
+    """File the "show me places" task and tell the agency. Returns whether it did.
+
+    Called from THREE places — the normal end of a turn and both early returns —
+    and that is not duplication, it is the point. The two blocked exits
+    (`MissingPostalAddress`, Fair Housing) are precisely the turns where Clara
+    could not answer, so they are the ones where a human most needs to know
+    somebody asked to see property. A trigger placed only on the happy path
+    would go quiet exactly when it matters.
+
+    Returns False when a request was already open. That is what stops four
+    emails in an afternoon from becoming four searches: `open_request` hands
+    back the existing row, `created` is False, and nobody is told again.
+    """
+    from app.services.listing_requests import open_request  # noqa: PLC0415
+
+    request_id, created = await open_request(lead_id, origin="message")
+    if request_id is None or not created:
+        return False
+    from app.services.lead_notify import send_new_lead_notice  # noqa: PLC0415
+
+    await send_new_lead_notice(
+        lead_id,
+        message_id,
+        origin="options",
+        conversation_id=conversation_id,
+        request_id=request_id,
+    )
+    await _mark_handoff_told(lead_id)
+    return True
+
+
+async def _mark_handoff_told(lead_id: int) -> None:
+    """Record that somebody at the agency has now been told about this lead.
+
+    `qualified_notice_at` means "she has been handed this person", not "the
+    qualified notice in particular went out" — and an options notice carries the
+    same three facts plus a task, so it IS the handoff.
+
+    Written here rather than at the three call sites because two of them are
+    early returns that `return` before the marker is computed at the end of the
+    turn: without this, a lead told about on a blocked turn would produce a
+    SECOND notice the next time they wrote, about a person the agency already
+    has. Its own session and its own try, for the same reason the notice has
+    one: this is bookkeeping, and bookkeeping may never cost the conversation.
+    """
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from app.db.base import get_session_factory  # noqa: PLC0415
+    from app.models import Lead  # noqa: PLC0415
+
+    try:
+        async with get_session_factory()() as db:
+            lead = (
+                await db.execute(select(Lead).where(Lead.id == lead_id))
+            ).scalar_one_or_none()
+            if lead is None or (lead.meta or {}).get("qualified_notice_at"):
+                return
+            lead.meta = {
+                **(lead.meta or {}),
+                "qualified_notice_at": datetime.now(UTC).isoformat(),
+            }
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        log.error("Lead %d: could not mark the handoff as told: %s", lead_id, exc)
+
+
 _MD_BOLD = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
 _MD_HEADING = re.compile(r"^#{1,6}[ \t]+", re.MULTILINE)
 
@@ -1655,6 +1750,18 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         if e.urgency and not lead.urgency:
             lead.urgency = storable_text(e.urgency, "urgency")
 
+    # Whether they asked to SEE places, as opposed to asking about the market.
+    # Read from the classifier's structured output and gated on the same
+    # confidence as the fields above: a classification the model was unsure
+    # enough about to have its intent discarded is not one to spend a person's
+    # MLS allowance on. Held as a plain bool here and acted on after a commit,
+    # because the request is filed on its own session and the lead has to exist
+    # in the database before anything can point a foreign key at it.
+    wants_listings = (
+        intent_result.confidence >= INTENT_CONFIDENCE_THRESHOLD
+        and intent_result.entities.wants_listings
+    )
+
     # ── 8. Reply generation ────────────────────────────────────────────
     if agent_cfg is None:
         # Bootstrap the singleton on first real interaction.
@@ -1678,6 +1785,8 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     if is_new_lead:
         system_prompt += _greeting_note(agent_cfg)
     system_prompt += await _real_slots_note(agent_cfg, inbound.content, db, lead)
+    if wants_listings:
+        system_prompt += _options_coming_note()
 
     # Phase 10: if the lead is property-shopping and we know the zone, give the
     # LLM the REAL matching listings so it can offer them (and never invent any).
@@ -1775,7 +1884,14 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
             # lost lead with a tidier explanation.
             log.error("Lead %d: no automated email reply — %s", lead.id, exc)
             await db.commit()
-            if is_new_lead:
+            told = False
+            if wants_listings:
+                # The most important case there is for this branch: they asked
+                # to see property and we cannot even acknowledge it.
+                told = await _open_options_request(
+                    lead.id, message_id=inbound.id, conversation_id=conv.id
+                )
+            if is_new_lead and not told:
                 from app.services.lead_notify import (  # noqa: PLC0415
                     send_new_lead_notice,
                 )
@@ -1871,6 +1987,14 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         # No new alert: `fair_housing_watch.py` already reads every row with a
         # non-empty `fair_housing_flags`, whatever its delivery status, and it
         # alerts on a change rather than on a state.
+        #
+        # The options task still opens. Nothing this person asked for was
+        # objectionable — our own draft was — and dropping their request
+        # because our answer was flagged would punish them for our sentence.
+        if wants_listings:
+            await _open_options_request(
+                lead.id, message_id=inbound.id, conversation_id=conv.id
+            )
         return {
             "status": "blocked_fair_housing",
             "lead_id": lead.id,
@@ -1982,7 +2106,20 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # the cycle is not worth the notice.
     from app.services.lead_notify import send_new_lead_notice  # noqa: PLC0415
 
-    if qualified_now:
+    # FIRST of the three, because it is the only one that asks her to do
+    # something. A person who wants to see places has said more than a person
+    # who merely qualifies, and the options notice carries the qualifying facts
+    # anyway — so when it goes out, the other two stay quiet rather than
+    # arriving beside it saying less about the same lead.
+    told_options = False
+    if wants_listings:
+        told_options = await _open_options_request(
+            lead.id, message_id=inbound.id, conversation_id=conv.id
+        )
+
+    if told_options:
+        pass
+    elif qualified_now:
         # Supersedes the arrival notice when both land on the same turn. Telling
         # her twice in one second about one person is not twice the signal.
         await send_new_lead_notice(

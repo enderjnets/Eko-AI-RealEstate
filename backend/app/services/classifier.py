@@ -28,6 +28,15 @@ class IntentEntities(BaseModel):
     property_type: str | None = None  # apartment | house | commercial | land | other
     urgency: str | None = None        # immediate | weeks | months | exploring
 
+    #: Did they ask to SEE properties, as opposed to asking about the market?
+    #: This is the field that opens a `ListingRequest`, and a ListingRequest
+    #: costs a person a search against a metered MLS allowance — so it is read
+    #: from the classifier's structured output and never inferred from the text
+    #: of a reply. An inbound email is untrusted input; a boolean it produced
+    #: under a fixed schema is still untrusted, but it is bounded, auditable and
+    #: capped downstream, which a sentence is not.
+    wants_listings: bool = False
+
     @field_validator("budget_min", "budget_max", mode="before")
     @classmethod
     def _coerce_numeric(cls, v: Any) -> Any:
@@ -38,6 +47,24 @@ class IntentEntities(BaseModel):
         a bad value is actually paid.
         """
         return storable_budget(v)
+
+    @field_validator("wants_listings", mode="before")
+    @classmethod
+    def _coerce_bool(cls, v: Any) -> bool:
+        """Anything that is not plainly a yes is a no.
+
+        The default has to be the cheap side: a false positive spends a search
+        against Natalia's 500-record allowance, a false negative costs one long
+        answer that we were sending anyway. Models return `true`, `"true"`,
+        `"yes"` and `1` for this question, and `None` when they skip it.
+        """
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, (int, float)):
+            return v == 1
+        if isinstance(v, str):
+            return v.strip().casefold() in {"true", "yes", "si", "sí", "1"}
+        return False
 
 
 class IntentResult(BaseModel):
@@ -67,7 +94,8 @@ Esquema EXACTO:
     "budget_min": number | null,
     "budget_max": number | null,
     "property_type": "apartment" | "house" | "commercial" | "land" | "other" | null,
-    "urgency": "immediate" | "weeks" | "months" | "exploring" | null
+    "urgency": "immediate" | "weeks" | "months" | "exploring" | null,
+    "wants_listings": true | false
   }
 }
 
@@ -76,6 +104,7 @@ Reglas:
 - "confidence" refleja qué tan seguro estás de la intención (1.0 = inequívoco).
 - Si el cliente NO menciona un dato, devuelve null para ese campo. NUNCA inventes.
 - Los importes en euros van como número plano (1200 no "1.200€").
+- "wants_listings" es true SOLO si piden ver propiedades concretas: "mándame opciones", "qué hay disponible", "show me what's out there", "what would that buy me". Una pregunta sobre el mercado, sobre precios en general, sobre alquilar vs comprar, o un saludo, es false. Ante la duda, false.
 - urgency=immediate si dice "ya"/"esta semana"/"urgente"; weeks si "este mes"; months si "en unos meses"; exploring si solo curiosea.
 
 Devuelve EXCLUSIVAMENTE el JSON. Sin texto antes o después. Sin markdown."""

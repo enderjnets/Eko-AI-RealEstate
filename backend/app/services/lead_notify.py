@@ -125,6 +125,22 @@ def _panel_link(lead_id: int) -> str | None:
     return f"{base}/leads/{lead_id}" if base else None
 
 
+def _picker_link(request_id: int | None) -> str | None:
+    """Her screen for one options request, or None when no panel is configured.
+
+    A dedicated page rather than a section of the lead's: what she has to do
+    here is pick from a list, and the notice that asks her to do it should land
+    on the thing itself. Same guard as `_panel_link` — an empty `PANEL_URL`
+    produces no link rather than `https:///options/4`.
+    """
+    from app.config import get_settings
+
+    if request_id is None:
+        return None
+    base = (get_settings().PANEL_URL or "").strip().rstrip("/")
+    return f"{base}/options/{request_id}" if base else None
+
+
 async def _notify_agency_by_email(
     to: str, subject: str, body: str, lead_id: int
 ) -> tuple[str | None, str | None]:
@@ -221,6 +237,7 @@ async def send_new_lead_notice(
     origin: str = "form",
     conversation_id: int | None = None,
     call: dict | None = None,
+    request_id: int | None = None,
 ) -> None:
     """Email the agency about a lead that just arrived. Never raises.
 
@@ -245,7 +262,12 @@ async def send_new_lead_notice(
     """
     try:
         await _send_and_record(
-            lead_id, message_id, origin=origin, conversation_id=conversation_id, call=call
+            lead_id,
+            message_id,
+            origin=origin,
+            conversation_id=conversation_id,
+            call=call,
+            request_id=request_id,
         )
     except Exception as exc:  # noqa: BLE001 — the lead is already captured
         log.error("Lead %d: new-lead notice failed: %s", lead_id, exc)
@@ -254,7 +276,17 @@ async def send_new_lead_notice(
 # Origins a stranger can trigger from outside, with nothing but an email
 # address. The form and a phone call are NOT here: the form has a honeypot, a
 # per-IP budget, a captcha and its own global limit, and a call costs a call.
-_STRANGER_ORIGINS = frozenset({"message", "qualified"})
+#
+# `options` is here and `callback` is NOT, and the difference is who is on the
+# other end. An options request is opened by whoever wrote to `hello@` — the
+# same anonymous path the cap was built for, and the expensive one, because
+# each notice asks Natalia to run a search against a metered MLS allowance.
+# A callback comes from somebody already holding a token we mailed to an
+# address that received our options; it is the conversion point of this whole
+# circuit, and a budget a stranger can exhaust on its behalf would be the
+# `public.py` kill switch again, this time aimed at the one event worth
+# interrupting her day for.
+_STRANGER_ORIGINS = frozenset({"message", "qualified", "options"})
 
 
 async def _notices_in_24h(db: AsyncSession) -> int:
@@ -293,6 +325,7 @@ async def _send_and_record(
     origin: str = "form",
     conversation_id: int | None = None,
     call: dict | None = None,
+    request_id: int | None = None,
 ) -> None:
     from app.db.base import get_session_factory
     from app.models import AgentSettings, Lead
@@ -378,6 +411,20 @@ async def _send_and_record(
                 "operator's copy will go out",
                 lead_id,
             )
+
+        # The options request this notice is about, when there is one. Read
+        # here rather than passed in as a dict: the row is the authority on what
+        # the client typed, and a caller that assembled the words itself is a
+        # caller that can get them wrong.
+        listing_request = None
+        if request_id is not None:
+            from app.models import ListingRequest
+
+            listing_request = (
+                await db.execute(
+                    select(ListingRequest).where(ListingRequest.id == request_id)
+                )
+            ).scalar_one_or_none()
 
         inbound = None
         if message_id is not None:
@@ -487,6 +534,64 @@ async def _send_and_record(
                 + _line("Email", email)
                 + _line("They wrote", (inbound.content if inbound else None))
                 + _line("Came from", attribution)
+                + _line("Calculator", _calculator_line(lead))
+            )
+        elif origin == "options":
+            # The expensive one. Everything downstream of this notice costs
+            # Natalia a search in Matrix and, if she exports, part of a 500-record
+            # allowance that renews every 30 days and whose penalty for abuse
+            # falls on HER licence — so this origin is capped upstream with the
+            # other stranger origins, and the body says what the work is rather
+            # than leaving her to work it out.
+            # A second round is not a new person, and saying so would send her
+            # looking for a lead she has never heard of. `origin` is on the row
+            # because of this line.
+            again = getattr(listing_request, "origin", "message") == "more"
+            subject = (
+                f"They want a different set — {who}"
+                if again
+                else f"They asked to see actual listings — {who}"
+            )
+            body = (
+                (
+                    "They read what you sent and asked for another set. "
+                    "Nothing has been sent yet.\n\n"
+                    if again
+                    else "Someone asked to see places, not advice. Clara has told "
+                    "them a short list is coming from you — nothing has been sent "
+                    "yet.\n\n"
+                )
+                + _line("Name", lead.name)
+                + _line("Phone", phone)
+                + _line("Email", email)
+                + _line("Wants", lead.intent.value if lead.intent else None)
+                + _line("Area", lead.zone)
+                + _line("Timeline", lead.urgency)
+                + _line("They wrote", (inbound.content if inbound else None))
+                + _line("Calculator", _calculator_line(lead))
+            )
+            if (picker := _picker_link(request_id)) is not None:
+                body += f"\nPick up to six and they go out in your name: {picker}\n"
+        elif origin == "callback":
+            # The conversion point of the whole circuit, and the reason it is
+            # never capped. They read what you sent and asked for you.
+            #
+            # Their note about timing is printed as they wrote it and is not
+            # turned into an appointment: nothing in this product holds a slot
+            # on her calendar, and a parsed "Thursday" that lands on the wrong
+            # Thursday is worse than the sentence it came from.
+            subject = f"They want you to call — {who}"
+            body = (
+                "They looked at the options and asked you to ring them. "
+                "Nothing is booked; this is their own note about when.\n\n"
+                + _line("Name", lead.name)
+                + _line("Phone", phone)
+                + _line("Email", email)
+                + _line("Area", lead.zone)
+                + _line(
+                    "They wrote",
+                    (listing_request.callback_text if listing_request else None),
+                )
                 + _line("Calculator", _calculator_line(lead))
             )
         elif origin == "qualified":

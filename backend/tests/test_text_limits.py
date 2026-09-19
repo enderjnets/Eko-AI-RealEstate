@@ -81,6 +81,15 @@ HANDLED = {
     # on the page can reach a VARCHAR, so no write of theirs can be refused for
     # length — which is what would otherwise lose twenty minutes of answers.
     "partner_briefs": (LOUD, "operator-typed title/recipient; the page writes no bounded column"),
+    # Three bounded columns and none of them takes free text from a stranger
+    # unclipped. `token` is ours (`token_urlsafe(32)`), `origin` is one of two
+    # module literals, and `callback_text` — the only one a person types — goes
+    # through `clean_callback_text`, which flattens newlines and cuts to the
+    # column width BEFORE the write. That is `CALLER_FITS` and not `LOUD` on
+    # purpose: the writer is a public page held by whoever received our email,
+    # so refusing their answer for length would lose the one thing this whole
+    # circuit exists to collect.
+    "listing_requests": (CALLER_FITS, "clean_callback_text fits the only column a person types into"),
     # The only bounded column is `withdrawn_reason`, and nothing outside this
     # codebase can reach it: the metrics loop writes one module literal
     # ("not visible on the platform", 32 characters) through a Core UPDATE, and
@@ -392,6 +401,11 @@ class TestEveryUniqueStringKeyHasBeenThoughtAbout:
         # token would not collide, it would simply stop opening the page it
         # names, and the person holding the link would have no way to say why.
         ("partner_briefs", "token"): "our own secrets.token_urlsafe(32) — 43 chars into 64",
+        # The same generator, the same column width, and the same reason it may
+        # never be clipped: it is the only credential the options page has, and
+        # a truncated one would not collide — it would quietly stop opening the
+        # page it names, for a person who could not possibly say why.
+        ("listing_requests", "token"): "our own secrets.token_urlsafe(32) — 43 chars into 64",
         ("organizations", "slug"): "admin-entered config",
         ("accounts", "email"): "self-registration; stripped and lowercased at the schema, bounded there",
         ("allowed_users", "email"): "admin-entered, must not be silently altered",

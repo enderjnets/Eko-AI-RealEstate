@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.135.0";
+export const CURRENT_VERSION = "0.136.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,21 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.136.0",
+    date: "2026-09-19",
+    title: {
+      en: "Someone asks to see places, and a person picks them",
+      es: "Alguien pide ver propiedades, y una persona las elige",
+    },
+    changes: [
+      { en: "The first real question the email channel ever received asked what $35,000 and $2,400 of rent would actually buy in Wash Park, and the answer was nine paragraphs of advice with not one property in it. There is no MLS API behind this product — REcolorado's data leaves Matrix by hand, under a subscription that allows 500 record exports every 30 days — so the step in the middle is now a person. Asking to see places files a task, the agency is told, she ticks up to six in the panel, and those six are emailed.", es: "La primera pregunta de verdad que recibió el canal de correo preguntaba qué compran $35.000 y $2.400 de alquiler en Wash Park, y la respuesta fueron nueve párrafos de consejos sin una sola propiedad. Este producto no tiene API del MLS — los datos de REcolorado salen de Matrix a mano, bajo una suscripción que permite 500 registros cada 30 días — así que el paso del medio ahora es una persona. Pedir opciones abre un encargo, se avisa a la agencia, ella marca hasta seis en el panel, y esas seis salen por correo." },
+      { en: "The shortlist travels in the email and stops there. REcolorado's rules let a Participant distribute listing information to a prospective purchaser and forbid displaying it publicly without written consent, so the page the client opens carries two buttons — \"show me a different set\" and \"call me, here is when\" — and not one address, price or broker name.", es: "La lista corta viaja en el correo y ahí se queda. Las reglas de REcolorado permiten distribuir información de listings a un comprador potencial y prohíben exhibirla públicamente sin permiso escrito, así que la página que abre el cliente lleva dos botones — «enséñame otras» y «llámame, esta es mi hora» — y ni una dirección, ni un precio, ni el nombre de una correduría." },
+      { en: "One open request per lead, enforced by the database and not by good manners, and the notice that asks for the search is capped with the other origins a stranger can reach. Four emails in an afternoon are one search, not four — the allowance being spent belongs to a real person's licence.", es: "Una sola petición abierta por lead, impuesta por la base de datos y no por buenas intenciones, y el aviso que pide la búsqueda va bajo el mismo tope que los demás orígenes que un desconocido puede disparar. Cuatro correos en una tarde son una búsqueda, no cuatro — el cupo que se gasta es el de la licencia de una persona." },
+      { en: "Clara's answer gets short when a shortlist is coming: three sentences saying it is on its way and who is choosing it, with inventing an address named as forbidden rather than left to good manners.", es: "La respuesta de Clara se acorta cuando la lista viene en camino: tres frases que dicen que llega y quién la elige, y con inventarse una dirección prohibido por escrito en vez de confiado a la buena educación." },
+      { en: "Listings get in by uploading a Matrix \"Full\" export in the panel. Only the named columns are read — the export carries 394, and ten of them are notes between brokers about another firm's client, populated in nearly every row. A file with more than 500 listings is refused whole rather than truncated: that is the whole 30-day allowance, so a bigger file has already spent more of it than it is allowed to hold.", es: "Los listings entran subiendo un export \"Full\" de Matrix en el panel. Sólo se leen las columnas nombradas — el export trae 394, y diez son notas entre corredores sobre el cliente de otra firma, rellenas en casi todas las filas. Un fichero con más de 500 listings se rechaza entero en vez de truncarse: eso es toda la franquicia de 30 días, así que uno mayor ya gastó más de la que puede tener." },
+    ],
+  },
   {
     version: "0.133.0",
     date: "2026-09-19",

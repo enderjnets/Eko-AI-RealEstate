@@ -980,6 +980,88 @@ export const propertiesApi = {
   },
   get: (id: number) => api<Property>(`/v1/properties/${id}`),
   sync: () => api<{ created: number; updated: number; total: number }>(`/v1/properties/sync`, { method: "POST" }),
+  // A REcolorado Matrix "Full" export, uploaded by hand because there is no MLS
+  // API here. Bypasses api() for the same reason discovery's upload does:
+  // multipart/form-data must not carry a JSON Content-Type.
+  importExport: async (file: File): Promise<ListingImportResult> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`/api/v1/properties/import`, { method: "POST", body: fd, cache: "no-store" });
+    if (!res.ok) {
+      throw new Error(await errorDetail(res));
+    }
+    return res.json();
+  },
+};
+
+export interface ListingImportResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  problems: string[];
+}
+
+/**
+ * An options request — somebody asked to see actual places.
+ *
+ * The circuit has no MLS API behind it: a person searches Matrix by hand,
+ * ticks up to six here, and the system mails them. `candidates` is narrowed by
+ * intent and area only — never by budget, which is measured holding a down
+ * payment often enough that filtering on it would show an empty screen and
+ * call it "nothing available".
+ */
+export type ListingRequestStatus =
+  | "open"
+  | "sent"
+  | "more_requested"
+  | "callback_requested"
+  | "cancelled";
+
+export interface ListingRequest {
+  id: number;
+  status: ListingRequestStatus;
+  origin: string;
+  lead_id: number;
+  lead_name: string | null;
+  lead_email: string | null;
+  lead_zone: string | null;
+  lead_intent: LeadIntent | null;
+  lead_urgency: string | null;
+  they_wrote: string | null;
+  selected_property_ids: number[];
+  callback_text: string | null;
+  created_at: string | null;
+  sent_at: string | null;
+}
+
+export interface OptionCandidate {
+  id: number;
+  address: string | null;
+  city: string | null;
+  zone: string | null;
+  price: string | null;
+  bedrooms: number | null;
+  bathrooms: string | null;
+  sqft: number | null;
+  url: string | null;
+  listing_broker: string | null;
+}
+
+export interface ListingRequestDetail {
+  request: ListingRequest;
+  candidates: OptionCandidate[];
+  max_selected: number;
+}
+
+export const optionsApi = {
+  list: (status: ListingRequestStatus | "all" = "open") =>
+    api<ListingRequest[]>(`/v1/options?status=${status}`),
+  get: (id: number) => api<ListingRequestDetail>(`/v1/options/${id}`),
+  send: (id: number, property_ids: number[]) =>
+    api<{ status: string; count?: number }>(`/v1/options/${id}/send`, {
+      method: "POST",
+      body: JSON.stringify({ property_ids }),
+    }),
 };
 
 export const leadsApi = {

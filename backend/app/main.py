@@ -21,6 +21,7 @@ from app.api.v1 import (
     health,
     inbox,
     leads,
+    options,
     properties,
     public,
     render_jobs,
@@ -412,6 +413,7 @@ app.include_router(team.router, prefix="/api/v1/team", tags=["team"], dependenci
 # Its own require_platform_admin dependency is the gate; _admin would let any
 # client agency's admin in.
 app.include_router(platform_api.router, prefix="/api/v1/platform", tags=["platform"])
+app.include_router(options.router, prefix="/api/v1/options", tags=["options"], dependencies=_auth)
 app.include_router(properties.router, prefix="/api/v1/properties", tags=["properties"], dependencies=_auth)
 app.include_router(properties.lead_matches_router, prefix="/api/v1", tags=["properties"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"], dependencies=_auth)

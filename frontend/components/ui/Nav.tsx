@@ -12,6 +12,7 @@ import {
   FileCode,
   Home,
   Inbox,
+  ListChecks,
   LogOut,
   Mail,
   MessageCircle,
@@ -140,6 +141,7 @@ export function Nav() {
   // driveway was unreachable from the only device she has with her.
   const overflowTabs = [
     { href: "/console", label: t("console.title"), Icon: PhoneCall },
+    { href: "/options", label: t("options.title"), Icon: ListChecks },
     { href: "/properties", label: t("nav.properties"), Icon: Home },
     { href: "/analytics", label: t("nav.analytics"), Icon: BarChart3 },
     // On the phone by necessity, like the clip upload above: an agent adjusts
@@ -317,6 +319,13 @@ export function Nav() {
             </div>
 
             <Link
+              href="/options"
+              className="hidden xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
+            >
+              <ListChecks className="w-3.5 h-3.5" />
+              {t("options.title")}
+            </Link>
+            <Link
               href="/properties"
               className="hidden xl:inline-flex px-2 xl:px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors items-center gap-1.5"
             >
@@ -374,6 +383,7 @@ export function Nav() {
                 ...(isOperator
                   ? [{ href: "/discovery", label: t("nav.discovery"), Icon: Search }]
                   : []),
+                { href: "/options", label: t("options.title"), Icon: ListChecks },
                 { href: "/properties", label: t("nav.properties"), Icon: Home },
                 { href: "/analytics", label: t("nav.analytics"), Icon: BarChart3 },
                 // Every member, not just admins: this is a person's own working
