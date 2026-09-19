@@ -38,13 +38,30 @@ KEEP="${EKO_BACKUP_KEEP:-14}"
 # (a purge, a client leaving) does not trip it — this floor is here to catch
 # "the container came up on an empty volume", not to police size.
 MIN_BYTES="${EKO_BACKUP_MIN_BYTES:-20000}"
+# This dump carries agency clients, their addresses and their deals. It used to
+# be written in the clear while its siblings (state, repos) were encrypted, and
+# the VPS disk has no encryption, so a snapshot of that volume read the whole
+# book of business. Same passphrase as the rest of the backup system, so an
+# emergency restore still needs exactly one.
+KEYFILE="${EKO_BACKUP_KEYFILE:-$HOME/.config/vps-backup.key}"
+
+[ -r "$KEYFILE" ] || {
+  echo "$(date -Is) FATAL: no encryption passphrase at $KEYFILE — refusing to write a cleartext dump" >&2
+  exit 1
+}
 
 mkdir -p "$OUT_DIR"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-OUT="$OUT_DIR/eko-realtors-$STAMP.dump"
+OUT="$OUT_DIR/eko-realtors-$STAMP.dump.gpg"
+# The cleartext dump only ever exists under a dotted temporary name, and only
+# for as long as it takes to validate and encrypt it. The `.part` prefix is
+# deliberate: the retention globs below never match it, so a crash mid-run
+# cannot leave a file that looks like a backup.
+CLARO="$OUT_DIR/.eko-realtors-$STAMP.part"
+trap 'rm -f "$CLARO"' EXIT
 
 # Custom format: compressed, and restorable selectively with pg_restore.
-docker exec "$CONTAINER" pg_dump -U "$DB_USER" -Fc "$DB_NAME" > "$OUT"
+docker exec "$CONTAINER" pg_dump -U "$DB_USER" -Fc "$DB_NAME" > "$CLARO"
 
 # ── Is this dump usable? Asked BEFORE anything old is deleted. ───────────────
 #
@@ -78,16 +95,34 @@ _usable() {
   return 0
 }
 
-if ! _usable "$OUT"; then
+if ! _usable "$CLARO"; then
   # The bad dump is kept, not deleted: it is the evidence of what went wrong,
   # and it is named with a timestamp so it cannot be mistaken for a good one by
-  # the pull side, which checks the same two things.
-  mv "$OUT" "$OUT.rejected"
+  # the pull side, which checks the same two things. It is encrypted first — a
+  # rejected dump is rejected for being unreadable or short, which is not the
+  # same as being empty, so it may still hold real client rows.
+  gpg --batch --yes --symmetric --cipher-algo AES256 \
+      --passphrase-file "$KEYFILE" -o "$OUT.rejected" "$CLARO" 2>/dev/null || true
   echo "$(date -Is) rejected dump parked at $OUT.rejected — NO retention ran" >&2
   exit 1
 fi
 
-echo "$(date -Is) wrote $OUT ($(du -h "$OUT" | cut -f1))"
+# Encrypt, then prove the ciphertext decrypts back to the exact bytes that were
+# just verified. A gpg exit code of 0 says it wrote a file, not that the file
+# can ever be opened again — and an unopenable backup looks identical to a good
+# one until the day it is needed.
+gpg --batch --yes --symmetric --cipher-algo AES256 \
+    --passphrase-file "$KEYFILE" -o "$OUT" "$CLARO"
+if [ "$(sha256sum "$CLARO" | cut -d' ' -f1)" != \
+     "$(gpg --batch --quiet --decrypt --passphrase-file "$KEYFILE" "$OUT" 2>/dev/null | sha256sum | cut -d' ' -f1)" ]; then
+  echo "$(date -Is) FATAL: the encrypted dump does not decrypt back to the original — not promoting" >&2
+  rm -f "$OUT"
+  exit 1
+fi
+chmod 600 "$OUT"
+rm -f "$CLARO"
+
+echo "$(date -Is) wrote $OUT ($(du -h "$OUT" | cut -f1)), encrypted and reopened"
 
 # ── The roles, which the data dump does NOT contain ──────────────────────────
 #
@@ -116,6 +151,6 @@ echo "$(date -Is) wrote $ROLES ($(wc -l < "$ROLES") lines)"
 # Retention: keep the newest $KEEP good dumps. Rejected ones are not matched by
 # these globs (`*.rejected`), so a run of failures cannot rotate away the last
 # known-good backup — it just accumulates evidence until someone looks.
-ls -1t "$OUT_DIR"/eko-realtors-*.dump 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
+ls -1t "$OUT_DIR"/eko-realtors-*.dump.gpg 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
 ls -1t "$OUT_DIR"/eko-roles-*.sql 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
 echo "$(date -Is) retention: kept newest $KEEP in $OUT_DIR"
