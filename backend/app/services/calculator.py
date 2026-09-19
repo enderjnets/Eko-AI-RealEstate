@@ -46,7 +46,14 @@ DEFAULTS: dict[str, Any] = {
 
 # The only assumptions the page lets a visitor move. Anything else in an
 # overrides dict is ignored, not applied.
-OVERRIDABLE: tuple[str, ...] = ("appreciation", "rent_growth", "rate", "hoa_monthly")
+#
+# `years` is here because the page has a horizon selector (5/10/15/20/30) and
+# this tuple is what decides whether a moved control reaches the server at all.
+# Without it a visitor who compared at twenty years had the FIVE-year net stored
+# against their lead, so the Inbox — and anything built on the snapshot — showed
+# a figure that contradicted their own screen. `_normalize` already clamped it
+# to [1, MAX_YEARS]; it simply never arrived.
+OVERRIDABLE: tuple[str, ...] = ("appreciation", "rent_growth", "rate", "hoa_monthly", "years")
 
 # The search ceiling. A rent no price under it can absorb returns it as-is.
 UPPER = 5_000_000
@@ -313,6 +320,12 @@ def build_snapshot(
             "loan": _round(solved["loan"]),
             "down": _round(solved["down"]),
             "monthly": {k: _round(v) for k, v in solved["monthly"].items()},
+            # The name says five and the horizon is now the visitor's, so read
+            # it as "the net over `assumptions["years"]`". Not renamed on
+            # purpose: the key is stored in `leads.calculator_snapshot` on every
+            # row already written and is read by the dashboard and by
+            # `summary_line`, so a rename is a migration and a UI change, not a
+            # tidy-up. `summary_line` already labels it from `years`.
             "net_5y": None if floored else _round(comparison["net"]),
             "crossover_year": None if floored else comparison["crossover_year"],
         },

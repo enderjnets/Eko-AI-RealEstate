@@ -260,7 +260,7 @@ def _summary(message: str | None, name: str | None, snapshot: dict | None = None
 
 # The keys of `CalculatorIn` that are inputs, and the ones that are sliders.
 _CALC_INPUTS = ("rent", "savings", "credit")
-_CALC_OVERRIDES = ("appreciation", "rent_growth", "rate", "hoa_monthly")
+_CALC_OVERRIDES = ("appreciation", "rent_growth", "rate", "hoa_monthly", "years")
 
 
 def _snapshot_of(raw: dict | None) -> dict | None:

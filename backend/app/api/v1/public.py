@@ -37,6 +37,7 @@ from app.services.brief_activity import (
     should_ping_progress,
 )
 from app.services.brief_notify import send_brief_answered_notice
+from app.services.calculator import MAX_YEARS
 from app.services.capture import (
     MAX_CONSENT_TEXT,
     MAX_MESSAGE,
@@ -348,6 +349,12 @@ class CalculatorIn(BaseModel):
     rent_growth: float | None = Field(default=None, ge=-0.10, le=0.15)
     rate: float | None = Field(default=None, ge=0.0, le=0.20)
     hoa_monthly: float | None = Field(default=None, ge=0, le=5_000)
+    # The horizon selector on the page (5/10/15/20/30). The upper bound is
+    # imported rather than typed so it cannot drift away from the scan the
+    # comparison actually performs. `extra="forbid"` above is why this field has
+    # to exist at all: without it the browser's `years` would not be ignored, it
+    # would drop the WHOLE calculation — worse than the bug it fixes.
+    years: int | None = Field(default=None, ge=1, le=MAX_YEARS)
     lang: Literal["en", "es"] | None = None
 
 

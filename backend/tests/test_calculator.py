@@ -20,6 +20,7 @@ import pytest
 from app.services.calculator import (
     CREDITS,
     DEFAULTS,
+    MAX_YEARS,
     OVERRIDABLE,
     balance_after,
     build_snapshot,
@@ -382,7 +383,38 @@ def test_snapshot_overrides_replace_the_base_rate_and_keep_the_spread():
     assert "foo" not in s["assumptions"]
     loan = s["result"]["loan"]
     within(s["result"]["monthly"]["pi"], monthly_pi(loan, 0.05 + DEFAULTS["rate_spread"]["fair"], 360), 1)
-    assert set(OVERRIDABLE) == {"appreciation", "rent_growth", "rate", "hoa_monthly"}
+    assert set(OVERRIDABLE) == {"appreciation", "rent_growth", "rate", "hoa_monthly", "years"}
+
+
+def test_the_horizon_the_visitor_chose_is_the_one_that_is_stored():
+    """The page's horizon selector used to move everything except the record.
+
+    `years` was not in `OVERRIDABLE`, so a visitor who compared at twenty years
+    had the FIVE-year net stored against their lead: the Inbox line, the
+    dashboard and anything else reading the snapshot showed a figure that
+    contradicted the screen the person was looking at when they wrote to us.
+    That is the same class of failure as the five videos pulled in September —
+    a number that is right under assumptions nobody recorded.
+    """
+    inputs = {"rent": 3000, "savings": 60000, "credit": "good"}
+    five = build_snapshot(inputs, None, lang="en")
+    twenty = build_snapshot(inputs, {"years": 20}, lang="en")
+
+    assert five["assumptions"]["years"] == 5
+    assert twenty["assumptions"]["years"] == 20
+    # The horizon moves the comparison, not the purchase: same house, longer bet.
+    assert twenty["result"]["price"] == five["result"]["price"]
+    assert twenty["result"]["net_5y"] != five["result"]["net_5y"]
+    # And the sentence the realtor reads says which horizon it is talking about.
+    assert "20-yr net" in summary_line(twenty)
+    assert "5-yr net" in summary_line(five)
+
+
+def test_an_out_of_range_horizon_is_clamped_not_obeyed():
+    inputs = {"rent": 3000, "savings": 60000, "credit": "good"}
+    assert build_snapshot(inputs, {"years": 10_000}, lang="en")["assumptions"]["years"] == MAX_YEARS
+    assert build_snapshot(inputs, {"years": 0}, lang="en")["assumptions"]["years"] == 1
+    assert build_snapshot(inputs, {"years": "veinte"}, lang="en")["assumptions"]["years"] == 5
 
 
 def test_snapshot_ignores_a_none_override_and_bad_lang():

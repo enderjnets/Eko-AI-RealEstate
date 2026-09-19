@@ -487,6 +487,8 @@ export interface CalculatorPayload {
   rent_growth?: number;
   rate?: number;
   hoa_monthly?: number;
+  /** The horizon the visitor was looking at. Absent means the default, 5. */
+  years?: number;
   lang?: "en" | "es";
 }
 
@@ -512,5 +514,11 @@ export function buildPayload(inputs: Inputs, a: Assumptions, lang: "en" | "es"):
   if (moved(a.rentGrowth, DEFAULTS.rentGrowth)) p.rent_growth = round6(a.rentGrowth);
   if (moved(a.rate, DEFAULTS.rate)) p.rate = round6(a.rate);
   if (moved(a.hoaMonthly, DEFAULTS.hoaMonthly)) p.hoa_monthly = a.hoaMonthly;
+  // The horizon selector moved everything on screen and nothing in this
+  // payload, so a visitor who compared at twenty years left the FIVE-year
+  // figure behind: `assumptions.years` was already correct here, `buildPayload`
+  // simply never read it. Strict `!==`, not the float tolerance above — this
+  // one comes from a fixed list of integers (`HORIZONS`), never from division.
+  if (a.years !== DEFAULTS.years) p.years = a.years;
   return p;
 }

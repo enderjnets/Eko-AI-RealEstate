@@ -474,6 +474,27 @@ describe("what travels with the lead", () => {
     // CalculatorIn: rent le=50_000, savings le=5_000_000, hoa_monthly le=5_000, rate le=0.20.
     expect(LIMITS).toEqual({ rent: 50_000, savings: 5_000_000, hoaMonthly: 5_000, ratePct: 20 });
   });
+
+  it("24. the horizon the visitor chose travels with the lead", () => {
+    // It did not. `assumptions.years` was already the selected horizon here,
+    // and `buildPayload` never read it, so somebody comparing at twenty years
+    // left the FIVE-year net against their own lead — a figure contradicting
+    // the screen they were looking at when they wrote in.
+    const a: Assumptions = { ...DEFAULTS, years: 20 };
+    expect(buildPayload(inputs, a, "en")).toEqual({
+      rent: 2100,
+      savings: 15000,
+      credit: "good",
+      lang: "en",
+      years: 20,
+    });
+  });
+
+  it("25. the default horizon stays out of the payload", () => {
+    // Absent means five on the server, so sending it would be noise — and the
+    // strict `!==` is safe here precisely because HORIZONS are integers.
+    expect(buildPayload(inputs, { ...DEFAULTS }, "en")).not.toHaveProperty("years");
+  });
 });
 
 describe("the PMI cliff", () => {
