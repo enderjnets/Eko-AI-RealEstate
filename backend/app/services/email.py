@@ -352,11 +352,20 @@ async def send_email(
     in_reply_to: str | None = None,
     references: str | None = None,
     attachments: list[Attachment] | None = None,
+    unsubscribe_url: str | None = None,
 ) -> dict[str, Any]:
     """Send via Resend, or LOG when EMAIL_SIMULATED=true.
 
     Returns Resend's response dict (or a synthetic equivalent in simulated mode):
       {"id": "<resend message id>", "simulated": true | false}
+
+    `unsubscribe_url` adds the `List-Unsubscribe` pair. It belongs on every
+    automated commercial message and on NONE of the replies a person wrote by
+    hand, which is why it is a parameter and not something this function derives:
+    a one-click header on a realtor's personal answer invites the reader to
+    switch off a conversation they are having. The footer that carries the same
+    link in the body comes from `services/email_compliance.build_footer`; the
+    header is what a mail client turns into its own Unsubscribe button.
     """
     s = get_settings()
 
@@ -396,6 +405,15 @@ async def send_email(
             headers["References"] = " ".join(f"<{i}>" for i in ids) or f"<{clean}>"
         else:
             headers["References"] = f"<{clean}>"
+
+    if unsubscribe_url:
+        # RFC 2369 for the link, RFC 8058 for the one-click POST. Both, because
+        # a client that only understands the first shows the button and opens
+        # the URL, while Gmail and Outlook need the second before they will
+        # offer their own. `List-Unsubscribe-Post` is a fixed literal — it is
+        # the flag itself, not a value we choose.
+        headers["List-Unsubscribe"] = f"<{unsubscribe_url}>"
+        headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
 
     body: dict[str, Any] = {
         "from": identity.sender_override or identity.destination,

@@ -130,6 +130,17 @@ class Settings(BaseSettings):
     RESEND_FROM: str = "Eko AI Realtors <noreply@realtors.ekoaiautomation.com>"
     RESEND_WEBHOOK_SECRET: str = ""  # Svix-style HMAC secret, may start with `whsec_`
 
+    # The agency's valid physical postal address, one line, as CAN-SPAM §7704
+    # requires it to appear in every commercial message. There is no sensible
+    # default and a wrong one is worse than none, so it ships EMPTY and
+    # `services/email_compliance.build_footer` REFUSES to build a footer without
+    # it. That refusal is the switch for the whole automated-email channel:
+    # `models/lead.py` records that the sender "stays human until those three
+    # exist" (unsubscribe, address, opt-out), and this is the one a person has
+    # to supply. Nothing here decides whether to send — it decides whether a
+    # message can be built at all.
+    POSTAL_ADDRESS: str = ""
+
     # Where the operator panel answers, so the backend can put a LINK in the
     # mail it sends. The frontend has known this as `NEXT_PUBLIC_PANEL_URL`
     # since v0.66; the backend never did, which is why the new-lead notice

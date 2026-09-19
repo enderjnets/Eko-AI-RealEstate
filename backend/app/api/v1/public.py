@@ -19,7 +19,7 @@ from typing import Any, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -29,6 +29,7 @@ from app.config import get_settings
 from app.db.base import get_bypass_session_factory, get_db
 from app.models.channel_route import CHANNEL_WEB
 from app.models.landing import LANDING_EVENT_TYPES, LandingSession
+from app.models.lead import Lead
 from app.models.partner_brief import PartnerBrief
 from app.services.brief_activity import (
     notify_finished,
@@ -48,6 +49,7 @@ from app.services.capture import (
     clean_attribution,
     validate_submission,
 )
+from app.services.email_compliance import OPT_OUT_KEYWORD, lead_id_from_token
 from app.services.landing_analytics import (
     browser_of,
     classify_traffic,
@@ -1252,3 +1254,111 @@ async def brief_save(
         await notify_progress(brief)
 
     return {"ok": True, "answered_at": brief.answered_at.isoformat()}
+
+
+# ── Unsubscribe: the switch a commercial email has to carry ──────────────
+
+
+async def _unsubscribe_target(token: str) -> tuple[int, int] | None:
+    """Map a signed token to `(lead id, org id)`, or None.
+
+    The second query in this module that runs outside a tenant, and like
+    `_brief_org` it reads two integers and nothing else. The bypass is the same
+    justification login has: a stranger arriving with a token has to be resolved
+    to an organization BEFORE anything can be scoped to one. The token is signed,
+    so this cannot be walked with guessed ids.
+    """
+    lead_id = lead_id_from_token(token)
+    if lead_id is None:
+        return None
+    async with get_bypass_session_factory()() as meta:
+        row = (
+            await meta.execute(select(Lead.id, Lead.org_id).where(Lead.id == lead_id))
+        ).first()
+    return (int(row[0]), int(row[1])) if row else None
+
+
+def _unsubscribe_page(title: str, body: str, *, form_action: str | None = None) -> HTMLResponse:
+    """One self-contained page. No stylesheet, no script, no tracking pixel:
+    somebody who is asking us to stop should not be measured on the way out."""
+    button = (
+        f'<form method="post" action="{form_action}">'
+        '<button type="submit">Unsubscribe</button></form>'
+        if form_action
+        else ""
+    )
+    return HTMLResponse(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<meta name="robots" content="noindex">'
+        f"<title>{title}</title></head>"
+        '<body style="font-family:Georgia,serif;max-width:34rem;margin:12vh auto;padding:0 1.5rem;line-height:1.6">'
+        f"<h1 style=\"font-weight:400\">{title}</h1><p>{body}</p>{button}</body></html>"
+    )
+
+
+@router.get("/unsubscribe/{token}", response_class=HTMLResponse)
+async def unsubscribe_confirm(token: str) -> HTMLResponse:
+    """Ask, do not act.
+
+    A GET that unsubscribed on sight would be fired by every link-scanning
+    security appliance and spam filter that opens a message before its recipient
+    does, and the person would be silently removed from a list they never asked
+    to leave. That is why RFC 8058 exists: the POST below is what a mail client's
+    own Unsubscribe button sends, so the one-click experience is preserved for
+    the reader while a prefetch changes nothing.
+
+    The same page for a token that names nobody. A stranger learns whether a
+    signature is valid — which they already knew, having been given it — and
+    never whether a lead exists.
+    """
+    return _unsubscribe_page(
+        "Unsubscribe",
+        "Confirm and we will stop sending you automated email.",
+        form_action=f"/api/v1/public/unsubscribe/{token}",
+    )
+
+
+@router.post("/unsubscribe/{token}", response_class=HTMLResponse)
+async def unsubscribe(token: str, db: AsyncSession = Depends(get_db)) -> HTMLResponse:
+    """Honour it, and say so.
+
+    Sets `opted_out_at`, which `capture.may_send_automated` reads FIRST for every
+    channel — so this silences automated SMS and WhatsApp too, not just email.
+    That is deliberate and it is the policy already written into that function:
+    "stop means stop", broader than either statute requires. A realtor can still
+    write to them personally; nothing automated will.
+
+    The first opt-out wins the date, exactly as the STOP path in
+    `conversation.py` has it: the day the agency was first on notice is the
+    difference between one violation and thirty, and a second click must not
+    reset it.
+
+    Always answers 200 with the same page. A token that names a deleted lead, a
+    forged signature and an honest unsubscribe are indistinguishable from
+    outside; and a mail client performing RFC 8058 one-click needs a 2xx or it
+    tells the reader the unsubscribe failed.
+    """
+    done = _unsubscribe_page(
+        "You are unsubscribed",
+        "You will not receive automated email from us again. If you are in the "
+        "middle of a conversation with your agent, she can still reply to you "
+        "herself.",
+    )
+    found = await _unsubscribe_target(token)
+    if found is None:
+        return done
+    lead_id, org_id = found
+    # Scoped from here on: the bypass above resolved WHICH agency, and the write
+    # belongs inside it.
+    set_org_id(org_id)
+    lead = (await db.execute(select(Lead).where(Lead.id == lead_id))).scalar_one_or_none()
+    if lead is None:
+        return done
+    if lead.opted_out_at is None:
+        lead.opted_out_at = datetime.now(UTC)
+        lead.opted_out_channel = "email"
+        lead.opted_out_keyword = OPT_OUT_KEYWORD
+        await db.commit()
+        log.info("Lead %d unsubscribed from email", lead_id)
+    return done
