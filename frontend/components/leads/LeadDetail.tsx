@@ -273,7 +273,15 @@ export function LeadDetail({ leadId }: { leadId: number }) {
                     value={usd(lead.calculator.result.monthly.total, lang)}
                   />
                   <Field
-                    label={t("lead.calculator.net")}
+                    /* Labelled from the snapshot, never from the key's name:
+                       `net_5y` holds the net over whatever horizon the visitor
+                       was comparing at, and a fixed "5-yr" caption on a 20-year
+                       figure is the same screen-vs-record contradiction the
+                       selector itself used to cause. Rows written before the
+                       horizon travelled have no `years`, and those really are 5. */
+                    label={t("lead.calculator.net", {
+                      n: lead.calculator.assumptions.years ?? 5,
+                    })}
                     value={
                       lead.calculator.result.net_5y === null
                         ? null

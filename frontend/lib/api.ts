@@ -36,13 +36,19 @@ export interface CalculatorSnapshot {
   computed_at: string;
   lang: "en" | "es" | null;
   inputs: { rent: number; savings: number; credit: CalculatorCredit };
-  assumptions: Record<string, unknown>;
+  /** `years` is named because the comparison horizon is the visitor's choice
+   *  (5/10/15/20/30) and anything printing `net_5y` has to label it from here —
+   *  see below. Older rows predate the selector travelling and have 5. */
+  assumptions: Record<string, unknown> & { years?: number };
   result: {
     price: number;
     capped_by: CalculatorCappedBy;
     loan: number;
     down: number;
     monthly: { pi: number; tax: number; insurance: number; pmi: number; hoa: number; total: number };
+    /** The net over `assumptions.years`, not over five. The key kept its old
+     *  name because it is written in every row already stored; renaming it is a
+     *  migration, not a tidy-up. Never label it without reading `years`. */
     net_5y: number | null;
     crossover_year: number | null;
   };
