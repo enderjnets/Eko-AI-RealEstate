@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.132.0";
+export const CURRENT_VERSION = "0.133.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.133.0",
+    date: "2026-09-19",
+    title: {
+      en: "The calculator offers what its own section already promised",
+      es: "La calculadora ofrece lo que su propia sección ya prometía",
+    },
+    changes: [
+      { en: "Forty-eight sessions reached a figure on the calculator in ninety days and not one ever touched the form. Nothing was broken — the event fires, the form is wired, the button renders — the copy simply contradicted itself: the section already offered \"leave your email and she'll reach out\" while the button above it asked to book a consult and the markup demanded a first name, a surname and an address. All of it now asks for the same thing, and under the calculator only the address is required, because the address is all that was promised.", es: "Cuarenta y ocho sesiones llegaron a una cifra en la calculadora en noventa días y ninguna llegó a tocar el formulario. No había avería — el evento dispara, el formulario está cableado, el botón se pinta — el copy simplemente se contradecía: la sección ya ofrecía «deja tu correo y ella te escribe» mientras el botón de encima pedía agendar una asesoría y el marcado exigía nombre, apellido y correo. Ahora los cuatro piden lo mismo, y bajo la calculadora sólo el correo es obligatorio, porque el correo es lo único que se prometió." },
+      { en: "The horizon selector moved everything except the record. Somebody comparing at twenty years had the FIVE-year figure filed against their lead, so the inbox and the dashboard showed a number that contradicted the screen they were looking at when they wrote in. The horizon now travels with the lead, and the dashboard labels the net from it instead of printing a fixed \"5-yr\".", es: "El selector de horizonte movía todo menos el registro. Quien comparaba a veinte años dejaba archivada la cifra de CINCO, así que el inbox y el panel mostraban un número que contradecía la pantalla que esa persona estaba mirando cuando nos escribió. El horizonte ahora viaja con el lead, y el panel rotula el neto desde él en vez de imprimir un «5 años» fijo." },
+      { en: "Automated email had been switched off on purpose for want of three things — an unsubscribe, a physical postal address and an opt-out that email is part of. All three now exist: a signed one-click unsubscribe link, the List-Unsubscribe headers a mail client turns into its own button, and a footer that refuses to build without the address rather than sending one with a hole in it. Clicking it stops automated messages on every channel, and the first opt-out keeps its date.", es: "El correo automático estaba apagado a propósito por faltar tres cosas — una baja, una dirección postal y un opt-out del que el correo formara parte. Las tres existen ya: un enlace de baja firmado de un clic, las cabeceras List-Unsubscribe que el cliente de correo convierte en su propio botón, y un pie que se niega a construirse sin la dirección en vez de mandar uno con un agujero. Pulsarlo detiene los mensajes automáticos en todos los canales, y la primera baja conserva su fecha." },
+      { en: "And the visitor can be sent the breakdown they calculated: their inputs, what it points to, the comparison broken into its parts — which add up to the net, because whoever receives it can add them — and the assumptions every one of those figures rests on. It is dormant until the agency supplies its postal address; until then it says so in the log rather than sending anything.", es: "Y se le puede mandar al visitante el desglose que calculó: lo que puso, lo que indica, la comparación partida en sus componentes — que suman el neto, porque quien lo reciba puede sumarlos — y los supuestos sobre los que se apoya cada cifra. Queda dormido hasta que la agencia ponga su dirección postal; hasta entonces lo dice en el registro en vez de mandar nada." },
+    ],
+  },
   {
     version: "0.132.0",
     date: "2026-09-18",

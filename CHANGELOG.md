@@ -1,5 +1,114 @@
 # Changelog
 
+## [0.133.0] - 2026-09-19
+
+### Arreglado
+
+**La calculadora ofrece lo que su propia sección ya prometía.**
+
+Medido en producción sobre 90 días: **48 sesiones** llegaron a
+`calculator_result` —la señal de más intención que produce el sitio— **6**
+pulsaron un CTA y **ninguna llegó a enfocar un campo** del formulario. Cero
+formularios empezados, cero enviados, cero leads de fuera.
+
+No había avería, y se auditó antes de tocar nada: el backend acepta
+`form_start` y sella `form_started_at`; el formulario engancha `onFocusCapture`
+en el `<form>` y los chips llaman a `onFirstTouch()` aparte porque en iOS un
+botón no da foco; el CTA se renderiza sólo cuando hay resultado; Turnstile no
+bloquea. Y esas 48 sesiones **sí** registraron `calculator_result`, lo que
+prueba que en ellas el rastreador estaba vivo: si hubieran tocado un campo,
+`form_start` habría salido.
+
+Lo que fallaba era el copy, **y se contradecía a sí mismo**. La sección
+`#consult` ya ofrecía «*Want Natalia to send you options in this range? Leave
+your email and she'll reach out*» — una promesa pequeña y buena. Pero el botón
+que lleva ahí decía «*Talk to Natalia about this*», el de envío «*Book the
+consult*» y el tranquilizador «*Three fields*», mientras el marcado exigía
+nombre, apellido y correo. Cuatro textos pidiendo cuatro cosas distintas en la
+misma pantalla.
+
+Ahora los cuatro dicen lo mismo, con claves `calculator.form.*` propias elegidas
+por `variant` — sin tocar `landing.form.*`, que también renderizan `/`, `/fall`
+y `/contact`, donde «Book the consult» sigue siendo lo correcto. Bajo
+`/calculator` **sólo el correo es obligatorio**: es lo único que la sección
+promete, y el backend ya lo exige (`CAPTURE_REQUIRE_EMAIL`) sin pedir nombre.
+
+El consentimiento, el señuelo, Turnstile y el endpoint quedan idénticos para
+toda variante: un segundo formulario sutilmente distinto es como un registro
+TCPA acaba describiendo una frase que nadie leyó.
+
+**El horizonte que eligió el visitante es el que se guarda.**
+
+La página tiene selector de horizonte (5/10/15/20/30 años) y movía todo menos el
+registro. `years` no estaba en `OVERRIDABLE`, así que quien comparaba a veinte
+años dejaba archivada contra su lead la cifra de **cinco**: el Inbox, el panel y
+cualquier cosa que lea el snapshot mostraban un número que contradecía la
+pantalla que esa persona miraba cuando nos escribió. Es la misma clase de fallo
+que retiró cinco vídeos en septiembre — un número correcto bajo supuestos que
+nadie registró.
+
+La causa estaba repartida y ninguna pieza era el culpable entero: `buildPayload`
+no leía `a.years` aunque `assumptions.years` ya era el horizonte elegido;
+`OVERRIDABLE` no lo incluía, que es lo que decide si un control movido llega al
+servidor; y `CalculatorIn` tenía que declararlo o, con `extra="forbid"`, habría
+tirado el cálculo **entero**. El tope se importa de `MAX_YEARS` para que no
+pueda separarse del barrido que la comparación hace de verdad.
+
+`net_5y` conserva su nombre — está escrito en todas las filas existentes y lo
+leen el panel y `summary_line`, así que renombrarlo es una migración — pero
+nadie lo rotula ya sin leer `years`.
+
+### Añadido
+
+**Las tres piezas que tenían apagado el canal de correo.**
+
+`models/lead.py` decía que el remitente «*stays human until those three exist*»
+—una baja, una dirección postal y un opt-out del que el correo forme parte— y
+`followups.py` que encenderlo «*es una decisión de cumplimiento, no de
+configuración*». Las tres existen ya. No se decide nada: la decisión queda en un
+ajuste que sólo la agencia puede rellenar.
+
+- Un **enlace de baja firmado** (HMAC con clave derivada por dominio — el
+  secreto de sesión «tiene exactamente una audiencia» y compartirlo es como un
+  enlace de baja se convierte en un inicio de sesión). Sin caducidad, a
+  propósito: un enlace que deja de funcionar es una persona que no puede
+  hacernos parar.
+- Cabeceras **`List-Unsubscribe` y `List-Unsubscribe-Post`**, que es lo que
+  Gmail y Outlook convierten en su propio botón.
+- Un **pie que se niega** a construirse sin `POSTAL_ADDRESS` en vez de mandar
+  uno con un agujero. Ese fallo es el interruptor del canal.
+
+El **GET pregunta y el POST actúa**: un GET que diera de baja al abrirse lo
+dispararía cada appliance que escanea enlaces antes de que el destinatario los
+vea. Para eso existe el RFC 8058 — el botón del propio cliente manda el POST,
+así que sigue siendo un clic. La baja escribe `opted_out_at`, que
+`may_send_automated` consulta **la primera para todos los canales**, así que
+apaga también el SMS automático; y la primera baja gana la fecha, igual que la
+ruta de STOP.
+
+**El desglose que calcularon, de vuelta por correo.**
+
+Sus datos, lo que indican, la comparación partida en componentes —que **suman el
+neto exacto**, porque quien lo reciba puede sumarlos— y **los supuestos** de
+cada cifra, como exige `docs/content/calculator-consistency.md` desde el 14-sep.
+Se recalcula con `solve_price` y `compare` sobre los supuestos **tal como se
+guardaron**, nunca fusionados con los `DEFAULTS` de hoy: un supuesto que alguien
+edite el mes que viene no puede reescribir lo que esta persona miró. La prosa
+pasa por `find_violations` en los dos idiomas y queda grabada en
+`fair_housing_flags`.
+
+🔴 **Sale apagado.** Sin `POSTAL_ADDRESS` no manda nada y lo anota en el
+registro. Es el estado correcto y está fijado por un test: la agencia pone una
+línea de configuración y el canal se enciende.
+
+### Pendiente de la agencia
+
+- **`POSTAL_ADDRESS`** — la dirección postal que CAN-SPAM exige. Sin ella el
+  desglose por correo queda dormido.
+- **`agent_settings.brokerage_line`** dice hoy «Engel & Voelkers», que puede no
+  ser el nombre registrado en la Comisión que exige la Regla 6.10.A.2. El pie lo
+  imprime tal como está almacenado; corregirlo es un hecho de la agencia.
+
 ## [0.132.0] - 2026-09-18
 
 ### Cambiado
