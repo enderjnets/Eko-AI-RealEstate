@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.136.4] - 2026-09-19
+
+### Changed
+- The consent checkbox is now two lines, both rendered and both stored in
+  `consent_text`: a short label a person reads, and under it the disclosure
+  47 CFR 64.1200(f)(9) asks to be clear and conspicuous — the seller named,
+  the number identified, that messages may be automated or AI-generated, and
+  that agreeing is not a condition of purchase — plus the frequency and rate
+  wording CTIA requires before a campaign is registered.
+- The old wording said "Text me", while `_CONSENT_GATED_CHANNELS` reads the
+  same tick as permission for `sms`, `whatsapp` and `voice`.
+
+### Added
+- `tests/test_the_consent_wording.py`. Nothing guarded these strings: they
+  could have been changed in English and left stale in Spanish and the suite
+  would have passed. It also fails if a form renders the disclosure without
+  storing it, or stores a sentence the page never showed.
+
 ## [0.136.3] - 2026-09-19
 
 ### Changed

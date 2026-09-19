@@ -107,7 +107,16 @@ function ContactForm() {
 
   // The exact wording rendered below, and the exact wording submitted. One
   // source, deliberately.
+  // Two lines, both on screen and both stored. The short one is what a person
+  // actually reads; the second carries what 47 CFR 64.1200(f)(9) requires to be
+  // disclosed — automated or AI voice, and that consent is not a condition —
+  // plus the frequency and rate wording the carriers ask for. It is rendered
+  // rather than linked because the rule this file already keeps is that the
+  // record describes the sentence the visitor read, and a disclosure behind a
+  // link is a sentence nobody read.
   const consentWording = t("contact.consent");
+  const consentDetail = t("contact.consentDetail");
+  const consentRecord = `${consentWording} ${consentDetail}`;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -139,7 +148,7 @@ function ContactForm() {
       phone: f.phone.trim() || undefined,
       message: f.message.trim() || undefined,
       consent,
-      consent_text: consent ? consentWording : undefined,
+      consent_text: consent ? consentRecord : undefined,
       utm,
       session_id: sessionId,
       webdriver:
@@ -288,6 +297,9 @@ function ContactForm() {
           />
           <span className="leading-relaxed">{consentWording}</span>
         </label>
+        <p className="pl-7 text-[11px] leading-relaxed text-gray-500 dark:text-gray-500">
+          {consentDetail}
+        </p>
         <p className="text-xs text-gray-500 dark:text-gray-500">
           {t("contact.consentHint")}
         </p>

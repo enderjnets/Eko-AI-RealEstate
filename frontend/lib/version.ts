@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.136.3";
+export const CURRENT_VERSION = "0.136.4";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.136.4",
+    date: "2026-09-19",
+    title: {
+      en: "The consent box says what the record has to say",
+      es: "La casilla dice lo que el registro tiene que decir",
+    },
+    changes: [
+      { en: "The checkbox read \"Text me about listings and appointments\" \u2014 and the code treated that same tick as permission for texts, WhatsApp and voice. It also carried one of the six things this kind of record is expected to carry. It now reads as two lines, both on screen and both stored together: a short one a person can read, and under it the disclosure the rules ask for \u2014 who is contacting you, at which number, that the messages may be automated or AI-generated, that agreeing is not a condition of buying or selling, how often, what it may cost, and how to stop.", es: "La casilla dec\u00eda \u00abText me about listings and appointments\u00bb \u2014 y el c\u00f3digo le\u00eda ese mismo tic como permiso para SMS, WhatsApp y voz. Adem\u00e1s llevaba uno de los seis elementos que se esperan de un registro as\u00ed. Ahora son dos l\u00edneas, las dos en pantalla y las dos guardadas juntas: una corta que se puede leer, y debajo el aviso que piden las normas \u2014 qui\u00e9n te contacta, en qu\u00e9 n\u00famero, que los mensajes pueden ser autom\u00e1ticos o con voz de IA, que aceptar no es condici\u00f3n para comprar ni vender, con qu\u00e9 frecuencia, qu\u00e9 puede costar y c\u00f3mo pararlo." },
+      { en: "Nothing guarded these strings before. They could have been edited in English and left stale in Spanish, on a page whose own footer says \"Se habla espa\u00f1ol\", and the whole suite would still have passed. A new test now reads them out of the dictionary, refuses a language left behind, and checks the stored record element by element \u2014 on meaning, so the sentence may be rewritten but not hollowed out.", es: "Nada vigilaba estas cadenas. Se pod\u00edan editar en ingl\u00e9s y dejar el espa\u00f1ol viejo, en una p\u00e1gina cuyo propio pie dice \u00abSe habla espa\u00f1ol\u00bb, y la suite entera segu\u00eda verde. Un test nuevo las lee del diccionario, rechaza que un idioma se quede atr\u00e1s, y comprueba el registro elemento por elemento \u2014 por significado, as\u00ed que la frase se puede reescribir pero no vaciar." },
+      { en: "And both forms are checked for the inversion that would not look like a bug in review: rendering the disclosure but storing only the short line, or storing a sentence the page never showed.", es: "Y en las dos formas se comprueba la inversi\u00f3n que no parecer\u00eda un fallo al revisarla: pintar el aviso pero guardar s\u00f3lo la l\u00ednea corta, o guardar una frase que la p\u00e1gina nunca ense\u00f1\u00f3." },
+    ],
+  },
   {
     version: "0.136.3",
     date: "2026-09-19",

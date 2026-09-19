@@ -120,7 +120,16 @@ function ConsultFormInner({
       setF((p) => ({ ...p, [k]: e.target.value }));
 
   // The wording rendered beside the checkbox is the wording stored as evidence.
+  // Two lines, both on screen and both stored. The short one is what a person
+  // actually reads; the second carries what 47 CFR 64.1200(f)(9) requires to be
+  // disclosed — automated or AI voice, and that consent is not a condition —
+  // plus the frequency and rate wording the carriers ask for. It is rendered
+  // rather than linked because the rule this file already keeps is that the
+  // record describes the sentence the visitor read, and a disclosure behind a
+  // link is a sentence nobody read.
   const consentWording = t("contact.consent");
+  const consentDetail = t("contact.consentDetail");
+  const consentRecord = `${consentWording} ${consentDetail}`;
 
   // `/calculator` asks at a different moment, so it asks for a different thing.
   // The visitor has just moved sliders anonymously; "Book the consult" is a
@@ -206,7 +215,7 @@ function ConsultFormInner({
       phone: f.phone.trim() || undefined,
       message,
       consent,
-      consent_text: consent ? consentWording : undefined,
+      consent_text: consent ? consentRecord : undefined,
       utm,
       session_id: sessionId,
       webdriver:
@@ -367,6 +376,9 @@ function ConsultFormInner({
           />
           <span className="leading-relaxed">{consentWording}</span>
         </label>
+        <p className="pl-7 text-[11px] leading-relaxed text-ln-canvas/45">
+          {consentDetail}
+        </p>
         <p className="text-xs text-ln-canvas/50">{t("contact.consentHint")}</p>
 
         <Turnstile
