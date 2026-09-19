@@ -1,10 +1,16 @@
 """Tell the operator when a reply to a lead carried forbidden housing language.
 
-`conversation.py` stamps `messages.fair_housing_flags` and sends anyway — that
-is the deliberate design: a lead waiting on an answer does not get held behind a
-review queue, and blocking would trade a compliance risk for a service outage.
-The cost of that choice is that somebody has to be TOLD, out of band, or the
-column is a log nobody reads. This module is that telling.
+`conversation.py` stamps `messages.fair_housing_flags` and, on WhatsApp and SMS,
+sends anyway — a lead waiting on an answer does not get held behind a review
+queue. The cost of that choice is that somebody has to be TOLD, out of band, or
+the column is a log nobody reads. This module is that telling.
+
+**Since v0.135.0 the email lane is different: there it BLOCKS.** That channel is
+open to anyone on the internet, and a message crafted to draw a discriminatory
+sentence out of the model would come back in writing under the brokerage's name.
+Those rows arrive here as `delivery_status=failed` with the flags set, and this
+module reads them the same as any other — it queries the flags, never the
+delivery status.
 
 Two lessons from this repo are load-bearing here and neither is negotiable:
 

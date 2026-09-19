@@ -44,7 +44,7 @@ from app.models import (
 )
 from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
-from app.services.delivery import schedule_retry
+from app.services.delivery import MAX_ATTEMPTS, schedule_retry
 from app.services.email_compliance import (
     MissingPostalAddress,
     build_footer,
@@ -1803,6 +1803,20 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # neighborhood with good schools" scores 2 and "You'll love how safe this
     # area feels for raising kids" scores 0. This is a floor, not a ceiling.
     flags = find_violations(reply_text, target_lang)
+
+    # BLOCKED on email, recorded everywhere else. The "record, do not block"
+    # call above was made when the only inbound channel was WhatsApp; email
+    # opened to the whole internet on 2026-09-19, and the attack it enables is
+    # specific: craft a message that draws a discriminatory sentence out of the
+    # model, receive it in writing under the brokerage's name and postal
+    # address, and file it. The harm lands on someone else's licence.
+    #
+    # Scoped to email because email is the only channel proven open to strangers
+    # today — NOT because a phone number is authentication. It is a speed bump.
+    # When SMS or WhatsApp turn out to be reachable the same way, this line is
+    # the one to widen.
+    blocked_by_fair_housing = bool(flags) and parsed.channel == "email"
+
     if flags:
         log.warning(
             "Fair Housing: outbound reply for lead %d carries %d flagged "
@@ -1836,6 +1850,33 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # is a synchronous lazy load that raises MissingGreenlet out of every
     # handler in this function.
     outbound_id = outbound.id
+
+    if blocked_by_fair_housing:
+        # `send_attempts` at the ceiling is what keeps this out of
+        # `delivery.py::_still_owed`, whose sweep picks up FAILED rows with
+        # attempts left and would otherwise send the exact text we refused.
+        # There is no BLOCKED status to set instead, and inventing one would
+        # cost a migration for a state the sweep already knows how to skip.
+        outbound.delivery_status = MessageStatus.FAILED
+        outbound.send_attempts = MAX_ATTEMPTS
+        outbound.last_error = (
+            "blocked: Fair Housing flags on an automated email reply"
+        )
+        await db.commit()
+        log.error(
+            "Fair Housing: NOT sent for lead %d — %d flagged phrase(s) %s. "
+            "The draft is in the panel for a human.",
+            lead.id, len(flags), sorted({f["category"] for f in flags}),
+        )
+        # No new alert: `fair_housing_watch.py` already reads every row with a
+        # non-empty `fair_housing_flags`, whatever its delivery status, and it
+        # alerts on a change rather than on a state.
+        return {
+            "status": "blocked_fair_housing",
+            "lead_id": lead.id,
+            "inbound_id": inbound.id,
+            "outbound_id": outbound_id,
+        }
 
     # ── 10. Dispatch send through the right channel adapter ──────────
     try:

@@ -16,6 +16,7 @@ from app.models.channel_route import CHANNEL_EMAIL
 from app.services.channel_identity import inbound_secret_or_503
 from app.services.conversation import handle_inbound_message
 from app.services.email import fetch_inbound_email, parse_inbound_email, verify_resend_signature
+from app.services.inbound_limits import over_budget
 from app.services.tenant_context import set_org_id
 from app.services.tenant_resolver import WebhookOrgUnresolved, webhook_org_or_refuse
 from app.services.unrouted_notice import tell_the_owner_about_unrouted
@@ -139,6 +140,22 @@ async def email_inbound(
     parsed_messages = parse_inbound_email(payload)
     if not parsed_messages:
         return {"status": "ok", "processed": 0}
+
+    # ── The budget, after the signature and before the LLM ────────────────
+    #
+    # The signature proves Resend sent this; it proves nothing about who wrote
+    # it. Anyone can mail `hello@`, and from here each message costs two model
+    # calls, one outbound send and a lead row.
+    #
+    # 200 on refusal, not 429: a 5xx or a 4xx makes Resend redeliver, so the
+    # cheapest way to turn a rate limit into an amplifier is to answer one with
+    # an error. We accept the message and decline to work on it.
+    if (tier := over_budget(_sender(payload))) is not None:
+        log.error(
+            "Inbound email refused by the %s budget — from=%r to=%r subject=%r",
+            tier, _sender(payload), _mailboxes(payload), _subject(payload),
+        )
+        return {"status": "rate_limited", "tier": tier}
 
     results = []
     failed = False

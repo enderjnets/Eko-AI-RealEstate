@@ -112,6 +112,7 @@ services:
       # raises and no automated commercial email can be built — the channel is
       # off until the agency supplies one line. See .env.example.
       POSTAL_ADDRESS: ${POSTAL_ADDRESS:-}
+      AGENCY_NOTICE_DAILY_CAP: ${AGENCY_NOTICE_DAILY_CAP:-20}
       # The panel's own host, so the notice can link to the lead. Same value as
       # the frontend's NEXT_PUBLIC_PANEL_URL build arg below.
       PANEL_URL: ${PANEL_URL:-}

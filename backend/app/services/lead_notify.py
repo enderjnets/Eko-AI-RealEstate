@@ -60,6 +60,7 @@ import asyncio
 import logging
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.calculator import summary_line
 from app.services.email import send_email
@@ -250,6 +251,41 @@ async def send_new_lead_notice(
         log.error("Lead %d: new-lead notice failed: %s", lead_id, exc)
 
 
+# Origins a stranger can trigger from outside, with nothing but an email
+# address. The form and a phone call are NOT here: the form has a honeypot, a
+# per-IP budget, a captcha and its own global limit, and a call costs a call.
+_STRANGER_ORIGINS = frozenset({"message", "qualified"})
+
+
+async def _notices_in_24h(db: AsyncSession) -> int:
+    """How many agency notices this org has already produced in a rolling day.
+
+    Counts the internal trace row every notice leaves in the lead's thread, so
+    the budget is measured from what was actually delivered rather than from a
+    counter that can drift. The session is org-scoped, so RLS does the tenant
+    filtering.
+
+    Rolling 24h, not a calendar day: a cap that resets at midnight is a cap that
+    a flood times itself against.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import func
+
+    from app.models.message import Message
+
+    since = datetime.now(UTC) - timedelta(days=1)
+    return int(
+        (
+            await db.execute(
+                select(func.count())
+                .select_from(Message)
+                .where(Message.internal.is_(True), Message.created_at >= since)
+            )
+        ).scalar_one()
+    )
+
+
 async def _send_and_record(
     lead_id: int,
     message_id: int | None,
@@ -289,6 +325,36 @@ async def _send_and_record(
         from app.config import get_settings as _settings
 
         owner = ((_settings().OWNER_NOTICE_EMAIL or "").strip()) or None
+
+        # ── The daily budget, charged before anything is composed ──────────
+        #
+        # Since the email channel opened this morning, anyone in the world can
+        # reach `hello@` and produce a lead. `origin="qualified"` then fires a
+        # notice for every one that names a neighbourhood and a figure — so
+        # fifty emails are fifty "Ready for you" mails in the realtor's inbox,
+        # and if they each became an MLS search they would be fifty exports
+        # against a 500-listing ceiling whose penalty is $15,000 and suspension
+        # of her access (REcolorado Rules §12.4).
+        #
+        # Only stranger origins are capped. A notice from the form must never be
+        # suppressed because someone flooded the mailbox — that is the shape of
+        # mistake `public.py` already paid for, where a budget charged too early
+        # became a kill switch anyone could hold down.
+        capped = False
+        if origin in _STRANGER_ORIGINS:
+            spent = await _notices_in_24h(db)
+            cap = _settings().AGENCY_NOTICE_DAILY_CAP
+            if spent > cap:
+                # Suppressed, and it says so where a human looks for it. The
+                # lead itself is untouched and sitting in the panel: what is
+                # dropped is the nudge, never the person.
+                log.error(
+                    "Lead %d: agency notice suppressed — %d notices in 24h is "
+                    "over the cap of %d. The lead is in the panel.",
+                    lead_id, spent, cap,
+                )
+                return
+            capped = spent == cap
         if owner and to and owner.casefold() == to.casefold():
             # The same person twice. Reachable and not hypothetical: the owner
             # pointed `booking_contact_email` at himself for the Fase 4
@@ -358,7 +424,22 @@ async def _send_and_record(
 
         who = lead.name or phone or email or f"lead {lead.id}"
         facts = call if isinstance(call, dict) else {}
-        if origin == "call":
+        if capped:
+            # Sent INSTEAD of this lead's notice, exactly once: it leaves its own
+            # trace row, which pushes the count past the cap, so everything after
+            # it takes the early return above. One "go and look" beats fifty
+            # notices and beats silence.
+            subject = "Automatic notices paused — check the panel"
+            body = (
+                "More inquiries have arrived in the last 24 hours than the "
+                "automatic notices are allowed to carry, so they have been "
+                "paused until the day rolls over.\n\n"
+                "Nothing has been lost: every lead is in the panel, including "
+                "the ones you were not emailed about.\n\n"
+                "If this was not a busy day, it was probably not real traffic — "
+                "tell whoever runs the system.\n"
+            )
+        elif origin == "call":
             # Said plainly, in the first line and in the subject, because this
             # is the whole triage: a call with words is a conversation to read,
             # and a call without them is a number to ring back. The notice used

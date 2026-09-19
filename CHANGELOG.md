@@ -1,5 +1,79 @@
 # Changelog
 
+## [0.135.0] - 2026-09-19
+
+### Seguridad
+
+**Tres puertas en la entrada que se abrió esta mañana.**
+
+El canal de correo entró en producción hoy y `hello@denverhomestory.com` pasó a
+ser alcanzable por cualquiera. Auditado esa misma tarde, los caminos que un
+desconocido podía recorrer eran tres, y ninguno tenía tope.
+
+Lo bueno primero, porque es la mitigación más grande que tenemos y conviene
+dejarla escrita: **Clara no tiene herramientas.** `generate_reply` devuelve
+texto — no hay `tools=`, ni `tool_use`, ni function calling. Una inyección de
+prompt **no puede hacerle hacer nada**, sólo decir algo. Y el texto del lead
+entra como turno de usuario, nunca dentro del prompt de sistema.
+
+**1. Un tope de avisos a la agencia, y sólo para los orígenes de desconocido.**
+`origin="qualified"` dispara un correo a la agente por cada lead que nombre un
+barrio y una cifra: cincuenta correos eran cincuenta avisos, y cada uno que ella
+atendiera sería una búsqueda en el MLS contra un techo de 500 listings cuya
+sanción es **$15.000 y la suspensión de su acceso** (Reglas de REcolorado
+§12.4). Ahora hay presupuesto de 24 h rodantes, contado sobre las trazas
+internas que cada aviso deja.
+
+El formulario y las llamadas **no se capan nunca**. Dejar que el tráfico no
+confiable agote el presupuesto que lleva al confiable es exactamente el error que
+`public.py` ya pagó una vez, y hay un test cuyo único trabajo es impedir que
+vuelva.
+
+Al cruzar el tope sale **un** aviso de relevo — «los avisos automáticos están en
+pausa, míralo en el panel» — en vez de cincuenta y en vez de silencio.
+
+**2. Presupuestos en el webhook de entrada: remitente → dominio → global.**
+El orden es el diseño entero. El global se cobra **el último**, cuando los dos
+baratos ya rechazaron lo que podían: cobrarlo primero fue lo que convirtió el de
+`public.py` en un interruptor de apagado que cualquiera podía mantener pulsado.
+
+Y el módulo dice en voz alta por qué el nivel de remitente es el más débil: una
+IP cuesta rotarla, una cabecera `From:` no, y **no leemos veredictos SPF ni
+DKIM**, así que no distinguimos un remitente real de uno falsificado. El nivel de
+dominio es el que hace que rotar cueste algo. Ninguno es autenticación y no
+pretende serlo.
+
+Al rechazar responde **200**, no 429: un 4xx o un 5xx hace que Resend reentregue,
+y la forma más barata de convertir un límite en un amplificador es contestarlo
+con un error.
+
+**3. Fair Housing BLOQUEA en la respuesta automática por correo.**
+La decisión de «anotar y mandar igual» se tomó cuando el único canal de entrada
+era WhatsApp. Con el correo abierto al mundo, el ataque es concreto: redactar un
+mensaje que le saque al modelo una frase discriminatoria y recibirla por escrito
+bajo el nombre y la dirección postal de la correeduría. El daño cae sobre la
+licencia de otra persona.
+
+Bloquear significa **derivar, no callar**: la fila se guarda con sus flags,
+`send_attempts` al techo para que la barredora de `delivery.py` no la resucite, y
+`fair_housing_watch.py` la ve igual porque consulta los flags y no el estado de
+envío — su docstring, que decía «sends anyway», quedó corregida.
+
+Acotado al correo **porque es el único canal demostradamente abierto a
+desconocidos**, no porque un número de teléfono sea autenticación. Es un
+badén, y el comentario lo dice así.
+
+### Sabido y no arreglado
+
+El endurecimiento de inyección propiamente dicho — etiquetar el texto entrante
+como datos, un detector de intentos obvios, tests con correos de ataque — queda
+fuera de esta pasada por decisión del dueño.
+
+Y la respuesta automática sigue siendo un oráculo gratis: cualquiera pregunta y
+recibe una respuesta con la línea de la correeduría. Para un lead real eso es el
+producto; para quien raspa, es información. Los presupuestos lo mitigan, no lo
+resuelven.
+
 ## [0.134.1] - 2026-09-19
 
 ### Arreglado

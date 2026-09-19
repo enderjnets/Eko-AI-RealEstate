@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.134.1"
+    APP_VERSION: str = "0.135.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -145,6 +145,15 @@ class Settings(BaseSettings):
     # to supply. Nothing here decides whether to send — it decides whether a
     # message can be built at all.
     POSTAL_ADDRESS: str = ""
+    # How many agency notices a rolling 24h may carry before the ones triggered
+    # by STRANGERS are suppressed. The form and a phone call are never capped:
+    # letting untrusted traffic exhaust the budget that carries trusted traffic
+    # is the mistake `public.py` already paid for once, where a global limit
+    # charged too early became a kill switch anyone could hold down.
+    #
+    # 20 is generous for a two-agent brokerage taking a handful of leads a month
+    # and useless to someone sending a thousand emails.
+    AGENCY_NOTICE_DAILY_CAP: int = 20
 
     # Where the operator panel answers, so the backend can put a LINK in the
     # mail it sends. The frontend has known this as `NEXT_PUBLIC_PANEL_URL`
