@@ -232,8 +232,8 @@ async def send_new_lead_notice(
     change to gain a second origin:
 
     * `origin` — `"form"`, `"call"`, `"message"` (someone wrote in on any
-      channel) or `"qualified"` (the handoff, once Clara has intent, budget and
-      zone); picks the subject and the body.
+      channel) or `"qualified"` (the handoff, once Clara has an intent, an area
+      and a figure); picks the subject and the body.
     * `conversation_id` — which thread files the internal copy when there is no
       inbound message to hang it on. A call has a transcript, not a message the
       form posted, so `message_id` is None and this is how the note reaches the
@@ -409,26 +409,38 @@ async def _send_and_record(
                 + _line("Calculator", _calculator_line(lead))
             )
         elif origin == "qualified":
-            # The handoff. Sent once per lead, the moment Clara has the three
-            # facts that make a lead workable — not on a score threshold, which
-            # a chatty tyre-kicker also crosses.
-            budget = None
-            if lead.budget_min is not None or lead.budget_max is not None:
-                lo = f"${int(lead.budget_min):,}" if lead.budget_min is not None else "?"
-                hi = f"${int(lead.budget_max):,}" if lead.budget_max is not None else "?"
-                budget = lo if lo == hi else f"{lo} – {hi}"
+            # The handoff. Sent once per lead, the moment Clara has an intent, a
+            # zone and a figure — not on a score threshold, which a chatty
+            # tyre-kicker also crosses.
+            #
+            # NO BUDGET LINE, and that absence is the point. Measured on lead
+            # 1269, the first real run: someone wrote "renting at $2,400 and I
+            # have around $35,000 saved" and the classifier filed
+            # budget_min = budget_max = 35000. That is the DOWN PAYMENT. Our own
+            # calculator puts what they can buy at $315,399 — an order of
+            # magnitude out, on the one line an agent would act on.
+            #
+            # So the figure still opens the gate (someone who names money is
+            # someone who has thought about it) and never gets a label the
+            # product cannot stand behind. What goes in its place is what they
+            # actually wrote, which cannot be wrong about itself.
+            #
+            # The real budget is `solve_price()` over rent/savings/credit, and it
+            # arrives in v0.135.0. Until it does, silence beats a confident
+            # number: an agent who reads "Budget: $35,000" shows $35,000 houses.
             subject = f"Ready for you — {who}"
             body = (
-                "Clara now has what you need to work this one: what they "
-                "want, what they can spend, and where.\n\n"
+                "Clara has an intent, an area and a timeline on this one. The "
+                "money they mentioned is in their own words below — we are not "
+                "turning it into a price range yet.\n\n"
                 + _line("Name", lead.name)
                 + _line("Phone", phone)
                 + _line("Email", email)
                 + _line("Wants", lead.intent.value if lead.intent else None)
-                + _line("Budget", budget)
                 + _line("Area", lead.zone)
                 + _line("Timeline", lead.urgency)
                 + _line("Score", f"{lead.score}/100")
+                + _line("They wrote", (inbound.content if inbound else None))
                 + _line("Calculator", _calculator_line(lead))
                 + "\nThe whole conversation is in the panel.\n"
             )

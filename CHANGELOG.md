@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.134.1] - 2026-09-19
+
+### Arreglado
+
+**El aviso de entrega le decía a la agente «Budget: $35,000» a alguien que puede
+comprar de $315.399.**
+
+Encontrado en el primer recorrido real del canal de correo, minutos después de
+desplegar la 0.134.0. El lead escribió *«renting at $2,400 in Wash Park and I
+have around $35,000 saved»* y el clasificador archivó
+`budget_min = budget_max = 35000`. Eso es **la entrada**, no el presupuesto:
+`solve_price()` con esos tres datos da **$315.399**. Un orden de magnitud, en la
+única línea sobre la que una agente actúa.
+
+El ensayo previo al despliegue no lo vio porque allí el presupuesto salió vacío
+y eso pareció correcto. Con la conversación entera delante, el modelo sí rellena
+el campo — y lo rellena mal. Era un defecto activo, no una mejora pendiente.
+
+**El aviso deja de imprimir un presupuesto.** La cifra sigue abriendo la puerta
+—quien nombra dinero es alguien que lo ha pensado— pero no recibe una etiqueta
+que el producto no puede sostener. En su lugar van **las palabras del lead**,
+que no pueden equivocarse sobre sí mismas. Y la frase de apertura deja de decir
+«what they can spend»: de esas tres cosas, dos eran ciertas.
+
+El presupuesto de verdad es `solve_price()` sobre alquiler, ahorros y crédito, y
+llega en la v0.135.0. Hasta entonces, el silencio gana a un número confiado:
+quien lee «Budget: $35,000» enseña casas de $35.000.
+
 ## [0.134.0] - 2026-09-19
 
 ### Arreglado
