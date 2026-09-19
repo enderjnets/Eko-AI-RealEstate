@@ -51,6 +51,7 @@ from app.services.capture import (
     validate_submission,
 )
 from app.services.email_compliance import OPT_OUT_KEYWORD, lead_id_from_token
+from app.services.form_reply import answer_the_form
 from app.services.landing_analytics import (
     browser_of,
     classify_traffic,
@@ -676,6 +677,15 @@ async def capture(
         # knows. Sends nothing at all until `POSTAL_ADDRESS` is configured — it
         # says so in the log rather than failing.
         await send_calculator_breakdown(captured["lead_id"])
+        # And Clara answers, when the breakdown did not. Measured on
+        # 2026-09-19: a real submission produced a lead, a notice to the agency
+        # and a Telegram to the operator, and the person who had just been
+        # promised a call back got nothing — the breakdown is the only
+        # lead-facing mail on this route and it needs a snapshot they never
+        # made. Same position as the two above, after the commit and inside
+        # `"ok"`, so a duplicate submit stays silent; never raises, so a reply
+        # that fails costs the reply and not the capture.
+        await answer_the_form(captured["lead_id"], message=body.message)
 
     # Deliberately says nothing about whether the lead was new, merged or
     # duplicate: that is a membership oracle for anyone who wants to test

@@ -1,0 +1,573 @@
+"""Somebody fills the website form and hears back.
+
+Measured in production on 2026-09-19, not imagined. A real person submitted the
+form on denverhomestory.com. The lead was written, the agency got its notice by
+email AND by Telegram, the panel showed the row — and the person who had just
+read "We'll call you back within a few hours" received nothing at all. The only
+lead-facing mail on that route is `send_calculator_breakdown`, and it needs a
+`calculator_snapshot` that somebody who never opened the calculator does not
+have. On a funnel with zero form submissions in ninety days, the first person to
+bother writing got silence.
+
+The fix routes the form's own sentence through `handle_inbound_message`, the
+same channel-agnostic pipeline that answers an email — so the reply is
+generated, screened, footed and threaded by code that already works, and the
+classifier finally reads the chip the way `ConsultForm.tsx` always claimed it
+did.
+
+What these tests are actually defending, in order of what would hurt most:
+
+* **One lead, not two.** The pipeline does its own upsert. If it matches on the
+  wrong column the agency gets two rows for one person, two score histories and
+  half a conversation each — worse than the silence this replaces.
+* **One notice.** The capture already told her. A second arriving a second
+  later about the same person is not twice the signal.
+* **Nothing at all when the breakdown is already writing.**
+* **Silence for anyone who opted out**, on the lane most likely to forget it.
+
+The LLM is patched, never called: these assert the wiring, and a test that
+depended on what a model said would be asserting the model.
+"""
+from __future__ import annotations
+
+import uuid
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import func, select
+
+from app.db.base import get_bypass_session_factory
+from app.main import app
+from app.models import Conversation, Lead, Message
+from app.models.lead import LeadIntent
+from app.models.message import MessageDirection
+from app.services.tenant_context import org_scope
+
+ORG = 1
+MARK = "%@form.test"
+
+
+@pytest.fixture
+def database_url() -> str:
+    import os
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url:
+        pytest.skip("DATABASE_URL not set — these need live Postgres")
+    return url
+
+
+@pytest.fixture(autouse=True)
+def _configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import get_settings
+
+    monkeypatch.setenv("POSTAL_ADDRESS", "123 Test Ave Ste 1, Denver, CO 80200")
+    monkeypatch.setenv("CONTENT_CTA_URL", "https://example.test")
+    monkeypatch.setenv("TURNSTILE_SECRET_KEY", "")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_limiter() -> None:
+    """The capture route is rate limited per IP, and every test here is one IP.
+
+    Without this the fifth submission in the file gets a 429 — and a test that
+    never asserted the status code went green on a request the route refused to
+    process. `test_an_opted_out_person_hears_nothing` was passing that way:
+    nobody was emailed because nobody was captured.
+    """
+    from app.api.v1.public import reset_rate_limits
+
+    reset_rate_limits()
+    yield
+    reset_rate_limits()
+
+
+@pytest.fixture
+async def agency_mailbox(database_url: str):  # noqa: ANN201
+    """Nothing in this file may reach the realtor.
+
+    On 2026-09-19 her address was repointed in PRODUCTION to keep a rehearsal
+    away from her. A probe address left behind here is a real notice that never
+    arrives, so it is put back either way.
+    """
+    from app.models.agent_settings import AgentSettings
+
+    with org_scope(ORG):
+        async with get_bypass_session_factory()() as db:
+            row = (
+                await db.execute(select(AgentSettings).where(AgentSettings.org_id == ORG))
+            ).scalar_one_or_none()
+            created = row is None
+            if created:
+                row = AgentSettings(org_id=ORG)
+                db.add(row)
+            previous = row.booking_contact_email
+            row.booking_contact_email = "form-probe@example.com"
+            await db.commit()
+    yield
+    with org_scope(ORG):
+        async with get_bypass_session_factory()() as db:
+            row = (
+                await db.execute(select(AgentSettings).where(AgentSettings.org_id == ORG))
+            ).scalar_one_or_none()
+            if row is not None:
+                if created:
+                    await db.delete(row)
+                else:
+                    row.booking_contact_email = previous
+                await db.commit()
+
+
+async def _cleanup() -> None:
+    from sqlalchemy import text
+
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text(
+                "DELETE FROM messages WHERE conversation_id IN "
+                "(SELECT id FROM conversations WHERE lead_id IN "
+                "(SELECT id FROM leads WHERE email LIKE :m))"
+            ),
+            {"m": MARK},
+        )
+        for stmt in (
+            "DELETE FROM conversations WHERE lead_id IN (SELECT id FROM leads WHERE email LIKE :m)",
+            "DELETE FROM lead_events WHERE lead_id IN (SELECT id FROM leads WHERE email LIKE :m)",
+            "DELETE FROM listing_requests WHERE lead_id IN (SELECT id FROM leads WHERE email LIKE :m)",
+            "DELETE FROM leads WHERE email LIKE :m",
+        ):
+            await db.execute(text(stmt), {"m": MARK})
+        await db.commit()
+
+
+def _sender() -> AsyncMock:
+    """A provider double that answers with a DIFFERENT id every time.
+
+    `messages.external_id` is UNIQUE, which is what makes webhook retries
+    idempotent. A mock with a constant `return_value` therefore blows up on the
+    second send of a turn with an IntegrityError that looks like a bug in the
+    code under test and is not: Resend returns a fresh id per message.
+    """
+    seen = {"n": 0}
+
+    async def _send(**_kwargs: object) -> dict[str, object]:
+        seen["n"] += 1
+        return {"id": f"resend.{uuid.uuid4().hex[:8]}.{seen['n']}", "simulated": False}
+
+    return AsyncMock(side_effect=_send)
+
+
+def _senders(sender: AsyncMock):
+    """Every binding of `send_email` this route can reach. There are three.
+
+    `conversation.py` and `listing_requests.py` import it lazily inside the
+    function, so patching `app.services.email.send_email` reaches them.
+    `lead_notify.py` and `calculator_email.py` bind the name at module load,
+    so it does not — and each one was found the same way, by an assertion
+    coming back with an empty list on a send that had plainly happened.
+
+    That is how a test asserting "she is told once" passes while asserting
+    nothing at all, so all three are listed here rather than discovered one at
+    a time.
+    """
+    return (
+        patch("app.services.email.send_email", new=sender),
+        patch("app.services.lead_notify.send_email", new=sender),
+        patch("app.services.calculator_email.send_email", new=sender),
+    )
+
+
+def _patches(intent: str = "buy", reply: str = "Hi Ender — two quick questions."):
+    """The classifier and the writer, both pinned. Returns the context managers."""
+    from app.services.classifier import IntentEntities, IntentResult
+    from app.services.llm import LLMResult
+
+    result = IntentResult(
+        intent=intent,  # type: ignore[arg-type]
+        confidence=0.95,
+        entities=IntentEntities(),
+    )
+    written = LLMResult(
+        text=reply, provider="minimax", model="MiniMax-M3",
+        input_tokens=10, output_tokens=10,
+    )
+    return (
+        patch("app.services.conversation.classify_intent", AsyncMock(return_value=result)),
+        patch("app.services.conversation.generate_reply", AsyncMock(return_value=written)),
+    )
+
+
+async def _submit(client: AsyncClient, email: str, message: str = "I'm looking to buy.", **extra):
+    body = {"name": "Probe", "email": email, "message": message, **extra}
+    return await client.post("/api/v1/public/leads", json=body)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_person_who_filled_the_form_hears_back(
+    database_url: str, agency_mailbox: None
+) -> None:
+    """The whole point: a reply reaches the address they typed."""
+    email = f"hears+{uuid.uuid4().hex[:8]}@form.test"
+    sender = _sender()
+    classify, write = _patches()
+    try:
+        direct, notices, breakdown = _senders(sender)
+        with classify, write, direct, notices, breakdown:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await _submit(client, email)
+        assert resp.status_code == 202, resp.text
+
+        to_the_lead = [
+            c for c in sender.await_args_list if c.kwargs.get("to") == email
+        ]
+        assert len(to_the_lead) == 1, "exactly one reply, and it exists at all"
+        body = to_the_lead[0].kwargs["body_text"]
+        # The compliant footer rides along, because this is automated
+        # commercial email to somebody who is not talking to us yet.
+        assert "Unsubscribe here" in body or "unsubscribe" in body.lower(), body
+        assert "123 Test Ave" in body, "the postal address has to be in it"
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_one_person_is_one_lead(database_url: str, agency_mailbox: None) -> None:
+    """The pipeline runs its own upsert. If it misses, she gets two rows.
+
+    Asserted with a phone present as well as absent, because the lookup is by
+    the `phone` column — which for an email lead holds the address — and the
+    two shapes take different branches.
+    """
+    for extra in ({}, {"phone": "+17205551234"}):
+        email = f"one+{uuid.uuid4().hex[:8]}@form.test"
+        sender = _sender()
+        classify, write = _patches()
+        try:
+            direct, notices, breakdown = _senders(sender)
+            with classify, write, direct, notices, breakdown:
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test"
+                ) as client:
+                    resp = await _submit(client, email, **extra)
+            assert resp.status_code == 202, resp.text
+
+            async with get_bypass_session_factory()() as db:
+                count = (
+                    await db.execute(
+                        select(func.count()).select_from(Lead).where(Lead.email == email)
+                    )
+                ).scalar_one()
+            assert count == 1, f"{extra or 'no phone'}: {count} leads for one person"
+        finally:
+            await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_agency_is_told_once(database_url: str, agency_mailbox: None) -> None:
+    """Capture already told her. The pipeline must not tell her again."""
+    email = f"once+{uuid.uuid4().hex[:8]}@form.test"
+    sender = _sender()
+    classify, write = _patches()
+    try:
+        direct, notices, breakdown = _senders(sender)
+        with classify, write, direct, notices, breakdown:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await _submit(client, email)
+                assert resp.status_code == 202, resp.text
+
+        to_agency = [
+            c for c in sender.await_args_list
+            if c.kwargs.get("to") == "form-probe@example.com"
+        ]
+        assert len(to_agency) == 1, [c.kwargs.get("subject") for c in to_agency]
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_chip_finally_fills_the_intent(
+    database_url: str, agency_mailbox: None
+) -> None:
+    """`ConsultForm.tsx` says the classifier reads the chip. It did not.
+
+    The form wrote to a `web` conversation the pipeline never saw, so every
+    website lead arrived with `intent` empty and scored zero on it. This is the
+    assertion that the comment is now true.
+    """
+    email = f"intent+{uuid.uuid4().hex[:8]}@form.test"
+    sender = _sender()
+    classify, write = _patches(intent="buy")
+    try:
+        direct, notices, breakdown = _senders(sender)
+        with classify, write, direct, notices, breakdown:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await _submit(client, email)
+                assert resp.status_code == 202, resp.text
+
+        async with get_bypass_session_factory()() as db:
+            lead = (
+                await db.execute(select(Lead).where(Lead.email == email))
+            ).scalar_one()
+        assert lead.intent == LeadIntent.BUY, lead.intent
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_inbox_row_is_not_taken_away(
+    database_url: str, agency_mailbox: None
+) -> None:
+    """Two conversations is the correct shape, not duplication.
+
+    The `web` one is what the Inbox shows and what analytics joins on; the
+    `email` one is the thread a reply comes back to. Losing the first would
+    take this lead out of the panel.
+    """
+    email = f"inbox+{uuid.uuid4().hex[:8]}@form.test"
+    sender = _sender()
+    classify, write = _patches()
+    try:
+        direct, notices, breakdown = _senders(sender)
+        with classify, write, direct, notices, breakdown:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await _submit(client, email)
+                assert resp.status_code == 202, resp.text
+
+        async with get_bypass_session_factory()() as db:
+            lead_id = (
+                await db.execute(select(Lead.id).where(Lead.email == email))
+            ).scalar_one()
+            channels = (
+                await db.execute(
+                    select(Conversation.channel).where(Conversation.lead_id == lead_id)
+                )
+            ).scalars().all()
+            inbound = (
+                await db.execute(
+                    select(func.count())
+                    .select_from(Message)
+                    .join(Conversation, Message.conversation_id == Conversation.id)
+                    .where(
+                        Conversation.lead_id == lead_id,
+                        Message.direction == MessageDirection.INBOUND,
+                    )
+                )
+            ).scalar_one()
+        assert "web" in channels, channels
+        assert "email" in channels, channels
+        # One per conversation: the Inbox summary and the raw sentence Clara
+        # answered. Not the same string, and neither is a copy of the other.
+        assert inbound == 2, inbound
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_calculator_lead_is_not_written_to_twice(
+    database_url: str, agency_mailbox: None
+) -> None:
+    """They already get their own numbers back. Two emails from one button is
+    worse than one."""
+    email = f"calc+{uuid.uuid4().hex[:8]}@form.test"
+    sender = _sender()
+    classify, write = _patches()
+    # The shape the route actually validates: flat, and `credit` is a word.
+    # The first version of this test sent `{"inputs": {...}}` with a numeric
+    # credit score, the snapshot came back None, and the test SKIPPED itself —
+    # a green run that checked nothing.
+    calculator = {"rent": 2400, "savings": 60000, "credit": "good", "lang": "en"}
+    try:
+        direct, notices, breakdown = _senders(sender)
+        with classify, write, direct, notices, breakdown:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await _submit(client, email, calculator=calculator)
+                assert resp.status_code == 202, resp.text
+
+        async with get_bypass_session_factory()() as db:
+            lead = (
+                await db.execute(select(Lead).where(Lead.email == email))
+            ).scalar_one()
+        assert lead.calculator_snapshot is not None, "the premise of this test"
+        replies = [c for c in sender.await_args_list if c.kwargs.get("to") == email]
+        # Exactly one: the breakdown. Clara stands down because the visitor is
+        # already being written to, and two emails from one button press is
+        # worse than one.
+        assert len(replies) == 1, [c.kwargs.get("subject") for c in replies]
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_opted_out_person_hears_nothing(
+    database_url: str, agency_mailbox: None
+) -> None:
+    """The newest lane is the one most likely to forget the oldest rule."""
+    from datetime import UTC, datetime
+
+    email = f"stop+{uuid.uuid4().hex[:8]}@form.test"
+    async with get_bypass_session_factory()() as db:
+        db.add(
+            Lead(
+                org_id=ORG,
+                phone=email,
+                email=email,
+                name="Probe",
+                opted_out_at=datetime.now(UTC),
+                opted_out_keyword="STOP",
+            )
+        )
+        await db.commit()
+
+    sender = _sender()
+    classify, write = _patches()
+    try:
+        direct, notices, breakdown = _senders(sender)
+        with classify, write, direct, notices, breakdown:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await _submit(client, email)
+                assert resp.status_code == 202, resp.text
+
+        to_the_lead = [c for c in sender.await_args_list if c.kwargs.get("to") == email]
+        assert to_the_lead == [], [c.kwargs.get("subject") for c in to_the_lead]
+    finally:
+        await _cleanup()
+
+
+def test_the_note_asks_and_does_not_lecture() -> None:
+    """The steering, not the model's output.
+
+    A form hands Clara three words. A model given three words and no
+    instruction writes a paragraph about the market, which is the failure
+    `_options_coming_note` already exists to prevent on the other lane.
+    """
+    from app.services.conversation import _form_first_contact_note
+
+    note = _form_first_contact_note().lower()
+    assert "formulario" in note
+    assert "tres preguntas" in note, "the cap on questions has to be stated"
+    for forbidden in ("no enumeres propiedades", "no inventes direcciones"):
+        assert forbidden in note, forbidden
+    assert "no preguntes nada que ya te haya dicho" in note
+
+
+@pytest.mark.asyncio
+async def test_clara_is_told_this_came_from_the_form(
+    database_url: str, agency_mailbox: None
+) -> None:
+    """The steering reaches the model, not just the module.
+
+    Without this, removing the one `elif` that injects the note breaks nothing
+    in the suite: every other test here passes on a reply the model was free to
+    invent. The prompt is the deliverable on this lane — a form hands Clara
+    three words, and three words with no instruction produce a paragraph about
+    the market.
+    """
+    from app.services.llm import LLMResult
+
+    email = f"note+{uuid.uuid4().hex[:8]}@form.test"
+    sender = _sender()
+    written = LLMResult(
+        text="Hi — two quick questions.", provider="minimax", model="MiniMax-M3",
+        input_tokens=10, output_tokens=10,
+    )
+    writer = AsyncMock(return_value=written)
+    classify, _unused = _patches()
+    direct, notices, breakdown = _senders(sender)
+    try:
+        with classify, patch(
+            "app.services.conversation.generate_reply", new=writer
+        ), direct, notices, breakdown:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await _submit(client, email)
+        assert resp.status_code == 202, resp.text
+
+        writer.assert_awaited()
+        system = writer.await_args.kwargs["system"]
+        assert "FORMULARIO DE LA WEB" in system, system[-400:]
+        assert "TRES preguntas" in system
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_double_submit_is_answered_once(
+    database_url: str, agency_mailbox: None
+) -> None:
+    """Somebody presses the button twice, or the browser retries.
+
+    Capture already filters that into `status == "duplicate"`, and this lane
+    sits inside the `"ok"` branch for exactly that reason. Asserted here
+    because the guard is one word in a condition and its absence would mail the
+    same person twice within a second.
+    """
+    email = f"twice+{uuid.uuid4().hex[:8]}@form.test"
+    sender = _sender()
+    classify, write = _patches()
+    direct, notices, breakdown = _senders(sender)
+    try:
+        with classify, write, direct, notices, breakdown:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                first = await _submit(client, email)
+                second = await _submit(client, email)
+        assert first.status_code == 202, first.text
+        assert second.status_code == 202, second.text
+
+        to_the_lead = [c for c in sender.await_args_list if c.kwargs.get("to") == email]
+        assert len(to_the_lead) == 1, [c.kwargs.get("subject") for c in to_the_lead]
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_subject_is_in_the_language_they_wrote_in(
+    database_url: str, agency_mailbox: None
+) -> None:
+    """A form carries no subject, so the pipeline's fallback becomes the norm.
+
+    That fallback was the literal string "Tu consulta" for everybody — Spanish
+    on a reply whose body the language steering had just pushed into English.
+    Rare enough to stay wrong while only email leads reached it; the first
+    thing an English speaker sees now that the form does.
+    """
+    email = f"subj+{uuid.uuid4().hex[:8]}@form.test"
+    sender = _sender()
+    classify, write = _patches()
+    direct, notices, breakdown = _senders(sender)
+    try:
+        with classify, write, direct, notices, breakdown:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await _submit(client, email, message="I'm looking to buy.")
+        assert resp.status_code == 202, resp.text
+
+        to_the_lead = [c for c in sender.await_args_list if c.kwargs.get("to") == email]
+        assert to_the_lead, "no reply to assert a subject on"
+        subject = to_the_lead[0].kwargs["subject"]
+        assert "Tu consulta" not in subject, subject
+        assert subject.strip(), subject
+    finally:
+        await _cleanup()

@@ -79,6 +79,12 @@ from app.services.whatsapp import send_text_message as whatsapp_send
 
 log = logging.getLogger(__name__)
 
+#: `ParsedMessage.extra["origin"]` for a submission that came from the website
+#: form rather than from a mail client. The pipeline is channel-agnostic and
+#: has no other way to tell the two apart — and it has to, because a form gives
+#: it three words where an email gives it a paragraph.
+FORM_ORIGIN = "web_form"
+
 
 async def _dispatch_send(
     channel: str,
@@ -880,6 +886,44 @@ def _options_coming_note() -> str:
         "que la elige una persona, y una sola pregunta si te falta algo "
         "imprescindible. NO enumeres propiedades, NO inventes direcciones ni "
         "precios, y NO des una charla sobre el mercado."
+    )
+
+
+def _form_first_contact_note() -> str:
+    """What to say to somebody who filled the website form and nothing else.
+
+    Measured on 2026-09-19: a real submission produced a lead, a notice to the
+    agency, a Telegram to the operator — and NOTHING to the person, who had
+    just been promised a call back within a few hours. The only lead-facing
+    mail on that route is the calculator breakdown, and it needs a snapshot
+    this visitor never made.
+
+    The reply is deliberately steered, not left to the persona. A form gives
+    Clara three words — "I'm looking to buy." — and a model handed three words
+    and no instruction writes a paragraph about the market, which is what
+    `_options_coming_note` already exists to prevent on the other lane.
+
+    What is asked for is the shortest set of facts that makes the human call
+    back useful: where, when, and what they can spend. Written in Spanish like
+    the rest of the persona; the language steering line appended above decides
+    what the person actually reads.
+    """
+    return (
+        "\n\nESTA PERSONA ACABA DE RELLENAR EL FORMULARIO DE LA WEB. No te ha "
+        "escrito un correo: ha marcado una opcion y, como mucho, ha dejado una "
+        "frase. Es el PRIMER contacto y casi no sabes nada de ella.\n"
+        "Escribe CORTO y calido, como una persona, no como un formulario:\n"
+        "1) salUdala por su nombre si lo tienes;\n"
+        "2) una sola frase diciendo que ya tienes su mensaje y que alguien del "
+        "equipo la va a llamar;\n"
+        "3) COMO MUCHO TRES preguntas, una por linea, solo las que de verdad "
+        "hacen falta para poder ayudarla:\n"
+        "   - si quiere COMPRAR o ALQUILAR: en que zona, para cuando, y que "
+        "presupuesto maneja o cuanto paga hoy de alquiler;\n"
+        "   - si quiere VENDER o TASAR: donde esta la propiedad, para cuando lo "
+        "necesita, y si ya vive en otra.\n"
+        "NO preguntes nada que ya te haya dicho. NO enumeres propiedades, NO "
+        "inventes direcciones ni precios, y NO des una charla sobre el mercado."
     )
 
 
@@ -1787,6 +1831,12 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     system_prompt += await _real_slots_note(agent_cfg, inbound.content, db, lead)
     if wants_listings:
         system_prompt += _options_coming_note()
+    # The website form, which arrives here carrying the chip's sentence and
+    # nothing else. Checked after the two above on purpose: somebody whose form
+    # text asks to see places should hear about the shortlist, not be asked
+    # three questions about their budget.
+    elif parsed.extra.get("origin") == FORM_ORIGIN:
+        system_prompt += _form_first_contact_note()
 
     # Phase 10: if the lead is property-shopping and we know the zone, give the
     # LLM the REAL matching listings so it can offer them (and never invent any).
@@ -1845,7 +1895,12 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         elif src_subj:
             reply_subject = f"Re: {src_subj}"
         else:
-            reply_subject = "Tu consulta"
+            # An inbound email almost always has a subject, so this branch was
+            # rare enough to stay wrong: it put a Spanish subject on a reply
+            # whose body the line above had just steered into English. A form
+            # submission carries no subject at all, which turns the rare case
+            # into the normal one.
+            reply_subject = "Tu consulta" if target_lang == "es" else "Your message"
 
     # The broker credit goes on the message that actually reaches the lead.
     # Only for the listings the reply mentions, and only once each — otherwise a

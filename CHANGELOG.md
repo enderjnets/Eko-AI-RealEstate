@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.136.5] - 2026-09-19
+
+### Added
+- `services/form_reply.py`. A website form submission without a calculator
+  snapshot is now answered: its own sentence is fed to
+  `handle_inbound_message`, the same channel-agnostic pipeline that answers an
+  email, so the reply is generated, Fair-Housing screened, footed, threaded and
+  opt-out aware without duplicating any of it. Measured cause: a real
+  submission on 2026-09-19 produced a lead, an email notice, a Telegram notice
+  — and nothing at all for the person, who had just been promised a call back.
+- `_form_first_contact_note()` steers that reply: greet, say a person will
+  call, ask at most three questions, invent nothing. A model handed three words
+  and no instruction writes a paragraph about the market.
+
+### Fixed
+- `leads.intent` is filled from the form's chip. `ConsultForm.tsx` has always
+  claimed "the classifier reads it too"; it did not, because the form wrote to
+  a `web` conversation the pipeline never sees.
+- A reply to a message with no subject was titled `Tu consulta` regardless of
+  language. Rare for inbound email, universal for a form.
+
+### Notes
+- Two conversations per website lead (`web` + `email`) is the intended shape:
+  the Inbox is keyed on the lead and lists channels, so it stays one row.
+- The opt-out is enforced twice on this lane, in `form_reply` and again inside
+  the pipeline. Removing either alone leaves the suite green — on purpose.
+
 ## [0.136.4] - 2026-09-19
 
 ### Changed

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.136.4";
+export const CURRENT_VERSION = "0.136.5";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,20 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.136.5",
+    date: "2026-09-19",
+    title: {
+      en: "Clara answers the website form",
+      es: "Clara contesta el formulario de la web",
+    },
+    changes: [
+      { en: "Measured, not guessed: a real person filled the form on the website. The lead was written, the agency was told by email and by Telegram, the panel showed the row \u2014 and the person who had just read \"we'll call you back within a few hours\" received nothing at all. The only mail this route ever sent a visitor was the calculator breakdown, and that needs a snapshot somebody who never opened the calculator does not have. On a funnel with zero form submissions in ninety days, the first person to bother writing got silence.", es: "Medido, no supuesto: una persona real rellen\u00f3 el formulario de la web. Se escribi\u00f3 el lead, se avis\u00f3 a la agencia por correo y por Telegram, el panel mostr\u00f3 la fila \u2014 y quien acababa de leer \u00abte llamamos en unas horas\u00bb no recibi\u00f3 absolutamente nada. El \u00fanico correo que esta ruta mandaba a un visitante era el desglose de la calculadora, y ese necesita unos n\u00fameros que quien no abri\u00f3 la calculadora no tiene. En un embudo con cero env\u00edos en noventa d\u00edas, la primera persona que se molest\u00f3 en escribir se encontr\u00f3 con el silencio." },
+      { en: "The form's own sentence now goes through the same pipeline that answers an email, so the reply is written, screened for Fair Housing, footed and threaded by code that already works \u2014 and a reply comes back into the same thread. She is still told exactly once.", es: "La frase del propio formulario pasa ahora por la misma tuber\u00eda que contesta un correo, as\u00ed que la respuesta se redacta, se filtra por Fair Housing, lleva su pie y va enhebrada por c\u00f3digo que ya funciona \u2014 y lo que la persona conteste vuelve al mismo hilo. A ella se le sigue avisando exactamente una vez." },
+      { en: "Which fixes something the code had been claiming for months. `ConsultForm.tsx` says of the buttons: \"it becomes the first message in the thread, and the classifier reads it too.\" It did not \u2014 the form wrote to a conversation the pipeline never saw, so every website lead arrived with no intent at all and scored zero on it, including somebody who had just pressed BUYING.", es: "Con lo que se arregla algo que el c\u00f3digo llevaba meses afirmando. `ConsultForm.tsx` dice de los botones: \u00abse convierte en el primer mensaje del hilo, y el clasificador tambi\u00e9n la lee\u00bb. No la le\u00eda \u2014 el formulario escrib\u00eda en una conversaci\u00f3n que la tuber\u00eda nunca ve\u00eda, as\u00ed que cada lead de la web llegaba sin intenci\u00f3n ninguna y puntuaba cero por ello, incluido alguien que acababa de pulsar COMPRAR." },
+      { en: "And a reply with no inbound subject \u2014 which a form always is \u2014 went out titled \"Tu consulta\" to everybody, Spanish on a message the language steering had just pushed into English.", es: "Y una respuesta sin asunto de entrada \u2014 que es siempre el caso de un formulario \u2014 sal\u00eda titulada \u00abTu consulta\u00bb para todo el mundo, en espa\u00f1ol sobre un mensaje que la l\u00ednea de idioma acababa de llevar al ingl\u00e9s." },
+    ],
+  },
   {
     version: "0.136.4",
     date: "2026-09-19",

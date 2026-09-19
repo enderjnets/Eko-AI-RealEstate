@@ -607,7 +607,14 @@ async def test_double_click_does_not_duplicate_the_message() -> None:
                     text(
                         "SELECT count(*) FROM messages m "
                         "JOIN conversations c ON c.id = m.conversation_id "
-                        "WHERE c.lead_id = :lead AND m.direction = 'inbound'"
+                        "WHERE c.lead_id = :lead AND m.direction = 'inbound' "
+                        # Since 0.136.5 a submission also seeds an `email`
+                        # conversation carrying the raw sentence, which is what
+                        # Clara answers and what a reply threads back to. This
+                        # test is about the form's own record, which is
+                        # unchanged: one web message however many times the
+                        # button is pressed.
+                        "AND c.channel = 'web'"
                     ),
                     {"lead": lead["id"]},
                 )
@@ -661,7 +668,10 @@ async def test_the_stored_message_is_the_cleaned_one() -> None:
                     text(
                         "SELECT m.content FROM conversations c "
                         "JOIN messages m ON m.conversation_id = c.id "
-                        "WHERE c.lead_id = :lead"
+                        # The web row is the one capture cleaned. The email row
+                        # added in 0.136.5 deliberately carries the raw text,
+                        # because that is what the model should read.
+                        "WHERE c.lead_id = :lead AND c.channel = 'web'"
                     ),
                     {"lead": lead["id"]},
                 )
@@ -1349,7 +1359,15 @@ async def _calc_snapshot(email: str) -> dict | None:
     return json.loads(value) if isinstance(value, str) else value
 
 
-async def _inbound_contents(email: str) -> list[str]:
+async def _inbound_contents(email: str, channel: str = "web") -> list[str]:
+    """What capture wrote, by default.
+
+    Defaults to `web` because since 0.136.5 a form submission without a
+    calculator snapshot also seeds an `email` conversation holding the raw
+    sentence — the one Clara answers and the one a reply threads back to. Every
+    caller here is asserting on the form's own record, so the default keeps
+    them saying what they always said; pass the channel to look at the other.
+    """
     async with get_bypass_session_factory()() as db:
         rows = (
             await db.execute(
@@ -1357,9 +1375,10 @@ async def _inbound_contents(email: str) -> list[str]:
                     "SELECT m.content FROM messages m "
                     "JOIN conversations c ON c.id = m.conversation_id "
                     "JOIN leads l ON l.id = c.lead_id "
-                    "WHERE l.email = :e AND m.direction = 'inbound' ORDER BY m.id"
+                    "WHERE l.email = :e AND m.direction = 'inbound' "
+                    "AND c.channel = :ch ORDER BY m.id"
                 ),
-                {"e": email},
+                {"e": email, "ch": channel},
             )
         ).scalars().all()
     return list(rows)
