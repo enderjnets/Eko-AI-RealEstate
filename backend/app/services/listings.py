@@ -785,6 +785,53 @@ async def _sync_reso(
 # ── Matching ─────────────────────────────────────────────────────────────────
 
 
+def zone_matches(lead_zone: str | None, property_zone: str | None) -> bool:
+    """Does this listing's neighbourhood answer what the lead asked for?
+
+    Measured in production on 2026-09-19, with the eight Washington Park condos
+    a real lead could afford already loaded: the picker returned ZERO. The lead
+    said **"Wash Park"** — which is what people in Denver write — and REcolorado
+    files the subdivision as **"Washington Park"**. Neither string contains the
+    other, so the substring test that had been here since Phase 7 said no, and
+    the product would have told somebody there was nothing available in a
+    neighbourhood with eight listings in their range.
+
+    The rule: every word the lead used has to be the START of a word in the
+    listing's zone, and no word may be used twice. "Wash Park" matches
+    "Washington Park" because `wash` opens `washington` and `park` is `park`.
+    "Cherry Creek" does NOT match "Cherry Hills Village", because `creek` opens
+    nothing there — which is the property that keeps this from being a fuzzy
+    matcher that says yes to everything.
+
+    Direction matters and it is deliberate: the LEAD's words are the ones
+    allowed to be abbreviated. A listing filed under an abbreviation is the
+    MLS's business and not a guess we should make in reverse — so the test runs
+    both ways round, and either direction answering yes is a match.
+    """
+    if not lead_zone or not property_zone:
+        # No zone on either side is not a mismatch. The caller decides whether
+        # an unknown zone should filter at all; here it simply cannot answer.
+        return True
+
+    def _words(text: str) -> list[str]:
+        return [w for w in re.split(r"[^a-z0-9]+", text.casefold()) if w]
+
+    asked, filed = _words(lead_zone), _words(property_zone)
+    if not asked or not filed:
+        return True
+
+    def _covers(short: list[str], long: list[str]) -> bool:
+        remaining = list(long)
+        for word in short:
+            hit = next((w for w in remaining if w.startswith(word)), None)
+            if hit is None:
+                return False
+            remaining.remove(hit)
+        return True
+
+    return _covers(asked, filed) or _covers(filed, asked)
+
+
 async def match_properties_for_lead(lead: Lead, db: AsyncSession, *, limit: int = 6) -> list[Property]:
     """Return active listings that fit the lead's criteria, best first.
 
@@ -805,9 +852,8 @@ async def match_properties_for_lead(lead: Lead, db: AsyncSession, *, limit: int 
         if not want_rent and listing_type == "rent":
             continue
 
-        if lead.zone and p.zone:
-            if lead.zone.lower() not in p.zone.lower() and p.zone.lower() not in lead.zone.lower():
-                continue
+        if not zone_matches(lead.zone, p.zone):
+            continue
         if lead.property_type and p.property_type:
             if lead.property_type.lower() not in p.property_type.lower():
                 continue

@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.136.2] - 2026-09-19
+
+### «Wash Park» es Washington Park
+
+El segundo fallo que sólo aparece con datos reales, y el que rompía justo el
+caso que originó todo esto.
+
+Comprobación de sólo lectura en producción, con las ocho ya cargadas: la
+pantalla de selección devolvía **cero candidatas** para un lead de Wash Park.
+La gente escribe el nombre corto —*«Wash Park»*, que es lo que escribió el lead
+de verdad— y REcolorado archiva la subdivisión como *«Washington Park»*.
+Ninguna cadena contiene a la otra, así que la comparación por subcadena que
+estaba ahí **desde la Fase 7** decía que no, y el producto habría contestado
+«no hay nada disponible» sobre un barrio con ocho opciones en su rango.
+
+`zone_matches` sustituye a esa comparación en los dos sitios que la usaban: el
+matcher automático y la pantalla de Natalia. La regla es que **cada palabra que
+escribió el lead tiene que abrir una palabra del barrio del listing**, sin
+reutilizar ninguna. `wash` abre `washington`, `park` es `park`. Y `creek` no
+abre nada en «Cherry Hills Village», que es la propiedad que impide que esto
+sea un comparador difuso que dice que sí a todo. Dos mutaciones en rojo:
+devolver la subcadena, y conformarse con que coincida la primera palabra.
+
 ## [0.136.1] - 2026-09-19
 
 ### El número de unidad

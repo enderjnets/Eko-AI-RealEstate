@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.136.1";
+export const CURRENT_VERSION = "0.136.2";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.136.2",
+    date: "2026-09-19",
+    title: {
+      en: "\"Wash Park\" is Washington Park",
+      es: "«Wash Park» es Washington Park",
+    },
+    changes: [
+      { en: "Measured in production with the eight listings already loaded: the picker returned zero for a lead who said \"Wash Park\" while eight Washington Park condos in their range sat in the table. People write the short name; REcolorado files the long one; neither string contains the other, so the substring test that had been there since Phase 7 said no. Now every word the lead used has to open a word in the listing's neighbourhood — and \"Cherry Creek\" still does not match \"Cherry Hills Village\", which is what keeps it from saying yes to everything.", es: "Medido en producción con las ocho ya cargadas: la pantalla de selección devolvía cero para un lead que escribió «Wash Park» mientras ocho condominios de Washington Park en su rango estaban en la tabla. La gente escribe el nombre corto, REcolorado archiva el largo, y ninguna cadena contiene a la otra, así que la comparación por subcadena que estaba ahí desde la Fase 7 decía que no. Ahora cada palabra del lead tiene que abrir una palabra del barrio del listing — y «Cherry Creek» sigue sin casar con «Cherry Hills Village», que es lo que impide que diga que sí a todo." },
+    ],
+  },
   {
     version: "0.136.1",
     date: "2026-09-19",

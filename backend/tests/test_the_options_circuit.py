@@ -796,3 +796,44 @@ async def test_a_second_round_does_not_read_as_a_new_person(
         assert "asked to see actual listings" not in subject
     finally:
         await _cleanup()
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# The neighbourhood, as a person writes it
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def test_wash_park_is_washington_park() -> None:
+    """Measured in production on 2026-09-19, with the listings already loaded.
+
+    The picker returned ZERO candidates for a lead who said "Wash Park" while
+    eight Washington Park condos in their range sat in the table. Neither string
+    contains the other, so the substring test that had been in
+    `match_properties_for_lead` since Phase 7 said no — and the product would
+    have reported "nothing available" about a neighbourhood with eight.
+    """
+    from app.services.listings import zone_matches
+
+    assert zone_matches("Wash Park", "Washington Park")
+    assert zone_matches("Washington Park", "Wash Park")
+    assert zone_matches("wash park", "WASHINGTON PARK")
+    # The ordinary cases still work.
+    assert zone_matches("Washington Park", "Washington Park")
+    assert zone_matches("Park Hill", "North Park Hill")
+
+
+def test_the_zone_matcher_still_says_no() -> None:
+    """A matcher that says yes to everything is worse than the substring test.
+
+    `creek` opens nothing in "Cherry Hills Village", so the shared first word
+    is not enough — which is the property that keeps this from offering
+    somebody a house in the wrong half of the city.
+    """
+    from app.services.listings import zone_matches
+
+    assert not zone_matches("Cherry Creek", "Cherry Hills Village")
+    assert not zone_matches("Wash Park", "Baker")
+    assert not zone_matches("Highlands", "Hilltop")
+    # An unknown zone on either side cannot answer, so it does not filter.
+    assert zone_matches(None, "Washington Park")
+    assert zone_matches("Wash Park", None)

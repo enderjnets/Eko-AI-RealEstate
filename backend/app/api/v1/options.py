@@ -150,22 +150,23 @@ async def get_request(
     if lead is None:
         raise HTTPException(status_code=404, detail="unknown_lead")
 
-    from app.services.listings import listing_broker
+    from app.services.listings import listing_broker, zone_matches
 
     rows = (
         await db.execute(select(Property).where(Property.status == PropertyStatus.ACTIVE))
     ).scalars().all()
     want_rent = lead.intent == LeadIntent.RENT
-    zone = (lead.zone or "").strip().lower()
     candidates: list[Property] = []
     for p in rows:
         listing_type = (p.raw or {}).get("listing_type", "sale")
         if want_rent != (listing_type == "rent"):
             continue
-        if zone and p.zone:
-            haystack = p.zone.lower()
-            if zone not in haystack and haystack not in zone:
-                continue
+        # `zone_matches`, not a substring test. "Wash Park" is what a person
+        # writes and "Washington Park" is what REcolorado files, and neither
+        # contains the other — measured in production with eight listings
+        # loaded and this screen returning zero.
+        if not zone_matches(lead.zone, p.zone):
+            continue
         candidates.append(p)
     candidates.sort(key=lambda p: (p.price if p.price is not None else Decimal("0")))
 
