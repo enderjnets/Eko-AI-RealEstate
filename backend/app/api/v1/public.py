@@ -39,6 +39,7 @@ from app.services.brief_activity import (
 )
 from app.services.brief_notify import send_brief_answered_notice
 from app.services.calculator import MAX_YEARS
+from app.services.calculator_email import send_calculator_breakdown
 from app.services.capture import (
     MAX_CONSENT_TEXT,
     MAX_MESSAGE,
@@ -669,6 +670,12 @@ async def capture(
     # returns status "duplicate" above and must not email the agency twice.
     if captured.get("status") == "ok":
         await send_new_lead_notice(captured["lead_id"], captured.get("message_id"))
+        # And the visitor gets their own numbers back, when they left any. Inside
+        # the same `"ok"` branch on purpose: a duplicate submission must not
+        # email them twice, and the status above is already the only place that
+        # knows. Sends nothing at all until `POSTAL_ADDRESS` is configured — it
+        # says so in the log rather than failing.
+        await send_calculator_breakdown(captured["lead_id"])
 
     # Deliberately says nothing about whether the lead was new, merged or
     # duplicate: that is a membership oracle for anyone who wants to test

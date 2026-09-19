@@ -24,7 +24,7 @@ from app.services.email_compliance import (
     unsubscribe_url,
 )
 
-ADDRESS = "1120 Lincoln St Ste 1000, Denver, CO 80203"
+ADDRESS = "123 Test Ave Ste 1, Denver, CO 80200"
 
 
 @pytest.fixture(autouse=True)
