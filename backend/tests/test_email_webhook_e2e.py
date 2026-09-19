@@ -41,8 +41,31 @@ async def _cleanup_lead(database_url: str, identifier: str) -> None:
         await engine.dispose()
 
 
+ADDRESS = "123 Test Ave Ste 1, Denver, CO 80200"
+
+
+@pytest.fixture
+def configured_agency(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An install that can legally answer by email.
+
+    From v0.134.0 the agent's automated email reply carries a CAN-SPAM footer,
+    and `build_footer` refuses to compose one without a postal address. That
+    makes the address part of what "the email channel is on" means, so a test
+    about answering has to describe an agency that configured it — and the one
+    below describes what happens when it did not.
+    """
+    from app.config import get_settings
+
+    monkeypatch.setenv("POSTAL_ADDRESS", ADDRESS)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.mark.asyncio
-async def test_inbound_email_creates_lead_and_replies(database_url: str) -> None:
+async def test_inbound_email_creates_lead_and_replies(
+    database_url: str, configured_agency: None
+) -> None:
     """SIMULATED mode lets us skip the Svix signature check (dev path)."""
     suffix = uuid.uuid4().hex[:8].upper()
     identifier = f"juan.test+{suffix}@example.com"
@@ -123,6 +146,14 @@ async def test_inbound_email_creates_lead_and_replies(database_url: str) -> None
             assert outbound.subject is not None and outbound.subject.lower().startswith("re:")
             assert outbound.external_id.startswith("resend.SIMULATED_")
             assert outbound.delivery_status.value == "sent"
+            # The footer is part of the message, not decoration added on the way
+            # out: what was screened by Fair Housing, what is stored here and
+            # what was sent all have to be the same text.
+            assert ADDRESS in outbound.content
+            assert "/api/v1/public/unsubscribe/" in outbound.content
+            # `[]`, not NULL: the footer names the brokerage, so the filter has
+            # to have seen it.
+            assert outbound.fair_housing_flags == []
         await engine.dispose()
     finally:
         await _cleanup_lead(database_url, identifier)
@@ -159,3 +190,73 @@ async def test_inbound_from_own_address_is_ignored(database_url: str) -> None:
         await engine.dispose()
     finally:
         await _cleanup_lead(database_url, own)
+
+
+@pytest.mark.asyncio
+async def test_without_a_postal_address_clara_does_not_answer_but_the_lead_survives(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The refusal must not also lose the person who wrote.
+
+    The first version of this branch returned before the commit, so declining to
+    answer rolled back the lead AND the inbound message: a compliance decision
+    quietly became data loss. Two assertions, because either one passes alone —
+    the status says we refused, the row says we remembered.
+    """
+    from app.config import get_settings
+
+    monkeypatch.setenv("POSTAL_ADDRESS", "")
+    get_settings.cache_clear()
+    suffix = uuid.uuid4().hex[:8].upper()
+    identifier = f"nofooter+{suffix}@example.com"
+    payload = {
+        "type": "email.received",
+        "data": {
+            "id": f"resend_nf_{suffix}",
+            "from": identifier,
+            "from_name": "Sin Pie",
+            "to": ["info@realtor-demo.com"],
+            "subject": "Consulta sin pie",
+            "text": "Hola, quiero comprar en Denver.",
+            "headers": {"message-id": f"<nf-{suffix}@example.com>"},
+        },
+    }
+    fake_intent = IntentResult(intent="buy", confidence=0.9)  # type: ignore[arg-type]
+    fake_reply = LLMResult(
+        text="Hola, encantada de ayudarte.",
+        provider="minimax",
+        model="MiniMax-M3",
+        input_tokens=10,
+        output_tokens=10,
+    )
+    try:
+        with patch("app.services.conversation.classify_intent", AsyncMock(return_value=fake_intent)), \
+             patch("app.services.conversation.generate_reply", AsyncMock(return_value=fake_reply)):
+            async with await _http_client() as client:
+                resp = await client.post("/api/v1/webhooks/email", json=payload)
+
+        assert resp.status_code == 200, resp.text
+        result = resp.json()["results"][0]
+        assert result["status"] == "blocked_no_postal_address"
+
+        engine = create_async_engine(database_url, echo=False, future=True)
+        Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+        async with Session() as s:
+            lead = (
+                await s.execute(select(Lead).where(Lead.phone == identifier.lower()))
+            ).scalar_one_or_none()
+            assert lead is not None, "declining to answer must not discard the lead"
+            msgs = (
+                await s.execute(
+                    select(Message)
+                    .join(Conversation, Conversation.id == Message.conversation_id)
+                    .where(Conversation.lead_id == lead.id)
+                )
+            ).scalars().all()
+            assert [m.direction for m in msgs] == [MessageDirection.INBOUND], (
+                "what they wrote is kept; nothing was sent back"
+            )
+        await engine.dispose()
+    finally:
+        await _cleanup_lead(database_url, identifier.lower())
+        get_settings.cache_clear()

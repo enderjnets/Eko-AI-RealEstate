@@ -231,7 +231,9 @@ async def send_new_lead_notice(
     the form's call site — the funnel's only conversion point — did not have to
     change to gain a second origin:
 
-    * `origin` — `"form"` or `"call"`; picks the subject and the body.
+    * `origin` — `"form"`, `"call"`, `"message"` (someone wrote in on any
+      channel) or `"qualified"` (the handoff, once Clara has intent, budget and
+      zone); picks the subject and the body.
     * `conversation_id` — which thread files the internal copy when there is no
       inbound message to hang it on. A call has a transcript, not a message the
       form posted, so `message_id` is None and this is how the note reaches the
@@ -389,6 +391,46 @@ async def _send_and_record(
                     if silent
                     else "\nThe full transcript and the recording are in the panel.\n"
                 )
+            )
+        elif origin == "message":
+            # Someone who wrote in rather than filling the form. Until v0.134.0
+            # nobody at the agency was told about these at all: the notice fired
+            # from the form and from a call, and a person who simply emailed
+            # `hello@` appeared in the panel and nowhere else.
+            subject = f"New inquiry — Clara is answering — {who}"
+            body = (
+                "Someone wrote in. Clara has already answered; take it over "
+                "from the panel whenever you want to.\n\n"
+                + _line("Name", lead.name)
+                + _line("Phone", phone)
+                + _line("Email", email)
+                + _line("They wrote", (inbound.content if inbound else None))
+                + _line("Came from", attribution)
+                + _line("Calculator", _calculator_line(lead))
+            )
+        elif origin == "qualified":
+            # The handoff. Sent once per lead, the moment Clara has the three
+            # facts that make a lead workable — not on a score threshold, which
+            # a chatty tyre-kicker also crosses.
+            budget = None
+            if lead.budget_min is not None or lead.budget_max is not None:
+                lo = f"${int(lead.budget_min):,}" if lead.budget_min is not None else "?"
+                hi = f"${int(lead.budget_max):,}" if lead.budget_max is not None else "?"
+                budget = lo if lo == hi else f"{lo} – {hi}"
+            subject = f"Ready for you — {who}"
+            body = (
+                "Clara now has what you need to work this one: what they "
+                "want, what they can spend, and where.\n\n"
+                + _line("Name", lead.name)
+                + _line("Phone", phone)
+                + _line("Email", email)
+                + _line("Wants", lead.intent.value if lead.intent else None)
+                + _line("Budget", budget)
+                + _line("Area", lead.zone)
+                + _line("Timeline", lead.urgency)
+                + _line("Score", f"{lead.score}/100")
+                + _line("Calculator", _calculator_line(lead))
+                + "\nThe whole conversation is in the panel.\n"
             )
         else:
             subject = f"New lead from the website — {who}"

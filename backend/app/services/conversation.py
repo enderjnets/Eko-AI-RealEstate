@@ -45,6 +45,13 @@ from app.models import (
 from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
 from app.services.delivery import schedule_retry
+from app.services.email_compliance import (
+    MissingPostalAddress,
+    build_footer,
+)
+from app.services.email_compliance import (
+    unsubscribe_url as unsubscribe_url_for,
+)
 from app.services.fair_housing import find_violations
 from app.services.i18n import (
     detect_for,
@@ -81,6 +88,7 @@ async def _dispatch_send(
     subject: str | None = None,
     in_reply_to: str | None = None,
     references: str | None = None,
+    unsubscribe_url: str | None = None,
 ) -> tuple[str | None, str | None]:
     """Send the reply through the correct channel adapter.
 
@@ -101,6 +109,11 @@ async def _dispatch_send(
             body_text=text,
             in_reply_to=in_reply_to,
             references=references,
+            # Defaults to None, which is what every caller but the agent's own
+            # automated reply passes. `send_human_message` shares this dispatcher,
+            # and an unsubscribe header under a reply a realtor typed herself
+            # tells the lead their conversation was a mailing list.
+            unsubscribe_url=unsubscribe_url,
         )
         return result.get("id"), subject
 
@@ -1245,6 +1258,42 @@ async def _agency_contact_address(db: AsyncSession) -> str | None:
     return address.casefold() or None
 
 
+async def _agency_brokerage_line(db: AsyncSession) -> str | None:
+    """The line Colorado's Rule 6.10.A.4 requires every advertisement to carry.
+
+    Read on the caller's session, for the same reason as the address above: RLS
+    already scopes it to the org this message was attributed to.
+    """
+    row = (
+        await db.execute(
+            select(AgentSettings.brokerage_line).where(
+                AgentSettings.org_id == _acting_org()
+            )
+        )
+    ).scalar_one_or_none()
+    return (row or "").strip() or None
+
+
+_MD_BOLD = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+_MD_HEADING = re.compile(r"^#{1,6}[ \t]+", re.MULTILINE)
+
+
+def strip_markdown(text: str) -> str:
+    """Remove the Markdown none of our channels render.
+
+    Measured 2026-09-19 on message 1368, an email a real lead received:
+    `**What could you buy?**` arrived with the asterisks intact. The model keeps
+    reaching for Markdown because that is how it was trained to write, and no
+    instruction in the persona stops it — so the text is cleaned on the way out
+    instead of being asked for politely.
+
+    Single `*` survives on purpose: WhatsApp renders `*bold*` itself, and
+    stripping it would delete real formatting to fix a different channel's
+    problem.
+    """
+    return _MD_HEADING.sub("", _MD_BOLD.sub(r"\1", text))
+
+
 async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dict[str, int | str | bool]:
     """Process one inbound message (any channel) end-to-end. Returns a small status dict.
 
@@ -1694,6 +1743,53 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # long conversation accumulates a footer nobody reads and the credit stops
     # meaning anything.
     reply_text = _with_broker_credits(reply.text, offered_listings, parsed.channel)
+    reply_text = strip_markdown(reply_text)
+
+    # CAN-SPAM, before the filter and before the row is written, so the text that
+    # is screened, the text that is stored and the text that is sent are the same
+    # three things. It goes in ahead of Fair Housing for the same reason the
+    # broker credit does: the footer names the brokerage, and a firm called
+    # "Perfect for Families Realty" must not enter the message after the filter
+    # has already looked at it.
+    unsubscribe_link: str | None = None
+    if parsed.channel == "email":
+        try:
+            footer = build_footer(
+                lead_id=lead.id,
+                brokerage_line=await _agency_brokerage_line(db),
+                lang=target_lang,
+            )
+        except MissingPostalAddress as exc:
+            # Blocked, not sent without one — the call `models/lead.py` records
+            # for the whole channel: the sender stays human until the three
+            # pieces exist.
+            #
+            # The commit is the whole point and the first version of this branch
+            # did not have it: returning here rolled back the lead AND the
+            # message, so a refusal to answer became a refusal to remember, and
+            # the person who wrote to us vanished. `test_the_mapped_mailbox_still
+            # _arrives` counted zero leads and said so.
+            #
+            # And the agency is told, because silence they can see is the entire
+            # justification for blocking. A block nobody hears about is just a
+            # lost lead with a tidier explanation.
+            log.error("Lead %d: no automated email reply — %s", lead.id, exc)
+            await db.commit()
+            if is_new_lead:
+                from app.services.lead_notify import (  # noqa: PLC0415
+                    send_new_lead_notice,
+                )
+
+                await send_new_lead_notice(
+                    lead.id, inbound.id, origin="message", conversation_id=conv.id
+                )
+            return {
+                "status": "blocked_no_postal_address",
+                "lead_id": lead.id,
+                "inbound_id": inbound.id,
+            }
+        reply_text = f"{reply_text}\n\n{footer}"
+        unsubscribe_link = unsubscribe_url_for(lead.id)
 
     # Fair Housing, on the text that actually leaves — after the broker credit,
     # because IDX attribution is reproduced verbatim by legal obligation and a
@@ -1760,6 +1856,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
             subject=reply_subject,
             in_reply_to=parsed.external_id if parsed.channel == "email" else None,
             references=email_references,
+            unsubscribe_url=unsubscribe_link,
         )
         try:
             # The assignments go INSIDE the savepoint: `begin_nested()` flushes
@@ -1814,7 +1911,50 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         schedule_retry(outbound, str(exc))
 
     await rescore_lead(lead, db, commit=False)
+
+    # The handoff marker rides the SAME commit as the score it is derived from,
+    # and is written BEFORE anyone is told. A notice that fails then costs a
+    # notice; a marker written after a successful send would, on the next turn,
+    # hand the agency the same lead a second time.
+    qualified_now = (
+        lead.intent in (LeadIntent.BUY, LeadIntent.RENT, LeadIntent.VALUATION)
+        and (lead.budget_min is not None or lead.budget_max is not None)
+        and bool(lead.zone)
+        and not (lead.meta or {}).get("qualified_notice_at")
+    )
+    if qualified_now:
+        # Reassigned, not mutated in place: SQLAlchemy does not see a dict that
+        # changed under it, and the marker would be lost on the next load —
+        # which is exactly how a once-only notice becomes an every-turn one.
+        lead.meta = {
+            **(lead.meta or {}),
+            "qualified_notice_at": datetime.now(UTC).isoformat(),
+        }
+
     await db.commit()
+
+    # After the commit, on purpose — `public.py` makes the same call in the same
+    # order for the form. `send_new_lead_notice` never raises and runs on its own
+    # session, so it cannot poison this one.
+    #
+    # Lazy import: `delivery` already imports this module, and a second edge into
+    # the cycle is not worth the notice.
+    from app.services.lead_notify import send_new_lead_notice  # noqa: PLC0415
+
+    if qualified_now:
+        # Supersedes the arrival notice when both land on the same turn. Telling
+        # her twice in one second about one person is not twice the signal.
+        await send_new_lead_notice(
+            lead.id, inbound.id, origin="qualified", conversation_id=conv.id
+        )
+    elif is_new_lead:
+        # Until v0.134.0 this call site did not exist: the notice fired from the
+        # form and from a call, so someone who simply wrote to `hello@` reached
+        # the panel and nobody's inbox.
+        await send_new_lead_notice(
+            lead.id, inbound.id, origin="message", conversation_id=conv.id
+        )
+
     log.info(
         "Turn done: lead=%d channel=%s inbound=%d outbound=%d intent=%s provider=%s status=%s",
         lead.id, parsed.channel, inbound.id, outbound.id,

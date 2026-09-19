@@ -134,7 +134,12 @@ async def classify_intent(
         result = await generate_reply(
             messages=message_history,
             system=system_prompt,
-            max_tokens=300,
+            # 800, not 300. A reasoning model spends part of its budget inside
+            # `thinking` blocks that never reach us, and 300 left MiniMax-M2.7
+            # nothing to answer with: it hit the cap mid-thought and returned no
+            # text at all. The JSON this asks for is ~60 tokens; the rest is
+            # headroom so the model can think AND still speak.
+            max_tokens=800,
             temperature=0.0,
             json_mode=True,
         )
@@ -144,7 +149,14 @@ async def classify_intent(
 
     parsed = _extract_json(result.text)
     if parsed is None:
-        log.warning("classifier: could not parse JSON from response: %r", result.text[:200])
+        # ERROR, not WARNING. When this fires nothing is extracted — no intent, no
+        # budget, no zone — and the lead is filed cold with the conversation's
+        # whole substance thrown away. It ran unnoticed in production because a
+        # warning about a lead nobody was watching reads like noise.
+        log.error(
+            "classifier: could not parse JSON from %s/%s: %r",
+            result.provider, result.model, result.text[:200],
+        )
         return IntentResult(raw_response=result.text)
 
     try:

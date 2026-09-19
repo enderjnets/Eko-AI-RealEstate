@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.133.0"
+    APP_VERSION: str = "0.134.0"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -51,7 +51,12 @@ class Settings(BaseSettings):
 
     MINIMAX_API_KEY: str = ""
     MINIMAX_BASE_URL: str = "https://api.minimax.io/anthropic"
-    MINIMAX_MODEL: str = "MiniMax-M2.7"
+    # M3, not M2.7. Measured 2026-09-19 against the live key: one call each, same
+    # prompt — M3 answers with a `text` block, M2.7 with a `thinking` block and no
+    # text at all. Any caller on a short budget gets nothing from M2.7, which is
+    # how the lead classifier ran dark. A broken default is a trap for the next
+    # install, so it does not stay in the file just because production overrides it.
+    MINIMAX_MODEL: str = "MiniMax-M3"
 
     # Third link in the chain, and the first one that does not depend on a house.
     # Speaks the OpenAI chat protocol (not Anthropic), so it is handled apart —

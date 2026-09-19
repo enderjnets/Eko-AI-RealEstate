@@ -98,6 +98,17 @@ class LLMUnavailable(RuntimeError):
     """All providers failed for this request."""
 
 
+class EmptyCompletion(RuntimeError):
+    """A provider answered without a single text block.
+
+    Distinct from `LLMUnavailable`, which means every provider failed: this one
+    means THIS provider produced nothing usable and the next one should be
+    tried. It is deliberately not transient, so it is logged at ERROR — an empty
+    completion that passes for success is how a classifier goes dark with
+    nothing turning red.
+    """
+
+
 @dataclass(frozen=True)
 class LLMResult:
     text: str
@@ -395,6 +406,22 @@ async def generate_reply(
             text_parts = [
                 getattr(block, "text", "") for block in resp.content if getattr(block, "type", "") == "text"
             ]
+            if not text_parts:
+                # No text block at all is a provider failure, not an answer. Measured
+                # 2026-09-19: MiniMax-M2.7 is a reasoning model that spends its whole
+                # budget inside `thinking` and returns nothing else, so the classifier
+                # — capped at 300 tokens — received "" while the line below logged
+                # `LLM ok`. It had been filing every lead with no intent, no budget and
+                # no zone, and nothing anywhere turned red.
+                #
+                # The test is zero text BLOCKS, not an empty string: a text block
+                # holding "" is a model with nothing to say, which is a different fault
+                # and must not be retried as if the provider had broken.
+                raise EmptyCompletion(
+                    f"{provider_name}/{cfg.model} returned no text block "
+                    f"(blocks={[getattr(b, 'type', '?') for b in resp.content]}, "
+                    f"stop_reason={getattr(resp, 'stop_reason', None)!r})"
+                )
             text = "".join(text_parts).strip()
             usage_in = getattr(getattr(resp, "usage", None), "input_tokens", 0) or 0
             usage_out = getattr(getattr(resp, "usage", None), "output_tokens", 0) or 0

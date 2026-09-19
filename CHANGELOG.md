@@ -1,5 +1,103 @@
 # Changelog
 
+## [0.134.0] - 2026-09-19
+
+### Arreglado
+
+**El clasificador de leads llevaba devolviendo nada, en silencio, en todos los canales.**
+
+Medido con la primera prueba end-to-end de correo entrante que ha tenido este
+sistema. Un correo que decía comprar, **$2.400** de alquiler, **$35.000** de
+ahorro, **Wash Park** y «este año o el que viene» produjo un lead con `intent`,
+`budget_min/max`, `zone` y `urgency` **todos vacíos**: score 15, *cold*. Los
+cuatro campos que el puntuador necesita estaban en el texto y se guardaron cero.
+
+La cadena, del registro:
+
+```
+[ERROR] LLM provider kimi failed non-transient (403): "weekly (7-day) usage limit"
+[INFO]  LLM ok provider=minimax model=MiniMax-M2.7 in_tok=481 out_tok=300
+[WARNING] classifier: could not parse JSON from response: ''
+```
+
+Kimi con la cuota semanal agotada → cae al respaldo MiniMax-M2.7 → que es un
+modelo de razonamiento y con `max_tokens=300` gastó **los 300 exactos**
+pensando → `llm.py` conserva sólo los bloques `type == "text"` → cadena vacía.
+La generación de respuesta sobrevivió porque su tope es 600 y le sobraron 200;
+el clasificador, no.
+
+Comprobado con una llamada a cada modelo contra la clave viva: **MiniMax-M3
+devuelve un bloque `text`; M2.7 devuelve un bloque `thinking` y ningún texto.**
+
+Tres arreglos, y el primero es el que importa:
+
+- **Un completado sin un solo bloque `text` es un fallo del proveedor**, no una
+  respuesta: se eleva, el fallback entra, y el error nombra los tipos de bloque
+  y el `stop_reason` — que juntos son el diagnóstico en una línea. Antes pasaba
+  por éxito y el llamador se comía el vacío.
+- **El `MINIMAX_MODEL` por defecto pasa a `MiniMax-M3`.** Un default roto es una
+  trampa para la siguiente instalación, no sólo para esta.
+- **El tope del clasificador sube a 800** y su fallo pasa de WARNING a **ERROR**,
+  nombrando el modelo. Cuando dispara, el lead se archiva frío con toda la
+  sustancia de la conversación tirada: el nivel tiene que igualar el daño.
+
+### Añadido
+
+**El sistema le dice a Natalia que tiene un lead — y cuándo ya es suyo.**
+
+Hasta ahora el aviso salía del formulario y de una llamada. Quien simplemente
+escribía a `hello@` llegaba al panel **y al buzón de nadie**. Dos orígenes
+nuevos sobre el mismo emisor, mismo Telegram de respaldo, mismo enlace:
+
+- `origin="message"` — alguien escribió, por el canal que sea.
+- `origin="qualified"` — **la entrega**: una sola vez por lead, en cuanto Clara
+  tiene intención, presupuesto y zona. Marcado en `lead.meta` y escrito en el
+  mismo commit que el score, **antes** de avisar: un aviso que falla cuesta un
+  aviso, no una entrega repetida cada turno.
+
+Colgarlo sólo de un umbral habría convertido un fallo del clasificador en
+silencio, que es justo lo que acabábamos de medir. Por eso son dos señales.
+
+**Las respuestas automáticas de Clara por correo ya cumplen CAN-SPAM.**
+`_dispatch_send` llamaba a `send_email` sin `unsubscribe_url` ni pie. Ahora el
+pie entra **antes** del filtro de Fair Housing —que tiene que ver también el
+nombre de la correduría— y antes de escribir la fila, para que el texto que se
+revisa, el que se guarda y el que se manda sean el mismo. Sin `POSTAL_ADDRESS`
+la respuesta automática **se bloquea**, y lo que escribió el lead queda en el
+Inbox para una persona.
+
+`send_human_message` comparte ese dispatcher y **no** recibe pie: un enlace de
+baja bajo una respuesta que escribió Natalia a mano le dice al lead que su
+conversación era una lista de correo.
+
+**El Markdown deja de llegarle a la gente.** El mensaje 1368 salió con
+`**What could you buy?**`, asteriscos incluidos: ningún canal nuestro lo
+renderiza. Se limpia en código, no pidiéndoselo al modelo. El `*` simple
+sobrevive, porque en WhatsApp es formato de verdad.
+
+### Sabido y no arreglado
+
+**El presupuesto de un lead de alquiler-vs-compra sigue sin extraerse — y el
+clasificador tiene razón.** Ensayo contra M3 con el texto literal del correo de
+la prueba, antes de desplegar:
+
+```
+intent     : BUY          confidence: 0.9
+entities   : zone='Wash Park', urgency='months', budget_min=None, budget_max=None
+```
+
+$2.400 de alquiler y $35.000 de ahorro **no son** un presupuesto de compra: son
+las entradas de las que sale uno. Ese salto es `solve_price()`, y va en la
+v0.135.0 con los campos `rent_monthly` / `savings` / `credit`. Hasta entonces el
+aviso `origin="qualified"` no disparará para un lead de esta forma — que es
+precisamente por qué la entrega son **dos** señales y no un umbral: el aviso de
+llegada sí sale, y Natalia se entera igual.
+
+Nada vigila al proveedor **principal**. `llm_fallback` en `/api/v1/health` mide
+la red local de Ollama, así que decía `ok` mientras Kimi llevaba días
+devolviendo 403. El fallo ya grita en el registro; lo que falta es un lector, y
+construirlo con anti-rebote merece su propia pasada.
+
 ## [0.133.0] - 2026-09-19
 
 ### Arreglado
