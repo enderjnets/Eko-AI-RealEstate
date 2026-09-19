@@ -6,6 +6,78 @@ v0.56.0 y anteriores vive en git y en el plan.
 
 ---
 
+# ✅ 19-sep 11:05 — 0.133.0 desplegada: la calculadora pide un correo, no una reunión
+
+`/api/v1/health` → `{"status":"ok","app":"Eko AI Inmobiliario","version":"0.133.0","env":"production","captcha":"on","llm_fallback":"ok"}`,
+**0 trazas** en los 5 min siguientes, `alembic current` = `063_content_rejections`: esta
+versión **no toca el esquema**, no hubo migración que correr.
+
+## Qué cambia para quien entra
+
+48 sesiones habían llegado a `calculator_result` en 90 días y **ninguna** tocó un campo del
+formulario. **No había avería**: el backend acepta `form_start` y sella `form_started_at`,
+los chips llaman a `onFirstTouch()` aparte porque en iOS un botón no da foco, el CTA se
+pinta cuando hay resultado y Turnstile no bloquea. Y esas 48 sesiones **sí** registraron
+`calculator_result`, lo que prueba que en ellas el rastreador vivía.
+
+Lo que fallaba era la oferta, y se contradecía a sí misma: la sección `#consult` ya
+prometía *«Leave your email and she'll reach out»* — un campo — mientras el botón ofrecía
+*«Talk to Natalia about this»*, el envío decía *«Book the consult»* y el tranquilizador
+*«Three fields»*, con el marcado exigiendo tres. Alguien escribió la oferta buena y el
+botón nunca se actualizó. Ahora los cuatro textos dicen lo mismo, en inglés y español, y
+**sólo el correo es obligatorio**.
+
+## 🔴 Dos fallos que ya estaban corrompiendo el Inbox de Natalia
+
+- **`years` no viajaba con el lead.** La página tiene selector de horizonte (5/10/15/20/30)
+  pero `years` no estaba en `OVERRIDABLE` ni en `CalculatorIn`: quien comparaba a 20 años
+  dejaba guardada la cifra de **5**. Natalia leía un número que contradecía la pantalla que
+  esa persona estaba mirando al escribirnos — la misma clase de fallo que costó retirar
+  cinco vídeos en septiembre.
+- **El panel rotulaba «5-yr net» a mano.** Arreglar sólo el dato habría *movido* la
+  contradicción a la pantalla de Natalia en vez de quitarla.
+
+## El canal de correo existe y sale APAGADO, a propósito
+
+`POSTAL_ADDRESS` está **vacía** en el VPS (verificado dentro del contenedor, sin imprimir
+el valor). Sin ella `build_footer` lanza `MissingPostalAddress` y el desglose **no se
+manda**: lo anota en el registro y calla. Un pie con un agujero sería la infracción de
+CAN-SPAM; no mandar es el resultado correcto. Cubierto por
+`test_without_a_postal_address_nothing_is_sent`.
+
+Lo que se construyó, y que enciende el canal de correo **entero**, no sólo este botón:
+baja firmada de un clic (GET pregunta, POST actúa, para que un escáner de enlaces no dé de
+baja a nadie), cabeceras `List-Unsubscribe` / `List-Unsubscribe-Post`, y el pie que imprime
+la dirección postal y la correduría. `optout.py` no se tocó: analiza palabras clave y para
+correo el mecanismo correcto es un enlace.
+
+Encenderlo = una línea en el `.env` del VPS + `docker compose up -d backend`. **No** hace
+falta reconstruir imágenes.
+
+⏳ **Antes de encenderlo**: `agent_settings.brokerage_line` (org 1) dice hoy «Engel &
+Voelkers · Each office independently owned and operated». La Regla 6.10.A.2 pide el nombre
+**registrado en la Comisión**, y el pie lo imprime tal cual está guardado.
+
+## Qué medir ahora
+
+Línea base medida el 19-sep sobre 90 días: **170** sesiones reales (excluidas 62
+automáticas y 9 de QA), **48** llegaron a `calculator_result`, **6** pulsaron un CTA,
+**0** `form_start`, **0** `form_submit`, **0** leads de fuera. Si el diagnóstico es
+correcto, `form_start` deja de ser 0 sobre `calculator_result`.
+
+## Etiqueta y release
+
+Tag `v0.133.0` empujado y **verificado con `git ls-remote`** — un «ok» de `git push` bajo
+rtk no prueba nada. **El release de GitHub no se creó**: el repo es público y las versiones
+0.124–0.132 nunca se etiquetaron, así que `--generate-notes` produciría notas de diez
+versiones bajo el nombre de una. Decisión pendiente del dueño.
+
+**Vuelta atrás:** `ssh ender-vps 'cd ~/Eko-AI-RealEstate && git reset --hard 5634166 &&
+docker compose build backend frontend && docker compose up -d backend frontend'`. Sin datos
+que revertir: no hay migración y el canal de correo nunca llegó a mandar nada.
+
+---
+
 # ✅ 18-sep 07:30 — 0.123.0 y el scorecard al día
 
 `/api/v1/health` → `0.123.0`, arranque con **0** errores, y la frase leída dentro del
