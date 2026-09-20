@@ -62,6 +62,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.listing_request import MAX_SELECTED
 from app.services.calculator import summary_line
 from app.services.email import send_email
 from app.services.telegram_notify import send_operator_telegram, undeliverable_reason
@@ -139,6 +140,35 @@ def _picker_link(request_id: int | None) -> str | None:
         return None
     base = (get_settings().PANEL_URL or "").strip().rstrip("/")
     return f"{base}/options/{request_id}" if base else None
+
+
+def _matrix_recipe_for(lead: object) -> str | None:
+    """The Matrix search that would fill this shortlist, or nothing.
+
+    Wrapped because a notice is worth more than a recipe: if the scorer cannot
+    project this lead for any reason, she still gets told somebody is waiting.
+    """
+    try:
+        from app.services.listing_match import matrix_recipe, requirements_of
+
+        req = requirements_of(lead)
+        return matrix_recipe(req) if req.stated_anything else None
+    except Exception as exc:  # noqa: BLE001 — the notice matters more
+        log.warning("Could not build a Matrix recipe: %s", exc)
+        return None
+
+
+def _upload_link() -> str | None:
+    """Where an export goes once she has downloaded it.
+
+    Same guard as `_picker_link`: an empty `PANEL_URL` produces no link rather
+    than `https:///properties`. The page is `/properties`, which hosts the
+    import box — there is no separate upload route.
+    """
+    from app.config import get_settings
+
+    base = (get_settings().PANEL_URL or "").strip().rstrip("/")
+    return f"{base}/properties" if base else None
 
 
 async def _notify_agency_by_email(
@@ -570,8 +600,37 @@ async def _send_and_record(
                 + _line("They wrote", (inbound.content if inbound else None))
                 + _line("Calculator", _calculator_line(lead))
             )
+            # What actually matched, and what is missing. The binary version of
+            # this notice — "here they are" or nothing — was the one that sent
+            # her to a screen with eight one-bedroom condos on it for a lead who
+            # had asked for a two-bedroom house with a garage, and left her to
+            # work out for herself that the answer was an export.
+            summary = getattr(listing_request, "match_summary", None) or {}
+            matched = summary.get("matched")
+            active = summary.get("active")
+            unmet = [u for u in (summary.get("unmet") or []) if isinstance(u, str)]
+            suggestions = getattr(listing_request, "suggestions", None) or []
+
+            if matched is not None and active is not None:
+                body += f"\nMatched: {len(suggestions)} of {active} active"
+                if matched != len(suggestions):
+                    body += f" ({matched} in the area)"
+                body += "\n"
+            for line in unmet:
+                body += f"  · {line}\n"
+
             if (picker := _picker_link(request_id)) is not None:
                 body += f"\nPick up to six and they go out in your name: {picker}\n"
+
+            # Short of a full shortlist: the search to run, and where to put it.
+            # Printed only when it is actually needed, because a recipe under a
+            # list of six is noise, and noise is how a notice stops being read.
+            if len(suggestions) < MAX_SELECTED:
+                recipe = _matrix_recipe_for(lead)
+                if recipe:
+                    body += f"\n{recipe}\n"
+                if (upload := _upload_link()) is not None:
+                    body += f"\nUpload the export here: {upload}\n"
         elif origin == "callback":
             # The conversion point of the whole circuit, and the reason it is
             # never capped. They read what you sent and asked for you.

@@ -832,6 +832,37 @@ def zone_matches(lead_zone: str | None, property_zone: str | None) -> bool:
     return _covers(asked, filed) or _covers(filed, asked)
 
 
+async def candidate_pool(lead: Lead, db: AsyncSession) -> list[Property]:
+    """Everything active it would be reasonable to show this lead. No ranking.
+
+    The pool the operator's picker has always shown: right side of the
+    rent/sale line, and in an area that matches what they asked for. NOT
+    narrowed by budget, and that omission is deliberate and documented in
+    `api/v1/options.py` — the figure a lead gives is routinely their savings
+    rather than a ceiling, measured on a real lead whose $35,000 would have
+    excluded every house in Denver. Narrowing on it hands a person an empty
+    screen and no way to tell an empty market from a bad guess.
+
+    Extracted so the picker, the preselection and the honesty count are all
+    talking about the same set. Three copies of this loop meant "2 matched of
+    8 active" could have been true of a different eight than the one she saw.
+    """
+    rows = (
+        await db.execute(select(Property).where(Property.status == PropertyStatus.ACTIVE))
+    ).scalars().all()
+    want_rent = lead.intent == LeadIntent.RENT
+    out: list[Property] = []
+    for p in rows:
+        listing_type = (p.raw or {}).get("listing_type", "sale")
+        if want_rent != (listing_type == "rent"):
+            continue
+        if not zone_matches(lead.zone, p.zone):
+            continue
+        out.append(p)
+    out.sort(key=lambda p: (p.price if p.price is not None else Decimal(0)))
+    return out
+
+
 async def match_properties_for_lead(lead: Lead, db: AsyncSession, *, limit: int = 6) -> list[Property]:
     """Return active listings that fit the lead's criteria, best first.
 

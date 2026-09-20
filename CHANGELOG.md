@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.140.0] - 2026-09-20
+
+### Added
+- `app/services/listing_match.py` — pure, deterministic scoring of one listing
+  against a `Requirement`, with a `Check` per comparison (`met` / `missed` /
+  `unknown`) and a reason line assembled from the checks and from nothing else.
+  Weights: beds 30 · garage 25 · budget 20 · baths 15 · zone 10, counted over
+  what could actually be compared.
+- `suggest_for_request()` ranks and stores a proposal on the request
+  (migration `066_request_suggestions`: `suggestions`, `requirements_snapshot`,
+  `sent_reasons`, `match_summary`, `suggested_at`). Recomputed on every open and
+  after every CSV import; the import recompute is silent by design.
+- The picker opens with the proposal ticked, shows the ✓/✗/? of each check, and
+  puts the generated reason in an editable box per property.
+- `SendIn.reasons` carries what she wrote; each is screened individually with
+  `find_violations` BEFORE the body is assembled, so a block can name the box.
+- The `options` notice prints matched-of-active, what is unmet, the Matrix
+  search recipe and the upload link — the last two only when short of six.
+
+### Notes
+- `candidate_pool()` in `listings.py` is now the one definition of "what it
+  would be reasonable to show this lead", shared by the picker, the ranking and
+  the count in the notice. Three copies of that loop meant "2 matched of 8
+  active" could have been true of a different eight than the one on screen.
+- Budget is scored and never gates: `api/v1/options.py` documents a real lead
+  whose stated figure was a down payment.
+- An unknown never scores. A blank `Garage Spaces` is a fact about the export,
+  not about the house, and counting it as a miss ranks the unknown below the
+  known-wrong.
+- **Known hole, asserted rather than discovered:** `zone_matches` compares words
+  by prefix, so "Wash Park" reaches "Washington Park" and **"DTC" reaches
+  nothing**. The failure is honest — empty pool, "nothing matched", recipe sent
+  — but a shortlist cannot be built from local inventory until the zone or the
+  subdivision name is spelled out.
+
 ## [0.139.0] - 2026-09-20
 
 ### Added

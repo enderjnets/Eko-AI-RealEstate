@@ -25,11 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import get_db
 from app.models import (
     Lead,
-    LeadIntent,
     ListingRequest,
     ListingRequestStatus,
     Property,
-    PropertyStatus,
 )
 from app.models.listing_request import MAX_SELECTED
 from app.services.listing_requests import send_options_email
@@ -128,11 +126,24 @@ class CandidateOut(BaseModel):
     url: str | None
     listing_broker: str | None
 
+    #: What the system made of this one against what they asked for. `None` on
+    #: a listing outside the ranked set — the picker shows it plainly rather
+    #: than inventing a score for something nobody compared.
+    score: int | None = None
+    reason: str | None = None
+    #: `[{key, status, detail}]` with status in met | missed | unknown. The
+    #: unknowns are the point: a requirement the export cannot answer is shown
+    #: as unchecked, never as satisfied.
+    checks: list[dict] = Field(default_factory=list)
+
 
 class RequestDetailOut(BaseModel):
     request: RequestOut
     candidates: list[CandidateOut]
     max_selected: int = MAX_SELECTED
+    #: `{"matched": N, "active": M, "unmet": [...]}` — what the notice said, so
+    #: the screen and the email cannot disagree about how thin the list is.
+    match_summary: dict | None = None
 
 
 @router.get("/{request_id}", response_model=RequestDetailOut)
@@ -150,25 +161,28 @@ async def get_request(
     if lead is None:
         raise HTTPException(status_code=404, detail="unknown_lead")
 
-    from app.services.listings import listing_broker, zone_matches
+    # One definition of "what it would be reasonable to show this lead", shared
+    # with the preselection and with the count in the notice. Three copies of
+    # this loop meant "2 matched of 8 active" could have been true of a
+    # different eight than the one on this screen.
+    from app.services.listings import candidate_pool, listing_broker
 
-    rows = (
-        await db.execute(select(Property).where(Property.status == PropertyStatus.ACTIVE))
-    ).scalars().all()
-    want_rent = lead.intent == LeadIntent.RENT
-    candidates: list[Property] = []
-    for p in rows:
-        listing_type = (p.raw or {}).get("listing_type", "sale")
-        if want_rent != (listing_type == "rent"):
-            continue
-        # `zone_matches`, not a substring test. "Wash Park" is what a person
-        # writes and "Washington Park" is what REcolorado files, and neither
-        # contains the other — measured in production with eight listings
-        # loaded and this screen returning zero.
-        if not zone_matches(lead.zone, p.zone):
-            continue
-        candidates.append(p)
-    candidates.sort(key=lambda p: (p.price if p.price is not None else Decimal("0")))
+    candidates = await candidate_pool(lead, db)
+
+    # The ranking, and it decides the order: what the system thinks fits comes
+    # first, the rest stays in price order behind it. She can still send
+    # anything on the screen.
+    ranked = {
+        int(item.get("property_id", 0)): item
+        for item in (row.suggestions or [])
+        if isinstance(item, dict)
+    }
+    candidates.sort(
+        key=lambda p: (
+            -int(ranked.get(int(p.id), {}).get("score", -1)),
+            p.price if p.price is not None else Decimal("0"),
+        )
+    )
 
     def _broker(p: Property) -> str | None:
         raw = p.raw if isinstance(p.raw, dict) else {}
@@ -188,14 +202,23 @@ async def get_request(
                 sqft=p.sqft,
                 url=p.url,
                 listing_broker=_broker(p),
+                score=ranked.get(int(p.id), {}).get("score"),
+                reason=ranked.get(int(p.id), {}).get("reason"),
+                checks=ranked.get(int(p.id), {}).get("checks") or [],
             )
             for p in candidates[:limit]
         ],
+        match_summary=row.match_summary,
     )
 
 
 class SendIn(BaseModel):
     property_ids: list[int] = Field(min_length=1, max_length=MAX_SELECTED)
+    #: `{property_id: "why this one"}`, whatever she left in the boxes. Absent
+    #: keys fall back to the generated line; a property she picked from outside
+    #: the ranking and never explained goes out with no reason at all, because
+    #: writing one for her would be the system putting words in her mouth.
+    reasons: dict[int, str] | None = None
 
 
 @router.post("/{request_id}/send")
@@ -229,7 +252,9 @@ async def send_selection(
     except Exception:  # noqa: BLE001
         who = None
 
-    result = await send_options_email(request_id, body.property_ids, agent_name=who)
+    result = await send_options_email(
+        request_id, body.property_ids, agent_name=who, reasons=body.reasons
+    )
     status = result.get("status")
     if status == "sent":
         return result

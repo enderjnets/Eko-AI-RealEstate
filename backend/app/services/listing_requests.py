@@ -91,6 +91,26 @@ def clean_callback_text(raw: str | None) -> str | None:
     return flat[:CALLBACK_TEXT_MAX] or None
 
 
+#: How much of a "why" survives. Long enough for the real thing — "under your
+#: ceiling, 2 bd, garage for 2, in DTC" — and short enough that the box cannot
+#: become a paragraph nobody screened properly on its way to a stranger.
+REASON_TEXT_MAX = 240
+
+
+def clean_reason_text(raw: str | None) -> str | None:
+    """A line about why this listing was picked, made safe to send.
+
+    Same treatment as `clean_callback_text` and for a mirrored reason: that one
+    protects the realtor's inbox from the client, this one protects the
+    client's inbox from whatever ends up in a form field on our side. Flattened
+    and cut; never parsed, never handed to a model.
+    """
+    if raw is None:
+        return None
+    flat = " ".join(str(raw).split())
+    return flat[:REASON_TEXT_MAX] or None
+
+
 async def open_request(lead_id: int, *, origin: str = "message") -> tuple[int | None, bool]:
     """Open an options request for this lead, or hand back the open one.
 
@@ -285,7 +305,9 @@ def _tour_host(url: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
-def _option_fields(prop: object, index: int) -> dict[str, object]:
+def _option_fields(
+    prop: object, index: int, *, reason: str | None = None
+) -> dict[str, object]:
     """One listing reduced to the handful of facts a client may see.
 
     An ALLOW-LIST — see the module docstring for what is on the other side of
@@ -305,23 +327,33 @@ def _option_fields(prop: object, index: int) -> dict[str, object]:
         "facts": _facts_line(prop),
         "broker": listing_broker(office, getattr(prop, "source", None)) or None,
         "url": _safe_url(getattr(prop, "url", None)),
+        # Why this one. Always a key, never conditionally absent: the allow-list
+        # only holds if every field that can be printed is named here, and a
+        # `fields.get("reason")` somewhere downstream is how operator-written
+        # text eventually reaches a template nobody screened.
+        "reason": reason or None,
     }
 
 
-def _option_lines(prop: object, index: int) -> list[str]:
+def _option_lines(
+    prop: object, index: int, *, reason: str | None = None
+) -> list[str]:
     """One listing, as the client will read it in a text-only mail client."""
-    f = _option_fields(prop, index)
+    f = _option_fields(prop, index, reason=reason)
     lines = [f"{f['n']}. {f['address']}"]
     if f["facts"] is not None:
         lines.append(f"   {f['facts']}")
     if f["broker"]:
         lines.append(f"   Listed by {f['broker']}")
+    # Above the tour link on purpose: the reason is why they should open it.
+    if f["reason"]:
+        lines.append(f"   Why: {f['reason']}")
     if f["url"]:
         lines.append(f"   {f['url']}")
     return lines
 
 
-def _option_html(prop: object, index: int) -> str:
+def _option_html(prop: object, index: int, *, reason: str | None = None) -> str:
     """The same listing for the HTML half. Every value escaped.
 
     These strings came out of another firm's MLS row and are about to be
@@ -329,7 +361,7 @@ def _option_html(prop: object, index: int) -> str:
     not an attack anyone planned, it is just data, and either way it must not
     become markup.
     """
-    f = _option_fields(prop, index)
+    f = _option_fields(prop, index, reason=reason)
     rows = [
         f'<div style="font-weight:600;">{f["n"]}. {escape(str(f["address"]))}</div>'
     ]
@@ -341,6 +373,14 @@ def _option_html(prop: object, index: int) -> str:
         rows.append(
             '<div style="font-size:12px;color:#6b6b6b;font-style:italic;">'
             f'Listed by {escape(str(f["broker"]))}</div>'
+        )
+    if f["reason"]:
+        # Escaped like everything else here. This string may have been typed by
+        # a person into a form, which is exactly the input that must not become
+        # markup on its way to somebody else's inbox.
+        rows.append(
+            '<div style="margin-top:6px;font-size:13px;color:#7a1f3d;">'
+            f'{escape(str(f["reason"]))}</div>'
         )
     if f["url"]:
         url = str(f["url"])
@@ -373,6 +413,7 @@ def build_options_email(
     properties: list,
     agent_name: str | None,
     page_url: str | None,
+    reasons: dict[int, str] | None = None,
 ) -> tuple[str, str, str]:
     """`(subject, text, html)` for the shortlist. No footer — the caller adds it.
 
@@ -407,10 +448,12 @@ def build_options_email(
         f'<p style="margin:0 0 6px 0;">{escape(greeting)}</p>',
         f'<p style="margin:0 0 20px 0;">{escape(intro)}</p>',
     ]
+    why = reasons or {}
     for index, prop in enumerate(properties, start=1):
-        parts.extend(_option_lines(prop, index))
+        reason = why.get(int(getattr(prop, "id", 0) or 0))
+        parts.extend(_option_lines(prop, index, reason=reason))
         parts.append("")
-        blocks.append(_option_html(prop, index))
+        blocks.append(_option_html(prop, index, reason=reason))
 
     if page_url:
         ask = "Not what you had in mind, or would you rather talk it through?"
@@ -429,7 +472,11 @@ def build_options_email(
 
 
 async def send_options_email(
-    request_id: int, property_ids: list[int], *, agent_name: str | None = None
+    request_id: int,
+    property_ids: list[int],
+    *,
+    agent_name: str | None = None,
+    reasons: dict[int, str] | None = None,
 ) -> dict[str, object]:
     """Mail the shortlist to the lead, and record what happened. Never raises.
 
@@ -504,10 +551,47 @@ async def send_options_email(
                 select(AgentSettings).where(AgentSettings.org_id == get_org_id())
             )
         ).scalar_one_or_none()
+        # What each listing is doing on the list. The operator's own words when
+        # she wrote any, the generated line otherwise, and nothing at all for a
+        # property she picked by hand from outside the ranking — inventing a
+        # reason for one is the one thing this must never do.
+        stored = {
+            int(item.get("property_id", 0)): item.get("reason")
+            for item in (row.suggestions or [])
+            if isinstance(item, dict)
+        }
+        edited = {int(k): v for k, v in (reasons or {}).items()}
+        effective: dict[int, str] = {}
+        for pid in ids:
+            text_for = clean_reason_text(edited.get(pid)) or clean_reason_text(
+                stored.get(pid)
+            )
+            if text_for:
+                effective[pid] = text_for
+
+        # Screened one by one BEFORE the body is assembled, so a rejection can
+        # name the box. The whole-body screen below still runs — this is an
+        # earlier, more specific check and not a replacement for it.
+        per_property = [
+            {"property_id": pid, "flags": found}
+            for pid, line in effective.items()
+            if (found := find_violations(line, None))
+        ]
+        if per_property:
+            log.error(
+                "Lead %d: a reason was blocked by Fair Housing: %s", lead.id, per_property
+            )
+            return {
+                "status": "blocked_fair_housing",
+                "flags": [f for item in per_property for f in item["flags"]],
+                "per_property": per_property,
+            }
+
         subject, body, html_body = build_options_email(
             lead_name=lead.name,
             zone=lead.zone,
             properties=properties,
+            reasons=effective,
             # Whoever pressed the button, when the route knows. There is no
             # agent name in Settings and inventing one from `agency_name` would
             # put a company where a person belongs — the sentence says a human
@@ -594,9 +678,154 @@ async def send_options_email(
         if external_id:
             row.status = ListingRequestStatus.SENT
             row.selected_property_ids = ids
+            # In the SAME commit as the ids and only when the provider answered.
+            # Written earlier it would be a record of a send that did not
+            # happen, which is the mistake this function's own docstring warns
+            # about for the `Message` row.
+            row.sent_reasons = {str(k): v for k, v in effective.items()}
             row.sent_at = datetime.now(UTC)
         await db.commit()
 
         if not external_id:
             return {"status": "send_failed", "error": failure}
         return {"status": "sent", "count": len(properties), "message_id": external_id}
+
+
+# ── The preselection ──────────────────────────────────────────────────────
+
+#: How many the system proposes. More than the six she may send, because the
+#: point of a proposal is that she can throw two away without going hunting.
+SUGGEST_LIMIT = 8
+
+
+def _jsonable(value: object) -> object:
+    """Decimals into strings, recursively. JSONB will not take a Decimal.
+
+    Strings rather than floats: these are prices and half-baths, and the whole
+    reason `baths_min` is NUMERIC(3,1) is that this codebase has already paid
+    for float arithmetic on money once.
+    """
+    from decimal import Decimal as _D
+
+    if isinstance(value, _D):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    return value
+
+
+async def _already_sent_ids(lead_id: int, db) -> set[int]:
+    """Everything this lead has already been emailed, across every request.
+
+    Without it a "show me a different set" hands back the same six, which is
+    the one answer guaranteed to read as nobody having looked.
+    """
+    rows = (
+        await db.execute(
+            select(ListingRequest.selected_property_ids).where(
+                ListingRequest.lead_id == lead_id,
+                ListingRequest.status != ListingRequestStatus.OPEN,
+            )
+        )
+    ).scalars().all()
+    out: set[int] = set()
+    for ids in rows:
+        for i in ids or []:
+            if isinstance(i, int):
+                out.add(i)
+    return out
+
+
+async def suggest_for_request(request_id: int) -> None:
+    """Rank what is active against what they asked for, and store it. Never raises.
+
+    ⚠️ NOT called from `open_request`. That runs inside the turn's own
+    transaction — the requirements the classifier just extracted are not yet
+    visible to any other session — so scoring there would rank against a lead
+    as it was before the message. This is called at the points where the agency
+    is told, after the commit, and again after a CSV import.
+
+    A failure here costs the proposal and nothing else: the request is already
+    filed and the notice still goes out, saying honestly that nothing matched.
+    """
+    from dataclasses import asdict  # noqa: PLC0415
+    from decimal import Decimal  # noqa: PLC0415
+
+    from sqlalchemy import func  # noqa: PLC0415
+
+    from app.models import Lead, Property, PropertyStatus  # noqa: PLC0415
+    from app.services.listing_match import (  # noqa: PLC0415
+        reason_text,
+        requirements_of,
+        score_property,
+        unmet_summary,
+    )
+    from app.services.listings import candidate_pool  # noqa: PLC0415
+
+    try:
+        from app.db.base import get_session_factory  # noqa: PLC0415
+
+        async with get_session_factory()() as db:
+            row = (
+                await db.execute(
+                    select(ListingRequest).where(ListingRequest.id == request_id)
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                return
+            lead = (
+                await db.execute(select(Lead).where(Lead.id == row.lead_id))
+            ).scalar_one_or_none()
+            if lead is None:
+                return
+
+            req = requirements_of(lead)
+            pool = await candidate_pool(lead, db)
+            active_total = (
+                await db.execute(
+                    select(func.count())
+                    .select_from(Property)
+                    .where(Property.status == PropertyStatus.ACTIVE)
+                )
+            ).scalar_one()
+
+            skip = await _already_sent_ids(lead.id, db)
+            scored = []
+            for prop in pool:
+                if prop.id in skip:
+                    continue
+                score, checks = score_property(prop, req)
+                scored.append((score, prop, checks))
+            scored.sort(key=lambda t: (-t[0], t[1].price or Decimal(0)))
+            top = scored[:SUGGEST_LIMIT]
+
+            # Reassigned wholesale, never mutated: SQLAlchemy does not see a
+            # list that changed under it.
+            row.suggestions = [
+                {
+                    "property_id": prop.id,
+                    "score": score,
+                    "reason": reason_text(checks),
+                    "checks": [
+                        {"key": c.key, "status": c.status, "detail": c.detail}
+                        for c in checks
+                    ],
+                }
+                for score, prop, checks in top
+            ]
+            row.requirements_snapshot = _jsonable(asdict(req))
+            row.match_summary = {
+                "matched": len(pool),
+                "active": int(active_total),
+                "unmet": unmet_summary([c for _, _, c in top], req),
+            }
+            row.suggested_at = datetime.now(UTC)
+            await db.commit()
+            log.info(
+                "Request %d: %d suggestions from %d in the area, %d active",
+                request_id, len(top), len(pool), active_total,
+            )
+    except Exception as exc:  # noqa: BLE001 — the ask is already filed
+        log.error("Request %d: could not build a preselection: %s", request_id, exc)

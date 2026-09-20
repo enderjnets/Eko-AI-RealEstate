@@ -48,6 +48,7 @@ from app.services.listing_requests import (
     build_options_email,
     clean_callback_text,
     open_request,
+    send_options_email,
     strip_tags,
 )
 from app.services.tenant_context import org_scope, set_org_id
@@ -1138,5 +1139,183 @@ async def test_the_page_does_not_claim_a_shortlist_that_was_never_sent(
         assert "Show me a different set" not in page
         # What it must still do is the only thing it was opened for.
         assert "Ask for a call" in page
+    finally:
+        await _cleanup(external)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# The preselection, and the words that go with it
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_opening_a_request_ranks_what_is_active_and_says_why(
+    database_url: str,
+) -> None:
+    """The work the operator used to do by eye, done before she opens the page.
+
+    Until this she was shown everything active in the area, cheapest first, and
+    had to hold the buyer's sentence in her head while reading it. The row now
+    carries the comparison, and the comparison carries its own words.
+    """
+    from app.services.listing_requests import suggest_for_request
+
+    set_org_id(ORG)
+    external = f"rank-{uuid.uuid4().hex[:8]}"
+    lead_id, _, _ = await _seed_lead("rank@circuit.test")
+    try:
+        await _seed_property(external)
+        async with get_bypass_session_factory()() as db:
+            lead = (await db.execute(select(Lead).where(Lead.id == lead_id))).scalar_one()
+            lead.beds_min = 2
+            lead.garage_min = 2
+            lead.wants_office = True
+            await db.commit()
+
+        request_id, created = await open_request(lead_id, origin="message")
+        assert created
+        await suggest_for_request(request_id)
+
+        async with get_bypass_session_factory()() as db:
+            row = (
+                await db.execute(
+                    select(ListingRequest).where(ListingRequest.id == request_id)
+                )
+            ).scalar_one()
+
+        assert row.suggestions, "nothing was proposed"
+        first = row.suggestions[0]
+        assert first["property_id"]
+        assert isinstance(first["score"], int)
+        assert first["reason"], "a proposal with no reason is the old behaviour"
+
+        # The office is carried and never claimed: the export has no column.
+        office = [c for c in first["checks"] if c["key"] == "office"]
+        assert office and office[0]["status"] == "unknown"
+
+        # And the arithmetic the notice prints is stored beside it.
+        assert row.match_summary["active"] >= 1
+        assert row.requirements_snapshot["beds_min"] == 2
+    finally:
+        await _cleanup(external)
+
+
+@pytest.mark.asyncio
+async def test_the_reason_reaches_both_halves_and_is_recorded(database_url: str) -> None:
+    """What she wrote is what they read, in the text half and the HTML half.
+
+    Both, because a line that reached only one of them reached the reader
+    anyway — and because `Message.content` stores the text half, so a reason
+    that existed only in the HTML would be missing from the record of what we
+    said.
+    """
+    set_org_id(ORG)
+    external = f"why-{uuid.uuid4().hex[:8]}"
+    lead_id, _, _ = await _seed_lead("why@circuit.test")
+    sender = AsyncMock(return_value={"id": f"resend.{uuid.uuid4().hex[:8]}"})
+    try:
+        property_id = await _seed_property(external)
+        request_id, _ = await open_request(lead_id, origin="message")
+
+        with patch("app.services.email.send_email", new=sender):
+            result = await send_options_email(
+                request_id,
+                [property_id],
+                agent_name="Natalia",
+                reasons={property_id: "Closest to your ceiling, and a garage for two"},
+            )
+        assert result["status"] == "sent", result
+
+        kwargs = sender.await_args.kwargs
+        assert "Closest to your ceiling" in kwargs["body_text"]
+        assert "Closest to your ceiling" in kwargs["body_html"]
+
+        async with get_bypass_session_factory()() as db:
+            row = (
+                await db.execute(
+                    select(ListingRequest).where(ListingRequest.id == request_id)
+                )
+            ).scalar_one()
+        assert row.sent_reasons[str(property_id)].startswith("Closest to your ceiling")
+        assert row.status == ListingRequestStatus.SENT
+    finally:
+        await _cleanup(external)
+
+
+@pytest.mark.asyncio
+async def test_a_reason_a_person_typed_is_screened_like_everything_else(
+    database_url: str,
+) -> None:
+    """The box is new, the obligation is not.
+
+    Fair Housing has always blocked this email. The new thing is a field where
+    a human types free text that goes straight to a consumer, and the one way
+    to be sure it is covered is to write the phrase into it and watch the send
+    refuse.
+    """
+    set_org_id(ORG)
+    external = f"flag-{uuid.uuid4().hex[:8]}"
+    lead_id, _, _ = await _seed_lead("flag@circuit.test")
+    sender = AsyncMock(return_value={"id": "resend.never"})
+    try:
+        property_id = await _seed_property(external)
+        request_id, _ = await open_request(lead_id, origin="message")
+
+        with patch("app.services.email.send_email", new=sender):
+            result = await send_options_email(
+                request_id,
+                [property_id],
+                agent_name="Natalia",
+                reasons={property_id: "Great schools, perfect for families"},
+            )
+
+        assert result["status"] == "blocked_fair_housing", result
+        # Named per box, so she can see WHICH one to rewrite.
+        assert result["per_property"][0]["property_id"] == property_id
+        assert result["flags"]
+        sender.assert_not_awaited()
+    finally:
+        await _cleanup(external)
+
+
+@pytest.mark.asyncio
+async def test_no_reason_and_no_score_ever_reaches_the_public_page(
+    database_url: str,
+) -> None:
+    """§11.2 again, against the fields this release added.
+
+    The page anybody can open still knows a name and nothing else. A reason
+    line names a price and a bedroom count, which is precisely the listing
+    information that may be distributed by email and not published.
+    """
+    from app.services.listing_requests import suggest_for_request
+
+    set_org_id(ORG)
+    external = f"pub-{uuid.uuid4().hex[:8]}"
+    lead_id, _, _ = await _seed_lead("pub@circuit.test")
+    try:
+        await _seed_property(external)
+        request_id, _ = await open_request(lead_id, origin="message")
+        await suggest_for_request(request_id)
+
+        async with get_bypass_session_factory()() as db:
+            row = (
+                await db.execute(
+                    select(ListingRequest).where(ListingRequest.id == request_id)
+                )
+            ).scalar_one()
+            token = row.token
+            proposed = row.suggestions
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            page = (await client.get(f"/api/v1/public/options/{token}")).text
+
+        for item in proposed:
+            if item.get("reason"):
+                assert item["reason"] not in page
+        for forbidden in ("482 S Gilpin", "3985000", "score"):
+            assert forbidden not in page
     finally:
         await _cleanup(external)

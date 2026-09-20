@@ -42,7 +42,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -110,6 +110,42 @@ class ListingRequest(Base):
     #: nothing in this system is allowed to hold a slot on her calendar.
     callback_text: Mapped[str | None] = mapped_column(
         String(length=CALLBACK_TEXT_MAX), nullable=True
+    )
+
+    #: What the system proposes, best first: `[{property_id, score, reason,
+    #: checks}]`. Machine-generated and DISPOSABLE — recomputed wholesale every
+    #: time the request is opened or a new export lands, so it is never the
+    #: authority on anything and the listing facts inside it are a cache of a
+    #: comparison rather than a second copy of the MLS.
+    #:
+    #: Always REASSIGNED, never mutated in place: SQLAlchemy does not see a
+    #: list that changed under it, and the recompute would be silently lost on
+    #: the next load. The same trap `conversation.py` documents for `lead.meta`.
+    suggestions: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+
+    #: What the buyer had asked for AT THE TIME. The notice says "2 matched of
+    #: 8 active", and that arithmetic has to stay checkable against what she
+    #: was told rather than drift when a later message changes the lead.
+    requirements_snapshot: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+
+    #: What a PERSON wrote about why each listing was picked, keyed by property
+    #: id. Separate from `suggestions` precisely because that one is thrown away
+    #: and rebuilt: an import landing between "she edits the reason" and "she
+    #: presses send" must not quietly discard her sentence.
+    sent_reasons: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+
+    #: `{"matched": N, "active": M}` — the two numbers the notice needs to tell
+    #: "no inventory in this zone" from "no inventory at all".
+    match_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    suggested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

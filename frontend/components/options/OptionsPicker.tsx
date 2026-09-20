@@ -21,6 +21,11 @@ export function OptionsPicker({ id }: { id: number }) {
   const { t } = useI18n();
   const [data, setData] = useState<ListingRequestDetail | null>(null);
   const [picked, setPicked] = useState<number[]>([]);
+  // What she wants said about each one. Seeded from the generated line and
+  // hers from the moment she touches it — the send only carries what is here,
+  // and anything she leaves alone falls back to the same generated line on the
+  // server, so an untouched box and an edited one behave identically.
+  const [reasons, setReasons] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -32,7 +37,21 @@ export function OptionsPicker({ id }: { id: number }) {
     try {
       const res = await optionsApi.get(id);
       setData(res);
-      setPicked(res.request.selected_property_ids || []);
+      // Already sent: show what went out. Otherwise: the system's proposal,
+      // ticked, up to the six she may send. The point of a proposal is that
+      // she can untick two without going hunting.
+      const alreadySent = res.request.selected_property_ids || [];
+      setPicked(
+        alreadySent.length > 0
+          ? alreadySent
+          : res.candidates
+              .filter((c) => c.score != null)
+              .slice(0, res.max_selected ?? 6)
+              .map((c) => c.id),
+      );
+      const seeded: Record<number, string> = {};
+      for (const c of res.candidates) if (c.reason) seeded[c.id] = c.reason;
+      setReasons(seeded);
       setSent(res.request.status === "sent");
     } catch {
       setError(t("options.loadError"));
@@ -63,7 +82,11 @@ export function OptionsPicker({ id }: { id: number }) {
     setSending(true);
     setError(null);
     try {
-      await optionsApi.send(id, picked);
+      await optionsApi.send(
+        id,
+        picked,
+        Object.fromEntries(picked.map((pid) => [pid, reasons[pid] ?? ""]).filter(([, v]) => v)),
+      );
       setSent(true);
     } catch (e: unknown) {
       setError(`${t("options.sendError")}: ${String((e as Error)?.message || e)}`);
@@ -161,6 +184,49 @@ export function OptionsPicker({ id }: { id: number }) {
                     {c.listing_broker && (
                       <div className="mt-0.5 text-[10px] text-gray-500 italic">
                         {c.listing_broker}
+                      </div>
+                    )}
+
+                    {/* What was compared, and what could not be. An `unknown`
+                        is shown as a question and never as a tick: the MLS
+                        export has no column for an office, and a shortlist
+                        that quietly dropped the requirement would be worse
+                        than one that admits it. */}
+                    {c.checks.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+                        {c.checks.map((k, i) => (
+                          <span
+                            key={`${c.id}-${i}`}
+                            className={
+                              k.status === "met"
+                                ? "text-eko-green"
+                                : k.status === "missed"
+                                  ? "text-red-400"
+                                  : "text-gray-500"
+                            }
+                          >
+                            {k.status === "met" ? "✓" : k.status === "missed" ? "✗" : "?"}{" "}
+                            {k.detail}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {on && (
+                      <div className="mt-2" onClick={(e) => e.preventDefault()}>
+                        <label className="block text-[10px] uppercase tracking-wide text-gray-500">
+                          {t("options.why")}
+                        </label>
+                        <textarea
+                          value={reasons[c.id] ?? ""}
+                          maxLength={240}
+                          rows={2}
+                          onChange={(e) =>
+                            setReasons((r) => ({ ...r, [c.id]: e.target.value }))
+                          }
+                          placeholder={t("options.whyPlaceholder")}
+                          className="mt-1 w-full rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-[12px] text-gray-200 focus:border-eko-violet/50 focus:outline-none"
+                        />
                       </div>
                     )}
                   </div>

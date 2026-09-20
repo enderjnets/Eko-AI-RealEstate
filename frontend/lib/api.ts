@@ -1050,6 +1050,15 @@ export interface ListingRequest {
   sent_at: string | null;
 }
 
+export interface OptionCheck {
+  key: string;
+  /** met | missed | unknown. An `unknown` is a requirement the MLS export
+   *  cannot answer — an office, a blank garage column — and it is never shown
+   *  as satisfied. */
+  status: string;
+  detail: string;
+}
+
 export interface OptionCandidate {
   id: number;
   address: string | null;
@@ -1061,22 +1070,27 @@ export interface OptionCandidate {
   sqft: number | null;
   url: string | null;
   listing_broker: string | null;
+  /** null on a listing outside the ranked set. */
+  score: number | null;
+  reason: string | null;
+  checks: OptionCheck[];
 }
 
 export interface ListingRequestDetail {
   request: ListingRequest;
   candidates: OptionCandidate[];
   max_selected: number;
+  match_summary: { matched?: number; active?: number; unmet?: string[] } | null;
 }
 
 export const optionsApi = {
   list: (status: ListingRequestStatus | "all" = "open") =>
     api<ListingRequest[]>(`/v1/options?status=${status}`),
   get: (id: number) => api<ListingRequestDetail>(`/v1/options/${id}`),
-  send: (id: number, property_ids: number[]) =>
+  send: (id: number, property_ids: number[], reasons?: Record<number, string>) =>
     api<{ status: string; count?: number }>(`/v1/options/${id}/send`, {
       method: "POST",
-      body: JSON.stringify({ property_ids }),
+      body: JSON.stringify({ property_ids, reasons }),
     }),
 };
 

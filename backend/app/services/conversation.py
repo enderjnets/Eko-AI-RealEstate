@@ -1672,11 +1672,19 @@ async def _open_options_request(
     emails in an afternoon from becoming four searches: `open_request` hands
     back the existing row, `created` is False, and nobody is told again.
     """
-    from app.services.listing_requests import open_request  # noqa: PLC0415
+    from app.services.listing_requests import (  # noqa: PLC0415
+        open_request,
+        suggest_for_request,
+    )
 
     request_id, created = await open_request(lead_id, origin="message")
     if request_id is None or not created:
         return False
+    # Ranked BEFORE the notice is composed, because the notice tells her how
+    # many matched and what is missing. After the commit, never before: the
+    # scorer opens its own session and would otherwise read the lead as it was
+    # before this turn.
+    await suggest_for_request(request_id)
     from app.services.lead_notify import send_new_lead_notice  # noqa: PLC0415
 
     await send_new_lead_notice(
@@ -2219,7 +2227,11 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
             from app.services.lead_notify import (  # noqa: PLC0415
                 send_new_lead_notice as _notice,
             )
+            from app.services.listing_requests import (  # noqa: PLC0415
+                suggest_for_request,
+            )
 
+            await suggest_for_request(early_request_id)
             await _notice(
                 lead.id,
                 inbound.id,

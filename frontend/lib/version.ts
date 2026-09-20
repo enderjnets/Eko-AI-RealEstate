@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.139.0";
+export const CURRENT_VERSION = "0.140.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,32 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.140.0",
+    date: "2026-09-20",
+    title: {
+      en: "Six houses, each with its reason",
+      es: "Seis casas, cada una con su porqué",
+    },
+    changes: [
+      {
+        en: "The shortlist proposes itself. When somebody asks to see property the system now ranks what is active against what they actually said — area, price, bedrooms, bathrooms, garage — and hands the agent eight already ticked, each with a line saying why it is there.",
+        es: "La selección se propone sola. Cuando alguien pide ver propiedades el sistema puntúa lo activo contra lo que de verdad dijo — zona, precio, dormitorios, baños, garaje — y le entrega al agente ocho ya marcadas, cada una con una línea que dice por qué está ahí.",
+      },
+      {
+        en: "That line is built from the comparisons and from nothing else. It never reads the other brokerage's marketing copy, which is where \"great schools\" lives — and the agent can rewrite it, after which it is screened exactly like the rest of the email.",
+        es: "Esa línea se construye con las comparaciones y con nada más. Nunca lee la copia publicitaria de la otra correduría, que es donde vive «great schools» — y la agente puede reescribirla, tras lo cual se criba igual que el resto del correo.",
+      },
+      {
+        en: "A requirement the MLS cannot answer is shown as unchecked, never as met. The export has no column for an office, so a study somebody asked for is reported honestly instead of quietly disappearing.",
+        es: "Un requisito que el MLS no puede responder se enseña como no comprobado, nunca como cumplido. La exportación no tiene columna de despacho, así que un estudio que alguien pidió se informa con honestidad en vez de desaparecer en silencio.",
+      },
+      {
+        en: "And when the local inventory cannot fill a list, the notice says how many matched of how many active, what is missing, the exact Matrix search to run and where to upload it. It never asks for an export that was not needed.",
+        es: "Y cuando el inventario local no da para una lista, el aviso dice cuántas casaron de cuántas activas, qué falta, la búsqueda exacta que hay que hacer en Matrix y dónde subirla. Nunca pide una exportación que no hacía falta.",
+      },
+    ],
+  },
   {
     version: "0.139.0",
     date: "2026-09-20",

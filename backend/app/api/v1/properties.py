@@ -1,6 +1,7 @@
 """Properties API — listings list/detail + sync + per-lead matches (Phase 7)."""
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from decimal import Decimal
 
@@ -18,6 +19,8 @@ from app.services.listings import (
     match_properties_for_lead,
     sync_listings,
 )
+
+log = logging.getLogger("app.properties")
 
 router = APIRouter()
 lead_matches_router = APIRouter()
@@ -254,6 +257,33 @@ async def import_listings(
         report = await import_export_csv(text, db)
     except ExportRejected as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
+
+    # The other half of the manual export: new listings are only useful if the
+    # asks already waiting get rescored against them. Silent on purpose — a
+    # second email about the same request would be a notice nobody asked for,
+    # and the picker she is about to open reads the stored ranking anyway.
+    #
+    # After the import committed, and wrapped: the upload has already
+    # succeeded, so a scoring bug must not turn it into a 500 for the person
+    # who just spent part of a metered MLS allowance producing the file.
+    try:
+        from app.models import ListingRequest, ListingRequestStatus
+        from app.services.listing_requests import suggest_for_request
+
+        waiting = (
+            await db.execute(
+                select(ListingRequest.id).where(
+                    ListingRequest.status == ListingRequestStatus.OPEN
+                )
+            )
+        ).scalars().all()
+        for request_id in waiting:
+            await suggest_for_request(int(request_id))
+        if waiting:
+            log.info("Import: rescored %d open options requests", len(waiting))
+    except Exception as exc:  # noqa: BLE001 — the upload already succeeded
+        log.error("Import: could not rescore open requests: %s", exc)
+
     return ImportResult(
         created=report.created,
         updated=report.updated,
