@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.137.0";
+export const CURRENT_VERSION = "0.137.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.137.1",
+    date: "2026-09-20",
+    title: {
+      en: "Houses and a time, not one or the other",
+      es: "Las casas y la hora, no una cosa u otra",
+    },
+    changes: [
+      {
+        en: "Asking to see property used to switch off the link that lets somebody say when they want to be called, so the last automated reply closed with \"someone will be in touch shortly\" — the vaguest sentence this product can write, and the exact one the link exists to replace. Now the reply carries both: a person is picking the shortlist, and here is where you choose your moment.",
+        es: "Pedir ver propiedades apagaba el enlace para decir cuándo quieres que te llamen, así que la última respuesta automática terminaba con «alguien te contactará pronto» — la frase más vaga que este producto sabe escribir, y justo la que el enlace venía a sustituir. Ahora el correo lleva las dos cosas: una persona elige la lista, y aquí eliges tu momento.",
+      },
+      {
+        en: "A lead may hold one open request, so the row the link points at is the row the agency works from. Filing them in the wrong order silently cost the agency its \"pick up to six\" email while the reply still looked perfect — caught by asserting the email, not the reply.",
+        es: "Un lead sólo puede tener una petición abierta, así que la fila del enlace es la misma en la que trabaja la agencia. Abrirlas en el orden equivocado dejaba a la agencia sin su correo para elegir mientras la respuesta seguía pareciendo perfecta — lo cazó una aserción sobre el correo, no sobre la respuesta.",
+      },
+    ],
+  },
   {
     version: "0.137.0",
     date: "2026-09-19",

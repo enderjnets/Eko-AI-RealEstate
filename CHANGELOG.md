@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.137.1] - 2026-09-20
+
+### Fixed
+- The last automated reply carries the callback link even when the person asked
+  to see property. It used to be suppressed on the reasoning that somebody who
+  wants houses should not be handed a calendar; measured on lead 1278 the reply
+  then closed with "someone from our team will be in touch with you shortly",
+  which is the vaguest sentence this product can produce and the exact one the
+  link replaces. The shortlist takes a person and a day; the call is what they
+  choose a time for.
+
+### Notes
+- A lead may hold ONE open `listing_requests` row (partial unique index on
+  `lead_id WHERE status = 'open'`), so the link and the agency's picker point
+  at the same row and `origin` records who opened it. Opening the callback row
+  first silently stopped the "pick up to six" notice while the reply still
+  looked right — `test_asking_for_houses_still_gets_the_link_to_pick_a_time`
+  asserts the email, not just the reply, for that reason.
+- The row is opened inside the turn's transaction and the notice is sent after
+  the commit. Doing both early deadlocked the turn against itself: the notice
+  writes `leads.meta` from a second session while the turn still holds that
+  row. It hung a run for two minutes and `pg_stat_activity` named both sides.
+- `_last_automated_reply_note` no longer asks the model to close by inviting a
+  time. `_callback_invite` appends that line itself, so both together asked for
+  a time twice.
+
 ## [0.137.0] - 2026-09-19
 
 ### Added

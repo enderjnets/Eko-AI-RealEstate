@@ -1008,9 +1008,12 @@ async def _automated_replies_so_far(lead_id: int, db: AsyncSession) -> int:
 def _last_automated_reply_note(callback_url: str | None) -> str:
     """What to say on the last reply the assistant is allowed to write.
 
-    The URL is appended by code, never by the model: a model asked to reproduce
-    a signed token reproduces it wrong, and a broken unsubscribe-shaped link is
-    worse than no link. The model writes the sentence that leads into it.
+    The invitation AND the URL are appended by code, never by the model. The
+    token half is obvious — a model asked to reproduce a signed token reproduces
+    it wrong. The sentence matters just as much: the first version told the
+    model to "end by inviting them to say when", and `_callback_invite` then
+    appended its own invitation underneath, so the reply asked for a time twice.
+    The model's job here is to stop, not to close.
     """
     if not callback_url:
         return (
@@ -1020,10 +1023,11 @@ def _last_automated_reply_note(callback_url: str | None) -> str:
         )
     return (
         "\n\nESTA ES TU ÚLTIMA RESPUESTA a esta persona: a partir de aquí "
-        "contesta un humano. Termina invitándola a decir CUÁNDO prefiere que "
-        "la llamen — el enlace para hacerlo se añade solo debajo, así que NO "
-        "lo escribas tú ni te inventes ninguna dirección. NO prometas una hora "
-        "concreta."
+        "contesta un humano. Debajo de lo que escribas se añade SOLA una línea "
+        "que la invita a elegir cuándo quiere que la llamen, con su enlace. NO "
+        "la escribas tú, NO inventes ninguna dirección y NO cierres pidiéndole "
+        "una hora: si lo haces, el correo se lo pide dos veces. NO prometas una "
+        "hora concreta."
     )
 
 
@@ -2146,15 +2150,65 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     system_prompt += await _real_slots_note(agent_cfg, inbound.content, db, lead)
     # The last reply the assistant is allowed carries the way to reach a human.
     # Opened here, before the prompt is assembled, because the model is told
-    # whether there is a link and writes a different closing sentence either
-    # way — and never writes the address itself.
+    # whether there is a link and writes a different closing either way — and
+    # never writes the address itself.
+    #
+    # It used to be skipped when the person had asked to see property, on the
+    # reasoning that somebody who wants houses should not be handed a calendar.
+    # Measured on the first real run that reached this line (lead 1278,
+    # 2026-09-20): they asked for listings, the picker was suppressed, and the
+    # reply closed with "someone from our team will be in touch" — which is the
+    # vaguest thing this product can say, and the whole point of the link was to
+    # replace it. The two are not rivals: the shortlist comes from a person and
+    # takes a day, the call is what they choose a time for.
     callback_url: str | None = None
-    if last_allowed and not wants_listings:
-        from app.services.listing_requests import open_callback_link  # noqa: PLC0415
-
-        callback_url = await open_callback_link(lead.id)
+    early_request_id: int | None = None
+    early_created = False
     if last_allowed:
+        from app.services.listing_requests import open_link  # noqa: PLC0415
+
+        # The ROW opens here and the NOTICE does not, and the split is not
+        # tidiness. The model has to be told whether there is a link before it
+        # writes, so the row cannot wait for the commit; the notice writes
+        # `leads.meta` from a second session, so it cannot come before it —
+        # doing both here deadlocked the turn against itself and hung a run for
+        # two minutes. `_options_notice` below is the other half.
+        #
+        # A lead may hold only ONE open request, so `origin` has to be decided
+        # here too: somebody who asked to see houses gets the row whose notice
+        # asks the agency to PICK, not the one that only says "call them".
+        early_origin = "message" if wants_listings else "callback"
+        callback_url, early_request_id, early_created = await open_link(
+            lead.id, origin=early_origin
+        )
         system_prompt += _last_automated_reply_note(callback_url)
+
+    async def _options_notice() -> bool:
+        """Tell the agency to pick a shortlist. Only safe AFTER the commit.
+
+        One function for the three exits that need it, because the row may
+        already have been opened above to make the reply's link — in which case
+        `open_request` would hand back `created=False` and nobody would ever be
+        told. That is the bug this indirection exists to prevent, and it is
+        invisible from the reply, which looks perfect either way.
+        """
+        if early_created and early_request_id is not None:
+            from app.services.lead_notify import (  # noqa: PLC0415
+                send_new_lead_notice as _notice,
+            )
+
+            await _notice(
+                lead.id,
+                inbound.id,
+                origin="options",
+                conversation_id=conv.id,
+                request_id=early_request_id,
+            )
+            await _mark_handoff_told(lead.id)
+            return True
+        return await _open_options_request(
+            lead.id, message_id=inbound.id, conversation_id=conv.id
+        )
 
     if wants_listings:
         system_prompt += _options_coming_note()
@@ -2278,9 +2332,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
             if wants_listings:
                 # The most important case there is for this branch: they asked
                 # to see property and we cannot even acknowledge it.
-                told = await _open_options_request(
-                    lead.id, message_id=inbound.id, conversation_id=conv.id
-                )
+                told = await _options_notice()
             if is_new_lead and not told:
                 from app.services.lead_notify import (  # noqa: PLC0415
                     send_new_lead_notice,
@@ -2405,9 +2457,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         # objectionable — our own draft was — and dropping their request
         # because our answer was flagged would punish them for our sentence.
         if wants_listings:
-            await _open_options_request(
-                lead.id, message_id=inbound.id, conversation_id=conv.id
-            )
+            await _options_notice()
         return {
             "status": "blocked_fair_housing",
             "lead_id": lead.id,
@@ -2527,9 +2577,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # arriving beside it saying less about the same lead.
     told_options = False
     if wants_listings:
-        told_options = await _open_options_request(
-            lead.id, message_id=inbound.id, conversation_id=conv.id
-        )
+        told_options = await _options_notice()
 
     if told_options:
         pass

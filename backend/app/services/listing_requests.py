@@ -150,6 +150,41 @@ async def open_request(lead_id: int, *, origin: str = "message") -> tuple[int | 
         return None, False
 
 
+async def open_link(lead_id: int, *, origin: str) -> tuple[str | None, int | None, bool]:
+    """`(url, request id, created)` for this lead's open request, opening one.
+
+    The caller gets `created` back instead of a notice, and that split is the
+    whole reason this function exists. A turn needs the URL BEFORE it generates
+    its reply — the model is told whether there is a link — but the notice that
+    goes with a new request writes `leads.meta` from a second session, and
+    doing that while the turn's own transaction still holds that row deadlocks
+    the turn against itself.
+
+    Not a fear: it hung a run for two minutes, and `pg_stat_activity` named
+    both sides — one connection `idle in transaction`, the other waiting on
+    `UPDATE leads SET meta = …`. Opening the row is safe in the same place,
+    because the foreign key takes a share lock that does not fight the turn's
+    own update of the lead. So the row opens early and the notice waits for the
+    commit.
+
+    `origin` decides which notice the agency eventually gets. It matters here
+    because a lead may hold only ONE open request — a partial unique index on
+    `lead_id WHERE status = 'open'` — so whoever opens it first names it.
+    """
+    request_id, created = await open_request(lead_id, origin=origin)
+    if request_id is None:
+        return None, None, False
+    from app.db.base import get_session_factory
+
+    async with get_session_factory()() as db:
+        token = (
+            await db.execute(
+                select(ListingRequest.token).where(ListingRequest.id == request_id)
+            )
+        ).scalar_one_or_none()
+    return (options_url(token) if token else None), request_id, created
+
+
 async def open_callback_link(lead_id: int) -> str | None:
     """A public URL where this person can say when they want to be called.
 
@@ -163,18 +198,8 @@ async def open_callback_link(lead_id: int) -> str | None:
     Returns None when a link cannot be made, and the caller is expected to say
     the same thing without one rather than print a broken address.
     """
-    request_id, _created = await open_request(lead_id, origin="callback")
-    if request_id is None:
-        return None
-    from app.db.base import get_session_factory
-
-    async with get_session_factory()() as db:
-        token = (
-            await db.execute(
-                select(ListingRequest.token).where(ListingRequest.id == request_id)
-            )
-        ).scalar_one_or_none()
-    return options_url(token) if token else None
+    url, _request_id, _created = await open_link(lead_id, origin="callback")
+    return url
 
 
 def _money(value: object) -> str | None:

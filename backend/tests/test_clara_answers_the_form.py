@@ -721,7 +721,11 @@ def test_the_last_reply_is_told_not_to_write_the_address() -> None:
 
     with_link = _last_automated_reply_note("https://x.test/options/tok")
     assert "ÚLTIMA RESPUESTA" in with_link
-    assert "NO lo escribas tú" in with_link
+    assert "NO inventes ninguna dirección" in with_link
+    # And it must not ask the model to close by requesting a time either: the
+    # code appends that line itself, so a model that also writes one makes the
+    # email ask twice.
+    assert "NO cierres pidiéndole" in with_link
     without = _last_automated_reply_note(None)
     assert "ÚLTIMA RESPUESTA" in without
     # With no link there is nothing to invite them to, so it must not ask.
@@ -885,5 +889,127 @@ async def test_after_two_replies_the_model_is_never_called_again(
         ]
         assert again_to_agency, "but she hears about it every time"
         assert lead_id
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_asking_for_houses_still_gets_the_link_to_pick_a_time(
+    database_url: str, agency_mailbox: None
+) -> None:
+    """Both, not one. Measured on lead 1278 in production on 2026-09-20.
+
+    The picker used to be skipped whenever the person asked to see property, so
+    the last automated reply closed with "someone from our team will be in touch
+    with you shortly" — the vaguest sentence this product can produce, and the
+    exact thing the link exists to replace. The shortlist takes a person and a
+    day; the call is what they choose a time for. They are not rivals.
+
+    A lead may hold ONE open request — a partial unique index on `lead_id WHERE
+    status = 'open'` — so the row is the same row, and `origin` records which
+    caller made it. It has to be `message`: that is the one whose notice asks
+    the agency to pick. The first version of this fix opened the callback row
+    first, the origin came back `callback`, and the "pick up to six" email
+    silently stopped being sent.
+    """
+    from sqlalchemy import text as sql_text
+
+    from app.models.message import MessageSender, MessageStatus
+    from app.services._common import ParsedMessage
+    from app.services.classifier import IntentEntities, IntentResult
+    from app.services.conversation import _callback_invite, handle_inbound_message
+    from app.services.llm import LLMResult
+    from app.services.tenant_context import set_org_id
+
+    set_org_id(ORG)
+    email = f"both+{uuid.uuid4().hex[:8]}@form.test"
+    sender = _sender()
+    wants = IntentResult(
+        intent="buy",  # type: ignore[arg-type]
+        confidence=0.95,
+        entities=IntentEntities(wants_listings=True),
+    )
+    written = LLMResult(
+        text="Natalia will put a shortlist together for you.",
+        provider="minimax", model="MiniMax-M3", input_tokens=10, output_tokens=10,
+    )
+    try:
+        # One reply already spent, so this inbound is the LAST one allowed.
+        async with get_bypass_session_factory()() as db:
+            lead = Lead(org_id=ORG, phone=email, email=email, name="Probe", zone="Wash Park")
+            db.add(lead)
+            await db.flush()
+            conv = Conversation(org_id=ORG, lead_id=lead.id, channel="email")
+            db.add(conv)
+            await db.flush()
+            db.add(
+                Message(
+                    org_id=ORG,
+                    conversation_id=conv.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
+                    content="reply one",
+                    delivery_status=MessageStatus.SENT,
+                    internal=False,
+                )
+            )
+            await db.commit()
+            lead_id = lead.id
+
+        parsed = ParsedMessage(
+            channel="email",
+            external_id=f"houses-{uuid.uuid4().hex[:8]}",
+            from_identifier=email,
+            from_name="Probe",
+            content="Can you show me what is for sale in Wash Park?",
+            subject="Re: Your message",
+        )
+        from app.db.base import get_session_factory
+
+        direct, notices, breakdown = _senders(sender)
+        with patch(
+            "app.services.conversation.classify_intent", AsyncMock(return_value=wants)
+        ), patch(
+            "app.services.conversation.generate_reply", AsyncMock(return_value=written)
+        ), direct, notices, breakdown, org_scope(ORG):
+            async with get_session_factory()() as db:
+                await handle_inbound_message(parsed, db)
+
+        to_the_lead = [c for c in sender.await_args_list if c.kwargs.get("to") == email]
+        assert len(to_the_lead) == 1, "one reply, not one per branch"
+        body = to_the_lead[0].kwargs["body_text"]
+        sentence, words = _callback_invite("en")
+        assert sentence in body, f"the last reply must carry the picker: {body!r}"
+        # Asked for once. The code appends the invitation, so a model note that
+        # also tells it to close with one produces the same request twice.
+        assert body.count(sentence) == 1, body
+
+        html = to_the_lead[0].kwargs.get("body_html") or ""
+        assert f">{words}</a>" in html, "the HTML half hides it behind the words"
+
+        async with get_bypass_session_factory()() as db:
+            origins = sorted(
+                r[0] for r in (
+                    await db.execute(
+                        sql_text(
+                            "SELECT origin FROM listing_requests WHERE lead_id = :i"
+                        ),
+                        {"i": lead_id},
+                    )
+                ).all()
+            )
+        assert origins == ["message"], origins
+
+        # The row is only half of it. The agency has to be ASKED to pick, and
+        # that email is what the ordering bug took away while the link kept
+        # working — a failure no assertion about the reply would have seen.
+        to_agency = [
+            c for c in sender.await_args_list
+            if c.kwargs.get("to") == "form-probe@example.com"
+        ]
+        assert to_agency, "she has to be asked to pick the shortlist"
+        assert any(
+            "listings" in c.kwargs.get("subject", "") for c in to_agency
+        ), [c.kwargs.get("subject") for c in to_agency]
     finally:
         await _cleanup()
