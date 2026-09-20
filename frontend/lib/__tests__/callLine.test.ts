@@ -33,6 +33,9 @@ const PAGE_OF: Record<string, string[]> = {
   "/fall": ["app", "fall", "page.tsx"],
   "/calculator": ["app", "calculator", "page.tsx"],
   "/start": ["app", "start", "page.tsx"],
+  // The Journal: `isPublicPath` casa sub-rutas, asi que `/blog` abre
+  // tambien el articulo. El indice es el que representa la ruta.
+  "/blog": ["app", "blog", "page.tsx"],
 };
 
 describe("the call line", () => {

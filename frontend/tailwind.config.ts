@@ -34,6 +34,30 @@ const config: Config = {
         "ln-hair": "#DCD5C6",
         // v6: the ground under the pinned hero film.
         "ln-night": "#0F0E0C",
+
+        // The Journal ("jr-"). A third prefix rather than reusing "ln-",
+        // for the reason written above one level down: five of these match an
+        // "ln-" exactly, but six are only NEARLY the same — `ln-muted #8A8172`
+        // against this palette's faint #8A8272 is one hex digit, `ln-dark
+        // #2A2723` against the strip border #2A2621 is two. Borrowing a near
+        // match is a fidelity break nobody can see in review, and a later
+        // restyle of the landing page would silently move the article.
+        "jr-noir": "#0F0E0C",
+        "jr-ink": "#242219",
+        "jr-cream": "#F4F1EA",
+        "jr-warm": "#FBF9F4",
+        "jr-offwhite": "#F7F4ED",
+        "jr-body": "#333333",
+        "jr-body-muted": "#4A463D",
+        "jr-secondary": "#57534A",
+        "jr-faint": "#8A8272",
+        "jr-brass": "#8A7A5E",
+        "jr-brass-light": "#C6B48C",
+        "jr-rule": "#DCD5C6",
+        "jr-rule-strong": "#C6BEAD",
+        "jr-photo": "#E5DFD2",
+        "jr-strip-border": "#2A2621",
+        "jr-strip-fill": "#181613",
       },
       fontFamily: {
         display: ["Inter", "system-ui", "sans-serif"],

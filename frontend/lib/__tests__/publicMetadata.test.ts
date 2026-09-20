@@ -106,6 +106,39 @@ describe("public pages do not leak the platform's identity", () => {
     expect(metadata.robots).toMatchObject({ index: true });
   });
 
+  it("the journal's two pages declare their own title, description and card", async () => {
+    // Las dos se comparten en mensajes. Una `openGraph.title` sin declarar hace
+    // que la tarjeta diga «Eko AI Realtors — Dashboard» a quien creia recibir
+    // un articulo sobre doce casas.
+    for (const mod of ["../../app/blog/page", "../../app/blog/twelve-houses-worth-the-detour/page"]) {
+      const { metadata } = await import(mod);
+      expect(metadata.title, mod).toBeTruthy();
+      expect(metadata.description, mod).toBeTruthy();
+      expect(metadata.openGraph?.title, mod).toBeTruthy();
+      expect(metadata.appleWebApp, mod).toBeTruthy();
+    }
+  });
+
+  it("nothing the journal publishes names the platform", async () => {
+    for (const mod of ["../../app/blog/page", "../../app/blog/twelve-houses-worth-the-detour/page"]) {
+      const { metadata } = await import(mod);
+      for (const s of strings(metadata)) expect(s, mod).not.toMatch(PLATFORM);
+    }
+  });
+
+  it("the journal follows its own publication gate, not a hardcoded answer", async () => {
+    // Precedente: `/start` tambien es publica y deliberadamente fuera del
+    // indice. Aqui el motivo es distinto — las fotografias son de ocho
+    // corredurias ajenas y el permiso escrito aun no existe — pero la forma es
+    // la misma, y lo que se comprueba es que las dos paginas digan LO MISMO que
+    // la puerta, no un valor escrito a mano que se quede atras cuando se abra.
+    const { PUBLISHED } = await import("../../lib/journal/publication");
+    for (const mod of ["../../app/blog/page", "../../app/blog/twelve-houses-worth-the-detour/page"]) {
+      const { metadata } = await import(mod);
+      expect(metadata.robots, mod).toMatchObject({ index: PUBLISHED, follow: PUBLISHED });
+    }
+  });
+
   it("both public pages set their own home-screen name", async () => {
     // The root layout's is the platform's. Metadata merges, so an undeclared
     // one is inherited and a seller's iPhone shows their agent's vendor.

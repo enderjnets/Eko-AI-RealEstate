@@ -1,0 +1,275 @@
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+
+import { AS_OF, ENTRIES, PAGE, PASSED, SLUG, STRIP } from "@/lib/journal/twelveHouses";
+import { PUBLISHED } from "@/lib/journal/publication";
+
+/**
+ * The Journal: los datos, los derechos y la puerta de publicacion.
+ *
+ * Con la forma de `fallGuide.test.ts`, y por los mismos motivos, mas uno que
+ * solo tiene esta pieza. Los tres fallos silenciosos que vigila:
+ *
+ * **1. Un dato que enganaria.** Las cifras describen la casa de otro. La ficha
+ * 05 es 644 pies cuadrados sobre 744 acres, lo que da $40.373 por pie: el
+ * numero es correcto y la afirmacion es falsa. El diseno lo omite a proposito y
+ * aqui se comprueba que sigue omitido, porque «se cayo un campo» y «se quito
+ * aposta» se parecen mucho en un diff.
+ *
+ * **2. Un literal de correduria.** `lib/landing.ts` es la unica pieza
+ * autorizada a saber cual es la nuestra. Un literal sobrevive a una instalacion
+ * que no ha configurado ninguna, y entonces la pagina afirma algo que nadie ha
+ * comprobado. Se comprueban las dos paginas Y el modulo de datos: partir el
+ * contenido fuera de la pagina es justo el movimiento que deja un literal en la
+ * mitad que nadie mira.
+ *
+ * **3. Cuarenta y ocho fotos ajenas en un repositorio publico.** No estan, y
+ * este fichero es lo que lo mantiene asi: `git ls-files` tiene que devolver
+ * cero. Una regla de `.gitignore` se borra sin querer; un test en rojo no.
+ */
+
+const ROOT = resolve(__dirname, "../..");
+const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
+
+const INDEX_PAGE = "app/blog/page.tsx";
+const ARTICLE_PAGE = "app/blog/twelve-houses-worth-the-detour/page.tsx";
+const DATA = "lib/journal/twelveHouses.ts";
+const RIGHTS = "lib/journal/DERECHOS.md";
+
+describe("las doce fichas", () => {
+  it("son doce, numeradas del 1 al 12 sin huecos", () => {
+    expect(ENTRIES).toHaveLength(12);
+    expect(ENTRIES.map((e) => e.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(new Set(ENTRIES.map((e) => e.slug)).size).toBe(12);
+  });
+
+  it("la tira tiene un panel por ficha y apunta a su ancla", () => {
+    expect(STRIP).toHaveLength(12);
+    expect(STRIP.map((p) => p.n)).toEqual(ENTRIES.map((e) => e.n));
+    for (const panel of STRIP) {
+      expect(panel.name.length, `panel ${panel.n} sin nombre`).toBeGreaterThan(2);
+      expect(panel.where, `panel ${panel.n} sin ciudad y precio`).toMatch(/\S+\s+·\s+\$/);
+    }
+  });
+
+  it("cada ficha trae cuatro fotografias, y sus nombres son los de su slug", () => {
+    for (const e of ENTRIES) {
+      expect(e.photos, `ficha ${e.n}`).toHaveLength(4);
+      e.photos.forEach((photo, i) => {
+        expect(photo, `ficha ${e.n}, foto ${i}`).toBe(`${e.slug}-${i}.jpg`);
+      });
+    }
+  });
+
+  it("cada fotografia lleva un alt que describe algo", () => {
+    // 20 caracteres es el mismo suelo que usa `fallGuide.test.ts`: por debajo
+    // de eso lo que hay es una etiqueta, no una descripcion.
+    for (const e of ENTRIES) {
+      expect(e.alts, `ficha ${e.n}`).toHaveLength(4);
+      for (const alt of e.alts) {
+        expect(alt.length, `alt corto en la ficha ${e.n}: ${alt}`).toBeGreaterThan(20);
+      }
+    }
+  });
+
+  it("cada ficha tiene titular, direccion, cuerpo y nota", () => {
+    for (const e of ENTRIES) {
+      expect(e.headline.length, `ficha ${e.n}`).toBeGreaterThan(20);
+      expect(e.address.length, `ficha ${e.n}`).toBeGreaterThan(10);
+      expect(e.body.length, `ficha ${e.n}`).toBeGreaterThan(80);
+      expect(e.note.map((s) => s.t).join("").length, `ficha ${e.n}`).toBeGreaterThan(30);
+      expect(e.noteLabel, `ficha ${e.n}`).toBe("Worth knowing");
+    }
+  });
+
+  it("once fichas traen los ocho datos; la 05 trae seis, y no por accidente", () => {
+    for (const e of ENTRIES) {
+      if (e.n === 5) continue;
+      expect(e.facts.length, `ficha ${e.n}`).toBe(8);
+    }
+
+    const five = ENTRIES[4];
+    const labels = five.facts.map((f) => f.label);
+    expect(five.facts).toHaveLength(6);
+    // Las dos que faltan son exactamente estas. 644 pies cuadrados sobre 744
+    // acres dan un precio por pie que describe una cabana, no la propiedad.
+    expect(labels).not.toContain("Living area");
+    expect(labels).not.toContain("Per sq ft");
+    // Y la nota tiene que seguir diciendo por que, o la omision parece un fallo.
+    expect(five.note.map((s) => s.t).join("")).toMatch(/price per square foot/i);
+  });
+
+  it("ningun dato sale con el hueco del origen escrito dentro", () => {
+    // `listings.json` trae `style: "MISSING"` en la ficha 05. Si alguna vez se
+    // usa ese campo, esto lo caza antes de que se imprima tal cual.
+    const all = JSON.stringify(ENTRIES);
+    expect(all).not.toMatch(/MISSING/);
+    expect(all).not.toMatch(/undefined|\bnull\b|NaN/);
+  });
+
+  it("hay seis descartadas, cada una con su motivo", () => {
+    expect(PASSED).toHaveLength(6);
+    for (const row of PASSED) {
+      expect(row.price).toMatch(/^\$[\d,]+$/);
+      expect(row.city.length).toBeGreaterThan(2);
+      expect(row.street.length).toBeGreaterThan(5);
+      expect(row.reason.map((s) => s.t).join("").length).toBeGreaterThan(40);
+    }
+  });
+
+  it("las cuatro cifras de la barra son numeros, y la ultima es doce", () => {
+    expect(PAGE.stats).toHaveLength(4);
+    for (const s of PAGE.stats) expect(Number.isInteger(s.value)).toBe(true);
+    expect(PAGE.stats[PAGE.stats.length - 1].value).toBe(ENTRIES.length);
+  });
+
+  it("la fecha del corte es una fecha de verdad", () => {
+    expect(AS_OF).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(Number.isNaN(Date.parse(AS_OF))).toBe(false);
+  });
+});
+
+describe("los derechos de las fotografias", () => {
+  it("cada ficha acredita a su correduria y enlaza a su registro", () => {
+    // Es la letra `b` de la Regla 6.10.F.1: difundir el anuncio de otro obliga
+    // a revelar su correduria de forma visible.
+    for (const e of ENTRIES) {
+      expect(e.brokerage.length, `ficha ${e.n} sin correduria`).toBeGreaterThan(4);
+      // El pie esta compuesto con guion largo donde el registro del MLS trae
+      // uno corto —«Sotheby's International Realty — Hyman Mall»—, asi que se
+      // comparan normalizados. Lo que importa es que la correduria este
+      // nombrada, no como se tipografio el guion.
+      const dash = (x: string) => x.replace(/[\u2010-\u2015]/g, "-");
+      expect(dash(e.caption), `ficha ${e.n}: el pie no nombra a ${e.brokerage}`).toContain(
+        dash(e.brokerage),
+      );
+      expect(e.listingUrl, `ficha ${e.n}`).toMatch(/^https:\/\//);
+      expect(e.mls, `ficha ${e.n}`).toMatch(/^\d+$/);
+    }
+  });
+
+  it("el aviso de derechos sigue en la pagina", () => {
+    expect(PAGE.rights).toMatch(/may not be reproduced/i);
+    expect(read(ARTICLE_PAGE)).toContain("PAGE.rights");
+  });
+
+  it("existe el rastro en papel, con las doce filas", () => {
+    const doc = read(RIGHTS);
+    for (const e of ENTRIES) {
+      expect(doc, `${RIGHTS} no menciona el MLS ${e.mls}`).toContain(e.mls);
+    }
+  });
+
+  it("ninguna fotografia del Journal esta versionada", () => {
+    // La decision de Ender del 20-sep-2026: fuera del repositorio hasta que
+    // haya permiso escrito. El repositorio es publico y el historial de git no
+    // se deshace, asi que esto se vigila y no se recuerda.
+    const tracked = execFileSync(
+      "git",
+      ["ls-files", "frontend/public/blog/img"],
+      { cwd: resolve(ROOT, ".."), encoding: "utf8" },
+    ).trim();
+    expect(tracked, `hay fotos versionadas:\n${tracked}`).toBe("");
+  });
+});
+
+describe("la puerta de publicacion", () => {
+  it("no se abre mientras quede un permiso pendiente", () => {
+    const pending = ENTRIES.filter((e) => e.permission !== "granted");
+    if (PUBLISHED) {
+      expect(
+        pending.map((e) => `${e.n} ${e.brokerage}`),
+        "PUBLISHED esta en true con permisos sin conceder: ver lib/journal/DERECHOS.md",
+      ).toEqual([]);
+    } else {
+      // Con la puerta cerrada las dos paginas tienen que quedarse fuera de los
+      // indices. Es la mitad que se olvida: quitar el enlace y dejar el
+      // `robots: index` deja la pagina igual de encontrable.
+      for (const page of [INDEX_PAGE, ARTICLE_PAGE]) {
+        expect(read(page), `${page} no ata robots a la puerta`).toContain(
+          "robots: { index: PUBLISHED, follow: PUBLISHED }",
+        );
+      }
+    }
+  });
+
+  it("el sitemap no invita a rastrear lo que la pagina marca como no indexable", () => {
+    // Listar la ruta y decirle al rastreador que no la indexe son ordenes
+    // opuestas, y el sitemap es la que ademas le pide que venga.
+    const src = read("app/sitemap.ts");
+    expect(src).toContain("JOURNAL_PUBLISHED");
+    expect(src).toMatch(/PUBLIC_PATHS\.filter/);
+  });
+
+  it("la portada solo enlaza The Journal cuando la puerta esta abierta", () => {
+    const src = read("components/landing/Landing.tsx");
+    // Dos son JSX (`href="/blog"`) y el tercero es la entrada del menu movil,
+    // que es un objeto (`href: "/blog"`). Contar solo la primera forma deja el
+    // menu del telefono fuera de la comprobacion.
+    const links = src.match(/href[=:] ?"\/blog"/g) ?? [];
+    expect(links.length, "la portada deberia enlazar /blog en tres sitios").toBe(3);
+    // Los tres van tras la misma condicion.
+    expect((src.match(/JOURNAL_PUBLISHED/g) ?? []).length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe("la pagina dice quien anuncia", () => {
+  it("no nombra ninguna correduria propia: las lineas reguladas salen de config", () => {
+    // Misma guarda que `/fall`. Aqui cuenta el doble: el prototipo traia el
+    // nombre escrito en la cabecera y el logo en el pie.
+    for (const file of [INDEX_PAGE, ARTICLE_PAGE, DATA, "components/journal/JournalChrome.tsx"]) {
+      expect(read(file), `${file} nombra una correduria a mano`).not.toMatch(/Engel/i);
+    }
+    expect(read("components/journal/JournalChrome.tsx")).toContain("LANDING.brokerage");
+  });
+
+  it("las dos paginas montan el formulario compartido, no una copia", () => {
+    for (const file of [INDEX_PAGE, ARTICLE_PAGE]) {
+      const src = read(file);
+      expect(src, `${file}`).toContain("<ConsultForm");
+      expect(src, `${file}`).toContain('id="consult"');
+      expect(src, `${file}`).toContain('href="#consult"');
+      // Un <form> propio aqui seria un segundo registro de consentimiento.
+      expect(src, `${file} escribe su propio formulario`).not.toMatch(/<form\b/);
+    }
+  });
+
+  it("el articulo ancla las doce fichas donde la tira las busca", () => {
+    const src = read(ARTICLE_PAGE);
+    expect(src).toContain("id={`n${entry.n}`}");
+    expect(read("components/journal/Strip.tsx")).toContain("href={`#n${panel.n}`}");
+  });
+});
+
+describe("los ficheros que la pagina pide", () => {
+  it("el skyline esta en su sitio", () => {
+    expect(existsSync(resolve(ROOT, "public/blog/denver-skyline.jpg"))).toBe(true);
+  });
+
+  it("las 48 fotografias estan, o el guion dice como traerlas", () => {
+    // No se afirma que existan: por decision, viven fuera del repositorio y en
+    // un portatil recien clonado NO estan. Lo que si tiene que existir siempre
+    // es el guion que las trae, y el aviso de por que.
+    const script = "scripts/journal-photos.sh";
+    expect(existsSync(resolve(ROOT, script))).toBe(true);
+    expect(read(script)).toMatch(/strictly prohibited/);
+
+    // O estan las 48, o no esta ninguna. Un conjunto a medias significa que el
+    // guion se quedo a medias, y eso si es un fallo. La asercion corre SIEMPRE:
+    // una que solo se evalua dentro de un `if` sale verde con el defecto y sin el.
+    const missing = ENTRIES.flatMap((e) => e.photos).filter(
+      (p) => !existsSync(resolve(ROOT, "public/blog/img", p)),
+    );
+    expect(
+      [0, 48],
+      `faltan ${missing.length} de 48 fotos: corre frontend/${script}`,
+    ).toContain(missing.length);
+  });
+
+  it("el slug de la ruta y el del modulo son el mismo", () => {
+    expect(SLUG).toBe("twelve-houses-worth-the-detour");
+    expect(existsSync(resolve(ROOT, "app/blog", SLUG, "page.tsx"))).toBe(true);
+  });
+});

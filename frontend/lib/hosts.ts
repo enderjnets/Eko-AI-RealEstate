@@ -91,7 +91,24 @@ export const PANEL_HOST = hostOf(PANEL_URL);
  * people the campaign exists to reach, and a failure that looks like nothing at
  * all from inside the product.
  */
-export const PUBLIC_PATHS = ["/", "/contact", "/fall", "/calculator", "/start"];
+/**
+ * `/blog` esta aqui porque sin el la seccion no existe para nadie: el
+ * middleware le da un 308 al panel, que en la marca sale como un salto al
+ * subdominio de demostracion. Medido el 20-sep-2026, antes de esta linea:
+ * `curl -sI https://www.denverhomestory.com/blog` devolvia
+ * `308 → https://inmo-demo.ekoaiautomation.com/blog`.
+ *
+ * `isPublicPath` casa sub-rutas, asi que esta sola entrada abre tambien el
+ * articulo en `/blog/<slug>`.
+ */
+export const PUBLIC_PATHS = [
+  "/",
+  "/contact",
+  "/fall",
+  "/calculator",
+  "/start",
+  "/blog",
+];
 
 /** `/contact` and `/contact/anything` both count; `/contactos` does not. */
 export function isPublicPath(pathname: string): boolean {

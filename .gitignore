@@ -87,3 +87,7 @@ docker-compose.override.yml
 # Material de trabajo con datos de clientes reales (MLS, direcciones, cierres).
 # Nunca se commitea: sale de REcolorado y es de la cartera de la agente.
 scratchpad/
+
+# Fotografias del Journal: son de corredurias ajenas y este repo es
+# publico. Ver frontend/scripts/journal-photos.sh y lib/journal/DERECHOS.md.
+frontend/public/blog/img/

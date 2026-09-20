@@ -39,6 +39,7 @@ import { ArrowDown, ArrowRight, Building2, CalendarCheck, Clock, Menu, Phone, Ru
 import { LANDING, dialable } from "@/lib/landing";
 import { STAFF_LOGIN_HREF } from "@/lib/hosts";
 import { GUIDES } from "@/lib/guides";
+import { PUBLISHED as JOURNAL_PUBLISHED } from "@/lib/journal/publication";
 import { LandingEffects } from "@/components/landing/LandingEffects";
 import { LandingTracker } from "@/components/landing/LandingTracker";
 import { useI18n } from "@/lib/i18n";
@@ -133,6 +134,14 @@ function LandingNav({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: (
           <a href="#guides" className={link}>
             {t("landing.nav.guides")}
           </a>
+          {/* `hrefLang` porque The Journal esta en ingles y esta cabecera la lee
+              tambien un visitante en espanol: es la misma honestidad que lleva
+              la guia de otono en `GUIDES`, y no cuesta una traduccion a medias. */}
+          {JOURNAL_PUBLISHED && (
+            <a href="/blog" hrefLang="en" className={link}>
+              {t("landing.nav.journal")}
+            </a>
+          )}
           <a href="#about" className={link}>
             {t("landing.nav.about")}
           </a>
@@ -231,6 +240,12 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
     { href: "#how", label: t("landing.menu.how"), italic: false },
     { href: "#markets", label: t("landing.menu.markets"), italic: false },
     { href: "#guides", label: t("landing.menu.guides"), italic: false },
+    // The Journal va justo antes de la llamada a la accion, como en el diseno.
+    // `lang` marca que lo que hay al otro lado esta en ingles; es el unico
+    // destino del menu que sale de la portada.
+    ...(JOURNAL_PUBLISHED
+      ? [{ href: "/blog", label: t("landing.menu.journal"), italic: false, lang: "en" }]
+      : []),
     { href: "#consult", label: t("landing.nav.book"), italic: true },
   ];
 
@@ -257,10 +272,11 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
       </div>
 
       <nav className="my-auto flex flex-col">
-        {items.map(({ href, label, italic }, i) => (
+        {items.map(({ href, label, italic, lang }, i) => (
           <a
             key={href}
             href={href}
+            hrefLang={lang}
             onClick={onClose}
             data-menu-link="1"
             className="flex items-baseline justify-between border-t border-ln-canvas/15 py-[18px] font-ln-serif text-[40px] font-light leading-none text-ln-cream last:border-b"
@@ -799,6 +815,18 @@ function LandingFooter() {
               {t(`landing.guides.${key}.title`)}
             </a>
           ))}
+          {/* The Journal va aparte de `GUIDES` a proposito: esa lista es de
+              guias y herramientas, y meter un blog dentro obligaria a
+              etiquetarlo como lo que no es en las dos rejillas que la leen. */}
+          {JOURNAL_PUBLISHED && (
+            <a
+              href="/blog"
+              hrefLang="en"
+              className="inline-flex min-h-[44px] items-center whitespace-nowrap text-[11px] tracking-[0.04em] text-ln-muted underline underline-offset-4 hover:text-ln-gold"
+            >
+              {t("landing.nav.journal")}
+            </a>
+          )}
         </nav>
         <div className="flex items-center gap-6">
           {/* The videos send people here; this is the way back. Each icon

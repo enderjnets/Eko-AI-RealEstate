@@ -29,6 +29,13 @@ body:has(.eko-landing) :focus-visible { outline-color: #7A5C34; }
    "Drag to explore" hint and the peeking next card, not a bar. */
 .eko-landing [data-rail] { scrollbar-width: none; -ms-overflow-style: none; }
 .eko-landing [data-rail]::-webkit-scrollbar { display: none; }
+
+/* The Journal's twelve-panel strip, same idea and the same two rules — but NOT
+   scoped to `.eko-landing`, because the Journal is its own page and never
+   carries that class. These two are among the very few rules in the design
+   that cannot be expressed inline. */
+[data-strip] { scrollbar-width: none; -ms-overflow-style: none; }
+[data-strip]::-webkit-scrollbar { width: 0; height: 0; display: none; }
 html:has(.eko-landing) { scroll-behavior: smooth; }
 /* The original engine ships body{overflow-x:hidden} for a reason: an armed
    clip-reveal is scale(1.14) until it fires, and a scaled full-width element
