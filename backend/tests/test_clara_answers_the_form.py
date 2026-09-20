@@ -31,6 +31,7 @@ depended on what a model said would be asserting the model.
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -1105,5 +1106,97 @@ async def test_the_turn_clara_hands_over_is_never_silent(
             "last automated reply" in c.kwargs.get("body_text", "")
             for c in to_agency
         ), [c.kwargs.get("body_text", "")[:120] for c in to_agency]
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_what_they_asked_for_survives_the_turn(
+    database_url: str, agency_mailbox: None
+) -> None:
+    """The wiring, not the function. Measured on lead 1279, 2026-09-20.
+
+    `storable_count` can be perfect and this can still be broken: the turn has
+    to actually assign the four fields, and a test of the helper would pass
+    against a pipeline that never called it. That is the mistake this file has
+    already made twice — once with the reader's name, once with the footer.
+
+    The second half is the one worth having. Somebody correcting themselves
+    ("no, three bedrooms") must end up with three: a first guess that cannot be
+    corrected sticks to the lead for ever and quietly matches the wrong houses.
+    """
+    from app.services._common import ParsedMessage
+    from app.services.classifier import IntentEntities, IntentResult
+    from app.services.conversation import handle_inbound_message
+    from app.services.llm import LLMResult
+    from app.services.tenant_context import set_org_id
+
+    set_org_id(ORG)
+    email = f"asked+{uuid.uuid4().hex[:8]}@form.test"
+    sender = _sender()
+
+    def _said(**entities: object) -> IntentResult:
+        return IntentResult(
+            intent="buy",  # type: ignore[arg-type]
+            confidence=0.95,
+            entities=IntentEntities(**entities),  # type: ignore[arg-type]
+        )
+
+    written = LLMResult(
+        text="Noted.", provider="minimax", model="MiniMax-M3",
+        input_tokens=10, output_tokens=10,
+    )
+
+    async def _turn(result: IntentResult, content: str) -> None:
+        from app.db.base import get_session_factory
+
+        parsed = ParsedMessage(
+            channel="email",
+            external_id=f"asked-{uuid.uuid4().hex[:8]}",
+            from_identifier=email,
+            from_name="Probe",
+            content=content,
+            subject="Re: Your message",
+        )
+        direct, notices, breakdown = _senders(sender)
+        with patch(
+            "app.services.conversation.classify_intent", AsyncMock(return_value=result)
+        ), patch(
+            "app.services.conversation.generate_reply", AsyncMock(return_value=written)
+        ), direct, notices, breakdown, org_scope(ORG):
+            async with get_session_factory()() as db:
+                await handle_inbound_message(parsed, db)
+
+    try:
+        await _turn(
+            _said(
+                zone="DTC", beds_min=2, baths_min=2, garage_min=2,
+                wants_office=True, urgency="months",
+            ),
+            "We are looking a house, in DTC, garage with space for two SUV, "
+            "2 bet, office, 2 bath, we want to buy in 6 month",
+        )
+
+        async with get_bypass_session_factory()() as db:
+            lead = (
+                await db.execute(select(Lead).where(Lead.email == email))
+            ).scalar_one()
+            assert lead.beds_min == 2
+            assert lead.baths_min == Decimal("2.0")
+            assert lead.garage_min == 2
+            assert lead.wants_office is True
+            assert lead.zone == "DTC"
+
+        # They correct themselves, and the correction wins.
+        await _turn(_said(beds_min=3), "Actually we need three bedrooms.")
+
+        async with get_bypass_session_factory()() as db:
+            lead = (
+                await db.execute(select(Lead).where(Lead.email == email))
+            ).scalar_one()
+            assert lead.beds_min == 3, "a count they corrected must not stick at the old one"
+            # And what they did not repeat is not forgotten.
+            assert lead.garage_min == 2
+            assert lead.wants_office is True
     finally:
         await _cleanup()

@@ -138,6 +138,23 @@ class Lead(Base):
 
     meta: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
+    # What they asked for beyond the zone and the budget. Typed rather than
+    # folded into `meta`, and `baths_min` is the one that decides it: it is
+    # compared against `properties.bathrooms`, which is NUMERIC(3,1) because
+    # half-baths exist, and a value that round-trips through JSON comes back a
+    # float. Mixing float and Decimal has already cost this codebase a crash in
+    # the matcher.
+    beds_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    baths_min: Mapped[Decimal | None] = mapped_column(Numeric(3, 1), nullable=True)
+    garage_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Asked for a study. NOT matchable and that is the point: the REcolorado
+    # Full export carries no office or den column — checked against the real
+    # 394-column header — so the shortlist says "not stated in the MLS" instead
+    # of quietly dropping a requirement somebody wrote down. Only `True` is
+    # ever written; NULL and False mean the same thing.
+    wants_office: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
     # What the visitor calculated on /calculator before leaving their email:
     # inputs, assumptions and result, recomputed by the server
     # (`services/calculator.build_snapshot`). Nullable with no default so an

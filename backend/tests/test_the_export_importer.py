@@ -360,3 +360,52 @@ async def test_an_oversized_upload_is_refused_before_it_is_parsed(
         assert resp.status_code == 413, resp.text
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_garage_arrives_and_is_not_confused_with_a_parking_space(
+    database_url: str, export_text: str
+) -> None:
+    """A garage is not parking, and the difference reaches a buyer.
+
+    `Parking Total` counts a driveway pad. Somebody who wrote "garage with
+    space for two SUVs" did not ask for a driveway, so the two are stored apart
+    and whatever matches reads `garage_spaces`. The condo in this fixture is
+    the case that proves it: one parking space and no garage.
+
+    All three columns were in every export all along and were dropped at the
+    door, which is why a lead who asked for a garage got the same shortlist as
+    one who asked for nothing at all.
+    """
+    set_org_id(1)
+    try:
+        async with get_bypass_session_factory()() as db:
+            await import_export_csv(export_text, db)
+
+        async with get_bypass_session_factory()() as db:
+            house = (
+                await db.execute(
+                    select(Property).where(Property.external_id == "TEST0001")
+                )
+            ).scalar_one()
+            condo = (
+                await db.execute(
+                    select(Property).where(Property.external_id == "TEST0002")
+                )
+            ).scalar_one()
+
+        assert house.raw["garage_spaces"] == 2
+        assert house.raw["parking_total"] == 2
+        assert house.raw["year_built"] == 1998
+
+        # The condo has a space and no garage, and the row says both.
+        assert condo.raw["garage_spaces"] is None
+        assert condo.raw["parking_total"] == 1
+
+        # And nothing came in beside them.
+        blob = f"{house.raw}|{condo.raw}"
+        for sentinel in CONFIDENTIAL:
+            assert sentinel not in blob
+        assert "great schools" not in blob
+    finally:
+        await _cleanup()

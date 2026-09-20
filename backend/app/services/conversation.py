@@ -67,7 +67,9 @@ from app.services.i18n import (
 from app.services.lead_events import record
 from app.services.lead_fields import (
     merge_budget,
+    storable_baths,
     storable_budget,
+    storable_count,
     storable_text,
 )
 from app.services.listings import listing_broker
@@ -2112,6 +2114,27 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
             lead.property_type = storable_text(e.property_type, "property_type")
         if e.urgency and not lead.urgency:
             lead.urgency = storable_text(e.urgency, "urgency")
+
+        # The counts, and they behave differently from the two fields above on
+        # purpose. `zone` and `property_type` are written once because they are
+        # what somebody opened with, and a later mention is usually them
+        # repeating themselves. A count is the field people CORRECT — "no,
+        # three bedrooms" — and a first guess that cannot be corrected sticks to
+        # the lead for ever while matching the wrong houses.
+        #
+        # So what they just said wins, and saying nothing changes nothing. The
+        # model returns null for a field the message did not mention, which is
+        # why this tests `is not None` rather than truthiness.
+        if e.beds_min is not None:
+            lead.beds_min = storable_count(e.beds_min)
+        if e.baths_min is not None:
+            lead.baths_min = storable_baths(e.baths_min)
+        if e.garage_min is not None:
+            lead.garage_min = storable_count(e.garage_min)
+        # Only ever set, never cleared: somebody who asked for a study two
+        # messages ago has not stopped wanting one by failing to repeat it.
+        if e.wants_office:
+            lead.wants_office = True
 
     # Whether they asked to SEE places, as opposed to asking about the market.
     # Read from the classifier's structured output and gated on the same

@@ -15,7 +15,11 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.models import LeadIntent
-from app.services.lead_fields import storable_budget
+from app.services.lead_fields import (
+    storable_baths,
+    storable_budget,
+    storable_count,
+)
 from app.services.llm import LLMUnavailable, generate_reply
 
 log = logging.getLogger(__name__)
@@ -36,6 +40,43 @@ class IntentEntities(BaseModel):
     #: under a fixed schema is still untrusted, but it is bounded, auditable and
     #: capped downstream, which a sentence is not.
     wants_listings: bool = False
+
+    #: The rest of what a description carries. Typed like the columns they land
+    #: in — see `Lead.beds_min` for why `baths_min` is not an int.
+    beds_min: int | None = None
+    baths_min: float | None = None
+    garage_min: int | None = None
+
+    #: Asked for a study. Never matched against the MLS, because the REcolorado
+    #: Full export has no column for it; carried so the shortlist can say so
+    #: out loud instead of dropping a requirement somebody wrote down.
+    wants_office: bool | None = None
+
+    @field_validator("beds_min", "garage_min", mode="before")
+    @classmethod
+    def _coerce_count(cls, v: Any) -> Any:
+        """One reader for both writers — see `lead_fields.storable_count`."""
+        return storable_count(v)
+
+    @field_validator("baths_min", mode="before")
+    @classmethod
+    def _coerce_baths(cls, v: Any) -> Any:
+        """Half-baths are real; anything finer a listing cannot express."""
+        value = storable_baths(v)
+        return float(value) if value is not None else None
+
+    @field_validator("wants_office", mode="before")
+    @classmethod
+    def _office_is_true_or_nothing(cls, v: Any) -> Any:
+        """Only a yes is recorded. A no and a silence are the same fact here:
+        nobody asked for a study, so nothing has to be reported about one."""
+        if isinstance(v, bool):
+            return True if v else None
+        if isinstance(v, str):
+            return True if v.strip().casefold() in {"true", "yes", "si", "sí", "1"} else None
+        if isinstance(v, (int, float)):
+            return True if v == 1 else None
+        return None
 
     @field_validator("budget_min", "budget_max", mode="before")
     @classmethod
@@ -95,7 +136,11 @@ Esquema EXACTO:
     "budget_max": number | null,
     "property_type": "apartment" | "house" | "commercial" | "land" | "other" | null,
     "urgency": "immediate" | "weeks" | "months" | "exploring" | null,
-    "wants_listings": true | false
+    "wants_listings": true | false,
+    "beds_min": number | null,
+    "baths_min": number | null,
+    "garage_min": number | null,
+    "wants_office": true | null
   }
 }
 
@@ -106,6 +151,9 @@ Reglas:
 - Los importes en euros van como número plano (1200 no "1.200€").
 - "wants_listings" es true si piden ver propiedades concretas ("mándame opciones", "qué hay disponible", "show me what's out there", "what would that buy me") O si DESCRIBEN con detalle la vivienda que buscan: zona más dormitorios, baños, garaje, plazo o presupuesto. Describir lo que buscas ES pedir que te lo busquen — nadie enumera "DTC, 2 dormitorios, despacho, garaje para dos coches, comprar en 6 meses" para dar conversación. Una pregunta sobre el mercado, sobre precios en general, sobre alquilar vs comprar, o un saludo, es false. Ante la duda: con una descripción concreta, true; sin ella, false.
 - urgency=immediate si dice "ya"/"esta semana"/"urgente"; weeks si "este mes"; months si "en unos meses"; exploring si solo curiosea.
+- "beds_min", "baths_min" y "garage_min" son el MÍNIMO que aceptarían, no lo ideal. "2 dormitorios" → 2. "al menos 3 baños" → 3. "dos baños y medio" → 2.5. "garaje para dos coches" o "garage for two SUVs" → garage_min=2. Si no lo dicen, null. NUNCA deduzcas un número de algo que no es una cuenta ("a dos manzanas del parque" no es un dormitorio).
+- "wants_office" es true SOLO si piden un despacho, estudio, oficina en casa, "study", "home office", "den". Si no lo piden, null — nunca false.
+- Ejemplo completo: "We are looking a house, in DTC, garage with space for two SUV, 2 bed, office, 2 bath, we want to buy in 6 month" → intent="buy", zone="DTC", wants_listings=true, beds_min=2, baths_min=2, garage_min=2, wants_office=true, urgency="months".
 
 Devuelve EXCLUSIVAMENTE el JSON. Sin texto antes o después. Sin markdown."""
 

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.138.0";
+export const CURRENT_VERSION = "0.139.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,32 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.139.0",
+    date: "2026-09-20",
+    title: {
+      en: "What they asked for is finally written down",
+      es: "Lo que pidieron por fin queda escrito",
+    },
+    changes: [
+      {
+        en: "Somebody who writes \"DTC, 2 bedrooms, an office, a garage for two SUVs\" has told us five things. Until now the system kept two of them and the rest survived as a sentence nothing could compare against — so a careful description got the same shortlist as \"something in DTC\".",
+        es: "Quien escribe «DTC, 2 dormitorios, un despacho, garaje para dos SUV» ha dicho cinco cosas. Hasta ahora el sistema guardaba dos y el resto sobrevivía como una frase que nada podía comparar — así que una descripción cuidadosa recibía la misma lista que «algo en DTC».",
+      },
+      {
+        en: "A count they correct wins. \"No, three bedrooms\" has to end as three: a first guess that cannot be corrected sticks to the lead for ever and quietly matches the wrong houses.",
+        es: "Una cifra que corrigen gana. «No, mejor tres dormitorios» tiene que acabar en tres: una primera suposición que no se puede corregir se queda pegada al lead para siempre y casa con las casas equivocadas.",
+      },
+      {
+        en: "The export gives up its garage. Three columns that were in every file and thrown away at the door — garage spaces, total parking and year built — now arrive. A garage is not a driveway, so the two are stored apart.",
+        es: "La exportación suelta su garaje. Tres columnas que venían en todos los ficheros y se tiraban en la puerta — plazas de garaje, aparcamiento total y año de construcción — ya llegan. Un garaje no es una plaza en la calle, así que se guardan por separado.",
+      },
+      {
+        en: "An office is carried but never matched, and says so. The REcolorado export has no column for one, so a study somebody asked for is reported as unchecked rather than dropped quietly.",
+        es: "El despacho se guarda pero nunca se casa, y se dice. La exportación de REcolorado no tiene columna para eso, así que un estudio que alguien pidió se informa como no comprobado en vez de desaparecer en silencio.",
+      },
+    ],
+  },
   {
     version: "0.138.0",
     date: "2026-09-20",

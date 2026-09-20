@@ -189,3 +189,66 @@ class TestBudgetMerge:
         # holding the customer's message.
         assert self._merge((None, 300_000), (900_000, None)) == (None, 300_000)
         assert self._merge((900_000, None), (None, 300_000)) == (900_000, None)
+
+
+def test_the_sentence_that_started_all_this_is_read_in_full() -> None:
+    """The real message from lead 1279, 2026-09-20, and what it has to become.
+
+    Before this, every one of these numbers was thrown away: the classifier
+    extracted a zone and a timeline, and "2 bed, office, garage for two SUVs"
+    survived only as a sentence in `messages.content` that nothing could compare
+    against. The shortlist that came back was "everything active in that area,
+    cheapest first" — the same answer a person who had said nothing would get.
+    """
+    entities = IntentEntities.model_validate(
+        {
+            "zone": "DTC",
+            "beds_min": 2,
+            "baths_min": 2,
+            "garage_min": 2,
+            "wants_office": True,
+            "wants_listings": True,
+            "urgency": "months",
+        }
+    )
+    assert entities.beds_min == 2
+    assert entities.baths_min == 2.0
+    assert entities.garage_min == 2
+    assert entities.wants_office is True
+
+
+def test_nonsense_criteria_are_dropped_and_never_raise() -> None:
+    """This runs inside the transaction holding the customer's message: a value
+    the table would refuse does not fail to save, it takes the message with it."""
+    entities = IntentEntities.model_validate(
+        {
+            "beds_min": "a couple",
+            "baths_min": float("nan"),
+            "garage_min": 2_000_000,
+            "wants_office": "maybe",
+        }
+    )
+    assert entities.beds_min is None
+    assert entities.baths_min is None
+    assert entities.garage_min is None
+    assert entities.wants_office is None
+
+
+def test_not_wanting_a_study_is_the_same_as_not_mentioning_one() -> None:
+    """Only `True` is ever recorded. There is nothing to report about a study
+    nobody asked for, and a stored `False` would invite a line saying so."""
+    assert IntentEntities.model_validate({"wants_office": False}).wants_office is None
+    assert IntentEntities().wants_office is None
+
+
+def test_the_prompt_tells_the_model_about_every_field_it_must_fill() -> None:
+    """A schema the prompt does not mention is a column that stays empty.
+
+    Asserted on the prompt text because that is the only thing the model sees:
+    adding a field to `IntentEntities` and forgetting the prompt produces no
+    error anywhere, just a feature that silently never works.
+    """
+    from app.services.classifier import _SYSTEM_PROMPT
+
+    for field in ("beds_min", "baths_min", "garage_min", "wants_office"):
+        assert field in _SYSTEM_PROMPT, f"the prompt never asks for {field}"

@@ -231,3 +231,56 @@ def _finite(value: Decimal | float | None) -> Decimal | float | None:
         # OverflowError included deliberately: float(10**400) raises, and the
         # whole contract of this function is that it does not.
         return None
+
+
+#: A room, a bathroom or a parking space. Above this it is a bad extraction and
+#: not a requirement: a model that reads "garage for two SUVs" as 2000000 would
+#: otherwise store it, and a lead wanting two million parking spaces matches
+#: nothing ever again — silently, and in a way no later check can tell from a
+#: genuine answer.
+COUNT_CEILING = 20
+
+
+def storable_count(value: Any) -> int | None:
+    """A whole count, or nothing. Never raises, never returns a refused value.
+
+    Same posture as `storable_budget`, and for the same reason: this runs inside
+    the transaction holding the customer's message, so a value we cannot defend
+    is dropped rather than raised. Zero is dropped too — "0 bedrooms" is not a
+    requirement anybody states, it is a model filling a field it should have
+    left empty.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    count = int(number)
+    if not 0 < count <= COUNT_CEILING:
+        log.info("dropping a room count out of range: %r", value)
+        return None
+    return count
+
+
+def storable_baths(value: Any) -> Decimal | None:
+    """Bathrooms, as the NUMERIC(3,1) the column actually is.
+
+    A Decimal rather than a float on purpose: this is compared against
+    `properties.bathrooms`, which is NUMERIC(3,1) because half-baths exist, and
+    mixing float with Decimal has already crashed the matcher once.
+
+    Half steps survive — "two and a half" is a real answer to this question —
+    and anything finer is rounded to one, because a listing cannot express it.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number) or not 0 < number <= COUNT_CEILING:
+        return None
+    return Decimal(str(number)).quantize(Decimal("0.1"))

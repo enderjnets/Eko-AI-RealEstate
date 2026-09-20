@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.139.0] - 2026-09-20
+
+### Added
+- `leads.beds_min`, `baths_min`, `garage_min`, `wants_office` (migration
+  `065_lead_requirements`), extracted by the classifier and written on the turn.
+  Typed rather than one JSONB bag because `baths_min` is compared against
+  `properties.bathrooms`, which is NUMERIC(3,1), and a value that round-trips
+  through JSON comes back a float — a mix this codebase has already paid for.
+- `storable_count` and `storable_baths` in `lead_fields.py`, same never-raise
+  posture as `storable_budget`: this runs inside the transaction holding the
+  customer's message.
+- `Garage Spaces`, `Parking Total` and `Year Built` on the importer's allow-list,
+  as named keys in `raw`. A garage is NOT parking — `Parking Total` counts a
+  driveway pad — so the two are stored apart and whatever matches reads
+  `garage_spaces`.
+
+### Notes
+- The counts behave differently from `zone`/`property_type`, which are written
+  once: a count is the field people correct, and a first guess that cannot be
+  corrected sticks to the lead for ever. What they just said wins; saying
+  nothing changes nothing.
+- `wants_office` is only ever set to true, never false, and is never matched:
+  the Full export has no office or den column, verified against the real
+  394-column header. A study is reported as unchecked rather than dropped.
+- `Interior Features` was considered for the office and refused: free text
+  written by another firm, with a vocabulary unverified against a populated
+  export.
+
 ## [0.138.0] - 2026-09-20
 
 ### Added

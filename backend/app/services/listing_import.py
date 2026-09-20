@@ -30,6 +30,16 @@ about another firm's client, and they are populated in nearly every row:
 shortcut, `raw=dict(row)`, would park the seller's floor price in our database
 and leave nothing but a template between it and a consumer's inbox.
 
+Adding a column to that list is a decision each time, not paperwork. `Garage
+Spaces`, `Parking Total` and `Year Built` were added on 2026-09-20 because a
+buyer asked for a garage and nothing could compare anything: they are facts the
+listing advertises on the public grid, which is what separates them from the
+ten columns above. `Interior Features` was considered for the same request —
+it is where "Study" would appear — and refused: it is free text written by
+another firm, its vocabulary is unverified against a populated export, and
+matching a requirement against a field we have never seen filled is how this
+product would start promising a study that is not there.
+
 `Public Remarks` is excluded on purpose too. It is another brokerage's
 marketing copy, and it is exactly where a listing agent writes "great schools",
 which this product's own Fair Housing screen blocks on the email lane.
@@ -95,6 +105,13 @@ COLUMNS = {
     "Latitude": "latitude",
     "Longitude": "longitude",
     "Virtual Tour URL Unbranded": "url",
+    # Public facts on the search grid, not broker-to-broker notes: how many
+    # cars fit, how many spaces in total, and when it was built. They were in
+    # the file all along and dropped at the door, which is why a lead asking
+    # for a garage got the same shortlist as one who asked for nothing.
+    "Garage Spaces": "garage_spaces",
+    "Parking Total": "parking_total",
+    "Year Built": "year_built",
     "List Office Name": "list_office_name",
     "Originating System Name": "originating_system",
     "Listing Contract Date": "listed_at",
@@ -296,6 +313,14 @@ async def import_export_csv(text: str, db: AsyncSession) -> ImportReport:
                 "originating_system": row["originating_system"] or None,
                 "mls_status": row["mls_status"] or None,
                 "listing_type": _listing_type(row),
+                # A garage is not parking. `Parking Total` counts a driveway
+                # pad, and somebody who asked for "a garage for two SUVs" did
+                # not ask for a driveway — so the two are stored apart and the
+                # matcher reads `garage_spaces`. Conflating them is how a
+                # shortlist offers a house with no garage and says it has one.
+                "garage_spaces": _int(row["garage_spaces"]),
+                "parking_total": _int(row["parking_total"]),
+                "year_built": _int(row["year_built"]),
                 "imported_at": datetime.now(UTC).isoformat(),
             },
             "listed_at": _date(row["listed_at"]),

@@ -13,7 +13,9 @@ import pytest
 from app.services.lead_fields import (
     merge_budget,
     parse_budget,
+    storable_baths,
     storable_budget,
+    storable_count,
     storable_text,
 )
 
@@ -305,3 +307,52 @@ class TestThePostalCodeIsNeverGuessedWrong:
         assert _zip_code("no idea") is None
         assert _zip_code("") is None
         assert _zip_code(None) is None
+
+
+# ── The room counts ──────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (2, 2),
+        ("2", 2),
+        (2.0, 2),
+        ("two", None),
+        (None, None),
+        (True, None),          # a bool is not a count, however much Python says so
+        (0, None),             # "0 bedrooms" is a model filling a field it should skip
+        (-1, None),
+        (21, None),            # over the ceiling
+        (2_000_000, None),     # "garage for two SUVs" read as 2000000
+        (float("nan"), None),
+        (float("inf"), None),
+    ],
+)
+def test_a_room_count_is_a_count_or_nothing(value, expected) -> None:
+    """The ceiling is the interesting one. A lead wanting two million parking
+    spaces matches nothing ever again, silently, and no later check can tell it
+    from a genuine answer."""
+    assert storable_count(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (2, Decimal("2.0")),
+        ("2.5", Decimal("2.5")),
+        (2.5, Decimal("2.5")),
+        (2.55, Decimal("2.6")),   # finer than a listing can express
+        ("three", None),
+        (0, None),
+        (None, None),
+        (True, None),
+    ],
+)
+def test_bathrooms_come_back_as_decimals(value, expected) -> None:
+    """A Decimal, not a float: this is compared against `properties.bathrooms`,
+    which is NUMERIC(3,1), and mixing the two has crashed the matcher before."""
+    got = storable_baths(value)
+    assert got == expected
+    if got is not None:
+        assert isinstance(got, Decimal)
