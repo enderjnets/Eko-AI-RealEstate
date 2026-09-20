@@ -1273,3 +1273,80 @@ async def test_the_calendar_refuses_an_unusable_zone_instead_of_using_utc() -> N
             await list_available_slots(
                 start=start, end=start + timedelta(days=2), timezone_name=bad
             )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# The compliance footer, read back
+#
+# Measured in production on 2026-09-19, third turn of a real thread: one reply
+# carried THREE copies of the CAN-SPAM footer, two of them printed mid-message
+# as raw token URLs. `history_content` stripped the broker credit and nothing
+# else, so the model read its own unsubscribe sentence back as part of what it
+# said last turn, copied it, and the real footer was appended underneath.
+# ──────────────────────────────────────────────────────────────────────────
+
+_FOOTER_EN = (
+    "Don't want these emails? Unsubscribe here:\n"
+    "https://www.denverhomestory.com/api/v1/public/unsubscribe/MTI3Nw.xI8Jwp0\n"
+    "Engel & Voelkers · Each office independently owned and operated\n"
+    "533 E Hopkins Ave Ste 101, Aspen, CO 81611-2937"
+)
+_FOOTER_ES = (
+    "Si no quieres volver a recibir correos nuestros, cancela la suscripción aquí:\n"
+    "https://www.denverhomestory.com/api/v1/public/unsubscribe/MTI3Nw.xI8Jwp0\n"
+    "Engel & Voelkers\n"
+    "533 E Hopkins Ave Ste 101, Aspen, CO 81611-2937"
+)
+
+
+def test_the_compliance_footer_does_not_come_back_as_history() -> None:
+    from app.services.conversation import strip_compliance_footer
+
+    body = "Got it, Angel — let me update what we have:\n\n- Buy\n- Denver metro"
+    for footer in (_FOOTER_EN, _FOOTER_ES):
+        assert strip_compliance_footer(f"{body}\n\n{footer}") == body, footer[:40]
+
+
+def test_every_copy_goes_not_only_the_last() -> None:
+    """The ones the model already wrote into the body are what feed the next round."""
+    from app.services.conversation import strip_compliance_footer
+
+    body = "Got it, Angel."
+    piled = f"{body}\n\n{_FOOTER_EN}\n\n{_FOOTER_EN}\n\n{_FOOTER_EN}"
+    out = strip_compliance_footer(piled)
+    assert out == body, out
+    assert "unsubscribe" not in out.lower()
+    assert "MTI3Nw" not in out
+
+
+def test_a_message_without_one_is_left_alone() -> None:
+    from app.services.conversation import strip_compliance_footer
+
+    plain = "Which area are you looking in?\n\nAnd what's your budget?"
+    assert strip_compliance_footer(plain) == plain
+    # A link the lead or the model wrote on purpose is not a footer.
+    with_link = "Here is the tour: https://my.matterport.com/show/?m=abc"
+    assert strip_compliance_footer(with_link) == with_link
+
+
+def test_the_outbound_history_is_stripped_of_both_footers() -> None:
+    """Broker credit and compliance block, on the same message."""
+    from app.models.message import Message, MessageDirection
+    from app.services.conversation import history_content
+
+    ours = Message(
+        direction=MessageDirection.OUTBOUND,
+        content=(
+            "Two places in Wash Park.\n\nCortesía de los corredores listantes"
+            f"\n\n{_FOOTER_EN}"
+        ),
+    )
+    assert history_content(ours) == "Two places in Wash Park."
+
+    theirs = Message(
+        direction=MessageDirection.INBOUND,
+        # A lead who forwards our own email back at us keeps every word of it:
+        # deleting from their message is how a question disappears.
+        content=f"why do I get this?\n\n{_FOOTER_EN}",
+    )
+    assert history_content(theirs) == theirs.content

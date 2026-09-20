@@ -45,6 +45,7 @@ from app.config import get_settings
 log = logging.getLogger(__name__)
 
 __all__ = [
+    "FOOTER_OPENERS",
     "MissingPostalAddress",
     "build_footer",
     "build_footer_html",
@@ -57,6 +58,18 @@ __all__ = [
 # means a signature produced here cannot verify anywhere else even if the
 # underlying secret is ever shared.
 _DOMAIN = b"eko-email-unsubscribe::v1"
+
+#: The sentence that opens the footer, per language. Exported because the
+#: footer ends up inside `Message.content`, and `conversation.history_content`
+#: has to recognise it there: a model that reads its own compliance footer back
+#: as part of a past turn copies it into the next one, and the real footer is
+#: then appended on top. Measured on 2026-09-19 — three copies in one reply, by
+#: the third turn of a thread. `_footer_parts` builds from this tuple so the
+#: two cannot drift apart.
+FOOTER_OPENERS: tuple[str, str] = (
+    "Don't want these emails? Unsubscribe here:",
+    "Si no quieres volver a recibir correos nuestros, cancela la suscripción aquí:",
+)
 
 # What lands in `leads.opted_out_keyword` when the link is what stopped us. The
 # column takes 40 characters; the other writers put the word the person typed,
@@ -160,11 +173,7 @@ def _footer_parts(
         )
     spanish = lang == "es"
     return _FooterParts(
-        stop=(
-            "Si no quieres volver a recibir correos nuestros, cancela la suscripción aquí:"
-            if spanish
-            else "Don't want these emails? Unsubscribe here:"
-        ),
+        stop=FOOTER_OPENERS[1] if spanish else FOOTER_OPENERS[0],
         ask=(
             "¿No quieres volver a recibir correos nuestros?"
             if spanish

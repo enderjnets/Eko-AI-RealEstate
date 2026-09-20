@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.136.8] - 2026-09-19
+
+### Fixed
+- `history_content` strips the CAN-SPAM footer as well as the broker credit.
+  Measured on the third turn of a real thread: one reply carried the footer
+  three times, two of them printed mid-message as raw token URLs. The model
+  reads its own past turns, and the compliance block lives in
+  `Message.content`, so it copied it and the real footer was appended on top.
+  Every occurrence goes, not only the last — the copies already in the body
+  are what feed the next round.
+- The two strippers run compliance-first: `strip_broker_credits` only cuts
+  when the credit is the last thing in the message, so the other order left
+  both in place.
+
 ## [0.136.7] - 2026-09-19
 
 ### Fixed

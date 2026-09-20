@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.136.7";
+export const CURRENT_VERSION = "0.136.8";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.136.8",
+    date: "2026-09-19",
+    title: {
+      en: "The email that piled up its own footer",
+      es: "El correo que se apilaba su propio pie",
+    },
+    changes: [
+      { en: "Read in a real thread, third turn: one reply carried the unsubscribe footer THREE times, two of them printed mid-message as raw token URLs. The conversation history handed back to the model strips the broker credit and nothing else, and the compliance footer was added to the stored message later — so the model read its own unsubscribe sentence as part of what it said last turn, copied it into the next reply, and the real footer was appended underneath. One more every turn. Both footers come out of the history now, and every copy goes, not just the last: the ones already written into the body are exactly what feeds the next round.", es: "Le\u00eddo en un hilo real, tercer turno: una respuesta llevaba el pie de baja TRES veces, dos de ellas impresas a media p\u00e1gina como URLs con su token. El hist\u00f3rico que se le devuelve al modelo limpia el cr\u00e9dito del corredor y nada m\u00e1s, y el pie de cumplimiento se a\u00f1adi\u00f3 al mensaje guardado despu\u00e9s \u2014 as\u00ed que el modelo le\u00eda su propia frase de baja como parte de lo que dijo el turno anterior, la copiaba en el siguiente, y el pie de verdad se pegaba debajo. Uno m\u00e1s cada turno. Ahora salen los dos pies del hist\u00f3rico, y se van TODAS las copias, no s\u00f3lo la \u00faltima: las que ya est\u00e1n escritas en el cuerpo son justo las que alimentan la vuelta siguiente." },
+      { en: "The order matters and a test proves it: the credit stripper only cuts when the credit is the last thing in the message, so with the compliance block sitting behind it the credit reads as mid-body and both survive.", es: "El orden importa y hay un test que lo demuestra: el limpiador del cr\u00e9dito s\u00f3lo corta cuando el cr\u00e9dito es lo \u00faltimo del mensaje, as\u00ed que con el bloque de cumplimiento detr\u00e1s el cr\u00e9dito parece cuerpo y sobreviven los dos." },
+    ],
+  },
   {
     version: "0.136.7",
     date: "2026-09-19",

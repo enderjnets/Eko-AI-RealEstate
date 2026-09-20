@@ -46,6 +46,7 @@ from app.services._common import ParsedMessage
 from app.services.classifier import classify_intent
 from app.services.delivery import MAX_ATTEMPTS, schedule_retry
 from app.services.email_compliance import (
+    FOOTER_OPENERS,
     MissingPostalAddress,
     build_footer,
     build_footer_html,
@@ -1248,8 +1249,42 @@ def history_content(message: "Message") -> str:
     question deleted, and the agent would answer the turn before.
     """
     if message.direction == MessageDirection.OUTBOUND:
-        return strip_broker_credits(message.content)
+        # Compliance footer FIRST, then the credit. The other order does not
+        # work and the test that proves it is not decorative:
+        # `strip_broker_credits` only cuts when the credit is the LAST thing in
+        # the message, and with the compliance block sitting behind it the
+        # credit is mid-body — so it gives up and leaves both.
+        return strip_broker_credits(strip_compliance_footer(message.content))
     return message.content
+
+
+#: The compliance footer as it sits inside `Message.content`: the opening
+#: sentence, the link on its own line, and up to two more lines for the
+#: brokerage and the postal address. Anchored on the sentences `build_footer`
+#: actually writes, so a reworded footer cannot silently stop matching.
+_COMPLIANCE_FOOTER = re.compile(
+    r"\n*(?:"
+    + "|".join(re.escape(opener) for opener in FOOTER_OPENERS)
+    + r")\n\s*https?://\S+(?:\n(?!\s*\n)[^\n]+){0,2}"
+)
+
+
+def strip_compliance_footer(content: str) -> str:
+    """The message without the CAN-SPAM footer we appended to it.
+
+    Same disease as `strip_broker_credits`, a different footer, and it arrived
+    later: the compliance block is added to `content` before the row is
+    written, so the model reads its own unsubscribe sentence back as part of
+    what it said last turn, copies it into the next reply, and the real footer
+    is then appended underneath. Measured in production on 2026-09-19 — by the
+    third turn of a thread one reply carried THREE copies, two of them printed
+    as raw token URLs in the middle of the message.
+
+    EVERY occurrence goes, not just the last one. Stripping from the end alone
+    would leave the copies the model has already written into the body, and
+    those are exactly what feeds the next round.
+    """
+    return _COMPLIANCE_FOOTER.sub("", content).rstrip()
 
 
 def strip_broker_credits(content: str) -> str:
