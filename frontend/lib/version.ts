@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.137.2";
+export const CURRENT_VERSION = "0.138.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,32 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.138.0",
+    date: "2026-09-20",
+    title: {
+      en: "Today shows what is actually waiting",
+      es: "Hoy enseña lo que de verdad espera",
+    },
+    changes: [
+      {
+        en: "Today has two new sections: shortlists nobody has picked, and people the assistant handed over and nobody has answered. The three it already had all need a follow-up row, and a conversation never creates one — so the page said \"nothing waiting on a person right now\" with a real lead sitting on an unanswered promise.",
+        es: "Hoy tiene dos secciones nuevas: selecciones que nadie ha elegido, y personas a las que la asistente traspasó y nadie ha contestado. Las tres que ya tenía dependen de una fila de seguimiento, y una conversación nunca crea ninguna — así que la página decía «ahora mismo no hay nada esperando a una persona» con un lead real sentado sobre una promesa sin cumplir.",
+      },
+      {
+        en: "Somebody leaves the waiting list the moment a person answers, and comes back the moment they write again. A list that keeps showing people who have already been answered stops being read.",
+        es: "Alguien sale de la lista de espera en cuanto una persona le contesta, y vuelve en cuanto escribe otra vez. Una lista que sigue enseñando a quien ya fue atendido deja de leerse.",
+      },
+      {
+        en: "The whole Inbox row opens the conversation now, not just the Reply button.",
+        es: "La fila entera del Inbox abre la conversación, no sólo el botón de Responder.",
+      },
+      {
+        en: "And \"Hot and untouched\" stops saying nobody has called them: the filter excludes on any recent message, calls included, and the old wording sent an operator looking for a phone log that was not the reason.",
+        es: "Y «Calientes sin tocar» deja de decir que nadie los ha llamado: el filtro excluye por cualquier mensaje reciente, llamadas incluidas, y la frase anterior mandaba al operador a buscar un registro de llamadas que no era el motivo.",
+      },
+    ],
+  },
   {
     version: "0.137.2",
     date: "2026-09-20",

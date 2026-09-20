@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.138.0] - 2026-09-20
+
+### Added
+- Two sections on Today: **Shortlists to pick** (`listing_requests` still open,
+  oldest first) and **Handed over, waiting for you** (the assistant spent her
+  two replies and no human has written since the lead last did).
+- Measured cause: the three existing sections all require a `FollowUp` row, and
+  `FollowUp` is only created by a booked visit or a human logging a call. A lead
+  who only ever emailed has none, so the page reported "nothing waiting on a
+  person right now" while a real lead sat on an unanswered shortlist.
+
+### Fixed
+- The whole Inbox row opens the lead. It was a bare `<div>` with one small
+  "Reply" link; the row now carries a transparent overlay link with the two
+  controls above it, because an `<a>` inside an `<a>` is invalid HTML.
+- "Hot and untouched" said "nobody has called them lately" while the filter
+  excludes on ANY recent message. The wording is fixed, not the filter.
+
+### Notes
+- The handed-over query is ONE aggregate with `FILTER` clauses, not a call to
+  `_automated_replies_so_far` per lead: that is a query per row on a page the
+  operator reloads all day.
+- Leaving and re-entering that list is asserted in both directions. A list that
+  keeps showing people who have already been answered stops being read, and
+  then the ones who have not been answered are invisible again by another route.
+
 ## [0.137.2] - 2026-09-20
 
 ### Fixed

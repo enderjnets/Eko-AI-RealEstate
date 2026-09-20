@@ -1,6 +1,6 @@
 """The console's list of today.
 
-Three things need somewhere to be seen, and until now two of them had nowhere:
+Five things need somewhere to be seen, and until now four of them had nowhere:
 
 * **Calls to make.** A follow-up for a lead who asked to be phoned or emailed
   has no automated sender behind it (see `followups.AUTOMATED_PREFERENCES`), so
@@ -13,6 +13,15 @@ Three things need somewhere to be seen, and until now two of them had nowhere:
   from "we have not been able to say anything to them for a week".
 * **Hot leads nobody has touched.** The scorer already ranks them; nothing
   surfaces the ones that are ranked highly and then left alone.
+
+* **Shortlists waiting to be picked.** The assistant opens a request the moment
+  somebody asks to see property; until a person ticks six listings nothing goes
+  out. That queue lived only in its own page and in an email.
+* **People the assistant has handed over.** She spends two replies, tells them a
+  person will follow up, and stops. Measured on 2026-09-20: the three sections
+  above could not show one of them, because all three need a `FollowUp` row and
+  a conversation never creates one — so the page said "nothing waiting on a
+  person right now" with a promise outstanding.
 
 A list, not a dashboard. Anything that needs interpreting belongs on the
 analytics page.
@@ -30,8 +39,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.base import get_db
-from app.models import CallLog, FollowUp, FollowUpStatus, Lead, LeadStatus
+from app.models import (
+    CallLog,
+    Conversation,
+    FollowUp,
+    FollowUpStatus,
+    Lead,
+    LeadStatus,
+    ListingRequest,
+    ListingRequestStatus,
+    Message,
+)
 from app.models.lead import PreferredChannel
+from app.models.message import MessageDirection, MessageSender
 from app.services.followups import AUTOMATED_PREFERENCES
 
 router = APIRouter()
@@ -86,10 +106,35 @@ class HeldFollowUp(BaseModel):
     lead: ConsoleLead
 
 
+class ShortlistToPick(BaseModel):
+    """An options request nobody has answered. The work the system asks for."""
+
+    request_id: int
+    origin: str
+    created_at: datetime
+    opened_at: datetime | None = None
+    lead: ConsoleLead
+
+
+class HandedOver(BaseModel):
+    """The assistant stopped and promised a person. Nobody has written back.
+
+    `replies_spent` is printed rather than implied: "she answered twice and
+    stopped" reads differently from "nobody has ever answered", and the operator
+    should not have to open the thread to tell them apart.
+    """
+
+    replies_spent: int
+    last_inbound_at: datetime | None = None
+    lead: ConsoleLead
+
+
 class ConsoleToday(BaseModel):
     tasks: list[ConsoleTask]
     held: list[HeldFollowUp]
     untouched_hot: list[ConsoleLead]
+    shortlists: list[ShortlistToPick]
+    handed_over: list[HandedOver]
     generated_at: datetime
 
 
@@ -277,9 +322,89 @@ async def today(
         )
     ).scalars().all()
 
+    # 4. Shortlists waiting to be picked. Oldest first, because the cost of an
+    # options request is the silence a person is sitting in while it waits, and
+    # that cost grows with age rather than with anything else on the row.
+    shortlist_rows = (
+        await db.execute(
+            _open_leads(
+                select(ListingRequest, Lead).join(
+                    Lead, Lead.id == ListingRequest.lead_id
+                )
+            )
+            .where(ListingRequest.status == ListingRequestStatus.OPEN)
+            .order_by(ListingRequest.created_at)
+            .limit(limit)
+        )
+    ).all()
+    shortlists = [
+        ShortlistToPick(
+            request_id=req.id,
+            origin=req.origin,
+            created_at=req.created_at,
+            opened_at=req.opened_at,
+            lead=ConsoleLead.model_validate(lead),
+        )
+        for req, lead in shortlist_rows
+    ]
+
+    # 5. Handed over and unanswered.
+    #
+    # ONE aggregate, deliberately. The obvious shape is to fetch the open leads
+    # and ask `_automated_replies_so_far` about each, which is a query per lead
+    # on a page the operator reloads all day — the kind of thing that is fine
+    # with eight leads and is the reason the page is slow at eight hundred.
+    #
+    # The test is "she stopped, and no human has written since they last wrote".
+    # Comparing the last HUMAN outbound against the last inbound is what makes
+    # that true: a realtor who answered yesterday and got a reply this morning
+    # is back on the list, which is correct — they are waiting again.
+    from app.services.conversation import MAX_AUTOMATED_REPLIES  # noqa: PLC0415
+
+    automated = func.count().filter(
+        Message.direction == MessageDirection.OUTBOUND,
+        Message.sender == MessageSender.AGENT,
+        Message.internal.is_(False),
+    )
+    last_inbound = func.max(Message.created_at).filter(
+        Message.direction == MessageDirection.INBOUND
+    )
+    last_human = func.max(Message.created_at).filter(
+        Message.direction == MessageDirection.OUTBOUND,
+        Message.sender == MessageSender.HUMAN,
+    )
+    waiting_rows = (
+        await db.execute(
+            _open_leads(
+                select(Lead, automated, last_inbound)
+                .join(Conversation, Conversation.lead_id == Lead.id)
+                .join(Message, Message.conversation_id == Conversation.id)
+            )
+            .group_by(Lead.id)
+            .having(
+                and_(
+                    automated >= MAX_AUTOMATED_REPLIES,
+                    or_(last_human.is_(None), last_human < last_inbound),
+                )
+            )
+            .order_by(last_inbound.desc().nulls_last())
+            .limit(limit)
+        )
+    ).all()
+    handed_over = [
+        HandedOver(
+            replies_spent=int(spent or 0),
+            last_inbound_at=inbound_at,
+            lead=ConsoleLead.model_validate(lead),
+        )
+        for lead, spent, inbound_at in waiting_rows
+    ]
+
     return ConsoleToday(
         tasks=tasks,
         held=held,
         untouched_hot=[ConsoleLead.model_validate(row) for row in hot_rows],
+        shortlists=shortlists,
+        handed_over=handed_over,
         generated_at=now,
     )

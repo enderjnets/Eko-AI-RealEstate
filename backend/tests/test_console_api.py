@@ -1,9 +1,15 @@
 """The console API: logging a call, and the list of today.
 
-The list matters because two of its three sections surface state that was
-previously invisible — a follow-up nobody can send, and a follow-up being held
-for want of consent. Both used to exist only as a log line, which is the same
-as not existing.
+The list matters because four of its five sections surface state that was
+previously invisible — a follow-up nobody can send, a follow-up being held for
+want of consent, a shortlist nobody has picked, and somebody the assistant has
+handed over. All four used to exist only as a log line or an email, which is
+the same as not existing.
+
+The last two were added on 2026-09-20 for a measured reason: the first three
+all need a `FollowUp` row, and a conversation never creates one. The page told
+the owner "nothing waiting on a person right now" while a real lead sat with an
+unanswered shortlist and a promise that somebody would call.
 """
 
 from __future__ import annotations
@@ -38,6 +44,7 @@ from app.models import (
     Visit,
 )
 from app.models.lead import LeadStatus, PreferredChannel
+from app.models.listing_request import ListingRequest, ListingRequestStatus
 from app.services import calendar_cal
 
 
@@ -1405,6 +1412,145 @@ async def test_a_normal_booking_does_not_appear_as_held(database_url: str) -> No
         assert held == [], (
             f"a booking nobody has had trouble with is listed as held: {held}"
         )
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_today_shows_a_shortlist_nobody_has_picked(database_url: str) -> None:
+    """The work the system asks a person for, on the page that lists that work.
+
+    An open `listing_requests` row is somebody sitting in silence: the assistant
+    has told them a short list is coming and nothing goes out until six are
+    ticked. It lived on its own page and in one email.
+    """
+    lead_id = await _lead(database_url, status=LeadStatus.QUALIFIED)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            s.add(
+                ListingRequest(
+                    lead_id=lead_id,
+                    token=uuid.uuid4().hex,
+                    status=ListingRequestStatus.OPEN,
+                    origin="message",
+                )
+            )
+            await s.commit()
+
+        async with await _client() as c:
+            body = (await c.get("/api/v1/console/today")).json()
+        mine = [r for r in body["shortlists"] if r["lead"]["id"] == lead_id]
+        assert len(mine) == 1, body["shortlists"]
+        assert mine[0]["origin"] == "message"
+
+        # And it leaves the list the moment it is sent, because a sent shortlist
+        # is not work anybody still has to do.
+        async with Session() as s:
+            row = (
+                await s.execute(
+                    select(ListingRequest).where(ListingRequest.lead_id == lead_id)
+                )
+            ).scalar_one()
+            row.status = ListingRequestStatus.SENT
+            await s.commit()
+
+        async with await _client() as c:
+            body = (await c.get("/api/v1/console/today")).json()
+        assert [r for r in body["shortlists"] if r["lead"]["id"] == lead_id] == []
+    finally:
+        await engine.dispose()
+        await _cleanup(database_url, lead_id)
+
+
+@pytest.mark.asyncio
+async def test_today_shows_who_the_assistant_handed_over(database_url: str) -> None:
+    """She stopped and promised a person. Until now nobody could see that.
+
+    The second half is the half that matters: once a human answers, the lead
+    leaves the list. A list that keeps showing people who have already been
+    answered stops being read, and then the ones who have not been answered are
+    invisible again — by a different route.
+    """
+    lead_id = await _lead(database_url, status=LeadStatus.QUALIFIED)
+    engine, Session = _session(database_url)
+    try:
+        async with Session() as s:
+            conv_id = (
+                await s.execute(
+                    select(Conversation.id).where(Conversation.lead_id == lead_id)
+                )
+            ).scalar_one()
+            for n in range(2):
+                s.add(
+                    Message(
+                        conversation_id=conv_id,
+                        direction=MessageDirection.OUTBOUND,
+                        sender=MessageSender.AGENT,
+                        content=f"automated reply {n}",
+                        external_id=f"auto-{uuid.uuid4().hex[:10]}",
+                        delivery_status=MessageStatus.SENT,
+                        internal=False,
+                    )
+                )
+            # An agency notice does not count: the lead never saw it.
+            s.add(
+                Message(
+                    conversation_id=conv_id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
+                    content="New lead from the website",
+                    external_id=f"notice-{uuid.uuid4().hex[:10]}",
+                    delivery_status=MessageStatus.SENT,
+                    internal=True,
+                )
+            )
+            await s.commit()
+
+        async with await _client() as c:
+            body = (await c.get("/api/v1/console/today")).json()
+        mine = [h for h in body["handed_over"] if h["lead"]["id"] == lead_id]
+        assert len(mine) == 1, body["handed_over"]
+        assert mine[0]["replies_spent"] == 2, "the internal notice must not count"
+
+        # A person answers. They are no longer waiting.
+        async with Session() as s:
+            s.add(
+                Message(
+                    conversation_id=conv_id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.HUMAN,
+                    content="Hi, this is Natalia — when can I call you?",
+                    external_id=f"human-{uuid.uuid4().hex[:10]}",
+                    delivery_status=MessageStatus.SENT,
+                    internal=False,
+                )
+            )
+            await s.commit()
+
+        async with await _client() as c:
+            body = (await c.get("/api/v1/console/today")).json()
+        assert [h for h in body["handed_over"] if h["lead"]["id"] == lead_id] == []
+
+        # And they come back the moment the person writes again, because then
+        # they are waiting once more.
+        async with Session() as s:
+            s.add(
+                Message(
+                    conversation_id=conv_id,
+                    direction=MessageDirection.INBOUND,
+                    sender=MessageSender.LEAD,
+                    content="Tomorrow morning works.",
+                    external_id=f"back-{uuid.uuid4().hex[:10]}",
+                    delivery_status=MessageStatus.DELIVERED,
+                )
+            )
+            await s.commit()
+
+        async with await _client() as c:
+            body = (await c.get("/api/v1/console/today")).json()
+        assert [h for h in body["handed_over"] if h["lead"]["id"] == lead_id] != []
     finally:
         await engine.dispose()
         await _cleanup(database_url, lead_id)

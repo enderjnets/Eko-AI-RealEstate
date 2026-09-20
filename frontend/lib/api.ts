@@ -472,10 +472,26 @@ export interface HeldFollowUp {
   lead: ConsoleLead;
 }
 
+export interface ShortlistToPick {
+  request_id: number;
+  origin: string;
+  created_at: string;
+  opened_at: string | null;
+  lead: ConsoleLead;
+}
+
+export interface HandedOver {
+  replies_spent: number;
+  last_inbound_at: string | null;
+  lead: ConsoleLead;
+}
+
 export interface ConsoleToday {
   tasks: ConsoleTask[];
   held: HeldFollowUp[];
   untouched_hot: ConsoleLead[];
+  shortlists: ShortlistToPick[];
+  handed_over: HandedOver[];
   generated_at: string;
 }
 

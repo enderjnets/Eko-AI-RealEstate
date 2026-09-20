@@ -4,16 +4,30 @@
  * The list of today. A list, not a dashboard — anything that needs
  * interpreting belongs on the analytics page.
  *
- * Two of the three sections surface state that previously existed only in a
- * log line: a follow-up nothing can send, and a follow-up being held because
+ * Two of the first three sections surface state that previously existed only in
+ * a log line: a follow-up nothing can send, and a follow-up being held because
  * we have no record of permission to write to this person. Both were invisible
  * to the office, which meant "we are nurturing them" and "we have not been
  * able to say a word to them for a week" looked identical from the outside.
+ *
+ * The last two exist because all three of the others need a `FollowUp` row,
+ * and a conversation never creates one. Measured on 2026-09-20: the page said
+ * "nothing waiting on a person right now" while a real lead sat with an
+ * unanswered shortlist and a promise that somebody would call.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, Flame, Loader2, Mail, PhoneCall, RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  Flame,
+  Hourglass,
+  ListChecks,
+  Loader2,
+  Mail,
+  PhoneCall,
+  RefreshCw,
+} from "lucide-react";
 import {
   type ConsoleLead,
   type ConsoleToday,
@@ -70,6 +84,54 @@ export function ConsoleView() {
           {t("console.reload")}
         </button>
       </div>
+
+      <Section
+        icon={<ListChecks className="h-4 w-4 text-eko-violet" />}
+        title={t("console.shortlists")}
+        hint={t("console.shortlistsHint")}
+        empty={t("console.shortlistsEmpty")}
+        count={data?.shortlists.length ?? 0}
+      >
+        {data?.shortlists.map((s) => (
+          <Row
+            key={s.request_id}
+            lead={s.lead}
+            lang={lang}
+            href={`/options/${s.request_id}`}
+            action={t("console.pick")}
+            trailing={
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {relativeTime(s.created_at, lang)}
+              </span>
+            }
+          />
+        ))}
+      </Section>
+
+      <Section
+        icon={<Hourglass className="h-4 w-4 text-amber-500" />}
+        title={t("console.handedOver")}
+        hint={t("console.handedOverHint")}
+        empty={t("console.handedOverEmpty")}
+        count={data?.handed_over.length ?? 0}
+      >
+        {data?.handed_over.map((h) => (
+          <Row
+            key={h.lead.id}
+            lead={h.lead}
+            lang={lang}
+            trailing={
+              h.last_inbound_at ? (
+                <span className="text-xs text-amber-700 dark:text-amber-400">
+                  {t("console.waitingSince", {
+                    when: relativeTime(h.last_inbound_at, lang),
+                  })}
+                </span>
+              ) : null
+            }
+          />
+        ))}
+      </Section>
 
       <Section
         icon={<PhoneCall className="h-4 w-4 text-eko-violet" />}
@@ -191,16 +253,22 @@ function Row({
   lead,
   lang,
   trailing,
+  href,
+  action,
 }: {
   lead: ConsoleLead;
   lang: string;
   trailing: React.ReactNode;
+  /** Where this row goes. Defaults to the lead, which is right for four of the
+   *  five sections; a shortlist goes to the picker instead. */
+  href?: string;
+  action?: string;
 }) {
   const { t } = useI18n();
   return (
     <li>
       <Link
-        href={`/leads/${lead.id}#call`}
+        href={href ?? `/leads/${lead.id}#call`}
         className="flex min-h-[56px] flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3 hover:opacity-80"
       >
         <span className="flex min-w-0 items-center gap-2">
@@ -216,7 +284,7 @@ function Row({
         </span>
         <span className="flex items-center gap-3">
           {trailing}
-          <span className="text-xs text-eko-violet">{t("console.open")}</span>
+          <span className="text-xs text-eko-violet">{action ?? t("console.open")}</span>
         </span>
       </Link>
     </li>
