@@ -1,10 +1,12 @@
 /**
  * "Twelve houses worth the detour" — el contenido del primer articulo.
  *
- * Generado desde el prototipo de diseno, no escrito a mano: son doce fichas,
- * doce cuerpos de texto y noventa y seis cifras, y una errata en cualquiera de
- * ellas es una afirmacion falsa sobre la casa de otro. El generador comprueba
- * que cada cadena vuelve a aparecer en el HTML de origen antes de emitir nada.
+ * NO SE EDITA A MANO. Lo emite `frontend/scripts/journal-content.py` desde el
+ * paquete de diseno; para cambiar algo se corre el generador y se lee el diff.
+ * Son doce fichas, doce cuerpos de texto y noventa y seis cifras, y una errata
+ * en cualquiera de ellas es una afirmacion falsa sobre la casa de otro. El
+ * generador comprueba que cada cadena vuelve a aparecer en el HTML de origen
+ * antes de emitir nada.
  *
  * Vive en `lib/` y no en la pagina porque un modulo de pagina de Next solo
  * puede exportar los nombres del framework. Ojo con la consecuencia que ya

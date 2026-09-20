@@ -268,6 +268,17 @@ describe("los ficheros que la pagina pide", () => {
     ).toContain(missing.length);
   });
 
+  it("el generador del contenido esta en el repo y el modulo lo nombra", () => {
+    // El modulo de datos dice de si mismo que es generado. Si el generador no
+    // viaja con el, esa frase es falsa el dia que alguien tenga que cambiar una
+    // coma: se editaria a mano el fichero que dice que no se edita a mano.
+    // No se ejecuta aqui — necesita el paquete de diseno, que no esta en el
+    // repositorio porque lleva dentro las 48 fotografias ajenas.
+    expect(existsSync(resolve(ROOT, "scripts/journal-content.py"))).toBe(true);
+    expect(read(DATA)).toContain("scripts/journal-content.py");
+    expect(read("scripts/journal-content.py")).toContain("JOURNAL_HANDOFF");
+  });
+
   it("el slug de la ruta y el del modulo son el mismo", () => {
     expect(SLUG).toBe("twelve-houses-worth-the-detour");
     expect(existsSync(resolve(ROOT, "app/blog", SLUG, "page.tsx"))).toBe(true);
