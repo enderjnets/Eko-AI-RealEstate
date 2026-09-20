@@ -594,6 +594,34 @@ async def _send_and_record(
                 )
                 + _line("Calculator", _calculator_line(lead))
             )
+        elif origin == "handover":
+            # The moment Clara stops, not the messages after it. `waiting` below
+            # covers somebody who writes AGAIN; this covers the turn where she
+            # spends her last reply and tells them a person will follow up.
+            #
+            # Measured on lead 1279 (2026-09-20): her last reply promised "a
+            # member of our team will get back to you with options" and NOBODY
+            # was told, because the classifier had read the message as not
+            # asking for listings. A promise made to a stranger with nobody
+            # behind it is the worst thing this product can do, and it was
+            # silent — the panel had the row and no inbox had the news.
+            #
+            # Not capped, for the same reason `waiting` is not: this is not a
+            # stranger arriving, it is a conversation being handed over.
+            subject = f"This one is yours now — {who}"
+            body = (
+                "Clara has just written her last automated reply to this "
+                "person and told them someone from the team would follow up. "
+                "From here it is you.\n\n"
+                + _line("Name", lead.name)
+                + _line("Phone", phone)
+                + _line("Email", email)
+                + _line("Wants", lead.intent.value if lead.intent else None)
+                + _line("Area", lead.zone)
+                + _line("Timeline", lead.urgency)
+                + _line("They wrote", (inbound.content if inbound else None))
+                + _line("Calculator", _calculator_line(lead))
+            )
         elif origin == "waiting":
             # Clara has spent her two replies and this person wrote again. The
             # notice is NOT capped with the stranger origins: somebody who has

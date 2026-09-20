@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.137.2] - 2026-09-20
+
+### Fixed
+- The handover turn is never silent. `origin="handover"` fires whenever the
+  assistant spends her last allowed reply and no options notice went out.
+  Measured on lead 1279: the reply promised "a member of our team will get back
+  to you with options" and nothing reached any inbox, because the classifier
+  had read the message as not asking for listings.
+- `wants_listings` now covers describing the property you want — zone plus beds,
+  baths, garage, timeline or budget. Widened AND netted: a safeguard that only
+  works when a model judges correctly is not a safeguard, so the handover notice
+  above does not depend on it.
+- The public options page no longer claims a shortlist that was never sent. The
+  same row now arrives there two ways, and the callback route has nothing
+  picked; it used to print "Those are the ones we picked" above an empty space
+  and offer another set of a set that never existed.
+- The persona no longer tells the lead what we lack. It said "if you do not
+  know, say you do not know", and the model wrote "We don't have listings or
+  pricing information here" to a buyer — a sentence about our systems, from a
+  brokerage, to somebody who asked about a house. Changed in the code default
+  and in the live agency's row.
+
+### Notes
+- `handover` and `waiting` are both uncapped and they are different moments:
+  `handover` is the turn she stops, `waiting` is every message after it.
+- The options-page fixture in `test_the_options_circuit.py` now sets `sent_at`
+  alongside `status` and `selected_property_ids`, because `_set_sent` writes the
+  three together and a row with ids and no `sent_at` is a state production never
+  produces.
+
 ## [0.137.1] - 2026-09-20
 
 ### Fixed

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.137.1";
+export const CURRENT_VERSION = "0.137.2";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,32 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.137.2",
+    date: "2026-09-20",
+    title: {
+      en: "Nobody is left holding a promise alone",
+      es: "Nadie se queda solo con una promesa",
+    },
+    changes: [
+      {
+        en: "The turn where the assistant hands over is never silent again. She ends it by saying a person will follow up, and until now nobody was told unless the classifier had read the message as asking for listings — so a real lead sat in the panel with a promise behind it and no inbox knowing.",
+        es: "El turno en que la asistente cede a un humano ya nunca es silencioso. Lo termina diciendo que una persona se pondrá en contacto, y hasta ahora no se avisaba a nadie salvo que el clasificador hubiera leído el mensaje como una petición de propiedades — así que un lead real se quedó en el panel con una promesa detrás y ninguna bandeja enterada.",
+      },
+      {
+        en: "Describing the house you want now counts as asking to see houses. Nobody lists \"DTC, two bedrooms, an office, a garage for two cars, buying in six months\" to make conversation.",
+        es: "Describir la casa que buscas ya cuenta como pedir verlas. Nadie enumera «DTC, dos dormitorios, despacho, garaje para dos coches, comprar en seis meses» para dar conversación.",
+      },
+      {
+        en: "The page behind the link no longer announces a shortlist nobody sent. It used to say \"those are the ones we picked\" above an empty space and offer a different set of a set that had never existed.",
+        es: "La página del enlace ya no anuncia una selección que nadie envió. Decía «ésas son las que elegimos» sobre un espacio vacío y ofrecía otra selección de una que nunca existió.",
+      },
+      {
+        en: "And the assistant no longer tells a buyer what we do not have. \"We don't have listings or pricing information here\" is a sentence about our systems, from a brokerage, to somebody who asked about a house.",
+        es: "Y la asistente ya no le cuenta al comprador lo que no tenemos. «No tenemos información de propiedades ni de precios» es una frase sobre nuestros sistemas, dicha por una inmobiliaria, a alguien que preguntó por una casa.",
+      },
+    ],
+  },
   {
     version: "0.137.1",
     date: "2026-09-20",

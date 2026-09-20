@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -411,6 +412,11 @@ async def test_the_options_page_shows_no_listing_data(database_url: str) -> None
             ).scalar_one()
             row.status = ListingRequestStatus.SENT
             row.selected_property_ids = [property_id]
+            # The three are written together by `_set_sent`, and the page now
+            # reads them: a row with ids and no `sent_at` is a state production
+            # never produces, so a fixture that made one was telling the page a
+            # lie it had no reason to detect.
+            row.sent_at = datetime.now(UTC)
             token = row.token
             await db.commit()
 
@@ -1086,5 +1092,51 @@ async def test_fair_housing_screens_the_html_half_too(database_url: str) -> None
         assert result["status"] == "blocked_fair_housing", result
         assert any(f["phrase"] == "good schools" for f in result["flags"])
         sender.assert_not_awaited()
+    finally:
+        await _cleanup(external)
+
+@pytest.mark.asyncio
+async def test_the_page_does_not_claim_a_shortlist_that_was_never_sent(
+    database_url: str,
+) -> None:
+    """The same row arrives here two ways now, and one of them has nothing.
+
+    `open_link(origin="callback")` opens a request so the assistant's last reply
+    can carry a link to say when to call — before anybody has picked anything.
+    The owner opened one on the first run that reached it and found the page
+    announcing "Those are the ones we picked" above an empty space, with a
+    button offering a different set of a set that had never existed.
+
+    A page that claims we sent something we did not is worse than a plain one:
+    the person goes looking in their inbox for an email nobody wrote.
+    """
+    set_org_id(ORG)
+    external = f"nothing-{uuid.uuid4().hex[:8]}"
+    lead_id, _, _ = await _seed_lead("nothing@circuit.test")
+    try:
+        request_id, _ = await open_request(lead_id, origin="callback")
+        async with get_bypass_session_factory()() as db:
+            row = (
+                await db.execute(
+                    select(ListingRequest).where(ListingRequest.id == request_id)
+                )
+            ).scalar_one()
+            assert row.selected_property_ids == [], "nothing has been picked"
+            assert row.sent_at is None, "and nothing has been sent"
+            token = row.token
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get(f"/api/v1/public/options/{token}")
+
+        assert resp.status_code == 200
+        page = resp.text
+        assert "Those are the ones we picked" not in page
+        # And the button that would ask for ANOTHER set of a set that does not
+        # exist is not offered either.
+        assert "Show me a different set" not in page
+        # What it must still do is the only thing it was opened for.
+        assert "Ask for a call" in page
     finally:
         await _cleanup(external)

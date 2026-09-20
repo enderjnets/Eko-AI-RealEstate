@@ -1495,20 +1495,41 @@ async def options_page(token: str, db: AsyncSession = Depends(get_db)) -> HTMLRe
             await db.rollback()
 
     action = f"/api/v1/public/options/{token}"
-    return _options_page(
-        "What next?",
-        "<p>Those are the ones we picked. If none of them are right, we will "
-        "put another set together — or you can just talk to us.</p>"
-        f'<form method="post" action="{action}/more" style="margin:2rem 0">'
-        '<button type="submit" style="font:inherit;padding:.6rem 1rem">'
-        "Show me a different set</button></form>"
+    call_form = (
         f'<form method="post" action="{action}/call">'
         '<p><label>Call me — when suits you?<br>'
         f'<input name="when" maxlength="{MAX_CALLBACK_TEXT}" '
         'placeholder="Thursday after 4pm, or any time Friday" '
         'style="font:inherit;width:100%;padding:.5rem;margin-top:.4rem"></label></p>'
         '<button type="submit" style="font:inherit;padding:.6rem 1rem">'
-        "Ask for a call</button></form>",
+        "Ask for a call</button></form>"
+    )
+
+    # Two different pages, because the same row now arrives here two ways. It
+    # is opened when a shortlist goes out, and ALSO when the assistant's last
+    # reply hands somebody a link to say when they want to be called — and in
+    # that second case nothing has been picked yet.
+    #
+    # Reported by the owner on the first run that reached it: the page said
+    # "Those are the ones we picked" above nothing at all, and offered "Show me
+    # a different set" of a set that had never existed. A page that claims we
+    # sent something we did not is worse than a plain one.
+    if row.sent_at is None or not row.selected_property_ids:
+        return _options_page(
+            "When should we call?",
+            "<p>Nothing to look at yet — someone from the team is going "
+            "through what is available and will email you a short list. "
+            "In the meantime, tell us when suits you and we will ring.</p>"
+            + call_form,
+        )
+
+    return _options_page(
+        "What next?",
+        "<p>Those are the ones we picked. If none of them are right, we will "
+        "put another set together — or you can just talk to us.</p>"
+        f'<form method="post" action="{action}/more" style="margin:2rem 0">'
+        '<button type="submit" style="font:inherit;padding:.6rem 1rem">'
+        "Show me a different set</button></form>" + call_form,
     )
 
 

@@ -104,7 +104,7 @@ Reglas:
 - "confidence" refleja qué tan seguro estás de la intención (1.0 = inequívoco).
 - Si el cliente NO menciona un dato, devuelve null para ese campo. NUNCA inventes.
 - Los importes en euros van como número plano (1200 no "1.200€").
-- "wants_listings" es true SOLO si piden ver propiedades concretas: "mándame opciones", "qué hay disponible", "show me what's out there", "what would that buy me". Una pregunta sobre el mercado, sobre precios en general, sobre alquilar vs comprar, o un saludo, es false. Ante la duda, false.
+- "wants_listings" es true si piden ver propiedades concretas ("mándame opciones", "qué hay disponible", "show me what's out there", "what would that buy me") O si DESCRIBEN con detalle la vivienda que buscan: zona más dormitorios, baños, garaje, plazo o presupuesto. Describir lo que buscas ES pedir que te lo busquen — nadie enumera "DTC, 2 dormitorios, despacho, garaje para dos coches, comprar en 6 meses" para dar conversación. Una pregunta sobre el mercado, sobre precios en general, sobre alquilar vs comprar, o un saludo, es false. Ante la duda: con una descripción concreta, true; sin ella, false.
 - urgency=immediate si dice "ya"/"esta semana"/"urgente"; weeks si "este mes"; months si "en unos meses"; exploring si solo curiosea.
 
 Devuelve EXCLUSIVAMENTE el JSON. Sin texto antes o después. Sin markdown."""

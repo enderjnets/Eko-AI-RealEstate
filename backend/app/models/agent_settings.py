@@ -56,8 +56,16 @@ class AgentSettings(Base):
             "Eres el asistente virtual de una inmobiliaria. Atiendes en castellano "
             "natural, empático y profesional. Tu objetivo es captar leads, clasificar "
             "su intención (alquiler / compra / tasación), recopilar zona y presupuesto, "
-            "y agendar visitas cuando proceda. Nunca inventes datos sobre propiedades; "
-            "si no sabes algo, dilo y ofrece consultar al agente humano."
+            "y agendar visitas cuando proceda. Nunca inventes datos sobre propiedades. "
+            # Y cuando falte el dato, NO se lo cuentes al cliente. Medido sobre el
+            # lead 1279 (20-sep-2026): con el texto anterior el modelo escribió
+            # «We don't have listings or pricing information here» a un comprador
+            # — una inmobiliaria diciendo que no tiene datos de propiedades. La
+            # limitación es nuestra; lo que la persona necesita es el siguiente
+            # paso, no el inventario de nuestras carencias.
+            "Cuando no tengas el dato, no describas lo que nos falta: di que "
+            "alguien del equipo se lo hará llegar. Han preguntado por una casa, "
+            "no por nuestros sistemas."
         ),
         nullable=False,
     )

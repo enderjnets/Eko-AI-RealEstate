@@ -1013,3 +1013,97 @@ async def test_asking_for_houses_still_gets_the_link_to_pick_a_time(
         ), [c.kwargs.get("subject") for c in to_agency]
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_turn_clara_hands_over_is_never_silent(
+    database_url: str, agency_mailbox: None
+) -> None:
+    """She promised a person would follow up. Somebody has to be told.
+
+    Measured on lead 1279 in production (2026-09-20). The classifier read "we
+    are looking for a house in DTC, garage, 2 bed, office, 2 bath, buying in 6
+    months" as NOT asking for listings, so no options request was filed — and
+    the reply still ended with "a member of our team will get back to you with
+    options that fit what you described". Nothing reached any inbox. The lead
+    sat in the panel with a promise behind it and nobody holding the promise.
+
+    The classifier was widened too, but this is the net underneath it: a
+    safeguard that only works when a model judges correctly is not a safeguard.
+    So the assertion is on the turn, not on the intent.
+    """
+    from app.models.message import MessageSender, MessageStatus
+    from app.services._common import ParsedMessage
+    from app.services.classifier import IntentEntities, IntentResult
+    from app.services.conversation import handle_inbound_message
+    from app.services.llm import LLMResult
+    from app.services.tenant_context import set_org_id
+
+    set_org_id(ORG)
+    email = f"handover+{uuid.uuid4().hex[:8]}@form.test"
+    sender = _sender()
+    # Deliberately NOT asking for listings: this is the case that was silent.
+    quiet = IntentResult(
+        intent="buy",  # type: ignore[arg-type]
+        confidence=0.95,
+        entities=IntentEntities(wants_listings=False),
+    )
+    written = LLMResult(
+        text="Someone from the team will get back to you.",
+        provider="minimax", model="MiniMax-M3", input_tokens=10, output_tokens=10,
+    )
+    try:
+        async with get_bypass_session_factory()() as db:
+            lead = Lead(org_id=ORG, phone=email, email=email, name="Probe")
+            db.add(lead)
+            await db.flush()
+            conv = Conversation(org_id=ORG, lead_id=lead.id, channel="email")
+            db.add(conv)
+            await db.flush()
+            db.add(
+                Message(
+                    org_id=ORG,
+                    conversation_id=conv.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
+                    content="reply one",
+                    delivery_status=MessageStatus.SENT,
+                    internal=False,
+                )
+            )
+            await db.commit()
+
+        parsed = ParsedMessage(
+            channel="email",
+            external_id=f"handover-{uuid.uuid4().hex[:8]}",
+            from_identifier=email,
+            from_name="Probe",
+            content="We want a house in DTC, 2 bed, office, buying in 6 months.",
+            subject="Re: Your message",
+        )
+        from app.db.base import get_session_factory
+
+        direct, notices, breakdown = _senders(sender)
+        with patch(
+            "app.services.conversation.classify_intent", AsyncMock(return_value=quiet)
+        ), patch(
+            "app.services.conversation.generate_reply", AsyncMock(return_value=written)
+        ), direct, notices, breakdown, org_scope(ORG):
+            async with get_session_factory()() as db:
+                await handle_inbound_message(parsed, db)
+
+        to_agency = [
+            c for c in sender.await_args_list
+            if c.kwargs.get("to") == "form-probe@example.com"
+        ]
+        assert to_agency, "the handover turn reached nobody"
+        assert any(
+            "yours now" in c.kwargs.get("subject", "") for c in to_agency
+        ), [c.kwargs.get("subject") for c in to_agency]
+        # It says what she has to know: that Clara has stopped.
+        assert any(
+            "last automated reply" in c.kwargs.get("body_text", "")
+            for c in to_agency
+        ), [c.kwargs.get("body_text", "")[:120] for c in to_agency]
+    finally:
+        await _cleanup()

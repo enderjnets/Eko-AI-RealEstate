@@ -2581,6 +2581,20 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
 
     if told_options:
         pass
+    elif last_allowed:
+        # The turn Clara hands over. It goes here and not beside the options
+        # notice because one turn produces ONE notice: when they asked to see
+        # property the picker says everything this would and asks for something
+        # too, so it wins.
+        #
+        # Without this branch the handover was silent whenever the classifier
+        # read the message as not asking for listings — measured on lead 1279,
+        # where the reply promised "a member of our team will get back to you"
+        # and no inbox heard about it. The classifier was also widened, but a
+        # safety net that depends on a model's judgement is not one.
+        await send_new_lead_notice(
+            lead.id, inbound.id, origin="handover", conversation_id=conv.id
+        )
     elif qualified_now:
         # Supersedes the arrival notice when both land on the same turn. Telling
         # her twice in one second about one person is not twice the signal.
