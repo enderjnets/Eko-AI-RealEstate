@@ -23,10 +23,10 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, timedelta
 from email.utils import parseaddr
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,6 +55,7 @@ from app.services.email_compliance import (
     unsubscribe_url as unsubscribe_url_for,
 )
 from app.services.email_html import document as html_document
+from app.services.email_html import link_paragraph as html_link_paragraph
 from app.services.email_html import paragraphs as html_paragraphs
 from app.services.fair_housing import find_violations
 from app.services.i18n import (
@@ -956,6 +957,248 @@ def _form_first_contact_note(first_name: str | None) -> str:
     )
 
 
+#: How many replies the assistant writes before a person takes over. Two,
+#: decided on 2026-09-19 after watching a real thread run three turns with no
+#: end in sight: "no se debe formar un peloteo de emails entre Clara y el
+#: prospecto — uno pidiendo más info y el siguiente ya debe venir con un link
+#: para que coloque la hora en que prefiere ser contactado."
+#:
+#: The first asks what is missing. The second carries the callback link. After
+#: that the answer is a fixed sentence, because a generated one is a
+#: conversation and a conversation is the thing being stopped.
+MAX_AUTOMATED_REPLIES = 2
+
+#: How often the holding sentence may repeat. Without a limit, somebody who
+#: writes twenty times gets twenty identical emails — which tells them a
+#: machine is answering more plainly than silence would, and hands anyone who
+#: wants it a free echo.
+HOLDING_LINE_EVERY = timedelta(days=1)
+
+#: Where the "when may we call you" marker lives on the lead.
+_HOLDING_SENT_AT = "holding_line_sent_at"
+
+
+async def _automated_replies_so_far(lead_id: int, db: AsyncSession) -> int:
+    """How many times the assistant has already written to this lead.
+
+    Counted per LEAD and not per conversation: somebody who writes by email and
+    then from WhatsApp is one person having one conversation, and a cap that
+    resets per channel is not a cap.
+
+    `internal=True` messages are the notices to the agency, which are stored in
+    the lead's own thread — counting those would burn the budget on messages
+    the lead never saw. `sender=HUMAN` is a realtor writing by hand, which is
+    the outcome this cap exists to reach, not a use of it.
+    """
+    return (
+        await db.execute(
+            select(func.count())
+            .select_from(Message)
+            .join(Conversation, Message.conversation_id == Conversation.id)
+            .where(
+                Conversation.lead_id == lead_id,
+                Message.direction == MessageDirection.OUTBOUND,
+                Message.sender == MessageSender.AGENT,
+                Message.internal.is_(False),
+            )
+        )
+    ).scalar_one()
+
+
+def _last_automated_reply_note(callback_url: str | None) -> str:
+    """What to say on the last reply the assistant is allowed to write.
+
+    The URL is appended by code, never by the model: a model asked to reproduce
+    a signed token reproduces it wrong, and a broken unsubscribe-shaped link is
+    worse than no link. The model writes the sentence that leads into it.
+    """
+    if not callback_url:
+        return (
+            "\n\nESTA ES TU ÚLTIMA RESPUESTA a esta persona: a partir de aquí "
+            "contesta un humano. Termina diciendo, en una frase, que alguien "
+            "del equipo la va a llamar. NO prometas una hora concreta."
+        )
+    return (
+        "\n\nESTA ES TU ÚLTIMA RESPUESTA a esta persona: a partir de aquí "
+        "contesta un humano. Termina invitándola a decir CUÁNDO prefiere que "
+        "la llamen — el enlace para hacerlo se añade solo debajo, así que NO "
+        "lo escribas tú ni te inventes ninguna dirección. NO prometas una hora "
+        "concreta."
+    )
+
+
+def _holding_line(lang: str) -> str:
+    """The fixed sentence after the assistant has stopped writing.
+
+    Fixed, not generated, and that is the whole point: a generated answer is a
+    reply, a reply invites another, and the ping-pong this cap exists to end
+    would simply continue under a different name.
+    """
+    if lang == "es":
+        return (
+            "Gracias por escribir. Natalia se pondrá en contacto contigo lo "
+            "antes posible."
+        )
+    return "Thanks for writing. Natalia will be in touch as soon as possible."
+
+
+def _callback_invite(lang: str) -> tuple[str, str]:
+    """`(sentence, the words that carry the link)` for the last reply.
+
+    Two pieces because the two halves of the email need different things: the
+    plain-text one prints the sentence and then the address on its own line,
+    because it cannot do anything else, and the HTML one puts the address
+    behind the words.
+    """
+    if lang == "es":
+        return ("Dinos cuándo prefieres que te llamemos:", "elige tu momento")
+    return ("Tell us when suits you for a call:", "pick a time")
+
+
+async def _hold_and_hand_over(
+    lead: "Lead",
+    conv: "Conversation",
+    inbound: "Message",
+    parsed: ParsedMessage,
+    db: AsyncSession,
+) -> dict[str, int | str | bool]:
+    """The assistant has spent her replies. Say so once, and fetch a human.
+
+    Two different rhythms on purpose, and the asymmetry IS the design:
+
+    * The person hears back at most once a day. Repeating a fixed sentence at
+      somebody who writes five times tells them a machine is answering more
+      plainly than silence ever would, and hands anyone who wants one a free
+      echo to bounce off.
+    * The agency is told EVERY time. Somebody who was promised a call and is
+      still writing is the most urgent row in the panel, and the cost of
+      missing them is the promise itself.
+
+    Never raises past its own guard: the message is already stored, so a
+    failure here costs the acknowledgement, never the record of what they said.
+    """
+    from app.services.lead_notify import send_new_lead_notice  # noqa: PLC0415
+
+    # FIRST, and not because it can happen: `handle_inbound_message` already
+    # returns `opted_out_no_reply` several steps above this call, so nothing
+    # opted out reaches here today.
+    #
+    # It is here because `test_opt_out_is_absolute.py` is a STATIC sweep and it
+    # refused this function the moment it learned to send — correctly. The
+    # sweep's own docstring says a docstring does not count, and the reason is
+    # that "the caller checks" is true right up until somebody adds a second
+    # caller. A lock on a door that is already locked costs one comparison.
+    if lead.opted_out_at is not None:
+        log.info("Lead %d: opted out — no holding line, no notice", lead.id)
+        return {
+            "status": "opted_out_no_reply",
+            "lead_id": lead.id,
+            "inbound_id": inbound.id,
+        }
+
+    now = datetime.now(UTC)
+    meta = dict(lead.meta or {})
+    last_raw = meta.get(_HOLDING_SENT_AT)
+    try:
+        last = datetime.fromisoformat(last_raw) if last_raw else None
+    except (TypeError, ValueError):
+        # A marker we cannot read is treated as absent: the failure mode of
+        # sending one extra line is smaller than never answering again.
+        last = None
+    due = last is None or (now - last) >= HOLDING_LINE_EVERY
+
+    sent = False
+    if due and parsed.channel in SENDABLE_CHANNELS:
+        recipient = _channel_recipient(parsed.channel, lead.phone, lead.email)
+        if recipient:
+            lang = detect_for(inbound.content, ["en", "es"])
+            text = _holding_line(lang)
+            reply_html = None
+            unsubscribe_link = None
+            if parsed.channel == "email":
+                try:
+                    footer = build_footer(
+                        lead_id=lead.id,
+                        brokerage_line=await _agency_brokerage_line(db),
+                        lang=lang,
+                    )
+                    reply_html = html_document(
+                        html_paragraphs(text)
+                        + build_footer_html(
+                            lead_id=lead.id,
+                            brokerage_line=await _agency_brokerage_line(db),
+                            lang=lang,
+                        )
+                    )
+                except MissingPostalAddress as exc:
+                    # Same call as everywhere else on this channel: no footer,
+                    # no send. The notice below still goes out, so she still
+                    # hears about it.
+                    log.error("Lead %d: no holding line — %s", lead.id, exc)
+                    footer = None
+                if footer is None:
+                    text = None
+                else:
+                    text = f"{text}\n\n{footer}"
+                    unsubscribe_link = unsubscribe_url_for(lead.id)
+            if text is not None:
+                outbound = Message(
+                    conversation_id=conv.id,
+                    direction=MessageDirection.OUTBOUND,
+                    sender=MessageSender.AGENT,
+                    content=text,
+                    delivery_status=MessageStatus.PENDING,
+                )
+                db.add(outbound)
+                await db.flush()
+                try:
+                    external_id, subject = await _dispatch_send(
+                        parsed.channel,
+                        to=recipient,
+                        text=text,
+                        subject=(
+                            f"Re: {parsed.subject}"
+                            if parsed.channel == "email" and parsed.subject
+                            and not parsed.subject.lower().startswith("re:")
+                            else parsed.subject
+                        ),
+                        in_reply_to=parsed.external_id if parsed.channel == "email" else None,
+                        unsubscribe_url=unsubscribe_link,
+                        body_html=reply_html,
+                    )
+                    outbound.external_id = external_id
+                    outbound.subject = subject
+                    outbound.delivery_status = MessageStatus.SENT
+                    sent = True
+                    meta[_HOLDING_SENT_AT] = now.isoformat()
+                    # Reassigned, not mutated: SQLAlchemy does not see a dict
+                    # that changed under it, and the marker would be lost on the
+                    # next load — which is how a once-a-day line becomes an
+                    # every-message one.
+                    lead.meta = meta
+                except Exception as exc:  # noqa: BLE001
+                    log.error("Lead %d: holding line failed: %s", lead.id, exc)
+                    schedule_retry(outbound, str(exc))
+
+    await rescore_lead(lead, db, commit=False)
+    await db.commit()
+
+    await send_new_lead_notice(
+        lead.id, inbound.id, origin="waiting", conversation_id=conv.id
+    )
+    log.info(
+        "Lead %d: reply budget spent — holding line %s, agency told",
+        lead.id,
+        "sent" if sent else "held back",
+    )
+    return {
+        "status": "handed_over",
+        "lead_id": lead.id,
+        "inbound_id": inbound.id,
+        "holding_line_sent": sent,
+    }
+
+
 # Words that mean the lead is trying to arrange a time, in the two languages
 # the agent speaks. Deliberately a plain list: this only decides whether to
 # spend one calendar call, and a missed match costs a generic answer rather
@@ -1792,6 +2035,15 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         log.info("Lead %d on human_takeover — skipping AI reply", lead.id)
         return {"status": "human_takeover", "lead_id": lead.id, "inbound_id": inbound.id}
 
+    # ── 5b. The reply budget ───────────────────────────────────────────
+    # Before the history is built and before the model is called: past this
+    # line the answer is a fixed sentence, so there is nothing to generate and
+    # no reason to pay for a turn that will not be used.
+    answered = await _automated_replies_so_far(lead.id, db)
+    if answered >= MAX_AUTOMATED_REPLIES:
+        return await _hold_and_hand_over(lead, conv, inbound, parsed, db)
+    last_allowed = answered == MAX_AUTOMATED_REPLIES - 1
+
     # ── 6. Build history for LLM ───────────────────────────────────────
     hist_row = await db.execute(
         select(Message)
@@ -1892,6 +2144,18 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     if is_new_lead:
         system_prompt += _greeting_note(agent_cfg)
     system_prompt += await _real_slots_note(agent_cfg, inbound.content, db, lead)
+    # The last reply the assistant is allowed carries the way to reach a human.
+    # Opened here, before the prompt is assembled, because the model is told
+    # whether there is a link and writes a different closing sentence either
+    # way — and never writes the address itself.
+    callback_url: str | None = None
+    if last_allowed and not wants_listings:
+        from app.services.listing_requests import open_callback_link  # noqa: PLC0415
+
+        callback_url = await open_callback_link(lead.id)
+    if last_allowed:
+        system_prompt += _last_automated_reply_note(callback_url)
+
     if wants_listings:
         system_prompt += _options_coming_note()
     # The website form, which arrives here carrying the chip's sentence and
@@ -1971,6 +2235,13 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # meaning anything.
     reply_text = _with_broker_credits(reply.text, offered_listings, parsed.channel)
     reply_text = strip_markdown(reply_text)
+    # Kept before the invitation is appended: the HTML half renders the address
+    # behind two words instead of printing it, so it needs the body without the
+    # line the text half has no choice but to spell out.
+    reply_body = reply_text
+    if callback_url:
+        invite, _words = _callback_invite(target_lang)
+        reply_text = f"{reply_text}\n\n{invite}\n{callback_url}"
 
     # CAN-SPAM, before the filter and before the row is written, so the text that
     # is screened, the text that is stored and the text that is sent are the same
@@ -2028,8 +2299,13 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
         # becomes paragraphs, the footer becomes a word that carries the link.
         # Built from the same `footer` inputs, never from a second template.
         try:
+            invitation = ""
+            if callback_url:
+                invite, words = _callback_invite(target_lang)
+                invitation = html_link_paragraph(invite, callback_url, words)
             reply_html = html_document(
-                html_paragraphs(reply_text)
+                html_paragraphs(reply_body)
+                + invitation
                 + build_footer_html(
                     lead_id=lead.id,
                     brokerage_line=await _agency_brokerage_line(db),

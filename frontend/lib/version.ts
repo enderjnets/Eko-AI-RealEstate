@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.136.8";
+export const CURRENT_VERSION = "0.137.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.137.0",
+    date: "2026-09-19",
+    title: {
+      en: "Two replies, then a person",
+      es: "Dos respuestas, y luego una persona",
+    },
+    changes: [
+      { en: "The assistant had no limit. Watched on a real thread it answered three times and would have kept going for as long as somebody kept writing — which is not a conversation, it is a machine holding somebody's attention. She now writes twice: the first asks what is missing, the second carries a link where the person says when they want to be called. After that the answer is a FIXED sentence, because a generated one is a reply and a reply invites another.", es: "La asistente no ten\u00eda l\u00edmite. En un hilo real contest\u00f3 tres veces y habr\u00eda seguido mientras alguien escribiera \u2014 que no es una conversaci\u00f3n, es una m\u00e1quina reteniendo la atenci\u00f3n de alguien. Ahora escribe dos veces: la primera pregunta lo que falta, la segunda lleva un enlace donde la persona dice cu\u00e1ndo quiere que la llamen. A partir de ah\u00ed la respuesta es una frase FIJA, porque una generada es una respuesta y una respuesta invita a otra." },
+      { en: "The two rhythms are deliberately different. The person hears the fixed sentence at most once a day — repeating it at somebody who writes five times says a machine is answering more plainly than silence would, and hands anyone who wants one a free echo. The agency is told EVERY time: somebody who was promised a call and is still writing is the most urgent row in the panel.", es: "Los dos ritmos son distintos a prop\u00f3sito. La persona recibe la frase fija como mucho una vez al d\u00eda \u2014 repetirla a quien escribe cinco veces delata a la m\u00e1quina m\u00e1s que el silencio, y le regala un eco a cualquiera que lo quiera. A la agencia se le avisa SIEMPRE: quien tiene prometida una llamada y sigue escribiendo es la fila m\u00e1s urgente del panel." },
+      { en: "The link reuses the options request rather than growing a second table — it already carries a token, a public page, a field for their own words and a notice that leaves out the picker, because when somebody asks for a call there is nothing to pick. The address is appended by code and never by the model: a model asked to reproduce a signed token reproduces it wrong.", es: "El enlace reutiliza el encargo de opciones en vez de crear otra tabla \u2014 ya lleva token, p\u00e1gina p\u00fablica, un campo para sus propias palabras y un aviso sin enlace de selecci\u00f3n, porque cuando alguien pide que le llamen no hay nada que elegir. La direcci\u00f3n la a\u00f1ade el c\u00f3digo y nunca el modelo: un modelo al que le pides reproducir un token firmado lo reproduce mal." },
+    ],
+  },
   {
     version: "0.136.8",
     date: "2026-09-19",

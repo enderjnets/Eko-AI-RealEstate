@@ -681,3 +681,209 @@ def test_only_http_links_become_links() -> None:
     for hostile in ("javascript:alert(1)", "data:text/html;base64,PHM+"):
         out = paragraphs(f"Look at {hostile} now")
         assert "<a " not in out, out
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# The reply budget
+#
+# Ender, watching a real thread run three turns with no end in sight: "no se
+# debe formar un peloteo de emails entre Clara y el prospecto — uno pidiendo
+# más info y el siguiente ya debe venir con un link para que coloque la hora en
+# que prefiere ser contactado, y la respuesta se le debe pasar a Natalia."
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def test_the_budget_is_two_and_the_holding_line_is_daily() -> None:
+    """The two numbers, named, so changing one is a deliberate act."""
+    from datetime import timedelta
+
+    from app.services.conversation import HOLDING_LINE_EVERY, MAX_AUTOMATED_REPLIES
+
+    assert MAX_AUTOMATED_REPLIES == 2
+    assert HOLDING_LINE_EVERY == timedelta(days=1)
+
+
+def test_the_holding_line_is_fixed_and_bilingual() -> None:
+    """Fixed, not generated — a generated answer is a reply, and a reply
+    invites another, which is the ping-pong this exists to end."""
+    from app.services.conversation import _holding_line
+
+    en, es = _holding_line("en"), _holding_line("es")
+    assert "Natalia" in en and "Natalia" in es
+    assert en != es
+    # Twice in a row is the same sentence: nothing here varies per call.
+    assert _holding_line("en") == en
+
+
+def test_the_last_reply_is_told_not_to_write_the_address() -> None:
+    """A model asked to reproduce a signed token reproduces it wrong."""
+    from app.services.conversation import _last_automated_reply_note
+
+    with_link = _last_automated_reply_note("https://x.test/options/tok")
+    assert "ÚLTIMA RESPUESTA" in with_link
+    assert "NO lo escribas tú" in with_link
+    without = _last_automated_reply_note(None)
+    assert "ÚLTIMA RESPUESTA" in without
+    # With no link there is nothing to invite them to, so it must not ask.
+    assert "enlace" not in without
+
+
+def test_the_invitation_has_a_sentence_and_its_words() -> None:
+    """The text half prints the address; the HTML half hides it behind words."""
+    from app.services.conversation import _callback_invite
+    from app.services.email_html import link_paragraph
+
+    for lang in ("en", "es"):
+        sentence, words = _callback_invite(lang)
+        assert sentence and words and sentence != words
+    sentence, words = _callback_invite("en")
+    html = link_paragraph(sentence, "https://x.test/options/tok?a=1&b=2", words)
+    assert f">{words}</a>" in html
+    assert "https://x.test/options/tok?a=1&amp;b=2" in html
+    # The address is not ALSO printed as text beside its own link.
+    assert html.count("x.test") == 1
+
+
+@pytest.mark.asyncio
+async def test_the_second_reply_carries_the_link_and_the_third_does_not_reply(
+    database_url: str, agency_mailbox: None
+) -> None:
+    """The whole rule, through the real capture route and the real webhook.
+
+    Asserted end to end because the budget is counted from the database and a
+    unit test of the counter would pass while the pipeline kept writing.
+    """
+    from app.services.conversation import _automated_replies_so_far
+
+    email = f"budget+{uuid.uuid4().hex[:8]}@form.test"
+    sender = _sender()
+    classify, write = _patches(reply="Which area, and what budget?")
+    direct, notices, breakdown = _senders(sender)
+    try:
+        with classify, write, direct, notices, breakdown:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await _submit(client, email)
+        assert resp.status_code == 202, resp.text
+
+        async with get_bypass_session_factory()() as db:
+            lead_id = (
+                await db.execute(select(Lead.id).where(Lead.email == email))
+            ).scalar_one()
+            assert await _automated_replies_so_far(lead_id, db) == 1, (
+                "the form reply is the first of the two"
+            )
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_after_two_replies_the_model_is_never_called_again(
+    database_url: str, agency_mailbox: None
+) -> None:
+    """The budget spent: a fixed sentence, a notice, and no generation at all.
+
+    `generate_reply` is asserted NOT awaited, which is the assertion that
+    matters. A test that only checked the text would pass on a pipeline that
+    still paid for a turn and then threw it away — and the cost of a model that
+    keeps running is not only money, it is that somebody eventually ships a
+    branch where its output is used.
+    """
+    from app.models.message import MessageSender, MessageStatus
+    from app.services._common import ParsedMessage
+    from app.services.conversation import handle_inbound_message
+    from app.services.tenant_context import set_org_id
+
+    set_org_id(ORG)
+    email = f"spent+{uuid.uuid4().hex[:8]}@form.test"
+    sender = _sender()
+    writer = AsyncMock()
+    classify, _unused = _patches()
+    try:
+        # A lead who has already had both replies.
+        async with get_bypass_session_factory()() as db:
+            lead = Lead(org_id=ORG, phone=email, email=email, name="Probe")
+            db.add(lead)
+            await db.flush()
+            conv = Conversation(org_id=ORG, lead_id=lead.id, channel="email")
+            db.add(conv)
+            await db.flush()
+            for n in range(2):
+                db.add(
+                    Message(
+                        org_id=ORG,
+                        conversation_id=conv.id,
+                        direction=MessageDirection.OUTBOUND,
+                        sender=MessageSender.AGENT,
+                        content=f"reply {n}",
+                        delivery_status=MessageStatus.SENT,
+                        internal=False,
+                    )
+                )
+            await db.commit()
+            lead_id = lead.id
+
+        parsed = ParsedMessage(
+            channel="email",
+            external_id=f"third-{uuid.uuid4().hex[:8]}",
+            from_identifier=email,
+            from_name="Probe",
+            content="Any news?",
+            subject="Re: Your message",
+        )
+        # The APP session inside `org_scope`, not the bypass one: the pipeline
+        # takes `org_id` from the RLS context, and a bypass session leaves it
+        # NULL — the insert then fails and the idempotency guard reports a
+        # "duplicate" that never happened. Reaching for the bypass factory
+        # because it is convenient is how a test measures the wrong thing.
+        from app.db.base import get_session_factory
+
+        direct, notices, breakdown = _senders(sender)
+        with classify, patch(
+            "app.services.conversation.generate_reply", new=writer
+        ), direct, notices, breakdown, org_scope(ORG):
+            async with get_session_factory()() as db:
+                result = await handle_inbound_message(parsed, db)
+
+        assert result["status"] == "handed_over", result
+        writer.assert_not_awaited()
+
+        to_the_lead = [c for c in sender.await_args_list if c.kwargs.get("to") == email]
+        assert len(to_the_lead) == 1, "the fixed sentence, once"
+        assert "Natalia will be in touch" in to_the_lead[0].kwargs["body_text"]
+
+        to_agency = [
+            c for c in sender.await_args_list
+            if c.kwargs.get("to") == "form-probe@example.com"
+        ]
+        assert to_agency, "she has to hear that they are waiting"
+        assert "waiting for you" in to_agency[0].kwargs["subject"], to_agency[0].kwargs
+
+        # And a fourth message the same day gets no second copy of the sentence.
+        sender.reset_mock()
+        parsed_again = ParsedMessage(
+            channel="email",
+            external_id=f"fourth-{uuid.uuid4().hex[:8]}",
+            from_identifier=email,
+            from_name="Probe",
+            content="Hello?",
+            subject="Re: Your message",
+        )
+        direct, notices, breakdown = _senders(sender)
+        with classify, patch(
+            "app.services.conversation.generate_reply", new=writer
+        ), direct, notices, breakdown, org_scope(ORG):
+            async with get_session_factory()() as db:
+                await handle_inbound_message(parsed_again, db)
+
+        again_to_lead = [c for c in sender.await_args_list if c.kwargs.get("to") == email]
+        assert again_to_lead == [], "once a day, not once a message"
+        again_to_agency = [
+            c for c in sender.await_args_list
+            if c.kwargs.get("to") == "form-probe@example.com"
+        ]
+        assert again_to_agency, "but she hears about it every time"
+        assert lead_id
+    finally:
+        await _cleanup()

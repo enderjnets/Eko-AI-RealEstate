@@ -594,6 +594,28 @@ async def _send_and_record(
                 )
                 + _line("Calculator", _calculator_line(lead))
             )
+        elif origin == "waiting":
+            # Clara has spent her two replies and this person wrote again. The
+            # notice is NOT capped with the stranger origins: somebody who has
+            # already been told a human would call and is still writing is the
+            # opposite of a stranger, and the cost of missing them is a lead who
+            # was promised a call and heard nothing.
+            #
+            # Sent every time they write, while the sentence they get back is
+            # sent at most once a day. That asymmetry is the point: the person
+            # must not be echoed at, and she must not be kept in the dark.
+            subject = f"They are waiting for you — {who}"
+            body = (
+                "Clara has stopped answering this one — she has used the two "
+                "replies she is allowed, and they have written again since. "
+                "They were told you would be in touch as soon as possible.\n\n"
+                + _line("Name", lead.name)
+                + _line("Phone", phone)
+                + _line("Email", email)
+                + _line("Area", lead.zone)
+                + _line("They wrote", (inbound.content if inbound else None))
+                + _line("Calculator", _calculator_line(lead))
+            )
         elif origin == "qualified":
             # The handoff. Sent once per lead, the moment Clara has an intent, a
             # zone and a figure — not on a score threshold, which a chatty

@@ -52,6 +52,7 @@ __all__ = [
     "MAX_SELECTED",
     "build_options_email",
     "clean_callback_text",
+    "open_callback_link",
     "open_request",
     "options_url",
     "send_options_email",
@@ -147,6 +148,33 @@ async def open_request(lead_id: int, *, origin: str = "message") -> tuple[int | 
     except Exception as exc:  # noqa: BLE001 — the conversation already happened
         log.error("Lead %d: could not open an options request: %s", lead_id, exc)
         return None, False
+
+
+async def open_callback_link(lead_id: int) -> str | None:
+    """A public URL where this person can say when they want to be called.
+
+    Reuses the options request row rather than growing a second table: the row
+    already IS "the ask, as something a person can work", it already carries a
+    token, a public page, a 200-character field for their own words and a
+    status of `callback_requested`, and the notice it produces already leaves
+    out the picker link — because when somebody asks for a call there is
+    nothing to pick.
+
+    Returns None when a link cannot be made, and the caller is expected to say
+    the same thing without one rather than print a broken address.
+    """
+    request_id, _created = await open_request(lead_id, origin="callback")
+    if request_id is None:
+        return None
+    from app.db.base import get_session_factory
+
+    async with get_session_factory()() as db:
+        token = (
+            await db.execute(
+                select(ListingRequest.token).where(ListingRequest.id == request_id)
+            )
+        ).scalar_one_or_none()
+    return options_url(token) if token else None
 
 
 def _money(value: object) -> str | None:

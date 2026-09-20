@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.137.0] - 2026-09-19
+
+### Added
+- A reply budget. `MAX_AUTOMATED_REPLIES = 2`: the first asks what is missing,
+  the second carries a callback link, and after that the answer is a fixed
+  sentence — `HOLDING_LINE_EVERY = 1 day` — while the agency is notified on
+  every message. Measured cause: on a real thread the assistant answered three
+  times with no end in sight.
+- `open_callback_link()` reuses the options request row (origin `callback`)
+  rather than growing a second table: token, public page, 200-character field
+  and a notice without the picker link already exist.
+- A `waiting` notice origin, deliberately uncapped.
+
+### Notes
+- The budget is counted per LEAD, not per conversation: someone who writes by
+  email and then from WhatsApp is one person, and a cap that resets per channel
+  is not a cap. `internal=True` notices and `sender=HUMAN` messages do not
+  count.
+- The model is never called once the budget is spent — asserted directly,
+  because a test that only checked the text would pass on a pipeline that
+  still paid for the turn.
+
 ## [0.136.8] - 2026-09-19
 
 ### Fixed

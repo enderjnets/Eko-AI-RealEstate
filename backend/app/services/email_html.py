@@ -33,7 +33,7 @@ from __future__ import annotations
 import re
 from html import escape
 
-__all__ = ["document", "paragraphs"]
+__all__ = ["document", "link_paragraph", "paragraphs"]
 
 #: Bare URLs in the body — a virtual tour, the options page, a guide. Matched
 #: after escaping, so an `&` inside a query string is already `&amp;`, which is
@@ -78,4 +78,21 @@ def document(inner: str) -> str:
         'line-height:1.55;">'
         f'<div style="max-width:560px;">{inner}</div>'
         "</body></html>"
+    )
+
+
+def link_paragraph(sentence: str, url: str, words: str) -> str:
+    """A sentence that ends in a link, with WORDS instead of the address.
+
+    The plain-text half has to print the address in full — it has no other way
+    to carry a link — and a signed token is a hundred characters of noise under
+    a sentence trying to sound like a person wrote it. This is the same content
+    for the half that can do better.
+    """
+    return (
+        '<p style="margin:0 0 14px 0;">'
+        f'{escape(sentence)} '
+        f'<a href="{escape(url, quote=True)}" style="color:#7a1f3d;">'
+        f"{escape(words)}</a>."
+        "</p>"
     )
