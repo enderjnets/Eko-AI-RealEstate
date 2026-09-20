@@ -571,3 +571,79 @@ async def test_the_subject_is_in_the_language_they_wrote_in(
         assert subject.strip(), subject
     finally:
         await _cleanup()
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# The HTML half of a reply
+#
+# From a real inbox on 2026-09-19. Clara's answer ended on the compliant
+# footer printed the only way plain text can print a link:
+#
+#     Don't want these emails? Unsubscribe here:
+#     https://www.denverhomestory.com/api/v1/public/unsubscribe/MTI3NQ.tS2yN…
+#
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_reply_carries_an_html_half_with_the_link_behind_a_word(
+    database_url: str, agency_mailbox: None
+) -> None:
+    """Both halves, and the token stops being printed at the reader."""
+    from app.services.listing_requests import strip_tags
+
+    email = f"html+{uuid.uuid4().hex[:8]}@form.test"
+    sender = _sender()
+    classify, write = _patches(reply="Hi Paco — which areas, and what budget?")
+    direct, notices, breakdown = _senders(sender)
+    try:
+        with classify, write, direct, notices, breakdown:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await _submit(client, email)
+        assert resp.status_code == 202, resp.text
+
+        to_the_lead = [c for c in sender.await_args_list if c.kwargs.get("to") == email]
+        assert to_the_lead, "no reply to inspect"
+        sent = to_the_lead[0].kwargs
+
+        # The text half is untouched: it is the message of record.
+        assert "Unsubscribe here" in sent["body_text"]
+        assert "/api/v1/public/unsubscribe/" in sent["body_text"]
+
+        html = sent["body_html"]
+        assert html and html.startswith("<!doctype html>")
+        assert ">Unsubscribe</a>" in html
+        assert "Hi Paco" in strip_tags(html), "the reply itself has to be in it"
+        # The law's own words stay readable; only the URL hides.
+        visible = strip_tags(html)
+        assert "123 Test Ave" in visible
+        assert "/api/v1/public/unsubscribe/" not in visible
+    finally:
+        await _cleanup()
+
+
+def test_what_the_model_writes_cannot_become_markup() -> None:
+    """The body is model output on one lane and a realtor's typing on the other.
+
+    Neither is markup. An ampersand in a brokerage name is not an attack, it is
+    Tuesday, and a `<` from either source must arrive as a `<`.
+    """
+    from app.services.email_html import document, paragraphs
+
+    html = document(paragraphs("Ruiz & Co <script>alert(1)</script>\n\nSecond line."))
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+    assert "Ruiz &amp; Co" in html
+    assert html.count("<p ") == 2, "a blank line is a paragraph break"
+
+
+def test_only_http_links_become_links() -> None:
+    """Inert rubbish in plain text, a clickable link once rendered."""
+    from app.services.email_html import paragraphs
+
+    assert '<a href="https://x.test/tour"' in paragraphs("See https://x.test/tour")
+    for hostile in ("javascript:alert(1)", "data:text/html;base64,PHM+"):
+        out = paragraphs(f"Look at {hostile} now")
+        assert "<a " not in out, out

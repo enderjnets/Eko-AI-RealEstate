@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.136.5";
+export const CURRENT_VERSION = "0.136.6";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,19 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.136.6",
+    date: "2026-09-19",
+    title: {
+      en: "Clara's replies stop printing the unsubscribe token",
+      es: "Las respuestas de Clara dejan de imprimir el token de baja",
+    },
+    changes: [
+      { en: "Read in a real inbox: a reply that was trying to sound like a person wrote it ended on seventy characters of unsubscribe token, because plain text has no other way to carry a link. Every email the dispatcher sends now goes out with an HTML half as well \u2014 Clara's answers and the messages a realtor types in the panel alike, since both leave through the same door. The link hides behind the word Unsubscribe; the brokerage line and the postal address stay visible text, which is what the law asks to be on the page.", es: "Le\u00eddo en una bandeja real: una respuesta que intentaba sonar escrita por una persona terminaba en setenta caracteres de token de baja, porque el texto plano no sabe llevar un enlace de otra forma. Ahora todo correo que sale por el despachador lleva tambi\u00e9n una mitad HTML \u2014 las respuestas de Clara y lo que escribe a mano quien usa el panel, porque salen por la misma puerta. El enlace se esconde detr\u00e1s de la palabra Unsubscribe; la corredur\u00eda y la direcci\u00f3n postal siguen siendo texto visible, que es lo que la ley pide que est\u00e9 en la p\u00e1gina." },
+      { en: "The text half is untouched and still travels in the same send: it is what the message row stores, what the Fair Housing screen read, and what a client that renders no HTML receives. Both come from one set of facts, never from a second template \u2014 two templates are two places for a screen to miss something.", es: "La mitad de texto no cambia y viaja en el mismo env\u00edo: es lo que guarda la fila del mensaje, lo que ley\u00f3 la pantalla de Fair Housing, y lo que recibe un cliente que no pinta HTML. Las dos salen de un solo conjunto de hechos, nunca de una segunda plantilla \u2014 dos plantillas son dos sitios donde una pantalla puede no mirar." },
+      { en: "Everything is escaped on the way in. The body is model output on one lane and whatever somebody typed on the other, and both are about to be rendered as a document; an ampersand in a brokerage name is not an attack, it is Tuesday. Only http and https become links.", es: "Todo se escapa al entrar. El cuerpo es salida del modelo por una v\u00eda y lo que alguien tecle\u00f3 por la otra, y las dos est\u00e1n a punto de pintarse como un documento; un ampersand en el nombre de una corredur\u00eda no es un ataque, es un martes. S\u00f3lo http y https se convierten en enlaces." },
+    ],
+  },
   {
     version: "0.136.5",
     date: "2026-09-19",

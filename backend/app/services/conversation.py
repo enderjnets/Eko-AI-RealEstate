@@ -48,10 +48,13 @@ from app.services.delivery import MAX_ATTEMPTS, schedule_retry
 from app.services.email_compliance import (
     MissingPostalAddress,
     build_footer,
+    build_footer_html,
 )
 from app.services.email_compliance import (
     unsubscribe_url as unsubscribe_url_for,
 )
+from app.services.email_html import document as html_document
+from app.services.email_html import paragraphs as html_paragraphs
 from app.services.fair_housing import find_violations
 from app.services.i18n import (
     detect_for,
@@ -95,6 +98,7 @@ async def _dispatch_send(
     in_reply_to: str | None = None,
     references: str | None = None,
     unsubscribe_url: str | None = None,
+    body_html: str | None = None,
 ) -> tuple[str | None, str | None]:
     """Send the reply through the correct channel adapter.
 
@@ -113,6 +117,12 @@ async def _dispatch_send(
             to=to,
             subject=subject or "Tu consulta",
             body_text=text,
+            # Both halves in the same send. `text` stays the message of record
+            # — it is what `Message.content` holds and what Fair Housing read —
+            # and the HTML is there so the compliant footer does not have to
+            # print seventy characters of unsubscribe token under a sentence.
+            # None on SMS and WhatsApp, which have no second half.
+            body_html=body_html,
             in_reply_to=in_reply_to,
             references=references,
             # Defaults to None, which is what every caller but the agent's own
@@ -1916,6 +1926,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # "Perfect for Families Realty" must not enter the message after the filter
     # has already looked at it.
     unsubscribe_link: str | None = None
+    reply_html: str | None = None
     if parsed.channel == "email":
         try:
             footer = build_footer(
@@ -1959,6 +1970,24 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
                 "lead_id": lead.id,
                 "inbound_id": inbound.id,
             }
+        # Built BEFORE the footer is concatenated, so the HTML half gets the
+        # message and the compliant block as two separate things: the body
+        # becomes paragraphs, the footer becomes a word that carries the link.
+        # Built from the same `footer` inputs, never from a second template.
+        try:
+            reply_html = html_document(
+                html_paragraphs(reply_text)
+                + build_footer_html(
+                    lead_id=lead.id,
+                    brokerage_line=await _agency_brokerage_line(db),
+                    lang=target_lang,
+                )
+            )
+        except MissingPostalAddress:
+            # Unreachable: `build_footer` above raises on the same condition and
+            # that branch returns. Caught anyway so a future edit that reorders
+            # them costs the HTML half and not the reply.
+            reply_html = None
         reply_text = f"{reply_text}\n\n{footer}"
         unsubscribe_link = unsubscribe_url_for(lead.id)
 
@@ -2077,6 +2106,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
             in_reply_to=parsed.external_id if parsed.channel == "email" else None,
             references=email_references,
             unsubscribe_url=unsubscribe_link,
+            body_html=reply_html,
         )
         try:
             # The assignments go INSIDE the savepoint: `begin_nested()` flushes

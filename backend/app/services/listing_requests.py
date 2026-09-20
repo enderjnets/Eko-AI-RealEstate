@@ -43,6 +43,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models import ListingRequest, ListingRequestStatus
 from app.models.listing_request import CALLBACK_TEXT_MAX, MAX_SELECTED, new_token
+from app.services.email_html import document as _document
 
 log = logging.getLogger("app.listing_requests")
 
@@ -301,23 +302,6 @@ def _option_html(prop: object, index: int) -> str:
         'border-left:3px solid #e6d9c2;background:#fbfaf8;">'
         + "".join(rows)
         + "</div>"
-    )
-
-
-def _document(inner: str) -> str:
-    """The whole HTML mail. Inline styles only, no external anything.
-
-    Gmail strips `<style>` blocks and `@font-face`, so chasing the brand font
-    would produce a brand font in the one client nobody reads mail in. A system
-    serif is what actually arrives looking deliberate.
-    """
-    return (
-        "<!doctype html><html><body "
-        'style="margin:0;padding:24px;background:#ffffff;color:#1a1a1a;'
-        "font-family:Georgia,'Times New Roman',serif;font-size:15px;"
-        'line-height:1.55;">'
-        f'<div style="max-width:560px;">{inner}</div>'
-        "</body></html>"
     )
 
 

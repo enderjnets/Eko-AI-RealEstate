@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.136.6] - 2026-09-19
+
+### Added
+- `services/email_html.py` — `document()` and `paragraphs()`, the HTML half
+  built from the text half. `listing_requests` now shares it instead of
+  keeping its own copy of the shell.
+- `_dispatch_send` carries `body_html`, so every email that leaves through it
+  gets the second half: the assistant's replies and the realtor's own messages
+  from the panel. `None` on SMS and WhatsApp, which have no second half.
+
+### Fixed
+- A reply ended on the compliant footer printed the only way plain text can
+  print a link — a sentence and then seventy characters of unsubscribe token.
+  The word carries the link now; the brokerage line and the postal address
+  stay visible text.
+
+### Security
+- Model output and typed text are escaped before rendering, and only `http`
+  and `https` become anchors — inert rubbish in plain text is a clickable link
+  once rendered.
+
 ## [0.136.5] - 2026-09-19
 
 ### Added
