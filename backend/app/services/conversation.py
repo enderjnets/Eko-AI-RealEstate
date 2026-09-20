@@ -899,7 +899,7 @@ def _options_coming_note() -> str:
     )
 
 
-def _form_first_contact_note() -> str:
+def _form_first_contact_note(first_name: str | None) -> str:
     """What to say to somebody who filled the website form and nothing else.
 
     Measured on 2026-09-19: a real submission produced a lead, a notice to the
@@ -913,17 +913,35 @@ def _form_first_contact_note() -> str:
     and no instruction writes a paragraph about the market, which is what
     `_options_coming_note` already exists to prevent on the other lane.
 
-    What is asked for is the shortest set of facts that makes the human call
-    back useful: where, when, and what they can spend. Written in Spanish like
-    the rest of the persona; the language steering line appended above decides
-    what the person actually reads.
+    ── The name is passed in, and its absence is stated ────────────────────
+    The first version of this said "greet them by name if you have it" and
+    passed no name. The model never sees the lead row — only the message
+    history — so it had nothing to greet with and invented one: a lead called
+    Angel Belloso was answered with "Thanks for reaching out, Sarah!" in
+    production, on the very first real send.
+
+    An instruction to use a fact the model does not hold is an instruction to
+    make one up. So the name arrives as a fact when there is one, and when
+    there is not, its absence is stated as plainly as any other rule here —
+    silence would leave the same hole open.
     """
+    who = (first_name or "").strip().split(" ")[0]
+    naming = (
+        f"Se llama {who}: salUdala por ese nombre y por ningUn otro."
+        if who
+        else (
+            "NO SABES SU NOMBRE. Saluda sin nombre. NO te lo inventes bajo "
+            "ningUn concepto: escribir un nombre que no es el suyo es lo "
+            "primero que le dice a alguien que le contesta una mAquina."
+        )
+    )
     return (
         "\n\nESTA PERSONA ACABA DE RELLENAR EL FORMULARIO DE LA WEB. No te ha "
         "escrito un correo: ha marcado una opcion y, como mucho, ha dejado una "
         "frase. Es el PRIMER contacto y casi no sabes nada de ella.\n"
+        f"{naming}\n"
         "Escribe CORTO y calido, como una persona, no como un formulario:\n"
-        "1) salUdala por su nombre si lo tienes;\n"
+        "1) el saludo de arriba;\n"
         "2) una sola frase diciendo que ya tienes su mensaje y que alguien del "
         "equipo la va a llamar;\n"
         "3) COMO MUCHO TRES preguntas, una por linea, solo las que de verdad "
@@ -1846,7 +1864,7 @@ async def handle_inbound_message(parsed: ParsedMessage, db: AsyncSession) -> dic
     # text asks to see places should hear about the shortlist, not be asked
     # three questions about their budget.
     elif parsed.extra.get("origin") == FORM_ORIGIN:
-        system_prompt += _form_first_contact_note()
+        system_prompt += _form_first_contact_note(lead.name)
 
     # Phase 10: if the lead is property-shopping and we know the zone, give the
     # LLM the REAL matching listings so it can offer them (and never invent any).

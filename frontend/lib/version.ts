@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.136.6";
+export const CURRENT_VERSION = "0.136.7";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.136.7",
+    date: "2026-09-19",
+    title: {
+      en: "The assistant stops inventing the reader's name",
+      es: "La asistente deja de inventarse el nombre de quien lee",
+    },
+    changes: [
+      { en: "On the very first real send of the new website-form lane, a lead called Angel Belloso was answered with \"Thanks for reaching out, Sarah!\". The steering added hours earlier said to greet them by name if you have it, and nothing passed the name \u2014 the model sees the message history, never the lead row. An instruction to use a fact it does not hold is an instruction to make one up, and being called by a stranger's name is the fastest way to tell somebody a machine is writing. The name is passed in now, and when there is none its absence is stated as plainly as any other rule, because silence left the same hole open.", es: "En el primer env\u00edo real de la nueva v\u00eda del formulario, a un lead llamado Angel Belloso se le contest\u00f3 \u00abThanks for reaching out, Sarah!\u00bb. La instrucci\u00f3n a\u00f1adida horas antes dec\u00eda que la saludara por su nombre si lo ten\u00eda, y nada le pasaba el nombre \u2014 el modelo ve el histOrico de mensajes, nunca la ficha del lead. Pedirle que use un dato que no tiene es pedirle que se lo invente, y que te llamen por el nombre de otro es la forma m\u00e1s r\u00e1pida de saber que te escribe una m\u00e1quina. Ahora el nombre se le pasa, y cuando no hay se le dice con todas las letras, porque callarlo dejaba el mismo agujero." },
+    ],
+  },
   {
     version: "0.136.6",
     date: "2026-09-19",

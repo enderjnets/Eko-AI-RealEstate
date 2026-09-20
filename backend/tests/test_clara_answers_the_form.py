@@ -452,6 +452,33 @@ async def test_an_opted_out_person_hears_nothing(
         await _cleanup()
 
 
+def test_the_name_is_a_fact_or_a_stated_absence() -> None:
+    """The model never sees the lead row, only the message history.
+
+    The first version of this note said "greet them by name if you have it"
+    and passed no name. In production, on the very first real send, a lead
+    called Angel Belloso was answered with "Thanks for reaching out, Sarah!".
+
+    An instruction to use a fact the model does not hold is an instruction to
+    invent one, so the name goes in when there is one and its absence is
+    spelled out when there is not.
+    """
+    from app.services.conversation import _form_first_contact_note
+
+    named = _form_first_contact_note("Angel Belloso")
+    assert "Angel" in named
+    assert "por ningUn otro" in named, "using another name has to be ruled out"
+
+    anonymous = _form_first_contact_note(None)
+    assert "NO SABES SU NOMBRE" in anonymous
+    assert "NO te lo inventes" in anonymous
+    # And nothing in the anonymous version invites a greeting it cannot fill.
+    assert "Se llama" not in anonymous
+
+    for blank in ("", "   "):
+        assert "NO SABES SU NOMBRE" in _form_first_contact_note(blank), repr(blank)
+
+
 def test_the_note_asks_and_does_not_lecture() -> None:
     """The steering, not the model's output.
 
@@ -461,7 +488,7 @@ def test_the_note_asks_and_does_not_lecture() -> None:
     """
     from app.services.conversation import _form_first_contact_note
 
-    note = _form_first_contact_note().lower()
+    note = _form_first_contact_note("Probe").lower()
     assert "formulario" in note
     assert "tres preguntas" in note, "the cap on questions has to be stated"
     for forbidden in ("no enumeres propiedades", "no inventes direcciones"):
@@ -506,6 +533,13 @@ async def test_clara_is_told_this_came_from_the_form(
         system = writer.await_args.kwargs["system"]
         assert "FORMULARIO DE LA WEB" in system, system[-400:]
         assert "TRES preguntas" in system
+        # The name has to REACH the prompt, not merely be formattable into it.
+        # Testing the note function alone left this hole: passing `None` instead
+        # of `lead.name` kept every other test green, and that is the exact bug
+        # that answered a lead called Angel Belloso with "Thanks for reaching
+        # out, Sarah!" on the first real send.
+        assert "Se llama Probe" in system, system[-400:]
+        assert "NO SABES SU NOMBRE" not in system
     finally:
         await _cleanup()
 

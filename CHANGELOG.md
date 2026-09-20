@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.136.7] - 2026-09-19
+
+### Fixed
+- `_form_first_contact_note()` receives the lead's name instead of being told
+  to use one it was never given. On the first real send of the lane added in
+  0.136.5, a lead called Angel Belloso was answered "Thanks for reaching out,
+  Sarah!" — the model sees the message history, never the lead row. When there
+  is no name, its absence is stated rather than left silent.
+
+### Known
+- The Gmail mobile app renders the plain-text half of a reply, so the
+  unsubscribe URL still prints in full there. Both halves travel in one send
+  and desktop Gmail renders the HTML. Next step is reading the raw MIME to see
+  the part order — `text/plain` must precede `text/html` — before changing
+  anything.
+
 ## [0.136.6] - 2026-09-19
 
 ### Added
