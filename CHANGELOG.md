@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.141.0] - 2026-09-20
+
+### Added
+- **The Journal**: `/blog` (índice) y `/blog/twelve-houses-worth-the-detour`
+  (la primera pieza). Las dos son componentes de servidor y se prerenderizan
+  estáticas; el movimiento vive en `components/journal/{Strip,ArticleMotion}`.
+- `lib/journal/twelveHouses.ts` — **generado**, no transcrito. El texto sale del
+  prototipo de diseño y el generador comprueba que cada cadena vuelve a aparecer
+  en el HTML de origen antes de emitir nada. Doce fichas, doce paneles, seis
+  descartadas, 1.108 líneas.
+- `lib/journal/publication.ts` — la puerta. Con `PUBLISHED = false` las dos
+  páginas declaran `robots: index:false`, la portada no las enlaza y el sitemap
+  las excluye. Con `true`, `journal.test.ts` exige que las doce corredurías
+  tengan `permission: "granted"`.
+- Paleta `jr-*` en `tailwind.config.ts`, 16 tokens. Prefijo propio y no reúso de
+  `ln-*` porque seis de los dieciséis son **casi** iguales y no iguales:
+  `ln-muted #8A8172` contra faint `#8A8272` es un dígito.
+- `scripts/journal-photos.sh` y `lib/journal/DERECHOS.md`.
+- `lib/__tests__/journal.test.ts` (19 casos) y tres casos nuevos en
+  `publicMetadata.test.ts`.
+
+### Changed
+- `PUBLIC_PATHS` incluye `/blog`. Medido antes del cambio:
+  `curl -sI https://www.denverhomestory.com/blog` devolvía
+  `308 → https://inmo-demo.ekoaiautomation.com/blog`, porque la lista blanca del
+  middleware no lo conocía. `isPublicPath` casa sub-rutas, así que la misma
+  entrada abre el artículo.
+- `app/sitemap.ts` filtra `/blog` mientras la puerta esté cerrada: listar una
+  ruta e indicarle al rastreador que no la indexe son órdenes opuestas.
+- La portada gana enlace a The Journal en navegación, menú móvil y pie — los
+  tres tras la puerta, con `hrefLang="en"`.
+- Regla de scroll oculto en `globals.css` para `[data-strip]`, sin el ámbito
+  `.eko-landing`: el Journal no lleva esa clase.
+
+### Notes
+- 🔴 **Ninguna de las doce casas es nuestra.** Son de ocho corredurías ajenas.
+  La política del MLS de REcolorado prohíbe expresamente usar la foto del
+  listing de otro Subscriber sin permiso escrito del titular del copyright, y la
+  Regla 6.10.F.1.a de Colorado exige ese permiso para difundir su anuncio. No
+  existe todavía: las doce filas de `DERECHOS.md` están en «pendiente».
+- 🔴 **Las 48 fotografías no se versionan.** Este repositorio es público. Además,
+  a las copias entregadas se les recortó el 11% inferior para quitar la marca de
+  agua de copyright — medido en los píxeles: 2000×1188 donde un 3:2 daría 1333.
+  Cuando llegue el permiso hay que pedir **los originales sin recortar**; el
+  encuadre lo hace el CSS, como ya hace `/fall`.
+- El formulario es `ConsultForm`, el compartido. Los campos *What are you trying
+  to do?* y *Where?* del diseño no se añaden aquí: tocan `/`, `/contact` y
+  `/fall`.
+- Inglés solo, como `/fall`. `/blog/es` es otra entrega.
+- Medido en navegador: panel activo 260 px a 375, 318 a 768 y 420 a 1024, los
+  tres exactos según la fórmula del handoff; sin desborde horizontal en ninguno;
+  las 36 miniaturas dentro del viewport; la del medio se desplaza −13,51 px
+  mientras las de fuera van a +13,51. Con `prefers-reduced-motion`, 96 de 96
+  hijos de ficha visibles y los contadores en su cifra final.
+
 ## [0.140.0] - 2026-09-20
 
 ### Added

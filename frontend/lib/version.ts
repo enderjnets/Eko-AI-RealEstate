@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.140.0";
+export const CURRENT_VERSION = "0.141.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,32 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.141.0",
+    date: "2026-09-20",
+    title: {
+      en: "The Journal, built but not yet published",
+      es: "The Journal, construido y aun sin publicar",
+    },
+    changes: [
+      {
+        en: "Denver Home Story has a journal: an index at /blog and its first piece, twelve Colorado houses above $11.7 million read one at a time. Twelve panels you can leaf through, forty-nine photographs, and every figure taken from the listing record rather than estimated.",
+        es: "Denver Home Story tiene diario: un indice en /blog y su primera pieza, doce casas de Colorado por encima de $11,7 millones leidas una a una. Doce paneles que se hojean, cuarenta y nueve fotografias, y cada cifra sacada del registro de la ficha en vez de estimada.",
+      },
+      {
+        en: "It is not in any search index yet, and the home page does not link to it. None of the twelve houses is ours: they belong to eight other brokerages, and Colorado requires their written permission before we may show their listing. Until that permission exists the pages are built, testable and deliberately unfindable.",
+        es: "Todavia no esta en ningun indice de busqueda, y la portada no lo enlaza. Ninguna de las doce casas es nuestra: son de ocho corredurias ajenas, y Colorado exige su permiso escrito antes de que podamos ensenar su ficha. Hasta que ese permiso exista, las paginas estan construidas, se pueden probar y son deliberadamente ilocalizables.",
+      },
+      {
+        en: "The photographs are not in the repository. The code is public; forty-eight photographs belonging to other brokerages will not be published in it, and the copies we were handed had the copyright watermark cropped off. A test fails if one is ever committed.",
+        es: "Las fotografias no estan en el repositorio. El codigo es publico; cuarenta y ocho fotografias de corredurias ajenas no se publican dentro, y a las copias que nos entregaron les habian recortado la marca de agua de copyright. Un test falla si alguna llega a versionarse.",
+      },
+      {
+        en: "The form under the piece is the same one as everywhere else — same endpoint, same consent wording, same record. A second, subtly different capture form is how a consent record ends up saying something the visitor never read.",
+        es: "El formulario bajo la pieza es el mismo de siempre — mismo destino, misma frase de consentimiento, mismo registro. Un segundo formulario de captacion ligeramente distinto es como acaba existiendo un registro de consentimiento que dice algo que el visitante nunca leyo.",
+      },
+    ],
+  },
   {
     version: "0.140.0",
     date: "2026-09-20",
