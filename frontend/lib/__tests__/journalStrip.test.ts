@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 const hooks = vi.hoisted(() => ({ run: undefined as undefined | (() => void | (() => void)), current: undefined as unknown }));
 vi.mock("react", () => ({ useEffect: (run: () => void) => { hooks.run = run; }, useRef: () => ({ current: hooks.current }) }));
+import { ENTRIES, STRIP } from "@/lib/journal/twelveHouses";
 import { Strip } from "@/components/journal/Strip";
 
 function mount(reduce = false) {
@@ -29,7 +30,7 @@ function mount(reduce = false) {
   vi.stubGlobal("document", { hidden: false, visibilityState: "visible",
     addEventListener: (name: string, cb: () => void) => events.set(name, cb), removeEventListener: (name: string) => events.delete(name) });
   hooks.current = { clientWidth: 800, querySelectorAll: () => panels, scrollTo: vi.fn() };
-  Strip(); const cleanup = hooks.run?.();
+  Strip({ entries: ENTRIES, panels: STRIP }); const cleanup = hooks.run?.();
   const click = (i: number) => panels[i].handlers.get("click")?.({ target: { closest: () => null } });
   const flush = () => { const batch = [...frames.values()]; frames.clear(); batch.forEach(cb => cb(0)); };
   return { panels, frames, click, flush, cleanup };

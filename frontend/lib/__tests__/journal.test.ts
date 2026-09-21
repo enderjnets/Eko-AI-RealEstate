@@ -168,7 +168,7 @@ describe("los derechos de las fotografias", () => {
     // se deshace, asi que esto se vigila y no se recuerda.
     const tracked = execFileSync(
       "git",
-      ["ls-files", "frontend/public/blog/img"],
+      ["ls-files", "frontend/private/journal/img"],
       { cwd: resolve(ROOT, ".."), encoding: "utf8" },
     ).trim();
     expect(tracked, `hay fotos versionadas:\n${tracked}`).toBe("");
@@ -287,7 +287,7 @@ describe("las fotos se copian, no se reprocesan", () => {
   it("y sigue sin versionarse ninguna foto ajena", () => {
     // La guarda de siempre, repetida aqui a proposito: subir la resolucion es
     // justo el cambio que tienta a «meterlas ya en el repo».
-    const tracked = execFileSync("git", ["ls-files", "frontend/public/blog/img"], {
+    const tracked = execFileSync("git", ["ls-files", "frontend/private/journal/img"], {
       cwd: resolve(ROOT, ".."),
       encoding: "utf8",
     }).trim();
@@ -365,7 +365,7 @@ describe("la pagina dice quien anuncia", () => {
 
 describe("los ficheros que la pagina pide", () => {
   it("el skyline esta en su sitio", () => {
-    expect(existsSync(resolve(ROOT, "public/blog/denver-skyline.jpg"))).toBe(true);
+    expect(existsSync(resolve(ROOT, "private/journal/denver-skyline.jpg"))).toBe(true);
   });
 
   it("las 48 fotografias estan, o el guion dice como traerlas", () => {
@@ -380,7 +380,7 @@ describe("los ficheros que la pagina pide", () => {
     // guion se quedo a medias, y eso si es un fallo. La asercion corre SIEMPRE:
     // una que solo se evalua dentro de un `if` sale verde con el defecto y sin el.
     const missing = ENTRIES.flatMap((e) => e.photos).filter(
-      (p) => !existsSync(resolve(ROOT, "public/blog/img", p)),
+      (p) => !existsSync(resolve(ROOT, "private/journal/img", p)),
     );
     expect(
       [0, 48],

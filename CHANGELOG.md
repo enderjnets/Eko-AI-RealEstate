@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.142.7] — 2026-09-21
+
+- Protect Journal pages and photographs with private review credentials; remove public navigation links and keep search indexing disabled.
+- Serve photographs outside the public directory with authorization checked again at the media route; deny missing credentials and shared caching.
+- Keep private review visits out of landing analytics.
+
 ## [0.142.6] - 2026-09-21
 
 ### Fixed

@@ -1,9 +1,9 @@
+import { requireJournalAccess } from "@/lib/journal/requireAccess";
 import type { Metadata, Viewport } from "next";
 
 import { JournalFooter, JournalHeader } from "@/components/journal/JournalChrome";
 import { CallLine } from "@/components/landing/CallLine";
 import { ConsultForm } from "@/components/landing/ConsultForm";
-import { LandingTracker } from "@/components/landing/LandingTracker";
 import { BRAND_URL } from "@/lib/hosts";
 import { INDEXED } from "@/lib/journal/publication";
 import { LANDING, homeScreenName } from "@/lib/landing";
@@ -61,10 +61,9 @@ const NEXT_HEAD = CUT < 0 ? INDEX.nextDek : INDEX.nextDek.slice(0, CUT);
 const NEXT_TAIL = CUT < 0 ? "" : INDEX.nextDek.slice(CUT + CALL_PHRASE.length);
 
 export default function JournalIndexPage() {
+  requireJournalAccess();
   return (
     <main className="min-h-screen bg-jr-cream font-ln-sans text-jr-body">
-      <LandingTracker variant="journal-index" />
-
       <JournalHeader current="index" />
 
       <section className="bg-jr-noir pb-[clamp(52px,8vw,100px)] pt-[clamp(62px,10vw,120px)]">

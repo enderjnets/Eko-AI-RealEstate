@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Pone las fotografias del Journal en `public/blog/img/`.
+# Pone las fotografias del Journal en `private/journal/img/`.
 #
 # POR QUE ESTO EXISTE, Y NO UN `git add`.
 # Las cuarenta y ocho fotografias del articulo "Twelve houses" son de OCHO
@@ -23,7 +23,7 @@
 set -euo pipefail
 
 SRC="${1:-$HOME/Documents/Denver Home Story - Brand/journal/photos-originales}"
-DEST="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/public/blog"
+DEST="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/private/journal"
 
 if [ ! -d "$SRC" ]; then
   echo "no encuentro el origen: $SRC" >&2

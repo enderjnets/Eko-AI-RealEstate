@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // All images use plain <img>. Disable the unused optimizer so private media cannot enter its shared cache.
+  images: { unoptimized: true },
   async redirects() {
     // Short links for the profile field of each network, because the long
     // tagged URL cannot be pasted where it needs to go:
