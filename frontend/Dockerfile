@@ -85,7 +85,7 @@ COPY . .
 # `failed to compute cache key: "/app/public": not found`.
 # Created here rather than committing a `.gitkeep`, so nothing stray ends up
 # being served from the site root.
-RUN mkdir -p public private/journal && if [ -d public/blog ]; then cp -a public/blog/. private/journal/ && rm -rf public/blog; fi && npm run build
+RUN mkdir -p public private/journal && if [ -d public/blog ]; then cp -a public/blog/. private/journal/ && rm -rf public/blog; fi && npm run build && node scripts/check-journal-bundle.mjs
 
 FROM node:20-alpine AS runner
 WORKDIR /app

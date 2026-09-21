@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { ENTRIES, STRIP } from "@/lib/journal/twelveHouses";
+import type { Entry, Panel } from "@/lib/journal/twelveHouses";
 
 /**
  * "At a glance": doce paneles, uno por casa, que se abren al pasar por encima y
@@ -43,15 +43,18 @@ const ENTRANCE =
 const INTERACT =
   "background-size 900ms cubic-bezier(0.22,1,0.36,1), border-color 400ms ease";
 
-function photosOf(slug: string): string[] {
-  const entry = ENTRIES.find((e) => e.slug === slug);
-  return entry ? entry.photos.map((p) => `/blog/img/${p}`) : [];
-}
-
-export function Strip() {
+export function Strip({ entries: ENTRIES, panels: STRIP }: {
+  entries: readonly Entry[];
+  panels: readonly Panel[];
+}) {
   const stripRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    function photosOf(slug: string): string[] {
+      const entry = ENTRIES.find((e) => e.slug === slug);
+      return entry ? entry.photos.map((p) => `/blog/img/${p}`) : [];
+    }
+
     const strip = stripRef.current;
     if (!strip) return;
 
@@ -311,7 +314,7 @@ export function Strip() {
       if (raf) cancelAnimationFrame(raf);
       for (const c of cleanups) c();
     };
-  }, []);
+  }, [ENTRIES]);
 
   return (
     <>

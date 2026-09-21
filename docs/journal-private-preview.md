@@ -5,6 +5,8 @@ Approved by Ender, 21 September 2026. Preserve the latest design while limiting 
 URL: https://www.denverhomestory.com/blog/twelve-houses-worth-the-detour
 Username: `journal`. Password: `JOURNAL_PREVIEW_PASSWORD`, runtime-only frontend environment; at least 20 ASCII characters. Empty/short configuration denies access. Generate randomly and share privately, never commit it or put it in a URL.
 
+Carousel data is passed from the authenticated server page; no listing text or photo filenames are embedded in public JavaScript bundles. Run `node scripts/check-journal-bundle.mjs` after build (Docker runs this check automatically). Purge old /_next/static copies as well as /blog after deployment.
+
 Pages require credentials in middleware AND server page/layout code. Images are in `frontend/private/journal`, served by an authenticated route at the existing `/blog/...` URLs. Listing photos remain gitignored. Docker also removes any legacy `public/blog` copied into a build context. The runner must copy next.config.js: without it next start re-enables the image optimizer despite the build configuration. No shared caching; no indexing; public homepage links hidden. Private review page views do not mount LandingTracker. The contact form remains real: do not submit test inquiries to the broker.
 
 Before deploying, seed untracked photos into `private/journal/img` from the previous container, without changing their bytes. Compare all 48 hashes and keep a protected backup. Rebuilding an older image is NOT a safe rollback: it would publish the photos again. Fix forward or keep /blog blocked at ingress during rollback.

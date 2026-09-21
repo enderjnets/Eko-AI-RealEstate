@@ -11,6 +11,7 @@ import { INDEXED } from "@/lib/journal/publication";
 import { LANDING, homeScreenName } from "@/lib/landing";
 import {
   ENTRIES,
+  STRIP,
   PAGE,
   PASSED,
   SLUG,
@@ -136,7 +137,7 @@ export default function TwelveHousesPage() {
       </section>
 
       <section className="bg-jr-noir pb-[clamp(40px,6vw,72px)]">
-        <Strip />
+        <Strip entries={ENTRIES} panels={STRIP} />
       </section>
 
       <section className="bg-jr-cream pt-[clamp(56px,8vw,100px)] pb-[clamp(48px,7vw,82px)]">
