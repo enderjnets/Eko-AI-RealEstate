@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.142.6";
+export const CURRENT_VERSION = "0.142.7";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.142.7",
+    date: "2026-09-21",
+    title: { en: "Private Journal review", es: "Revisión privada del Journal" },
+    changes: [{
+      en: "The Journal and its photographs now require review credentials. Public navigation links are hidden while image permissions are reviewed.",
+      es: "El Journal y sus fotografías requieren credenciales de revisión. Sus enlaces públicos quedan ocultos mientras se revisan los permisos de las imágenes.",
+    }],
+  },
   {
     version: "0.142.6",
     date: "2026-09-21",

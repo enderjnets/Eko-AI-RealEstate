@@ -356,6 +356,7 @@ services:
     environment:
       # next.config.js reads this at server startup for its /api/* rewrite.
       INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8000}
+      JOURNAL_PREVIEW_PASSWORD: ${JOURNAL_PREVIEW_PASSWORD:-}
     ports:
       # 3004 — coexist with eko-frontend :3001, eko-frontend-pricing-v2 :3002, eko-frontend-main :3003
       # Loopback only — same reasoning as the backend's 8011 above. The tunnel

@@ -1,23 +1,23 @@
 # Derechos de las fotografías de "Twelve houses worth the detour"
 
-Estado al **20 de septiembre de 2026**. Esta es la única prueba documental de
-la letra `a` de la Regla 6.10.F.1 de Colorado. Si no está aquí, no existe.
+Estado al **21 de septiembre de 2026**. Registro de permisos conocidos; no
+sustituye los contratos de la correduría ni constituye una conclusión jurídica.
 
-## Estado de las dos puertas (20-sep-2026)
+## Acceso de revisión
 
-| Puerta | Valor | Qué hace | ¿Se deshace? |
-|---|---|---|---|
-| `LINKED` | **abierta** | la portada enlaza The Journal en la navegación, el menú del móvil y el pie | **sí**, en un despliegue |
-| `INDEXED` | **cerrada** | `robots: noindex, nofollow` en las dos páginas y `/blog` fuera del sitemap | **no**: lo que el rastreador cachea, se queda |
+Ender autorizó una vista previa con contraseña. `LINKED=false` y `INDEXED=false`;
+las páginas y fotografías requieren credenciales y no deben guardarse en cachés
+compartidas. `noindex` y quitar enlaces por sí solos NO restringen el acceso.
 
-El enlace lo abrió Ender el 20-sep-2026 después de que le diera el coste por
-escrito. **Ninguna fila de la tabla de abajo cambió por eso**, y ninguna cambia
-hasta que exista el permiso: este fichero dice la verdad pase lo que pase en
-`publication.ts`.
+La oficina debe confirmar si los acuerdos existentes cubren este dominio, este
+uso editorial y los derechos de las fotografías, o qué permisos adicionales
+faltan. No se presupone que hagan falta ocho autorizaciones nuevas si existe
+una licencia válida que cubra el uso. Ninguna fila se marca concedida sin evidencia.
 
-Lo que sigue pendiente, y es lo que de verdad mira la Regla 6.10.F.1.a: el
-permiso escrito de las ocho corredurías y, con él, **los originales sin
-recortar**.
+Las imágenes actuales son las del paquete de diseño, recortadas en origen; no
+son los originales del MLS. Ender no conserva los originales y autorizó recuperarlos
+del listing si es necesario. No recrear marcas de agua ni declarar que la vista
+privada concede derechos de uso.
 
 ## Lo que hay que saber antes de tocar nada
 

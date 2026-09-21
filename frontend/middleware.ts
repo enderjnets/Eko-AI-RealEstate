@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { journalAuthorized, journalChallenge, JOURNAL_PRIVATE_HEADERS } from "@/lib/journal/access";
 import { BRAND_HOST, BRAND_URL, PANEL_HOST, PANEL_URL, isPublicPath } from "@/lib/hosts";
 
 /**
@@ -33,6 +34,12 @@ import { BRAND_HOST, BRAND_URL, PANEL_HOST, PANEL_URL, isPublicPath } from "@/li
  * `.env` for them before building.
  */
 export function middleware(req: NextRequest) {
+  const journalPath = req.nextUrl.pathname === "/blog" || req.nextUrl.pathname.startsWith("/blog/");
+  if (journalPath) {
+    if (!journalAuthorized(req.headers.get("authorization"))) return journalChallenge();
+    return NextResponse.next({ headers: JOURNAL_PRIVATE_HEADERS });
+  }
+
   // Both must be known before either redirect is safe. Knowing only the brand
   // host would mean redirecting the panel to an empty string. Testing the HOSTS
   // and not the URLs is deliberate: `hostOf("")` is `""`, so a truthy host
@@ -123,5 +130,5 @@ export const config = {
    * replay it would be sending a lead's phone number across an origin the
    * page never intended. The form would appear to work and quietly lose leads.
    */
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)"],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)", "/blog/:path*"],
 };

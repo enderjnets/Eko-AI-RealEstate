@@ -91,3 +91,5 @@ scratchpad/
 # Fotografias del Journal: son de corredurias ajenas y este repo es
 # publico. Ver frontend/scripts/journal-photos.sh y lib/journal/DERECHOS.md.
 frontend/public/blog/img/
+
+frontend/private/journal/img/

@@ -1,3 +1,4 @@
+import { requireJournalAccess } from "@/lib/journal/requireAccess";
 import type { Metadata, Viewport } from "next";
 
 import { ArticleMotion } from "@/components/journal/ArticleMotion";
@@ -5,7 +6,6 @@ import { JournalFooter, JournalHeader } from "@/components/journal/JournalChrome
 import { Strip } from "@/components/journal/Strip";
 import { CallLine } from "@/components/landing/CallLine";
 import { ConsultForm } from "@/components/landing/ConsultForm";
-import { LandingTracker } from "@/components/landing/LandingTracker";
 import { BRAND_URL } from "@/lib/hosts";
 import { INDEXED } from "@/lib/journal/publication";
 import { LANDING, homeScreenName } from "@/lib/landing";
@@ -76,12 +76,9 @@ function Rich({ parts }: { parts: readonly Segment[] }) {
 const SHELL = "mx-auto max-w-[1120px] px-[clamp(22px,5vw,56px)]";
 
 export default function TwelveHousesPage() {
+  requireJournalAccess();
   return (
     <main className="min-h-screen bg-jr-cream font-ln-sans text-jr-body">
-      {/* Sin esto la pieza es invisible en /analytics: `page_view` no se
-          dispara y los eventos del formulario son no-ops silenciosos. */}
-      <LandingTracker variant="journal" />
-
       {/* La barra de lectura. `transform-origin` a la izquierda o crece desde
           el centro hacia los dos lados. */}
       <div
