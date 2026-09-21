@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { AS_OF, ENTRIES, PAGE, PASSED, SLUG, STRIP } from "@/lib/journal/twelveHouses";
-import { PUBLISHED } from "@/lib/journal/publication";
+import { INDEXED, LINKED } from "@/lib/journal/publication";
 
 /**
  * The Journal: los datos, los derechos y la puerta de publicacion.
@@ -175,21 +175,34 @@ describe("los derechos de las fotografias", () => {
   });
 });
 
-describe("la puerta de publicacion", () => {
-  it("no se abre mientras quede un permiso pendiente", () => {
+describe("las dos puertas de publicacion", () => {
+  it("son dos constantes y no una: enlazar no es indexar", () => {
+    // El diseno original tenia UNA puerta, y eso obligaba a elegir entre no
+    // ensenar la seccion a nadie o entregarsela al rastreador. Son decisiones
+    // con costes distintos: el enlace de la portada se apaga en un despliegue;
+    // lo que Google ya cacheo, no. Si alguien las vuelve a fundir en una, este
+    // test se pone rojo.
+    const src = read("lib/journal/publication.ts");
+    expect(src).toMatch(/export const LINKED/);
+    expect(src).toMatch(/export const INDEXED/);
+    expect(read("app/sitemap.ts")).toContain("JOURNAL_INDEXED");
+    expect(read("components/landing/Landing.tsx")).toContain("JOURNAL_LINKED");
+  });
+
+  it("el INDICE no se abre mientras quede un permiso pendiente", () => {
     const pending = ENTRIES.filter((e) => e.permission !== "granted");
-    if (PUBLISHED) {
+    if (INDEXED) {
       expect(
         pending.map((e) => `${e.n} ${e.brokerage}`),
-        "PUBLISHED esta en true con permisos sin conceder: ver lib/journal/DERECHOS.md",
+        "INDEXED esta en true con permisos sin conceder: ver lib/journal/DERECHOS.md",
       ).toEqual([]);
     } else {
-      // Con la puerta cerrada las dos paginas tienen que quedarse fuera de los
-      // indices. Es la mitad que se olvida: quitar el enlace y dejar el
-      // `robots: index` deja la pagina igual de encontrable.
+      // Con la puerta del indice cerrada las dos paginas tienen que quedarse
+      // fuera de los indices. Es la mitad que se olvida: quitar el enlace y
+      // dejar el `robots: index` deja la pagina igual de encontrable.
       for (const page of [INDEX_PAGE, ARTICLE_PAGE]) {
-        expect(read(page), `${page} no ata robots a la puerta`).toContain(
-          "robots: { index: PUBLISHED, follow: PUBLISHED }",
+        expect(read(page), `${page} no ata robots a la puerta del indice`).toContain(
+          "robots: { index: INDEXED, follow: INDEXED }",
         );
       }
     }
@@ -197,21 +210,37 @@ describe("la puerta de publicacion", () => {
 
   it("el sitemap no invita a rastrear lo que la pagina marca como no indexable", () => {
     // Listar la ruta y decirle al rastreador que no la indexe son ordenes
-    // opuestas, y el sitemap es la que ademas le pide que venga.
+    // opuestas, y el sitemap es la que ademas le pide que venga. Va con
+    // INDEXED, nunca con LINKED.
     const src = read("app/sitemap.ts");
-    expect(src).toContain("JOURNAL_PUBLISHED");
+    expect(src).toContain("JOURNAL_INDEXED");
+    expect(src).not.toContain("JOURNAL_LINKED");
     expect(src).toMatch(/PUBLIC_PATHS\.filter/);
   });
 
-  it("la portada solo enlaza The Journal cuando la puerta esta abierta", () => {
+  it("la portada enlaza The Journal en los tres sitios, tras la misma condicion", () => {
     const src = read("components/landing/Landing.tsx");
     // Dos son JSX (`href="/blog"`) y el tercero es la entrada del menu movil,
     // que es un objeto (`href: "/blog"`). Contar solo la primera forma deja el
-    // menu del telefono fuera de la comprobacion.
+    // menu del telefono fuera de la comprobacion — y el movil es justo donde
+    // se pidio poder llegar.
     const links = src.match(/href[=:] ?"\/blog"/g) ?? [];
     expect(links.length, "la portada deberia enlazar /blog en tres sitios").toBe(3);
-    // Los tres van tras la misma condicion.
-    expect((src.match(/JOURNAL_PUBLISHED/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    // Los tres van tras la misma condicion, y esa condicion es LINKED.
+    expect((src.match(/JOURNAL_LINKED/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect(src, "la portada no debe leer la puerta del indice").not.toContain(
+      "JOURNAL_INDEXED",
+    );
+  });
+
+  it("con el enlace abierto, la seccion tiene que ser alcanzable de verdad", () => {
+    // Un enlace en la portada que apunta a una ruta que el host devuelve con un
+    // 308 al panel es peor que no tener enlace: se ve, se toca y no lleva a
+    // ningun sitio. `PUBLIC_PATHS` es lista blanca.
+    if (!LINKED) return;
+    expect(read("lib/hosts.ts"), "/blog no esta en PUBLIC_PATHS").toMatch(
+      /"\/blog"/,
+    );
   });
 });
 

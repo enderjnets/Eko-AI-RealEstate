@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 import { BRAND_URL, PUBLIC_PATHS } from "@/lib/hosts";
-import { PUBLISHED as JOURNAL_PUBLISHED } from "@/lib/journal/publication";
+import { INDEXED as JOURNAL_INDEXED } from "@/lib/journal/publication";
 import { sitemapUrls } from "@/lib/sitemap";
 
 /**
@@ -12,13 +12,14 @@ import { sitemapUrls } from "@/lib/sitemap";
  *
  * The one subtraction, and it is still DERIVED rather than hand-kept: The
  * Journal has to be public for the panel to serve it — that is what
- * `PUBLIC_PATHS` decides — but while its publication gate is shut its pages
+ * `PUBLIC_PATHS` decides — and the home page now links it, but while its
+ * INDEX gate is shut its pages
  * declare `robots: index:false`. Listing a page here and telling the crawler
  * not to index it are opposite instructions, and the sitemap is the one that
  * actively invites the visit. The filter reads the same constant the pages
  * read, so the two can never drift; there is no second list to keep.
  */
 export default function sitemap(): MetadataRoute.Sitemap {
-  const paths = PUBLIC_PATHS.filter((p) => p !== "/blog" || JOURNAL_PUBLISHED);
+  const paths = PUBLIC_PATHS.filter((p) => p !== "/blog" || JOURNAL_INDEXED);
   return sitemapUrls(BRAND_URL, paths);
 }

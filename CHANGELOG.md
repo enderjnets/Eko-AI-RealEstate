@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.142.0] - 2026-09-20
+
+### Changed
+- **La puerta de publicación de The Journal se parte en dos.** Era una sola
+  constante, `PUBLISHED`, y eso obligaba a elegir entre no enseñar la sección a
+  nadie o entregársela al rastreador. Son dos decisiones con dos costes
+  distintos:
+  - `LINKED` → los tres enlaces de la portada (`Landing.tsx`: navegación, menú
+    del móvil, pie). **Reversible**: se apaga y en un despliegue no queda
+    rastro. Hoy queda **abierta**, a petición de Ender.
+  - `INDEXED` → `robots: index/follow` en las dos páginas y el filtro de
+    `app/sitemap.ts`. **No reversible**: lo que el rastreador cachea se queda.
+    Sigue **cerrada**.
+- `lib/journal/DERECHOS.md` registra el estado de las dos puertas. **Ninguna de
+  las doce filas cambió**: siguen en «pendiente», que es la verdad.
+
+### Tests
+- `journal.test.ts`: el bloque de la puerta pasa a `INDEXED` y se añade la
+  guarda de que las dos constantes no se vuelvan a fundir en una — el sitemap
+  tiene que leer `JOURNAL_INDEXED` y la portada `JOURNAL_LINKED`, nunca al
+  revés. Con `LINKED` abierto se comprueba además que `/blog` siga en
+  `PUBLIC_PATHS`: un enlace visible hacia un 308 es peor que no tener enlace.
+- Las dos guardas se vieron **en rojo antes de darlas por buenas**: con
+  `INDEXED = true` el test nombra las doce corredurías pendientes, y apuntando
+  el sitemap a `LINKED` fallan dos.
+
 ## [0.141.0] - 2026-09-20
 
 ### Added

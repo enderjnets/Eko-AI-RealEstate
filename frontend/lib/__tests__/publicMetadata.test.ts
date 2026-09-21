@@ -131,11 +131,12 @@ describe("public pages do not leak the platform's identity", () => {
     // indice. Aqui el motivo es distinto — las fotografias son de ocho
     // corredurias ajenas y el permiso escrito aun no existe — pero la forma es
     // la misma, y lo que se comprueba es que las dos paginas digan LO MISMO que
-    // la puerta, no un valor escrito a mano que se quede atras cuando se abra.
-    const { PUBLISHED } = await import("../../lib/journal/publication");
+    // la puerta del INDICE (no la del enlace: son dos), y no un valor escrito a
+    // mano que se quede atras cuando se abra.
+    const { INDEXED } = await import("../../lib/journal/publication");
     for (const mod of ["../../app/blog/page", "../../app/blog/twelve-houses-worth-the-detour/page"]) {
       const { metadata } = await import(mod);
-      expect(metadata.robots, mod).toMatchObject({ index: PUBLISHED, follow: PUBLISHED });
+      expect(metadata.robots, mod).toMatchObject({ index: INDEXED, follow: INDEXED });
     }
   });
 

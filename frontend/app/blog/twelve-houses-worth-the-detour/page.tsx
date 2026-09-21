@@ -7,7 +7,7 @@ import { CallLine } from "@/components/landing/CallLine";
 import { ConsultForm } from "@/components/landing/ConsultForm";
 import { LandingTracker } from "@/components/landing/LandingTracker";
 import { BRAND_URL } from "@/lib/hosts";
-import { PUBLISHED } from "@/lib/journal/publication";
+import { INDEXED } from "@/lib/journal/publication";
 import { LANDING, homeScreenName } from "@/lib/landing";
 import {
   ENTRIES,
@@ -51,9 +51,11 @@ export const metadata: Metadata = {
   description: DESCRIPTION,
   openGraph: { type: "article", title: TITLE, description: DESCRIPTION },
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
-  // Ver `lib/journal/publication.ts`: hasta que las ocho corredurias den
-  // el permiso por escrito, esto no entra en ningun indice.
-  robots: { index: PUBLISHED, follow: PUBLISHED },
+  // Ver `lib/journal/publication.ts`: la portada ya enlaza la seccion
+  // (`LINKED`), pero hasta que las ocho corredurias den el permiso por
+  // escrito esto no entra en ningun indice. Enlazar se deshace; que Google
+  // cachee cuarenta y ocho fotos ajenas, no.
+  robots: { index: INDEXED, follow: INDEXED },
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: homeScreenName },
   ...(BRAND_URL
     ? { metadataBase: new URL(BRAND_URL), alternates: { canonical: `/blog/${SLUG}` } }

@@ -3,6 +3,22 @@
 Estado al **20 de septiembre de 2026**. Esta es la única prueba documental de
 la letra `a` de la Regla 6.10.F.1 de Colorado. Si no está aquí, no existe.
 
+## Estado de las dos puertas (20-sep-2026)
+
+| Puerta | Valor | Qué hace | ¿Se deshace? |
+|---|---|---|---|
+| `LINKED` | **abierta** | la portada enlaza The Journal en la navegación, el menú del móvil y el pie | **sí**, en un despliegue |
+| `INDEXED` | **cerrada** | `robots: noindex, nofollow` en las dos páginas y `/blog` fuera del sitemap | **no**: lo que el rastreador cachea, se queda |
+
+El enlace lo abrió Ender el 20-sep-2026 después de que le diera el coste por
+escrito. **Ninguna fila de la tabla de abajo cambió por eso**, y ninguna cambia
+hasta que exista el permiso: este fichero dice la verdad pase lo que pase en
+`publication.ts`.
+
+Lo que sigue pendiente, y es lo que de verdad mira la Regla 6.10.F.1.a: el
+permiso escrito de las ocho corredurías y, con él, **los originales sin
+recortar**.
+
 ## Lo que hay que saber antes de tocar nada
 
 **Ninguna de las doce casas es de nuestra correduría.** Son de ocho corredurías

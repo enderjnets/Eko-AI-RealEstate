@@ -39,7 +39,7 @@ import { ArrowDown, ArrowRight, Building2, CalendarCheck, Clock, Menu, Phone, Ru
 import { LANDING, dialable } from "@/lib/landing";
 import { STAFF_LOGIN_HREF } from "@/lib/hosts";
 import { GUIDES } from "@/lib/guides";
-import { PUBLISHED as JOURNAL_PUBLISHED } from "@/lib/journal/publication";
+import { LINKED as JOURNAL_LINKED } from "@/lib/journal/publication";
 import { LandingEffects } from "@/components/landing/LandingEffects";
 import { LandingTracker } from "@/components/landing/LandingTracker";
 import { useI18n } from "@/lib/i18n";
@@ -137,7 +137,7 @@ function LandingNav({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: (
           {/* `hrefLang` porque The Journal esta en ingles y esta cabecera la lee
               tambien un visitante en espanol: es la misma honestidad que lleva
               la guia de otono en `GUIDES`, y no cuesta una traduccion a medias. */}
-          {JOURNAL_PUBLISHED && (
+          {JOURNAL_LINKED && (
             <a href="/blog" hrefLang="en" className={link}>
               {t("landing.nav.journal")}
             </a>
@@ -243,7 +243,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
     // The Journal va justo antes de la llamada a la accion, como en el diseno.
     // `lang` marca que lo que hay al otro lado esta en ingles; es el unico
     // destino del menu que sale de la portada.
-    ...(JOURNAL_PUBLISHED
+    ...(JOURNAL_LINKED
       ? [{ href: "/blog", label: t("landing.menu.journal"), italic: false, lang: "en" }]
       : []),
     { href: "#consult", label: t("landing.nav.book"), italic: true },
@@ -818,7 +818,7 @@ function LandingFooter() {
           {/* The Journal va aparte de `GUIDES` a proposito: esa lista es de
               guias y herramientas, y meter un blog dentro obligaria a
               etiquetarlo como lo que no es en las dos rejillas que la leen. */}
-          {JOURNAL_PUBLISHED && (
+          {JOURNAL_LINKED && (
             <a
               href="/blog"
               hrefLang="en"

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.141.0";
+export const CURRENT_VERSION = "0.142.0";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.142.0",
+    date: "2026-09-20",
+    title: {
+      en: "The Journal is reachable from the home page",
+      es: "A The Journal se llega desde la portada",
+    },
+    changes: [
+      {
+        en: "The Journal now appears on the home page: in the navigation, in the phone menu and in the footer. Until today the section was live but linked from nowhere, so the only way in was to know the address by heart.",
+        es: "The Journal ya aparece en la portada: en la navegacion, en el menu del telefono y en el pie. Hasta hoy la seccion estaba viva pero no la enlazaba nadie, asi que la unica forma de entrar era saberse la direccion de memoria.",
+      },
+      {
+        en: "It is still out of every search index, and still out of the sitemap. Those were one switch with the link until now, and they should never have been: a link on our own page is taken down in a minute, while a page a crawler has already cached does not come back. Forty-eight of the photographs belong to eight other brokerages and had the copyright watermark cropped off, so the half that does not come back stays shut until their written permission exists.",
+        es: "Sigue fuera de todo indice de busqueda y fuera del sitemap. Hasta ahora eso era un mismo interruptor junto con el enlace, y nunca debio serlo: un enlace en nuestra propia pagina se quita en un minuto, mientras que una pagina que el rastreador ya cacheo no vuelve atras. Cuarenta y ocho de las fotografias son de ocho corredurias ajenas y llevan la marca de agua de copyright recortada, asi que la mitad que no vuelve atras sigue cerrada hasta que exista su permiso escrito.",
+      },
+      {
+        en: "The paper record did not move. No listing is marked as permitted because a link was opened; the twelve rows still read pending, and the test that turns red if the index is opened with one of them outstanding is still there, and was watched failing before it was trusted.",
+        es: "El registro en papel no se movio. Ninguna ficha queda marcada como permitida porque se haya abierto un enlace; las doce filas siguen diciendo pendiente, y el test que se pone rojo si se abre el indice con alguna sin conceder sigue ahi, y se le vio fallar antes de darlo por bueno.",
+      },
+    ],
+  },
   {
     version: "0.141.0",
     date: "2026-09-20",
