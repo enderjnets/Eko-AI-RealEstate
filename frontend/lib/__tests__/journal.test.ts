@@ -268,6 +268,24 @@ describe("los ficheros que la pagina pide", () => {
     ).toContain(missing.length);
   });
 
+  it("todo lo que se toca en el armazon llega al suelo tactil de 44 px", () => {
+    // Medido a 390 px el 20-sep: «Home» y «Journal» de la cabecera daban **17
+    // px de alto** —la altura de la letra— mientras el wordmark y la pildora ya
+    // daban 44. En un telefono eso es un enlace que se falla al tocarlo, y es
+    // el sitio donde se pulsa con el pulgar. El handoff lo pide explicitamente:
+    // «Touch targets are ≥44px».
+    const src = read("components/journal/JournalChrome.tsx");
+    const anclas = src.match(/<a\b[\s\S]*?>/g) ?? [];
+    expect(anclas.length, "el armazon deberia tener sus enlaces").toBeGreaterThanOrEqual(4);
+    for (const a of anclas) {
+      expect(a, `un enlace del armazon sin suelo tactil: ${a.slice(0, 60)}`).toMatch(
+        /min-h-\[44px\]|FOOT_LINK/,
+      );
+    }
+    // Y la constante del pie tiene que seguir llevandolo dentro.
+    expect(src).toMatch(/const FOOT_LINK = "[^"]*min-h-\[44px\]/);
+  });
+
   it("el generador del contenido esta en el repo y el modulo lo nombra", () => {
     // El modulo de datos dice de si mismo que es generado. Si el generador no
     // viaja con el, esa frase es falsa el dia que alguien tenga que cambiar una

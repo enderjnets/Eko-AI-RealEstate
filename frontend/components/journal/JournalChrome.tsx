@@ -37,7 +37,7 @@ export function JournalHeader({ current }: { current: "index" | "article" }) {
   return (
     <header className="sticky top-0 z-40 border-b border-jr-cream/10 bg-jr-noir/[0.92] backdrop-blur-[10px]">
       <div className="mx-auto flex min-h-[66px] max-w-[1120px] flex-wrap items-center justify-between gap-x-8 gap-y-3 px-[clamp(18px,5vw,56px)] py-3">
-        <a href={JOURNAL_HREF} className="block">
+        <a href={JOURNAL_HREF} className="flex min-h-[44px] flex-col justify-center">
           <span className="block font-ln-serif text-[20px] font-light tracking-[0.06em] text-jr-offwhite">
             {LANDING.brand || "The Journal"}
           </span>
@@ -48,19 +48,29 @@ export function JournalHeader({ current }: { current: "index" | "article" }) {
           )}
         </a>
 
-        <nav className="flex flex-wrap items-center gap-x-7 gap-y-3 font-ln-sans">
+        {/*
+          `min-h-[44px]` en los dos enlaces de texto, y no es adorno: medido a
+          390 px, el rectangulo tactil de «Home» y «Journal» era de **17 px de
+          alto** —la altura de la letra—, mientras el wordmark y la pildora ya
+          daban 44. En un movil eso es un enlace que se falla al tocarlo, y es
+          justo el sitio donde se pulsa con el pulgar y a una mano. La altura
+          visual no cambia: el texto sigue en su sitio, lo que crece es la zona
+          que responde.
+        */}
+        <nav className="flex flex-wrap items-center gap-x-7 font-ln-sans">
           <a
             href="/"
-            className="text-[11px] uppercase tracking-[0.18em] text-jr-cream/70 hover:text-jr-cream"
+            className="flex min-h-[44px] items-center text-[11px] uppercase tracking-[0.18em] text-jr-cream/70 hover:text-jr-cream"
           >
             Home
           </a>
           <a
             href={JOURNAL_HREF}
+            aria-current={current === "index" ? "page" : undefined}
             className={
               current === "index"
-                ? "text-[11px] uppercase tracking-[0.18em] text-jr-cream"
-                : "text-[11px] uppercase tracking-[0.18em] text-jr-cream/70 hover:text-jr-cream"
+                ? "flex min-h-[44px] items-center text-[11px] uppercase tracking-[0.18em] text-jr-cream"
+                : "flex min-h-[44px] items-center text-[11px] uppercase tracking-[0.18em] text-jr-cream/70 hover:text-jr-cream"
             }
           >
             Journal
@@ -85,6 +95,8 @@ export function JournalHeader({ current }: { current: "index" | "article" }) {
   );
 }
 
+const FOOT_LINK = "inline-flex min-h-[44px] items-center hover:text-jr-cream";
+
 export function JournalFooter() {
   const who = [LANDING.brand, LANDING.advisors].filter(Boolean).join(" · ");
   // Mismo criterio que el pie de `/fall`: la correduria y «Licensed in
@@ -105,11 +117,12 @@ export function JournalFooter() {
           {legal.length > 0 && <p className="mt-1">{legal.join(" · ")}</p>}
         </div>
 
-        <nav className="flex flex-wrap gap-x-6 gap-y-2 uppercase tracking-[0.18em]">
-          <a href="/" className="hover:text-jr-cream">
+        {/* Mismo suelo tactil de 44 px que la cabecera, por el mismo motivo. */}
+        <nav className="flex flex-wrap gap-x-6 uppercase tracking-[0.18em]">
+          <a href="/" className={FOOT_LINK}>
             Home
           </a>
-          <a href={JOURNAL_HREF} className="hover:text-jr-cream">
+          <a href={JOURNAL_HREF} className={FOOT_LINK}>
             Journal
           </a>
           {LANDING.instagram && (
@@ -117,7 +130,7 @@ export function JournalFooter() {
               href={LANDING.instagram}
               target="_blank"
               rel="noopener"
-              className="hover:text-jr-cream"
+              className={FOOT_LINK}
             >
               Instagram
             </a>
@@ -127,7 +140,7 @@ export function JournalFooter() {
               href={LANDING.youtube}
               target="_blank"
               rel="noopener"
-              className="hover:text-jr-cream"
+              className={FOOT_LINK}
             >
               YouTube
             </a>

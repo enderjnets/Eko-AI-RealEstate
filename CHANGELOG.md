@@ -18,8 +18,14 @@
   `ln-*` porque seis de los dieciséis son **casi** iguales y no iguales:
   `ln-muted #8A8172` contra faint `#8A8272` es un dígito.
 - `scripts/journal-photos.sh` y `lib/journal/DERECHOS.md`.
-- `lib/__tests__/journal.test.ts` (19 casos) y tres casos nuevos en
+- `lib/__tests__/journal.test.ts` (21 casos) y tres casos nuevos en
   `publicMetadata.test.ts`.
+- Suelo táctil de 44 px en los ocho enlaces del armazón del Journal. Medido a
+  390 px antes del arreglo: «Home» y «Journal» de la cabecera daban **17 px de
+  alto** —la altura de la letra— mientras el wordmark y la píldora ya daban 44.
+  El handoff lo pide explícitamente y en un teléfono es un enlace que se falla
+  al tocarlo. Lo vigila un test que se comprobó en rojo antes de darlo por
+  bueno.
 
 ### Changed
 - `PUBLIC_PATHS` incluye `/blog`. Medido antes del cambio:
