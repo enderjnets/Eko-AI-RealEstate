@@ -65,11 +65,18 @@ export function Strip() {
     // Estado por panel. `current` es el ancho pintado ahora mismo y `target` el
     // que deberia tener; la diferencia es lo que interpola el bucle.
     const state = panels.map((el) => ({ el, current: 0, target: 0 }));
-    let active = 0;
+    let active = -1;
+    let hoverAfter = 0;
     let raf = 0;
     let hoverTimer: number | undefined;
     let flipTimer: number | undefined;
     let fadeTimer: number | undefined;
+    let flipRaf = 0;
+    const entranceTimers = new Set<number>();
+    const later = (fn: () => void, delay: number) => {
+      const id = window.setTimeout(() => { entranceTimers.delete(id); fn(); }, delay);
+      entranceTimers.add(id);
+    };
 
     const tick = () => {
       raf = 0;
@@ -107,6 +114,8 @@ export function Strip() {
     };
 
     const stopFlip = () => {
+      if (flipRaf) cancelAnimationFrame(flipRaf);
+      flipRaf = 0;
       window.clearInterval(flipTimer);
       window.clearTimeout(fadeTimer);
       for (const p of panels) {
@@ -121,7 +130,7 @@ export function Strip() {
     /** Hojea las cuatro fotos del panel abierto, una cada 2400ms. */
     const startFlip = (panel: HTMLElement) => {
       stopFlip();
-      if (reduce) return;
+      if (reduce || document.hidden) return;
       const slug = panel.dataset.slug || "";
       const photos = photosOf(slug);
       if (photos.length < 2) return;
@@ -141,7 +150,8 @@ export function Strip() {
         overlay.style.backgroundImage = `url("${next}")`;
         // Un fotograma de margen para que el navegador acepte el cambio de
         // `transition` antes de disparar la opacidad.
-        requestAnimationFrame(() => {
+        flipRaf = requestAnimationFrame(() => {
+          flipRaf = 0;
           overlay.style.transition = `opacity ${FADE_MS}ms ease`;
           overlay.style.opacity = "1";
         });
@@ -156,19 +166,33 @@ export function Strip() {
     };
 
     const setActive = (i: number, scroll: boolean) => {
+      if (scroll) {
+        hoverAfter = performance.now() + 800;
+        window.clearTimeout(hoverTimer);
+      }
+      const changed = active !== i;
       active = i;
-      layout(i, false);
+      layout(i, reduce);
       panels.forEach((p, j) => {
         const open = j === i;
         p.style.backgroundSize = open ? "auto 100%" : "auto 118%";
         p.style.borderColor = open ? "rgba(244,241,234,0.85)" : "#2A2621";
+        p.style.zIndex = open ? "2" : "1";
         p.setAttribute("aria-current", open ? "true" : "false");
         const label = p.querySelector<HTMLElement>("[data-lab]");
-        if (label) label.style.opacity = open ? "1" : "0";
+        if (label) {
+          label.style.opacity = open ? "1" : "0";
+          if (reduce) label.style.transition = "none";
+          label.style.transform = reduce || open ? "translateX(0)" : "translateX(22px)";
+          label.style.pointerEvents = open ? "auto" : "none";
+          const link = label.querySelector("a");
+          if (link) link.tabIndex = open ? 0 : -1;
+        }
+        if (!open) p.style.backgroundImage = `url("${photosOf(p.dataset.slug || "")[0]}")`;
       });
-      startFlip(panels[i]);
+      if (changed) startFlip(panels[i]);
       if (scroll) {
-        strip.scrollTo({ left: Math.max(0, panels[i].offsetLeft - 30), behavior: "smooth" });
+        strip.scrollTo({ left: Math.max(0, panels[i].offsetLeft - 30), behavior: reduce ? "auto" : "smooth" });
       }
     };
 
@@ -179,17 +203,28 @@ export function Strip() {
     const onResize = () => layout(active, true);
     window.addEventListener("resize", onResize);
 
-    const cleanups: Array<() => void> = [];
+    const onVisibility = () => {
+      if (document.hidden) stopFlip();
+      else startFlip(panels[active]);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    const cleanups: Array<() => void> = [() => document.removeEventListener("visibilitychange", onVisibility)];
     panels.forEach((p, i) => {
-      const onClick = () => setActive(i, true);
+      const onClick = (e: MouseEvent) => {
+        if (!(e.target as Element).closest("a")) setActive(i, true);
+      };
       const onKey = (e: KeyboardEvent) => {
+        if ((e.target as Element).closest("a")) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           setActive(i, true);
         }
       };
-      const onFocus = () => setActive(i, true);
+      const onFocus = () => {
+        if (p.matches(":focus-visible")) setActive(i, true);
+      };
       const onEnter = () => {
+        if (performance.now() < hoverAfter) return;
         window.clearTimeout(hoverTimer);
         // El retardo evita que cruzar la tira de lado a lado abra los doce.
         hoverTimer = window.setTimeout(() => setActive(i, false), HOVER_DELAY_MS);
@@ -217,13 +252,13 @@ export function Strip() {
       if (entered) return;
       entered = true;
       panels.forEach((p, i) => {
-        window.setTimeout(() => {
+        later(() => {
           p.style.opacity = "1";
           p.style.transform = "none";
           // En cuanto termina de entrar, se cambia a la lista corta: mientras
           // compartieron una sola declaracion, la entrada larga arrastraba al
           // abrir y cerrar.
-          window.setTimeout(() => {
+          later(() => {
             p.style.transition = INTERACT;
           }, 1800);
         }, i * ENTRANCE_STEP_MS);
@@ -272,6 +307,7 @@ export function Strip() {
       window.removeEventListener("resize", onResize);
       window.clearTimeout(hoverTimer);
       stopFlip();
+      for (const id of entranceTimers) window.clearTimeout(id);
       if (raf) cancelAnimationFrame(raf);
       for (const c of cleanups) c();
     };
@@ -304,7 +340,7 @@ export function Strip() {
                 backgroundColor: "#181613",
                 borderColor: "#2A2621",
               }}
-              className="relative h-full cursor-pointer overflow-hidden border border-solid outline-offset-[-2px]"
+              className="relative h-full cursor-pointer overflow-hidden border border-r-0 border-solid outline-offset-[-2px]"
             >
               {/* La capa del fundido va DEBAJO del degradado: si fuera encima,
                   cada cruce de foto blanquearia el texto durante 900ms. */}
@@ -333,26 +369,26 @@ export function Strip() {
                 }}
               />
               <span
-                className="absolute inset-x-0 bottom-0 z-[2] block p-4"
+                className="absolute inset-x-0 bottom-0 z-[2] flex items-center gap-[14px] px-4 py-[18px]"
                 style={{ fontFamily: "inherit" }}
               >
-                <span className="block font-ln-serif text-[16px] italic text-jr-brass-light">
+                <span className="block shrink-0 font-ln-serif text-[16px] italic text-jr-brass-light">
                   {panel.label}
                 </span>
                 <span
                   data-lab="1"
-                  style={{ opacity: 0, transition: "opacity 400ms ease" }}
-                  className="mt-1 block whitespace-nowrap"
+                  style={{ opacity: 0, transform: "translateX(22px)", pointerEvents: "none", transition: "opacity 700ms ease, transform 700ms cubic-bezier(0.22,1,0.36,1)" }}
+                  className="block min-w-0 whitespace-nowrap"
                 >
                   <span className="block font-ln-serif text-[23px] leading-[1.1] text-jr-offwhite">
                     {panel.name}
                   </span>
-                  <span className="mt-1 block font-ln-sans text-[10px] uppercase tracking-[0.18em] text-jr-cream/60">
+                  <span className="mt-[6px] block font-ln-sans text-[10px] uppercase tracking-[0.20em] text-jr-cream/[0.72]">
                     {panel.where}
                   </span>
                   <a
                     href={`#n${panel.n}`}
-                    className="mt-2 inline-block font-ln-sans text-[10px] uppercase tracking-[0.22em] text-jr-brass-light hover:text-jr-offwhite"
+                    className="mt-3 inline-block font-ln-sans text-[10px] font-medium uppercase tracking-[0.20em] text-jr-brass-light hover:text-jr-offwhite"
                   >
                     Read the entry &rarr;
                   </a>
@@ -362,7 +398,7 @@ export function Strip() {
           );
         })}
       </div>
-      <p className="mx-auto max-w-[1120px] px-[clamp(22px,5vw,56px)] pt-3 font-ln-sans text-[11px] leading-[1.6] tracking-[0.04em] text-jr-cream/50">
+      <p className="mx-auto max-w-[1120px] px-[clamp(22px,5vw,56px)] pt-4 font-ln-sans text-[11px] leading-[1.6] uppercase tracking-[0.14em] text-jr-cream/45">
         Hover a panel to leaf through its photographs &middot; tap on a phone
       </p>
     </>

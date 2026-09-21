@@ -93,7 +93,7 @@ export default function TwelveHousesPage() {
 
       <JournalHeader current="article" />
 
-      <section className="bg-jr-noir pb-[clamp(28px,4vw,44px)] pt-[clamp(48px,8vw,96px)]">
+      <section className="bg-jr-noir pb-0 pt-[clamp(56px,9vw,104px)]">
         <div className={SHELL}>
           <p className="flex flex-wrap items-center gap-3 font-ln-sans text-[10px] font-medium uppercase tracking-[0.30em] text-jr-cream/50">
             <a href="/blog" className="hover:text-jr-cream">
@@ -103,12 +103,12 @@ export default function TwelveHousesPage() {
             <span>{PAGE.breadcrumb}</span>
           </p>
 
-          <h1 className="mt-6 max-w-[15ch] font-ln-serif text-[clamp(44px,8.4vw,104px)] font-light leading-[0.94] tracking-[-0.025em] text-jr-offwhite">
+          <h1 className="mt-[clamp(26px,4vw,40px)] max-w-[15ch] font-ln-serif text-[clamp(44px,8.4vw,104px)] font-light leading-[0.94] tracking-[-0.025em] text-jr-offwhite">
             {PAGE.h1.lead}{" "}
             <span className="italic text-jr-brass-light">{PAGE.h1.accent}</span>
           </h1>
 
-          <p className="mt-7 max-w-[620px] text-[clamp(16px,1.6vw,18px)] leading-[1.8] text-jr-cream/[0.82]">
+          <p className="mt-[clamp(22px,3vw,30px)] max-w-[620px] text-[clamp(16px,1.6vw,18px)] leading-[1.8] text-jr-cream/[0.82]">
             {PAGE.dek}
           </p>
 
@@ -125,7 +125,7 @@ export default function TwelveHousesPage() {
             </a>
           </p>
 
-          <p className="mt-8 flex flex-wrap items-center gap-x-3 gap-y-2 text-[11px] uppercase tracking-[0.18em] text-jr-cream/[0.62]">
+          <p className="mt-[clamp(28px,4vw,40px)] flex flex-wrap items-center gap-x-[18px] gap-y-[10px] pb-[clamp(34px,5vw,52px)] text-[11px] uppercase tracking-[0.14em] text-jr-cream/[0.62]">
             {[PAGE.byline, PAGE.date, PAGE.readTime, PAGE.markets].map((bit, i) => (
               <span key={bit} className="flex items-center gap-3">
                 {i > 0 && (
@@ -138,13 +138,13 @@ export default function TwelveHousesPage() {
         </div>
       </section>
 
-      <section className="bg-jr-noir pb-[clamp(36px,5vw,56px)]">
+      <section className="bg-jr-noir pb-[clamp(40px,6vw,72px)]">
         <Strip />
       </section>
 
-      <section className="bg-jr-cream py-[clamp(36px,5vw,56px)]">
+      <section className="bg-jr-cream pt-[clamp(56px,8vw,100px)] pb-[clamp(48px,7vw,82px)]">
         <div className={SHELL}>
-          <dl className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-8 border-y border-jr-rule py-[clamp(26px,3.5vw,38px)]">
+          <dl className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-6 border-y border-jr-rule py-[26px]">
             {PAGE.stats.map((stat, i) => (
               <div key={stat.label}>
                 <dt className="font-ln-sans text-[9px] uppercase tracking-[0.22em] text-jr-faint">
@@ -153,11 +153,11 @@ export default function TwelveHousesPage() {
                 <dd
                   data-count={stat.value}
                   className={
-                    "mt-2 font-ln-serif text-[40px] font-light leading-none " +
+                    "mt-[9px] font-ln-serif text-[40px] font-light leading-none " +
                     (i === PAGE.stats.length - 1 ? "text-jr-brass" : "text-jr-ink")
                   }
                 >
-                  0
+                  {stat.value}
                 </dd>
               </div>
             ))}
@@ -165,14 +165,14 @@ export default function TwelveHousesPage() {
         </div>
       </section>
 
-      <section className="bg-jr-cream pb-[clamp(52px,8vw,100px)]">
-        <div className={`${SHELL} grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-[clamp(28px,4vw,56px)]`}>
+      <section className="bg-jr-cream pb-[clamp(56px,8vw,100px)]">
+        <div className={`${SHELL} grid grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] items-start gap-[clamp(30px,5vw,70px)]`}>
           <div data-reveal="1">
             <h2 className="font-ln-serif text-[clamp(34px,4.4vw,56px)] font-light leading-[1.04] tracking-[-0.015em] text-jr-body">
               {PAGE.method.heading.lead}{" "}
               <span className="italic text-jr-brass">{PAGE.method.heading.accent}</span>
             </h2>
-            <figure className="mt-8 m-0">
+            <figure data-skyline="1" className="m-0 mt-[clamp(28px,4vw,44px)]">
               <span data-lead="1" className="block overflow-hidden bg-jr-photo" style={{ aspectRatio: "16 / 10" }}>
                 {/* eslint-disable-next-line @next/next/no-img-element -- the public pages use plain <img> throughout: `sharp` is not installed, so next/image would optimise nothing and only add a dependency. */}
                 <img
@@ -188,9 +188,9 @@ export default function TwelveHousesPage() {
             </figure>
           </div>
 
-          <div data-reveal="1" className="max-w-[640px]">
+          <div data-reveal="1" className="max-w-[620px]">
             {PAGE.method.paragraphs.map((p) => (
-              <p key={p.slice(0, 40)} className="mb-6 text-[16px] leading-[1.85] text-jr-body-muted last:mb-0">
+              <p key={p.slice(0, 40)} className="mb-5 text-[16px] leading-[1.85] text-jr-body-muted last:mb-0">
                 {p}
               </p>
             ))}
@@ -198,7 +198,7 @@ export default function TwelveHousesPage() {
         </div>
       </section>
 
-      <section className="bg-jr-warm py-[clamp(52px,8vw,100px)]">
+      <section className="bg-jr-warm pt-[clamp(52px,7vw,90px)] pb-[clamp(20px,4vw,40px)]">
         <div className={SHELL}>
           <h2
             data-reveal="1"
@@ -206,7 +206,7 @@ export default function TwelveHousesPage() {
           >
             {PAGE.twelveHeading.lead}
           </h2>
-          <p data-reveal="1" className="mt-4 max-w-[560px] text-[15px] leading-[1.75] text-jr-secondary">
+          <p data-reveal="1" className="mt-[14px] mb-[clamp(10px,2vw,20px)] max-w-[540px] text-[15px] leading-[1.75] text-jr-secondary">
             {PAGE.twelveDek}
           </p>
 
@@ -217,7 +217,7 @@ export default function TwelveHousesPage() {
               className="scroll-mt-20 border-t border-jr-rule py-[clamp(40px,6vw,72px)] last:border-b"
             >
               <div className="mb-5 flex items-baseline gap-[18px]">
-                <span data-drift="1" className="font-ln-serif text-[16px] italic text-jr-brass">
+                <span className="font-ln-serif text-[16px] italic text-jr-brass">
                   {entry.indexLabel}
                 </span>
                 <span className="text-[10px] font-medium uppercase tracking-[0.30em] text-jr-faint">
@@ -281,12 +281,12 @@ export default function TwelveHousesPage() {
               </p>
 
               <dl className="mb-6 grid grid-cols-[repeat(auto-fit,minmax(112px,1fr))] gap-x-[18px] gap-y-[22px] border-y border-jr-rule py-[22px]">
-                {entry.facts.map((fact) => (
+                {entry.facts.map((fact, i) => (
                   <div key={fact.label}>
                     <dt className="mb-[7px] text-[9px] uppercase tracking-[0.22em] text-jr-faint">
                       {fact.label}
                     </dt>
-                    <dd className="m-0 font-ln-serif text-[21px] text-jr-ink">{fact.value}</dd>
+                    <dd data-drift={i} className="m-0 font-ln-serif text-[21px] text-jr-ink">{fact.value}</dd>
                   </div>
                 ))}
               </dl>
@@ -311,7 +311,7 @@ export default function TwelveHousesPage() {
         </div>
       </section>
 
-      <section className="bg-jr-cream py-[clamp(52px,8vw,100px)]">
+      <section className="bg-jr-cream py-[clamp(56px,8vw,100px)]">
         <div className={SHELL}>
           <h2
             data-reveal="1"
@@ -324,7 +324,7 @@ export default function TwelveHousesPage() {
             {PAGE.passedDek}
           </p>
 
-          <div className="mt-10 flex flex-col">
+          <div className="mt-[clamp(32px,5vw,50px)] flex flex-col">
             {PASSED.map((row) => (
               <div
                 key={row.street}
@@ -351,7 +351,7 @@ export default function TwelveHousesPage() {
 
           {/* Se queda, y no es formalismo: junto al credito de cada figcaption
               es lo que cumple la letra `b` de la Regla 6.10.F.1. */}
-          <p className="mt-10 max-w-[700px] text-[12px] leading-[1.7] text-jr-faint">
+          <p className="mt-[clamp(32px,4vw,44px)] max-w-[700px] text-[12px] leading-[1.75] text-jr-faint">
             {PAGE.rights}
           </p>
         </div>
@@ -361,11 +361,11 @@ export default function TwelveHousesPage() {
           id, la lista de secciones del rastreador no encuentra que observar y
           la unica parte de la pagina que puede producir un lead es justo la
           que nadie mide. */}
-      <section id="consult" className="scroll-mt-10 bg-jr-noir py-[clamp(52px,8vw,100px)]">
-        <div className={`${SHELL} grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] items-start gap-[clamp(28px,4vw,56px)]`}>
+      <section id="consult" className="scroll-mt-10 bg-jr-noir py-[clamp(64px,9vw,112px)]">
+        <div className={`${SHELL} grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] items-start gap-[clamp(32px,5vw,70px)]`}>
           <div>
             <h2 className="font-ln-serif text-[clamp(38px,5.6vw,72px)] font-light leading-none tracking-[-0.02em] text-jr-offwhite">
-              {PAGE.talkHeading.lead}{" "}
+              {PAGE.talkHeading.lead}<br />
               <span className="italic text-jr-brass-light">{PAGE.talkHeading.accent}</span>
             </h2>
             {/* El diseno usa LA MISMA frase aqui y en el indice. Yo habia
@@ -373,7 +373,7 @@ export default function TwelveHousesPage() {
                 parte: eso es copia del cliente reescrita en silencio. Ahora
                 sale del modulo generado, asi que las dos dicen lo mismo y lo
                 que dicen es lo que el diseno dice. */}
-            <p className="mt-6 max-w-[440px] text-[16px] leading-[1.8] text-jr-cream/[0.82]">
+            <p className="mt-5 max-w-[440px] text-[16px] leading-[1.8] text-jr-cream/[0.82]">
               {PAGE.talkDek}
             </p>
 
