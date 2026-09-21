@@ -3,6 +3,30 @@
 ## [0.142.4] - 2026-09-20
 
 ### Fixed
+- **`APP_VERSION` del backend vuelve a coincidir con el frontend.** Llevaba en
+  `0.140.0` desde mi release de 0.141.0 (`9d4289a`, esta mañana): **nueve
+  commits en rojo en `main`**, incluido el de otra sesión, y solo lo vio el CI
+  del backend que nadie miró. `backend/tests/test_version_is_one_number.py`
+  existía y estaba haciendo su trabajo.
+
+### Added
+- **La misma guarda, ahora también en la suite del frontend**
+  (`lib/__tests__/versionParity.test.ts`). No es duplicación por descuido: una
+  entrega de solo frontend se verifica corriendo la suite del frontend, y esa
+  noche la corrí **cinco veces en verde** mientras los dos números divergían.
+  La guarda estaba en el lado que nadie ejecuta cuando no toca ese lado. Vista
+  en rojo reproduciendo exactamente el error.
+- Comprueba además que la versión tenga entrada en `CHANGELOG.md` **y** en el
+  historial de `version.ts`, que es el que lee el modal del panel.
+
+### Nota de despliegue
+- Esto arregla el repositorio, **no la producción**: `/api/v1/health` seguirá
+  informando `0.140.0` hasta que se reconstruya el contenedor del backend. Eso
+  no se hace a la ligera ni a mitad de una prueba del circuito — es decisión de
+  Ender, aparte.
+
+
+### Fixed
 - **Las 48 fotografías del artículo subían reducidas.** `journal-photos.sh` las
   encogía al copiarlas: la principal de cada casa a **1600 px** y las otras
   tres a **800**. Ya no. Se copian **tal cual**.
