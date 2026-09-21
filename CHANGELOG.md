@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.142.6] - 2026-09-21
+
+### Fixed
+- Journal photo hover now animates without scrolling; skyline, fact and counter motion match the latest design handoff.
+- Carousel labels, photo reset, editorial spacing and footer grouping restored. Click/keyboard selection stays stable, reduced-motion preferences are respected, and pending animation work is cancelled on cleanup.
+- Existing contact capture, attribution, publication permission gates and original photographs remain intact. Both services report 0.142.6.
+
 ## [0.142.5] - 2026-09-20
 
 ### Fixed

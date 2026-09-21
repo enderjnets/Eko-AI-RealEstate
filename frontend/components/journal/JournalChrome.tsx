@@ -98,7 +98,6 @@ export function JournalHeader({ current }: { current: "index" | "article" }) {
 const FOOT_LINK = "inline-flex min-h-[44px] items-center hover:text-jr-cream";
 
 export function JournalFooter() {
-  const who = [LANDING.brand, LANDING.advisors].filter(Boolean).join(" · ");
   // Mismo criterio que el pie de `/fall`: la correduria y «Licensed in
   // Colorado» solo aparecen donde el operador ha dicho cual es. Una instalacion
   // sin configurar no se inventa una licencia.
@@ -110,15 +109,18 @@ export function JournalFooter() {
   ].filter(Boolean);
 
   return (
-    <footer className="border-t border-jr-cream/10 bg-jr-noir px-[clamp(18px,5vw,56px)] py-10">
-      <div className="mx-auto flex max-w-[1120px] flex-wrap items-start justify-between gap-x-10 gap-y-6 font-ln-sans text-[11px] leading-[1.75] tracking-[0.04em] text-jr-cream/50">
-        <div>
-          {who && <p className="text-jr-cream/70">{who}</p>}
-          {legal.length > 0 && <p className="mt-1">{legal.join(" · ")}</p>}
+    <footer className="border-t border-jr-cream/10 bg-jr-noir py-[clamp(34px,5vw,50px)]">
+      <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-5 px-[clamp(22px,5vw,56px)] font-ln-sans text-[11px] leading-[1.75] tracking-[0.04em] text-jr-cream/50">
+        <div className="flex flex-wrap items-center gap-[clamp(16px,3vw,26px)]">
+          <div>
+            {LANDING.brand && <p className="font-ln-serif text-[18px] font-light leading-none tracking-[0.05em] text-jr-offwhite">{LANDING.brand}</p>}
+            {LANDING.advisors && <p className="mt-1.5 text-[7px] uppercase tracking-[0.26em]">{LANDING.advisors}</p>}
+          </div>
+          {legal.length > 0 && <p className="max-w-[370px] border-l border-jr-cream/20 pl-[clamp(16px,3vw,26px)]">{legal.join(" · ")}</p>}
         </div>
 
         {/* Mismo suelo tactil de 44 px que la cabecera, por el mismo motivo. */}
-        <nav className="flex flex-wrap gap-x-6 uppercase tracking-[0.18em]">
+        <nav className="flex flex-wrap gap-x-[22px] text-[10px] uppercase tracking-[0.20em]">
           <a href="/" className={FOOT_LINK}>
             Home
           </a>

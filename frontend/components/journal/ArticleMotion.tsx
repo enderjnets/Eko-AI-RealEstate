@@ -47,7 +47,7 @@ export function ArticleMotion() {
     const bar = document.querySelector<HTMLElement>("[data-progress]");
     const leads = Array.from(document.querySelectorAll<HTMLElement>("[data-lead]"));
     const thumbs = Array.from(document.querySelectorAll<HTMLElement>("[data-thumb]"));
-    const drifts = Array.from(document.querySelectorAll<HTMLElement>("[data-drift]"));
+    const drifts = Array.from(document.querySelectorAll<HTMLElement>("[data-drift], [data-count]"));
     const counters = Array.from(document.querySelectorAll<HTMLElement>("[data-count]"));
 
     // Lo que aparece: los hijos de cada ficha, escalonados por su posicion, mas
@@ -78,16 +78,27 @@ export function ArticleMotion() {
         "opacity 850ms cubic-bezier(0.22,1,0.36,1), transform 850ms cubic-bezier(0.22,1,0.36,1)";
     }
 
+    const skyline = document.querySelector<HTMLElement>("[data-skyline]");
+    if (skyline) {
+      skyline.style.opacity = "0";
+      skyline.style.transform = "translateY(72px)";
+      skyline.style.transition = "opacity 900ms cubic-bezier(0.16,1,0.3,1), transform 1100ms cubic-bezier(0.16,1,0.3,1)";
+      revealables.push([skyline, 0]);
+    }
     let pending = revealables.slice();
     const fired = new Set<HTMLElement>();
 
+    const timers = new Set<number>();
+    const countFrames = new Set<number>();
     const show = (el: HTMLElement, delay: number) => {
       if (fired.has(el)) return;
       fired.add(el);
-      window.setTimeout(() => {
+      const timer = window.setTimeout(() => {
+        timers.delete(timer);
         el.style.opacity = "1";
         el.style.transform = "none";
       }, delay);
+      timers.add(timer);
     };
 
     /** Cuenta desde cero con una salida cubica. */
@@ -100,20 +111,24 @@ export function ArticleMotion() {
         const p = clamp((now - started) / duration, 0, 1);
         const eased = 1 - Math.pow(1 - p, 3);
         el.textContent = String(Math.round(target * eased));
-        if (p < 1) requestAnimationFrame(step);
+        if (p < 1) queueCount();
       };
-      requestAnimationFrame(step);
+      const queueCount = () => {
+        const id = requestAnimationFrame((now) => { countFrames.delete(id); step(now); });
+        countFrames.add(id);
+      };
+      queueCount();
     };
 
-    // El raton sobre la foto principal: se acerca hacia +0,05 fotograma a
+    // El raton sobre la foto principal: se acerca hacia +0,04 fotograma a
     // fotograma, dentro del mismo bucle. Un `transition` aqui competiria con la
     // transformada que ya escribe el parallax.
     const hover = new WeakMap<HTMLElement, number>();
     const hoverCleanups: Array<() => void> = [];
     for (const lead of leads) {
       hover.set(lead, 0);
-      const on = () => hover.set(lead, 1);
-      const off = () => hover.set(lead, 0);
+      const on = () => { hover.set(lead, 1); schedule(); };
+      const off = () => { hover.set(lead, 0); schedule(); };
       lead.addEventListener("mouseenter", on);
       lead.addEventListener("mouseleave", off);
       hoverCleanups.push(() => {
@@ -126,6 +141,8 @@ export function ArticleMotion() {
     let raf = 0;
     const frame = () => {
       raf = 0;
+      if (document.hidden) return;
+      let busy = false;
       const vh = window.innerHeight;
 
       if (bar) {
@@ -141,8 +158,10 @@ export function ArticleMotion() {
         // (1,12 - 1) / 2 x alto x 0,7. El 0,7 es el margen que evita descubrir
         // el borde de la foto en una ventana estrecha.
         const amp = (0.12 / 2) * lead.offsetHeight * 0.7;
-        const want = hover.get(lead) ? 0.05 : 0;
-        const now = (eased.get(lead) ?? 0) + (want - (eased.get(lead) ?? 0)) * 0.12;
+        const want = hover.get(lead) ? 0.04 : 0;
+        const previous = eased.get(lead) ?? 0;
+        const now = Math.abs(want - previous) < 0.00008 ? want : previous + (want - previous) * 0.12;
+        if (now !== want) busy = true;
         eased.set(lead, now);
         img.style.transform = `translateY(${(-t * amp).toFixed(2)}px) scale(${(1.12 + now).toFixed(3)})`;
       }
@@ -155,20 +174,20 @@ export function ArticleMotion() {
         // La del medio va al reves que las dos de fuera: sin eso las tres se
         // mueven en bloque y parece que se ha desplazado la rejilla entera.
         const dir = wrap.dataset.thumb === "1" ? -1 : 1;
-        img.style.transform = `translateX(${(t * amp * dir).toFixed(2)}px) scale(1.14)`;
+        img.style.transform = `translateX(${(-t * amp * dir).toFixed(2)}px) scale(1.14)`;
       }
 
       drifts.forEach((el, i) => {
         const t = progress(el, vh);
         // Una onda suave a lo ancho de cada fila, no un bloque rigido.
-        const amp = 5 + (i % 4) * 2.5;
+        const amp = 5 + (Number(el.dataset.drift ?? i) % 4) * 2.5;
         el.style.transform = `translateY(${(-t * amp).toFixed(2)}px)`;
       });
 
       if (pending.length) {
         pending = pending.filter(([el, delay]) => {
           const r = el.getBoundingClientRect();
-          if (r.top < vh * 0.92 && r.bottom > 0) {
+          if (r.top < vh * (el === skyline ? 0.88 : 0.92) && r.bottom > 0) {
             show(el, delay);
             return false;
           }
@@ -184,15 +203,17 @@ export function ArticleMotion() {
           countUp(el);
         }
       }
+      if (busy) schedule();
     };
 
     const schedule = () => {
-      if (!raf) raf = requestAnimationFrame(frame);
+      if (!document.hidden && !raf) raf = requestAnimationFrame(frame);
     };
 
     schedule();
     window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
+    document.addEventListener("load", schedule, true);
     document.addEventListener("visibilitychange", schedule);
     // Respaldo: si nada de lo anterior llega a dispararse —pestana en segundo
     // plano durante toda la carga— esto ensena el articulo de todos modos.
@@ -209,6 +230,9 @@ export function ArticleMotion() {
     return () => {
       window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
+      document.removeEventListener("load", schedule, true);
+      for (const timer of timers) window.clearTimeout(timer);
+      for (const id of countFrames) cancelAnimationFrame(id);
       document.removeEventListener("visibilitychange", schedule);
       window.clearTimeout(fallback);
       if (raf) cancelAnimationFrame(raf);

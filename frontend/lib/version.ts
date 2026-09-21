@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.142.5";
+export const CURRENT_VERSION = "0.142.6";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.142.6",
+    date: "2026-09-21",
+    title: { en: "The Journal follows its latest design", es: "El Journal refleja su diseño más reciente" },
+    changes: [{
+      en: "Restored photograph hover, skyline entrance, figure motion, carousel labels and editorial spacing from the latest design. Mobile selections stay stable, reduced motion is respected and hidden tabs pause the carousel. The contact form and publication permissions remain in place.",
+      es: "Restaurados el acercamiento de fotos, la entrada del skyline, el movimiento de cifras, las etiquetas del carrusel y los espacios del último diseño. La selección móvil es estable, se respeta el movimiento reducido y el carrusel se pausa en pestañas ocultas. Se mantienen el formulario y los permisos de publicación.",
+    }],
+  },
   {
     version: "0.142.5",
     date: "2026-09-20",
