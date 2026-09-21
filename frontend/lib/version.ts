@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.142.1";
+export const CURRENT_VERSION = "0.142.2";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,24 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.142.2",
+    date: "2026-09-20",
+    title: {
+      en: "The Journal button opens the piece, not the list",
+      es: "El boton del Journal abre la pieza, no la lista",
+    },
+    changes: [
+      {
+        en: "Journal on the home page now opens the twelve houses directly. It used to open the index — a page with one card on it — and the piece itself sat one more click away behind \"Read the piece\". With a single piece published, that middle step showed nothing the home page had not already said.",
+        es: "\"Journal\" en la portada abre ya directamente las doce casas. Antes abria el indice \u2014 una pagina con una sola tarjeta \u2014 y la pieza quedaba un clic mas alla, detras de \"Read the piece\". Con una sola pieza publicada, ese paso intermedio no ensenaba nada que la portada no dijera ya.",
+      },
+      {
+        en: "The index is still there and still reachable: from the Journal's own header and footer, and from the line above the piece's title. When a second piece is published this goes back to pointing at the list, and there is one line to change.",
+        es: "El indice sigue existiendo y se sigue pudiendo alcanzar: desde la cabecera y el pie del propio Journal, y desde la linea que va encima del titulo de la pieza. Cuando se publique una segunda pieza esto vuelve a apuntar a la lista, y hay una sola linea que cambiar.",
+      },
+    ],
+  },
   {
     version: "0.142.1",
     date: "2026-09-20",

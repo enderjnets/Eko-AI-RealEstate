@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.142.2] - 2026-09-20
+
+### Changed
+- **El botón «Journal» de la portada lleva al ARTÍCULO, no al índice.** Los
+  tres enlaces (navegación, menú del móvil y pie) apuntan a
+  `ENTRY_HREF` — `lib/journal/publication.ts`.
+
+  El paquete de diseño manda el botón al índice (README §2). Va al artículo por
+  decisión de Ender: pulsaba «Journal», caía en una página con **una** tarjeta
+  y lo leía como «la primera versión del Journal»; el artículo quedaba un clic
+  más allá, detrás de «Read the piece →». Con una sola pieza publicada ese
+  paso intermedio no enseña nada nuevo. **Con una segunda pieza esto vuelve al
+  índice**, y `ENTRY_HREF` es el único sitio que hay que tocar.
+
+- El índice **no queda huérfano** y un test lo vigila: la cabecera y el pie de
+  The Journal siguen en `/blog`, y la miga de pan del artículo también.
+
+### Notes
+- `ENTRY_HREF` vive en `publication.ts` y **no** importa `SLUG`: `Landing.tsx`
+  es un componente de cliente, así que importar `twelveHouses.ts` metería sus
+  1.120 líneas de datos en el paquete de la portada. Un test comprueba que la
+  cadena y `SLUG` no se separen — visto en rojo antes de darlo por bueno.
+
 ## [0.142.1] - 2026-09-20
 
 Fidelidad con el paquete de diseño. Las dos salieron de comparar el **texto

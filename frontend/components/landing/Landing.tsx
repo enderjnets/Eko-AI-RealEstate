@@ -39,7 +39,7 @@ import { ArrowDown, ArrowRight, Building2, CalendarCheck, Clock, Menu, Phone, Ru
 import { LANDING, dialable } from "@/lib/landing";
 import { STAFF_LOGIN_HREF } from "@/lib/hosts";
 import { GUIDES } from "@/lib/guides";
-import { LINKED as JOURNAL_LINKED } from "@/lib/journal/publication";
+import { ENTRY_HREF as JOURNAL_HREF, LINKED as JOURNAL_LINKED } from "@/lib/journal/publication";
 import { LandingEffects } from "@/components/landing/LandingEffects";
 import { LandingTracker } from "@/components/landing/LandingTracker";
 import { useI18n } from "@/lib/i18n";
@@ -138,7 +138,7 @@ function LandingNav({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: (
               tambien un visitante en espanol: es la misma honestidad que lleva
               la guia de otono en `GUIDES`, y no cuesta una traduccion a medias. */}
           {JOURNAL_LINKED && (
-            <a href="/blog" hrefLang="en" className={link}>
+            <a href={JOURNAL_HREF} hrefLang="en" className={link}>
               {t("landing.nav.journal")}
             </a>
           )}
@@ -244,7 +244,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
     // `lang` marca que lo que hay al otro lado esta en ingles; es el unico
     // destino del menu que sale de la portada.
     ...(JOURNAL_LINKED
-      ? [{ href: "/blog", label: t("landing.menu.journal"), italic: false, lang: "en" }]
+      ? [{ href: JOURNAL_HREF, label: t("landing.menu.journal"), italic: false, lang: "en" }]
       : []),
     { href: "#consult", label: t("landing.nav.book"), italic: true },
   ];
@@ -820,7 +820,7 @@ function LandingFooter() {
               etiquetarlo como lo que no es en las dos rejillas que la leen. */}
           {JOURNAL_LINKED && (
             <a
-              href="/blog"
+              href={JOURNAL_HREF}
               hrefLang="en"
               className="inline-flex min-h-[44px] items-center whitespace-nowrap text-[11px] tracking-[0.04em] text-ln-muted underline underline-offset-4 hover:text-ln-gold"
             >

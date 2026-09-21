@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { AS_OF, ENTRIES, INDEX, PAGE, PASSED, SLUG, STRIP } from "@/lib/journal/twelveHouses";
-import { INDEXED, LINKED } from "@/lib/journal/publication";
+import { ENTRY_HREF, INDEXED, LINKED } from "@/lib/journal/publication";
 
 /**
  * The Journal: los datos, los derechos y la puerta de publicacion.
@@ -220,17 +220,31 @@ describe("las dos puertas de publicacion", () => {
 
   it("la portada enlaza The Journal en los tres sitios, tras la misma condicion", () => {
     const src = read("components/landing/Landing.tsx");
-    // Dos son JSX (`href="/blog"`) y el tercero es la entrada del menu movil,
-    // que es un objeto (`href: "/blog"`). Contar solo la primera forma deja el
-    // menu del telefono fuera de la comprobacion — y el movil es justo donde
-    // se pidio poder llegar.
-    const links = src.match(/href[=:] ?"\/blog"/g) ?? [];
-    expect(links.length, "la portada deberia enlazar /blog en tres sitios").toBe(3);
+    // Dos son JSX (`href={JOURNAL_HREF}`) y el tercero es la entrada del menu
+    // movil, que es un objeto (`href: JOURNAL_HREF`). Contar solo la primera
+    // forma deja el menu del telefono fuera de la comprobacion — y el movil es
+    // justo donde se pidio poder llegar.
+    const links = src.match(/href[=:] ?\{?JOURNAL_HREF\}?/g) ?? [];
+    expect(links.length, "la portada deberia enlazar el Journal en tres sitios").toBe(3);
+    // Ninguno puede haberse quedado apuntando al indice a mano.
+    expect(src, "queda un /blog literal en la portada").not.toMatch(/href[=:] ?"\/blog"/);
     // Los tres van tras la misma condicion, y esa condicion es LINKED.
     expect((src.match(/JOURNAL_LINKED/g) ?? []).length).toBeGreaterThanOrEqual(4);
     expect(src, "la portada no debe leer la puerta del indice").not.toContain(
       "JOURNAL_INDEXED",
     );
+  });
+
+  it("el boton de la portada lleva al articulo, y el indice no queda huerfano", () => {
+    // El diseno manda el boton al indice (README §2). Va al articulo por
+    // decision de Ender: con UNA sola pieza, el indice es un clic que no
+    // ensena nada. Cuando haya una segunda, esto vuelve al indice.
+    expect(ENTRY_HREF).toBe(`/blog/${SLUG}`);
+    // Y el indice se sigue pudiendo alcanzar: la cabecera y el pie del propio
+    // Journal, y la miga de pan del articulo. Sin esto, /blog existiria sin
+    // que nadie pudiera llegar.
+    expect(read("components/journal/JournalChrome.tsx")).toContain('const JOURNAL_HREF = "/blog";');
+    expect(read(ARTICLE_PAGE), "el articulo no vuelve al indice").toContain('href="/blog"');
   });
 
   it("con el enlace abierto, la seccion tiene que ser alcanzable de verdad", () => {

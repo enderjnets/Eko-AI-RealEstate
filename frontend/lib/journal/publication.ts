@@ -32,3 +32,25 @@ export const LINKED = true;
 
 /** Sigue cerrada: las doce fichas siguen en «pendiente». No es reversible. */
 export const INDEXED = false;
+
+/**
+ * A donde lleva el boton «Journal» de la PORTADA.
+ *
+ * Al articulo, no al indice. El paquete de diseno manda el boton al indice
+ * (README §2) y asi estuvo: Ender pulsaba «Journal», caia en una pagina con
+ * UNA tarjeta y lo leia como «la primera version del journal» — el articulo
+ * quedaba un clic mas alla, detras de «Read the piece →». Con una sola pieza
+ * publicada, ese clic intermedio no ensena nada que no se vea ya en la
+ * portada. Decision suya, 20-sep-2026.
+ *
+ * El indice **no** queda huerfano: la cabecera y el pie de The Journal, y la
+ * miga de pan del propio articulo, siguen apuntando a `/blog`. Cuando haya una
+ * segunda pieza esto tiene que volver al indice, y entonces esta constante es
+ * el unico sitio que hay que tocar.
+ *
+ * Se escribe aqui, y no se importa `SLUG`, porque `Landing.tsx` es un
+ * componente de cliente: importar `twelveHouses.ts` meteria sus 1.120 lineas
+ * de datos en el paquete de la portada. Un test comprueba que esta cadena y
+ * `SLUG` no se separen.
+ */
+export const ENTRY_HREF = "/blog/twelve-houses-worth-the-detour";
