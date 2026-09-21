@@ -139,7 +139,11 @@ class ConsoleToday(BaseModel):
 
 
 def _open_leads(stmt: Select) -> Select:
-    return stmt.where(Lead.status.notin_(CLOSED_STATUSES), Lead.opted_out_at.is_(None))
+    from app.services.lead_traffic import commercial_lead
+
+    return stmt.where(
+        Lead.status.notin_(CLOSED_STATUSES), Lead.opted_out_at.is_(None), commercial_lead()
+    )
 
 
 @router.get("/today", response_model=ConsoleToday)

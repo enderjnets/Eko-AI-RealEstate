@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.142.5] - 2026-09-20
+
+### Fixed
+- Explicit QA and automated first-touch leads are excluded from commercial Leads, Inbox, Today and digest queues. Direct lead detail remains available for diagnosis; no records are deleted.
+- New-inquiry notices for those leads stop before email, owner copy, Telegram or daily-budget accounting. Existing Analytics exclusions and real-lead behavior are unchanged.
+- Backend and frontend both report 0.142.5.
+
 ## [0.142.4] - 2026-09-20
 
 ### Fixed
