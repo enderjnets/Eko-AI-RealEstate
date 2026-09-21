@@ -258,6 +258,43 @@ describe("las dos puertas de publicacion", () => {
   });
 });
 
+describe("las fotos se copian, no se reprocesan", () => {
+  const script = () => read("scripts/journal-photos.sh");
+
+  it("las 48 ajenas se copian tal cual", () => {
+    // Las reducia a 1600px la principal y 800px las otras tres, «porque eso
+    // separa 30 MB de 3». Medido donde importa: la principal se pinta a 1129
+    // CSS px, que en retina son 2258 reales. Con 1600 le faltaban 658 y se
+    // veia — doce de las quince que carga el articulo salian blandas, y Ender
+    // lo leyo como que la pagina no era la suya.
+    expect(script()).toMatch(/cp "\$f" "\$DEST\/img\/\$base"/);
+  });
+
+  it("solo el skyline se recodifica, y solo porque va versionado", () => {
+    // Es del cliente, con derechos limpios, y vive en un repositorio publico:
+    // 2240px le sobran para lo que se pinta, y son 707 KB en vez de 2,0 MB.
+    // Ahi el limite que manda es el del repositorio, no el de la vista.
+    const src = script();
+    const resizes = src.match(/resampleWidth/g) ?? [];
+    expect(resizes.length, "solo deberia quedar UN redimensionado").toBe(1);
+    const i = src.indexOf("resampleWidth");
+    const zona = src.slice(Math.max(0, i - 700), i);
+    expect(zona, "el unico redimensionado tiene que ser el del skyline").toContain(
+      "denver-skyline.jpg",
+    );
+  });
+
+  it("y sigue sin versionarse ninguna foto ajena", () => {
+    // La guarda de siempre, repetida aqui a proposito: subir la resolucion es
+    // justo el cambio que tienta a «meterlas ya en el repo».
+    const tracked = execFileSync("git", ["ls-files", "frontend/public/blog/img"], {
+      cwd: resolve(ROOT, ".."),
+      encoding: "utf8",
+    }).trim();
+    expect(tracked, `hay fotos versionadas:\n${tracked}`).toBe("");
+  });
+});
+
 describe("la copia es la del diseno, no la mia", () => {
   // Como se cuelan estas: el generador extrae lo que sabe extraer, y lo que
   // no extrajo alguien lo escribe a mano en la pagina. No falla nada, no lo

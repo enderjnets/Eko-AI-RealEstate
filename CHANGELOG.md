@@ -1,9 +1,38 @@
+# Changelog
+
+## [0.142.4] - 2026-09-20
+
+### Fixed
+- **Las 48 fotografías del artículo subían reducidas.** `journal-photos.sh` las
+  encogía al copiarlas: la principal de cada casa a **1600 px** y las otras
+  tres a **800**. Ya no. Se copian **tal cual**.
+
+  El ahorro estaba medido en el sitio equivocado. Medido en el bueno, sobre la
+  página servida a 1827 px: la principal se pinta a **1129 CSS px**, que en
+  retina son **2258 px reales**; con 1600 le faltan **658**. **Doce de las
+  quince** fotos que carga el artículo salían blandas.
+
+  Segunda razón, independiente de cómo se vea: son de **ocho corredurías
+  ajenas**. Cada transformación es una obra derivada más sobre material que ya
+  llega con la marca de agua recortada.
+
+- El paquete de diseño **no las trae todas a 2000 px** — 25 sí, 8 a 1800, 4 a
+  1600, 4 a 1280, 3 a 1440, y `fallcreek-0.jpg` a **800**. Copiar tal cual
+  sirve exactamente lo que nos dieron: ni mejor ni peor.
+
+### Kept
+- El **skyline** sigue recodificado a 2240 px (707 KB en vez de 2,0 MB). Es del
+  cliente, va **versionado** en un repositorio público y 2240 le sobra para lo
+  que se pinta. Ahí el límite que manda es el del repositorio.
+
+### Tests
+- Tres nuevos; dos vistos **en rojo** antes de darlos por buenos: si alguien
+  vuelve a meter un `resampleWidth` sobre las 48, la suite se cae.
+
 ## [0.142.3] — 2026-09-20
 
 ### Fixed
 - Show the rent-versus-buy calculator and advisor contact at the top of the Instagram bio destination, preserving the autumn guide and incoming campaign attribution.
-
-# Changelog
 
 ## [0.142.2] - 2026-09-20
 

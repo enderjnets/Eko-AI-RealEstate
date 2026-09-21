@@ -31,32 +31,43 @@ if [ ! -d "$SRC" ]; then
   exit 1
 fi
 
-# `sips` viene con macOS. No se usa `sharp` porque el proyecto no lo tiene
-# instalado ni usa `next/image`: anadir una dependencia para redimensionar
-# cuarenta y nueve ficheros una vez seria pagar mantenimiento para siempre.
-if ! command -v sips >/dev/null 2>&1; then
-  echo "hace falta \`sips\` (macOS). En Linux: usa \`convert -resize\`." >&2
-  exit 1
-fi
-
 mkdir -p "$DEST/img"
 
-# La principal de cada ficha se ve a todo el ancho de la columna (1120px como
-# mucho, el doble en pantalla retina); las tres miniaturas van a un tercio.
-# Redimensionar aqui y no en el navegador es lo que separa 30 MB de 3.
+# LAS FOTOS SE COPIAN TAL CUAL. No se redimensionan.
+#
+# Antes esto las reducia: la principal de cada ficha a 1600px y las otras tres
+# a 800, "porque eso separa 30 MB de 3". Era un ahorro medido en el sitio
+# equivocado. Medido en el bueno, sobre la pagina servida a 1827px de ancho:
+# la principal se pinta a 1129 CSS px, que en una pantalla retina son 2258
+# pixeles reales. Con 1600 le faltan 658, y eso se VE — doce de las quince
+# fotos que carga el articulo salian blandas en el Mac de Ender, y lo leyo,
+# con razon, como que la pagina no era la que el habia disenado.
+#
+# El diseno las trae a 2000px de ancho. Sigue siendo menos de 2258, pero es lo
+# que hay: son las fotos que nos entregaron, y la alternativa es inventarse
+# pixeles. Lo que NO se hace es empeorarlas al copiarlas.
+#
+# Y hay una segunda razon, independiente de como se vea: estas cuarenta y ocho
+# fotografias son de ocho corredurias ajenas. Cada transformacion que les
+# aplicamos es una obra derivada mas sobre material que ya llega con la marca
+# de agua recortada. Copiar y no tocar es tambien la postura correcta ahi.
 n=0
 for f in "$SRC"/*.jpg; do
   base="$(basename "$f")"
   case "$base" in
     denver-skyline.jpg)
-      # Esta la entrego el cliente y sus derechos estan limpios: va versionada.
+      # El skyline SI se recodifica, y es la excepcion que confirma la regla de
+      # arriba. Es del cliente, con los derechos limpios, y va VERSIONADA en un
+      # repositorio publico. Se pinta al mismo ancho que las demas (1129 CSS px
+      # -> 2258 reales en retina), asi que 2240 le llega: el original de 2480px
+      # pesa 2,0 MB y el recodificado 707 KB para el mismo resultado en
+      # pantalla. Ahi el ahorro si esta en el sitio correcto, porque el limite
+      # que importa es el del repositorio y no el de la vista.
+      command -v sips >/dev/null 2>&1 || { echo "hace falta \`sips\` (macOS)" >&2; exit 1; }
       sips --resampleWidth 2240 "$f" --out "$DEST/$base" >/dev/null
       ;;
-    *-0.jpg)
-      sips --resampleWidth 1600 "$f" --out "$DEST/img/$base" >/dev/null
-      ;;
     *)
-      sips --resampleWidth 800 "$f" --out "$DEST/img/$base" >/dev/null
+      cp "$f" "$DEST/img/$base"
       ;;
   esac
   n=$((n + 1))

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.142.3";
+export const CURRENT_VERSION = "0.142.4";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,28 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.142.4",
+    date: "2026-09-20",
+    title: {
+      en: "The Journal photographs go up as they were given to us",
+      es: "Las fotografias del Journal suben como nos las dieron",
+    },
+    changes: [
+      {
+        en: "The photographs in the piece were being shrunk on the way in — the main one for each house to 1600 pixels wide and the other three to 800. On a retina screen the main photograph is drawn at 2258 real pixels, so twelve of the fifteen the page loads were soft. They now go up untouched, which is how the design handed them over.",
+        es: "Las fotografias de la pieza se encogian al copiarlas: la principal de cada casa a 1600 pixeles de ancho y las otras tres a 800. En una pantalla retina la principal se dibuja a 2258 pixeles reales, asi que doce de las quince que carga la pagina salian blandas. Suben ya sin tocar, que es como nos las entrego el diseno.",
+      },
+      {
+        en: "The saving was being counted in the wrong place. Copying without changing anything is also the right posture for photographs that belong to eight other brokerages: every transformation is one more derived work on material that already arrived with its watermark cropped off.",
+        es: "El ahorro se estaba contando en el sitio equivocado. Copiar sin cambiar nada es ademas la postura correcta con fotografias que son de ocho corredurias ajenas: cada transformacion es una obra derivada mas sobre material que ya llego con la marca de agua recortada.",
+      },
+      {
+        en: "The skyline above the piece is the exception and stays re-encoded: it belongs to the client, it is versioned in a public repository, and 2240 pixels is all it is ever drawn at — 707 KB instead of 2.0 MB for the same thing on screen.",
+        es: "El skyline que va sobre la pieza es la excepcion y sigue recodificado: es del cliente, va versionado en un repositorio publico, y 2240 pixeles es todo lo que llega a dibujarse — 707 KB en vez de 2,0 MB para lo mismo en pantalla.",
+      },
+    ],
+  },
   {
     version: "0.142.3",
     date: "2026-09-20",
