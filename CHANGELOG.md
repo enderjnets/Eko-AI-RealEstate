@@ -1,3 +1,8 @@
+## [0.142.3] — 2026-09-20
+
+### Fixed
+- Show the rent-versus-buy calculator and advisor contact at the top of the Instagram bio destination, preserving the autumn guide and incoming campaign attribution.
+
 # Changelog
 
 ## [0.142.2] - 2026-09-20
