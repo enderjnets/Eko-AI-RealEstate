@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.142.1] - 2026-09-20
+
+Fidelidad con el paquete de diseño. Las dos salieron de comparar el **texto
+renderizado** de las páginas servidas contra el prototipo servido al lado, no
+de leer el código — por eso no las vio ninguna revisión.
+
+### Fixed
+- **Faltaba un párrafo entero en `/blog`.** En el diseño, «What lands here
+  next.» es un `h2` **y** un párrafo, dos columnas de la misma rejilla
+  (`repeat(auto-fit,minmax(280px,1fr))`). Solo estaba el `h2`. El extractor no
+  lo cogía, así que el módulo generado no lo tenía: el arreglo va en
+  `scripts/journal-content.py` (`INDEX.nextDek`), no en la página.
+- **La frase bajo «Fifteen minutes, no pitch.» es la del diseño.** Hay **una**
+  y vale para las dos páginas. Había **dos distintas, escritas por mí**, una en
+  cada página, sin anotarlo en ningún sitio. Ahora sale de `PAGE.talkDek`.
+
+### Removed
+- El enlace «Rather ask us something directly? Start here» del índice. Me lo
+  inventé para colgar el `data-track` y quedaba suelto bajo «Latest», donde el
+  diseño no pone nada. La medición viaja ahora dentro de la última frase del
+  propio diseño: «…tell us on the call».
+
+### Tests
+- Cuatro nuevos, los dos principales **vistos en rojo antes de darlos por
+  buenos**: si el diseño cambia y «tell us on the call» desaparece, el enlace se
+  renderizaría **vacío** y `track.test.ts` seguiría verde porque el `href`
+  literal sigue en el fuente. Ese es el que lo ve.
+- El artículo ya era fiel y se comprobó midiendo: **93,6%** de las líneas
+  coinciden con `Blog-Twelve-Houses-v2.dc.html`, y las diferencias son las
+  decisiones registradas (correduría desde configuración, `ConsultForm`
+  compartido, `CallLine`, sin logo de E&V).
+
 ## [0.142.0] - 2026-09-20
 
 ### Changed

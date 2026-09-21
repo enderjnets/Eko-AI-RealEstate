@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.142.0";
+export const CURRENT_VERSION = "0.142.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,32 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.142.1",
+    date: "2026-09-20",
+    title: {
+      en: "Two lines of the Journal were ours, not the design's",
+      es: "Dos lineas del Journal eran mias, no del diseno",
+    },
+    changes: [
+      {
+        en: "The Journal index was missing a paragraph. \"What lands here next.\" is a heading and a paragraph side by side in the design; only the heading was built, and the gap did not look like a fault because a heading on its own also looks finished.",
+        es: "Al indice del Journal le faltaba un parrafo. \"What lands here next.\" son un titular y un parrafo uno al lado del otro en el diseno; solo se habia construido el titular, y el hueco no parecia una averia porque un titular solo tambien parece terminado.",
+      },
+      {
+        en: "The sentence under \"Fifteen minutes, no pitch.\" is the one the design wrote. There is one of it, used on both pages; there had been two different ones, written here, one per page. Rewriting a client's copy is a decision, and it was not written down anywhere.",
+        es: "La frase bajo \"Fifteen minutes, no pitch.\" es la que escribio el diseno. Hay una sola y sirve para las dos paginas; habia dos distintas, escritas aqui, una por pagina. Reescribir la copia de un cliente es una decision, y no estaba anotada en ninguna parte.",
+      },
+      {
+        en: "A link that read \"Rather ask us something directly? Start here\" is gone. It was invented to carry the click tracking and it sat loose under Latest, where the design has nothing. The tracking now rides on the design's own closing words, \"tell us on the call\", and a test fails if that sentence ever changes and leaves the link empty.",
+        es: "Desaparece un enlace que decia \"Rather ask us something directly? Start here\". Estaba inventado para llevar la medicion del clic y colgaba suelto bajo Latest, donde el diseno no pone nada. La medicion viaja ahora en las propias palabras finales del diseno, \"tell us on the call\", y un test falla si esa frase cambia y deja el enlace vacio.",
+      },
+      {
+        en: "Both came out of comparing the rendered text of the published pages against the design served side by side, not from reading the code. The article itself was already faithful: 93.6% of its lines match, and every difference is a decision recorded at the time.",
+        es: "Las dos salieron de comparar el texto renderizado de las paginas publicadas contra el diseno servido al lado, no de leer el codigo. El articulo ya era fiel: el 93,6% de sus lineas coinciden, y cada diferencia es una decision anotada en su momento.",
+      },
+    ],
+  },
   {
     version: "0.142.0",
     date: "2026-09-20",

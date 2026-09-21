@@ -272,6 +272,12 @@ def main():
         ),
         "rights": rights,
         "talkHeading": heading("h2", "Fifteen minutes"),
+        # El parrafo que va bajo "Fifteen minutes, no pitch.". Se extraia a
+        # mano y por eso las dos paginas acabaron con prosa distinta, escrita
+        # por mi, donde el diseno tiene UNA sola frase para las dos.
+        "talkDek": text(
+            re.search(r"Fifteen minutes.*?</h2>\s*<p[^>]*>(.*?)</p>", src, re.S).group(1)
+        ),
     }
 
     # ---------- indice ----------
@@ -296,6 +302,12 @@ def main():
             "accent": text(re.search(r"<span[^>]*font-style:italic[^>]*>(.*?)</span>", m, re.S).group(1)),
         })(re.search(r"<h1[^>]*>(.*?)</h1>", idx, re.S).group(1)),
         "dek": text(re.findall(r"<p[^>]*>(.*?)</p>", idx, re.S)[0]),
+        # La segunda mitad del encabezado de "What lands here next.": en el
+        # diseno el h2 y este parrafo son DOS columnas de la misma rejilla.
+        # Faltaba, y no se notaba porque el h2 se veia solo y centrado.
+        "nextDek": text(
+            re.search(r"What lands here.*?</h2>\s*<p[^>]*>(.*?)</p>", idx, re.S).group(1)
+        ),
         # Solo las tres columnas de "what lands here next". La cuarta pareja
         # h3+p del prototipo es el mensaje de exito de SU formulario, y aqui el
         # formulario es `ConsultForm`, que trae el suyo.
@@ -309,6 +321,11 @@ def main():
 
     # ---------- comprobaciones ----------
     problems = []
+    stripped_idx = " ".join(text(idx).split())
+    if " ".join(page["talkDek"].split()) not in stripped:
+        problems.append("talkDek no reencontrado en el articulo")
+    if " ".join(index["nextDek"].split()) not in stripped_idx:
+        problems.append("nextDek no reencontrado en el indice")
     if len(panels) != 12:
         problems.append(f"paneles de la tira: {len(panels)}")
     if len(passed) != 6:

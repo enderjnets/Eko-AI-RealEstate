@@ -143,6 +143,7 @@ export const PAGE = {
     lead: "Fifteen minutes,",
     accent: "no pitch.",
   },
+  talkDek: "Tell us what you are trying to do and where. You will leave the call knowing what your property is worth, or what your budget really buys in that neighbourhood.",
 } as const;
 
 export const STRIP: readonly Panel[] = [
@@ -1100,6 +1101,7 @@ export const INDEX = {
     accent: "written down.",
   },
   dek: "We look at the Aspen, Roaring Fork and Denver markets every week anyway. When something in the listings is worth a second look — a price that does not add up, a house nobody is talking about, a neighbourhood turning over — we write it here rather than keep it to ourselves.",
+  nextDek: "Three kinds of piece, roughly one a month. No newsletter, no drip sequence — if you want to hear when one is out, tell us on the call.",
   next: [
     {
       title: "Looking around",

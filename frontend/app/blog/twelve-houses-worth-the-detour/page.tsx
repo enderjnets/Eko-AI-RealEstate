@@ -368,10 +368,13 @@ export default function TwelveHousesPage() {
               {PAGE.talkHeading.lead}{" "}
               <span className="italic text-jr-brass-light">{PAGE.talkHeading.accent}</span>
             </h2>
-            <p className="mt-6 max-w-[440px] text-[15px] leading-[1.8] text-jr-cream/[0.82]">
-              If one of these is the reason you are here, say so and we will tell you what we
-              know about it. If it is your own house you are thinking about, that is the more
-              common conversation and we are happy to have it.
+            {/* El diseno usa LA MISMA frase aqui y en el indice. Yo habia
+                escrito una distinta en cada pagina, sin anotarlo en ninguna
+                parte: eso es copia del cliente reescrita en silencio. Ahora
+                sale del modulo generado, asi que las dos dicen lo mismo y lo
+                que dicen es lo que el diseno dice. */}
+            <p className="mt-6 max-w-[440px] text-[16px] leading-[1.8] text-jr-cream/[0.82]">
+              {PAGE.talkDek}
             </p>
 
             {LANDING.phone && (

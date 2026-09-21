@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { AS_OF, ENTRIES, PAGE, PASSED, SLUG, STRIP } from "@/lib/journal/twelveHouses";
+import { AS_OF, ENTRIES, INDEX, PAGE, PASSED, SLUG, STRIP } from "@/lib/journal/twelveHouses";
 import { INDEXED, LINKED } from "@/lib/journal/publication";
 
 /**
@@ -241,6 +241,46 @@ describe("las dos puertas de publicacion", () => {
     expect(read("lib/hosts.ts"), "/blog no esta en PUBLIC_PATHS").toMatch(
       /"\/blog"/,
     );
+  });
+});
+
+describe("la copia es la del diseno, no la mia", () => {
+  // Como se cuelan estas: el generador extrae lo que sabe extraer, y lo que
+  // no extrajo alguien lo escribe a mano en la pagina. No falla nada, no lo
+  // ve un diff y la pagina se ve bien — simplemente ya no dice lo que el
+  // cliente escribio. Las dos que se colaron aqui salieron de comparar el
+  // texto RENDERIZADO contra el prototipo servido, no leyendo el codigo.
+
+  it("el titular de «what lands here» viaja con su parrafo", () => {
+    // Faltaba entero. Un h2 solo tambien se ve bien, y por eso nadie lo noto.
+    expect(INDEX.nextDek.length).toBeGreaterThan(60);
+    expect(read(INDEX_PAGE)).toContain("INDEX.nextDek");
+  });
+
+  it("la frase que lleva al formulario esta DENTRO de esa copia", () => {
+    // El enlace etiquetado se trocea de esta frase. Si el diseno la cambia y
+    // la frase desaparece, `track.test.ts` seguiria verde —el `href` literal
+    // sigue en el fuente— y el enlace se renderizaria VACIO. Este es el test
+    // que lo ve.
+    expect(INDEX.nextDek).toContain("tell us on the call");
+    expect(read(INDEX_PAGE)).toContain('const CALL_PHRASE = "tell us on the call";');
+  });
+
+  it("las dos paginas usan LA MISMA frase bajo «fifteen minutes»", () => {
+    // El diseno tiene una sola. Yo habia escrito dos distintas, una por
+    // pagina, sin anotarlo: reescribir la copia del cliente en silencio.
+    expect(PAGE.talkDek.length).toBeGreaterThan(80);
+    for (const page of [INDEX_PAGE, ARTICLE_PAGE]) {
+      expect(read(page), `${page} no usa PAGE.talkDek`).toContain("PAGE.talkDek");
+    }
+  });
+
+  it("no queda ninguna linea inventada por mi colgada de un #consult", () => {
+    // Las dos que hubo. La del indice ya no existe; la del articulo se queda
+    // —es la unica via etiquetada al formulario que tiene esa pagina— y esta
+    // declarada aqui para que no vuelva a pasar por copia del diseno.
+    expect(read(INDEX_PAGE)).not.toContain("Rather ask us something directly");
+    expect(read(ARTICLE_PAGE)).toContain("Looking at one of these? Tell us which");
   });
 });
 

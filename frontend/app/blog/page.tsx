@@ -47,6 +47,19 @@ export const viewport: Viewport = { themeColor: "#0F0E0C" };
 const SHELL = "mx-auto max-w-[1120px] px-[clamp(22px,5vw,56px)]";
 const ARTICLE_HREF = `/blog/${SLUG}`;
 
+/**
+ * La frase del diseno que hace de enlace al formulario.
+ *
+ * Trocear una frase para meterle un enlace dentro es feo de leer, pero la
+ * alternativa era la que ya hubo: inventarme una linea entera solo para tener
+ * donde colgar el `data-track`. Si el diseno cambia y la frase desaparece, el
+ * test de `journal.test.ts` se pone rojo en vez de dejar un enlace vacio.
+ */
+const CALL_PHRASE = "tell us on the call";
+const CUT = INDEX.nextDek.indexOf(CALL_PHRASE);
+const NEXT_HEAD = CUT < 0 ? INDEX.nextDek : INDEX.nextDek.slice(0, CUT);
+const NEXT_TAIL = CUT < 0 ? "" : INDEX.nextDek.slice(CUT + CALL_PHRASE.length);
+
 export default function JournalIndexPage() {
   return (
     <main className="min-h-screen bg-jr-cream font-ln-sans text-jr-body">
@@ -80,23 +93,11 @@ export default function JournalIndexPage() {
             </span>
           </div>
 
-          {/* Igual que en el articulo: una sola via etiquetada hacia el
-              formulario, para que el rastreador cuente la eleccion. */}
-          <p className="mt-5 text-[15px]">
-            <a
-              href="#consult"
-              data-track="journal-index-latest"
-              className="border-b border-jr-brass/40 pb-0.5 font-medium text-jr-ink hover:border-jr-ink"
-            >
-              Rather ask us something directly? Start here
-            </a>
-          </p>
-
           {/* La tarjeta entera es un solo enlace: un titular que se puede tocar
               y una foto que no seria dos destinos para la misma intencion. */}
           <a
             href={ARTICLE_HREF}
-            className="group mt-10 grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] items-start gap-[clamp(26px,4vw,56px)]"
+            className="group mt-12 grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] items-start gap-[clamp(26px,4vw,56px)]"
           >
             <span className="block overflow-hidden bg-jr-photo" style={{ aspectRatio: "4 / 3" }}>
               {/* eslint-disable-next-line @next/next/no-img-element -- the public pages use plain <img> throughout: `sharp` is not installed, so next/image would optimise nothing and only add a dependency. */}
@@ -136,11 +137,32 @@ export default function JournalIndexPage() {
 
       <section className="bg-jr-warm py-[clamp(52px,8vw,100px)]">
         <div className={SHELL}>
-          <h2 className="font-ln-serif text-[clamp(34px,4.4vw,56px)] font-light leading-[1.04] tracking-[-0.015em] text-jr-body">
-            What lands here <span className="italic text-jr-brass">next.</span>
-          </h2>
+          {/* En el diseno el titular y este parrafo son DOS columnas de la
+              misma rejilla. El parrafo faltaba, y el fallo no saltaba a la
+              vista porque un h2 solo tambien se ve bien.
 
-          <div className="mt-12 grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-[clamp(26px,4vw,56px)]">
+              La ultima frase — «tell us on the call» — es el enlace etiquetado
+              hacia el formulario. Antes eso era una linea que me invente y
+              puse suelta bajo «Latest», donde no pintaba nada; aqui el enlace
+              va dentro de una frase que escribio el diseno. */}
+          <div className="mb-[clamp(36px,5vw,56px)] grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] items-start gap-[clamp(28px,5vw,64px)]">
+            <h2 className="font-ln-serif text-[clamp(34px,4.4vw,56px)] font-light leading-[1.04] tracking-[-0.015em] text-jr-body">
+              What lands here <span className="italic text-jr-brass">next.</span>
+            </h2>
+            <p className="max-w-[480px] text-[15px] leading-[1.8] text-jr-secondary">
+              {NEXT_HEAD}
+              <a
+                href="#consult"
+                data-track="journal-index-next"
+                className="border-b border-jr-brass/40 pb-0.5 font-medium text-jr-ink hover:border-jr-ink"
+              >
+                {CALL_PHRASE}
+              </a>
+              {NEXT_TAIL}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-[clamp(26px,4vw,56px)]">
             {INDEX.next.map((col, i) => (
               <div key={col.title} className="border-t border-jr-rule-strong pt-6">
                 <span className="font-ln-serif text-[16px] italic text-jr-brass">
@@ -163,10 +185,8 @@ export default function JournalIndexPage() {
               {PAGE.talkHeading.lead}{" "}
               <span className="italic text-jr-brass-light">{PAGE.talkHeading.accent}</span>
             </h2>
-            <p className="mt-6 max-w-[440px] text-[15px] leading-[1.8] text-jr-cream/[0.82]">
-              We would rather answer the question you actually have than send you a market
-              report you did not ask for. Buying, selling, or just wanting a number on your
-              own house — any of those is a fine reason to get in touch.
+            <p className="mt-6 max-w-[440px] text-[16px] leading-[1.8] text-jr-cream/[0.82]">
+              {PAGE.talkDek}
             </p>
 
             {LANDING.phone && (
