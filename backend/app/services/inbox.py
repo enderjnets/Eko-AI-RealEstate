@@ -25,6 +25,7 @@ from app.models import (
     Visit,
     VisitStatus,
 )
+from app.services.lead_traffic import commercial_lead
 
 
 def reached_somebody():
@@ -229,7 +230,7 @@ async def gather_inbox(db: AsyncSession) -> list[InboxItem]:
                 Lead.zone,
                 Lead.human_takeover,
                 Lead.inbox_handled_at,
-            ).where(Lead.id.in_(list(last.keys())))
+            ).where(Lead.id.in_(list(last.keys())), commercial_lead())
         )
     ).all()
 

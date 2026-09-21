@@ -293,7 +293,9 @@ async def list_leads(
     role: str = Depends(current_role),
     db: AsyncSession = Depends(get_db),
 ) -> LeadListOut:
-    where: list = []
+    from app.services.lead_traffic import commercial_lead
+
+    where: list = [commercial_lead()]
     if status_filter is not None:
         where.append(Lead.status == status_filter)
     if intent is not None:
@@ -436,12 +438,15 @@ async def lead_digest(
     Excludes closed/paused leads (status gate already zeroes WON/LOST), and only
     returns leads scoring in the warm/hot range so the digest stays actionable.
     """
+    from app.services.lead_traffic import commercial_lead
+
     rows = (
         await db.execute(
             select(Lead)
             .where(
                 Lead.status.notin_([LeadStatus.WON, LeadStatus.LOST, LeadStatus.PAUSED]),
                 Lead.score > 0,
+                commercial_lead(),
             )
             .order_by(Lead.score.desc(), Lead.last_message_at.desc().nullslast())
             .limit(limit)

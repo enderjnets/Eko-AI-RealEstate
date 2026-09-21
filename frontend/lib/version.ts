@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.142.4";
+export const CURRENT_VERSION = "0.142.5";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.142.5",
+    date: "2026-09-20",
+    title: { en: "Test inquiries stay out of the agency's work", es: "Las consultas de prueba no entran en el trabajo comercial" },
+    changes: [{
+      en: "Explicit QA and automated leads no longer trigger new-inquiry email or Telegram alerts, or appear in Leads, Inbox, Today and the priority list. Their records remain available by direct link for diagnosis. Real inquiries and Analytics keep their existing behavior.",
+      es: "Los leads identificados como QA o automáticos no generan avisos de nueva consulta por correo o Telegram ni aparecen en Leads, Inbox, Today o la lista prioritaria. Sus fichas se conservan por enlace directo para diagnóstico. Las consultas reales y Analytics mantienen su comportamiento.",
+    }],
+  },
   {
     version: "0.142.4",
     date: "2026-09-20",

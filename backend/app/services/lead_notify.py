@@ -65,6 +65,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.listing_request import MAX_SELECTED
 from app.services.calculator import summary_line
 from app.services.email import send_email
+from app.services.lead_traffic import is_noncommercial
 from app.services.telegram_notify import send_operator_telegram, undeliverable_reason
 
 log = logging.getLogger("app.lead_notify")
@@ -375,6 +376,9 @@ async def _send_and_record(
         ).scalar_one_or_none()
         if lead is None:
             log.warning("Lead %d: vanished before the notice could be built", lead_id)
+            return
+        if is_noncommercial(lead.meta):
+            log.info("Lead %d: noncommercial notice suppressed (%s)", lead_id, origin)
             return
         cfg = (
             await db.execute(

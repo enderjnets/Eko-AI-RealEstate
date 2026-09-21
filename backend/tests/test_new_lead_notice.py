@@ -121,6 +121,29 @@ async def _thread_rows(lead_email: str) -> list[dict]:
 
 
 @pytest.mark.asyncio
+async def test_qa_form_is_saved_without_notifying_the_agency() -> None:
+    sender = AsyncMock(return_value={"id": "must-not-send"})
+    telegram = AsyncMock(return_value={"ok": True})
+    try:
+        with patch("app.services.lead_notify.send_email", sender), \
+             patch("app.services.lead_notify.send_operator_telegram", telegram):
+            status = await _post({
+                "name": "QA isolation",
+                "email": "isolation@notice.test",
+                "message": "Testing the contact form",
+                "utm": {"utm_source": "eko_qa", "utm_medium": "test"},
+            })
+        assert status == 202
+        rows = await _thread_rows("isolation@notice.test")
+        assert any(row["direction"] == "inbound" for row in rows)
+        assert not any(row["internal"] for row in rows)
+        assert sender.await_count == 0
+        assert telegram.await_count == 0
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
 async def test_a_form_submission_tells_the_agency() -> None:
     """One submission → one email to the booking mailbox, with the facts the
     call needs in the body, and an internal SENT row in the web thread."""
