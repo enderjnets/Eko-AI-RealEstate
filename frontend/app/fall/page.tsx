@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 
+import { collectAttribution, withAttribution } from "@/lib/capture";
+import type { StartSearchParams } from "@/components/landing/Start";
+
 import { CallLine } from "@/components/landing/CallLine";
 import { ConsultForm } from "@/components/landing/ConsultForm";
 import { LandingTracker } from "@/components/landing/LandingTracker";
@@ -219,7 +222,18 @@ function SpotEntry({ spot }: { spot: Spot }) {
   );
 }
 
-export default function FallGuidePage() {
+export default function FallGuidePage({
+  searchParams = {},
+}: {
+  searchParams?: StartSearchParams;
+}) {
+  const attribution = collectAttribution({
+    get(key) {
+      const value = searchParams[key];
+      return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+    },
+  });
+  const calculatorHref = withAttribution("/calculator", attribution);
   const brandLine = [LANDING.brand, LANDING.advisors].filter(Boolean).join(" · ");
   // The footer's two lines mirror the landing's exactly rather than inventing a
   // shorter version. This is real-estate advertising by licensed agents, and a
@@ -275,19 +289,24 @@ export default function FallGuidePage() {
           Explore these twelve places, then check current reports before choosing your route.
         </p>
 
-        {/* One of the page's two deliberate next steps. `data-track` makes the
-            shared tracker record one CTA choice; ordinary guide links remain
-            uncounted. It sits under the guide's own promise so the reader who
-            wants us can find us without the guide turning into a pitch. */}
-        <p className="mt-5 text-[15px]">
+        <nav aria-label="Tools and advice" className="mt-5 flex flex-wrap gap-3">
+          <a
+            href={calculatorHref}
+            data-track="fall-calculator-intro"
+            className="inline-flex min-h-11 items-center border border-ln-gold px-4 py-2 text-[14px] font-medium text-ln-dark hover:bg-ln-paper"
+          >
+            Rent vs. buy calculator
+          </a>
           <a
             href="#consult"
             data-track="fall-intro"
-            className="border-b border-ln-gold pb-0.5 font-medium text-ln-dark hover:border-ln-dark"
+            className="inline-flex min-h-11 items-center px-4 py-2 text-[14px] text-ln-dark underline decoration-ln-gold underline-offset-4"
           >
-            Thinking about selling before spring? Talk to us
+            Talk to Natalia &amp; Robbie
           </a>
-        </p>
+        </nav>
+
+
         </header>
 
         <div className="mt-10 lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start lg:gap-14">
@@ -349,7 +368,7 @@ export default function FallGuidePage() {
           Somewhere on the drive, most people ask the same question about the towns
           they pass through.{" "}
           <a
-            href="/calculator"
+            href={calculatorHref}
             data-track="fall-to-calculator"
             className="border-b border-ln-gold pb-0.5 font-medium text-ln-dark hover:border-ln-dark"
           >

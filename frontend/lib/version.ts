@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.142.2";
+export const CURRENT_VERSION = "0.142.3";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.142.3",
+    date: "2026-09-20",
+    title: { en: "The calculator is visible from the Instagram bio", es: "La calculadora se ve desde la biografía de Instagram" },
+    changes: [{
+      en: "The fall guide now offers the rent-versus-buy calculator and advisor contact at the top. Both calculator links preserve the incoming campaign tags, so a visitor following a calculator video's bio instruction can find it without reading the whole guide.",
+      es: "La guía de otoño ofrece la calculadora y el contacto al principio. Los dos enlaces a la calculadora conservan las etiquetas de campaña para medir el recorrido desde las redes.",
+    }],
+  },
   {
     version: "0.142.2",
     date: "2026-09-20",
