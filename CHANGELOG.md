@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.142.10] — 2026-09-21
+
+- Wrap opening, calculator address and brokerage identification inside the vertical safe area, measured against the production font.
+- Display `www.denverhomestory.com/calculator` on two centered lines instead of clipping the domain and legal line off the frame.
+
 ## [0.142.9] — 2026-09-21
 
 - Fall back to the branded DHS end card when Chromium times out while capturing the live calculator, and remove any partial screenshot before finishing.

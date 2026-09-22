@@ -251,7 +251,10 @@ def _finish_input(piece: ContentPiece, plan: dict) -> FinishInput:
 
     base = (get_settings().CONTENT_CTA_URL or "").strip().rstrip("/")
     parsed = urlsplit(base)
-    host = parsed.netloc.removeprefix("www.")
+    # Keep the public form the owner uses everywhere. Removing `www.` saved
+    # four characters but made the final card disagree with the address the
+    # channel tells viewers to type; the worker now wraps the path safely.
+    host = parsed.netloc
     root_path = parsed.path.rstrip("/")
     display_root = f"{host}{root_path}" if host else ""
 

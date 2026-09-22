@@ -917,7 +917,7 @@ async def test_calculated_job_input_carries_a_seeded_finishing_contract(
         assert body["finish"] == {
             "opening_text": "Renting in Denver at $3,500?",
             "cta_label": "RUN YOUR NUMBERS",
-            "cta_display": "denverhomestory.com/calculator",
+            "cta_display": "www.denverhomestory.com/calculator",
             "calculator_url": (
                 "https://www.denverhomestory.com/calculator?rent=3500&savings=60000"
             ),
@@ -944,7 +944,7 @@ async def test_ordinary_job_input_carries_a_neutral_finishing_contract(
         assert body["finish"] == {
             "opening_text": "Renting in Denver at $3,500?",
             "cta_label": "EXPLORE DENVER HOME STORY",
-            "cta_display": "denverhomestory.com",
+            "cta_display": "www.denverhomestory.com",
             "calculator_url": None,
         }
     finally:
