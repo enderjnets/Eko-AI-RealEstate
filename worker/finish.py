@@ -139,36 +139,61 @@ def build_command(
     *,
     duration: float,
     background: Path,
-    opening_file: Path,
+    opening_files: list[Path],
     cta_label_file: Path,
-    cta_display_file: Path,
-    brokerage_file: Path,
+    cta_display_files: list[Path],
+    brokerage_files: list[Path],
     font: str | None,
     mark: Path | None,
 ) -> list[str]:
     """Build ffmpeg argv; all audience-facing copy enters through text files."""
     font_clause = f":fontfile='{escape_path(font)}'" if font else ""
     end_at = max(0.0, duration - END_CARD_SECONDS)
-    graph = (
+    parts = [
         "[1:v]scale=1080:1920:force_original_aspect_ratio=increase,"
         "crop=1080:1920,setsar=1,format=rgba,"
-        "drawbox=x=0:y=0:w=iw:h=ih:color=0x0B1F33@0.78:t=fill[card0];"
+        "drawbox=x=0:y=0:w=iw:h=ih:color=0x0B1F33@0.78:t=fill[card0]",
         f"[card0]drawtext=textfile='{escape_path(str(cta_label_file))}'"
-        f"{font_clause}:fontcolor=0xD4A953:fontsize=42:x=(w-text_w)/2:y=700[card1];"
-        f"[card1]drawtext=textfile='{escape_path(str(cta_display_file))}'"
-        f"{font_clause}:fontcolor=white:fontsize=52:line_spacing=10:"
-        "x=(w-text_w)/2:y=790[card2];"
-        f"[card2]drawtext=textfile='{escape_path(str(brokerage_file))}'"
-        f"{font_clause}:fontcolor=white:fontsize=27:line_spacing=7:"
-        "borderw=2:bordercolor=black@0.8:x=(w-text_w)/2:y=970[endcard];"
+        f"{font_clause}:fontcolor=0xD4A953:fontsize=42:"
+        "x=(w-text_w)/2:y=700[cardlabel]",
+    ]
+    last_card = "cardlabel"
+    for index, path in enumerate(cta_display_files):
+        output = f"carddisplay{index}"
+        parts.append(
+            f"[{last_card}]drawtext=textfile='{escape_path(str(path))}'"
+            f"{font_clause}:fontcolor=white:fontsize=52:"
+            f"x=(w-text_w)/2:y={790 + index * 68}[{output}]"
+        )
+        last_card = output
+    for index, path in enumerate(brokerage_files):
+        output = f"cardbrokerage{index}"
+        parts.append(
+            f"[{last_card}]drawtext=textfile='{escape_path(str(path))}'"
+            f"{font_clause}:fontcolor=white:fontsize=27:"
+            "borderw=2:bordercolor=black@0.8:x=(w-text_w)/2:"
+            f"y={970 + index * 42}[{output}]"
+        )
+        last_card = output
+    parts.append(
         "[0:v]drawbox=x=70:y=210:w=940:h=300:color=0x0B1F33@0.88:t=fill:"
-        f"enable='between(t,0,{OPENING_SECONDS:.1f})'[open0];"
-        f"[open0]drawtext=textfile='{escape_path(str(opening_file))}'"
-        f"{font_clause}:fontcolor=white:fontsize=56:line_spacing=14:"
-        "x=(w-text_w)/2:y=285:"
-        f"enable='between(t,0,{OPENING_SECONDS:.1f})'[opened];"
-        f"[opened][endcard]overlay=0:0:enable='gte(t,{end_at:.2f})'[carded]"
+        f"enable='between(t,0,{OPENING_SECONDS:.1f})'[open0]"
     )
+    last_opening = "open0"
+    for index, path in enumerate(opening_files):
+        output = f"opening{index}"
+        parts.append(
+            f"[{last_opening}]drawtext=textfile='{escape_path(str(path))}'"
+            f"{font_clause}:fontcolor=white:fontsize=56:"
+            f"x=(w-text_w)/2:y={275 + index * 78}:"
+            f"enable='between(t,0,{OPENING_SECONDS:.1f})'[{output}]"
+        )
+        last_opening = output
+    parts.append(
+        f"[{last_opening}][{last_card}]overlay=0:0:"
+        f"enable='gte(t,{end_at:.2f})'[carded]"
+    )
+    graph = ";".join(parts)
     inputs = ["-i", str(source), "-loop", "1", "-i", str(background)]
     last = "carded"
     if mark is not None:
@@ -233,6 +258,19 @@ def _write_text(path: Path, value: object) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def line_files(workdir: Path, prefix: str, value: object) -> list[Path]:
+    """One file per visible line; drawtext renders a real LF as a tofu box."""
+    lines = [line.strip() for line in str(value or "").splitlines() if line.strip()]
+    if not lines:
+        raise verify.Rejected(f"the final-card text {prefix} would be empty")
+    paths = []
+    for index, line in enumerate(lines):
+        path = workdir / f"finish-{prefix}-{index}.txt"
+        _write_text(path, line)
+        paths.append(path)
+    return paths
+
+
 def apply(
     source: Path,
     destination: Path,
@@ -264,14 +302,17 @@ def apply(
     if not used_calculator:
         _fallback_card(background)
 
-    opening = workdir / "finish-opening.txt"
     label = workdir / "finish-label.txt"
-    display = workdir / "finish-display.txt"
-    brokerage = workdir / "finish-brokerage.txt"
-    _write_text(opening, opening_copy(finish_spec["opening_text"]))
+    opening = line_files(
+        workdir, "opening", opening_copy(finish_spec["opening_text"])
+    )
     _write_text(label, finish_spec["cta_label"])
-    _write_text(display, display_copy(finish_spec["cta_display"]))
-    _write_text(brokerage, brokerage_copy(spec["brokerage_line"]))
+    display = line_files(
+        workdir, "display", display_copy(finish_spec["cta_display"])
+    )
+    brokerage = line_files(
+        workdir, "brokerage", brokerage_copy(spec["brokerage_line"])
+    )
 
     temporary = destination.with_name(destination.stem + ".part.mp4")
     command = build_command(
@@ -279,10 +320,10 @@ def apply(
         temporary,
         duration=source_probe.duration,
         background=background,
-        opening_file=opening,
+        opening_files=opening,
         cta_label_file=label,
-        cta_display_file=display,
-        brokerage_file=brokerage,
+        cta_display_files=display,
+        brokerage_files=brokerage,
         font=font or default_font(),
         mark=mark,
     )

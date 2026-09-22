@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.142.11] — 2026-09-21
+
+- Draw each opening, URL and brokerage line through a separate FFmpeg text file so multiline breaks no longer appear as empty-square glyphs.
+- Keep the 0.142.10 safe-area wrapping while removing newline characters from every file handed to `drawtext`.
+
 ## [0.142.10] — 2026-09-21
 
 - Wrap opening, calculator address and brokerage identification inside the vertical safe area, measured against the production font.
