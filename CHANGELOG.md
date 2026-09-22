@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.142.9] — 2026-09-21
+
+- Fall back to the branded DHS end card when Chromium times out while capturing the live calculator, and remove any partial screenshot before finishing.
+- Add a regression test for the production-style timeout found by the first end-to-end QA render.
+
 ## [0.142.8] — 2026-09-21
 
 - Constrain generated shorts to 45–65 model-written words and seven to nine distinct Denver visual beats; calculated videos use eight deterministic scenes tied to the calculator inputs.

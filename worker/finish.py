@@ -167,16 +167,24 @@ def capture_calculator(url: str, destination: Path) -> bool:
     )
     if not browser:
         return False
-    result = subprocess.run(
-        [
-            str(browser), "--headless", "--disable-gpu", "--no-sandbox",
-            "--hide-scrollbars", "--window-size=1080,1920",
-            "--virtual-time-budget=8000", f"--screenshot={destination}", url,
-        ],
-        capture_output=True,
-        timeout=45,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [
+                str(browser), "--headless", "--disable-gpu", "--no-sandbox",
+                "--hide-scrollbars", "--window-size=1080,1920",
+                "--virtual-time-budget=8000", f"--screenshot={destination}", url,
+            ],
+            capture_output=True,
+            timeout=45,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        # The calculator is an enhancement, not a reason to lose an otherwise
+        # valid render. Chromium can hang behind Snap even when the executable
+        # exists; remove any partial image and let the caller draw the branded
+        # fallback card promised by the worker contract.
+        destination.unlink(missing_ok=True)
+        return False
     return result.returncode == 0 and destination.is_file() and destination.stat().st_size > 0
 
 

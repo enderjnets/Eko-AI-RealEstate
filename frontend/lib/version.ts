@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.142.8";
+export const CURRENT_VERSION = "0.142.9";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.142.9",
+    date: "2026-09-21",
+    title: { en: "A slow calculator cannot lose a finished video", es: "Una calculadora lenta no pierde un video terminado" },
+    changes: [{
+      en: "If the render machine cannot capture the live calculator within 45 seconds, it now removes any partial screenshot and completes the video with the branded fallback card. The first production-style QA render exposed the timeout before any post reached approval or Buffer.",
+      es: "Si la máquina de render no puede capturar la calculadora en 45 segundos, elimina cualquier captura parcial y termina el video con la tarjeta de marca de respaldo. El primer render QA con condiciones de producción reveló el timeout antes de que una publicación llegara a aprobación o Buffer.",
+    }],
+  },
   {
     version: "0.142.8",
     date: "2026-09-21",
