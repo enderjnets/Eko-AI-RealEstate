@@ -247,7 +247,13 @@ async def test_a_calculated_draft_queues_itself_with_its_record(
                 f"Renting in Denver at ${plan.rent:,} a month? Five years of "
                 f"buying comes out about ${plan.figure:,} ahead."
             ),
-            "script": "Rent, appreciation, the loan you pay down, the cost of selling.",
+            "script": (
+                "Start with the rent you would pay, then compare it with the "
+                "equity a purchase may build. Include appreciation, the loan "
+                "balance paid down, and the cost to sell at the end. The "
+                "calculator keeps every assumption visible, so you can move "
+                "each one and see how the estimate changes."
+            ),
             "caption": "Every assumption behind it is a slider on the page.",
         }
         with org_scope(ORG):
@@ -397,8 +403,25 @@ async def test_the_rail_can_be_turned_off_entirely(
     try:
         payload = {
             "hook": "Three things to check before you offer.",
-            "script": "Inspection, comparables, and your loan estimate.",
+            "script": (
+                "Start with the inspection, recent comparable sales, and the "
+                "loan estimate. Then compare the repair exposure with the "
+                "monthly payment you can actually carry. A clear offer "
+                "connects those facts before emotion or urgency changes the "
+                "decision, and leaves room to verify every assumption with "
+                "your own advisors."
+            ),
             "caption": "Save this.",
+            "scenes": [
+                {
+                    "visual_prompt": (
+                        f"wide exterior angle {i} of a Denver home in natural "
+                        "light, with no readable text or signs"
+                    ),
+                    "on_screen_text": f"Offer check {i}",
+                }
+                for i in range(1, 8)
+            ],
         }
         with org_scope(ORG):
             async with get_session_factory()() as db:
@@ -635,7 +658,13 @@ async def test_a_calculated_draft_reaches_the_queue_carrying_its_link(
                 f"Renting in Denver at ${plan.rent:,} a month? Five years of "
                 f"buying comes out about ${plan.figure:,} ahead."
             ),
-            "script": "Rent, appreciation, the loan you pay down, the cost of selling.",
+            "script": (
+                "Start with the rent you would pay, then compare it with the "
+                "equity a purchase may build. Include appreciation, the loan "
+                "balance paid down, and the cost to sell at the end. The "
+                "calculator keeps every assumption visible, so you can move "
+                "each one and see how the estimate changes."
+            ),
             "caption": "Every assumption behind it is a slider on the page.",
         }
         with org_scope(ORG):

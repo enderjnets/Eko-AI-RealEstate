@@ -36,6 +36,17 @@ import os
 # `setdefault`, so an operator deliberately testing the disabled path still can.
 os.environ.setdefault("WHATSAPP_ENABLED", "true")
 
+# CI supplies recognizable placeholder keys so configuration validation can
+# exercise the same shape as production. They are still credentials as far as
+# the provider client is concerned: a public-form test can otherwise make two
+# real HTTPS calls per lead while Clara falls through the provider chain. That
+# makes the suite depend on third-party latency and sends deliberately invalid
+# authentication attempts outside the runner. Tests that exercise a configured
+# provider set their own key and stub its transport, so blank both defaults
+# before Settings is first constructed.
+os.environ["KIMI_API_KEY"] = ""
+os.environ["MINIMAX_API_KEY"] = ""
+
 # And Groq's key is wiped, unconditionally — not `setdefault`.
 #
 # The health probe now calls a THIRD PARTY with a credential. Several tests
@@ -78,6 +89,7 @@ os.environ["OWNER_NOTICE_EMAIL"] = ""
 
 import pytest  # noqa: E402 — must follow the environment default above
 
+from app.config import get_settings
 from app.db.base import dispose_engine
 from app.models.organization import DEFAULT_ORG_ID
 from app.services.tenant_context import set_org_id
@@ -87,6 +99,12 @@ from app.services.tenant_context import set_org_id
 async def _reset_db_engine_between_tests() -> object:
     yield
     await dispose_engine()
+    # Several provider tests intentionally rebuild Settings after installing
+    # temporary credentials. `monkeypatch` restores os.environ at teardown,
+    # but an lru-cached Settings object would keep those credentials for the
+    # next test and let an otherwise isolated public-form test call the real
+    # provider endpoint. Rebuild from the restored environment every time.
+    get_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)

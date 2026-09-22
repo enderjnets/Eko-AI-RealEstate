@@ -204,12 +204,22 @@ class _Reply:
 def _corrected(**over) -> dict:
     body = {
         "hook": "What an appraisal answers that an estimate cannot",
-        "script": "An appraisal is an opinion a lender will lend against. "
-        "An online estimate is a starting point. Here is what separates them.",
+        "script": (
+            "An appraisal is an opinion a lender will lend against, while an "
+            "online estimate is only a starting point. Recent comparable sales, "
+            "property condition, timing, and local demand can move the answer. "
+            "Review those facts together before you choose a price or make an "
+            "offer, because each tool serves a different decision in Denver."
+        ),
         "caption": "The difference between the two, in one minute.",
         "scenes": [
             {"visual_prompt": "A quiet Denver street", "on_screen_text": "Denver"},
             {"visual_prompt": "A document with no legible text on a desk", "on_screen_text": "Appraisal"},
+            {"visual_prompt": "A Denver home viewed from the sidewalk", "on_screen_text": "Condition"},
+            {"visual_prompt": "A real estate advisor reviewing blank pages", "on_screen_text": "Comparable sales"},
+            {"visual_prompt": "An unmarked calculator beside house keys", "on_screen_text": "Estimate"},
+            {"visual_prompt": "The Denver skyline in clear daylight", "on_screen_text": "Local demand"},
+            {"visual_prompt": "A buyer walking through an empty living room", "on_screen_text": "Your decision"},
         ],
     }
     body.update(over)

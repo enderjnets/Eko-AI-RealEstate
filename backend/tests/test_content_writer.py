@@ -99,8 +99,22 @@ def _reply(payload: dict) -> LLMResult:
 
 CLEAN = {
     "hook": "Three things to check before you offer.",
-    "script": "Inspection, comparables, and your loan estimate — in that order.",
+    "script": (
+        "Start with the inspection, recent comparable sales, and the loan "
+        "estimate. Then compare the repair exposure with the monthly payment "
+        "you can actually carry. A clear offer connects those facts before "
+        "emotion or urgency changes the decision, and leaves room to verify "
+        "every assumption with your own advisors."
+    ),
     "caption": "Save this for your next offer.",
+    "scenes": [
+        {"visual_prompt": (
+            f"wide exterior angle {i} of a Denver home in natural light, "
+            "with no readable text or signs"
+        ),
+         "on_screen_text": f"Offer check {i}"}
+        for i in range(1, 8)
+    ],
 }
 DIRTY = {
     "hook": "Perfect for families!",
@@ -395,6 +409,56 @@ def _drafted(**over):
     }
     body.update(over)
     return DraftPayload(**body)
+
+
+def _quality_draft(*, words: int = 50, scenes: int = 7):
+    from app.services.content_writer import DraftPayload, Scene
+
+    script = " ".join(["Denver"] * words)
+    return DraftPayload(
+        hook="Run the Denver numbers.",
+        script=script,
+        caption="Use the calculator before you decide.",
+        scenes=[
+            Scene(
+                visual_prompt=(
+                    f"wide residential exterior angle {i} of a Denver home in "
+                    "natural light, with no readable text, signs, numbers, "
+                    "logos, or screens"
+                ),
+                on_screen_text=f"Step {i}",
+            )
+            for i in range(scenes)
+        ],
+    )
+
+
+@pytest.mark.parametrize("words", [44, 66])
+def test_a_script_outside_the_short_form_budget_is_a_stored_finding(words) -> None:
+    from app.services import content_writer as cw
+
+    found = cw._all_violations(_quality_draft(words=words), ContentLanguage.EN)
+    assert any(v.get("category") == "length" for v in found), found
+
+
+@pytest.mark.parametrize("scenes", [6, 10])
+def test_a_scene_plan_outside_seven_to_nine_is_a_stored_finding(scenes) -> None:
+    from app.services import content_writer as cw
+
+    draft = _quality_draft(scenes=min(scenes, 9))
+    if scenes == 10:
+        draft = draft.model_copy(
+            update={"scenes": draft.scenes + [draft.scenes[-1].model_copy()]}
+        )
+    found = cw._all_violations(draft, ContentLanguage.EN)
+    assert any(v.get("category") == "scenes" for v in found), found
+
+
+def test_the_approved_editorial_budget_has_no_length_or_scene_finding() -> None:
+    from app.services import content_writer as cw
+
+    found = cw._all_violations(_quality_draft(words=55, scenes=8), ContentLanguage.EN)
+    assert not [v for v in found if v.get("category") in {"length", "scenes"}], found
 
 
 def test_the_sign_off_is_built_from_the_script_not_from_an_empty_field(

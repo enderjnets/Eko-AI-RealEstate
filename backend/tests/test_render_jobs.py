@@ -39,6 +39,7 @@ from app.models import (
     RenderJob,
     RenderJobKind,
 )
+from app.services.content_topics import CALCULATED_SOURCE
 from app.services.tenant_context import org_scope
 
 
@@ -851,6 +852,103 @@ async def _lane_b_piece(narration: str | None, script: str) -> tuple[int, int]:
         db.add(job)
         await db.commit()
         return piece.id, job.id
+
+
+async def _lane_b_finish_piece(*, calculated: bool) -> tuple[int, int]:
+    """A generated job with the exact stored inputs finishing may use."""
+    async with get_bypass_session_factory()() as db:
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.DRAFT,
+            hook="Do the Denver math first.",
+            script="A valid narration ending at Denver Home Story dot com.",
+            caption="A caption",
+            scenes={
+                "narration": "A valid narration ending at Denver Home Story dot com.",
+                "scenes": [
+                    {
+                        "visual_prompt": "A Denver home with no readable text",
+                        "on_screen_text": "Renting in Denver at $3,500?",
+                    }
+                ],
+            },
+            calculator_check=(
+                {
+                    "source": CALCULATED_SOURCE,
+                    "scenarios": [
+                        {
+                            "inputs": {
+                                "rent": 3500,
+                                "savings": 60000,
+                                "credit": "good",
+                            }
+                        }
+                    ],
+                }
+                if calculated
+                else None
+            ),
+        )
+        db.add(piece)
+        await db.commit()
+        job = RenderJob(org_id=ORG, piece_id=piece.id, kind=RenderJobKind.PRODUCE_B)
+        db.add(job)
+        await db.commit()
+        return piece.id, job.id
+
+
+@pytest.mark.asyncio
+async def test_calculated_job_input_carries_a_seeded_finishing_contract(
+    database_url: str, worker_token: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        get_settings(), "CONTENT_CTA_URL", "https://www.denverhomestory.com/",
+        raising=False,
+    )
+    await _brokerage()
+    _piece_id, job_id = await _lane_b_finish_piece(calculated=True)
+    try:
+        async with _client() as client:
+            body = (await client.get(
+                f"/api/v1/internal/render-jobs/{job_id}/input"
+            )).json()
+        assert body["finish"] == {
+            "opening_text": "Renting in Denver at $3,500?",
+            "cta_label": "RUN YOUR NUMBERS",
+            "cta_display": "denverhomestory.com/calculator",
+            "calculator_url": (
+                "https://www.denverhomestory.com/calculator?rent=3500&savings=60000"
+            ),
+        }
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_ordinary_job_input_carries_a_neutral_finishing_contract(
+    database_url: str, worker_token: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        get_settings(), "CONTENT_CTA_URL", "https://www.denverhomestory.com/",
+        raising=False,
+    )
+    await _brokerage()
+    _piece_id, job_id = await _lane_b_finish_piece(calculated=False)
+    try:
+        async with _client() as client:
+            body = (await client.get(
+                f"/api/v1/internal/render-jobs/{job_id}/input"
+            )).json()
+        assert body["finish"] == {
+            "opening_text": "Renting in Denver at $3,500?",
+            "cta_label": "EXPLORE DENVER HOME STORY",
+            "cta_display": "denverhomestory.com",
+            "calculator_url": None,
+        }
+    finally:
+        await _cleanup()
 
 
 @pytest.mark.asyncio

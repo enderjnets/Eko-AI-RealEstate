@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.142.8] — 2026-09-21
+
+- Constrain generated shorts to 45–65 model-written words and seven to nine distinct Denver visual beats; calculated videos use eight deterministic scenes tied to the calculator inputs.
+- Send the ROG worker an explicit opening and CTA contract, including the exact seeded calculator URL for calculated pieces.
+- Finish BitTrader output with DHS opening and final-card branding, then reject videos outside 20–35 seconds, over 75 spoken words, with repeated prompts, missing calculator seeds or readable three-digit image text.
+- Preserve the human approval gate and leave all scheduled and published Buffer items unchanged.
+
 ## [0.142.7] — 2026-09-21
 
 - Protect Journal pages and photographs with private review credentials; remove public navigation links and keep search indexing disabled.

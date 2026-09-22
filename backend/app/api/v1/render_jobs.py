@@ -33,6 +33,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
+from urllib.parse import urlencode, urlsplit
 
 import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -53,6 +54,7 @@ from app.models import (
 )
 from app.services.content_render import RenderRefused, check_output, probe_media
 from app.services.content_studio import advance
+from app.services.content_topics import CALCULATED_SOURCE
 from app.services.content_writer import carries_spoken_domain
 from app.services.fair_housing import PEOPLE_IN_PICTURES
 
@@ -98,6 +100,15 @@ class JobOut(BaseModel):
     attempts: int
 
 
+class FinishInput(BaseModel):
+    """Deterministic words and destination for the DHS finishing pass."""
+
+    opening_text: str
+    cta_label: str
+    cta_display: str
+    calculator_url: str | None = None
+
+
 class JobInput(BaseModel):
     """Everything the worker needs, and nothing it does not.
 
@@ -126,6 +137,7 @@ class JobInput(BaseModel):
     # pictures, so the RESULT has to be screened too, and the only list that
     # may do the screening is the one the rest of the system already uses.
     people_words: list[str] = []
+    finish: FinishInput | None = None
 
 
 class FailIn(BaseModel):
@@ -230,6 +242,50 @@ async def _write_failure_to_piece(db: AsyncSession, job: RenderJob, reason: str)
         piece.render_error = _for_the_console(reason)
 
 
+def _finish_input(piece: ContentPiece, plan: dict) -> FinishInput:
+    """Build the end-card contract without asking the model for any of it."""
+    planned = plan.get("scenes")
+    first = planned[0] if isinstance(planned, list) and planned else {}
+    first_text = first.get("on_screen_text") if isinstance(first, dict) else ""
+    opening = " ".join(str(first_text or piece.hook or "").split())
+
+    base = (get_settings().CONTENT_CTA_URL or "").strip().rstrip("/")
+    parsed = urlsplit(base)
+    host = parsed.netloc.removeprefix("www.")
+    root_path = parsed.path.rstrip("/")
+    display_root = f"{host}{root_path}" if host else ""
+
+    check = piece.calculator_check if isinstance(piece.calculator_check, dict) else {}
+    calculated = check.get("source") == CALCULATED_SOURCE
+    if not calculated:
+        return FinishInput(
+            opening_text=opening,
+            cta_label="EXPLORE DENVER HOME STORY",
+            cta_display=display_root,
+        )
+
+    scenarios = check.get("scenarios")
+    inputs = (
+        scenarios[0].get("inputs")
+        if isinstance(scenarios, list)
+        and scenarios
+        and isinstance(scenarios[0], dict)
+        else None
+    )
+    rent = inputs.get("rent") if isinstance(inputs, dict) else None
+    savings = inputs.get("savings") if isinstance(inputs, dict) else None
+    seeded = None
+    if base and rent is not None and savings is not None:
+        seeded = f"{base}/calculator?{urlencode({'rent': rent, 'savings': savings})}"
+    display = f"{display_root}/calculator" if display_root else ""
+    return FinishInput(
+        opening_text=opening,
+        cta_label="RUN YOUR NUMBERS",
+        cta_display=display,
+        calculator_url=seeded,
+    )
+
+
 @router.get("/{job_id}/input", response_model=JobInput)
 async def job_input(job_id: int) -> JobInput:
     async with get_bypass_session_factory()() as db:
@@ -288,6 +344,11 @@ async def job_input(job_id: int) -> JobInput:
             script=spoken,
             scenes=piece.scenes,
             people_words=list(PEOPLE_IN_PICTURES),
+            finish=(
+                _finish_input(piece, plan)
+                if job.kind is RenderJobKind.PRODUCE_B
+                else None
+            ),
         )
 
 
@@ -589,4 +650,3 @@ async def job_progress(job_id: int, payload: ProgressIn) -> dict[str, str]:
         job.progress = payload.percent
         await db.commit()
     return {"status": "ok"}
-

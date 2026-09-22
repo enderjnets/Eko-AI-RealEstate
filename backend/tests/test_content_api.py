@@ -1463,7 +1463,15 @@ async def _a_rendered_piece(*, visual: str = "A quiet Denver street") -> int:
             media_path="0123456789abcdef0123456789abcdef.mp4",
             scenes={
                 "narration": "The old script.",
-                "scenes": [{"visual_prompt": visual, "on_screen_text": "Denver"}],
+                "scenes": [
+                    {
+                        "visual_prompt": (
+                            f"{visual}, seen from the distinct camera angle {i}"
+                        ),
+                        "on_screen_text": f"Denver step {i}",
+                    }
+                    for i in range(1, 8)
+                ],
             },
         )
         db.add(piece)
@@ -1504,7 +1512,16 @@ async def test_a_new_script_asks_for_a_new_video(database_url: str) -> None:
     try:
         async with _client() as client:
             resp = await client.patch(
-                f"/api/v1/content/{piece_id}", json={"script": "The corrected script."}
+                f"/api/v1/content/{piece_id}",
+                json={
+                    "script": (
+                        "Start with recent Denver sales, then compare the condition "
+                        "of the home with the repairs a buyer may price into an "
+                        "offer. Add the cost of waiting, the timing of your next "
+                        "move, and the terms that matter beyond price. Those facts "
+                        "shape a useful listing plan before the sign goes up."
+                    )
+                },
             )
         assert resp.status_code == 200, resp.text
         async with get_bypass_session_factory()() as db:

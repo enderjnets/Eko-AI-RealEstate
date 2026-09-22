@@ -240,7 +240,9 @@ def test_the_filter_sees_the_caption_that_will_be_published() -> None:
     out = _with_cta(_draft(), ContentLanguage.EN, 0, None, LINE)
     assert out is not None
     assert caption_carries_brokerage(out.caption, LINE)
-    assert _all_violations(out, ContentLanguage.EN) == []
+    assert _all_violations(
+        out, ContentLanguage.EN, enforce_generated_format=False
+    ) == []
 
 
 # --------------------------------------------------------------------------

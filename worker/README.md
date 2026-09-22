@@ -83,8 +83,31 @@ beside it. Absent, videos are made without music rather than not made.
 
 ## Requirements on the machine
 
-`ffmpeg` and `ffprobe` on PATH. Whisper runs on the **CPU** deliberately. The
+`ffmpeg`, `ffprobe` and `tesseract` on PATH. Chromium is also required for the
+live calculator background (`/snap/bin/chromium` on the ROG); if Chromium or
+the page is unavailable, the worker deliberately uses the navy DHS card rather
+than failing the render. Tesseract has no silent fallback: without it the
+worker cannot prove that a generated door or calendar does not carry an
+invented address, so delivery is refused.
+
+Lane B runs in this order: validate the stored word/scene contract, let
+BitTrader build the visual video, OCR the central picture area before the end
+card, capture the authorized DHS calculator when the piece is calculated, add
+the deterministic opening and three-second final card, then probe the new MP4.
+The BitTrader file is never edited in place; the finished file becomes visible
+only after ffmpeg and the final probe succeed.
+
+Whisper runs on the **CPU** deliberately. The
 GPU on that machine is shared with two other projects, and the free VRAM was
 measured at 3.4 GB one afternoon and 6.0 GB the next — it depends on what a
 model server happens to be holding. Any number written here would be wrong by
 the time somebody read it, which is the argument for not needing one.
+
+## Rollback
+
+Keep the previous Eko worker checkout and BitTrader commit available. To roll
+back, stop only `eko-render-worker.service`, restore the previous `worker/`
+tree and BitTrader commit without touching either repository's data or output
+directories, reinstall `worker/requirements.txt` if it changed, and restart the
+user service. Do not restart the BitTrader dashboard or any trading service;
+the Eko worker is the only process consuming this external-render path.

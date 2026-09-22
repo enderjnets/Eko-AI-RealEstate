@@ -134,7 +134,8 @@ async def test_a_healthy_first_reading_is_silent(clean_state) -> None:
 async def test_the_alert_names_the_command_that_fixes_it(clean_state) -> None:
     """An alert that does not say what to do gets postponed until forgotten."""
     alert = AsyncMock(return_value=True)
-    with patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value="model-missing")), \
+    with patch.object(llm_monitor.get_settings(), "OLLAMA_ENABLED", True), \
+         patch.object(llm_monitor, "check_fallback_provider", AsyncMock(return_value="model-missing")), \
          patch.object(llm_monitor, "send_operator_alert", alert), _no_canned_replies():
         await run_monitor_tick()
         await run_monitor_tick()

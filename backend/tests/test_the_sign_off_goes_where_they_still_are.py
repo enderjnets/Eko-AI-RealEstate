@@ -152,6 +152,26 @@ def test_the_piece_that_says_it_in_the_middle_has_nothing_against_it(
                 "visual_prompt": "An empty living room with morning light on a bare floor",
                 "on_screen_text": "Where it goes",
             },
+            {
+                "visual_prompt": "A Denver home exterior seen from the sidewalk",
+                "on_screen_text": "Compare",
+            },
+            {
+                "visual_prompt": "A clean kitchen counter in a Denver condominium",
+                "on_screen_text": "Costs",
+            },
+            {
+                "visual_prompt": "House keys beside an unmarked ceramic bowl",
+                "on_screen_text": "Equity",
+            },
+            {
+                "visual_prompt": "The Denver skyline in clear afternoon light",
+                "on_screen_text": "Five years",
+            },
+            {
+                "visual_prompt": "An empty Denver front porch in evening light",
+                "on_screen_text": "Try yours",
+            },
         ],
     }
     assert (
