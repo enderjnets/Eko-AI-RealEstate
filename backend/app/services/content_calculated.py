@@ -60,16 +60,20 @@ RENTS: tuple[int, ...] = (1_800, 2_200, 2_600, 3_000, 3_500, 4_000)
 SAVINGS = 60_000
 CREDIT = "good"
 
-# Four shots, shared by every piece in the rail, from the autumn plan. Places
+# Eight shots, shared by every piece in the rail. Places
 # and objects only: `content_writer._all_violations` puts these through the
 # Fair Housing filter and through `not_english_prompt`, and a housing advert
 # whose every frame shows one kind of household says something about who is
 # welcome without a sentence anybody could edit.
 VISUALS: tuple[str, ...] = (
-    "Denver residential street with bungalows, morning light",
-    "front door and porch of a brick home, no numbers visible",
-    "kitchen window with light across a counter",
-    "wide view of a Denver neighbourhood with the Front Range behind",
+    "Denver residential street with bungalows at morning light, no readable text or signs",
+    "Denver brick home front door and porch, no readable text, signs, or address numbers",
+    "Denver kitchen window with warm light across a clear counter, no readable text or screens",
+    "Denver house keys beside a plain ceramic bowl, no readable text, logos, or numbers",
+    "Denver craftsman exterior in late afternoon light, no readable text or signs",
+    "Denver dining table with a blank notebook and pencil, no readable text, logos, or screens",
+    "Denver home roofline against the Front Range, no readable text or signs",
+    "wide Denver neighborhood view with the Front Range behind, no readable text or signs",
 )
 
 
@@ -88,13 +92,13 @@ class Series:
     field: str
     brief_en: str
     brief_es: str
-    #: Four lines of screen text, one per shot, with `{rent}`, `{figure}` and
+    #: Eight lines of screen text, one per shot, with `{rent}`, `{figure}` and
     #: `{savings}` filled in here. Each has to stand on its own: the owner
     #: stopped the first cut of these because "$4,000 a month in rent — buys up
     #: to $527,000" never says *of what*, and somebody scrolling reads two
     #: loose numbers. Name the thing, the place, and the comparison.
-    screen_en: tuple[str, str, str, str]
-    screen_es: tuple[str, str, str, str]
+    screen_en: tuple[str, ...]
+    screen_es: tuple[str, ...]
 
 
 SERIES: tuple[Series, ...] = (
@@ -148,15 +152,23 @@ SERIES: tuple[Series, ...] = (
         ),
         screen_en=(
             "Renting in Denver at {rent} a month.",
-            "Buying a home instead, over five years:",
-            "about {figure} ahead of renting.",
-            "Your rent, your savings. The page does the math.",
+            "You have {savings} saved.",
+            "Compare five full years.",
+            "Rent paid versus equity built.",
+            "Include the loan paid down.",
+            "Include the cost to sell.",
+            "The estimate: about {figure} ahead.",
+            "Run your own numbers.",
         ),
         screen_es=(
             "Alquilar en Denver por {rent} al mes.",
-            "Comprar una casa, a cinco años:",
-            "unos {figure} por delante de alquilar.",
-            "Tu alquiler, tu ahorro. La página echa la cuenta.",
+            "Tienes {savings} ahorrados.",
+            "Compara cinco años completos.",
+            "Alquiler pagado frente a patrimonio.",
+            "Incluye el préstamo amortizado.",
+            "Incluye el coste de vender.",
+            "La estimación: unos {figure} por delante.",
+            "Prueba tus propios números.",
         ),
     ),
     # Series A of the autumn plan. This one was always right — 41, 43 and 45
@@ -206,15 +218,23 @@ SERIES: tuple[Series, ...] = (
         ),
         screen_en=(
             "{rent} a month in rent in Denver.",
-            "That same money, turned into a price:",
-            "a home up to {figure}.",
-            "With {savings} saved and good credit.",
+            "You have {savings} saved.",
+            "Good credit is assumed.",
+            "Start with the monthly budget.",
+            "Then account for the cash saved.",
+            "This is a ceiling, not a promise.",
+            "Estimated home price: up to {figure}.",
+            "Run your own numbers.",
         ),
         screen_es=(
             "{rent} al mes de alquiler en Denver.",
-            "Ese mismo dinero, convertido en precio:",
-            "una casa de hasta {figure}.",
-            "Con {savings} ahorrados y buen crédito.",
+            "Tienes {savings} ahorrados.",
+            "Se supone un buen crédito.",
+            "Empieza por el presupuesto mensual.",
+            "Después cuenta el dinero ahorrado.",
+            "Es un techo, no una promesa.",
+            "Precio estimado: hasta {figure}.",
+            "Prueba tus propios números.",
         ),
     ),
 )
@@ -233,7 +253,7 @@ class Plan:
 
     topic: Topic
     check: dict[str, Any]
-    screen: tuple[str, str, str, str]
+    screen: tuple[str, ...]
     figure: int
     rent: int
 
@@ -370,7 +390,7 @@ def plan_from_check(
 
 
 def scene_fields(plan: Plan) -> list[tuple[str, str]]:
-    """`(visual_prompt, on_screen_text)` for each of the four shots.
+    """`(visual_prompt, on_screen_text)` for each of the eight shots.
 
     The screen text comes from the plan and never from the model. The figure
     the owner caught was ON SCREEN, and `_SYSTEM` already keeps the URL out of

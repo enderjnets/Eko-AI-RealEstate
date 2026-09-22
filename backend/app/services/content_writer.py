@@ -86,7 +86,7 @@ class DraftPayload(BaseModel):
     # usable draft: the piece simply has no lane B plan and stays a clip
     # somebody films. Requiring them would turn a prompt drift into zero
     # content.
-    scenes: list[Scene] = Field(default_factory=list, max_length=8)
+    scenes: list[Scene] = Field(default_factory=list, max_length=9)
     # What the narrator says, WHEN it differs from the written script. The
     # prompt no longer asks for it: a model given both writes the same words
     # twice, which doubled the longest field in every response and truncated
@@ -108,8 +108,8 @@ _SYSTEM = {
         "of people in an area. Talk about process and market mechanics, not "
         "about people. Reply ONLY with JSON: "
         '{"hook": "...", "script": "...", "caption": "..."} — hook under 300 '
-        "characters, script 60-120 words, caption 1-2 sentences with no "
-        "hashtags, plus \"scenes\": 4 to 6 objects with \"visual_prompt\" and "
+        "characters, script 45-65 words, caption 1-2 sentences with no "
+        "hashtags, plus \"scenes\": 7 to 9 objects with \"visual_prompt\" and "
         "\"on_screen_text\". A visual_prompt describes a PLACE or an OBJECT — "
         "a house, a street, the Front Range, keys, an empty porch. "
         "NEVER describe people in it: no families, couples, children, "
@@ -135,8 +135,8 @@ _SYSTEM = {
         "nunca menciones escuelas, iglesias ni el tipo de gente de una zona. "
         "Habla del proceso y de la mecánica del mercado, no de personas. "
         'Responde SOLO con JSON: {"hook": "...", "script": "...", '
-        '"caption": "..."} — hook de menos de 300 caracteres, guion de 60-120 '
-        "palabras, caption de 1-2 frases sin hashtags, más \"scenes\": de 4 a 6 objetos "
+        '"caption": "..."} — hook de menos de 300 caracteres, guion de 45-65 '
+        "palabras, caption de 1-2 frases sin hashtags, más \"scenes\": de 7 a 9 objetos "
         "con \"visual_prompt\" y \"on_screen_text\". Un visual_prompt describe un "
         "LUGAR o un OBJETO — una casa, una calle, las montañas, unas llaves, un "
         "porche vacío. El visual_prompt va SIEMPRE EN "
@@ -1022,6 +1022,28 @@ def _all_violations(
         language=language,
     )
 
+    script_words = len(draft.script.split())
+    if not 45 <= script_words <= 65:
+        found.append({
+            "phrase": (
+                f"the script is {script_words} words; generated shorts require "
+                "45 to 65 words before the spoken sign-off"
+            ),
+            "category": "length",
+            "where": "script",
+        })
+
+    scene_count = len(draft.scenes)
+    if not 7 <= scene_count <= 9:
+        found.append({
+            "phrase": (
+                f"the shot plan has {scene_count} scenes; generated shorts "
+                "require 7 to 9 distinct visual beats"
+            ),
+            "category": "scenes",
+            "where": "scenes",
+        })
+
     spoken = draft.narration or draft.script
     reason = wrong_language(spoken, language.value)
     if reason is not None:
@@ -1191,8 +1213,24 @@ def _feedback(violations: list[dict[str, str]]) -> str:
     whether it lands or not.
     """
     parts: list[str] = []
-    wording = [v["phrase"] for v in violations if v.get("category") != "figure"]
+    structural = [
+        v["phrase"]
+        for v in violations
+        if v.get("category") in {"length", "scenes"}
+    ]
+    wording = [
+        v["phrase"]
+        for v in violations
+        if v.get("category") not in {"figure", "length", "scenes"}
+    ]
     figures = [v["phrase"] for v in violations if v.get("category") == "figure"]
+    if structural:
+        parts.append(
+            "The draft missed the short-form production budget: "
+            + "; ".join(structural)
+            + ". Rewrite it at 45 to 65 script words with 7 to 9 distinct "
+            "visual beats."
+        )
     if wording:
         named = ", ".join(f'"{phrase}"' for phrase in wording)
         parts.append(
