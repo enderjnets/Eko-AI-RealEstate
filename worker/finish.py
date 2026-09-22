@@ -62,6 +62,35 @@ def authorized_calculator_url(value: str | None) -> bool:
     return bool(query.get("rent", [""])[0] and query.get("savings", [""])[0])
 
 
+def opening_copy(value: object) -> str:
+    """Two short lines that fit inside the 840 px opening safe area."""
+    return "\n".join(
+        textwrap.wrap(
+            " ".join(str(value or "").split()),
+            width=22,
+            max_lines=2,
+            placeholder="…",
+        )
+    )
+
+
+def display_copy(value: object) -> str:
+    """A readable DHS address, with the path on its own centered line."""
+    display = " ".join(str(value or "").strip().split())
+    display = re.sub(r"^https?://", "", display, flags=re.IGNORECASE).rstrip("/")
+    if display.casefold().startswith("denverhomestory.com"):
+        display = f"www.{display}"
+    host, separator, path = display.partition("/")
+    return f"{host}\n/{path}" if separator and path else host
+
+
+def brokerage_copy(value: object) -> str:
+    """Keep the legal identification centered instead of clipping its ends."""
+    return "\n".join(
+        textwrap.wrap(" ".join(str(value or "").split()), width=38, max_lines=2)
+    )
+
+
 def validate(spec: dict) -> None:
     """Refuse jobs whose stored plan cannot produce the approved format."""
     finish = spec.get("finish") if isinstance(spec.get("finish"), dict) else {}
@@ -127,14 +156,15 @@ def build_command(
         f"[card0]drawtext=textfile='{escape_path(str(cta_label_file))}'"
         f"{font_clause}:fontcolor=0xD4A953:fontsize=42:x=(w-text_w)/2:y=700[card1];"
         f"[card1]drawtext=textfile='{escape_path(str(cta_display_file))}'"
-        f"{font_clause}:fontcolor=white:fontsize=66:x=(w-text_w)/2:y=790[card2];"
+        f"{font_clause}:fontcolor=white:fontsize=52:line_spacing=10:"
+        "x=(w-text_w)/2:y=790[card2];"
         f"[card2]drawtext=textfile='{escape_path(str(brokerage_file))}'"
-        f"{font_clause}:fontcolor=white:fontsize=32:borderw=2:bordercolor=black@0.8:"
-        "x=(w-text_w)/2:y=930[endcard];"
+        f"{font_clause}:fontcolor=white:fontsize=27:line_spacing=7:"
+        "borderw=2:bordercolor=black@0.8:x=(w-text_w)/2:y=970[endcard];"
         "[0:v]drawbox=x=70:y=210:w=940:h=300:color=0x0B1F33@0.88:t=fill:"
         f"enable='between(t,0,{OPENING_SECONDS:.1f})'[open0];"
         f"[open0]drawtext=textfile='{escape_path(str(opening_file))}'"
-        f"{font_clause}:fontcolor=white:fontsize=68:line_spacing=14:"
+        f"{font_clause}:fontcolor=white:fontsize=56:line_spacing=14:"
         "x=(w-text_w)/2:y=285:"
         f"enable='between(t,0,{OPENING_SECONDS:.1f})'[opened];"
         f"[opened][endcard]overlay=0:0:enable='gte(t,{end_at:.2f})'[carded]"
@@ -238,15 +268,10 @@ def apply(
     label = workdir / "finish-label.txt"
     display = workdir / "finish-display.txt"
     brokerage = workdir / "finish-brokerage.txt"
-    wrapped = "\n".join(
-        textwrap.wrap(
-            str(finish_spec["opening_text"]), width=28, max_lines=2, placeholder="…"
-        )
-    )
-    _write_text(opening, wrapped)
+    _write_text(opening, opening_copy(finish_spec["opening_text"]))
     _write_text(label, finish_spec["cta_label"])
-    _write_text(display, finish_spec["cta_display"])
-    _write_text(brokerage, spec["brokerage_line"])
+    _write_text(display, display_copy(finish_spec["cta_display"]))
+    _write_text(brokerage, brokerage_copy(spec["brokerage_line"]))
 
     temporary = destination.with_name(destination.stem + ".part.mp4")
     command = build_command(

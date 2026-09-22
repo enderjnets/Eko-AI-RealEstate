@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.142.9";
+export const CURRENT_VERSION = "0.142.10";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.142.10",
+    date: "2026-09-21",
+    title: { en: "Video copy stays inside the frame", es: "El texto del video queda dentro del cuadro" },
+    changes: [{
+      en: "The opening, calculator address and brokerage identification now wrap within the vertical safe area. The final card shows www.denverhomestory.com/calculator on two centered lines, with the legal line below it at a readable size.",
+      es: "La apertura, la dirección de la calculadora y la identificación de la correduría caben ahora dentro del área segura vertical. La tarjeta final muestra www.denverhomestory.com/calculator en dos líneas centradas, con la línea legal legible debajo.",
+    }],
+  },
   {
     version: "0.142.9",
     date: "2026-09-21",

@@ -116,6 +116,40 @@ def test_calculator_capture_timeout_uses_the_fallback(
     assert not destination.exists()
 
 
+def test_finish_copy_wraps_inside_the_vertical_safe_area() -> None:
+    from PIL import ImageFont
+
+    font_path = finish.default_font()
+    if font_path is None:
+        pytest.skip("no production font available")
+
+    samples = (
+        (finish.opening_copy("Renting at $3,500? Compare five years."), 56, 840),
+        (
+            finish.display_copy("denverhomestory.com/calculator"),
+            52,
+            840,
+        ),
+        (
+            finish.brokerage_copy(
+                "Engel & Voelkers · Each office independently owned and operated"
+            ),
+            27,
+            840,
+        ),
+    )
+    for rendered, size, safe_width in samples:
+        measured = ImageFont.truetype(font_path, size)
+        assert all(
+            measured.getbbox(line)[2] - measured.getbbox(line)[0] <= safe_width
+            for line in rendered.splitlines()
+        ), rendered
+
+    assert finish.display_copy("denverhomestory.com/calculator") == (
+        "www.denverhomestory.com\n/calculator"
+    )
+
+
 HAS_MEDIA_TOOLS = all(shutil.which(tool) for tool in ("ffmpeg", "ffprobe"))
 
 
