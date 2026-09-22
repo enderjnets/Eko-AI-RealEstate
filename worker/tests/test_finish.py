@@ -92,6 +92,30 @@ def test_ffmpeg_reads_every_piece_of_copy_from_a_file(tmp_path: Path) -> None:
     assert graph.count("textfile=") == 4
 
 
+def test_calculator_capture_timeout_uses_the_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "calculator.png"
+    destination.write_bytes(b"partial chromium output")
+    monkeypatch.setattr(
+        finish,
+        "_CHROMIUM_CANDIDATES",
+        (str(tmp_path / "chromium"),),
+    )
+    (tmp_path / "chromium").touch()
+
+    def times_out(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], kwargs.get("timeout", 45))
+
+    monkeypatch.setattr(subprocess, "run", times_out)
+
+    assert finish.capture_calculator(
+        "https://www.denverhomestory.com/calculator?rent=3500&savings=60000",
+        destination,
+    ) is False
+    assert not destination.exists()
+
+
 HAS_MEDIA_TOOLS = all(shutil.which(tool) for tool in ("ffmpeg", "ffprobe"))
 
 
