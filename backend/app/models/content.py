@@ -52,6 +52,16 @@ class ContentLanguage(str, enum.Enum):
     ES = "es"
 
 
+class ContentSeries(str, enum.Enum):
+    """The editorial job a piece must keep through the whole pipeline."""
+
+    CONVERSION = "conversion"
+    DENVER_DECODED = "denver_decoded"
+    DENVER_WEEKEND = "denver_weekend"
+    DENVER_MARKET_NO_HYPE = "denver_market_no_hype"
+    ASK_DENVER_HOME_STORY = "ask_denver_home_story"
+
+
 class ContentStatus(str, enum.Enum):
     """The only path to PUBLISHED runs through a person.
 
@@ -111,6 +121,20 @@ class ContentPiece(Base):
         default=ContentStatus.DRAFT,
         index=True,
     )
+    # Existing rows are conversion pieces. The server default makes that true
+    # during a rolling deploy as well as during the migration backfill.
+    series: Mapped[ContentSeries] = mapped_column(
+        pg_enum(ContentSeries, name="content_series"),
+        nullable=False,
+        default=ContentSeries.CONVERSION,
+        server_default=ContentSeries.CONVERSION.value,
+        index=True,
+    )
+    # The Denver-local day this piece owns. NULL on every historical row so a
+    # release never rewrites the calendar Buffer already holds.
+    editorial_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    # Provenance for sourced authority pieces. The model never supplies it.
+    source: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
 
     hook: Mapped[str | None] = mapped_column(String(300), nullable=True)
     script: Mapped[str | None] = mapped_column(Text, nullable=True)

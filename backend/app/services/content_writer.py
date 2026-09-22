@@ -23,9 +23,10 @@ import json
 import logging
 import re
 from collections.abc import Sequence
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
+import httpx
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,10 +37,17 @@ from app.models import (
     ContentKind,
     ContentLanguage,
     ContentPiece,
+    ContentPublication,
+    ContentSeries,
     ContentStatus,
 )
 from app.services.content_calculated import SAVINGS, Plan, plan_for, scene_fields
 from app.services.content_figures import claimed_text, unexplained_figures
+from app.services.content_series import (
+    contract_for,
+    next_editorial_date,
+    series_for_date,
+)
 from app.services.content_studio import (
     advance,
     caption_carries_brokerage,
@@ -55,6 +63,7 @@ from app.services.content_topics import (
 from app.services.lang_guard import not_english_prompt, wrong_language
 from app.services.llm import generate_reply
 from app.services.tenant_context import get_org_id
+from app.services.timezones import resolve_zone
 
 log = logging.getLogger(__name__)
 
@@ -158,6 +167,53 @@ _SYSTEM = {
         "un país al azar, y ya ha elegido Inglaterra."
     ),
 }
+
+
+_SERIES_RULES = {
+    ContentSeries.CONVERSION: "",
+    ContentSeries.DENVER_DECODED: (
+        "This is Denver, Decoded. Open in the first two seconds with a local "
+        "question or visual contrast. Present two choices or one Denver "
+        "curiosity, then reveal the answer briefly. Do not sell, mention a "
+        "calculator, form, appointment, valuation, web address or phone "
+        "number. Do not write a call to action; the system adds exactly one."
+    ),
+    ContentSeries.DENVER_WEEKEND: (
+        "This is Denver Weekend. Give one locally specific Saturday choice "
+        "that remains true without inventing an event, opening time, closure "
+        "or forecast. Do not sell or mention a site, calculator, form, "
+        "appointment or phone number. Do not write a call to action; the "
+        "system adds exactly one save-or-share line."
+    ),
+    ContentSeries.DENVER_MARKET_NO_HYPE: (
+        "This is Denver Market, No Hype. Use only the supplied official-source "
+        "summary. Paraphrase it; add no number, prediction or market claim of "
+        "your own. Explain what the sourced signal does and does not mean. Do "
+        "not sell or mention a site, calculator, form, appointment or phone "
+        "number. Do not write a call to action or source line; the system adds "
+        "both deterministically."
+    ),
+    ContentSeries.ASK_DENVER_HOME_STORY: (
+        "This series is reserved for recorded answers from Natalia or Robbie. "
+        "Never synthesize an answer in an agent's voice."
+    ),
+}
+
+
+def _system_for(language: ContentLanguage, series: ContentSeries) -> str:
+    """A non-contradictory model contract for this persisted series."""
+    contract = contract_for(series)
+    prompt = _SYSTEM[language]
+    if language is ContentLanguage.EN:
+        prompt = prompt.replace("30-45 second", f"{int(contract.duration_min)}-{int(contract.duration_max)} second")
+        prompt = prompt.replace("script 45-65 words", f"script {contract.word_min}-{contract.word_max} words")
+        prompt = prompt.replace('"scenes": 7 to 9 objects', f'"scenes": {contract.scene_min} to {contract.scene_max} objects')
+    else:
+        prompt = prompt.replace("30-45 segundos", f"{int(contract.duration_min)}-{int(contract.duration_max)} segundos")
+        prompt = prompt.replace("guion de 45-65 palabras", f"guion de {contract.word_min}-{contract.word_max} palabras")
+        prompt = prompt.replace('"scenes": de 7 a 9 objetos', f'"scenes": de {contract.scene_min} a {contract.scene_max} objetos')
+    rule = _SERIES_RULES[series]
+    return f"{prompt} {rule}".strip()
 
 
 _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE)
@@ -269,7 +325,8 @@ async def _ask(topic: Topic, language: ContentLanguage,
                cta_index: int = 0,
                plan: Plan | None = None,
                lessons: Sequence[str] = (),
-               brokerage: str = "") -> DraftPayload | None:
+               brokerage: str = "",
+               series: ContentSeries = ContentSeries.CONVERSION) -> DraftPayload | None:
     brief = topic.brief_en if language is ContentLanguage.EN else topic.brief_es
     messages: list[dict[str, Any]] = []
     # Before the brief: what not to do, then what to do.
@@ -285,7 +342,7 @@ async def _ask(topic: Topic, language: ContentLanguage,
     try:
         result = await generate_reply(
             messages,
-            system=_SYSTEM[language],
+            system=_system_for(language, series),
             json_mode=True,
             temperature=0.6,
             # 900 was the cap when a draft was three short strings. Lane B
@@ -323,12 +380,37 @@ async def _ask(topic: Topic, language: ContentLanguage,
             plan=plan,
             lessons=lessons,
             brokerage=brokerage,
+            series=series,
         )
     if typed:
         log.warning("Content writer: the draft for %s still carried contact "
                     "details; dropping it", topic.key)
         return None
-    return _with_cta(_with_plan(draft, plan), language, cta_index, plan, brokerage)
+    chosen = (
+        model_social_cta_in(draft)
+        if series is not ContentSeries.CONVERSION
+        else None
+    )
+    if chosen and feedback is None:
+        return await _ask(
+            topic,
+            language,
+            feedback=_NO_MODEL_SOCIAL_CTA.format(named=chosen),
+            cta_index=cta_index,
+            plan=plan,
+            lessons=lessons,
+            brokerage=brokerage,
+            series=series,
+        )
+    if chosen:
+        log.warning("Content writer: the draft still chose its own social CTA; dropping it")
+        return None
+    planned = _with_plan(draft, plan)
+    if series is ContentSeries.CONVERSION:
+        return _with_cta(planned, language, cta_index, plan, brokerage)
+    return _with_cta(
+        planned, language, cta_index, plan, brokerage, series=series
+    )
 
 
 #: A web address, in any of the shapes a model writes one. The same shape
@@ -393,6 +475,34 @@ _NO_CONTACT_DETAILS = (
     "same JSON shape and no addresses or numbers to call."
 )
 
+_MODEL_SOCIAL_CTA = re.compile(
+    r"(?i)\b(?:follow\s+(?:us|for)|comment\s+(?:below|your)|share\s+this|"
+    r"save\s+this|book\s+(?:a|your)|schedule\s+(?:a|your)|run\s+your\s+numbers)\b"
+)
+
+
+def model_social_cta_in(draft: DraftPayload | None) -> str | None:
+    """A CTA the model tried to choose for a line whose CTA is deterministic."""
+    if draft is None:
+        return None
+    for value in (
+        draft.script,
+        draft.caption,
+        *(scene.on_screen_text for scene in draft.scenes),
+    ):
+        found = _MODEL_SOCIAL_CTA.search(value or "")
+        if found:
+            return found.group(0)
+    return None
+
+
+_NO_MODEL_SOCIAL_CTA = (
+    "You wrote a call to action ({named}). Remove it. The system appends the "
+    "single approved social call to action after your JSON. Reply with the "
+    "same JSON shape and no request to follow, comment, share, save, book, "
+    "schedule or run numbers."
+)
+
 
 #: How much of a reviewer's reason is quoted to the model. `RejectIn` already
 #: caps the column at 2000; this is smaller on purpose. A reason long enough to
@@ -410,6 +520,7 @@ async def _ask_correction(
     feedback: str | None = None,
     lessons: Sequence[str] = (),
     brokerage: str = "",
+    series: ContentSeries = ContentSeries.CONVERSION,
 ) -> DraftPayload | None:
     """The same draft, corrected for what the reviewer objected to.
 
@@ -473,7 +584,7 @@ async def _ask_correction(
     try:
         result = await generate_reply(
             messages,
-            system=_SYSTEM[language],
+            system=_system_for(language, series),
             json_mode=True,
             temperature=0.6,
             max_tokens=2000,
@@ -499,6 +610,7 @@ async def _ask_correction(
             feedback=_NO_CONTACT_DETAILS.format(named=named),
             lessons=lessons,
             brokerage=brokerage,
+            series=series,
         )
     if typed:
         # Twice, with the addresses named. Not a loop, and not something to
@@ -508,7 +620,32 @@ async def _ask_correction(
             "dropping it"
         )
         return None
-    return _with_cta(_with_plan(draft, plan), language, cta_index, plan, brokerage)
+    chosen = (
+        model_social_cta_in(draft)
+        if series is not ContentSeries.CONVERSION
+        else None
+    )
+    if chosen and feedback is None:
+        return await _ask_correction(
+            previous,
+            reason,
+            language,
+            cta_index=cta_index,
+            plan=plan,
+            feedback=_NO_MODEL_SOCIAL_CTA.format(named=chosen),
+            lessons=lessons,
+            brokerage=brokerage,
+            series=series,
+        )
+    if chosen:
+        log.warning("Content writer: the corrected draft still chose a social CTA; dropping it")
+        return None
+    planned = _with_plan(draft, plan)
+    if series is ContentSeries.CONVERSION:
+        return _with_cta(planned, language, cta_index, plan, brokerage)
+    return _with_cta(
+        planned, language, cta_index, plan, brokerage, series=series
+    )
 
 
 # The sentence that turns a view into a visit. Kept OUT of the model's hands on
@@ -570,7 +707,47 @@ def carries_spoken_domain(text: str | None, language: ContentLanguage) -> bool:
     return _NOT_A_WORD.sub("", domain.lower()) in _NOT_A_WORD.sub("", str(text).lower())
 
 
-def with_sign_off(script: str | None, language: ContentLanguage, cta_index: int) -> str:
+_SOCIAL_CTA = {
+    ContentSeries.DENVER_DECODED: (
+        "Follow for more Denver, decoded.",
+        "Which one would you choose? Comment below.",
+        "Share this Denver find.",
+    ),
+    ContentSeries.DENVER_WEEKEND: (
+        "Save this for your Denver weekend.",
+        "Share this for Saturday.",
+    ),
+    ContentSeries.DENVER_MARKET_NO_HYPE: (
+        "Follow for the next Denver market check.",
+    ),
+    ContentSeries.ASK_DENVER_HOME_STORY: (
+        "Follow for the next answer from Denver Home Story.",
+    ),
+}
+
+
+def social_cta(series: ContentSeries, cta_index: int) -> str:
+    lines = _SOCIAL_CTA.get(series, ())
+    return lines[cta_index % len(lines)] if lines else ""
+
+
+def carries_social_cta(text: str | None, series: ContentSeries) -> bool:
+    """Whether approved copy still carries one of this line's exact CTAs."""
+    haystack = str(text or "").casefold()
+    return any(line.casefold() in haystack for line in _SOCIAL_CTA.get(series, ()))
+
+
+def social_action_count(text: str | None) -> int:
+    """Count every social or commercial action the deterministic gate knows."""
+    return len(_MODEL_SOCIAL_CTA.findall(str(text or "")))
+
+
+def with_sign_off(
+    script: str | None,
+    language: ContentLanguage,
+    cta_index: int,
+    series: ContentSeries = ContentSeries.CONVERSION,
+) -> str:
     """What the narrator should say for this script. The single definition.
 
     Used when a draft is written AND when a person rewrites the script in the
@@ -578,6 +755,12 @@ def with_sign_off(script: str | None, language: ContentLanguage, cta_index: int)
     actually says, and until now nothing kept it in step with an edit.
     """
     spoken = (str(script or "")).rstrip()
+    if series is not ContentSeries.CONVERSION:
+        line = social_cta(series, cta_index)
+        if not spoken or not line or line.casefold() in spoken.casefold():
+            return spoken
+        return f"{spoken} {line}".strip()
+
     url = (get_settings().CONTENT_CTA_URL or "").strip()
     lines = _SPOKEN_CTA.get(language)
     domain = _SPOKEN_DOMAIN.get(language)
@@ -724,6 +907,7 @@ def _with_cta(
     cta_index: int = 0,
     plan: Plan | None = None,
     brokerage: str = "",
+    series: ContentSeries = ContentSeries.CONVERSION,
 ) -> DraftPayload | None:
     """Append the call to action, and the brokerage line, to the caption.
 
@@ -745,7 +929,11 @@ def _with_cta(
     # ending in a slash would publish `…com//calculator?…`, which is one
     # character of configuration away from a 404. `public_media_url` in the
     # publisher strips it for the same reason.
-    url = (get_settings().CONTENT_CTA_URL or "").strip().rstrip("/")
+    url = (
+        (get_settings().CONTENT_CTA_URL or "").strip().rstrip("/")
+        if series is ContentSeries.CONVERSION
+        else ""
+    )
     # Same two numbers the figure was computed from (`content_calculated`), so
     # the page cannot disagree with the video: they are not copied across, they
     # are the inputs of `plan`, and `SAVINGS` is the constant the whole series
@@ -783,6 +971,11 @@ def _with_cta(
         else:
             sentence = (_CALCULATED_CTA if plan is not None else _CTA)[language]
             caption = f"{caption}\n\n{sentence.format(url=link)}"
+
+    if series is not ContentSeries.CONVERSION:
+        line = social_cta(series, cta_index)
+        if line and line.casefold() not in caption.casefold():
+            caption = f"{caption}\n\n{line}"
 
     # Colorado 6.10.A.4: every advertisement carries the brokerage firm's name.
     # Here, and not in the prompt, because a prompt is a request and this is an
@@ -822,13 +1015,13 @@ def _with_cta(
     # produced a narration consisting of the sign-off ALONE — a four-second
     # video that says nothing but "Buying or selling in Denver?".
     narration = draft.narration
-    if draft.scenes and url:
+    if draft.scenes and (url or series is not ContentSeries.CONVERSION):
         # The question the dedupe asks is whether the ADDRESS is already
         # spoken, not whether THIS line is. A model that wrote its own — "…at
         # Denver Home Story dot com slash contact", which is what piece 69 did
         # — has done the job, and appending ours after it would say it twice.
         spoken = with_sign_off(
-            draft.narration or draft.script, language, cta_index
+            draft.narration or draft.script, language, cta_index, series
         )
         if spoken != (draft.narration or draft.script or "").rstrip():
             narration = spoken
@@ -955,6 +1148,7 @@ def stored_violations(
     scenes: dict | None,
     language: ContentLanguage,
     check: dict[str, Any] | None = None,
+    series: ContentSeries = ContentSeries.CONVERSION,
 ) -> list[dict[str, str]]:
     """Everything wrong with a piece AS STORED — the writer's own opinion.
 
@@ -998,6 +1192,7 @@ def stored_violations(
         draft,
         language,
         check,
+        series=series,
         # A person may file a recorded/manual piece without a generated shot
         # plan. The writer itself always calls `_all_violations` with the
         # default below, so a model that drops `scenes` is still refused.
@@ -1010,6 +1205,7 @@ def _all_violations(
     language: ContentLanguage,
     check: dict[str, Any] | None = None,
     *,
+    series: ContentSeries = ContentSeries.CONVERSION,
     enforce_generated_format: bool = True,
 ) -> list[dict[str, str]]:
     """Everything wrong with this draft, in one list.
@@ -1033,23 +1229,26 @@ def _all_violations(
     )
 
     if enforce_generated_format:
+        contract = contract_for(series)
         script_words = len(draft.script.split())
-        if not 45 <= script_words <= 65:
+        if not contract.word_min <= script_words <= contract.word_max:
             found.append({
                 "phrase": (
                     f"the script is {script_words} words; generated shorts require "
-                    "45 to 65 words before the spoken sign-off"
+                    f"{contract.word_min} to {contract.word_max} words before "
+                    "the deterministic sign-off"
                 ),
                 "category": "length",
                 "where": "script",
             })
 
         scene_count = len(draft.scenes)
-        if not 7 <= scene_count <= 9:
+        if not contract.scene_min <= scene_count <= contract.scene_max:
             found.append({
                 "phrase": (
                     f"the shot plan has {scene_count} scenes; generated shorts "
-                    "require 7 to 9 distinct visual beats"
+                    f"require {contract.scene_min} to {contract.scene_max} "
+                    "distinct visual beats"
                 ),
                 "category": "scenes",
                 "where": "scenes",
@@ -1161,6 +1360,114 @@ async def _generated_today(db: AsyncSession) -> int:
     ).scalar_one()
 
 
+async def _editorial_assignment(
+    db: AsyncSession,
+    settings_row: AgentSettings,
+    index: int,
+) -> tuple[date, ContentSeries, object | None] | None:
+    """Reserve the first usable day after the calendar already in production."""
+    zone = resolve_zone(settings_row.timezone)
+    if zone is None:
+        log.error("Content writer: agency timezone is unusable; no editorial date reserved")
+        return None
+    today = datetime.now(UTC).astimezone(zone).date()
+    active_statuses = (
+        ContentStatus.DRAFT,
+        ContentStatus.NEEDS_APPROVAL,
+        ContentStatus.APPROVED,
+        ContentStatus.PUBLISHING,
+    )
+    scheduled = (
+        await db.execute(
+            select(ContentPublication.scheduled_at).where(
+                ContentPublication.org_id == get_org_id(),
+                ContentPublication.scheduled_at.is_not(None)
+            )
+        )
+    ).scalars().all()
+    scheduled_dates = [stamp.astimezone(zone).date() for stamp in scheduled if stamp]
+    reserved_dates = (
+        await db.execute(
+            select(ContentPiece.editorial_date).where(
+                ContentPiece.org_id == get_org_id(),
+                ContentPiece.editorial_date.is_not(None),
+                ContentPiece.status.in_(active_statuses),
+            )
+        )
+    ).scalars().all()
+    future_reserved = [value for value in reserved_dates if value and value >= today]
+    backlog = max(1, get_settings().CONTENT_EDITORIAL_BACKLOG)
+    if len(future_reserved) >= backlog:
+        log.info(
+            "Content writer: editorial backlog is full (%d/%d); not reserving "
+            "another publication date",
+            len(future_reserved),
+            backlog,
+        )
+        return None
+    planned_dates = (
+        await db.execute(
+            select(ContentPiece.publish_window_start).where(
+                ContentPiece.org_id == get_org_id(),
+                ContentPiece.publish_window_start.is_not(None),
+                ContentPiece.status.in_(active_statuses),
+            )
+        )
+    ).scalars().all()
+    day = next_editorial_date(
+        today,
+        scheduled_dates=scheduled_dates,
+        reserved_dates=[
+            value for value in (*future_reserved, *planned_dates) if value
+        ],
+    )
+
+    # At most one week: every seven days contains an eligible active line.
+    # Skipped dates are intentional gaps, never synthetic market or agent copy.
+    for _ in range(7):
+        series = series_for_date(
+            day, ask_enabled=get_settings().CONTENT_ASK_DHS_ENABLED
+        )
+        if series is ContentSeries.ASK_DENVER_HOME_STORY:
+            log.info(
+                "Content writer: %s belongs to Ask Denver Home Story, but no "
+                "recorded answer is available; skipping the slot",
+                day,
+            )
+            day += timedelta(days=1)
+            continue
+        if series is ContentSeries.DENVER_MARKET_NO_HYPE:
+            from app.services.market_source import (
+                MAX_AGE_DAYS,
+                MarketSourceError,
+                latest_market_source,
+            )
+
+            try:
+                source = await latest_market_source()
+            except (MarketSourceError, httpx.HTTPError) as exc:
+                log.warning(
+                    "Content writer: no current verified DMAR source for %s (%s); "
+                    "skipping the authority slot",
+                    day,
+                    exc,
+                )
+                day += timedelta(days=1)
+                continue
+            if (day - source.published_on).days > MAX_AGE_DAYS:
+                log.warning(
+                    "Content writer: the latest verified DMAR report will be "
+                    "older than %d days on %s; skipping the authority slot",
+                    MAX_AGE_DAYS,
+                    day,
+                )
+                day += timedelta(days=1)
+                continue
+            return day, series, source
+        return day, series, None
+    return None
+
+
 async def _language_for(db: AsyncSession) -> ContentLanguage:
     """Take turns through the languages the agency wants its VIDEOS in.
 
@@ -1216,7 +1523,10 @@ async def _calculated_plan(
         return None
 
 
-def _feedback(violations: list[dict[str, str]]) -> str:
+def _feedback(
+    violations: list[dict[str, str]],
+    series: ContentSeries = ContentSeries.CONVERSION,
+) -> str:
     """What to tell the model so its one rewrite has a chance.
 
     Split by kind, because "do not describe who a home is for" is no help at
@@ -1236,11 +1546,13 @@ def _feedback(violations: list[dict[str, str]]) -> str:
     ]
     figures = [v["phrase"] for v in violations if v.get("category") == "figure"]
     if structural:
+        contract = contract_for(series)
         parts.append(
             "The draft missed the short-form production budget: "
             + "; ".join(structural)
-            + ". Rewrite it at 45 to 65 script words with 7 to 9 distinct "
-            "visual beats."
+            + f". Rewrite it at {contract.word_min} to {contract.word_max} "
+            f"script words with {contract.scene_min} to {contract.scene_max} "
+            "distinct visual beats."
         )
     if wording:
         named = ", ".join(f'"{phrase}"' for phrase in wording)
@@ -1284,16 +1596,47 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
                  made_today, settings.CONTENT_MAX_DRAFTS_PER_DAY)
         return None
 
+    # DHS production is configured to English only in AgentSettings. Keep the
+    # tenant-aware selector here so a future agency is not silently forced to
+    # inherit DHS's language decision.
     language = await _language_for(db)
     # Read once and passed to BOTH calls below. The rewrite path replaces the
     # draft wholesale, so a sign-off chosen inside only the first call would be
     # lost on exactly the drafts that needed a second look.
     cta_index = await rotation_index(db)
-    # Which rail this lap belongs to. The calculated one brings its own topic
-    # — the figure is already in the brief — so `next_topic` is only asked on
-    # the laps that will actually consume one.
-    plan = await _calculated_plan(db, language)
-    topic = plan.topic if plan is not None else await next_topic(db)
+    settings_row = (
+        await db.execute(
+            select(AgentSettings).where(AgentSettings.org_id == get_org_id())
+        )
+    ).scalar_one_or_none()
+    if settings_row is None:
+        log.warning("Content writer: no agency settings row; no calendar to write for")
+        return None
+    assignment = await _editorial_assignment(db, settings_row, cta_index)
+    if assignment is None:
+        return None
+    editorial_date, series, source = assignment
+
+    # Conversion retains the calculator/prose machinery. Growth and authority
+    # get their own briefs and never inherit a site/calculator CTA by accident.
+    plan = (
+        await _calculated_plan(db, language)
+        if series is ContentSeries.CONVERSION
+        else None
+    )
+    if plan is not None:
+        topic = plan.topic
+    elif series is ContentSeries.CONVERSION:
+        topic = await next_topic(db)
+    elif series is ContentSeries.DENVER_MARKET_NO_HYPE:
+        from app.services.content_growth import market_topic
+
+        assert source is not None
+        topic = market_topic(source)
+    else:
+        from app.services.content_growth import growth_topic
+
+        topic = growth_topic(series, cta_index)
     check = plan.check if plan is not None else None
 
     # Imported here, not at module scope: `content_corrections` imports this
@@ -1304,11 +1647,6 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
     # Read once and handed down, rather than looked up inside `_with_cta`:
     # that function is pure and tests hold it directly, and a database call
     # hidden in it would make every one of them need a session.
-    settings_row = (
-        await db.execute(
-            select(AgentSettings).where(AgentSettings.org_id == get_org_id())
-        )
-    ).scalar_one_or_none()
     brokerage = (settings_row.brokerage_line or "").strip() if settings_row else ""
     if not brokerage:
         # The publish gate refuses a piece with no brokerage line anyway, so
@@ -1319,12 +1657,29 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
             "today could be published; set it in Settings"
         )
         return None
-    draft = await _ask(topic, language, cta_index=cta_index, plan=plan,
-                       lessons=lessons, brokerage=brokerage)
+    draft = await _ask(
+        topic,
+        language,
+        cta_index=cta_index,
+        plan=plan,
+        lessons=lessons,
+        brokerage=brokerage,
+        series=series,
+    )
     if draft is None:
         return None
 
-    violations = _all_violations(draft, language, check)
+    if source is not None:
+        source_line = (
+            f"Source: DMAR, published {source.published_on.isoformat()}. "
+            f"{source.url}"
+        )
+        if source_line not in draft.caption:
+            draft = draft.model_copy(
+                update={"caption": f"{draft.caption.rstrip()}\n{source_line}"}
+            )
+
+    violations = _all_violations(draft, language, check, series=series)
     if violations:
         # One rewrite, with the phrases named. Not a loop: a model that failed
         # twice with the phrases in front of it is not going to converge, and
@@ -1337,18 +1692,33 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
             language,
             cta_index=cta_index,
             plan=plan,
-            feedback=_feedback(violations),
+            feedback=_feedback(violations, series),
             lessons=lessons,
             brokerage=brokerage,
+            series=series,
         )
         if rewritten is not None:
             draft = rewritten
-            violations = _all_violations(draft, language, check)
+            if source is not None:
+                source_line = (
+                    f"Source: DMAR, published {source.published_on.isoformat()}. "
+                    f"{source.url}"
+                )
+                draft = draft.model_copy(
+                    update={"caption": f"{draft.caption.rstrip()}\n{source_line}"}
+                )
+            violations = _all_violations(
+                draft, language, check, series=series
+            )
 
     piece = ContentPiece(
         kind=ContentKind.GENERATED,
         language=language,
         status=ContentStatus.DRAFT,
+        series=series,
+        editorial_date=editorial_date,
+        publish_window_start=editorial_date,
+        source=source.as_json() if source is not None else None,
         hook=draft.hook,
         script=draft.script,
         caption=draft.caption,

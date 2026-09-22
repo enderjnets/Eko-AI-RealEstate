@@ -9,6 +9,7 @@ approval by editing, because the person approved the old text.
 from __future__ import annotations
 
 import os
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -18,7 +19,17 @@ import app.main as main_module
 from app.config import get_settings
 from app.db.base import get_bypass_session_factory
 from app.main import app
-from app.models import ContentKind, ContentLanguage, ContentPiece, ContentStatus
+from app.models import (
+    ContentKind,
+    ContentLanguage,
+    ContentMetric,
+    ContentPiece,
+    ContentPublication,
+    ContentSeries,
+    ContentStatus,
+    PublicationPlatform,
+    PublicationStatus,
+)
 
 
 @pytest.fixture
@@ -45,6 +56,64 @@ CLEAN = {
     "hook": "Three things to check before an offer in Denver.",
     "script": "Inspection, comps, and your loan estimate.",
 }
+
+
+@pytest.mark.asyncio
+async def test_series_performance_uses_the_publication_window_not_creation_time(
+    database_url: str,
+) -> None:
+    """A draft can wait for approval; its publication date defines the pilot."""
+    now = datetime.now(UTC)
+    try:
+        async with get_bypass_session_factory()() as db:
+            piece = ContentPiece(
+                org_id=1,
+                kind=ContentKind.GENERATED,
+                language=ContentLanguage.EN,
+                status=ContentStatus.PUBLISHED,
+                series=ContentSeries.DENVER_DECODED,
+                hook="A Denver choice",
+                created_at=now - timedelta(days=90),
+            )
+            db.add(piece)
+            await db.flush()
+            recent = ContentPublication(
+                org_id=1,
+                piece_id=piece.id,
+                platform=PublicationPlatform.YOUTUBE,
+                status=PublicationStatus.PUBLISHED,
+                published_at=now - timedelta(days=2),
+            )
+            db.add(recent)
+            await db.flush()
+            db.add(
+                ContentMetric(
+                    org_id=1,
+                    publication_id=recent.id,
+                    captured_on=date.today(),
+                    views=125,
+                    likes=9,
+                    comments=3,
+                    source="manual",
+                )
+            )
+            await db.commit()
+
+        async with _client() as client:
+            response = await client.get("/api/v1/content/series-performance?days=21")
+        assert response.status_code == 200, response.text
+        decoded = next(
+            row for row in response.json() if row["series"] == "denver_decoded"
+        )
+        assert decoded["published_pieces"] == 1
+        assert (decoded["views"], decoded["likes"], decoded["comments"]) == (
+            125,
+            9,
+            3,
+        )
+        assert "shares" in decoded["unavailable_metrics"]
+    finally:
+        await _cleanup()
 
 
 async def _attach_video(piece_id: int) -> None:

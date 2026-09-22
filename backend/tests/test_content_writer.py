@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -17,10 +18,20 @@ from sqlalchemy import select, text
 
 from app.config import get_settings
 from app.db.base import get_bypass_session_factory, get_session_factory
-from app.models import ContentKind, ContentLanguage, ContentPiece, ContentStatus
+from app.models import (
+    AgentSettings,
+    ContentKind,
+    ContentLanguage,
+    ContentPiece,
+    ContentSeries,
+    ContentStatus,
+)
+from app.services import content_writer as content_writer_service
 from app.services.content_writer import carries_spoken_domain, generate_draft
 from app.services.llm import LLMResult
 from app.services.tenant_context import org_scope
+
+REAL_EDITORIAL_ASSIGNMENT = content_writer_service._editorial_assignment
 
 
 @pytest.fixture(autouse=True)
@@ -86,6 +97,17 @@ def studio_on(monkeypatch):
     # break somewhere with no connection to what they are named after.
     monkeypatch.setattr(get_settings(), "CONTENT_CALCULATED_EVERY", 0, raising=False)
 
+    async def _conversion_assignment(*_args, **_kwargs):
+        return datetime.now(UTC).date(), ContentSeries.CONVERSION, None
+
+    # These tests isolate prose, quota, and language behavior. The editorial
+    # calendar has its own focused tests, so pin this legacy suite to the line
+    # its 45–65-word fixtures were written for.
+    monkeypatch.setattr(
+        "app.services.content_writer._editorial_assignment",
+        _conversion_assignment,
+    )
+
 
 def _reply(payload: dict) -> LLMResult:
     return LLMResult(
@@ -116,6 +138,25 @@ CLEAN = {
         for i in range(1, 8)
     ],
 }
+GROWTH = {
+    "hook": "Which Denver view wins?",
+    "script": (
+        "Mountains orient the west side; the skyline marks Denver's urban core. "
+        "The same city reads differently from each direction, especially as "
+        "the evening light changes. Which view feels more like Denver to you?"
+    ),
+    "caption": "Two ways to recognize the same city.",
+    "scenes": [
+        {
+            "visual_prompt": (
+                f"Denver skyline and Front Range comparison angle {i}, "
+                "natural light, no readable text"
+            ),
+            "on_screen_text": f"Denver view {i}",
+        }
+        for i in range(1, 6)
+    ],
+}
 DIRTY = {
     "hook": "Perfect for families!",
     "script": "This one is in a safe neighborhood with good schools.",
@@ -143,6 +184,76 @@ async def test_a_clean_draft_queues_itself_for_approval(database_url: str) -> No
         assert piece.status is ContentStatus.NEEDS_APPROVAL
         assert piece.violations is None
         assert piece.kind is ContentKind.GENERATED
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_growth_draft_keeps_its_line_date_and_single_social_cta(
+    database_url: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    editorial_day = date(2026, 10, 5)
+
+    async def _decoded_assignment(*_args, **_kwargs):
+        return editorial_day, ContentSeries.DENVER_DECODED, None
+
+    monkeypatch.setattr(
+        "app.services.content_writer._editorial_assignment",
+        _decoded_assignment,
+    )
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                with patch(
+                    "app.services.content_writer.generate_reply",
+                    AsyncMock(return_value=_reply(GROWTH)),
+                ):
+                    piece = await generate_draft(db)
+        assert piece is not None
+        assert piece.status is ContentStatus.NEEDS_APPROVAL
+        assert piece.series is ContentSeries.DENVER_DECODED
+        assert piece.editorial_date == editorial_day
+        assert piece.publish_window_start == editorial_day
+        assert "denverhomestory.com" not in (piece.caption or "").casefold()
+        assert (piece.caption or "").count("Follow for more Denver, decoded.") == 1
+        assert (piece.scenes or {})["narration"].count(
+            "Follow for more Denver, decoded."
+        ) == 1
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_the_writer_stops_after_one_week_of_new_lines(
+    database_url: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(get_settings(), "CONTENT_EDITORIAL_BACKLOG", 7, raising=False)
+    far_future = datetime.now(UTC).date() + timedelta(days=30)
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                settings_row = (
+                    await db.execute(
+                        select(AgentSettings).where(AgentSettings.org_id == ORG)
+                    )
+                ).scalar_one()
+                db.add_all(
+                    [
+                        ContentPiece(
+                            org_id=ORG,
+                            kind=ContentKind.GENERATED,
+                            language=ContentLanguage.EN,
+                            status=ContentStatus.NEEDS_APPROVAL,
+                            editorial_date=far_future + timedelta(days=offset),
+                            hook=f"Reserved day {offset}",
+                        )
+                        for offset in range(7)
+                    ]
+                )
+                await db.commit()
+                assert await REAL_EDITORIAL_ASSIGNMENT(
+                    db, settings_row, 0
+                ) is None
     finally:
         await _cleanup()
 

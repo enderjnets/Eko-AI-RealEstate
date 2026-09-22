@@ -21,6 +21,18 @@ MAX_NARRATION_WORDS = 75
 MIN_SCENES = 7
 MAX_SCENES = 9
 
+# Legacy jobs carry no contract and retain the conversion bounds. New jobs get
+# this block from the authenticated panel after their persisted series has
+# already been chosen. The worker still bounds every value before using it.
+_LEGACY_CONTRACT = {
+    "series": "conversion",
+    "duration_min": MIN_SECONDS,
+    "duration_max": MAX_SECONDS,
+    "word_max": MAX_NARRATION_WORDS,
+    "scene_min": MIN_SCENES,
+    "scene_max": MAX_SCENES,
+}
+
 _FONT_CANDIDATES = (
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
@@ -91,6 +103,39 @@ def brokerage_copy(value: object) -> str:
     )
 
 
+def _contract(spec: dict) -> dict[str, int | float | str]:
+    finish = spec.get("finish") if isinstance(spec.get("finish"), dict) else {}
+    raw = finish.get("contract") if isinstance(finish.get("contract"), dict) else {}
+    contract = {**_LEGACY_CONTRACT, **raw}
+    try:
+        duration_min = float(contract["duration_min"])
+        duration_max = float(contract["duration_max"])
+        word_max = int(contract["word_max"])
+        scene_min = int(contract["scene_min"])
+        scene_max = int(contract["scene_max"])
+    except (TypeError, ValueError, KeyError) as exc:
+        raise verify.Rejected("the finishing contract is malformed") from exc
+    if not 5 <= duration_min < duration_max <= 90:
+        raise verify.Rejected("the finishing duration contract is outside safe bounds")
+    if not 1 <= scene_min <= scene_max <= 12:
+        raise verify.Rejected("the finishing scene contract is outside safe bounds")
+    if not 10 <= word_max <= 100:
+        raise verify.Rejected("the finishing narration contract is outside safe bounds")
+    return {
+        "series": str(contract.get("series") or "conversion"),
+        "duration_min": duration_min,
+        "duration_max": duration_max,
+        "word_max": word_max,
+        "scene_min": scene_min,
+        "scene_max": scene_max,
+    }
+
+
+def duration_bounds(spec: dict) -> tuple[float, float]:
+    contract = _contract(spec)
+    return float(contract["duration_min"]), float(contract["duration_max"])
+
+
 def validate(spec: dict) -> None:
     """Refuse jobs whose stored plan cannot produce the approved format."""
     finish = spec.get("finish") if isinstance(spec.get("finish"), dict) else {}
@@ -101,11 +146,15 @@ def validate(spec: dict) -> None:
     if not str(spec.get("brokerage_line") or "").strip():
         raise verify.Rejected("the organisation has no brokerage line on record")
 
+    contract = _contract(spec)
     plan = spec.get("scenes") if isinstance(spec.get("scenes"), dict) else {}
     scenes = plan.get("scenes") if isinstance(plan.get("scenes"), list) else []
-    if not MIN_SCENES <= len(scenes) <= MAX_SCENES:
+    scene_min = int(contract["scene_min"])
+    scene_max = int(contract["scene_max"])
+    if not scene_min <= len(scenes) <= scene_max:
         raise verify.Rejected(
-            f"the shot plan has {len(scenes)} scenes; it requires 7 to 9"
+            f"the shot plan has {len(scenes)} scenes; it requires "
+            f"{scene_min} to {scene_max}"
         )
     prompts = [
         _normalized_prompt(row.get("visual_prompt"))
@@ -119,9 +168,11 @@ def validate(spec: dict) -> None:
 
     narration = str(plan.get("narration") or spec.get("script") or "")
     word_count = len(narration.split())
-    if word_count > MAX_NARRATION_WORDS:
+    word_max = int(contract["word_max"])
+    if word_count > word_max:
         raise verify.Rejected(
-            f"the finished narration is {word_count} words; the limit is 75 words"
+            f"the finished narration is {word_count} words; the limit is "
+            f"{word_max} words"
         )
     if finish.get("cta_label") == "RUN YOUR NUMBERS" and not authorized_calculator_url(
         finish.get("calculator_url")
@@ -150,12 +201,16 @@ def build_command(
     font_clause = f":fontfile='{escape_path(font)}'" if font else ""
     end_at = max(0.0, duration - END_CARD_SECONDS)
     parts = [
-        "[1:v]scale=1080:1920:force_original_aspect_ratio=increase,"
-        "crop=1080:1920,setsar=1,format=rgba,"
-        "drawbox=x=0:y=0:w=iw:h=ih:color=0x0B1F33@0.78:t=fill[card0]",
-        f"[card0]drawtext=textfile='{escape_path(str(cta_label_file))}'"
-        f"{font_clause}:fontcolor=0xD4A953:fontsize=42:"
-        "x=(w-text_w)/2:y=700[cardlabel]",
+        (
+            "[1:v]scale=1080:1920:force_original_aspect_ratio=increase,"
+            "crop=1080:1920,setsar=1,format=rgba,"
+            "drawbox=x=0:y=0:w=iw:h=ih:color=0x0B1F33@0.78:t=fill[card0]"
+        ),
+        (
+            f"[card0]drawtext=textfile='{escape_path(str(cta_label_file))}'"
+            f"{font_clause}:fontcolor=0xD4A953:fontsize=42:"
+            "x=(w-text_w)/2:y=700[cardlabel]"
+        ),
     ]
     last_card = "cardlabel"
     for index, path in enumerate(cta_display_files):
@@ -283,8 +338,12 @@ def apply(
     validate(spec)
     if not mark.is_file():
         raise verify.Rejected("the Denver Home Story brand mark is missing")
+    duration_min, duration_max = duration_bounds(spec)
     source_probe = verify.check(
-        source, expect_audio=True, min_seconds=MIN_SECONDS, max_seconds=MAX_SECONDS
+        source,
+        expect_audio=True,
+        min_seconds=duration_min,
+        max_seconds=duration_max,
     )
     workdir = destination.parent
     verify.reject_readable_digits(
@@ -338,7 +397,10 @@ def apply(
         tail = rendered.stdout[-800:].decode(errors="replace").strip()
         raise RuntimeError(f"DHS finishing ffmpeg failed: {tail or 'no output'}")
     result = verify.check(
-        temporary, expect_audio=True, min_seconds=MIN_SECONDS, max_seconds=MAX_SECONDS
+        temporary,
+        expect_audio=True,
+        min_seconds=duration_min,
+        max_seconds=duration_max,
     )
     os.replace(temporary, destination)
     return FinishReport(duration=result.duration, used_calculator=used_calculator)

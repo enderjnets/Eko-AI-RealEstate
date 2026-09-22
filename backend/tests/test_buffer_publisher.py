@@ -34,6 +34,7 @@ from app.models import (
     ContentLanguage,
     ContentPiece,
     ContentPublication,
+    ContentSeries,
     ContentStatus,
     PublicationPlatform,
     PublicationStatus,
@@ -117,13 +118,19 @@ async def _brokerage(value: str = BROKERAGE) -> None:
         await db.commit()
 
 
-async def _approved_piece(kind: ContentKind = ContentKind.GENERATED) -> int:
+async def _approved_piece(
+    kind: ContentKind = ContentKind.GENERATED,
+    *,
+    series: ContentSeries = ContentSeries.CONVERSION,
+    caption: str | None = None,
+) -> int:
     async with get_bypass_session_factory()() as db:
         piece = ContentPiece(
             org_id=ORG,
             kind=kind,
             language=ContentLanguage.EN,
             status=ContentStatus.APPROVED,
+            series=series,
             hook="What a Denver home is worth today.",
             script="Three numbers decide the price.",
             # The publish gate now reads the advertisement, not the settings
@@ -131,13 +138,71 @@ async def _approved_piece(kind: ContentKind = ContentKind.GENERATED) -> int:
             # Settings page is. The line here has to be the one `_brokerage`
             # puts on record, in full — a caption saying "Engel & Völkers"
             # under a setting of "Engel & Völkers Aspen" does not name it.
-            caption=f"Three numbers decide the price.\n\n{BROKERAGE}",
+            caption=caption or f"Three numbers decide the price.\n\n{BROKERAGE}",
             media_path="a" * 32 + ".mp4",
             approved_by="office",
         )
         db.add(piece)
         await db.commit()
         return piece.id
+
+
+@pytest.mark.asyncio
+async def test_growth_publishes_with_one_social_cta_and_refuses_a_site_link(
+    database_url: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _brokerage()
+    monkeypatch.setattr(
+        get_settings(), "CONTENT_CTA_URL", "https://www.denverhomestory.com",
+        raising=False,
+    )
+    recorder = _Recorder()
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    try:
+        clean = await _approved_piece(
+            series=ContentSeries.DENVER_DECODED,
+            caption=(
+                "Two Denver views, one city.\n\n"
+                "Follow for more Denver, decoded.\n\n"
+                f"{BROKERAGE}"
+            ),
+        )
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                await publish_piece(db, clean)
+        assert len(recorder.sent) == 3
+
+        linked = await _approved_piece(
+            series=ContentSeries.DENVER_DECODED,
+            caption=(
+                "Two Denver views, one city. Visit denverhomestory.com.\n\n"
+                "Follow for more Denver, decoded.\n\n"
+                f"{BROKERAGE}"
+            ),
+        )
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                with pytest.raises(content_studio.NotPublishable, match="site link"):
+                    await publish_piece(db, linked)
+        assert len(recorder.sent) == 3
+
+        doubled = await _approved_piece(
+            series=ContentSeries.DENVER_DECODED,
+            caption=(
+                "Two Denver views, one city. Share this Denver find.\n\n"
+                "Follow for more Denver, decoded.\n\n"
+                f"{BROKERAGE}"
+            ),
+        )
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                with pytest.raises(
+                    content_studio.NotPublishable, match="exactly one social"
+                ):
+                    await publish_piece(db, doubled)
+        assert len(recorder.sent) == 3
+    finally:
+        await _cleanup()
 
 
 async def _rows(piece_id: int) -> dict[str, ContentPublication]:

@@ -11,7 +11,10 @@ import pytest
 from worker import finish, verify
 
 
-def _spec(*, words: int = 60, scenes: int = 8, calculated: bool = False) -> dict:
+def _spec(
+    *, words: int = 60, scenes: int = 8, calculated: bool = False,
+    series: str = "conversion",
+) -> dict:
     prompts = [
         {
             "visual_prompt": f"Denver home exterior angle {i} with no readable text",
@@ -36,6 +39,14 @@ def _spec(*, words: int = 60, scenes: int = 8, calculated: bool = False) -> dict
                 if calculated
                 else None
             ),
+            "contract": {
+                "series": series,
+                "duration_min": 20 if series == "conversion" else 12,
+                "duration_max": 35 if series == "conversion" else 18,
+                "word_max": 75 if series == "conversion" else 42,
+                "scene_min": 7 if series == "conversion" else 5,
+                "scene_max": 9 if series == "conversion" else 6,
+            },
         },
     }
 
@@ -66,6 +77,17 @@ def test_preflight_refuses_repeated_visual_prompts() -> None:
     ].upper()
     with pytest.raises(verify.Rejected, match="repeat"):
         finish.validate(spec)
+
+
+def test_growth_preflight_accepts_its_short_contract_and_rejects_conversion_length() -> None:
+    finish.validate(_spec(words=30, scenes=5, series="denver_decoded"))
+    with pytest.raises(verify.Rejected, match="5 to 6"):
+        finish.validate(_spec(words=30, scenes=7, series="denver_decoded"))
+
+
+def test_duration_bounds_come_from_the_trusted_series_contract() -> None:
+    assert finish.duration_bounds(_spec(series="conversion")) == (20, 35)
+    assert finish.duration_bounds(_spec(series="denver_decoded")) == (12, 18)
 
 
 def test_ffmpeg_reads_every_piece_of_copy_from_a_file(tmp_path: Path) -> None:

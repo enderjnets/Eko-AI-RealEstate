@@ -921,6 +921,14 @@ async def test_calculated_job_input_carries_a_seeded_finishing_contract(
             "calculator_url": (
                 "https://www.denverhomestory.com/calculator?rent=3500&savings=60000"
             ),
+            "contract": {
+                "series": "conversion",
+                "duration_min": 20,
+                "duration_max": 35,
+                "word_max": 75,
+                "scene_min": 7,
+                "scene_max": 9,
+            },
         }
     finally:
         await _cleanup()
@@ -946,6 +954,14 @@ async def test_ordinary_job_input_carries_a_neutral_finishing_contract(
             "cta_label": "EXPLORE DENVER HOME STORY",
             "cta_display": "www.denverhomestory.com",
             "calculator_url": None,
+            "contract": {
+                "series": "conversion",
+                "duration_min": 20,
+                "duration_max": 35,
+                "word_max": 75,
+                "scene_min": 7,
+                "scene_max": 9,
+            },
         }
     finally:
         await _cleanup()
