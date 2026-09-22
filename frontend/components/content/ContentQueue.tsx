@@ -589,6 +589,16 @@ function PieceCard({
       <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500">
         <span className="uppercase tracking-wide">{t(`content.kind.${piece.kind}`)}</span>
         <span>·</span>
+        <span className="rounded-full border border-eko-violet/30 bg-eko-violet/10 px-2 py-0.5 text-eko-violet">
+          {t(`content.series.${piece.series ?? "conversion"}`)}
+        </span>
+        {piece.editorial_date && (
+          <>
+            <span>·</span>
+            <span>{t("content.editorialDate")}: {piece.editorial_date}</span>
+          </>
+        )}
+        <span>·</span>
         <span className="uppercase">{piece.language}</span>
         <span>·</span>
         <span>{relativeTime(piece.created_at, lang)}</span>
@@ -601,6 +611,26 @@ function PieceCard({
           </>
         )}
       </div>
+
+      <p className="mt-2 text-xs text-gray-400">
+        {t(`content.seriesObjective.${piece.series ?? "conversion"}`)}
+      </p>
+
+      {piece.source?.url && (
+        <p className="mt-2 text-xs text-gray-400">
+          {t("content.verifiedSource")}: {piece.source.publisher || "DMAR"}
+          {piece.source.published_on ? ` · ${piece.source.published_on}` : ""}
+          {" · "}
+          <a
+            href={piece.source.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-eko-violet hover:underline"
+          >
+            {t("content.openSource")}
+          </a>
+        </p>
+      )}
 
       {piece.media_path && (
         // eslint-disable-next-line jsx-a11y/media-has-caption

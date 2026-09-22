@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.142.11";
+export const CURRENT_VERSION = "0.142.12";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.142.12",
+    date: "2026-09-22",
+    title: { en: "Distinct content lines for growth and conversion", es: "Líneas de contenido separadas para crecimiento y conversión" },
+    changes: [{
+      en: "The content studio now schedules Denver, Decoded, Denver Weekend, sourced market explainers, and the existing conversion videos as separate weekly lines after the current Buffer queue. Each line keeps its own duration, CTA, source, approval label, and 21-day measurement context.",
+      es: "El estudio de contenido ahora programa Denver, Decoded, Denver Weekend, explicaciones del mercado con fuente y los videos de conversión existentes como líneas semanales separadas después de la cola actual de Buffer. Cada línea conserva su propia duración, llamada a la acción, fuente, etiqueta de aprobación y contexto de medición de 21 días.",
+    }],
+  },
   {
     version: "0.142.11",
     date: "2026-09-21",

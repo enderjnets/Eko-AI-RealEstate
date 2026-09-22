@@ -658,7 +658,10 @@ async def _act(db, row, piece, action: str) -> bool:
             piece.scenes = {
                 **piece.scenes,
                 "narration": with_sign_off(
-                    piece.script, piece.language, await rotation_index(db)
+                    piece.script,
+                    piece.language,
+                    await rotation_index(db),
+                    piece.series,
                 ),
             }
         else:
@@ -743,6 +746,7 @@ async def _rewrite(db, row, piece) -> bool:
         plan=plan,
         lessons=lessons,
         brokerage=brokerage,
+        series=piece.series,
     )
     if draft is None:
         # A provider outage, or a reply that is not a draft. Leaving the row
@@ -760,7 +764,9 @@ async def _rewrite(db, row, piece) -> bool:
         return False
 
     check = piece.calculator_check
-    violations = _all_violations(draft, piece.language, check)
+    violations = _all_violations(
+        draft, piece.language, check, series=piece.series
+    )
     if violations:
         # One rewrite, with the phrases named. Not a loop: a model that failed
         # twice with them in front of it is not going to converge, and every
@@ -771,13 +777,16 @@ async def _rewrite(db, row, piece) -> bool:
             piece.language,
             cta_index=cta_index,
             plan=plan,
-            feedback=_feedback(violations),
+            feedback=_feedback(violations, piece.series),
             lessons=lessons,
             brokerage=brokerage,
+            series=piece.series,
         )
         if again is not None:
             draft = again
-            violations = _all_violations(draft, piece.language, check)
+            violations = _all_violations(
+                draft, piece.language, check, series=piece.series
+            )
 
     piece.hook = draft.hook
     piece.script = draft.script

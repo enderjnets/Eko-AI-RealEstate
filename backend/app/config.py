@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.142.11"
+    APP_VERSION: str = "0.142.12"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -409,6 +409,13 @@ class Settings(BaseSettings):
     # sobre la otra rotación. Mitad y mitad es el reparto que no resuelve esa
     # discusión a favor de ninguna de las dos por su cuenta.
     CONTENT_CALCULATED_EVERY: int = 2
+    # Reserved for recorded answers from Natalia and Robbie. Enabling it only
+    # changes alternate Thursdays; the writer still refuses to fabricate an
+    # agent answer when no recorded input exists.
+    CONTENT_ASK_DHS_ENABLED: bool = False
+    # One approved weekly mix ahead. Prevents an hourly writer from filling
+    # months of dates while the human approval queue is still waiting.
+    CONTENT_EDITORIAL_BACKLOG: int = 7
     CONTENT_STUDIO_INTERVAL_SECONDS: int = 3600
     # The render worker (lane A: uploaded clips -> vertical + burned brokerage
     # line). Separate switch from generation: an agency can film clips without

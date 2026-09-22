@@ -60,10 +60,12 @@ from app.models import (
     ContentKind,
     ContentPiece,
     ContentPublication,
+    ContentSeries,
     ContentStatus,
     PublicationPlatform,
     PublicationStatus,
 )
+from app.services.content_series import contract_for
 from app.services.content_studio import (
     NotIdentified,
     NotPublishable,
@@ -71,6 +73,7 @@ from app.services.content_studio import (
     ensure_publishable,
     not_our_rail,
 )
+from app.services.content_writer import carries_social_cta, social_action_count
 from app.services.publish_followup import (
     caption_carries_link,
     notify_held_without_brokerage,
@@ -1199,7 +1202,9 @@ async def _close_piece(db: AsyncSession, piece: ContentPiece) -> None:
     # this piece's own tag already in the link, rather than as something to
     # remember. After the commit, so a notice can never be the reason a close
     # is rolled back.
-    if published:
+    if published and contract_for(
+        piece.series or ContentSeries.CONVERSION
+    ).requires_site_link:
         await notify_published(
             piece.id,
             piece.hook or "",
@@ -1226,12 +1231,33 @@ async def publish_piece(db: AsyncSession, piece_id: int) -> None:
     # measured in September 2026 as 3,833 views and one visit. Announced rather
     # than only logged, because `publish_approved` treats `NotPublishable` as
     # ordinary and a piece held in silence is held forever.
-    if not caption_carries_link(piece.caption or piece.hook or "", get_settings().CONTENT_CTA_URL):
+    series = piece.series or ContentSeries.CONVERSION
+    contract = contract_for(series)
+    copy = piece.caption or piece.hook or ""
+    cta_url = (get_settings().CONTENT_CTA_URL or "").strip()
+    carries_site_link = (
+        caption_carries_link(copy, cta_url)
+        if contract.requires_site_link
+        else bool(cta_url) and caption_carries_link(copy, cta_url)
+    )
+    if contract.requires_site_link and not carries_site_link:
         await notify_held_without_link(piece.id, piece.hook or "")
         raise NotPublishable(
             f"piece {piece_id} has no link to the site in its caption, and a "
             "video nobody can click out of is the one thing this channel exists "
             "to avoid"
+        )
+    if not contract.requires_site_link and carries_site_link:
+        raise NotPublishable(
+            f"piece {piece_id} belongs to {series.value} but carries a site link; "
+            "this line is approved for one social action only"
+        )
+    if not contract.requires_site_link and (
+        not carries_social_cta(copy, series) or social_action_count(copy) != 1
+    ):
+        raise NotPublishable(
+            f"piece {piece_id} belongs to {series.value} but it does not carry "
+            "exactly one social call to action"
         )
 
     # Resolved once, before any claim. A None zone means the agency's timezone

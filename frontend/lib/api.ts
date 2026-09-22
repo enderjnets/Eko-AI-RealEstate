@@ -553,6 +553,22 @@ export interface ContentPiece {
   kind: "generated" | "recorded";
   language: "en" | "es";
   status: ContentStatus;
+  series?:
+    | "conversion"
+    | "denver_decoded"
+    | "denver_weekend"
+    | "denver_market_no_hype"
+    | "ask_denver_home_story";
+  /** Denver-local publication day reserved after the existing Buffer queue. */
+  editorial_date?: string | null;
+  /** Deterministic provenance for sourced authority pieces. */
+  source?: {
+    publisher?: string;
+    title?: string;
+    published_on?: string;
+    url?: string;
+    summary?: string;
+  } | null;
   hook: string | null;
   script: string | null;
   caption: string | null;

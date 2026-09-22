@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.142.12] — 2026-09-22
+
+- Add the approved seven-day DHS content mix while preserving every existing Buffer item and starting new editorial dates after the current queue.
+- Give conversion, Denver Decoded, Denver Weekend and sourced market pieces separate writing, CTA, render and publication contracts.
+- Show each piece's line, objective, editorial date and verified source in the approval queue, and group factual platform counters by line over a 21-day window.
+- Keep Ask Denver Home Story disabled until Natalia or Robbie supply recorded answers.
+
 ## [0.142.11] — 2026-09-21
 
 - Draw each opening, URL and brokerage line through a separate FFmpeg text file so multiline breaks no longer appear as empty-square glyphs.

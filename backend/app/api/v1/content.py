@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import anyio
@@ -48,8 +48,10 @@ from app.models import (
     ContentPiece,
     ContentPublication,
     ContentRejection,
+    ContentSeries,
     ContentStatus,
     PublicationPlatform,
+    PublicationStatus,
 )
 from app.services.buffer_publisher import undeliverable_reason
 from app.services.content_figures import claimed_text, unexplained_figures
@@ -149,6 +151,9 @@ class PieceOut(BaseModel):
     kind: ContentKind
     language: ContentLanguage
     status: ContentStatus
+    series: ContentSeries
+    editorial_date: date | None = None
+    source: dict | None = None
     hook: str | None = None
     script: str | None = None
     caption: str | None = None
@@ -257,6 +262,7 @@ def _refresh_violations(piece: ContentPiece) -> None:
             scenes=piece.scenes,
             language=piece.language,
             check=piece.calculator_check,
+            series=piece.series or ContentSeries.CONVERSION,
         )
         or None
     )
@@ -379,6 +385,78 @@ class LessonOut(BaseModel):
     text: str
     source_piece_id: int | None
     created_at: datetime
+
+
+class SeriesPerformanceOut(BaseModel):
+    series: ContentSeries
+    window_days: int
+    published_pieces: int
+    views: int
+    likes: int
+    comments: int
+    primary_metrics: list[str]
+    unavailable_metrics: list[str]
+
+
+_SERIES_PRIMARY = {
+    ContentSeries.CONVERSION: ["clicks", "sessions", "forms", "calls", "appointments"],
+    ContentSeries.DENVER_DECODED: ["follows", "shares", "retention_per_1000_views"],
+    ContentSeries.DENVER_WEEKEND: ["follows", "shares", "retention_per_1000_views"],
+    ContentSeries.DENVER_MARKET_NO_HYPE: ["returning_viewers", "saves", "profile_visits"],
+    ContentSeries.ASK_DENVER_HOME_STORY: ["returning_viewers", "saves", "profile_visits"],
+}
+
+
+@router.get("/series-performance", response_model=list[SeriesPerformanceOut])
+async def series_performance(
+    days: int = Query(default=21, ge=1, le=90),
+    db: AsyncSession = Depends(get_db),
+) -> list[SeriesPerformanceOut]:
+    """Observed platform counters by editorial job, without invented proxies."""
+    since = datetime.now(UTC) - timedelta(days=days)
+    rows = (
+        await db.execute(
+            select(ContentPublication, ContentPiece.series, ContentPiece.id)
+            .join(ContentPiece, ContentPiece.id == ContentPublication.piece_id)
+            .where(
+                ContentPiece.org_id == get_org_id(),
+                ContentPublication.status == PublicationStatus.PUBLISHED,
+                ContentPublication.published_at >= since,
+            )
+        )
+    ).all()
+    from app.services.video_metrics import latest_metrics
+
+    publications = [publication for publication, _series, _piece_id in rows]
+    newest = await latest_metrics(db, [pub.id for pub in publications])
+    totals = {
+        series: {"pieces": set(), "views": 0, "likes": 0, "comments": 0}
+        for series in ContentSeries
+    }
+    for publication, stored_series, piece_id in rows:
+        series = stored_series or ContentSeries.CONVERSION
+        totals[series]["pieces"].add(piece_id)
+        metric = newest.get(publication.id)
+        if metric is None:
+            continue
+        for field in ("views", "likes", "comments"):
+            totals[series][field] += getattr(metric, field) or 0
+    available = {"views", "likes", "comments"}
+    return [
+        SeriesPerformanceOut(
+            series=series,
+            window_days=days,
+            published_pieces=len(values["pieces"]),
+            views=values["views"],
+            likes=values["likes"],
+            comments=values["comments"],
+            primary_metrics=_SERIES_PRIMARY[series],
+            unavailable_metrics=[
+                name for name in _SERIES_PRIMARY[series] if name not in available
+            ],
+        )
+        for series, values in totals.items()
+    ]
 
 
 @router.get("/lessons", response_model=list[LessonOut])
@@ -651,7 +729,10 @@ async def edit_piece(
             piece.scenes = {
                 **piece.scenes,
                 "narration": with_sign_off(
-                    piece.script, piece.language, await rotation_index(db)
+                    piece.script,
+                    piece.language,
+                    await rotation_index(db),
+                    piece.series,
                 ),
             }
         _refresh_violations(piece)

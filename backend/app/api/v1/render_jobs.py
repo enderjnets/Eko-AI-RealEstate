@@ -47,15 +47,17 @@ from app.db.base import get_bypass_session_factory
 from app.models import (
     AgentSettings,
     ContentPiece,
+    ContentSeries,
     ContentStatus,
     RenderJob,
     RenderJobKind,
     RenderJobStatus,
 )
 from app.services.content_render import RenderRefused, check_output, probe_media
+from app.services.content_series import render_contract
 from app.services.content_studio import advance
 from app.services.content_topics import CALCULATED_SOURCE
-from app.services.content_writer import carries_spoken_domain
+from app.services.content_writer import carries_spoken_domain, social_cta
 from app.services.fair_housing import PEOPLE_IN_PICTURES
 
 log = logging.getLogger(__name__)
@@ -107,6 +109,7 @@ class FinishInput(BaseModel):
     cta_label: str
     cta_display: str
     calculator_url: str | None = None
+    contract: dict[str, str | int | float]
 
 
 class JobInput(BaseModel):
@@ -258,6 +261,38 @@ def _finish_input(piece: ContentPiece, plan: dict) -> FinishInput:
     root_path = parsed.path.rstrip("/")
     display_root = f"{host}{root_path}" if host else ""
 
+    if piece.series is not ContentSeries.CONVERSION:
+        narration = str(plan.get("narration") or piece.script or "")
+        chosen = next(
+            (
+                social_cta(piece.series, index)
+                for index in range(3)
+                if social_cta(piece.series, index)
+                and social_cta(piece.series, index).casefold() in narration.casefold()
+            ),
+            social_cta(piece.series, 0),
+        )
+        if chosen.casefold().startswith("follow"):
+            label = "FOLLOW FOR THE NEXT ONE"
+        elif chosen.casefold().startswith("save"):
+            label = "SAVE THIS FOR SATURDAY"
+        elif chosen.casefold().startswith("share"):
+            label = "SHARE THIS DENVER FIND"
+        else:
+            label = "COMMENT YOUR PICK"
+        display = "@denverhomestory"
+        if piece.series is ContentSeries.DENVER_MARKET_NO_HYPE:
+            source = piece.source if isinstance(piece.source, dict) else {}
+            published = str(source.get("published_on") or "").strip()
+            label = "FOLLOW THE NEXT MARKET CHECK"
+            display = f"Source: DMAR · {published}" if published else "Source: DMAR"
+        return FinishInput(
+            opening_text=opening,
+            cta_label=label,
+            cta_display=display,
+            contract=render_contract(piece.series),
+        )
+
     check = piece.calculator_check if isinstance(piece.calculator_check, dict) else {}
     calculated = check.get("source") == CALCULATED_SOURCE
     if not calculated:
@@ -265,6 +300,7 @@ def _finish_input(piece: ContentPiece, plan: dict) -> FinishInput:
             opening_text=opening,
             cta_label="EXPLORE DENVER HOME STORY",
             cta_display=display_root,
+            contract=render_contract(piece.series),
         )
 
     scenarios = check.get("scenarios")
@@ -286,6 +322,7 @@ def _finish_input(piece: ContentPiece, plan: dict) -> FinishInput:
         cta_label="RUN YOUR NUMBERS",
         cta_display=display,
         calculator_url=seeded,
+        contract=render_contract(piece.series),
     )
 
 
@@ -326,8 +363,10 @@ async def job_input(job_id: int) -> JobInput:
         # `assemble.py` burns the address on its end card anyway, so warning
         # about it would be both constant and false — and a warning that always
         # fires is not a warning.
-        if job.kind is RenderJobKind.PRODUCE_B and not carries_spoken_domain(
-            spoken, piece.language
+        if (
+            job.kind is RenderJobKind.PRODUCE_B
+            and piece.series is ContentSeries.CONVERSION
+            and not carries_spoken_domain(spoken, piece.language)
         ):
             # Not a refusal: pieces written before the sign-off existed have to
             # keep rendering. But nobody was watching this, and that is why it
