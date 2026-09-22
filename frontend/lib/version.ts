@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.142.10";
+export const CURRENT_VERSION = "0.142.11";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.142.11",
+    date: "2026-09-21",
+    title: { en: "Clean line breaks on the video cards", es: "Saltos de línea limpios en las tarjetas" },
+    changes: [{
+      en: "Each visible line in the opening and final card is now drawn from its own text file. This removes the empty-square glyph FFmpeg placed at multiline breaks while preserving the safe-area wrapping from the previous release.",
+      es: "Cada línea visible de la apertura y la tarjeta final se dibuja ahora desde su propio archivo de texto. Así desaparece el cuadro vacío que FFmpeg mostraba en los saltos de línea, manteniendo el ajuste al área segura de la versión anterior.",
+    }],
+  },
   {
     version: "0.142.10",
     date: "2026-09-21",

@@ -70,7 +70,10 @@ def test_preflight_refuses_repeated_visual_prompts() -> None:
 
 def test_ffmpeg_reads_every_piece_of_copy_from_a_file(tmp_path: Path) -> None:
     files = {}
-    for name in ("opening", "label", "display", "brokerage"):
+    for name in (
+        "opening-0", "opening-1", "label", "display-0", "display-1",
+        "brokerage-0", "brokerage-1",
+    ):
         path = tmp_path / f"{name}.txt"
         path.write_text("danger: text='must never enter the filter'", encoding="utf-8")
         files[name] = path
@@ -79,17 +82,17 @@ def test_ffmpeg_reads_every_piece_of_copy_from_a_file(tmp_path: Path) -> None:
         tmp_path / "out.mp4",
         duration=24.0,
         background=tmp_path / "card.png",
-        opening_file=files["opening"],
+        opening_files=[files["opening-0"], files["opening-1"]],
         cta_label_file=files["label"],
-        cta_display_file=files["display"],
-        brokerage_file=files["brokerage"],
+        cta_display_files=[files["display-0"], files["display-1"]],
+        brokerage_files=[files["brokerage-0"], files["brokerage-1"]],
         font=None,
         mark=None,
     )
     graph = cmd[cmd.index("-filter_complex") + 1]
     assert "danger:" not in graph
     assert "must never" not in graph
-    assert graph.count("textfile=") == 4
+    assert graph.count("textfile=") == 7
 
 
 def test_calculator_capture_timeout_uses_the_fallback(
@@ -148,6 +151,19 @@ def test_finish_copy_wraps_inside_the_vertical_safe_area() -> None:
     assert finish.display_copy("denverhomestory.com/calculator") == (
         "www.denverhomestory.com\n/calculator"
     )
+
+
+def test_each_visual_line_gets_its_own_text_file(tmp_path: Path) -> None:
+    files = finish.line_files(
+        tmp_path,
+        "display",
+        finish.display_copy("denverhomestory.com/calculator"),
+    )
+    assert [path.read_text(encoding="utf-8") for path in files] == [
+        "www.denverhomestory.com",
+        "/calculator",
+    ]
+    assert all("\n" not in path.read_text(encoding="utf-8") for path in files)
 
 
 HAS_MEDIA_TOOLS = all(shutil.which(tool) for tool in ("ffmpeg", "ffprobe"))
