@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.142.7";
+export const CURRENT_VERSION = "0.142.8";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.142.8",
+    date: "2026-09-21",
+    title: { en: "Generated videos now finish as Denver Home Story", es: "Los videos generados terminan como Denver Home Story" },
+    changes: [{
+      en: "Generated shorts now use 45–65 written words, seven to nine distinct Denver visuals, a restrained opening, and a three-second branded final card. Calculator videos display the same seeded calculator destination used for their figures, while duration, repeated scenes and readable generated numbers are checked before approval.",
+      es: "Los shorts generados usan ahora 45–65 palabras, entre siete y nueve visuales distintos de Denver, una apertura sobria y una tarjeta final de marca de tres segundos. Los videos de la calculadora muestran el mismo destino parametrizado que origina sus cifras, y antes de aprobar se revisan duración, escenas repetidas y números legibles generados.",
+    }],
+  },
   {
     version: "0.142.7",
     date: "2026-09-21",
