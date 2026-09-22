@@ -994,13 +994,23 @@ def stored_violations(
         ],
         narration=str(narration) if narration else None,
     )
-    return _all_violations(draft, language, check)
+    return _all_violations(
+        draft,
+        language,
+        check,
+        # A person may file a recorded/manual piece without a generated shot
+        # plan. The writer itself always calls `_all_violations` with the
+        # default below, so a model that drops `scenes` is still refused.
+        enforce_generated_format=bool(draft.scenes),
+    )
 
 
 def _all_violations(
     draft: DraftPayload,
     language: ContentLanguage,
     check: dict[str, Any] | None = None,
+    *,
+    enforce_generated_format: bool = True,
 ) -> list[dict[str, str]]:
     """Everything wrong with this draft, in one list.
 
@@ -1022,27 +1032,28 @@ def _all_violations(
         language=language,
     )
 
-    script_words = len(draft.script.split())
-    if not 45 <= script_words <= 65:
-        found.append({
-            "phrase": (
-                f"the script is {script_words} words; generated shorts require "
-                "45 to 65 words before the spoken sign-off"
-            ),
-            "category": "length",
-            "where": "script",
-        })
+    if enforce_generated_format:
+        script_words = len(draft.script.split())
+        if not 45 <= script_words <= 65:
+            found.append({
+                "phrase": (
+                    f"the script is {script_words} words; generated shorts require "
+                    "45 to 65 words before the spoken sign-off"
+                ),
+                "category": "length",
+                "where": "script",
+            })
 
-    scene_count = len(draft.scenes)
-    if not 7 <= scene_count <= 9:
-        found.append({
-            "phrase": (
-                f"the shot plan has {scene_count} scenes; generated shorts "
-                "require 7 to 9 distinct visual beats"
-            ),
-            "category": "scenes",
-            "where": "scenes",
-        })
+        scene_count = len(draft.scenes)
+        if not 7 <= scene_count <= 9:
+            found.append({
+                "phrase": (
+                    f"the shot plan has {scene_count} scenes; generated shorts "
+                    "require 7 to 9 distinct visual beats"
+                ),
+                "category": "scenes",
+                "where": "scenes",
+            })
 
     spoken = draft.narration or draft.script
     reason = wrong_language(spoken, language.value)

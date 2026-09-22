@@ -37,11 +37,10 @@ from app.services.tenant_context import org_scope
 ORG = 1
 
 ENGLISH = (
-    "Three numbers decide what your home lists for in Denver this month, and "
-    "none of them is what you paid. The first is what similar homes actually "
-    "closed at, not what they asked. The second is how long they sat before "
-    "they sold. The third is what it costs you to carry the house while you "
-    "wait for a better offer than the one in front of you today."
+    "Three numbers decide what your home lists for in Denver this month. The "
+    "first is what similar homes closed at, not what they asked. The second is "
+    "how long they sat before selling. The third is what it costs to carry the "
+    "house while you wait for a better offer than the one in front of you."
 )
 
 
@@ -70,8 +69,11 @@ def _draft(**overrides) -> DraftPayload:
         "caption": "Three numbers decide the price.",
         "narration": ENGLISH,
         "scenes": [
-            Scene(visual_prompt="a brick bungalow on a Denver street", on_screen_text="One"),
-            Scene(visual_prompt="the Front Range at sunrise", on_screen_text="Two"),
+            Scene(
+                visual_prompt=f"angle {i} of a brick bungalow on a Denver street",
+                on_screen_text=f"Step {i}",
+            )
+            for i in range(1, 8)
         ],
     }
     base.update(overrides)
@@ -309,8 +311,8 @@ def test_the_plan_keeps_the_narration_separate_from_the_shots() -> None:
     otherwise have to special-case the last element."""
     plan = _scene_plan(_draft())
     assert set(plan) == {"narration", "scenes"}
-    assert len(plan["scenes"]) == 2
-    assert plan["scenes"][0]["visual_prompt"].startswith("a brick bungalow")
+    assert len(plan["scenes"]) == 7
+    assert "brick bungalow" in plan["scenes"][0]["visual_prompt"]
 
 
 def test_a_draft_without_a_plan_stores_none() -> None:
