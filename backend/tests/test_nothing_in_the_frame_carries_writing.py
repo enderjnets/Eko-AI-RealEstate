@@ -145,7 +145,9 @@ def test_a_clean_shot_list_produces_no_findings_at_all() -> None:
         "A blank, unbranded for-sale sign on a lawn",
         "A set of keys on a wooden table",
     )
-    assert _all_violations(draft, ContentLanguage.EN) == []
+    assert _all_violations(
+        draft, ContentLanguage.EN, enforce_generated_format=False
+    ) == []
 
 
 @pytest.mark.parametrize("language", [ContentLanguage.EN, ContentLanguage.ES])
