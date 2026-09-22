@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from worker import config, main, produce_bittrader, verify
+from worker import config, finish, main, produce_bittrader, verify
 
 
 def _cfg(tmp_path: Path, engine: str = "bittrader", **more) -> config.Config:
@@ -27,12 +27,12 @@ def _cfg(tmp_path: Path, engine: str = "bittrader", **more) -> config.Config:
     agents = tmp_path / "agents"
     agents.mkdir(exist_ok=True)
     (agents / "render_externo.py").write_text("# stub\n", encoding="utf-8")
-    base = dict(
-        api_base="https://panel.example", token="t" * 20, name="rog-test",
-        hours=frozenset(), workdir=tmp_path / "work", poll_seconds=1,
-        engine=engine, bittrader_python=python, bittrader_agents=agents,
-        bittrader_channel="denver_home_story",
-    )
+    base = {
+        "api_base": "https://panel.example", "token": "t" * 20, "name": "rog-test",
+        "hours": frozenset(), "workdir": tmp_path / "work", "poll_seconds": 1,
+        "engine": engine, "bittrader_python": python, "bittrader_agents": agents,
+        "bittrader_channel": "denver_home_story",
+    }
     base.update(more)
     return config.Config(**base)
 
@@ -83,10 +83,31 @@ def test_eko_stays_configured_whatever_bittrader_looks_like(tmp_path: Path) -> N
 
 # ── the hand-over ─────────────────────────────────────────────────────────────
 
-SPEC = {"piece_id": 7, "kind": "produce_b", "language": "en",
-        "brokerage_line": "Brokered by Example Realty", "hook": "h", "script": "s",
-        "scenes": {"narration": "s", "scenes": [{"visual_prompt": "a house", "on_screen_text": "x"}]},
-        "people_words": ["family"]}
+SPEC = {
+    "piece_id": 7,
+    "kind": "produce_b",
+    "language": "en",
+    "brokerage_line": "Brokered by Example Realty",
+    "hook": "h",
+    "script": " ".join(["Denver"] * 50),
+    "scenes": {
+        "narration": " ".join(["Denver"] * 50),
+        "scenes": [
+            {
+                "visual_prompt": f"Denver home exterior angle {i}",
+                "on_screen_text": f"Step {i}",
+            }
+            for i in range(7)
+        ],
+    },
+    "finish": {
+        "opening_text": "Run the Denver numbers",
+        "cta_label": "EXPLORE DENVER HOME STORY",
+        "cta_display": "denverhomestory.com",
+        "calculator_url": None,
+    },
+    "people_words": ["family"],
+}
 
 
 class _Engine:
@@ -189,9 +210,51 @@ def test_do_produce_job_hands_over_only_when_told_to(monkeypatch, tmp_path: Path
     monkeypatch.setattr(main.produce_bittrader, "produce", _engine)
     monkeypatch.setattr(main.produce, "produce", _never)
     monkeypatch.setattr(main.verify, "check", lambda *a, **k: None)
+    monkeypatch.setattr(main.finish, "validate", lambda spec: None)
+
+    def _finish(video, destination, **kwargs):
+        assert video.name == "video.mp4"
+        destination.write_bytes(b"finished")
+        return finish.FinishReport(duration=25.0, used_calculator=False)
+
+    monkeypatch.setattr(main.finish, "apply", _finish)
     cfg = _cfg(tmp_path)
     video = main.do_produce_job(cfg, {"id": 9, "kind": "produce_b"}, SPEC)
-    assert video.name == "video.mp4" and seen["spec"] == SPEC
+    assert video.name == "finished.mp4" and seen["spec"] == SPEC
+
+
+def test_bittrader_is_preflighted_before_the_engine_and_finished_after_it(
+    monkeypatch, tmp_path: Path,
+) -> None:
+    order: list[str] = []
+
+    def _validate(spec):
+        order.append("validate")
+
+    def _engine(spec, workdir, *, cfg, report=None):
+        order.append("engine")
+        video = Path(workdir) / "video.mp4"
+        video.write_bytes(b"engine")
+        return video
+
+    def _check(*args, **kwargs):
+        order.append("verify")
+
+    def _finish(video, destination, **kwargs):
+        order.append("finish")
+        destination.write_bytes(b"finished")
+        return finish.FinishReport(duration=25.0, used_calculator=True)
+
+    monkeypatch.setattr(main.finish, "validate", _validate)
+    monkeypatch.setattr(main.produce_bittrader, "produce", _engine)
+    monkeypatch.setattr(main.verify, "check", _check)
+    monkeypatch.setattr(main.finish, "apply", _finish)
+
+    result = main.do_produce_job(
+        _cfg(tmp_path), {"id": 10, "kind": "produce_b"}, SPEC
+    )
+    assert result.name == "finished.mp4"
+    assert order == ["validate", "engine", "verify", "finish"]
 
 
 def test_do_produce_job_builds_at_home_when_the_engine_is_eko(monkeypatch, tmp_path: Path) -> None:

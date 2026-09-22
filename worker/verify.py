@@ -14,6 +14,8 @@ measured contrast and not identity.
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +47,7 @@ def probe(path: Path) -> Probe:
         ],
         capture_output=True,
         timeout=120,
+        check=False,
     )
     if out.returncode != 0:
         raise Rejected("the file is not a readable video")
@@ -63,7 +66,13 @@ def probe(path: Path) -> Probe:
     )
 
 
-def check(path: Path, *, expect_audio: bool, max_seconds: float | None = None) -> Probe:
+def check(
+    path: Path,
+    *,
+    expect_audio: bool,
+    min_seconds: float | None = None,
+    max_seconds: float | None = None,
+) -> Probe:
     result = probe(path)
     problems = []
     if (result.width, result.height) != (OUT_W, OUT_H):
@@ -72,11 +81,71 @@ def check(path: Path, *, expect_audio: bool, max_seconds: float | None = None) -
         problems.append("the output has no duration")
     if expect_audio and not result.has_audio:
         problems.append("the output has no audio track")
+    if min_seconds is not None and result.duration < min_seconds:
+        problems.append(f"output is {result.duration:.0f}s, under {min_seconds:.0f}s")
     if max_seconds is not None and result.duration > max_seconds:
         problems.append(f"output is {result.duration:.0f}s, over {max_seconds:.0f}s")
     if problems:
         raise Rejected("; ".join(problems))
     return result
+
+
+_DIGIT_RUN = re.compile(r"\d(?:[\s,.-]?\d){2,}")
+
+
+def reject_readable_digits(
+    video: Path,
+    workdir: Path,
+    *,
+    before_seconds: float,
+) -> list[str]:
+    """Reject address-like numbers OCR can read in the central picture area.
+
+    The crop deliberately excludes the top hook and bottom subtitle/safe zones.
+    Only frames before the final card are sampled, so the calculator and CTA
+    may show their approved figures without teaching this guard to ignore them.
+    """
+    if shutil.which("tesseract") is None:
+        raise Rejected("cannot check generated writing: tesseract is not installed")
+    if before_seconds <= 0:
+        raise Rejected("cannot check generated writing: no pre-card video remains")
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    frame_pattern = workdir / "central-%03d.png"
+    extracted = subprocess.run(
+        [
+            "ffmpeg", "-y", "-v", "error", "-t", f"{before_seconds:.2f}",
+            "-i", str(video), "-vf", "fps=1,crop=760:900:160:360",
+            str(frame_pattern),
+        ],
+        capture_output=True,
+        timeout=300,
+        check=False,
+    )
+    if extracted.returncode != 0:
+        raise Rejected("cannot sample the generated picture for readable numbers")
+
+    found: list[str] = []
+    for frame in sorted(workdir.glob("central-*.png")):
+        read = subprocess.run(
+            ["tesseract", str(frame), "stdout", "--psm", "11"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        if read.returncode != 0:
+            raise Rejected("tesseract could not read a generated frame")
+        for match in _DIGIT_RUN.findall(read.stdout):
+            digits = "".join(character for character in match if character.isdigit())
+            if len(digits) >= 3 and digits not in found:
+                found.append(digits)
+    if found:
+        raise Rejected(
+            "generated picture contains readable unapproved digits: "
+            + ", ".join(found)
+        )
+    return found
 
 
 def _grab_frame(video: Path, at_seconds: float, destination: Path) -> None:

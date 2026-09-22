@@ -28,7 +28,15 @@ from pathlib import Path
 
 import httpx
 
-from worker import assemble, config, produce, produce_bittrader, subtitles, tts, verify
+from worker import (
+    assemble,
+    config,
+    finish,
+    produce,
+    produce_bittrader,
+    subtitles,
+    verify,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -75,7 +83,7 @@ def within_hours(hours: frozenset[int], now: datetime | None = None) -> bool:
     """
     if not hours:
         return True
-    return (now or datetime.now()).hour in hours
+    return (now or datetime.now().astimezone()).hour in hours
 
 
 def enough_disk(path: Path, min_free_gb: float) -> bool:
@@ -146,7 +154,7 @@ def pick_music() -> Path | None:
         return None
     # Rotate by the day rather than at random, so a run is reproducible and two
     # videos made the same day sound like a set.
-    return tracks[datetime.now().toordinal() % len(tracks)]
+    return tracks[datetime.now().astimezone().toordinal() % len(tracks)]
 
 
 class Panel:
@@ -284,7 +292,7 @@ class Panel:
                 f"/{job_id}/fail",
                 json={"error": error[:2000], "terminal": terminal},
             )
-        except Exception:  # noqa: BLE001 — reporting a failure must not raise
+        except Exception:  # reporting a failure must not raise
             log.exception("could not report the failure of job %s", job_id)
 
     def progress(self, job_id: int, stage: str, percent: int) -> None:
@@ -360,7 +368,7 @@ def do_subtitle_job(cfg: config.Config, panel: Panel, job: dict, spec: dict) -> 
 
 
 def do_produce_job(
-    cfg: config.Config, job: dict, spec: dict, panel: "Panel | None" = None
+    cfg: config.Config, job: dict, spec: dict, panel: Panel | None = None
 ) -> Path:
     """Lane B: a written script becomes a video with a voice."""
     workdir = cfg.workdir / f"job-{job['id']}"
@@ -371,6 +379,9 @@ def do_produce_job(
         # The brand mark is confirmed by that engine against the same PNG (its
         # own watermark rule) — the crop-based check below would refuse a mark
         # it did not place itself.
+        # Refuse an old or incomplete plan before paying the visual engine for
+        # a result that the finishing contract cannot accept.
+        finish.validate(spec)
         video = produce_bittrader.produce(
             spec,
             workdir,
@@ -382,8 +393,23 @@ def do_produce_job(
             ),
         )
         verify.check(video, expect_audio=True)
-        log.info("job %s: built by the BitTrader engine", job["id"])
-        return video
+        if panel is not None:
+            panel.progress(job["id"], "finishing", 97)
+        destination = workdir / "finished.mp4"
+        report = finish.apply(
+            video,
+            destination,
+            spec=spec,
+            mark=MARK,
+            font=font(),
+        )
+        log.info(
+            "job %s: built by BitTrader and DHS-finished (%.1fs, calculator=%s)",
+            job["id"],
+            report.duration,
+            report.used_calculator,
+        )
+        return destination
 
     video = produce.produce(
         spec,
@@ -427,7 +453,7 @@ def handle(cfg: config.Config, panel: Panel, job: dict) -> None:
 
         panel.deliver(job["id"], video)
         log.info("job %s delivered", job["id"])
-    except Exception as exc:  # noqa: BLE001 — one bad job must not stop the worker
+    except Exception as exc:  # one bad job must not stop the worker
         log.exception("job %s failed", job["id"])
         # `verify.Rejected` and nothing else. It is a verdict on OUR OWN
         # finished file and the next attempt renders the same thing from the
@@ -505,7 +531,7 @@ def main() -> int:
             # The panel being unreachable is weather, not a fault: keep polling.
             log.warning("panel unreachable: %s", exc)
             time.sleep(cfg.poll_seconds)
-        except Exception:  # noqa: BLE001 — the loop outlives everything
+        except Exception:  # the loop outlives everything
             log.exception("unexpected failure in the worker loop")
             time.sleep(cfg.poll_seconds)
 
