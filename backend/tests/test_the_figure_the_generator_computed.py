@@ -89,6 +89,28 @@ def _this_is_our_rail(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(get_settings(), "CONTENT_STUDIO_ENABLED", True, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _a_conversion_day(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The calculator rail only runs on conversion days, so pin one.
+
+    Left to the real calendar, the series came from TODAY's weekday: green on
+    Tuesday and Sunday, red on the other five days (23-sep-2026, a Wednesday,
+    against untouched main). Worse, the tests that assert a draft does NOT
+    reach the queue passed on those days for the wrong reason: the short
+    growth contract refused it, not the invented figure.
+    """
+    from datetime import UTC, datetime
+
+    from app.models import ContentSeries
+
+    async def _conversion(*_args, **_kwargs):
+        return datetime.now(UTC).date(), ContentSeries.CONVERSION, None
+
+    monkeypatch.setattr(
+        "app.services.content_writer._editorial_assignment", _conversion
+    )
+
+
 @pytest.fixture
 def database_url() -> str:
     url = os.environ.get("DATABASE_URL", "")

@@ -15,6 +15,7 @@ import Link from "next/link";
 import {
   AlertCircle,
   AlertTriangle,
+  Archive,
   Check,
   Info,
   Loader2,
@@ -191,6 +192,7 @@ export function ContentQueue() {
               onReject={(reason) =>
                 act(piece.id, () => contentApi.reject(piece.id, reason))
               }
+              onWithdraw={() => act(piece.id, () => contentApi.withdraw(piece.id))}
               onSubmit={() => act(piece.id, () => contentApi.submit(piece.id))}
               onRetry={() => act(piece.id, () => contentApi.retry(piece.id))}
               onRebuild={() => act(piece.id, () => contentApi.rebuild(piece.id))}
@@ -554,6 +556,7 @@ function PieceCard({
   lang,
   onApprove,
   onReject,
+  onWithdraw,
   onSubmit,
   onRetry,
   onRebuild,
@@ -566,6 +569,7 @@ function PieceCard({
   lang: Lang;
   onApprove: () => void;
   onReject: (reason: string) => void;
+  onWithdraw: () => void;
   onSubmit: () => void;
   onRetry: () => void;
   onRebuild: () => void;
@@ -574,6 +578,13 @@ function PieceCard({
   const { t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [rejecting, setRejecting] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
+  // Everything that has not gone out. "publishing" is the reason this exists:
+  // a queued piece cannot be rejected. The server still refuses one whose post
+  // is already in Buffer.
+  const canWithdraw = ["draft", "needs_approval", "approved", "publishing"].includes(
+    piece.status,
+  );
   const [reason, setReason] = useState("");
   const [hook, setHook] = useState(piece.hook ?? "");
   const [script, setScript] = useState(piece.script ?? "");
@@ -782,6 +793,26 @@ function PieceCard({
             {t("content.cancel")}
           </button>
         </div>
+      ) : withdrawing ? (
+        <div className="mt-3 flex gap-2 items-center flex-wrap">
+          <span className="text-sm text-gray-300">{t("content.withdrawHint")}</span>
+          <button
+            onClick={() => {
+              onWithdraw();
+              setWithdrawing(false);
+            }}
+            disabled={busy}
+            className="px-3 py-2 rounded-lg bg-red-600 text-white text-sm disabled:opacity-50"
+          >
+            {t("content.withdrawConfirm")}
+          </button>
+          <button
+            onClick={() => setWithdrawing(false)}
+            className="px-3 py-2 rounded-lg border border-white/10 text-gray-300 text-sm hover:border-white/20"
+          >
+            {t("content.cancel")}
+          </button>
+        </div>
       ) : (
         <div className="mt-3 flex gap-2 flex-wrap">
           {busy ? (
@@ -851,6 +882,15 @@ function PieceCard({
                     <X className="w-4 h-4" /> {t("content.reject")}
                   </button>
                 </>
+              )}
+              {canWithdraw && (
+                <button
+                  onClick={() => setWithdrawing(true)}
+                  title={t("content.withdrawHint")}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-white/10 text-gray-400 text-sm hover:border-red-500/40 hover:text-red-300"
+                >
+                  <Archive className="w-4 h-4" /> {t("content.withdraw")}
+                </button>
               )}
             </>
           )}

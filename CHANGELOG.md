@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.143.0] — 2026-09-23
+
+- The content writer now reserves the first free day in the calendar instead of the day after the last occupied one, so the new lines fit between the autumn pieces kept in October instead of starting on 27-oct.
+- A day counts as taken for the writer exactly when it does for the publisher: a slot held, something already published that day, or an unslotted active piece that owns it. A post deleted in Buffer's interface no longer blocks its day.
+- Buffer is asked once a day, and five minutes after boot, about future queued posts; a post deleted there is recorded as such long before its hour. Only NOT_FOUND writes anything.
+- The YouTube and Buffer metrics passes run five minutes after boot instead of a full interval later, so a deploy no longer pushes the next reading a whole interval away.
+- A Thursday skipped for lack of a current DMAR report moves to the next free day, not to a day that is already taken.
+- New **Withdraw** action in the content queue: takes a piece off the calendar for good. Unlike Reject it writes no rejection, so the correction sweep never rewrites or re-renders it, and it works on a queued piece as long as none of its posts has reached Buffer (a 409 names the platforms otherwise). Reject still refuses a queued piece.
+
 ## [0.142.12] — 2026-09-22
 
 - Add the approved seven-day DHS content mix while preserving every existing Buffer item and starting new editorial dates after the current queue.

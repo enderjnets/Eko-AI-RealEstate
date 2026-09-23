@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -23,13 +23,17 @@ from app.models import (
     ContentKind,
     ContentLanguage,
     ContentPiece,
+    ContentPublication,
     ContentSeries,
     ContentStatus,
+    PublicationPlatform,
+    PublicationStatus,
 )
 from app.services import content_writer as content_writer_service
 from app.services.content_writer import carries_spoken_domain, generate_draft
 from app.services.llm import LLMResult
 from app.services.tenant_context import org_scope
+from app.services.timezones import resolve_zone
 
 REAL_EDITORIAL_ASSIGNMENT = content_writer_service._editorial_assignment
 
@@ -256,6 +260,144 @@ async def test_the_writer_stops_after_one_week_of_new_lines(
                 ) is None
     finally:
         await _cleanup()
+
+
+async def _occupy(db, zone, days, *, status=None, published=False) -> None:
+    """One piece per day, holding that day the way the publisher sees it."""
+    status = status or PublicationStatus.SCHEDULED
+    for day in days:
+        noon = datetime.combine(day, time(12, 0), tzinfo=zone)
+        piece = ContentPiece(
+            org_id=ORG,
+            kind=ContentKind.GENERATED,
+            language=ContentLanguage.EN,
+            status=ContentStatus.PUBLISHED if published else ContentStatus.PUBLISHING,
+            hook=f"Occupies {day}",
+        )
+        db.add(piece)
+        await db.flush()
+        db.add(
+            ContentPublication(
+                org_id=ORG,
+                piece_id=piece.id,
+                platform=PublicationPlatform.YOUTUBE,
+                status=status,
+                scheduled_at=None if published else noon,
+                published_at=noon if published else None,
+                last_error=(
+                    "post no longer exists in Buffer"
+                    if status is PublicationStatus.FAILED
+                    else None
+                ),
+            )
+        )
+    await db.commit()
+
+
+async def _assignment(monkeypatch, fill, *, source_error: bool = False):
+    """Run the REAL calendar against rows `fill` writes; DMAR never leaves the box."""
+    from app.services import market_source
+
+    async def _source():
+        if source_error:
+            raise market_source.MarketSourceError("no current report")
+        return market_source.MarketSource(
+            publisher="Denver Metro Association of Realtors",
+            title="Market Trends",
+            published_on=datetime.now(UTC).date(),
+            url="https://www.dmarealtors.com/market-trends",
+            summary="Inventory and prices moved in different directions.",
+        )
+
+    monkeypatch.setattr(market_source, "latest_market_source", _source)
+    monkeypatch.setattr(get_settings(), "CONTENT_EDITORIAL_BACKLOG", 7, raising=False)
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                settings_row = (
+                    await db.execute(
+                        select(AgentSettings).where(AgentSettings.org_id == ORG)
+                    )
+                ).scalar_one()
+                zone = resolve_zone(settings_row.timezone)
+                today = datetime.now(UTC).astimezone(zone).date()
+                await fill(db, zone, today)
+                return today, await REAL_EDITORIAL_ASSIGNMENT(db, settings_row, 0)
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_post_deleted_in_buffer_gives_its_day_back(
+    database_url: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Deleting in Buffer's interface is the only way to cancel a queued post;
+    # the row keeps its `scheduled_at` and turns FAILED. Counted as taken, the
+    # day it freed could never be used again.
+    async def fill(db, zone, today):
+        await _occupy(db, zone, [today], status=PublicationStatus.FAILED)
+
+    today, assigned = await _assignment(monkeypatch, fill)
+    assert assigned is not None
+    assert assigned[0] == today
+
+
+@pytest.mark.asyncio
+async def test_something_already_published_today_takes_today(
+    database_url: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A post that went out with no slot (shareNow) holds no `scheduled_at`.
+    # The publisher counts its day; the writer has to count the same day, or
+    # it reserves today and the new piece lands in today's second slot.
+    async def fill(db, zone, today):
+        await _occupy(db, zone, [today], published=True)
+
+    today, assigned = await _assignment(monkeypatch, fill)
+    assert assigned is not None
+    assert assigned[0] == today + timedelta(days=1)
+
+
+@pytest.mark.asyncio
+async def test_a_slotted_piece_owns_its_slot_day_not_its_old_window(
+    database_url: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fill(db, zone, today):
+        await _occupy(db, zone, [today + timedelta(days=2)])
+        piece = (
+            await db.execute(
+                select(ContentPiece).where(ContentPiece.org_id == ORG)
+            )
+        ).scalar_one()
+        # Its window said today; Buffer holds it two days later. Today is free.
+        piece.publish_window_start = today
+        piece.editorial_date = today
+        await db.commit()
+
+    today, assigned = await _assignment(monkeypatch, fill)
+    assert assigned is not None
+    assert assigned[0] == today
+
+
+@pytest.mark.asyncio
+async def test_a_skipped_market_day_moves_to_the_next_FREE_day(
+    database_url: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fill(db, zone, today):
+        thursday = today + timedelta(days=(3 - today.weekday()) % 7 or 7)
+        before = [today + timedelta(days=n) for n in range((thursday - today).days)]
+        await _occupy(
+            db,
+            zone,
+            [*before, thursday + timedelta(days=1), thursday + timedelta(days=10)],
+        )
+
+    today, assigned = await _assignment(monkeypatch, fill, source_error=True)
+    thursday = today + timedelta(days=(3 - today.weekday()) % 7 or 7)
+    assert assigned is not None
+    day, series, _source = assigned
+    # Thursday has no current DMAR report, Friday is taken: Saturday.
+    assert day == thursday + timedelta(days=2)
+    assert series is ContentSeries.DENVER_WEEKEND
 
 
 @pytest.mark.asyncio

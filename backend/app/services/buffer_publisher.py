@@ -1626,6 +1626,15 @@ async def read_post_metrics(
     return out
 
 
+_LOST_IN_BUFFER = "post no longer exists in Buffer"
+
+
+def _buffer_lost_it(err: dict[str, Any]) -> bool:
+    code = str((err.get("extensions") or {}).get("code") or "").upper()
+    message = str(err.get("message") or "")
+    return code == "NOT_FOUND" or "not found" in message.lower()
+
+
 async def reconcile_scheduled(db: AsyncSession) -> int:
     """Ask Buffer what happened to the posts whose hour has come.
 
@@ -1692,13 +1701,13 @@ async def reconcile_scheduled(db: AsyncSession) -> int:
         if err is not None:
             code = str((err.get("extensions") or {}).get("code") or "").upper()
             message = str(err.get("message") or "")
-            if code == "NOT_FOUND" or "not found" in message.lower():
+            if _buffer_lost_it(err):
                 # Somebody deleted it in Buffer's own interface, which is
                 # today's only way to cancel a queued post. Recording that
                 # honestly is what lets the piece close instead of waiting for
                 # an hour that will never come.
                 row.status = PublicationStatus.FAILED
-                row.last_error = "post no longer exists in Buffer"
+                row.last_error = _LOST_IN_BUFFER
                 resolved += 1
             else:
                 # Rate limits, timeouts, anything else: a question we could not
@@ -1755,6 +1764,53 @@ async def reconcile_scheduled(db: AsyncSession) -> int:
         await db.commit()
         await _close_touched(db, due)
     return resolved
+
+
+async def forget_deleted_future(db: AsyncSession) -> int:
+    """Find the queued posts somebody deleted in Buffer before their hour.
+
+    `reconcile_scheduled` asks only about posts whose hour has come, so a post
+    deleted twelve days ahead stayed SCHEDULED for twelve days and the writer
+    read its day as taken the whole time. This pass asks about the future ones,
+    once a day, and writes only on NOT_FOUND: `scheduled` is just the queue,
+    and anything else, or no answer, waits for the post's own hour.
+    """
+    future = (
+        (
+            await db.execute(
+                select(ContentPublication)
+                .where(
+                    ContentPublication.status == PublicationStatus.SCHEDULED,
+                    ContentPublication.scheduled_at > datetime.now(UTC),
+                    ContentPublication.external_id.is_not(None),
+                )
+                .order_by(ContentPublication.id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not future or get_settings().BUFFER_SIMULATED:
+        return 0
+
+    answers = await _post_states(list(future), "future scheduled posts")
+    if answers is None:
+        return 0
+
+    lost = 0
+    for _alias, row, _post, err in answers:
+        if err is not None and _buffer_lost_it(err):
+            row.status = PublicationStatus.FAILED
+            row.last_error = _LOST_IN_BUFFER
+            lost += 1
+    if lost:
+        await db.commit()
+        log.info(
+            "%s future post(s) were deleted in Buffer's interface; their days "
+            "are free again", lost,
+        )
+        await _close_touched(db, list(future))
+    return lost
 
 
 async def _close_touched(db: AsyncSession, rows: list[ContentPublication]) -> None:

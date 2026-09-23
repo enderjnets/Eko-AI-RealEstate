@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -43,26 +43,50 @@ def test_ask_alternates_on_thursday_only_when_enabled() -> None:
     assert series_for_date(date(2026, 9, 21), ask_enabled=True) is ContentSeries.DENVER_DECODED
 
 
-def test_new_dates_begin_after_the_existing_buffer_queue() -> None:
-    today = date(2026, 9, 22)
+def test_new_dates_fill_the_gaps_in_the_existing_queue() -> None:
+    # 23-sep-2026: the rule used to be "the day after the LAST occupied one".
+    # One autumn piece kept on 26-oct put every new line after it, a month of
+    # nothing, while the days in between sat empty.
+    today = date(2026, 9, 23)
+    scheduled = [date(2026, 9, 23), date(2026, 9, 24), date(2026, 9, 26)]
+    reserved = [date(2026, 10, 3)]
+    assert next_editorial_date(
+        today, scheduled_dates=scheduled, reserved_dates=reserved
+    ) == date(2026, 9, 25)
     assert next_editorial_date(
         today,
-        scheduled_dates=[date(2026, 9, 23), date(2026, 9, 28)],
-        reserved_dates=[date(2026, 9, 29)],
-    ) == date(2026, 9, 30)
+        scheduled_dates=[*scheduled, date(2026, 9, 25)],
+        reserved_dates=reserved,
+    ) == date(2026, 9, 27)
     assert next_editorial_date(today, scheduled_dates=[], reserved_dates=[]) == today
 
 
-def test_an_unslotted_existing_window_still_owns_its_future_date() -> None:
+def test_a_late_kept_piece_does_not_push_the_new_lines_after_it() -> None:
     today = date(2026, 9, 22)
     assert next_editorial_date(
         today,
         scheduled_dates=[date(2026, 10, 5)],
-        # This represents an approved/publishing piece whose Buffer slot has
-        # not been assigned yet. New lines must begin after it, not after the
-        # last row that already has `scheduled_at`.
+        # An approved piece whose Buffer slot is not assigned yet still owns
+        # ITS day, and only that day.
         reserved_dates=[date(2026, 10, 26)],
-    ) == date(2026, 10, 27)
+    ) == today
+
+
+def test_an_occupied_day_is_never_reserved_twice() -> None:
+    today = date(2026, 9, 22)
+    taken = [today + timedelta(days=offset) for offset in range(10)]
+    assert next_editorial_date(
+        today, scheduled_dates=taken[:5], reserved_dates=taken[5:]
+    ) == today + timedelta(days=10)
+
+
+def test_the_past_does_not_count_as_occupied() -> None:
+    today = date(2026, 9, 22)
+    assert next_editorial_date(
+        today,
+        scheduled_dates=[date(2026, 9, 20)],
+        reserved_dates=[date(2026, 9, 21)],
+    ) == today
 
 
 def test_growth_and_conversion_keep_separate_production_contracts() -> None:

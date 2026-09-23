@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from collections.abc import Iterator
 from typing import Any
 
 from fastapi import Depends, FastAPI
@@ -678,6 +679,18 @@ async def _content_window_loop() -> None:
             logger.error("Content window tick failed: %s", exc)
 
 
+#: How long a once-a-day worker waits after boot before its first pass. Waiting
+#: the whole interval first meant a deploy restarted its clock from zero, so the
+#: 24-hour Buffer pass could only run after a full day without a deploy.
+FIRST_PASS_AFTER_BOOT_SECONDS = 300
+
+
+def _waits(interval: int) -> Iterator[int]:
+    yield min(FIRST_PASS_AFTER_BOOT_SECONDS, interval)
+    while True:
+        yield interval
+
+
 async def _content_metrics_loop() -> None:
     """Background worker: how many people watched what we published (v0.78).
 
@@ -689,9 +702,9 @@ async def _content_metrics_loop() -> None:
     from app.services.video_metrics import snapshot_youtube
 
     interval = max(3600, settings.CONTENT_METRICS_INTERVAL_SECONDS)
-    while True:
+    for wait in _waits(interval):
         try:
-            await asyncio.sleep(interval)
+            await asyncio.sleep(wait)
             await run_for_every_org(snapshot_youtube)
         except asyncio.CancelledError:
             raise
@@ -709,19 +722,25 @@ async def _buffer_metrics_loop() -> None:
 
     A failure costs the pass, never the process: the next one asks again, and
     nothing was written for the posts it could not read.
+
+    The same daily tick asks Buffer about the FUTURE queued posts
+    (`forget_deleted_future`), in its own guard: a metrics read that fails is no
+    reason to keep a day that somebody freed in Buffer looking taken.
     """
+    from app.services.buffer_publisher import forget_deleted_future
     from app.services.tenant_context import run_for_every_org
     from app.services.video_metrics import snapshot_buffer
 
     interval = max(3600, settings.CONTENT_BUFFER_METRICS_INTERVAL_SECONDS)
-    while True:
-        try:
-            await asyncio.sleep(interval)
-            await run_for_every_org(snapshot_buffer)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Buffer metrics tick failed: %s", exc)
+    for wait in _waits(interval):
+        await asyncio.sleep(wait)
+        for job in (snapshot_buffer, forget_deleted_future):
+            try:
+                await run_for_every_org(job)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Buffer daily tick failed in %s: %s", job.__name__, exc)
 
 
 async def _enrichment_loop() -> None:
