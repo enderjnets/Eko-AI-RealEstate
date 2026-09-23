@@ -21,6 +21,9 @@ export const CHANGELOG: VersionEntry[] = [
     changes: [{
       en: "The content studio now gives each new piece the first free day in the calendar, instead of waiting until after the last scheduled one. The autumn pieces keep their dates and the new lines fit around them. A post deleted in Buffer frees its day again, and Buffer is checked once a day for posts removed ahead of time.",
       es: "El estudio de contenido asigna ahora a cada pieza nueva el primer día libre del calendario, en vez de esperar al día siguiente al último programado. Las piezas de otoño conservan sus fechas y las líneas nuevas se intercalan alrededor. Un post borrado en Buffer vuelve a liberar su día, y una vez al día se comprueba en Buffer qué posts se retiraron por adelantado.",
+    }, {
+      en: "A new Withdraw button takes a piece off the calendar for good. Reject sends a piece to be corrected and it comes back; Withdraw does not. It also works on a piece already queued, as long as none of its posts has reached Buffer yet.",
+      es: "Un botón nuevo, Retirar, saca una pieza del calendario definitivamente. Rechazar manda la pieza a corregir y vuelve; Retirar no. También sirve con una pieza ya en cola, siempre que ninguno de sus posts haya llegado todavía a Buffer.",
     }],
   },
   {

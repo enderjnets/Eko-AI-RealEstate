@@ -58,7 +58,9 @@ from app.services.content_figures import claimed_text, unexplained_figures
 from app.services.content_studio import (
     PUBLISHING_AVAILABLE,
     IllegalTransition,
+    NotWithdrawable,
     advance,
+    withdraw,
 )
 from app.services.content_writer import stored_violations
 from app.services.tenant_context import get_org_id
@@ -863,6 +865,17 @@ async def reject_piece(
     piece = await db.get(ContentPiece, piece_id)
     if piece is None:
         raise HTTPException(status_code=404, detail="No such piece")
+    if piece.status is ContentStatus.PUBLISHING:
+        # The state machine allows PUBLISHING → REJECTED for `withdraw`, which
+        # first proves no post reached Buffer. A rejection proves nothing of
+        # the kind, and its correction would re-render a queued piece.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"piece {piece_id} is queued for publishing and cannot be "
+                "rejected; withdraw it instead"
+            ),
+        )
     try:
         advance(piece, ContentStatus.REJECTED)
     except IllegalTransition as exc:
@@ -894,6 +907,21 @@ async def reject_piece(
     await db.commit()
     # `updated_at` is a server-side onupdate, so the flush expired it; touching
     # it during serialisation would be a lazy refresh from a sync context.
+    await db.refresh(piece)
+    return PieceOut.model_validate(piece)
+
+
+@router.post("/{piece_id}/withdraw", response_model=PieceOut)
+async def withdraw_piece(
+    piece_id: int, request: Request, db: AsyncSession = Depends(get_db)
+) -> PieceOut:
+    """Take a piece off the calendar without a correction bringing it back."""
+    try:
+        piece = await withdraw(db, piece_id, by=current_email(request) or "office")
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="No such piece") from exc
+    except NotWithdrawable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     await db.refresh(piece)
     return PieceOut.model_validate(piece)
 

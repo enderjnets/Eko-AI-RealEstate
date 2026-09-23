@@ -30,7 +30,13 @@ import unicodedata
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AgentSettings, ContentPiece, ContentStatus
+from app.models import (
+    AgentSettings,
+    ContentPiece,
+    ContentPublication,
+    ContentStatus,
+    PublicationStatus,
+)
 from app.services.fair_housing import find_violations
 
 log = logging.getLogger(__name__)
@@ -96,6 +102,9 @@ _ALLOWED: dict[ContentStatus, set[ContentStatus]] = {
     ContentStatus.PUBLISHING: {
         ContentStatus.PUBLISHED,
         ContentStatus.FAILED,
+        # `withdraw` only, and only while no post has reached Buffer. Reject
+        # keeps refusing a queued piece; see `withdraw`.
+        ContentStatus.REJECTED,
     },
     # Terminal. PUBLISHED especially: it is a statement about the outside world,
     # and nothing in here can un-post a video.
@@ -391,4 +400,87 @@ async def ensure_publishable(
             f"housing advertising: {violations}"
         )
 
+    return piece
+
+
+class NotWithdrawable(Exception):
+    """Withdraw said no, with the reason a person can act on."""
+
+
+#: Written on the piece and on each of its unsent publication rows.
+WITHDRAWN = "Withdrawn from the calendar: it will not be published"
+
+
+async def withdraw(db: AsyncSession, piece_id: int, *, by: str) -> ContentPiece:
+    """Take a piece off the calendar for good. Or raise.
+
+    Not Reject. A rejection is read by the correction sweep, which rewrites and
+    re-renders the piece and puts it back in front of a person: the answer to
+    "this video has a defect", not to "we no longer want this video". This
+    writes no `ContentRejection`, so nothing brings the piece back. On
+    23-sep-2026 three repeated rent pieces had to leave October, and Reject
+    would have paid for a rewrite of one and answered 409 for the other two.
+
+    A queued piece (PUBLISHING) is accepted only while none of its posts has
+    reached Buffer: every row PENDING and without an `external_id`. A post
+    Buffer holds would go out whatever this database says, and the only way to
+    stop it is deleting it there; saying "withdrawn" here would be a lie about
+    the world. The piece is locked the same way `ensure_publishable` locks it,
+    so the publisher either sees REJECTED or has already claimed a row, which
+    this then refuses.
+    """
+    piece = (
+        await db.execute(
+            select(ContentPiece).where(ContentPiece.id == piece_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if piece is None:
+        raise LookupError(piece_id)
+    if piece.status not in (
+        ContentStatus.DRAFT,
+        ContentStatus.NEEDS_APPROVAL,
+        ContentStatus.APPROVED,
+        ContentStatus.PUBLISHING,
+    ):
+        raise NotWithdrawable(
+            f"piece {piece_id} is {piece.status.value}; only a piece that has "
+            "not gone out can be withdrawn"
+        )
+
+    rows = (
+        (
+            await db.execute(
+                select(ContentPublication)
+                .where(ContentPublication.piece_id == piece_id)
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    in_buffer = [
+        row.platform.value
+        for row in rows
+        if row.external_id is not None
+        or row.status
+        in (
+            PublicationStatus.PUBLISHING,
+            PublicationStatus.SCHEDULED,
+            PublicationStatus.PUBLISHED,
+        )
+    ]
+    if in_buffer:
+        raise NotWithdrawable(
+            f"piece {piece_id} already has a post in Buffer "
+            f"({', '.join(sorted(in_buffer))}). Delete it in Buffer first; "
+            "withdrawing it here would not stop it."
+        )
+
+    for row in rows:
+        if row.status is PublicationStatus.PENDING:
+            row.status = PublicationStatus.FAILED
+            row.last_error = f"withdrawn by {by} before it reached Buffer"
+    advance(piece, ContentStatus.REJECTED)
+    piece.rejected_reason = f"{WITHDRAWN} (by {by})."
+    await db.commit()
     return piece

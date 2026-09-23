@@ -65,6 +65,10 @@ LEGAL = {
     (ContentStatus.APPROVED, ContentStatus.NEEDS_APPROVAL),
     (ContentStatus.PUBLISHING, ContentStatus.PUBLISHED),
     (ContentStatus.PUBLISHING, ContentStatus.FAILED),
+    # Withdraw's, 23-sep-2026, and guarded where the machine cannot see it:
+    # only while no post has reached Buffer, and Reject still answers 409.
+    # Both pinned in test_content_withdraw.py.
+    (ContentStatus.PUBLISHING, ContentStatus.REJECTED),
     (ContentStatus.REJECTED, ContentStatus.DRAFT),
     (ContentStatus.FAILED, ContentStatus.DRAFT),
 }

@@ -739,6 +739,15 @@ export const contentApi = {
       body: JSON.stringify({ reason }),
     }),
   /**
+   * Off the calendar for good. Not reject: a rejection is corrected and comes
+   * back, and a queued piece cannot be rejected. Refused with a 409 once any of
+   * its posts is in Buffer — only deleting it there stops that post.
+   */
+  withdraw: (id: number) =>
+    api<ContentPiece>(`/v1/content/${id}/withdraw`, {
+      method: "POST",
+    }),
+  /**
    * Type in a view count the platform will not tell a machine.
    *
    * For TikTok and Instagram this is the only way the number ever arrives.
