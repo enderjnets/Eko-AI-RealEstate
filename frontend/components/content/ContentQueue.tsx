@@ -530,7 +530,11 @@ function RenderProgress({ piece }: { piece: ContentPiece }) {
   // number invented on this side: a bar that moves on its own is a lie with an
   // animation.
   const pct = typeof piece.render_progress === "number" ? piece.render_progress : null;
-  const stage = piece.render_stage ? t(`content.stage.${piece.render_stage}`) : null;
+  // The worker ships to the ROG on its own schedule, so it can report a stage
+  // this build has no words for; `t()` would print the key.
+  const stageKey = `content.stage.${piece.render_stage}`;
+  const stageLabel = piece.render_stage ? t(stageKey) : null;
+  const stage = stageLabel && stageLabel !== stageKey ? stageLabel : null;
   return (
     <span className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-300 min-w-[240px]">
       <Loader2 className="w-4 h-4 animate-spin shrink-0" />

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.3] — 2026-09-23
+
+- The content console labels the BitTrader engine's render stage ("bittrader") in both languages instead of printing `content.stage.bittrader` for the whole render, and says the step reports no progress until it ends — it sits at 5% for ~10 min by design. An unknown stage (the ROG worker deploys on its own schedule) falls back to the generic "still being made" line. A new test reads every stage the worker reports and requires both labels, which the literal-key parity test cannot see.
+
 ## [0.143.2] — 2026-09-23
 
 - Denver, Decoded, Denver Weekend and Market, No Hype accept a finished duration of 8–18 s instead of 12–18 s. Measured across 36 production renders, the narrator speaks 2.4–4.2 words a second (about 3.5 since the engine changed), so 25–35 script words plus the spoken social line last 8–14 s; the first Decoded (piece 87) was refused at 11 s. More words cannot fix it: the rate varies more than a 12–18 s window allows. Spec updated.
