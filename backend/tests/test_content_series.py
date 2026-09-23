@@ -101,7 +101,14 @@ def test_growth_and_conversion_keep_separate_production_contracts() -> None:
 
     assert (decoded.word_min, decoded.word_max) == (25, 35)
     assert (decoded.scene_min, decoded.scene_max) == (5, 6)
-    assert (decoded.duration_min, decoded.duration_max) == (12, 18)
+    # 8, not 12: measured on 23-sep-2026 across 36 renders, the voice speaks
+    # 2.4-4.2 words a second (about 3.5 since the engine changed), so 32-42
+    # narrated words last 8-14 s. The first Decoded came out at 11 s and was
+    # refused against a floor of 12 that most of this range could not meet.
+    assert (decoded.duration_min, decoded.duration_max) == (8, 18)
+    assert (weekend.duration_min, weekend.duration_max) == (8, 18)
+    market = contract_for(ContentSeries.DENVER_MARKET_NO_HYPE)
+    assert (market.duration_min, market.duration_max) == (8, 18)
     assert decoded.requires_site_link is False
     assert weekend.social_ctas == ("save", "share")
 
@@ -179,7 +186,7 @@ def test_growth_render_card_is_social_and_uses_the_short_bounds() -> None:
     )
     assert finish.cta_display == "@denverhomestory"
     assert "denverhomestory.com" not in finish.cta_display
-    assert finish.contract["duration_min"] == 12
+    assert finish.contract["duration_min"] == 8
     assert finish.contract["duration_max"] == 18
 
 

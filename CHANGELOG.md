@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.2] — 2026-09-23
+
+- Denver, Decoded, Denver Weekend and Market, No Hype accept a finished duration of 8–18 s instead of 12–18 s. Measured across 36 production renders, the narrator speaks 2.4–4.2 words a second (about 3.5 since the engine changed), so 25–35 script words plus the spoken social line last 8–14 s; the first Decoded (piece 87) was refused at 11 s. More words cannot fix it: the rate varies more than a 12–18 s window allows. Spec updated.
+
 ## [0.143.1] — 2026-09-23
 
 - The daily pass for posts deleted in Buffer asks again until a batch names no deletion. Buffer nulls the whole batch and names ONE missing post per answer, so the first pass of 0.143.0 in production recorded 1 of the 6 posts deleted that day. Bounded by the number of rows; the test fakes Buffer's real one-error shape instead of an answer listing every deletion.

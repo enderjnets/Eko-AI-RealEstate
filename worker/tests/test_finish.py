@@ -41,7 +41,7 @@ def _spec(
             ),
             "contract": {
                 "series": series,
-                "duration_min": 20 if series == "conversion" else 12,
+                "duration_min": 20 if series == "conversion" else 8,
                 "duration_max": 35 if series == "conversion" else 18,
                 "word_max": 75 if series == "conversion" else 42,
                 "scene_min": 7 if series == "conversion" else 5,
@@ -87,7 +87,7 @@ def test_growth_preflight_accepts_its_short_contract_and_rejects_conversion_leng
 
 def test_duration_bounds_come_from_the_trusted_series_contract() -> None:
     assert finish.duration_bounds(_spec(series="conversion")) == (20, 35)
-    assert finish.duration_bounds(_spec(series="denver_decoded")) == (12, 18)
+    assert finish.duration_bounds(_spec(series="denver_decoded")) == (8, 18)
 
 
 def test_ffmpeg_reads_every_piece_of_copy_from_a_file(tmp_path: Path) -> None:
