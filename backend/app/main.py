@@ -680,8 +680,8 @@ async def _content_window_loop() -> None:
 
 
 #: How long a once-a-day worker waits after boot before its first pass. Waiting
-#: the whole interval first meant a deploy restarted its clock from zero, and at
-#: one deploy a day the 24-hour Buffer pass never ran at all (18-sep-2026).
+#: the whole interval first meant a deploy restarted its clock from zero, so the
+#: 24-hour Buffer pass could only run after a full day without a deploy.
 FIRST_PASS_AFTER_BOOT_SECONDS = 300
 
 

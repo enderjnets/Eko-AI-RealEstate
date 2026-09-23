@@ -1,8 +1,8 @@
 """A deploy must not restart the clock of a once-a-day worker from zero.
 
 Both metrics loops used to sleep their whole interval BEFORE the first pass.
-The backend is deployed about once a day, so the Buffer pass (24 h) had not
-run once since it shipped: 18-sep-2026, zero `buffer_api` rows.
+The backend is deployed about once a day, so the Buffer pass (24 h) could only
+run after a full day without a deploy.
 """
 
 from __future__ import annotations
