@@ -1793,16 +1793,31 @@ async def forget_deleted_future(db: AsyncSession) -> int:
     if not future or get_settings().BUFFER_SIMULATED:
         return 0
 
-    answers = await _post_states(list(future), "future scheduled posts")
-    if answers is None:
-        return 0
-
+    # Asked again until a batch names no deletion. One missing id nulls `data`
+    # for the whole batch and Buffer names ONE of them, so a single question
+    # learns one deletion: six posts deleted on 23-sep-2026 took the first
+    # pass of 0.143.0 to "1 future post(s)". Bounded by the rows, since every
+    # round that continues has just taken one out.
+    remaining = list(future)
     lost = 0
-    for _alias, row, _post, err in answers:
-        if err is not None and _buffer_lost_it(err):
+    for _round in range(len(future)):
+        answers = await _post_states(remaining, "future scheduled posts")
+        if not answers:
+            break
+        found = [
+            row
+            for _alias, row, _post, err in answers
+            if err is not None and _buffer_lost_it(err)
+        ]
+        if not found:
+            break
+        for row in found:
             row.status = PublicationStatus.FAILED
             row.last_error = _LOST_IN_BUFFER
-            lost += 1
+        lost += len(found)
+        remaining = [row for row in remaining if row not in found]
+        if not remaining:
+            break
     if lost:
         await db.commit()
         log.info(

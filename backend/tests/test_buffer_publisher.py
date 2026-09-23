@@ -1538,6 +1538,88 @@ async def test_a_post_deleted_weeks_ahead_is_found_before_its_hour(
     assert len(recorder.queries) == 1
 
 
+class _OneErrorPerAnswer(_Recorder):
+    """Buffer as it answered in production on 23-sep-2026.
+
+    Six posts deleted in its interface, one daily pass, and the log said "1
+    future post(s) were deleted". One missing id nulls `data` for the whole
+    batch and the answer names ONE of them, so a batch learns one deletion and
+    says nothing about the rest.
+    """
+
+    def __init__(self, deleted: set[str], live: set[str]) -> None:
+        super().__init__()
+        self.deleted = deleted
+        self.live = live
+
+    async def __call__(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        self.queries.append(query)
+        for alias, post_id in variables.items():
+            if post_id in self.deleted:
+                return {
+                    "errors": [
+                        {
+                            "message": f"Post not found for id: {post_id}",
+                            "path": [alias],
+                            "extensions": {"code": "NOT_FOUND"},
+                        }
+                    ],
+                    "data": None,
+                }
+        return {
+            "data": {
+                alias: {"status": "scheduled", "sentAt": None,
+                        "externalLink": None, "error": None}
+                for alias in variables
+            }
+        }
+
+
+async def test_every_deleted_post_is_found_in_one_daily_pass(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Six deletions, one pass: all six, not one a day for six days."""
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    pieces = []
+    for n in range(3):
+        piece = await _approved_piece()
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE content_pieces SET status='publishing' WHERE id=:i"),
+                {"i": piece},
+            )
+            await db.commit()
+        for platform in (
+            PublicationPlatform.YOUTUBE,
+            PublicationPlatform.TIKTOK,
+            PublicationPlatform.INSTAGRAM,
+        ):
+            await _scheduled_row(
+                piece, platform, f"{platform.value}-{n}", due_minutes=(n + 2) * 24 * 60
+            )
+        pieces.append(piece)
+
+    deleted = {f"{p}-{n}" for n in (0, 1) for p in ("youtube", "tiktok", "instagram")}
+    live = {f"{p}-2" for p in ("youtube", "tiktok", "instagram")}
+    recorder = _OneErrorPerAnswer(deleted, live)
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            assert await buffer_publisher.forget_deleted_future(db) == 6
+
+    for piece in pieces[:2]:
+        assert await _status(piece) == "failed"
+        assert {row[0] for row in (await _sched(piece)).values()} == {"failed"}
+    assert {row[0] for row in (await _sched(pieces[2])).values()} == {"scheduled"}
+    # One question per deletion plus the one that came back clean; bounded,
+    # not a loop that runs as long as Buffer keeps answering.
+    assert len(recorder.queries) == 7
+
+
 async def test_the_daily_pass_leaves_a_live_future_post_alone(
     database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:

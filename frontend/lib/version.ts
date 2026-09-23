@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.0";
+export const CURRENT_VERSION = "0.143.1";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.1",
+    date: "2026-09-23",
+    title: { en: "Every post deleted in Buffer is noticed at once", es: "Todos los posts borrados en Buffer se detectan a la vez" },
+    changes: [{
+      en: "The daily check for posts deleted in Buffer now finds all of them in one pass. Buffer names one missing post per answer, so the first run after 0.143.0 found one of the six deleted that day and would have needed six days for the rest.",
+      es: "La comprobación diaria de posts borrados en Buffer los encuentra ahora todos en una pasada. Buffer nombra un solo post desaparecido por respuesta, así que la primera pasada de la 0.143.0 encontró uno de los seis borrados ese día y habría tardado seis días en el resto.",
+    }],
+  },
   {
     version: "0.143.0",
     date: "2026-09-23",
