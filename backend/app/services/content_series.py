@@ -33,12 +33,15 @@ _CONVERSION = ContentContract(
     requires_site_link=True,
     objective="Turn qualified attention into site visits and conversations.",
 )
+# The three short lines share a floor of 8 s, not 12: the voice speaks 2.4-4.2
+# words a second (36 renders, 23-sep-2026), so 25-35 script words plus the
+# spoken social line last 8-14 s. At 12 the first Decoded was refused at 11 s.
 _GROWTH = ContentContract(
     word_min=25,
     word_max=35,
     scene_min=5,
     scene_max=6,
-    duration_min=12,
+    duration_min=8,
     duration_max=18,
     social_ctas=("follow", "comment", "share"),
     requires_site_link=False,
@@ -49,7 +52,7 @@ _WEEKEND = ContentContract(
     word_max=35,
     scene_min=5,
     scene_max=6,
-    duration_min=12,
+    duration_min=8,
     duration_max=18,
     social_ctas=("save", "share"),
     requires_site_link=False,
@@ -60,7 +63,7 @@ _AUTHORITY = ContentContract(
     word_max=35,
     scene_min=5,
     scene_max=6,
-    duration_min=12,
+    duration_min=8,
     duration_max=18,
     social_ctas=("follow",),
     requires_site_link=False,
