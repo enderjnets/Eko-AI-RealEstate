@@ -101,9 +101,17 @@ def next_editorial_date(
     scheduled_dates: Iterable[date],
     reserved_dates: Iterable[date],
 ) -> date:
-    """Reserve after what Buffer or the writer already owns; never rewrite it."""
-    occupied = [day for day in (*scheduled_dates, *reserved_dates) if day >= today]
-    return max(occupied) + timedelta(days=1) if occupied else today
+    """The first day from `today` that nothing already owns; never rewrite one.
+
+    The first free day, not the day after the last taken one. With `max + 1` a
+    single piece kept on 26-oct pushed every new line past it and left the
+    month in between empty (23-sep-2026).
+    """
+    occupied = {day for day in (*scheduled_dates, *reserved_dates) if day >= today}
+    day = today
+    while day in occupied:
+        day += timedelta(days=1)
+    return day
 
 
 def render_contract(series: ContentSeries) -> dict[str, int | float | str]:

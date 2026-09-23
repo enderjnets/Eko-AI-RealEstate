@@ -36,21 +36,41 @@ Existing rows migrate to `conversion` with no editorial date or source. This kee
 
 ## Calendar and Buffer preservation
 
-The writer finds the latest of:
+**Revised 23-sep-2026: the writer fills gaps.** The first version reserved the
+day after the LATEST occupied date. With the autumn pieces the owner kept in
+October, that put every new line after 26-oct and left the month in between
+empty. The writer now reserves the **first free Denver-local date from today**.
+Do not change this back to `max + 1`: a single late piece then silences the
+whole calendar before it.
 
-- today in the agency timezone;
-- the latest locally known Buffer `scheduled_at` date;
-- the latest active piece's existing `publish_window_start`, including an
-  approved or publishing piece Buffer has not assigned a slot yet;
-- the latest `editorial_date` already reserved by the writer.
+A date is taken, for the writer, exactly when it is taken for the publisher
+(`_free_slots`):
 
-It reserves the following day when a future date already exists, otherwise today. The series comes from that reserved date. The piece's `publish_window_start` receives the same date so the existing publisher cannot place it earlier. The publisher still searches its existing per-platform free slots and never mutates, deletes, or duplicates a Buffer post.
+- a publication holding a slot that day (`_HOLDS_A_SLOT`: scheduled,
+  publishing or published);
+- anything already published that day, slotted or not (a `shareNow`);
+- the `editorial_date` or `publish_window_start` of an active piece that
+  Buffer holds no slot for yet. A piece Buffer already holds owns the day of
+  its slot, not the day its window once asked for.
+
+A post deleted in Buffer's own interface keeps its `scheduled_at` but turns
+FAILED, so it holds nothing and its day is free again. Buffer is asked about
+the **future** queued posts once a day, and five minutes after boot, so a
+deletion is known long before its hour (`forget_deleted_future`); only
+NOT_FOUND writes anything there.
+
+The series still comes from the reserved date's weekday, so a kept piece on a
+Saturday means no `Denver Weekend` that week. At most one piece per day. The
+piece's `publish_window_start` receives the same date so the existing
+publisher cannot place it earlier. The publisher still searches its existing
+per-platform free slots and never mutates, deletes, or duplicates a Buffer
+post.
 
 The writer keeps at most seven active new-line dates waiting at once. This is
 one weekly mix: enough to review ahead without an hourly loop filling months of
 unapproved content. Rejected dates leave the active backlog and can be reused.
 
-If the next Thursday lacks a current verified market source, that date is skipped and the writer advances to the next eligible date. It does not create an unsourced authority draft.
+If the next Thursday lacks a current verified market source, that date is skipped and the writer advances to the next **free** eligible date. It does not create an unsourced authority draft.
 
 ## Editorial contracts
 
@@ -111,7 +131,8 @@ The API exposes the series on each piece so existing platform metrics can be gro
 ## Failure behavior
 
 - DMAR unavailable, malformed or stale: skip the authority date and log the reason.
-- Existing queue extends into the future: start after it.
+- Existing queue extends into the future: use the free days inside it; never
+  move or cancel what it holds.
 - Approval is late: never publish earlier than the editorial date; use the next free slot.
 - Old worker sees a new payload: additive fields retain conversion-compatible defaults.
 - Ask flag enabled without recorded input: skip the slot rather than fabricate an answer.

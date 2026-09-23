@@ -1478,6 +1478,116 @@ async def test_the_reconciler_reads_buffers_own_labels(
     assert recorder.queries[0].count("post(input:") == 3
 
 
+async def test_a_post_deleted_weeks_ahead_is_found_before_its_hour(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reconciler only asks about posts whose hour has come.
+
+    A post deleted in Buffer on 23-sep for 5-oct kept its row SCHEDULED until
+    5-oct, and the writer read that day as taken for twelve days. The daily
+    pass asks about the future ones too, and only NOT_FOUND writes anything.
+    """
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    piece = await _approved_piece()
+    async with get_bypass_session_factory()() as db:
+        await db.execute(
+            text("UPDATE content_pieces SET status='publishing' WHERE id=:i"),
+            {"i": piece},
+        )
+        await db.commit()
+    twelve_days = 12 * 24 * 60
+    for platform, ext in (
+        (PublicationPlatform.YOUTUBE, "yt-1"),
+        (PublicationPlatform.TIKTOK, "tt-1"),
+        (PublicationPlatform.INSTAGRAM, "ig-1"),
+    ):
+        await _scheduled_row(piece, platform, ext, due_minutes=twelve_days)
+
+    recorder = _Recorder()
+    recorder.reads = {}
+    recorder.envelope = {
+        "errors": [
+            {
+                "message": f"Post not found for id: {ext}",
+                "path": [alias],
+                "extensions": {"code": "NOT_FOUND"},
+            }
+            for alias, ext in (("p0", "yt-1"), ("p1", "tt-1"), ("p2", "ig-1"))
+        ]
+    }
+    recorder.null_data = True
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            # The due-only reconciler does not even ask: nothing is due.
+            assert await buffer_publisher.reconcile_scheduled(db) == 0
+            assert recorder.queries == []
+            assert await buffer_publisher.forget_deleted_future(db) == 3
+
+    rows = await _sched(piece)
+    for platform in ("youtube", "tiktok", "instagram"):
+        assert rows[platform][0] == "failed"
+        assert rows[platform][3] == "post no longer exists in Buffer"
+    # Every platform answered, none went out: the piece closes FAILED, which
+    # is what frees its day for the writer.
+    assert await _status(piece) == "failed"
+    assert len(recorder.queries) == 1
+
+
+async def test_the_daily_pass_leaves_a_live_future_post_alone(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only NOT_FOUND is a verdict ahead of time; `scheduled` is just the queue."""
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    piece = await _approved_piece()
+    await _scheduled_row(piece, PublicationPlatform.YOUTUBE, "yt-1", due_minutes=600)
+    await _scheduled_row(piece, PublicationPlatform.TIKTOK, "tt-1", due_minutes=-5)
+
+    recorder = _Recorder()
+    recorder.reads = {
+        "yt-1": {"status": "scheduled", "sentAt": None, "externalLink": None,
+                 "error": None},
+    }
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            assert await buffer_publisher.forget_deleted_future(db) == 0
+
+    rows = await _sched(piece)
+    assert rows["youtube"][0] == "scheduled"
+    assert rows["tiktok"][0] == "scheduled"
+    # The due one belongs to the fifteen-minute reconciler, not to this pass.
+    assert len(recorder.queries) == 1
+    assert recorder.queries[0].count("post(input:") == 1
+
+
+async def test_the_daily_pass_asks_nobody_when_simulated(
+    database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _cleanup()
+    await _brokerage()
+    await _set_timezone()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", True, raising=False)
+
+    piece = await _approved_piece()
+    await _scheduled_row(piece, PublicationPlatform.YOUTUBE, "yt-1", due_minutes=600)
+    recorder = _Recorder()
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            assert await buffer_publisher.forget_deleted_future(db) == 0
+    assert recorder.queries == []
+    assert (await _sched(piece))["youtube"][0] == "scheduled"
+
+
 async def test_a_post_deleted_in_buffer_lets_the_piece_close(
     database_url: str, queue_on: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:

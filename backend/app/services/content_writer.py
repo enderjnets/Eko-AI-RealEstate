@@ -28,7 +28,7 @@ from typing import Any
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -1365,37 +1365,71 @@ async def _editorial_assignment(
     settings_row: AgentSettings,
     index: int,
 ) -> tuple[date, ContentSeries, object | None] | None:
-    """Reserve the first usable day after the calendar already in production."""
+    """Reserve the first free day in the calendar already in production.
+
+    Free is what the publisher's `_free_slots` sees: no row holding a slot that
+    day, nothing already published that day, and no unslotted active piece
+    that owns it. A row Buffer lost (deleted in its interface, now FAILED)
+    keeps its `scheduled_at` but holds nothing, so its day is free again.
+    """
+    # Imported here: the publisher imports this module at load time.
+    from app.services.buffer_publisher import _HOLDS_A_SLOT
+
     zone = resolve_zone(settings_row.timezone)
     if zone is None:
         log.error("Content writer: agency timezone is unusable; no editorial date reserved")
         return None
     today = datetime.now(UTC).astimezone(zone).date()
+    midnight = datetime.combine(today, time.min, tzinfo=zone).astimezone(UTC)
     active_statuses = (
         ContentStatus.DRAFT,
         ContentStatus.NEEDS_APPROVAL,
         ContentStatus.APPROVED,
         ContentStatus.PUBLISHING,
     )
-    scheduled = (
+    publications = (
         await db.execute(
-            select(ContentPublication.scheduled_at).where(
+            select(
+                ContentPublication.piece_id,
+                ContentPublication.scheduled_at,
+                ContentPublication.published_at,
+                ContentPublication.status,
+            ).where(
                 ContentPublication.org_id == get_org_id(),
-                ContentPublication.scheduled_at.is_not(None)
+                or_(
+                    and_(
+                        ContentPublication.scheduled_at >= midnight,
+                        ContentPublication.status.in_(_HOLDS_A_SLOT),
+                    ),
+                    ContentPublication.published_at >= midnight,
+                ),
             )
         )
-    ).scalars().all()
-    scheduled_dates = [stamp.astimezone(zone).date() for stamp in scheduled if stamp]
-    reserved_dates = (
+    ).all()
+    taken: set[date] = set()
+    slotted: set[int] = set()
+    for piece_id, scheduled_at, published_at, status in publications:
+        if scheduled_at is not None and status in _HOLDS_A_SLOT:
+            taken.add(scheduled_at.astimezone(zone).date())
+            slotted.add(piece_id)
+        if published_at is not None:
+            taken.add(published_at.astimezone(zone).date())
+    pieces = (
         await db.execute(
-            select(ContentPiece.editorial_date).where(
+            select(
+                ContentPiece.id,
+                ContentPiece.editorial_date,
+                ContentPiece.publish_window_start,
+            ).where(
                 ContentPiece.org_id == get_org_id(),
-                ContentPiece.editorial_date.is_not(None),
                 ContentPiece.status.in_(active_statuses),
             )
         )
-    ).scalars().all()
-    future_reserved = [value for value in reserved_dates if value and value >= today]
+    ).all()
+    future_reserved = [
+        editorial for _id, editorial, _window in pieces
+        if editorial and editorial >= today
+    ]
     backlog = max(1, get_settings().CONTENT_EDITORIAL_BACKLOG)
     if len(future_reserved) >= backlog:
         log.info(
@@ -1405,22 +1439,18 @@ async def _editorial_assignment(
             backlog,
         )
         return None
-    planned_dates = (
-        await db.execute(
-            select(ContentPiece.publish_window_start).where(
-                ContentPiece.org_id == get_org_id(),
-                ContentPiece.publish_window_start.is_not(None),
-                ContentPiece.status.in_(active_statuses),
-            )
+    # A piece Buffer already holds owns the day of its slot, not the day its
+    # window once asked for: the publisher may have placed it later.
+    for piece_id, editorial, window in pieces:
+        if piece_id not in slotted:
+            taken.update(value for value in (editorial, window) if value)
+
+    def free_after(day: date) -> date:
+        return next_editorial_date(
+            day + timedelta(days=1), scheduled_dates=taken, reserved_dates=()
         )
-    ).scalars().all()
-    day = next_editorial_date(
-        today,
-        scheduled_dates=scheduled_dates,
-        reserved_dates=[
-            value for value in (*future_reserved, *planned_dates) if value
-        ],
-    )
+
+    day = next_editorial_date(today, scheduled_dates=taken, reserved_dates=())
 
     # At most one week: every seven days contains an eligible active line.
     # Skipped dates are intentional gaps, never synthetic market or agent copy.
@@ -1434,7 +1464,7 @@ async def _editorial_assignment(
                 "recorded answer is available; skipping the slot",
                 day,
             )
-            day += timedelta(days=1)
+            day = free_after(day)
             continue
         if series is ContentSeries.DENVER_MARKET_NO_HYPE:
             from app.services.market_source import (
@@ -1452,7 +1482,7 @@ async def _editorial_assignment(
                     day,
                     exc,
                 )
-                day += timedelta(days=1)
+                day = free_after(day)
                 continue
             if (day - source.published_on).days > MAX_AGE_DAYS:
                 log.warning(
@@ -1461,7 +1491,7 @@ async def _editorial_assignment(
                     MAX_AGE_DAYS,
                     day,
                 )
-                day += timedelta(days=1)
+                day = free_after(day)
                 continue
             return day, series, source
         return day, series, None
