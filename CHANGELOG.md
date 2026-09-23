@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.1] — 2026-09-23
+
+- The daily pass for posts deleted in Buffer asks again until a batch names no deletion. Buffer nulls the whole batch and names ONE missing post per answer, so the first pass of 0.143.0 in production recorded 1 of the 6 posts deleted that day. Bounded by the number of rows; the test fakes Buffer's real one-error shape instead of an answer listing every deletion.
+
 ## [0.143.0] — 2026-09-23
 
 - The content writer now reserves the first free day in the calendar instead of the day after the last occupied one, so the new lines fit between the autumn pieces kept in October instead of starting on 27-oct.
