@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.5";
+export const CURRENT_VERSION = "0.143.6";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.6",
+    date: "2026-09-24",
+    title: { en: "Upload a finished video as it is", es: "Sube un vídeo terminado tal cual" },
+    changes: [{
+      en: "Upload clip has a new “Finished video” box. Tick it for a video that is already edited, and it goes out exactly as you made it. Without it, the system still adds captions, the logo and music, as it does for a clip filmed on a phone.",
+      es: "Upload clip tiene una casilla nueva, «Vídeo terminado». Márcala para un vídeo que ya está editado y saldrá exactamente como lo hiciste. Sin marcarla, el sistema sigue añadiendo subtítulos, el logo y música, como a un clip grabado con el móvil.",
+    }],
+  },
   {
     version: "0.143.5",
     date: "2026-09-23",

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.6] — 2026-09-24
+
+- `POST /api/v1/content/upload` takes `finished=true`, and Upload clip has a "Finished video" box that sends it. It stamps `rendered_at` on the new piece, which is the one thing lane A's sweep (`render_pending`: RECORDED, with media, `rendered_at IS NULL`) waits on — so an already-edited video is not given a second mark top-right, the domain and brokerage burned over its own end card, captions transcribed from its music, and a second music bed. The piece stays RECORDED: `kind` is what tells TikTok and YouTube a video is synthetic, and a finished screen demo is not. Unticked, nothing changes. Tests: the client sends the flag only when asked; the route stamps `rendered_at` only then.
+
 ## [0.143.5] — 2026-09-23
 
 - The landing hero plays a 9:16 film on portrait screens (`<source media="(max-aspect-ratio: 4/5)">`, `casa-hero-vertical.mp4`, 1080×1920, 21.5 s, 14.2 MB) and swaps in its own poster on mount, since `poster` has no media attribute. On an upright phone the 16:9 film showed a quarter of its width, blown up — external feedback, "adjust aspect for iPhone". Same flight and same source photo as the 16:9, made with `kling-v3` pro (`kling-v1-6` is retired); provenance and the open photo-rights note in `docs/hero-video-procedencia.md`. Checked in WebKit and Chromium: the iPhone viewport loads the vertical file, a 1440×900 one the wide file. Tests pin both sources, their order, the query and the files.
