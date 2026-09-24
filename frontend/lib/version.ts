@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.7";
+export const CURRENT_VERSION = "0.143.8";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.8",
+    date: "2026-09-24",
+    title: { en: "The opening film moves in every browser", es: "La película de portada se mueve en todos los navegadores" },
+    changes: [{
+      en: "In browsers that block videos from playing on their own, such as Opera or the browsers inside some apps, the website's opening film stood still while the words moved. It now follows your scroll there too, frame by frame. Chrome and Safari are unchanged.",
+      es: "En los navegadores que no dejan reproducir vídeos solos, como Opera o los que van dentro de algunas apps, la película de portada se quedaba quieta mientras se movían las letras. Ahora también sigue el scroll allí, fotograma a fotograma. Chrome y Safari no cambian.",
+    }],
+  },
   {
     version: "0.143.7",
     date: "2026-09-24",
