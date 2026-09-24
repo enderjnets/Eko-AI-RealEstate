@@ -331,8 +331,19 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
  * `lib/__tests__/landingHero.test.ts` pins that, and the video's missing
  * `autoPlay`/`loop`: either would come back silently and undo the engine.
  */
+/** Portrait screens get the 9:16 flight: the 16:9 one shows a quarter of its width there. */
+const PORTRAIT = "(max-aspect-ratio: 4/5)";
+
 function Hero({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => void }) {
   const { t } = useI18n();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  // `poster` has no media attribute, so the portrait still is set here from
+  // the same query the <source> uses.
+  useEffect(() => {
+    if (videoRef.current && matchMedia(PORTRAIT).matches) {
+      videoRef.current.poster = "/landing/hero-poster-vertical.jpg";
+    }
+  }, []);
   const eyebrow =
     "mb-4 text-[9px] font-medium uppercase tracking-[0.26em] text-ln-canvas/70 md:mb-6 md:text-[10px] md:tracking-[0.32em]";
   const title = "font-ln-serif font-light text-ln-cream [text-wrap:pretty]";
@@ -351,6 +362,7 @@ function Hero({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => v
             poster finished from 11,254 to 0 — 11KB of 17.8MB, with the poster
             landing at the same 2.1s. A 11KB claim is not an optimisation. */}
         <video
+          ref={videoRef}
           data-hero-video="1"
           muted
           playsInline
@@ -358,6 +370,7 @@ function Hero({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => v
           poster="/landing/hero-poster.jpg"
           className="absolute inset-0 h-full w-full object-cover"
         >
+          <source src="/landing/casa-hero-vertical.mp4" type="video/mp4" media={PORTRAIT} />
           <source src="/landing/casa-hero.mp4" type="video/mp4" />
         </video>
         <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-40 bg-gradient-to-b from-ln-night/60 to-transparent md:h-[220px]" />

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.5] — 2026-09-23
+
+- The landing hero plays a 9:16 film on portrait screens (`<source media="(max-aspect-ratio: 4/5)">`, `casa-hero-vertical.mp4`, 1080×1920, 21.5 s, 14.2 MB) and swaps in its own poster on mount, since `poster` has no media attribute. On an upright phone the 16:9 film showed a quarter of its width, blown up — external feedback, "adjust aspect for iPhone". Same flight and same source photo as the 16:9, made with `kling-v3` pro (`kling-v1-6` is retired); provenance and the open photo-rights note in `docs/hero-video-procedencia.md`. Checked in WebKit and Chromium: the iPhone viewport loads the vertical file, a 1440×900 one the wide file. Tests pin both sources, their order, the query and the files.
+
 ## [0.143.4] — 2026-09-23
 
 - Favicon. Until now neither hostname had one: `/favicon.ico` answered 404 and no page carried `<link rel="icon">`. `public/` gains `favicon.ico` (16, 32 and 48, each rendered at its own size rather than downscaled), `icon.svg` and a 180 px opaque `apple-touch-icon.png`, all Denver Home Story's own mountains-and-sun mark redrawn as vector from the logo PNG; the tab icons crop the mark tighter so the sun survives 16 px, and the home-screen icon keeps it whole. Declared once in the root layout, so the panel hostname shows it too — it works for the same brand. A test checks the three files (sizes, no fonts or scripts in the SVG, no alpha on the iPhone icon) and the declaration.
