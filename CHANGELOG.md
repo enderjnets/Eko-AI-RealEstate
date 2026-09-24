@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.4] — 2026-09-23
+
+- Favicon. Until now neither hostname had one: `/favicon.ico` answered 404 and no page carried `<link rel="icon">`. `public/` gains `favicon.ico` (16, 32 and 48, each rendered at its own size rather than downscaled), `icon.svg` and a 180 px opaque `apple-touch-icon.png`, all Denver Home Story's own mountains-and-sun mark redrawn as vector from the logo PNG; the tab icons crop the mark tighter so the sun survives 16 px, and the home-screen icon keeps it whole. Declared once in the root layout, so the panel hostname shows it too — it works for the same brand. A test checks the three files (sizes, no fonts or scripts in the SVG, no alpha on the iPhone icon) and the declaration.
+
 ## [0.143.3] — 2026-09-23
 
 - The content console labels the BitTrader engine's render stage ("bittrader") in both languages instead of printing `content.stage.bittrader` for the whole render, and says the step reports no progress until it ends — it sits at 5% for ~10 min by design. An unknown stage (the ROG worker deploys on its own schedule) falls back to the generic "still being made" line. A new test reads every stage the worker reports and requires both labels, which the literal-key parity test cannot see.
