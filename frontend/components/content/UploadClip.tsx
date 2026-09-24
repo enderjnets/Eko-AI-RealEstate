@@ -30,6 +30,8 @@ export function UploadClip({
   const { t, lang } = useI18n();
   const input = useRef<HTMLInputElement>(null);
   const [language, setLanguage] = useState<"en" | "es">("en");
+  // An edited video that must go out as it is — no captions, mark or music added.
+  const [finished, setFinished] = useState(false);
   const [percent, setPercent] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +41,7 @@ export function UploadClip({
     setError(null);
     setPercent(0);
     try {
-      await contentApi.upload(file, language, setPercent, maxMb);
+      await contentApi.upload(file, language, setPercent, maxMb, finished);
       onUploaded();
     } catch (err) {
       // The server's own words where there are any — 415 is "that is not a
@@ -104,6 +106,20 @@ export function UploadClip({
           <option value="en" className="bg-eko-noir">EN</option>
           <option value="es" className="bg-eko-noir">ES</option>
         </select>
+
+        <label
+          className="inline-flex items-center gap-1.5 text-xs text-gray-400 whitespace-nowrap"
+          title={t("content.uploadFinishedHint")}
+        >
+          <input
+            type="checkbox"
+            checked={finished}
+            onChange={(e) => setFinished(e.target.checked)}
+            disabled={busy}
+            className="accent-eko-violet"
+          />
+          {t("content.uploadFinished")}
+        </label>
 
         <button
           type="button"

@@ -792,6 +792,7 @@ export const contentApi = {
     language: "en" | "es",
     onProgress?: (percent: number) => void,
     maxMb?: number,
+    finished?: boolean,
   ): Promise<ContentPiece> =>
     new Promise((resolve, reject) => {
       // Before the request exists, not after. A 4K phone clip is a few hundred
@@ -810,7 +811,9 @@ export const contentApi = {
       }
       const url =
         `/api/v1/content/upload?filename=${encodeURIComponent(file.name)}` +
-        `&language=${language}`;
+        `&language=${language}` +
+        // An already-edited clip: the server skips lane A's captions, mark and music.
+        (finished ? "&finished=true" : "");
       const xhr = new XMLHttpRequest();
       xhr.open("POST", url);
       if (onProgress) {

@@ -1083,6 +1083,7 @@ async def upload_clip(
     filename: str = Query(min_length=1, max_length=200),
     language: ContentLanguage = Query(default=ContentLanguage.EN),
     kind: ContentKind = Query(default=ContentKind.RECORDED),
+    finished: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
 ) -> PieceOut:
     """A finished clip, streamed to the media volume.
@@ -1104,6 +1105,13 @@ async def upload_clip(
     as RECORDED would be picked up and re-rendered — a second watermark and a
     second end card on a finished film. With `scenes` left NULL, lane B does
     not claim it either, which is exactly right: there is no plan to render.
+
+    `finished` is for a recorded clip that is already edited — branded, with
+    its own music and end card — and must go out as it is. It stamps
+    `rendered_at`, which is what lane A's sweep waits on, so the clip is not
+    given a second mark, a brokerage line burned over its end card, captions
+    transcribed from its music and a second music bed. It stays RECORDED:
+    finished is not synthetic, and GENERATED would tell the platforms it is.
     """
     suffix = Path(filename).suffix.lower()
     if suffix not in _SUFFIXES:
@@ -1144,6 +1152,7 @@ async def upload_clip(
         language=language,
         status=ContentStatus.DRAFT,
         media_path=stored,
+        rendered_at=datetime.now(UTC) if finished else None,
         publications=[],
     )
     db.add(piece)

@@ -322,6 +322,43 @@ async def test_upload_stores_the_clip_and_serves_it_back(
 
 
 @pytest.mark.asyncio
+async def test_a_finished_upload_is_not_handed_to_lane_a(
+    database_url: str, tmp_path, monkeypatch
+) -> None:
+    """`finished` stamps `rendered_at`, which is the one thing lane A's sweep
+    (`render_pending`: RECORDED, with media, `rendered_at IS NULL`) reads. A
+    clip assembled elsewhere would otherwise get a second mark, the brokerage
+    burned over its own end card, a transcript of its music and a second bed."""
+    from app.models import ContentPiece
+
+    monkeypatch.setattr(get_settings(), "CONTENT_MEDIA_DIR", str(tmp_path))
+    payload = b"\x00\x00\x00\x18ftypmp42" + b"finished video" * 100
+    try:
+        async with _client() as client:
+            finished = await client.post(
+                "/api/v1/content/upload",
+                params={"filename": "demo.mp4", "finished": "true"},
+                content=payload,
+            )
+            raw = await client.post(
+                "/api/v1/content/upload",
+                params={"filename": "phone.mp4"},
+                content=payload,
+            )
+        assert finished.status_code == 201, finished.text
+        assert raw.status_code == 201, raw.text
+        # Still a recorded clip: nothing about it is synthetic.
+        assert finished.json()["kind"] == "recorded"
+        async with get_bypass_session_factory()() as db:
+            done = await db.get(ContentPiece, finished.json()["id"])
+            fresh = await db.get(ContentPiece, raw.json()["id"])
+            assert done.rendered_at is not None
+            assert fresh.rendered_at is None
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
 async def test_upload_refuses_what_is_not_a_video(
     database_url: str, tmp_path, monkeypatch
 ) -> None:

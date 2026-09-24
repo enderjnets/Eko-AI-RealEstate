@@ -100,6 +100,16 @@ describe("contentApi.upload", () => {
     expect(url).not.toContain("IMG_0421 (1)");
   });
 
+  it("asks the server to leave a finished clip alone only when told to", async () => {
+    // `finished=true` stamps it as dealt with, so lane A does not add a second
+    // mark, captions of its music and a second music bed to an edited video.
+    const sent = stubXhr(201, JSON.stringify({ id: 7 }));
+    await contentApi.upload(clip(), "en", undefined, undefined, true);
+    await contentApi.upload(clip(), "en");
+    expect(sent[0].url).toContain("finished=true");
+    expect(sent[1].url).not.toContain("finished");
+  });
+
   it("reports progress, which is the only reason this is not fetch", async () => {
     stubXhr(201, JSON.stringify({ id: 7 }));
     const seen: number[] = [];
