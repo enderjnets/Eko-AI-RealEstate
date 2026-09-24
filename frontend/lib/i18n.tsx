@@ -951,7 +951,7 @@ const EN: Record<string, string> = {
   "landing.hero.scroll": "Scroll to play",
   "landing.hero.who.eyebrow": "Who we are",
   "landing.hero.who.titleA": "Two advisors.",
-  "landing.hero.who.titleItalic": "One file",
+  "landing.hero.who.titleItalic": "One team",
   "landing.hero.who.body":
     "A two-person practice, and nobody else. Selling in Aspen and buying in Denver? The same two people handle both ends — no handoffs, no relearning your budget.",
   "landing.hero.price.titleA": "A price that",
@@ -975,7 +975,7 @@ const EN: Record<string, string> = {
   "landing.how.titleItalic": "handled properly",
   "landing.how.intro":
     "Four things we do differently, and the reason most of our work arrives by introduction.",
-  "landing.how.oneFile.title": "Two markets, one file",
+  "landing.how.oneFile.title": "Two markets, one team",
   "landing.how.oneFile.body":
     "Selling in Aspen and buying in Denver? The same two advisors handle both ends — no handoff, no relearning your budget.",
   "landing.how.price.title": "A price that holds up",
@@ -2090,7 +2090,7 @@ const ES: Record<string, string> = {
   "landing.hero.scroll": "Desplázate para verlo",
   "landing.hero.who.eyebrow": "Quiénes somos",
   "landing.hero.who.titleA": "Dos asesores.",
-  "landing.hero.who.titleItalic": "Un solo expediente",
+  "landing.hero.who.titleItalic": "Un solo equipo",
   "landing.hero.who.body":
     "Una práctica de dos personas, y nadie más. ¿Vendes en Aspen y compras en Denver? Las mismas dos personas llevan las dos puntas: sin traspasos y sin volver a explicar tu presupuesto.",
   "landing.hero.price.titleA": "Un precio que",
@@ -2114,7 +2114,7 @@ const ES: Record<string, string> = {
   "landing.how.titleItalic": "atendidos como se debe",
   "landing.how.intro":
     "Cuatro cosas que hacemos distinto, y la razón de que la mayoría de nuestro trabajo llegue por recomendación.",
-  "landing.how.oneFile.title": "Dos mercados, un expediente",
+  "landing.how.oneFile.title": "Dos mercados, un equipo",
   "landing.how.oneFile.body":
     "¿Vendes en Aspen y compras en Denver? Los mismos dos asesores llevan las dos puntas: sin traspasos y sin volver a explicar tu presupuesto.",
   "landing.how.price.title": "Un precio que se sostiene",

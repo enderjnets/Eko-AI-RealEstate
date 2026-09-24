@@ -214,3 +214,27 @@ describe("the footer's staff link does not prefetch across origins", () => {
     expect(landing).not.toMatch(/from "next\/link"/);
   });
 });
+
+/**
+ * "One file" is case-file jargon, and a first-time visitor read it as nothing
+ * (external review, 24-sep-2026). The idea is the same two people on both ends
+ * of a move, which the words now say.
+ */
+describe("the page says 'one team', not case-file jargon", () => {
+  const i18n = readFileSync(join(__dirname, "..", "i18n.tsx"), "utf8");
+  const value = (key: string, lang: "EN" | "ES") => {
+    const start = i18n.indexOf(`const ${lang}: Record<string, string> = {`);
+    const body = i18n.slice(start, i18n.indexOf("\n};", start));
+    return body.match(new RegExp(`"${key.replace(/\./g, "\\.")}":\\s*"([^"]+)"`))?.[1];
+  };
+
+  it("in English", () => {
+    expect(value("landing.hero.who.titleItalic", "EN")).toBe("One team");
+    expect(value("landing.how.oneFile.title", "EN")).toBe("Two markets, one team");
+  });
+
+  it("in Spanish", () => {
+    expect(value("landing.hero.who.titleItalic", "ES")).toBe("Un solo equipo");
+    expect(value("landing.how.oneFile.title", "ES")).toBe("Dos mercados, un equipo");
+  });
+});

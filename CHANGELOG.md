@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.7] — 2026-09-24
+
+- Landing copy: "One file" → "One team" (hero "who we are" and the how-we-work card), "un expediente" → "un equipo" in Spanish. Case-file jargon that an outside reviewer read as nothing. The i18n keys keep their `oneFile` name. A test pins the four strings.
+
 ## [0.143.6] — 2026-09-24
 
 - `POST /api/v1/content/upload` takes `finished=true`, and Upload clip has a "Finished video" box that sends it. It stamps `rendered_at` on the new piece, which is the one thing lane A's sweep (`render_pending`: RECORDED, with media, `rendered_at IS NULL`) waits on — so an already-edited video is not given a second mark top-right, the domain and brokerage burned over its own end card, captions transcribed from its music, and a second music bed. The piece stays RECORDED: `kind` is what tells TikTok and YouTube a video is synthetic, and a finished screen demo is not. Unticked, nothing changes. Tests: the client sends the flag only when asked; the route stamps `rendered_at` only then.
