@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.6";
+export const CURRENT_VERSION = "0.143.7";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.7",
+    date: "2026-09-24",
+    title: { en: "“One team” instead of “one file” on the website", es: "«Un solo equipo» en lugar de «un expediente» en la web" },
+    changes: [{
+      en: "The website now says “Two advisors. One team.” and “Two markets, one team”. “One file” is office language, and a first-time visitor did not know what it meant.",
+      es: "La web dice ahora «Dos asesores. Un solo equipo.» y «Dos mercados, un equipo». «Un expediente» es lenguaje de oficina, y una visitante nueva no entendió qué significaba.",
+    }],
+  },
   {
     version: "0.143.6",
     date: "2026-09-24",
