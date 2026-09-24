@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.4";
+export const CURRENT_VERSION = "0.143.5";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.5",
+    date: "2026-09-23",
+    title: { en: "The opening film fits a phone held upright", es: "La película de portada encaja en un móvil en vertical" },
+    changes: [{
+      en: "On a phone held upright, the website's opening film now plays a vertical version of the same flight, from the living room out to the house. Until now the phone showed a zoomed-in quarter of the wide film. Computers keep the wide one.",
+      es: "En un móvil en vertical, la película de portada de la web reproduce ahora una versión vertical del mismo vuelo, del salón hasta la casa. Hasta ahora el móvil enseñaba una cuarta parte ampliada de la película ancha. Los ordenadores siguen con la ancha.",
+    }],
+  },
   {
     version: "0.143.4",
     date: "2026-09-23",

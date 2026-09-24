@@ -34,6 +34,29 @@ sombrilla y se eleva hasta descubrir la casa entera al atardecer.
   anterior, por eso no hay cortes ni fundidos.
 - El interior no se copió de ninguna referencia: lo inventó el modelo.
 
+## Versión vertical (`/landing/casa-hero-vertical.mp4`), 23-sep-2026
+
+La web la sirve solo a pantallas verticales (`<source media="(max-aspect-ratio: 4/5)">`):
+en un iPhone el 16:9 enseñaba una cuarta parte de su anchura, ampliada (feedback de
+Demetra, «adjust aspect for iPhone»). Mismo recorrido y **misma foto de partida**,
+elegido así por el dueño el 23-sep sabiendo lo del copyright (ver abajo).
+
+- Cabecera: recorte 9:16 de `3975285848.jpeg` (`crop=800:1422:880:112`), **sin la marca
+  de agua**, que queda fuera del recorte. Mismo caso que el 16:9: quitarla no quita el copyright.
+- Motor: Kling AI **`kling-v3`**, modo `pro`, 1080×1920. `kling-v1-6` y todos los v1/v2.1
+  están retirados por Kling desde antes del 23-sep. Coste medido: **0,8 unidades/s**.
+- Tres clips encadenados, de fuera hacia dentro e invertidos, con los prompts del 16:9
+  (el segundo gira a la derecha: en el 9:16 la puerta queda en el borde): jardín → bajo
+  la sombrilla → patio (10 s) · giro y cruce de la puerta (5 s) · salón (5 s).
+- Montaje: invertido, fotograma duplicado quitado en cada empalme, 0,5 s/1 s de pausa,
+  30 fps, `-crf 25 -g 15 -bf 0 +faststart`, sin audio. 21,53 s, 14,2 MB.
+  Barrido fotograma a fotograma: sin saltos aislados; el pico (8,6 s) es el marco de la
+  puerta pasando junto a la cámara, varios fotogramas seguidos.
+- El interior vuelve a ser **inventado por el modelo**: no es esa casa.
+- `hero-poster-vertical.jpg` (720×1280) = su último fotograma. `poster` no admite
+  `media`, así que `Landing.tsx` lo pone al montar con la misma consulta.
+- Unidades: 16 en los tres clips + 5,6 de una sonda que por error creó un clip real.
+
 ## Restricciones de uso
 
 1. **No sirve como material de un listing de esa propiedad.** El interior no es

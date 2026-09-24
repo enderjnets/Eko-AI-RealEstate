@@ -48,6 +48,46 @@ describe("the hero video is the engine's to drive", () => {
   });
 });
 
+/**
+ * The film is 16:9, and a phone held upright shows a quarter of its width,
+ * blown up — Demetra's "adjust aspect for iPhone" (23-sep). Portrait screens
+ * get their own 9:16 flight instead. `<source media>` picks the file; `poster`
+ * has no media attribute, so the portrait still is swapped in on mount, from
+ * the same query, or a phone would wait for the film on a cropped landscape
+ * still.
+ */
+describe("a portrait screen gets a portrait film", () => {
+  const PUBLIC = join(__dirname, "..", "..", "public", "landing");
+  const sources = [...landing.matchAll(/<source\s[^>]*>/g)].map((m) => m[0]);
+  const query = landing.match(/const PORTRAIT = "([^"]+)";/)?.[1];
+
+  it("offers the vertical file first, only to portrait screens", () => {
+    expect(query).toBe("(max-aspect-ratio: 4/5)");
+    expect(sources).toHaveLength(2);
+    expect(sources[0]).toContain('src="/landing/casa-hero-vertical.mp4"');
+    expect(sources[0]).toMatch(/media=\{PORTRAIT\}/);
+    expect(sources[1]).toContain('src="/landing/casa-hero.mp4"');
+    expect(sources[1]).not.toMatch(/\bmedia=/);
+  });
+
+  it("swaps in the portrait poster from the same query", () => {
+    expect(landing).toMatch(/matchMedia\(PORTRAIT\)\.matches/);
+    expect(landing).toContain('"/landing/hero-poster-vertical.jpg"');
+  });
+
+  it("ships both portrait files, the still at 9:16", () => {
+    const mp4 = readFileSync(join(PUBLIC, "casa-hero-vertical.mp4"));
+    expect(mp4.subarray(4, 8).toString("ascii")).toBe("ftyp");
+    const jpg = readFileSync(join(PUBLIC, "hero-poster-vertical.jpg"));
+    // The first baseline or progressive frame header holds height, then width.
+    let i = 2;
+    while (i < jpg.length && !(jpg[i] === 0xff && (jpg[i + 1] === 0xc0 || jpg[i + 1] === 0xc2))) {
+      i += 2 + jpg.readUInt16BE(i + 2);
+    }
+    expect([jpg.readUInt16BE(i + 7), jpg.readUInt16BE(i + 5)]).toEqual([720, 1280]);
+  });
+});
+
 describe("only the opening caption is visible before the engine runs", () => {
   // The class of each data-cap element, with the `${aside}` template resolved.
   const asideClass = landing.match(/const aside =\s*"([^"]+)"/)?.[1] ?? "";
