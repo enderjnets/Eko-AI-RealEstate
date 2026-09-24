@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.3";
+export const CURRENT_VERSION = "0.143.4";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.4",
+    date: "2026-09-23",
+    title: { en: "The browser tab shows the Denver Home Story logo", es: "La pestaña del navegador muestra el logo de Denver Home Story" },
+    changes: [{
+      en: "Both the website and this panel now show the Denver Home Story mountains and sun in the browser tab, in bookmarks and on an iPhone home screen. Until now the tab showed a blank page icon.",
+      es: "La web y este panel muestran ahora las montañas y el sol de Denver Home Story en la pestaña del navegador, en los marcadores y en la pantalla de inicio del iPhone. Hasta ahora la pestaña mostraba un icono de página en blanco.",
+    }],
+  },
   {
     version: "0.143.3",
     date: "2026-09-23",

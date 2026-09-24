@@ -32,6 +32,19 @@ export const metadata: Metadata = {
     title: "Eko AI Realtors",
   },
   /**
+   * Denver Home Story's mark, on both hostnames: the panel works for the same
+   * brand. The .ico is `sizes="32x32"`, not `any`, or Chrome picks it over the
+   * SVG. `/favicon.ico` is also what a browser asks for on its own, and the
+   * middleware matcher already lets it through.
+   */
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "32x32" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+  /**
    * Default for the whole app: do not index. The public pages that SHOULD be
    * indexed override this in their own `metadata` (`app/page.tsx`,
    * `app/contact/page.tsx`), which is the safe direction — a panel screen added
