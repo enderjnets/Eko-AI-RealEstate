@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.8] — 2026-09-24
+
+- Landing hero: when a browser refuses `play()` (Opera on a Galaxy Fold, reported 24-sep; any in-app browser that blocks media), the scroll engine now follows the scroll by seeking instead of sitting on frame 0 while the captions move. It also switches when `play()` resolves but, with frames buffered (`readyState >= 3`), the playhead does not move for 800 ms. Measured with `play()` stubbed to reject, local build: Chromium and WebKit went from `currentTime` 0 at every position to 0 → 21.5 s down and back up; unblocked Chromium desktop/Android and WebKit iPhone never enter the seek mode. Listed as the engine's third deliberate departure from deploy-v6.
+
 ## [0.143.7] — 2026-09-24
 
 - Landing copy: "One file" → "One team" (hero "who we are" and the how-we-work card), "un expediente" → "un equipo" in Spanish. Case-file jargon that an outside reviewer read as nothing. The i18n keys keep their `oneFile` name. A test pins the four strings.

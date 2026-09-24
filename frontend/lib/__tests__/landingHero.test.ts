@@ -138,6 +138,16 @@ describe("the engine is deploy-v6's, not a paraphrase of it", () => {
     expect([...effects.matchAll(/v\.playbackRate = /g)]).toHaveLength(1);
   });
 
+  it("follows the scroll by seeking when the browser refuses play()", () => {
+    // Opera on a Galaxy Fold (24-sep-2026): play() refused, the engine swallowed
+    // it, and the film sat on frame 0 while the captions moved. Measured with
+    // play() stubbed to reject: currentTime 0 at every scroll position.
+    expect(effects).toMatch(/\.catch\(\(\) => \{ v\.__pl = 0; v\.__np = 1; \}\)/);
+    expect(effects).toMatch(/if \(v\.__np\) \{\s*if \(!v\.seeking\) v\.currentTime = v\.__target;/);
+    // A play() that resolves but never moves the playhead counts as refused.
+    expect(effects).toMatch(/v\.readyState >= 3 && now - v\.__ls > 800\) v\.__np = 1/);
+  });
+
   it("carries the fallback for a stage whose sticky did not stick", () => {
     // Measured, not assumed: with body{overflow-x:hidden} injected at runtime
     // the stage without this sits at -878/-1755/-2808px instead of 0.

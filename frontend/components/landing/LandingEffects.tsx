@@ -36,7 +36,7 @@
  * page has one), its transform-aware anchor navigation (ours is native + CSS
  * smooth), and its CDN Lucide painter (we use lucide-react).
  *
- * Two deliberate departures, written down so nobody "fixes" them back:
+ * Three deliberate departures, written down so nobody "fixes" them back:
  *
  *  1. Past the end of the host the design free-runs the clip on loop. This
  *     clip cannot loop: it ends on the house and opens inside a different
@@ -51,6 +51,13 @@
  *     motion. deploy-v6 disables nothing but the reveals; the version this
  *     replaces disabled everything, and left a visitor with Reduce Motion on
  *     looking at one still frame. Owner's call, 3-sep.
+ *  3. A browser that refuses play() still gets a moving film. deploy-v6
+ *     swallows the refusal, and Opera on a Galaxy Fold (24-sep-2026) showed
+ *     frame 0 while the captions moved; so does any in-app browser that
+ *     blocks media. Once play() is refused — or resolves and then, with frames
+ *     buffered, leaves the playhead where it was for 800ms — forward motion becomes a seek to the
+ *     target, the same thing scrolling back already does. Browsers that play
+ *     never take this branch.
  */
 
 import { useEffect } from "react";
@@ -69,7 +76,14 @@ type El = HTMLElement & {
   __pending?: number;
   __safe?: number;
 };
-type Vid = HTMLVideoElement & { __target?: number | null; __pl?: number; __rt?: number };
+type Vid = HTMLVideoElement & {
+  __target?: number | null;
+  __pl?: number;
+  __rt?: number;
+  __np?: number; // play() refused: follow the scroll by seeking
+  __lc?: number; // last playhead seen while moving forward
+  __ls?: number; // when it last moved
+};
 
 export function LandingEffects() {
   useEffect(() => {
@@ -108,11 +122,23 @@ export function LandingEffects() {
         if (!v.duration || v.seeking || v.__target == null) return;
         const cur = v.currentTime || 0;
         const d = v.__target - cur;
+        const now = performance.now();
         if (d > 0.06) {
+          // Departure 3: no play() to be had, so seek. `seeking` above already
+          // holds the next seek until this one has painted.
+          if (v.__np) {
+            if (!v.seeking) v.currentTime = v.__target;
+            return;
+          }
+          if (cur !== v.__lc) {
+            v.__lc = cur;
+            v.__ls = now;
+          } else if (v.__ls && v.readyState >= 3 && now - v.__ls > 800) v.__np = 1;
+          // readyState >= 3: it has the frames and still does not move. A clip
+          // that is only buffering on mobile data is not refused.
           // Two speeds, and a 400ms hold between changes — deploy-v6's, not a
           // continuous rate. A playbackRate recomputed every frame makes the
           // decoder re-plan constantly and the picture judders under the scroll.
-          const now = performance.now();
           const want = d > 1.6 ? 2 : d < 0.9 ? 1 : v.playbackRate;
           if (v.playbackRate !== want && (!v.__rt || now - v.__rt > 400)) {
             v.playbackRate = want;
@@ -121,14 +147,18 @@ export function LandingEffects() {
           if (v.paused && !v.__pl) {
             v.__pl = 1;
             const p = v.play();
-            if (p && p.then) p.then(() => { v.__pl = 0; }).catch(() => { v.__pl = 0; });
+            if (p && p.then) p.then(() => { v.__pl = 0; }).catch(() => { v.__pl = 0; v.__np = 1; });
             else v.__pl = 0;
           }
-        } else if (d < -0.35) {
-          if (!v.paused) v.pause();
-          v.currentTime = v.__target;
-        } else if (d <= 0.01) {
-          if (!v.paused) v.pause();
+        } else {
+          // At rest the playhead is meant to stand still: restart the stall clock.
+          v.__ls = now;
+          if (d < -0.35) {
+            if (!v.paused) v.pause();
+            v.currentTime = v.__target;
+          } else if (d <= 0.01) {
+            if (!v.paused) v.pause();
+          }
         }
       });
     };
