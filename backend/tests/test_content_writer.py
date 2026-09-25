@@ -1096,3 +1096,48 @@ async def test_a_model_that_keeps_typing_an_address_produces_no_draft() -> None:
     with patch("app.services.content_writer.generate_reply", asked):
         assert await _ask(_topic(), ContentLanguage.EN) is None
     assert asked.await_count == 2
+
+
+# 25-sep-2026: five drafts (76, 82, 86, 91, 93) sat blocked with "people" found
+# in their pictures, and every scene of 93 said the opposite — "empty
+# sidewalks, no people". The words that exclude people tripped the filter that
+# keeps people out, and they are no use to an image model either: naming what
+# must not be drawn is how a diffusion model gets told to draw it.
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        (
+            "a Denver avenue with low brick buildings, empty sidewalks, no people",
+            "a Denver avenue with low brick buildings, empty sidewalks",
+        ),
+        (
+            "the Front Range at dusk with city lights coming on, empty foreground, no people",
+            "the Front Range at dusk with city lights coming on, empty foreground",
+        ),
+        ("Union Station at night without people", "Union Station at night"),
+        ("a quiet plaza with no people or text", "a quiet plaza with no text"),
+        ("Denver skyline, no people, no readable text", "Denver skyline, no readable text"),
+    ],
+)
+def test_a_picture_that_excludes_people_is_not_held_for_people(prompt, expected) -> None:
+    from app.services.content_writer import Scene
+    from app.services.fair_housing import picture_violations
+
+    scene = Scene(visual_prompt=prompt, on_screen_text="Denver")
+    assert scene.visual_prompt == expected
+    assert picture_violations(scene.visual_prompt) == []
+
+
+def test_a_picture_that_asks_for_people_is_still_held() -> None:
+    from app.services.content_writer import Scene
+    from app.services.fair_housing import picture_violations
+
+    scene = Scene(visual_prompt="people walking on a Denver sidewalk", on_screen_text="Denver")
+    assert scene.visual_prompt == "people walking on a Denver sidewalk"
+    assert picture_violations(scene.visual_prompt)
+
+
+def test_a_prompt_that_was_only_the_exclusion_is_kept_as_written() -> None:
+    from app.services.content_writer import Scene
+
+    assert Scene(visual_prompt="no people", on_screen_text="Denver").visual_prompt == "no people"

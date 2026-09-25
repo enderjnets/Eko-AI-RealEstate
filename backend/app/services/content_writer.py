@@ -27,7 +27,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -83,6 +83,30 @@ class Scene(BaseModel):
     #: it is posted to an image model. `_all_violations` enforces it.
     visual_prompt: str = Field(min_length=1, max_length=200)
     on_screen_text: str = Field(min_length=1, max_length=60)
+
+    @field_validator("visual_prompt", mode="after")
+    @classmethod
+    def _drop_excluded_people(cls, value: str) -> str:
+        return without_excluded_people(value)
+
+
+# "no people", "without pedestrians": the model's way of asking for an empty
+# street. It tripped the person denylist on five drafts (25-sep-2026: 76, 82,
+# 86, 91, 93 — every scene of 93), and it is no use to an image model either,
+# because naming what must not be drawn is how a diffusion model is told to
+# draw it. Removed here, where every draft and every rewrite is parsed, so the
+# filter and the image model both read the prompt without it. A prompt that
+# ASKS for people is untouched and still held.
+_EXCLUDED = r"(?:people|persons?|humans?|pedestrians?|crowds?|faces?|figures?)"
+_EXCLUDED_THEN_MORE = re.compile(rf"\b(no|without)\s+{_EXCLUDED}\s+(?:or|and)\s+", re.I)
+_EXCLUDED_ALONE = re.compile(rf"\s*,?\s*\b(?:with\s+)?(?:no|without)\s+{_EXCLUDED}\b", re.I)
+
+
+def without_excluded_people(prompt: str) -> str:
+    cleaned = _EXCLUDED_THEN_MORE.sub(r"\1 ", prompt)
+    cleaned = _EXCLUDED_ALONE.sub("", cleaned)
+    cleaned = re.sub(r"\s*,\s*,", ",", cleaned).strip(" ,")
+    return cleaned or prompt
 
 
 class DraftPayload(BaseModel):
