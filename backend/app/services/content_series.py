@@ -33,38 +33,42 @@ _CONVERSION = ContentContract(
     requires_site_link=True,
     objective="Turn qualified attention into site visits and conversations.",
 )
-# The three short lines share a floor of 8 s, not 12: the voice speaks 2.4-4.2
-# words a second (36 renders, 23-sep-2026), so 25-35 script words plus the
-# spoken social line last 8-14 s. At 12 the first Decoded was refused at 11 s.
+# The three short lines aim for 20-30 s. They were 25-35 words and 8-18 s
+# until 24-sep-2026, when Ender rejected piece 88 (11 s): at that length the
+# video never says what it is about. The DHS voice (MiniMax only since 23-sep)
+# spoke 2.9-3.9 narrated words a second across the four renders of piece 88,
+# so 65-80 script words plus the 7-word spoken sign-off last 18.5-30 s. The
+# render bounds are 18-32, slightly wider than the aim, so a take inside that
+# measured spread is not refused after its narration and pictures are paid for.
 _GROWTH = ContentContract(
-    word_min=25,
-    word_max=35,
-    scene_min=5,
-    scene_max=6,
-    duration_min=8,
-    duration_max=18,
+    word_min=65,
+    word_max=80,
+    scene_min=6,
+    scene_max=8,
+    duration_min=18,
+    duration_max=32,
     social_ctas=("follow", "comment", "share"),
     requires_site_link=False,
     objective="Earn follows, comments and shares with useful Denver knowledge.",
 )
 _WEEKEND = ContentContract(
-    word_min=25,
-    word_max=35,
-    scene_min=5,
-    scene_max=6,
-    duration_min=8,
-    duration_max=18,
+    word_min=65,
+    word_max=80,
+    scene_min=6,
+    scene_max=8,
+    duration_min=18,
+    duration_max=32,
     social_ctas=("save", "share"),
     requires_site_link=False,
     objective="Earn saves and shares with a timely Denver weekend idea.",
 )
 _AUTHORITY = ContentContract(
-    word_min=25,
-    word_max=35,
-    scene_min=5,
-    scene_max=6,
-    duration_min=8,
-    duration_max=18,
+    word_min=65,
+    word_max=80,
+    scene_min=6,
+    scene_max=8,
+    duration_min=18,
+    duration_max=32,
     social_ctas=("follow",),
     requires_site_link=False,
     objective="Build trust with a dated, sourced Denver market explanation.",

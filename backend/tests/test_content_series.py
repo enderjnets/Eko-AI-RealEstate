@@ -99,16 +99,21 @@ def test_growth_and_conversion_keep_separate_production_contracts() -> None:
     assert (conversion.duration_min, conversion.duration_max) == (20, 35)
     assert conversion.requires_site_link is True
 
-    assert (decoded.word_min, decoded.word_max) == (25, 35)
-    assert (decoded.scene_min, decoded.scene_max) == (5, 6)
-    # 8, not 12: measured on 23-sep-2026 across 36 renders, the voice speaks
-    # 2.4-4.2 words a second (about 3.5 since the engine changed), so 32-42
-    # narrated words last 8-14 s. The first Decoded came out at 11 s and was
-    # refused against a floor of 12 that most of this range could not meet.
-    assert (decoded.duration_min, decoded.duration_max) == (8, 18)
-    assert (weekend.duration_min, weekend.duration_max) == (8, 18)
-    market = contract_for(ContentSeries.DENVER_MARKET_NO_HYPE)
-    assert (market.duration_min, market.duration_max) == (8, 18)
+    # 24-sep-2026: Ender rejected piece 88 (11 s) because at that length it
+    # does not say what it is about. The short lines now aim for 20-30 s.
+    # Measured on the DHS voice (MiniMax only since 23-sep): 2.9-3.9 narrated
+    # words a second across the four renders of piece 88, so 65-80 script
+    # words plus the 7-word spoken sign-off last 18.5-30 s. The render bounds
+    # are 18-32, a little wider than the aim, so a slow or fast take inside
+    # that measured spread is not thrown away after it has been paid for.
+    for line in (
+        decoded,
+        weekend,
+        contract_for(ContentSeries.DENVER_MARKET_NO_HYPE),
+    ):
+        assert (line.word_min, line.word_max) == (65, 80)
+        assert (line.scene_min, line.scene_max) == (6, 8)
+        assert (line.duration_min, line.duration_max) == (18, 32)
     assert decoded.requires_site_link is False
     assert weekend.social_ctas == ("save", "share")
 
@@ -119,7 +124,11 @@ def _short_draft() -> DraftPayload:
         script=(
             "West for mountain light, east for skyline color. The surprise is "
             "timing: sunset changes both views from one Denver block to another. "
-            "Which Denver side wins for you?"
+            "Stand on a quiet street near City Park in the early evening and the "
+            "Front Range turns orange behind you, while the downtown towers catch "
+            "the last light in front of you. Walk ten minutes and the balance "
+            "flips. Same neighborhood, two completely different skylines, and "
+            "both are free. Which Denver side wins for you?"
         ),
         caption="Pick a side.",
         scenes=[
@@ -127,7 +136,7 @@ def _short_draft() -> DraftPayload:
                 visual_prompt=f"Denver skyline angle {i} with no readable text",
                 on_screen_text=f"Denver choice {i}",
             )
-            for i in range(5)
+            for i in range(6)
         ],
     )
 
@@ -186,8 +195,8 @@ def test_growth_render_card_is_social_and_uses_the_short_bounds() -> None:
     )
     assert finish.cta_display == "@denverhomestory"
     assert "denverhomestory.com" not in finish.cta_display
-    assert finish.contract["duration_min"] == 8
-    assert finish.contract["duration_max"] == 18
+    assert finish.contract["duration_min"] == 18
+    assert finish.contract["duration_max"] == 32
 
 
 def test_market_render_card_carries_the_verified_source_date() -> None:
