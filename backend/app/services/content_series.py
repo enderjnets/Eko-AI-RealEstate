@@ -22,12 +22,15 @@ class ContentContract:
     objective: str
 
 
+# 60-80 words and a floor of 18 s since 25-sep-2026: piece 92 (56 words) came
+# out at 19.2 s and 18.5 s on the MiniMax-only voice and was refused twice
+# against 20. Same measured spread as the short lines below.
 _CONVERSION = ContentContract(
-    word_min=45,
-    word_max=65,
+    word_min=60,
+    word_max=80,
     scene_min=7,
     scene_max=9,
-    duration_min=20,
+    duration_min=18,
     duration_max=35,
     social_ctas=(),
     requires_site_link=True,

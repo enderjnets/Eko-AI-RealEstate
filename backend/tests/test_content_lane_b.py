@@ -40,7 +40,8 @@ ENGLISH = (
     "Three numbers decide what your home lists for in Denver this month. The "
     "first is what similar homes closed at, not what they asked. The second is "
     "how long they sat before selling. The third is what it costs to carry the "
-    "house while you wait for a better offer than the one in front of you."
+    "house while you wait for a better offer than the one in front of you. "
+    "Write the figures down, compare them side by side, and ask a lender to confirm each one before you commit to anything."
 )
 
 

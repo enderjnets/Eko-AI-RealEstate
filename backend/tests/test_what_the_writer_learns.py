@@ -117,7 +117,8 @@ def _corrected(**over) -> dict:
             "online estimate is only a starting point. Recent comparable sales, "
             "property condition, timing, and local demand can move the answer. "
             "Review those facts together before you choose a price or make an "
-            "offer, because each tool serves a different decision in Denver."
+            "offer, because each tool serves a different decision in Denver. "
+            "Write the figures down, compare them side by side, and ask a lender to confirm each one before you commit to anything."
         ),
         "caption": "The difference between the two, in one minute.",
         "scenes": [

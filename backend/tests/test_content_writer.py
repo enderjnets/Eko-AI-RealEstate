@@ -130,7 +130,8 @@ CLEAN = {
         "estimate. Then compare the repair exposure with the monthly payment "
         "you can actually carry. A clear offer connects those facts before "
         "emotion or urgency changes the decision, and leaves room to verify "
-        "every assumption with your own advisors."
+        "every assumption with your own advisors. "
+        "Write the figures down, compare them side by side, and ask a lender to confirm each one before you commit to anything."
     ),
     "caption": "Save this for your next offer.",
     "scenes": [
@@ -668,7 +669,7 @@ def _drafted(**over):
     return DraftPayload(**body)
 
 
-def _quality_draft(*, words: int = 50, scenes: int = 7):
+def _quality_draft(*, words: int = 70, scenes: int = 7):
     from app.services.content_writer import DraftPayload, Scene
 
     script = " ".join(["Denver"] * words)
@@ -690,7 +691,7 @@ def _quality_draft(*, words: int = 50, scenes: int = 7):
     )
 
 
-@pytest.mark.parametrize("words", [44, 66])
+@pytest.mark.parametrize("words", [59, 81])
 def test_a_script_outside_the_short_form_budget_is_a_stored_finding(words) -> None:
     from app.services import content_writer as cw
 
@@ -714,7 +715,7 @@ def test_a_scene_plan_outside_seven_to_nine_is_a_stored_finding(scenes) -> None:
 def test_the_approved_editorial_budget_has_no_length_or_scene_finding() -> None:
     from app.services import content_writer as cw
 
-    found = cw._all_violations(_quality_draft(words=55, scenes=8), ContentLanguage.EN)
+    found = cw._all_violations(_quality_draft(words=70, scenes=8), ContentLanguage.EN)
     assert not [v for v in found if v.get("category") in {"length", "scenes"}], found
 
 

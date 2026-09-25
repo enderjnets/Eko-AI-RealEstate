@@ -1625,7 +1625,8 @@ async def test_a_new_script_asks_for_a_new_video(database_url: str) -> None:
                         "of the home with the repairs a buyer may price into an "
                         "offer. Add the cost of waiting, the timing of your next "
                         "move, and the terms that matter beyond price. Those facts "
-                        "shape a useful listing plan before the sign goes up."
+                        "shape a useful listing plan before the sign goes up. "
+                        "Write the figures down, compare them side by side, and ask a lender to confirm each one before you commit to anything."
                     )
                 },
             )

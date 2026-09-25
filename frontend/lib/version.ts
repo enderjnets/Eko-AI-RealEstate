@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.10";
+export const CURRENT_VERSION = "0.143.11";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.11",
+    date: "2026-09-25",
+    title: { en: "Sales videos no longer thrown away for being a second short", es: "Los vídeos de venta ya no se descartan por un segundo de menos" },
+    changes: [{
+      en: "Sales videos were being made and then refused for lasting 18–19 seconds when the minimum was 20. The minimum is now 18 seconds, and new scripts are a little longer so they land comfortably inside it.",
+      es: "Los vídeos de venta se hacían y luego se rechazaban por durar 18–19 segundos cuando el mínimo era 20. Ahora el mínimo es 18 segundos, y los guiones nuevos son algo más largos para quedar holgadamente dentro.",
+    }],
+  },
   {
     version: "0.143.10",
     date: "2026-09-24",

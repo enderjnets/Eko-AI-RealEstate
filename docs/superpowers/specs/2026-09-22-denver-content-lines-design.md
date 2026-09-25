@@ -78,9 +78,11 @@ Contracts are trusted server data, never model output.
 
 ### Conversion
 
-- 45–65 model-written words before the deterministic spoken sign-off.
+- 60–80 model-written words before the deterministic spoken sign-off (45–65
+  until 25-sep-2026: piece 92, 56 words, rendered at 19.2 and 18.5 s on the
+  MiniMax-only voice and was refused twice against a floor of 20).
 - 7–9 distinct scenes.
-- Finished duration 20–35 seconds.
+- Finished duration 18–35 seconds.
 - Deterministic site or seeded calculator CTA.
 
 ### Denver, Decoded

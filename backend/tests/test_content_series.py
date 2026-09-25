@@ -94,9 +94,13 @@ def test_growth_and_conversion_keep_separate_production_contracts() -> None:
     decoded = contract_for(ContentSeries.DENVER_DECODED)
     weekend = contract_for(ContentSeries.DENVER_WEEKEND)
 
-    assert (conversion.word_min, conversion.word_max) == (45, 65)
+    # 25-sep-2026: piece 92 (56 words) rendered at 19.2 s and 18.5 s and was
+    # refused twice against a floor of 20. Same voice, same measured spread as
+    # the short lines: 60-80 words plus the 10-word sign-off (70-90 narrated)
+    # last 18-31 s at 2.9-3.9 words a second, inside 18-35.
+    assert (conversion.word_min, conversion.word_max) == (60, 80)
     assert (conversion.scene_min, conversion.scene_max) == (7, 9)
-    assert (conversion.duration_min, conversion.duration_max) == (20, 35)
+    assert (conversion.duration_min, conversion.duration_max) == (18, 35)
     assert conversion.requires_site_link is True
 
     # 24-sep-2026: Ender rejected piece 88 (11 s) because at that length it
@@ -150,7 +154,8 @@ def test_growth_contract_accepts_a_short_that_conversion_rejects() -> None:
         draft, ContentLanguage.EN, series=ContentSeries.CONVERSION
     )
     assert not [v for v in growth if v["category"] in {"length", "scenes"}]
-    assert {v["category"] for v in conversion} >= {"length", "scenes"}
+    # Both lines take 60-80 words now; the shot count is what still differs.
+    assert "scenes" in {v["category"] for v in conversion}
 
 
 def test_growth_gets_one_social_cta_and_no_site_cta(monkeypatch) -> None:

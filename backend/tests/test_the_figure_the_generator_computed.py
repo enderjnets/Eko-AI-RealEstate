@@ -274,7 +274,8 @@ async def test_a_calculated_draft_queues_itself_with_its_record(
                 "equity a purchase may build. Include appreciation, the loan "
                 "balance paid down, and the cost to sell at the end. The "
                 "calculator keeps every assumption visible, so you can move "
-                "each one and see how the estimate changes."
+                "each one and see how the estimate changes. "
+                "Write the figures down, compare them side by side, and ask a lender to confirm each one before you commit to anything."
             ),
             "caption": "Every assumption behind it is a slider on the page.",
         }
@@ -431,7 +432,7 @@ async def test_the_rail_can_be_turned_off_entirely(
                 "monthly payment you can actually carry. A clear offer "
                 "connects those facts before emotion or urgency changes the "
                 "decision, and leaves room to verify every assumption with "
-                "your own advisors."
+                "your own advisors. Write the figures down, compare them side by side, and ask a lender to confirm each one before you commit to anything."
             ),
             "caption": "Save this.",
             "scenes": [
@@ -685,7 +686,8 @@ async def test_a_calculated_draft_reaches_the_queue_carrying_its_link(
                 "equity a purchase may build. Include appreciation, the loan "
                 "balance paid down, and the cost to sell at the end. The "
                 "calculator keeps every assumption visible, so you can move "
-                "each one and see how the estimate changes."
+                "each one and see how the estimate changes. "
+                "Write the figures down, compare them side by side, and ask a lender to confirm each one before you commit to anything."
             ),
             "caption": "Every assumption behind it is a slider on the page.",
         }

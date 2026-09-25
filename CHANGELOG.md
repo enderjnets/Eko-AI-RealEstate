@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.11] — 2026-09-25
+
+- Conversion line: 60–80 words (was 45–65) and a render floor of 18 s (was 20). Piece 92, 56 words, came out at 19.2 s and 18.5 s on the MiniMax-only voice and was refused twice after being paid for. Same measured spread as the short lines (2.9–3.9 narrated words a second): 70–90 narrated words last 18–31 s, inside 18–35.
+
 ## [0.143.10] — 2026-09-24
 
 - Content corrections: a rejection about what the video says ("no le encuentro sentido a lo que dice", "no se entiende", "the script is confusing") is now a rewrite, decided by the word rules without asking the model. Piece 88's first rejection had been read as `audio` and rebuilt with the same words. And a `visual` or `audio` rejection of a piece that was already rebuilt once asks for new words instead of a third render of the same ones, as `no_cta` already did. An explicit voice complaint ("la voz no se entiende") is still `audio`.
