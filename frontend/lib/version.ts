@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.8";
+export const CURRENT_VERSION = "0.143.9";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.9",
+    date: "2026-09-24",
+    title: { en: "Denver shorts long enough to make their point", es: "Shorts de Denver con tiempo para explicarse" },
+    changes: [{
+      en: "Denver, Decoded, Weekend and Market videos now run about 20–30 seconds instead of 8–18, with more scenes. At the old length a video ended before it said what it was about. The sales videos are unchanged.",
+      es: "Los vídeos de Denver, Decoded, Weekend y Market duran ahora unos 20–30 segundos en vez de 8–18, con más escenas. Con la duración anterior el vídeo terminaba antes de decir de qué trataba. Los vídeos de venta no cambian.",
+    }],
+  },
   {
     version: "0.143.8",
     date: "2026-09-24",

@@ -86,17 +86,19 @@ Contracts are trusted server data, never model output.
 ### Denver, Decoded
 
 - English only.
-- 25–35 words and 5–6 distinct scenes.
-- Finished duration 8–18 seconds (was 12–18). Measured on 23-sep-2026 across
-  36 renders, the narrator speaks 2.4–4.2 words a second (about 3.5 since the
-  render engine changed), so 25–35 words plus the spoken social line (32–42
-  narrated) last 8–14 s. The first Decoded came out at 11 s and was refused
-  against the old floor of 12. Do not raise the floor again without re-measuring
-  the rate; more words cannot fix it, because the rate varies more than the
-  12–18 window allows. The same floor applies to Weekend and Market.
-- 0–2 seconds: immediate local question or visual contrast.
-- 2–10 seconds: two choices, one curiosity, or one local decision.
-- 10–14 seconds: reveal and short explanation.
+- 65–80 words and 6–8 distinct scenes.
+- Finished duration aimed at 20–30 seconds; the render refuses outside 18–32.
+  It was 25–35 words and 8–18 s until 24-sep-2026, when Ender rejected piece 88
+  (11 s): at that length the video never says what it is about. Re-measured on
+  the DHS voice alone (MiniMax only since 23-sep): 2.9–3.9 narrated words a
+  second across the four renders of piece 88, so 65–80 words plus the 7-word
+  spoken social line (72–87 narrated) last 18.5–30 s. The render window is a
+  little wider than the aim so a take inside that spread is not refused after
+  it has been paid for. The same contract applies to Weekend and Market.
+- 0–3 seconds: immediate local question or visual contrast.
+- 3–15 seconds: two choices, one curiosity, or one local decision.
+- 15–27 seconds: reveal and explanation, so a viewer who knows nothing about
+  the topic understands what the video is about.
 - Exactly one social CTA: follow, comment, or share.
 - No calculator, form, URL, phone number, valuation, appointment, or sales pitch.
 

@@ -147,7 +147,11 @@ GROWTH = {
     "script": (
         "Mountains orient the west side; the skyline marks Denver's urban core. "
         "The same city reads differently from each direction, especially as "
-        "the evening light changes. Which view feels more like Denver to you?"
+        "the evening light changes. Look west from City Park and the Front "
+        "Range fills the horizon, a jagged line of peaks that turns orange at "
+        "sunset. Turn around and the downtown towers catch the last light "
+        "instead. Locals use both to find their way. Which view feels more "
+        "like Denver to you?"
     ),
     "caption": "Two ways to recognize the same city.",
     "scenes": [
@@ -158,7 +162,7 @@ GROWTH = {
             ),
             "on_screen_text": f"Denver view {i}",
         }
-        for i in range(1, 6)
+        for i in range(1, 7)
     ],
 }
 DIRTY = {

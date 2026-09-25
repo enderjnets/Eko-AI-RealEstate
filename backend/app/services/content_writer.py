@@ -174,7 +174,9 @@ _SERIES_RULES = {
     ContentSeries.DENVER_DECODED: (
         "This is Denver, Decoded. Open in the first two seconds with a local "
         "question or visual contrast. Present two choices or one Denver "
-        "curiosity, then reveal the answer briefly. Do not sell, mention a "
+        "curiosity, then reveal the answer and explain it, so that a viewer "
+        "who knows nothing about the topic understands what the video is "
+        "about by the end. Do not sell, mention a "
         "calculator, form, appointment, valuation, web address or phone "
         "number. Do not write a call to action; the system adds exactly one."
     ),

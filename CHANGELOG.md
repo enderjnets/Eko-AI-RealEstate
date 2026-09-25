@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.9] — 2026-09-24
+
+- Denver, Decoded / Weekend / Market: the short lines go from 25–35 words and 8–18 s to 65–80 words, 6–8 scenes, aimed at 20–30 s (the render refuses outside 18–32). Ender rejected piece 88 (11 s) because at that length it never says what it is about. Calibrated on the DHS voice alone: 2.9–3.9 narrated words a second across the four renders of piece 88. The Decoded writer rule now asks the reveal to be explained, not "brief". Conversion is unchanged. Spec updated in the same change.
+
 ## [0.143.8] — 2026-09-24
 
 - Landing hero: when a browser refuses `play()` (Opera on a Galaxy Fold, reported 24-sep; any in-app browser that blocks media), the scroll engine now follows the scroll by seeking instead of sitting on frame 0 while the captions move. It also switches when `play()` resolves but, with frames buffered (`readyState >= 3`), the playhead does not move for 800 ms. Measured with `play()` stubbed to reject, local build: Chromium and WebKit went from `currentTime` 0 at every position to 0 → 21.5 s down and back up; unblocked Chromium desktop/Android and WebKit iPhone never enter the seek mode. Listed as the engine's third deliberate departure from deploy-v6.
