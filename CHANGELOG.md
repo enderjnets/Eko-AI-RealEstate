@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.10] — 2026-09-24
+
+- Content corrections: a rejection about what the video says ("no le encuentro sentido a lo que dice", "no se entiende", "the script is confusing") is now a rewrite, decided by the word rules without asking the model. Piece 88's first rejection had been read as `audio` and rebuilt with the same words. And a `visual` or `audio` rejection of a piece that was already rebuilt once asks for new words instead of a third render of the same ones, as `no_cta` already did. An explicit voice complaint ("la voz no se entiende") is still `audio`.
+
 ## [0.143.9] — 2026-09-24
 
 - Denver, Decoded / Weekend / Market: the short lines go from 25–35 words and 8–18 s to 65–80 words, 6–8 scenes, aimed at 20–30 s (the render refuses outside 18–32). Ender rejected piece 88 (11 s) because at that length it never says what it is about. Calibrated on the DHS voice alone: 2.9–3.9 narrated words a second across the four renders of piece 88. The Decoded writer rule now asks the reveal to be explained, not "brief". Conversion is unchanged. Spec updated in the same change.

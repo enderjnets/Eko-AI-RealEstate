@@ -240,6 +240,46 @@ def test_the_pictures_and_the_voice_do_not_need_new_words(category: str) -> None
     assert decide(_piece(), category, {}) == "rebuild"
 
 
+@pytest.mark.parametrize("category", ["visual", "audio"])
+def test_a_second_complaint_after_a_rebuild_asks_for_new_words(category: str) -> None:
+    """Piece 88, 24-sep-2026: the rebuild made the same video again. A person
+    who rejects a piece twice was not describing the pictures or the voice,
+    and a third render of the same words would only repeat it."""
+    assert decide(_piece(), category, {}, previous_actions=("rebuild",)) == "rewrite"
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        # Piece 88, both rejections, verbatim. The first was read as `audio`
+        # by the model and rebuilt with the same words.
+        "No le encuentro sentido a lao que dice ...",
+        "La pieza 88  , no me gusta , no creo que lo que dice sea atracctivo "
+        ",ade mas es tan corto que nos en entiende a que se refiere",
+        "El guion no tiene sentido",
+        "It doesn't make sense",
+        "Confusing script",
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_complaint_about_what_it_says_is_a_rewrite_without_asking(
+    reason: str,
+) -> None:
+    class _Result:
+        text = json.dumps({"category": "audio"})
+
+    with patch(
+        "app.services.llm.generate_reply", AsyncMock(return_value=_Result())
+    ) as asked:
+        assert await classify_with_model(reason) == FALLBACK_CATEGORY
+    asked.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_voice_that_cannot_be_understood_is_still_the_voice() -> None:
+    assert await classify_with_model("La voz no se entiende") == "audio"
+
+
 def test_verify_says_nothing_rather_than_guessing() -> None:
     """There is no machine here that can look at a picture or hear a voice,
     and `{}` is what lets `decide` avoid pretending otherwise."""

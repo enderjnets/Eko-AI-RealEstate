@@ -94,6 +94,17 @@ _RULES: tuple[tuple[str, str], ...] = (
 
 _COMPILED = tuple((name, re.compile(pattern, re.I)) for name, pattern in _RULES)
 
+# A complaint about what the video SAYS: `other`, which is a rewrite, without
+# asking the model. Piece 88, 24-sep-2026: "No le encuentro sentido a lo que
+# dice" matched no rule, the model answered `audio` — "dice" read as the voice —
+# and the piece was rebuilt with the same words. Checked only after the rules,
+# so "la voz no se entiende" is still the voice.
+_ABOUT_THE_WORDS = re.compile(
+    r"lo\s+que\s+dice|sentido|entiend|\bgui[oó]n\b|\bscript\b|what\s+it\s+says"
+    r"|make\s+sense|makes\s+no\s+sense|confus",
+    re.I,
+)
+
 #: What the model is allowed to answer. Anything else is `other`.
 _ASKABLE = tuple(name for name, _ in _RULES) + (FALLBACK_CATEGORY,)
 
@@ -138,7 +149,7 @@ async def classify_with_model(reason: str | None) -> str:
     if words != FALLBACK_CATEGORY:
         return words
     text = (reason or "").strip()
-    if not text:
+    if not text or _ABOUT_THE_WORDS.search(text):
         return FALLBACK_CATEGORY
 
     from app.services.llm import generate_reply
@@ -310,6 +321,11 @@ def decide(
 
     if category in ("visual", "audio"):
         # The words were never the problem. New pictures, new voice, same text.
+        # Unless that was already tried: the same reasoning as `no_cta` above.
+        # Piece 88 was rebuilt once for a complaint about its words; a second
+        # rejection after a rebuild asks for new words, not a third render.
+        if "rebuild" in previous_actions:
+            return "rewrite" if can_be_rewritten(piece) else "manual"
         return "rebuild"
 
     if category in ("figure", "language", "fair_housing", FALLBACK_CATEGORY):

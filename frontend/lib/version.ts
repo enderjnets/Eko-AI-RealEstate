@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.9";
+export const CURRENT_VERSION = "0.143.10";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.10",
+    date: "2026-09-24",
+    title: { en: "Rejecting a video for what it says gets new words", es: "Rechazar un vídeo por lo que dice trae texto nuevo" },
+    changes: [{
+      en: "When you reject a video because of what it says or because it does not make sense, the system now writes it again instead of remaking the same video with the same words. And if a video was already remade once and you reject it again, it gets new words too.",
+      es: "Cuando rechazas un vídeo por lo que dice o porque no se entiende, el sistema ahora lo vuelve a escribir en vez de rehacer el mismo vídeo con las mismas palabras. Y si un vídeo ya se rehízo una vez y lo vuelves a rechazar, también recibe texto nuevo.",
+    }],
+  },
   {
     version: "0.143.9",
     date: "2026-09-24",
