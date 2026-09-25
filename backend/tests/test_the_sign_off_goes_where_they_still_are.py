@@ -44,6 +44,7 @@ NARRATIVO = (
     "about twenty eight thousand five hundred ahead in five years. "
     "Principal paydown and tax deductions outweigh maintenance. "
     "The breakeven month is earlier than most renters think. "
+    "Write the figures down, compare them side by side, and ask a lender to confirm each one before you commit to anything. "
     "That is the whole argument."
 )
 
