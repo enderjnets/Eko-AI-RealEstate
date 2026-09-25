@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.11";
+export const CURRENT_VERSION = "0.143.12";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.12",
+    date: "2026-09-25",
+    title: { en: "Empty-street pictures no longer block a draft", es: "Las imágenes de calles vacías ya no bloquean un borrador" },
+    changes: [{
+      en: "When the writer asked for a picture with \"no people\", the people filter held the whole draft, and several drafts were stuck in Drafts because of it. Those words are now removed from the picture request, so the draft goes through. A picture that asks for people is still held.",
+      es: "Cuando el escritor pedía una imagen «sin gente», el filtro de personas retenía el borrador entero, y varios borradores estaban atascados por eso. Ahora esas palabras se quitan de la petición de imagen y el borrador pasa. Una imagen que pide personas sigue retenida.",
+    }],
+  },
   {
     version: "0.143.11",
     date: "2026-09-25",

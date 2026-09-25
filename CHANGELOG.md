@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.12] — 2026-09-25
+
+- Content writer: a picture prompt that EXCLUDES people ("empty sidewalks, no people", "without pedestrians") no longer holds the draft for "people". Five drafts were blocked by it (76, 82, 86, 91, 93 — every scene of 93). The exclusion is removed from the prompt where every draft and rewrite is parsed, so neither the filter nor the image model reads it; "no people or text" keeps "no text". A prompt that asks for people is untouched and still held.
+
 ## [0.143.11] — 2026-09-25
 
 - Conversion line: 60–80 words (was 45–65) and a render floor of 18 s (was 20). Piece 92, 56 words, came out at 19.2 s and 18.5 s on the MiniMax-only voice and was refused twice after being paid for. Same measured spread as the short lines (2.9–3.9 narrated words a second): 70–90 narrated words last 18–31 s, inside 18–35.
