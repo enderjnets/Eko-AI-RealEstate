@@ -1711,9 +1711,14 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
         assert source is not None
         topic = market_topic(source)
     else:
-        from app.services.content_growth import growth_topic
+        from app.services.content_growth import decoded_index, growth_topic
 
-        topic = growth_topic(series, cta_index)
+        topic = growth_topic(
+            series,
+            await decoded_index(db)
+            if series is ContentSeries.DENVER_DECODED
+            else cta_index,
+        )
     check = plan.check if plan is not None else None
 
     # Imported here, not at module scope: `content_corrections` imports this

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.13";
+export const CURRENT_VERSION = "0.143.14";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.14",
+    date: "2026-09-25",
+    title: { en: "Denver, Decoded tells real Denver stories", es: "Denver, Decoded cuenta historias reales de Denver" },
+    changes: [{
+      en: "Denver, Decoded videos now come from a list of twelve checked Denver facts, from the mile-high step at the Capitol to the city's bison herd, instead of the same few \"this or that\" questions. Each video takes the next story, so none repeats until all twelve have run.",
+      es: "Los vídeos de Denver, Decoded salen ahora de una lista de doce datos comprobados de Denver, desde el escalón de la milla en el Capitolio hasta la manada de bisontes de la ciudad, en vez de las mismas preguntas de «esto o aquello». Cada vídeo toma la siguiente historia, así que ninguna se repite hasta que salgan las doce.",
+    }],
+  },
   {
     version: "0.143.13",
     date: "2026-09-25",

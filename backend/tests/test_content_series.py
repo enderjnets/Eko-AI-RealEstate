@@ -223,3 +223,71 @@ def test_market_render_card_carries_the_verified_source_date() -> None:
     )
     assert finish.cta_display == "Source: DMAR · 2026-09-03"
     assert finish.cta_label == "FOLLOW THE NEXT MARKET CHECK"
+
+
+@pytest.fixture
+def database_url() -> str:
+    import os
+
+    url = os.environ.get("DATABASE_URL", "")
+    if not url:
+        pytest.skip("DATABASE_URL not set — this test needs live Postgres")
+    return url
+
+
+# 25-sep-2026: Ender rejected the same "mountains or brick" idea twice (88, 95).
+# The six old taste questions are gone; twelve verified facts replace them, and
+# each new Decoded takes the next one, so none repeats before all twelve ran.
+def test_decoded_has_twelve_distinct_briefs_that_forbid_new_facts() -> None:
+    from app.services.content_growth import _DECODED, _NO_NEW_FACTS, growth_topic
+
+    briefs = [growth_topic(ContentSeries.DENVER_DECODED, i).brief_en for i in range(12)]
+    assert len(set(briefs)) == 12 == len(_DECODED)
+    assert all(b.endswith(_NO_NEW_FACTS) for b in briefs)
+    assert not [b for b in briefs if "infill" in b.lower()]
+
+
+@pytest.mark.asyncio
+async def test_each_new_decoded_takes_the_next_topic(database_url: str) -> None:
+    from datetime import UTC, datetime
+
+    from sqlalchemy import text
+
+    from app.db.base import get_bypass_session_factory
+    from app.services.content_growth import DECODED_TOPICS_SINCE, decoded_index
+
+    async def _add(series: ContentSeries, created: datetime) -> None:
+        async with get_bypass_session_factory()() as db:
+            db.add(
+                ContentPiece(
+                    org_id=1,
+                    kind=ContentKind.GENERATED,
+                    language=ContentLanguage.EN,
+                    status=ContentStatus.DRAFT,
+                    series=series,
+                    hook="h",
+                    script="s",
+                    created_at=created,
+                )
+            )
+            await db.commit()
+
+    async with get_bypass_session_factory()() as db:
+        await db.execute(text("DELETE FROM content_publications"))
+        await db.execute(text("DELETE FROM content_pieces"))
+        await db.commit()
+    try:
+        before = datetime(2026, 9, 25, tzinfo=UTC)
+        after = DECODED_TOPICS_SINCE.replace(hour=DECODED_TOPICS_SINCE.hour + 1)
+        await _add(ContentSeries.DENVER_DECODED, before)
+        await _add(ContentSeries.CONVERSION, after)
+        async with get_bypass_session_factory()() as db:
+            assert await decoded_index(db) == 0
+        await _add(ContentSeries.DENVER_DECODED, after)
+        await _add(ContentSeries.DENVER_DECODED, after)
+        async with get_bypass_session_factory()() as db:
+            assert await decoded_index(db) == 2
+    finally:
+        async with get_bypass_session_factory()() as db:
+            await db.execute(text("DELETE FROM content_pieces"))
+            await db.commit()
