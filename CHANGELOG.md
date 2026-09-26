@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.14] — 2026-09-25
+
+- Denver, Decoded: the six "A or B?" taste questions are replaced by twelve verified Denver facts approved by Ender (the mile-high marks at the Capitol, the governor Denver is named after, Larimer Square, the city's bison, Red Rocks geology, the 16th Street rattlesnake paving, the diagonal downtown grid, Coors Field's purple row, Union Station, the 1864 flood, the Mint's Florentine model, the 300-days-of-sunshine myth). Each brief carries only its sourced facts and forbids adding any. Each new Decoded takes the next topic, counted since the list went in, so none repeats before all twelve ran — the same mountains-or-brick idea came back twice (88, 95). Research and sources in `docs/content/denver-decoded-topics.md`.
+
 ## [0.143.13] — 2026-09-25
 
 - Window alert: it names only what someone can act on. A generated piece still waiting for its render is not "unapproved" — it stays unstamped and is announced when the video arrives or the render fails (the 19:37 alert named piece 95 before its render had started). Each line now says what the piece needs: ready to approve, the video failed (with the reason), a stuck draft (with the finding), or rejected. Withdrawn pieces are never announced. The text no longer says approval order decides the day: `publish_window_start` does.
