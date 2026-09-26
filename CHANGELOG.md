@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.15] — 2026-09-26
+
+- Home page: the form offers a shortlist, not a meeting. "Fifteen minutes, no pitch / Book the consult" becomes "Your search, our shortlist": a buyer gets homes that fit, with why each one made the list; a seller gets what the home is worth today. The button and the thank-you follow the chip (Buying → "Send me homes that fit"; Selling/Valuing → "Tell me what it's worth"; none → "Send"). An optional line under the chip (area, budget, bedrooms / the address) rides in the same message, so the classifier reads it from the first message. The home page takes 42 of 55 real entries in 14 days; /calculator already made this offer and is unchanged.
+
 ## [0.143.14] — 2026-09-25
 
 - Denver, Decoded: the six "A or B?" taste questions are replaced by twelve verified Denver facts approved by Ender (the mile-high marks at the Capitol, the governor Denver is named after, Larimer Square, the city's bison, Red Rocks geology, the 16th Street rattlesnake paving, the diagonal downtown grid, Coors Field's purple row, Union Station, the 1864 flood, the Mint's Florentine model, the 300-days-of-sunshine myth). Each brief carries only its sourced facts and forbids adding any. Each new Decoded takes the next topic, counted since the list went in, so none repeats before all twelve ran — the same mountains-or-brick idea came back twice (88, 95). Research and sources in `docs/content/denver-decoded-topics.md`.
