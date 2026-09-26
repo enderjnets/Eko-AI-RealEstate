@@ -37,6 +37,9 @@ const FORM_KEY = process.env.NEXT_PUBLIC_CAPTURE_FORM_KEY || undefined;
  */
 const LANDING_VARIANT = "landing";
 
+/** What the visitor adds under the chip: a sentence, not a spec sheet. */
+const WANTS_MAX = 500;
+
 type Goal = "selling" | "buying" | "valuing";
 
 function ConsultFormInner({
@@ -54,6 +57,7 @@ function ConsultFormInner({
 
   const [f, setF] = useState({ name: "", lastName: "", phone: "", email: "", website: "" });
   const [goal, setGoal] = useState<Goal | null>(null);
+  const [wants, setWants] = useState("");
   const [consent, setConsent] = useState(false);
   const [utm, setUtm] = useState<Record<string, string>>({});
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
@@ -143,13 +147,36 @@ function ConsultFormInner({
   // of this file explains why a second, subtly different capture form is how a
   // TCPA record ends up describing a sentence nobody read.
   const onCalculator = variant === "calculator";
-  const submitLabel = onCalculator ? t("calculator.form.submit") : t("landing.form.submit");
+  // Everywhere else the button names what the chip asks for (26-sep-2026):
+  // "Book the consult" offered a meeting, and the section now offers a
+  // shortlist to a buyer and a value to a seller. With no chip picked it says
+  // only "Send", because promising either would be promising the wrong one.
+  const buying = goal === "buying";
+  const home = goal === "selling" || goal === "valuing";
+  const submitLabel = onCalculator
+    ? t("calculator.form.submit")
+    : buying
+      ? t("landing.form.submitBuying")
+      : home
+        ? t("landing.form.submitHome")
+        : t("landing.form.submit");
   const thanksTitle = onCalculator
     ? t("calculator.form.thanksTitle")
     : t("landing.form.thanksTitle");
   const thanksBody = onCalculator
     ? t("calculator.form.thanksBody")
-    : t("landing.form.thanksBody");
+    : buying
+      ? t("landing.form.thanksBuyingBody")
+      : t("landing.form.thanksBody");
+  // The optional line under the chips. Not on /calculator: the calculation
+  // already travels as `calculator`, and asking again there is friction.
+  const wantsLabel = onCalculator
+    ? null
+    : buying
+      ? t("landing.form.wantsBuying")
+      : home
+        ? t("landing.form.wantsHome")
+        : null;
   // Only the address is demanded there, because only the address is promised.
   // The backend refuses a lead without one anyway (`CAPTURE_REQUIRE_EMAIL`), so
   // this drops the two the markup added on top of it, not the one that matters.
@@ -202,7 +229,17 @@ function ConsultFormInner({
     // The chip is the only thing the visitor tells us about intent, so it is
     // sent as a sentence — it becomes the first message in the thread the
     // advisor opens, and the classifier reads it too.
-    const message = goals.find((g) => g.id === goal)?.message;
+    //
+    // What they typed under it rides in the same message, after its own label,
+    // so the classifier can read area, budget and bedrooms from the first
+    // message instead of from a second round of email. Only while its field is
+    // on screen: a line typed under "Buying" and then un-chipped is not sent.
+    const base = goals.find((g) => g.id === goal)?.message;
+    const extra = wantsLabel ? wants.trim() : "";
+    const prefix = buying
+      ? t("landing.form.wantsPrefixBuying")
+      : t("landing.form.wantsPrefixHome");
+    const message = base && extra ? `${base} ${prefix} ${extra}` : base;
 
     const outcome: CaptureOutcome = await submitPublicLead({
       form: FORM_KEY,
@@ -352,6 +389,16 @@ function ConsultFormInner({
             })}
           </div>
         </fieldset>
+
+        {wantsLabel && (
+          <LandingField
+            id="ln-wants"
+            label={wantsLabel}
+            value={wants}
+            onChange={(e) => setWants(e.target.value)}
+            maxLength={WANTS_MAX}
+          />
+        )}
 
         {/* Honeypot: offscreen for people, irresistible to a form-filling bot. */}
         <div className="absolute left-[-9999px]" aria-hidden="true">
