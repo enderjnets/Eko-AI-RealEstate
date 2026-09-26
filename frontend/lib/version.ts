@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.14";
+export const CURRENT_VERSION = "0.143.15";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.15",
+    date: "2026-09-26",
+    title: { en: "The home page offers homes that fit", es: "La portada ofrece casas que encajan" },
+    changes: [{
+      en: "The form on the home page no longer asks visitors to book a fifteen-minute call. Buyers tell us the area, budget and what they need and get homes that fit, with the reason for each; sellers get what their home is worth today. The button changes with what they pick.",
+      es: "El formulario de la portada ya no pide reservar una llamada de quince minutos. Quien compra nos dice la zona, el presupuesto y lo que necesita y recibe casas que encajan, con el porqué de cada una; quien vende recibe cuánto vale hoy su casa. El botón cambia según lo que elija.",
+    }],
+  },
   {
     version: "0.143.14",
     date: "2026-09-25",
