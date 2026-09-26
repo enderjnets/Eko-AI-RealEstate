@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.12";
+export const CURRENT_VERSION = "0.143.13";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,18 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.13",
+    date: "2026-09-25",
+    title: { en: "The approval reminder only names what you can act on", es: "El aviso de aprobación solo nombra lo que puedes resolver" },
+    changes: [{
+      en: "The reminder email no longer lists a video that is still being made. Each line now says what the piece needs: ready to approve, the video failed and why, or a draft that is stuck. Withdrawn pieces are never listed.",
+      es: "El correo de aviso ya no lista un vídeo que todavía se está haciendo. Cada línea dice qué necesita la pieza: lista para aprobar, el vídeo falló y por qué, o un borrador atascado. Las piezas retiradas no aparecen nunca.",
+    }, {
+      en: "Pictures of homes are asked for without a house number, because a readable number made two videos fail after they were paid for.",
+      es: "Las imágenes de casas se piden sin número, porque un número legible hizo fallar dos vídeos después de pagarlos.",
+    }],
+  },
   {
     version: "0.143.12",
     date: "2026-09-25",

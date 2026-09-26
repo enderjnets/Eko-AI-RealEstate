@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.143.13] — 2026-09-25
+
+- Window alert: it names only what someone can act on. A generated piece still waiting for its render is not "unapproved" — it stays unstamped and is announced when the video arrives or the render fails (the 19:37 alert named piece 95 before its render had started). Each line now says what the piece needs: ready to approve, the video failed (with the reason), a stuck draft (with the finding), or rejected. Withdrawn pieces are never announced. The text no longer says approval order decides the day: `publish_window_start` does.
+- Content writer: every picture of a home asks for no house number. A readable number sank two paid renders (88, 95) and slipped into a third (92). The render gate still refuses digits.
+
 ## [0.143.12] — 2026-09-25
 
 - Content writer: a picture prompt that EXCLUDES people ("empty sidewalks, no people", "without pedestrians") no longer holds the draft for "people". Five drafts were blocked by it (76, 82, 86, 91, 93 — every scene of 93). The exclusion is removed from the prompt where every draft and rewrite is parsed, so neither the filter nor the image model reads it; "no people or text" keeps "no text". A prompt that asks for people is untouched and still held.

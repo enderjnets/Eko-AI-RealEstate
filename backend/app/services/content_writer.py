@@ -87,7 +87,7 @@ class Scene(BaseModel):
     @field_validator("visual_prompt", mode="after")
     @classmethod
     def _drop_excluded_people(cls, value: str) -> str:
-        return without_excluded_people(value)
+        return with_no_house_number(without_excluded_people(value))
 
 
 # "no people", "without pedestrians": the model's way of asking for an empty
@@ -100,6 +100,27 @@ class Scene(BaseModel):
 _EXCLUDED = r"(?:people|persons?|humans?|pedestrians?|crowds?|faces?|figures?)"
 _EXCLUDED_THEN_MORE = re.compile(rf"\b(no|without)\s+{_EXCLUDED}\s+(?:or|and)\s+", re.I)
 _EXCLUDED_ALONE = re.compile(rf"\s*,?\s*\b(?:with\s+)?(?:no|without)\s+{_EXCLUDED}\b", re.I)
+
+
+# A readable house number sank two paid renders (88: "582", 95: "963") and
+# slipped into a third (92: "5506"), 25-sep-2026. Any picture of a home asks
+# for none. The render gate still refuses digits; this makes it rarer.
+_A_HOME = re.compile(
+    r"\b(?:home|house|townhouse|townhome|porch|front door|door|facade|fa[cç]ade"
+    r"|bungalow|craftsman|victorian|duplex|condo|yard|driveway)s?\b",
+    re.I,
+)
+_NO_NUMBER = ", no house numbers"
+
+
+def with_no_house_number(prompt: str) -> str:
+    if (
+        _A_HOME.search(prompt)
+        and "number" not in prompt.lower()
+        and len(prompt) + len(_NO_NUMBER) <= 200
+    ):
+        return prompt + _NO_NUMBER
+    return prompt
 
 
 def without_excluded_people(prompt: str) -> str:

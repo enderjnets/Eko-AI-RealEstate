@@ -1141,3 +1141,36 @@ def test_a_prompt_that_was_only_the_exclusion_is_kept_as_written() -> None:
     from app.services.content_writer import Scene
 
     assert Scene(visual_prompt="no people", on_screen_text="Denver").visual_prompt == "no people"
+
+
+# 25-sep-2026: a readable house number sank two renders after they were paid
+# for (88: "582", 95: "963") and slipped into a third (92: "5506"). Every
+# picture of a home asks for no number, where the draft is parsed.
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Close-up of a craftsman front porch in Denver at golden hour",
+        "A Denver brick home with a blank unbranded sign in the yard",
+        "Front door of a Denver townhouse after fresh snow",
+    ],
+)
+def test_a_picture_of_a_home_asks_for_no_house_number(prompt) -> None:
+    from app.services.content_writer import Scene
+
+    assert Scene(visual_prompt=prompt, on_screen_text="Denver").visual_prompt == (
+        prompt + ", no house numbers"
+    )
+
+
+def test_a_picture_with_no_home_in_it_is_left_alone() -> None:
+    from app.services.content_writer import Scene
+
+    prompt = "The Front Range at dusk above the Denver skyline"
+    assert Scene(visual_prompt=prompt, on_screen_text="Denver").visual_prompt == prompt
+
+
+def test_the_house_number_note_never_breaks_the_length_limit() -> None:
+    from app.services.content_writer import Scene
+
+    prompt = "A Denver brick home " + "x" * 175
+    assert Scene(visual_prompt=prompt, on_screen_text="Denver").visual_prompt == prompt
