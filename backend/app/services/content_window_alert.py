@@ -1,10 +1,15 @@
 """Avisar cuando una pieza entra en su ventana y sigue sin aprobar.
 
-**Por qué existe.** El repartidor no sabe de calendario: `next_free_slot` busca
-el siguiente día libre, y el orden de publicación es el orden de `approved_at`.
-Así que la única palanca que tiene el dueño para que una pieza salga en su
-semana es **aprobarla en su semana** — y una palanca que hay que acordarse de
-usar no es una palanca. Esto no cambia el reparto: solo avisa.
+**Por qué existe.** El publicador busca hueco desde `publish_window_start`
+(`_from_when` en `buffer_publisher`): una pieza aprobada a tiempo sale en su
+fecha, y una aprobada tarde sale en el siguiente hueco libre. La única palanca
+del dueño es aprobarla antes de la fecha, y una palanca que hay que acordarse
+de usar no es una palanca. Esto no cambia el reparto: solo avisa.
+
+**Solo avisa de lo que alguien puede resolver** (25-sep-2026: el aviso nombró la
+95 «sin aprobar» cuando aún no tenía vídeo). Una pieza generada que espera su
+render no tiene nada que aprobar: se queda SIN sellar y se avisa cuando llega
+el vídeo, o cuando el render falla. Una pieza retirada no se avisa nunca.
 
 Dos reglas heredadas de `ops_alert`, y las dos vienen de fallos ya pagados:
 
@@ -33,7 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models import ContentPiece, ContentStatus
 from app.services.buffer_publisher import agency_zone
-from app.services.content_studio import not_our_rail
+from app.services.content_studio import WITHDRAWN, not_our_rail
 from app.services.ops_alert import send_operator_alert
 
 log = logging.getLogger(__name__)
@@ -49,14 +54,31 @@ _YA_RESUELTAS = (
 )
 
 
-def _linea(piece: ContentPiece) -> str:
+def _que_le_pasa(piece: ContentPiece) -> str | None:
+    """Qué tiene que hacer el dueño con esta pieza, o None si nada todavía."""
+    if piece.status is ContentStatus.REJECTED:
+        if (piece.rejected_reason or "").startswith(WITHDRAWN):
+            return None
+        return "rechazada"
+    if piece.media_path:
+        return "lista para aprobar"
+    if piece.render_error:
+        return f"el vídeo falló: {piece.render_error[:120]}"
+    if piece.violations:
+        return "borrador atascado: " + "; ".join(
+            str(v.get("phrase", ""))[:60] for v in piece.violations[:2]
+        )
+    return None
+
+
+def _linea(piece: ContentPiece, estado: str) -> str:
     gancho = (piece.hook or "").strip() or "(sin gancho)"
     if len(gancho) > 90:
         gancho = gancho[:87] + "..."
     ventana = piece.publish_window_start.isoformat()
     if piece.publish_window_end:
         ventana += f" a {piece.publish_window_end.isoformat()}"
-    return f"  #{piece.id} [{piece.status.value}] {ventana} — {gancho}"
+    return f"  #{piece.id} {ventana} — {estado} — {gancho}"
 
 
 async def alert_due_windows(db: AsyncSession) -> int:
@@ -112,6 +134,8 @@ async def alert_due_windows(db: AsyncSession) -> int:
         .scalars()
         .all()
     )
+    avisables = [(p, e) for p in vencidas if (e := _que_le_pasa(p)) is not None]
+    vencidas = [p for p, _ in avisables]
     if not vencidas:
         return 0
 
@@ -126,13 +150,11 @@ async def alert_due_windows(db: AsyncSession) -> int:
             "Estas piezas entran en la ventana en la que deberían "
             "publicarse y siguen sin aprobar.",
             "",
-            "El orden de publicación es el orden en que se aprueban: el "
-            "repartidor no mira estas fechas, solo busca el siguiente día "
-            "libre. Y aprobar no es publicar — una pieza aprobada espera hueco "
-            "un par de días. Por eso este aviso llega antes de la fecha: "
-            "aprobarlas ahora es lo que hace que salgan en su semana.",
+            "Cada pieza aprobada a tiempo sale en su fecha. Si se aprueba "
+            "después, sale en el siguiente hueco libre. Por eso este aviso "
+            "llega antes de la fecha.",
             "",
-            *[_linea(p) for p in vencidas],
+            *[_linea(p, e) for p, e in avisables],
             "",
             f"Hoy es {hoy.isoformat()} en {zone.key}.",
             "Se aprueban en el panel, en Content Studio.",

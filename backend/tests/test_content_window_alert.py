@@ -119,6 +119,10 @@ async def _pieza(
     estado: ContentStatus = ContentStatus.NEEDS_APPROVAL,
     fin: date | None = None,
     gancho: str = "Aspens turn from the top down",
+    video: str | None = "b" * 32 + ".mp4",
+    error_render: str | None = None,
+    motivo: str | None = None,
+    hallazgos: list | None = None,
 ) -> int:
     async with get_bypass_session_factory()() as db:
         piece = ContentPiece(
@@ -128,7 +132,10 @@ async def _pieza(
             status=estado,
             hook=gancho,
             caption="12 places near Denver, sorted by elevation.",
-            media_path="b" * 32 + ".mp4",
+            media_path=video,
+            render_error=error_render,
+            rejected_reason=motivo,
+            violations=hallazgos,
             publish_window_start=inicio,
             publish_window_end=fin,
         )
@@ -316,5 +323,121 @@ async def test_avisa_con_antelacion_porque_aprobar_no_es_publicar(
         )
         await _pieza(inicio=hoy() + timedelta(days=1))
         assert await _tic() == 0
+    finally:
+        await _limpiar()
+
+
+# 25-sep-2026: el aviso de las 19:37 nombró la pieza 95 «sin aprobar» cuando
+# todavía no tenía vídeo — no había nada que aprobar, y su render aún no había
+# empezado. Y el texto decía que el orden de aprobación decide el día, lo que
+# dejó de ser verdad cuando `publish_window_start` pasó a fijar la fecha.
+
+
+@pytest.mark.asyncio
+async def test_una_pieza_sin_video_todavia_espera_a_tenerlo(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _limpiar()
+    await _zona()
+    avisos = _Avisos()
+    monkeypatch.setattr(content_window_alert, "send_operator_alert", avisos)
+    try:
+        pid = await _pieza(inicio=hoy(), video=None)
+        assert await _tic() == 0
+        assert avisos.enviados == []
+        assert await _sello(pid) is None
+
+        async with get_bypass_session_factory()() as db:
+            await db.execute(
+                text("UPDATE content_pieces SET media_path=:m WHERE id=:i"),
+                {"m": "c" * 32 + ".mp4", "i": pid},
+            )
+            await db.commit()
+        assert await _tic() == 1
+        assert "lista para aprobar" in avisos.enviados[0][1]
+    finally:
+        await _limpiar()
+
+
+@pytest.mark.asyncio
+async def test_un_video_que_fallo_se_avisa_como_fallo(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _limpiar()
+    await _zona()
+    avisos = _Avisos()
+    monkeypatch.setattr(content_window_alert, "send_operator_alert", avisos)
+    try:
+        await _pieza(
+            inicio=hoy(),
+            video=None,
+            error_render="Rejected: generated picture contains readable unapproved digits: 963",
+        )
+        assert await _tic() == 1
+        cuerpo = avisos.enviados[0][1]
+        assert "el vídeo falló" in cuerpo
+        assert "963" in cuerpo
+    finally:
+        await _limpiar()
+
+
+@pytest.mark.asyncio
+async def test_un_borrador_atascado_se_avisa_como_atascado(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _limpiar()
+    await _zona()
+    avisos = _Avisos()
+    monkeypatch.setattr(content_window_alert, "send_operator_alert", avisos)
+    try:
+        await _pieza(
+            inicio=hoy(),
+            estado=ContentStatus.DRAFT,
+            video=None,
+            hallazgos=[{"phrase": "the script is 57 words", "category": "length"}],
+        )
+        assert await _tic() == 1
+        assert "borrador atascado" in avisos.enviados[0][1]
+    finally:
+        await _limpiar()
+
+
+@pytest.mark.asyncio
+async def test_una_pieza_retirada_no_avisa(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services.content_studio import WITHDRAWN
+
+    await _limpiar()
+    await _zona()
+    avisos = _Avisos()
+    monkeypatch.setattr(content_window_alert, "send_operator_alert", avisos)
+    try:
+        await _pieza(
+            inicio=hoy(),
+            estado=ContentStatus.REJECTED,
+            video=None,
+            motivo=f"{WITHDRAWN} (by someone).",
+        )
+        assert await _tic() == 0
+        assert avisos.enviados == []
+    finally:
+        await _limpiar()
+
+
+@pytest.mark.asyncio
+async def test_el_texto_dice_que_cada_pieza_sale_en_su_fecha(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _limpiar()
+    await _zona()
+    avisos = _Avisos()
+    monkeypatch.setattr(content_window_alert, "send_operator_alert", avisos)
+    try:
+        await _pieza(inicio=hoy())
+        assert await _tic() == 1
+        cuerpo = avisos.enviados[0][1]
+        assert "no mira estas fechas" not in cuerpo
+        assert "sale en su fecha" in cuerpo
     finally:
         await _limpiar()
