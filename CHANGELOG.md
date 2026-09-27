@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.16] — 2026-09-27
+
+- Content writer: objects that are nothing but writing (calendar, ticket, plaque, parchment, inscription, engraved/engraving) are refused in a shot even when the prompt says "blank", and so is any shot that asks for the words themselves ("a stone reading ONE MILE…", "a sign that says…", "inscribed with 1892"). The rewrite is told to show the place instead of "say it is blank". Found on 27-sep: Decoded 97 and 98 were refused at render by the digit gate, and their frames showed a calendar ending on the 39th, a ticket reading "TRAINN HTATE · 2010W.17.8573", plaques reading "CORRTION" and "TOURT OR CHAN", and "ONE MILE SEA LEVEL" for the Capitol carving — all from prompts that said blank, or asked for the lettering. The render gate (`worker/verify.py`) is unchanged: it was right. Measured over the 314 stored prompts: the new rule refuses exactly those six shots and nothing the old rule let through elsewhere. `_SYSTEM` (EN/ES) says it before the check reads it.
+
 ## [0.143.15] — 2026-09-26
 
 - Home page: the form offers a shortlist, not a meeting. "Fifteen minutes, no pitch / Book the consult" becomes "Your search, our shortlist": a buyer gets homes that fit, with why each one made the list; a seller gets what the home is worth today. The button and the thank-you follow the chip (Buying → "Send me homes that fit"; Selling/Valuing → "Tell me what it's worth"; none → "Send"). An optional line under the chip (area, budget, bedrooms / the address) rides in the same message, so the classifier reads it from the first message. The home page takes 42 of 55 real entries in 14 days; /calculator already made this offer and is unchanged.

@@ -174,6 +174,11 @@ _SYSTEM = {
         "model invents the lettering and gets it wrong, and stock footage "
         "brings another brokerage's branding. If a shot needs a sign, say it "
         "is blank and unbranded — \"a blank, unbranded for-sale sign\". "
+        "Some objects are nothing but writing and blank does not work on them: "
+        "a calendar, a ticket, a plaque, parchment, an inscription or anything "
+        "engraved comes back covered in misspelt words. Leave them out, and "
+        "never ask for a carving or a plaque that READS something: show the "
+        "place, the stone, the light. "
         "And ANY SHOT THAT SHOWS A STREET, a row of homes, a neighbourhood "
         "or a skyline MUST SAY WHERE IT IS: \"a Denver street\", \"a Front "
         "Range skyline\". Unplaced, the image model picks a country at "
@@ -206,6 +211,11 @@ _SYSTEM = {
         "las letras y las escribe mal, y los clips de archivo traen la marca de "
         "otra correduría. Si una escena necesita un cartel, di que está en "
         "blanco y sin marca — \"a blank, unbranded for-sale sign\". "
+        "Hay objetos que son solo escritura y ahí «en blanco» no funciona: "
+        "un calendario (calendar), un billete (ticket), una placa (plaque), "
+        "un pergamino, una inscripción o algo grabado salen llenos de palabras "
+        "mal escritas. No los pidas, y nunca pidas una piedra o una placa que "
+        "DIGA algo: enseña el sitio, la piedra, la luz. "
         "Y TODO PLANO QUE ENSEÑE UNA CALLE, una hilera de casas, un barrio "
         "o un horizonte TIENE QUE DECIR DÓNDE ESTÁ: \"a Denver street\", "
         "\"a Front Range skyline\". Sin sitio, el modelo de imagen elige "
@@ -1143,6 +1153,48 @@ def readable_text_in_shot(visual_prompt: str | None) -> str | None:
     return found.group(0).lower()
 
 
+#: Objects that are nothing but writing, where "blank" is not a way through.
+#: Measured on 27-sep-2026, not supposed: 98 asked for "a blank calendar page,
+#: no numbers visible" and got a month that ends on the 39th; "vintage train
+#: tickets, blank, no writing" came back "TRAINN HTATE · 2010W.17.8573"; 97's
+#: "blank plaque indicating correction" came back "CORRTION". A for-sale sign
+#: told to be blank comes back blank; these do not, because the model has only
+#: ever seen them with something written on them.
+_WRITING_IS_THE_OBJECT = re.compile(
+    r"(?i)\b(calendars?|tickets?|plaques?|parchments?|inscriptions?|"
+    r"engravings?|engraved)\b"
+)
+
+#: What does not count: the prompt saying the thing is absent ("no engraving",
+#: "without inscription"). Read on the few words right before the match.
+_ABSENT_BEFORE = re.compile(r"(?i)\b(?:no|without)\s+(?:\w+\s+)?$")
+
+#: A shot that asks for the words themselves: "an engraved stone reading ONE
+#: MILE ABOVE SEA LEVEL" (97) came back "ONE MILE SEA LEVEL". The word after
+#: the verb has to start with a capital, a digit or a quote, so "a reading
+#: nook" is left alone.
+_ASKS_FOR_WORDS = re.compile(
+    r"\b(?:[Rr]eading|[Rr]eads|[Ss]ays|[Ss]aying|[Ss]pelling|"
+    r"inscribed with|engraved with|lettered with)\s+[\"“'‘]?[A-Z0-9][\w’']*"
+)
+
+
+def writing_in_shot(visual_prompt: str | None) -> str | None:
+    """What in this shot the image model will write on, blank or not, or None.
+
+    Checked before `readable_text_in_shot`, whose escape hatch ("say it is
+    blank") is exactly what 97 and 98 did.
+    """
+    text = visual_prompt or ""
+    asked = _ASKS_FOR_WORDS.search(text)
+    if asked is not None:
+        return asked.group(0)
+    for found in _WRITING_IS_THE_OBJECT.finditer(text):
+        if not _ABSENT_BEFORE.search(text[: found.start()]):
+            return found.group(0).lower()
+    return None
+
+
 #: A shot where the viewer can judge the city: the street, the row of houses,
 #: the skyline. Measured on 17-sep-2026 over the 189 stored prompts — 30 match,
 #: and 25 of those already name the place, so this asks for what the writer
@@ -1341,7 +1393,16 @@ def _all_violations(
     # Per scene rather than over the joined prompts, because the rewrite has to
     # name WHICH shot to change.
     for position, scene in enumerate(draft.scenes, start=1):
-        word = readable_text_in_shot(scene.visual_prompt)
+        writing = writing_in_shot(scene.visual_prompt)
+        word = None if writing else readable_text_in_shot(scene.visual_prompt)
+        if writing is not None:
+            found.append({
+                "phrase": f"shot {position} asks for “{writing}”, which the "
+                "image model covers in misspelt writing even when told it is "
+                "blank — show the place, the stone or the light instead",
+                "category": "shot",
+                "where": "scenes",
+            })
         if word is not None:
             found.append({
                 "phrase": f"shot {position} asks for a “{word}”, which arrives "

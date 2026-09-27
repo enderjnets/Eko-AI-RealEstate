@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.15";
+export const CURRENT_VERSION = "0.143.16";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.16",
+    date: "2026-09-27",
+    title: { en: "Decoded shots no longer ask for things covered in writing", es: "Los planos de Decoded ya no piden cosas llenas de texto" },
+    changes: [{
+      en: "Two Denver, Decoded videos could not be made because the pictures had invented writing on them: a calendar ending on the 39th, a ticket reading \"TRAINN HTATE\", a plaque reading \"CORRTION\". Calendars, tickets, plaques, parchment and carvings come back covered in misspelt words even when asked to be blank, so the writer no longer asks for them and shows the place instead.",
+      es: "Dos vídeos de Denver, Decoded no se pudieron hacer porque las imágenes traían texto inventado: un calendario que acaba en el día 39, un billete que dice «TRAINN HTATE», una placa que dice «CORRTION». Calendarios, billetes, placas, pergaminos y grabados salen llenos de palabras mal escritas aunque se pidan en blanco, así que el redactor ya no los pide y enseña el sitio en su lugar.",
+    }],
+  },
   {
     version: "0.143.15",
     date: "2026-09-26",
