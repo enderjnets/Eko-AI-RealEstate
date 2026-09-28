@@ -767,7 +767,6 @@ def carries_spoken_domain(text: str | None, language: ContentLanguage) -> bool:
 _SOCIAL_CTA = {
     ContentSeries.DENVER_DECODED: (
         "Follow for more Denver, decoded.",
-        "Which one would you choose? Comment below.",
         "Share this Denver find.",
     ),
     ContentSeries.DENVER_WEEKEND: (
