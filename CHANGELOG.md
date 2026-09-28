@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.17] — 2026-09-28
+
+- Denver, Decoded: "Which one would you choose? Comment below." is removed from the line's closing rotation. It belonged to the old "A or B?" taste questions that 0.143.14 replaced with one verified fact per video, and on 28-sep both pending Decoded pieces (97, 98) ended on it with nothing to choose between. The rotation is now "Follow for more Denver, decoded." / "Share this Denver find.".
+
 ## [0.143.16] — 2026-09-27
 
 - Content writer: objects that are nothing but writing (calendar, ticket, plaque, parchment, inscription, engraved/engraving) are refused in a shot even when the prompt says "blank", and so is any shot that asks for the words themselves ("a stone reading ONE MILE…", "a sign that says…", "inscribed with 1892"). The rewrite is told to show the place instead of "say it is blank". Found on 27-sep: Decoded 97 and 98 were refused at render by the digit gate, and their frames showed a calendar ending on the 39th, a ticket reading "TRAINN HTATE · 2010W.17.8573", plaques reading "CORRTION" and "TOURT OR CHAN", and "ONE MILE SEA LEVEL" for the Capitol carving — all from prompts that said blank, or asked for the lettering. The render gate (`worker/verify.py`) is unchanged: it was right. Measured over the 314 stored prompts: the new rule refuses exactly those six shots and nothing the old rule let through elsewhere. `_SYSTEM` (EN/ES) says it before the check reads it.

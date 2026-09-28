@@ -291,3 +291,18 @@ async def test_each_new_decoded_takes_the_next_topic(database_url: str) -> None:
         async with get_bypass_session_factory()() as db:
             await db.execute(text("DELETE FROM content_pieces"))
             await db.commit()
+
+
+def test_decoded_never_signs_off_asking_to_pick_one() -> None:
+    """Decoded stopped being "A or B?" on 25-sep-2026 (0.143.14): each piece is
+    one verified fact. The sign-off "Which one would you choose?" stayed in the
+    rotation, and on 28-sep both pending Decoded pieces — the Capitol's
+    mile-high step and the governor Denver is named after — ended on it, with
+    nothing to choose between."""
+    from app.services.content_writer import social_cta
+
+    for index in range(6):
+        line = social_cta(ContentSeries.DENVER_DECODED, index)
+        assert line
+        assert "which one" not in line.casefold()
+        assert "choose" not in line.casefold()

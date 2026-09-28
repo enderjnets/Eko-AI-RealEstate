@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.16";
+export const CURRENT_VERSION = "0.143.17";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.17",
+    date: "2026-09-28",
+    title: { en: "Decoded no longer ends on \"Which one would you choose?\"", es: "Decoded ya no termina con «Which one would you choose?»" },
+    changes: [{
+      en: "Since Denver, Decoded became one checked Denver fact per video, there is nothing to choose between, but one of its three closing lines still asked viewers to pick one. That line is gone; videos now close with \"Follow for more Denver, decoded.\" or \"Share this Denver find.\"",
+      es: "Desde que cada Denver, Decoded cuenta un solo dato comprobado de Denver, no hay nada entre lo que elegir, pero una de sus tres frases de cierre seguía pidiendo que la gente eligiera. Esa frase se ha quitado; los vídeos cierran ahora con «Follow for more Denver, decoded.» o «Share this Denver find.»",
+    }],
+  },
   {
     version: "0.143.16",
     date: "2026-09-27",
