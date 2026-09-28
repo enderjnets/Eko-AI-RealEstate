@@ -228,6 +228,11 @@ async def test_a_growth_draft_keeps_its_line_date_and_single_social_cta(
         assert (piece.scenes or {})["narration"].count(
             "Follow for more Denver, decoded."
         ) == 1
+        # Which verified brief it was written from, so a correction can be
+        # held to the same facts (97 and 98, 28-sep-2026).
+        from app.services.content_growth import growth_source
+
+        assert piece.source == growth_source(ContentSeries.DENVER_DECODED, 0)
     finally:
         await _cleanup()
 

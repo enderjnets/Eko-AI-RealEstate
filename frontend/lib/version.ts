@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.17";
+export const CURRENT_VERSION = "0.143.18";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.18",
+    date: "2026-09-28",
+    title: { en: "A rewrite after a rejection keeps to the checked facts", es: "La reescritura tras un rechazo respeta los datos comprobados" },
+    changes: [{
+      en: "When you reject a Denver, Decoded or market video, the automatic rewrite now gets the same checked facts the first draft was written from, and is told they win over the draft. Before, it only saw the rejected draft and could change facts nobody had questioned: two rewrites on 28 September said the governor visited \"a handful of times\" instead of twice, and replaced the engraved mile-high step with \"a small stone circle\".",
+      es: "Cuando rechazas un vídeo de Denver, Decoded o de mercado, la reescritura automática recibe ahora los mismos datos comprobados con los que se escribió el primer borrador, con la orden de que mandan sobre el borrador. Antes solo veía el borrador rechazado y podía cambiar datos que nadie había cuestionado: dos reescrituras del 28 de septiembre decían que el gobernador vino «un puñado de veces» en vez de dos, y cambiaban el escalón grabado de la milla por «un pequeño círculo de piedra».",
+    }],
+  },
   {
     version: "0.143.17",
     date: "2026-09-28",
