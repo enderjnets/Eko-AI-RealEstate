@@ -578,6 +578,7 @@ async def _ask_correction(
     lessons: Sequence[str] = (),
     brokerage: str = "",
     series: ContentSeries = ContentSeries.CONVERSION,
+    brief: str | None = None,
 ) -> DraftPayload | None:
     """The same draft, corrected for what the reviewer objected to.
 
@@ -620,6 +621,22 @@ async def _ask_correction(
     standing = lessons_message(lessons, language)
     if standing is not None:
         messages.append(standing)
+    if brief:
+        # The verified brief the first draft was written from, before the
+        # draft itself. Without it the sweep corrected 97 and 98 from the
+        # rejected text alone and changed two facts nobody had questioned
+        # ("visited only twice" became "a handful of times").
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "This piece was written from this verified brief. Every "
+                    "fact in the corrected draft must come from it, and where "
+                    "the draft and the brief disagree, the brief is right:\n"
+                    f"{brief}"
+                ),
+            }
+        )
     messages.append(
         {
             "role": "user",
@@ -668,6 +685,7 @@ async def _ask_correction(
             lessons=lessons,
             brokerage=brokerage,
             series=series,
+            brief=brief,
         )
     if typed:
         # Twice, with the addresses named. Not a loop, and not something to
@@ -693,6 +711,7 @@ async def _ask_correction(
             lessons=lessons,
             brokerage=brokerage,
             series=series,
+            brief=brief,
         )
     if chosen:
         log.warning("Content writer: the corrected draft still chose a social CTA; dropping it")
@@ -1713,6 +1732,21 @@ def _feedback(
     return " ".join(parts)
 
 
+def _source_record(
+    source: Any,
+    series: ContentSeries,
+    growth_index: int | None,
+) -> dict[str, object] | None:
+    """What the piece was written from, so a correction can be held to it."""
+    if source is not None:
+        return source.as_json()
+    if growth_index is not None:
+        from app.services.content_growth import growth_source
+
+        return growth_source(series, growth_index)
+    return None
+
+
 async def generate_draft(db: AsyncSession) -> ContentPiece | None:
     """One draft, gated, or None with the reason in the log."""
     settings = get_settings()
@@ -1761,6 +1795,7 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
         if series is ContentSeries.CONVERSION
         else None
     )
+    growth_index: int | None = None
     if plan is not None:
         topic = plan.topic
     elif series is ContentSeries.CONVERSION:
@@ -1773,12 +1808,12 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
     else:
         from app.services.content_growth import decoded_index, growth_topic
 
-        topic = growth_topic(
-            series,
+        growth_index = (
             await decoded_index(db)
             if series is ContentSeries.DENVER_DECODED
-            else cta_index,
+            else cta_index
         )
+        topic = growth_topic(series, growth_index)
     check = plan.check if plan is not None else None
 
     # Imported here, not at module scope: `content_corrections` imports this
@@ -1860,7 +1895,7 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
         series=series,
         editorial_date=editorial_date,
         publish_window_start=editorial_date,
-        source=source.as_json() if source is not None else None,
+        source=_source_record(source, series, growth_index),
         hook=draft.hook,
         script=draft.script,
         caption=draft.caption,

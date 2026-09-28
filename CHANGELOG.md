@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.18] — 2026-09-28
+
+- Corrections: a rejected growth or market piece is rewritten against the verified brief it was first written from (`content_growth.brief_for`), passed to `_ask_correction` — and through both of its internal retries — as a message before the rejected draft, with "where the draft and the brief disagree, the brief is right". New Decoded/Weekend pieces record their topic in `source` (`{"kind": "growth_topic", "series", "index"}`, the index not the text, so a corrected brief reaches old pieces); Decoded written before this get their topic back by the same count the writer used (measured on prod: 97, 98, 100 → 0, 1, 2 = Capitol, governor, Larimer Square). Market pieces get their DMAR brief from the stored report. Found on 28-sep: the sweep corrected 97 and 98 from the rejected draft alone and changed facts ("visited only twice, in 1875 and 1883" → "a handful of times"; the engraved 15th step → "a small stone circle"). The console only shows `source` when it carries a `url`, so the new record is invisible there.
+
 ## [0.143.17] — 2026-09-28
 
 - Denver, Decoded: "Which one would you choose? Comment below." is removed from the line's closing rotation. It belonged to the old "A or B?" taste questions that 0.143.14 replaced with one verified fact per video, and on 28-sep both pending Decoded pieces (97, 98) ended on it with nothing to choose between. The rotation is now "Follow for more Denver, decoded." / "Share this Denver find.".

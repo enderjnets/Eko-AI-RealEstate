@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -136,6 +136,76 @@ def growth_topic(series: ContentSeries, index: int) -> Topic:
         brief_es=brief,
         audience=BOTH,
     )
+
+
+#: What `ContentPiece.source` holds for a growth piece: which brief it was
+#: written from. The index, not the text, so a fact corrected in `_DECODED`
+#: reaches the next correction of an old piece too.
+GROWTH_SOURCE_KIND = "growth_topic"
+
+
+def growth_source(series: ContentSeries, index: int) -> dict[str, object]:
+    return {"kind": GROWTH_SOURCE_KIND, "series": series.value, "index": index}
+
+
+async def _decoded_index_at_write(db: AsyncSession, piece: ContentPiece) -> int | None:
+    """The topic a Decoded written before the index was stored was given.
+
+    The same count `decoded_index` returned when it was written: the Decoded
+    pieces since the list went in that came before it. Measured on 28-sep-2026
+    against 97, 98 and 100: 0, 1 and 2 — the Capitol, the governor and Larimer
+    Square, which is what each of them is about.
+    """
+    if piece.created_at is None or piece.created_at < DECODED_TOPICS_SINCE:
+        return None
+    return (
+        await db.execute(
+            select(func.count())
+            .select_from(ContentPiece)
+            .where(
+                ContentPiece.kind == ContentKind.GENERATED,
+                ContentPiece.series == ContentSeries.DENVER_DECODED,
+                ContentPiece.created_at >= DECODED_TOPICS_SINCE,
+                ContentPiece.id < piece.id,
+            )
+        )
+    ).scalar_one()
+
+
+async def brief_for(db: AsyncSession, piece: ContentPiece) -> str | None:
+    """The verified brief this piece was written from, or None.
+
+    A correction is held to it. Without it the sweep rewrote 97 and 98 from the
+    rejected draft alone and changed two facts the reviewer never questioned.
+    None for conversion pieces, whose figures are held by the calculator
+    instead, and for growth pieces whose topic cannot be known.
+    """
+    source = piece.source if isinstance(piece.source, dict) else None
+    if piece.series is ContentSeries.DENVER_MARKET_NO_HYPE:
+        if not source or not source.get("published_on"):
+            return None
+        try:
+            report = MarketSource(
+                publisher=str(source.get("publisher") or ""),
+                title=str(source.get("title") or ""),
+                published_on=date.fromisoformat(str(source["published_on"])),
+                url=str(source.get("url") or ""),
+                summary=str(source.get("summary") or ""),
+            )
+        except ValueError:
+            return None
+        return market_topic(report).brief_en
+    if piece.series not in (ContentSeries.DENVER_DECODED, ContentSeries.DENVER_WEEKEND):
+        return None
+    index: int | None = None
+    if source and source.get("kind") == GROWTH_SOURCE_KIND:
+        stored = source.get("index")
+        index = stored if isinstance(stored, int) else None
+    elif piece.series is ContentSeries.DENVER_DECODED:
+        index = await _decoded_index_at_write(db, piece)
+    if index is None:
+        return None
+    return growth_topic(piece.series, index).brief_en
 
 
 def market_topic(source: MarketSource) -> Topic:

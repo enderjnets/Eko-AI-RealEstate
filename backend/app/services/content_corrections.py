@@ -754,6 +754,9 @@ async def _rewrite(db, row, piece) -> bool:
         )
     ).scalar_one_or_none()
     brokerage = (settings_row.brokerage_line or "").strip() if settings_row else ""
+    from app.services.content_growth import brief_for
+
+    brief = await brief_for(db, piece)
     draft = await _ask_correction(
         previous,
         row.reason,
@@ -763,6 +766,7 @@ async def _rewrite(db, row, piece) -> bool:
         lessons=lessons,
         brokerage=brokerage,
         series=piece.series,
+        brief=brief,
     )
     if draft is None:
         # A provider outage, or a reply that is not a draft. Leaving the row
@@ -797,6 +801,7 @@ async def _rewrite(db, row, piece) -> bool:
             lessons=lessons,
             brokerage=brokerage,
             series=piece.series,
+            brief=brief,
         )
         if again is not None:
             draft = again
