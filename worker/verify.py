@@ -93,17 +93,69 @@ def check(
 _DIGIT_RUN = re.compile(r"\d(?:[\s,.-]?\d){2,}")
 
 
+#: The central picture area the gate reads: clear of the hook at the top and
+#: the subtitles and safe zone at the bottom.
+_CENTRAL = (160, 360, 920, 1260)
+#: A frame at least this close to an approved photo is that photo. Measured on
+#: piece 100 (30-sep-2026), with the engine's push-in allowed for by `_ZOOMS`:
+#: its photo seconds read 0.59 to 0.999, its drawn ones 0.37 at most.
+PHOTO_MATCH = 0.5
+_ZOOMS = (1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.4)
+
+
+def _signature(picture) -> list[float]:
+    """A small grey thumbnail, centred and scaled to length one."""
+    from PIL import ImageOps
+
+    values = [float(v) for v in ImageOps.grayscale(picture).resize((48, 56)).getdata()]
+    mean = sum(values) / len(values)
+    values = [v - mean for v in values]
+    norm = sum(v * v for v in values) ** 0.5 or 1.0
+    return [v / norm for v in values]
+
+
+def _photo_signatures(photos: list[Path]) -> list[list[float]]:
+    from PIL import Image
+
+    signatures = []
+    for path in photos:
+        with Image.open(path) as opened:
+            full = opened.convert("RGB").resize((OUT_W, OUT_H))
+        for zoom in _ZOOMS:
+            w, h = OUT_W / zoom, OUT_H / zoom
+            left, top = (OUT_W - w) / 2, (OUT_H - h) / 2
+            pushed = full.crop((left, top, left + w, top + h)).resize((OUT_W, OUT_H))
+            signatures.append(_signature(pushed.crop(_CENTRAL)))
+    return signatures
+
+
+def _shows_a_photo(frame: Path, signatures: list[list[float]]) -> bool:
+    from PIL import Image
+
+    if not signatures:
+        return False
+    with Image.open(frame) as opened:
+        seen = _signature(opened)
+    return max(sum(a * b for a, b in zip(seen, s, strict=True)) for s in signatures) >= PHOTO_MATCH
+
+
 def reject_readable_digits(
     video: Path,
     workdir: Path,
     *,
     before_seconds: float,
+    photos: list[Path] | tuple[Path, ...] = (),
 ) -> list[str]:
     """Reject address-like numbers OCR can read in the central picture area.
 
     The crop deliberately excludes the top hook and bottom subtitle/safe zones.
     Only frames before the final card are sampled, so the calculator and CTA
     may show their approved figures without teaching this guard to ignore them.
+
+    A frame that shows one of `photos` — the approved real photos the shots
+    were given — is not read: a number in a photo of the place is the place,
+    and OCR reads numbers into it that are not there ("000" off a string of
+    light bulbs on Larimer Square, piece 100). The guard is for drawn pictures.
     """
     if shutil.which("tesseract") is None:
         raise Rejected("cannot check generated writing: tesseract is not installed")
@@ -115,7 +167,11 @@ def reject_readable_digits(
     extracted = subprocess.run(
         [
             "ffmpeg", "-y", "-v", "error", "-t", f"{before_seconds:.2f}",
-            "-i", str(video), "-vf", "fps=1,crop=760:900:160:360",
+            "-i", str(video), "-vf",
+            (
+                f"fps=1,crop={_CENTRAL[2] - _CENTRAL[0]}:{_CENTRAL[3] - _CENTRAL[1]}"
+                f":{_CENTRAL[0]}:{_CENTRAL[1]}"
+            ),
             str(frame_pattern),
         ],
         capture_output=True,
@@ -125,6 +181,7 @@ def reject_readable_digits(
     if extracted.returncode != 0:
         raise Rejected("cannot sample the generated picture for readable numbers")
 
+    signatures = _photo_signatures(list(photos)) if photos else []
     found: list[str] = []
     for frame in sorted(workdir.glob("central-*.png")):
         read = subprocess.run(
@@ -138,7 +195,9 @@ def reject_readable_digits(
             raise Rejected("tesseract could not read a generated frame")
         for match in _DIGIT_RUN.findall(read.stdout):
             digits = "".join(character for character in match if character.isdigit())
-            if len(digits) >= 3 and digits not in found:
+            if len(digits) >= 3 and digits not in found and not _shows_a_photo(
+                frame, signatures
+            ):
                 found.append(digits)
     if found:
         raise Rejected(

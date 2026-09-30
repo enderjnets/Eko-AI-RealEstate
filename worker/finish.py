@@ -350,6 +350,11 @@ def apply(
         source,
         workdir / "ocr",
         before_seconds=max(0.0, source_probe.duration - END_CARD_SECONDS),
+        photos=[
+            Path(shot["image"])
+            for shot in spec["scenes"]["scenes"]
+            if isinstance(shot, dict) and shot.get("image")
+        ],
     )
 
     finish_spec = spec["finish"]

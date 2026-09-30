@@ -313,3 +313,110 @@ def test_ocr_ignores_platform_caption_region(tmp_path: Path) -> None:
     assert verify.reject_readable_digits(
         video, tmp_path / "ocr", before_seconds=4.0
     ) == []
+
+
+def _numbered_picture(path: Path, font: str) -> None:
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+            "color=c=white:s=1080x1920", "-frames:v", "1", "-vf",
+            (
+                f"drawtext=fontfile='{font}':text='19239':fontcolor=black:"
+                "fontsize=180:x=(w-text_w)/2:y=(h-text_h)/2"
+            ),
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
+def _still(picture: Path, video: Path, zoom: bool = False) -> None:
+    # A slow push-in like the engine's, so the frames are not the photo as-is.
+    scale = (
+        ",zoompan=z='1+0.01*on':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2'"
+        ":d=1:s=1080x1920:fps=4"
+        if zoom
+        else ""
+    )
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-v", "error", "-loop", "1", "-r", "4", "-i", str(picture),
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=7", "-t", "7",
+            "-vf", f"format=yuv420p{scale}", "-c:v", "libx264", "-c:a", "aac",
+            "-shortest", str(video),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
+@pytest.mark.skipif(not HAS_OCR, reason="tesseract not on PATH")
+def test_ocr_reads_past_an_approved_photo(tmp_path: Path) -> None:
+    """Piece 100 on 30-sep-2026 was refused for "000" read off the real
+    Larimer Square photo Ender approved — strings of light bulbs. A number in
+    a photo of the place is the place; the gate is for drawn pictures."""
+    font = finish.default_font()
+    if font is None:
+        pytest.skip("no font available for the OCR fixture")
+    photo = tmp_path / "photo.png"
+    _numbered_picture(photo, font)
+    video = tmp_path / "photo.mp4"
+    _still(photo, video, zoom=True)
+    assert verify.reject_readable_digits(
+        video, tmp_path / "ocr", before_seconds=4.0, photos=[photo]
+    ) == []
+    # The same frames with no photo named are still a drawn number.
+    with pytest.raises(verify.Rejected, match="19239"):
+        verify.reject_readable_digits(video, tmp_path / "ocr2", before_seconds=4.0)
+
+
+@pytest.mark.skipif(not HAS_OCR, reason="tesseract not on PATH")
+def test_a_photo_elsewhere_in_the_video_does_not_excuse_a_drawn_number(
+    tmp_path: Path,
+) -> None:
+    font = finish.default_font()
+    if font is None:
+        pytest.skip("no font available for the OCR fixture")
+    drawn = tmp_path / "drawn.png"
+    _numbered_picture(drawn, font)
+    video = tmp_path / "drawn.mp4"
+    _still(drawn, video)
+    other = tmp_path / "other.png"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+            "gradients=s=1080x1920:seed=99:type=radial", "-frames:v", "1", str(other),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    with pytest.raises(verify.Rejected, match="19239"):
+        verify.reject_readable_digits(
+            video, tmp_path / "ocr", before_seconds=4.0, photos=[other]
+        )
+
+
+def test_finish_hands_the_gate_the_photos_the_shots_show(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict = {}
+
+    def gate(video, workdir, *, before_seconds, photos=()):
+        seen["photos"] = list(photos)
+        raise verify.Rejected("stop here")
+
+    monkeypatch.setattr(
+        verify, "check",
+        lambda *a, **k: verify.Probe(duration=25.0, width=1080, height=1920, has_audio=True),
+    )
+    monkeypatch.setattr(verify, "reject_readable_digits", gate)
+    spec = _spec()
+    spec["scenes"]["scenes"][0]["image"] = "/cache/a.jpg"
+    spec["scenes"]["scenes"][2]["image"] = "/cache/b.jpg"
+    with pytest.raises(verify.Rejected, match="stop here"):
+        finish.apply(
+            tmp_path / "source.mp4", tmp_path / "finished.mp4", spec=spec,
+            mark=Path(__file__).parents[1] / "assets" / "dhs-mark.png", font=None,
+        )
+    assert seen["photos"] == [Path("/cache/a.jpg"), Path("/cache/b.jpg")]
