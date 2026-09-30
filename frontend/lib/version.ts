@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.19";
+export const CURRENT_VERSION = "0.143.20";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.20",
+    date: "2026-09-30",
+    title: { en: "Videos about Red Rocks, the Capitol and Larimer Square show the real place", es: "Los vídeos de Red Rocks, el Capitolio y Larimer Square enseñan el sitio de verdad" },
+    changes: [{
+      en: "The twelve Wikimedia Commons photos you approved on 30-sep now appear in the Decoded videos about those three places: the first shot and the last are always a real photo, and two more are spread between them. The other shots are still drawn. The caption says which images are real and credits each photographer with their licence, and a render never fills a missing shot with stock footage any more.",
+      es: "Las doce fotos de Wikimedia Commons que aprobaste el 30-sep salen ahora en los Decoded de esos tres sitios: el primer plano y el último son siempre una foto real, y otras dos van repartidas entre medias. El resto de planos siguen siendo dibujados. El pie dice qué imágenes son reales y acredita a cada fotógrafo con su licencia, y un render ya no rellena nunca un plano que falta con vídeo de archivo.",
+    }],
+  },
   {
     version: "0.143.19",
     date: "2026-09-30",

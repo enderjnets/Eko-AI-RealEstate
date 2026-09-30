@@ -62,6 +62,13 @@ from app.services.content_topics import (
 )
 from app.services.lang_guard import not_english_prompt, wrong_language
 from app.services.llm import generate_reply
+from app.services.place_photos import (
+    PlacePhoto,
+    assign,
+    credit_line,
+    photos_for_topic,
+)
+from app.services.place_photos import disclosure as photo_disclosure
 from app.services.tenant_context import get_org_id
 from app.services.timezones import resolve_zone
 
@@ -466,7 +473,8 @@ async def _ask(topic: Topic, language: ContentLanguage,
     if series is ContentSeries.CONVERSION:
         return _with_cta(planned, language, cta_index, plan, brokerage)
     return _with_cta(
-        planned, language, cta_index, plan, brokerage, series=series
+        planned, language, cta_index, plan, brokerage, series=series,
+        photos=photos_for_topic(topic.key),
     )
 
 
@@ -579,6 +587,7 @@ async def _ask_correction(
     brokerage: str = "",
     series: ContentSeries = ContentSeries.CONVERSION,
     brief: str | None = None,
+    photos: Sequence[PlacePhoto] = (),
 ) -> DraftPayload | None:
     """The same draft, corrected for what the reviewer objected to.
 
@@ -688,6 +697,7 @@ async def _ask_correction(
             brokerage=brokerage,
             series=series,
             brief=brief,
+            photos=photos,
         )
     if typed:
         # Twice, with the addresses named. Not a loop, and not something to
@@ -714,6 +724,7 @@ async def _ask_correction(
             brokerage=brokerage,
             series=series,
             brief=brief,
+            photos=photos,
         )
     if chosen:
         log.warning("Content writer: the corrected draft still chose a social CTA; dropping it")
@@ -722,7 +733,8 @@ async def _ask_correction(
     if series is ContentSeries.CONVERSION:
         return _with_cta(planned, language, cta_index, plan, brokerage)
     return _with_cta(
-        planned, language, cta_index, plan, brokerage, series=series
+        planned, language, cta_index, plan, brokerage, series=series,
+        photos=photos,
     )
 
 
@@ -978,6 +990,15 @@ _AI_DISCLOSURE = {
 }
 
 
+def _is_disclosure_line(line: str) -> bool:
+    text = line.strip()
+    if text in _AI_DISCLOSURE.values():
+        return True
+    if text.startswith(("Narrated with a synthetic voice.", "Narrado con una voz sintética.")):
+        return True
+    return text.startswith(("Photos: ", "Fotos: ")) and "Wikimedia Commons" in text
+
+
 def _with_cta(
     draft: DraftPayload | None,
     language: ContentLanguage,
@@ -985,6 +1006,7 @@ def _with_cta(
     plan: Plan | None = None,
     brokerage: str = "",
     series: ContentSeries = ContentSeries.CONVERSION,
+    photos: Sequence[PlacePhoto] = (),
 ) -> DraftPayload | None:
     """Append the call to action, and the brokerage line, to the caption.
 
@@ -1076,6 +1098,25 @@ def _with_cta(
     # filmed is not AI-generated, and saying it is would be a false statement
     # on the agency's own channel.
     disclosure = _AI_DISCLOSURE[language]
+    # A video that shows real photos of the place says so, and credits them,
+    # from the same `assign` the render uses: "Images are AI-generated" would
+    # be false the moment one photo is in the cut, and a credit for a photo
+    # the video does not show is a credit nobody can check. The lines an
+    # earlier pass wrote are taken out first, because a correction starts
+    # from the caption of the draft it corrects.
+    shown = assign(len(draft.scenes), photos)
+    if shown:
+        caption = "\n".join(
+            line for line in caption.split("\n") if not _is_disclosure_line(line)
+        ).rstrip()
+        disclosure = "\n".join(
+            line
+            for line in (
+                photo_disclosure(language, len(draft.scenes), shown),
+                credit_line(language, shown),
+            )
+            if line
+        )
     if draft.scenes and disclosure not in caption:
         caption = f"{caption}\n{disclosure}"
 

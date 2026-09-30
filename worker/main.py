@@ -32,6 +32,7 @@ from worker import (
     assemble,
     config,
     finish,
+    place_photos,
     produce,
     produce_bittrader,
     subtitles,
@@ -382,6 +383,9 @@ def do_produce_job(
         # Refuse an old or incomplete plan before paying the visual engine for
         # a result that the finishing contract cannot accept.
         finish.validate(spec)
+        # Real photos of the place on the shots the panel named. One that
+        # cannot be had leaves its shot drawn; it never stops the video.
+        spec = place_photos.attach(spec, cfg.photo_cache)
         video = produce_bittrader.produce(
             spec,
             workdir,
