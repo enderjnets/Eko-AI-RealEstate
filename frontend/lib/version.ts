@@ -17,10 +17,10 @@ export const CHANGELOG: VersionEntry[] = [
   {
     version: "0.143.22",
     date: "2026-09-30",
-    title: { en: "Capitol videos show only the real Capitol", es: "Los vídeos del Capitolio solo enseñan el Capitolio real" },
+    title: { en: "Real photos where the drawings got the place wrong", es: "Fotos reales donde el dibujo se equivocaba de sitio" },
     changes: [{
-      en: "In the Capitol video, two drawn shots showed a dome that is not Denver's. Every shot of a Capitol video is now one of the four real photos you approved, and the caption says \"The photos are real.\" Red Rocks and Larimer videos do not change.",
-      es: "En el vídeo del Capitolio, dos planos dibujados enseñaban una cúpula que no es la de Denver. Ahora todos los planos de un vídeo del Capitolio son una de las cuatro fotos reales que aprobaste, y el pie dice «The photos are real.». Los vídeos de Red Rocks y Larimer no cambian.",
+      en: "In the Capitol video, two drawn shots showed a dome that is not Denver's. Every shot of a Capitol video is now one of the four real photos you approved, and the caption says \"The photos are real.\" Red Rocks and Larimer videos do not change. The story of Denver's name now opens on a real photo of Larimer Street instead of a drawn street that looked like New York.",
+      es: "En el vídeo del Capitolio, dos planos dibujados enseñaban una cúpula que no es la de Denver. Ahora todos los planos de un vídeo del Capitolio son una de las cuatro fotos reales que aprobaste, y el pie dice «The photos are real.». Los vídeos de Red Rocks y Larimer no cambian. La historia del nombre de Denver abre ahora con una foto real de Larimer Street en vez de una calle dibujada que parecía Nueva York.",
     }],
   },
   {

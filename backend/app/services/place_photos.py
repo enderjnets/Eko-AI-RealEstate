@@ -72,6 +72,7 @@ class PlacePhoto:
 _RED_ROCKS = "denver_decoded_4"
 _CAPITOL = "denver_decoded_0"
 _LARIMER = "denver_decoded_2"
+_GOVERNOR = "denver_decoded_1"
 _C = "https://upload.wikimedia.org/wikipedia/commons/"
 _P = "https://commons.wikimedia.org/wiki/"
 
@@ -189,10 +190,20 @@ PHOTOS: tuple[PlacePhoto, ...] = (
 )
 
 
+#: Topics with no place of their own whose brief asks for another topic's
+#: place. The governor story's brief says "Show Larimer Street downtown";
+#: on 30-sep-2026 piece 98 opened on a drawn "Larimer Street, Denver" with a
+#: spire out of New York, and Ender chose L2 for that shot.
+_BORROWED: dict[str, tuple[str, ...]] = {_GOVERNOR: ("L2",)}
+
+
 def photos_for_topic(topic_key: str | None) -> tuple[PlacePhoto, ...]:
     if not topic_key:
         return ()
-    return tuple(photo for photo in PHOTOS if photo.topic == topic_key)
+    borrowed = _BORROWED.get(topic_key, ())
+    return tuple(
+        photo for photo in PHOTOS if photo.topic == topic_key or photo.id in borrowed
+    )
 
 
 #: Topics whose every shot is a photo. The drawing model does not know the

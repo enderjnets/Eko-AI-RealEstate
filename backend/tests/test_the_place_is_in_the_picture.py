@@ -56,7 +56,7 @@ def test_the_twelve_ender_approved_and_nothing_else() -> None:
     assert [p.id for p in photos_for_topic(RED_ROCKS)] == ["R3", "R9", "R7", "R5"]
     assert [p.id for p in photos_for_topic(CAPITOL)] == ["C8", "C15", "C9", "C3"]
     assert [p.id for p in photos_for_topic(LARIMER)] == ["L2", "L10", "L7", "L4"]
-    assert photos_for_topic(GOVERNOR) == ()
+    assert [p.id for p in photos_for_topic(GOVERNOR)] == ["L2"]
     assert photos_for_topic(None) == ()
 
 
@@ -71,6 +71,8 @@ def test_the_topics_are_the_places_the_briefs_name() -> None:
     assert "Red Rocks" in briefs[RED_ROCKS]
     assert "Capitol" in briefs[CAPITOL]
     assert "Larimer" in briefs[LARIMER]
+    # The governor story has no place of its own; its brief asks for Larimer.
+    assert "Show Larimer Street" in growth_topic(ContentSeries.DENVER_DECODED, 1).brief_en
 
 
 def test_no_share_alike_and_no_file_without_its_fingerprint() -> None:
@@ -132,6 +134,20 @@ def test_the_capitol_is_a_photo_in_every_shot() -> None:
 def test_red_rocks_and_larimer_keep_their_drawn_shots() -> None:
     assert sorted(assign(7, photos_for_topic(RED_ROCKS))) == [0, 2, 4, 6]
     assert sorted(assign(7, photos_for_topic(LARIMER))) == [0, 2, 4, 6]
+
+
+def test_the_governor_story_opens_on_the_real_larimer_street() -> None:
+    """98 on 30-sep-2026: its opening shot, captioned "Larimer Street,
+    Denver", was a drawn street with a spire out of New York."""
+    shown = assign(6, photos_for_topic(GOVERNOR))
+    assert {scene: photo.id for scene, photo in shown.items()} == {0: "L2"}
+    assert disclosure(ContentLanguage.EN, 6, shown) == (
+        "Narrated with a synthetic voice. The photos of Larimer Square are real; "
+        "the other images are AI-generated."
+    )
+    assert credit_line(ContentLanguage.EN, shown) == (
+        "Photos: thirdsphoto (CC BY 4.0), via Wikimedia Commons (cropped)."
+    )
 
 
 def test_every_author_credited_once_with_the_licence() -> None:
@@ -324,7 +340,9 @@ async def test_97_and_100_get_their_places_back_from_the_count(database_url: str
                     await db.commit()
                     pieces.append(piece)
                 assert (await shown_in(db, pieces[0]))[0].id == "C8"
-                assert await shown_in(db, pieces[1]) == {}
+                assert {s: p.id for s, p in (await shown_in(db, pieces[1])).items()} == {
+                    0: "L2"
+                }
                 assert (await shown_in(db, pieces[2]))[0].id == "L2"
     finally:
         await _cleanup()
