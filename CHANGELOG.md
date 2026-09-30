@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.22] — 2026-09-30
+
+- Content: every shot of a Capitol video (`denver_decoded_0`) is a real photo. Piece 97, rendered with the Capitol photos on shots 0/2/4/6, came back with two drawn shots of a Capitol that is not Denver's — a grey dome at 3–5 s, though the prompt said "no building dome in frame", and a dome with a blank white disc at 16–18 s. Ender chose real photos there too. `place_photos.assign` keeps the first/last/spread placement and, for a topic in `_EVERY_SHOT`, fills each remaining shot with the least shown photo that neither neighbour shows (7 shots: C8 C3 C9 C8 C3 C9 C15). The same four photos are shown, so the credit line is unchanged; the disclosure becomes "Narrated with a synthetic voice. The photos are real." Red Rocks and Larimer keep their drawn shots. A Capitol piece whose caption still has the mixed disclosure (97) gets no photos until that line is replaced, as before.
+
 ## [0.143.21] — 2026-09-30
 
 - Landing: the language claim is now the truth. The hero said "In English or Spanish" (`landing.hero.body`, `landing.hero.bodyBranded`, both languages) and the form's reassurance line said "· Se habla español" (`landing.form.reassure`, both languages). From Natalia's own profile (25-sep): she speaks English, Russian and German. The hero now says "In English, Russian or German" / "En inglés, ruso o alemán", and the reassurance line has no language at all until Robbie says which ones he speaks.

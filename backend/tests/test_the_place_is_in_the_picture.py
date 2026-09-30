@@ -35,6 +35,7 @@ from app.services.place_photos import (
     PHOTOS,
     assign,
     credit_line,
+    disclosure,
     photos_for_topic,
     shown_in,
 )
@@ -105,6 +106,32 @@ def test_fewer_shots_than_photos_uses_one_per_shot() -> None:
     assert list(assign(1, photos)) == [0]
     assert assign(0, photos) == {}
     assert assign(6, ()) == {}
+
+
+def test_the_capitol_is_a_photo_in_every_shot() -> None:
+    """97 on 30-sep-2026: two of its drawn shots were a Capitol that is not
+    Denver's, a grey dome and a dome with a blank white disc, though the
+    prompt said "no building dome in frame". Ender: real photos there too."""
+    shown = assign(7, photos_for_topic(CAPITOL))
+    ids = [shown[i].id for i in range(7)]
+    assert ids[0] == "C8"
+    assert ids[-1] == "C15"
+    assert set(ids) == {"C8", "C15", "C9", "C3"}
+    # Four photos over seven shots repeat, but never on two shots in a row.
+    assert all(a != b for a, b in zip(ids, ids[1:], strict=False))
+    assert disclosure(ContentLanguage.EN, 7, shown) == (
+        "Narrated with a synthetic voice. The photos are real."
+    )
+    # The same four photos as when three shots were drawn: the credits of
+    # 97's caption do not change, only its disclosure line.
+    assert credit_line(ContentLanguage.EN, shown) == credit_line(
+        ContentLanguage.EN, {0: shown[0], 2: shown[2], 4: shown[4], 6: shown[6]}
+    )
+
+
+def test_red_rocks_and_larimer_keep_their_drawn_shots() -> None:
+    assert sorted(assign(7, photos_for_topic(RED_ROCKS))) == [0, 2, 4, 6]
+    assert sorted(assign(7, photos_for_topic(LARIMER))) == [0, 2, 4, 6]
 
 
 def test_every_author_credited_once_with_the_licence() -> None:
@@ -183,7 +210,7 @@ def test_spanish_says_it_in_spanish() -> None:
         series=ContentSeries.DENVER_DECODED, photos=photos_for_topic(CAPITOL),
     )
     assert capitol is not None
-    assert "Las fotos del Capitolio de Colorado son reales" in capitol.caption
+    assert "Narrado con una voz sintética. Las fotos son reales." in capitol.caption
 
 
 # ---- against Postgres: which photos a stored piece gets, and the render input

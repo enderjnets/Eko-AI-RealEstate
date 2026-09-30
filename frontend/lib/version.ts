@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.21";
+export const CURRENT_VERSION = "0.143.22";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.22",
+    date: "2026-09-30",
+    title: { en: "Capitol videos show only the real Capitol", es: "Los vídeos del Capitolio solo enseñan el Capitolio real" },
+    changes: [{
+      en: "In the Capitol video, two drawn shots showed a dome that is not Denver's. Every shot of a Capitol video is now one of the four real photos you approved, and the caption says \"The photos are real.\" Red Rocks and Larimer videos do not change.",
+      es: "En el vídeo del Capitolio, dos planos dibujados enseñaban una cúpula que no es la de Denver. Ahora todos los planos de un vídeo del Capitolio son una de las cuatro fotos reales que aprobaste, y el pie dice «The photos are real.». Los vídeos de Red Rocks y Larimer no cambian.",
+    }],
+  },
   {
     version: "0.143.21",
     date: "2026-09-30",

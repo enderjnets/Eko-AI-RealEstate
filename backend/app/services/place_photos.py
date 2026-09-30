@@ -195,12 +195,20 @@ def photos_for_topic(topic_key: str | None) -> tuple[PlacePhoto, ...]:
     return tuple(photo for photo in PHOTOS if photo.topic == topic_key)
 
 
+#: Topics whose every shot is a photo. The drawing model does not know the
+#: Colorado State Capitol: on 30-sep-2026 piece 97 showed a grey dome and a
+#: dome with a blank white disc, though its prompt said "no building dome in
+#: frame". Ender: "fotos reales ahí también".
+_EVERY_SHOT = frozenset({_CAPITOL})
+
+
 def assign(scene_count: int, photos: Sequence[PlacePhoto]) -> dict[int, PlacePhoto]:
     """Which shot shows which photo: the first and the last, then spread.
 
     The opening shot is the one the viewer decides on and the closing one is
     what they remember, so the place is in both. The rest of the photos are
-    spaced evenly between them and the shots in the gaps stay drawn.
+    spaced evenly between them and the shots in the gaps stay drawn — except
+    in a topic of `_EVERY_SHOT`, where the gaps are filled too.
     """
     if scene_count <= 0 or not photos:
         return {}
@@ -209,7 +217,21 @@ def assign(scene_count: int, photos: Sequence[PlacePhoto]) -> dict[int, PlacePho
         return {0: used[0]}
     order = [used[0], *used[2:], used[1]]
     step = (scene_count - 1) / (len(order) - 1)
-    return {round(i * step): photo for i, photo in enumerate(order)}
+    shown = {round(i * step): photo for i, photo in enumerate(order)}
+    if photos[0].topic in _EVERY_SHOT:
+        _fill_gaps(scene_count, order, shown)
+    return shown
+
+
+def _fill_gaps(scene_count: int, order: list[PlacePhoto], shown: dict[int, PlacePhoto]) -> None:
+    """Each empty shot gets the least shown photo that neither neighbour shows."""
+    for scene in range(scene_count):
+        if scene in shown:
+            continue
+        near = {shown.get(scene - 1), shown.get(scene + 1)}
+        free = [photo for photo in order if photo not in near] or order
+        times = [sum(p is photo for p in shown.values()) for photo in free]
+        shown[scene] = free[times.index(min(times))]
 
 
 _DISCLOSURE_MIXED = {
