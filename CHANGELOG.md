@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.19] — 2026-09-30
+
+- Corrections: a `visual` rejection is no longer always a `rebuild`. `verify(piece, "visual", reason)` returns `{"render_fault": bool}`. A render fault (black frame, red box, "NONE", frozen, pixelated…) is still rebuilt with the same shots; a complaint about what the pictures show is a `rewrite` of the shot list, with the verified brief (0.143.18) and a new instruction that the shots must show the place the brief names, as it really looks. Found on 29/30-sep: Ender's rejections of 97 ("buildings should look like the real ones") and 100 ("the Larimer flags are missing") were rebuilt from the same prompts and came back the same; 103 ("Red Rocks never appears") would have gone the same way.
+
 ## [0.143.18] — 2026-09-28
 
 - Corrections: a rejected growth or market piece is rewritten against the verified brief it was first written from (`content_growth.brief_for`), passed to `_ask_correction` — and through both of its internal retries — as a message before the rejected draft, with "where the draft and the brief disagree, the brief is right". New Decoded/Weekend pieces record their topic in `source` (`{"kind": "growth_topic", "series", "index"}`, the index not the text, so a corrected brief reaches old pieces); Decoded written before this get their topic back by the same count the writer used (measured on prod: 97, 98, 100 → 0, 1, 2 = Capitol, governor, Larimer Square). Market pieces get their DMAR brief from the stored report. Found on 28-sep: the sweep corrected 97 and 98 from the rejected draft alone and changed facts ("visited only twice, in 1875 and 1883" → "a handful of times"; the engraved 15th step → "a small stone circle"). The console only shows `source` when it carries a `url`, so the new record is invisible there.
