@@ -319,7 +319,10 @@ async def test_a_stored_red_rocks_piece_gets_red_rocks(database_url: str) -> Non
                 assert {s: p.id for s, p in shown.items()} == {
                     0: "R3", 2: "R7", 3: "R5", 5: "R9",
                 }
-                assert await shown_in(db, governor) == {}
+                # The governor story borrows Larimer's opening photo (98).
+                assert {s: p.id for s, p in (await shown_in(db, governor)).items()} == {
+                    0: "L2"
+                }
     finally:
         await _cleanup()
 
