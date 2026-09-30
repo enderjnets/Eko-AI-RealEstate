@@ -632,7 +632,9 @@ async def _ask_correction(
                 "content": (
                     "This piece was written from this verified brief. Every "
                     "fact in the corrected draft must come from it, and where "
-                    "the draft and the brief disagree, the brief is right:\n"
+                    "the draft and the brief disagree, the brief is right. The "
+                    "shots must show the place the brief names, described as "
+                    "it really looks (follow what the brief says to show):\n"
                     f"{brief}"
                 ),
             }

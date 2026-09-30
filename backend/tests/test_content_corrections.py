@@ -235,9 +235,51 @@ def test_the_categories_with_no_machine_check_go_to_the_model(category: str) -> 
     assert decide(_piece(), category, {}) == "rewrite"
 
 
-@pytest.mark.parametrize("category", ["visual", "audio"])
-def test_the_pictures_and_the_voice_do_not_need_new_words(category: str) -> None:
-    assert decide(_piece(), category, {}) == "rebuild"
+def test_the_voice_does_not_need_new_words() -> None:
+    assert decide(_piece(), "audio", {}) == "rebuild"
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        'SAle una caja roja que dice "NONE" al final del video',
+        "Una de las imágenes salió en negro totalmente",
+        "The picture froze halfway through",
+    ],
+)
+def test_a_render_fault_is_rebuilt_with_the_same_shots(reason: str) -> None:
+    """A black frame or a stray box is the render, not the shot list."""
+    found = verify(_piece(), "visual", reason)
+    assert found == {"render_fault": True}
+    assert decide(_piece(), "visual", found) == "rebuild"
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        # Ender, verbatim. 97 and 100 on 29-sep-2026 were rebuilt from the same
+        # shots and came back with the same wrong building and no flags; 103 on
+        # 30-sep would have gone the same way.
+        "Los edificios que aparecen pudieran verse más parecidos a los de la realidad",
+        "Las imágenes mostradas aunque son parecidas a las calles de Denver no "
+        "mostraron la parte donde tienen las banderas que es representativo de la "
+        "calle larimer con sus banderas colgando en el medio de la calle",
+        "NO sale en ningun momento una foto o video real o generacion de IA de red "
+        "rocks el amphiteatro , los luegares que se nombran deben salir en los videos",
+        # "none" as a word, not the NONE a broken render prints.
+        "None of the images show Red Rocks",
+    ],
+)
+def test_a_complaint_about_what_the_pictures_show_rewrites_the_shots(reason: str) -> None:
+    """A rebuild asks the image model the same questions and gets the same
+    answers. What the reviewer objected to is the shot list."""
+    found = verify(_piece(), "visual", reason)
+    assert found == {"render_fault": False}
+    assert decide(_piece(), "visual", found) == "rewrite"
+
+
+def test_a_picture_complaint_on_a_piece_with_no_shot_list_goes_to_a_person() -> None:
+    assert decide(_piece(scenes=None), "visual", {"render_fault": False}) == "manual"
 
 
 @pytest.mark.parametrize("category", ["visual", "audio"])

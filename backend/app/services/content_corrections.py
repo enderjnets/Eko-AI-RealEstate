@@ -214,6 +214,19 @@ def _spoken(piece: ContentPiece) -> str:
     return str(plan.get("narration") or "").strip() or (piece.script or "")
 
 
+#: A picture complaint that is about the RENDER, not about what the shots show:
+#: a black frame, a stray box, a frozen picture. A rebuild answers those. The
+#: rest — "the buildings should look like the real ones", "Red Rocks never
+#: appears" — are about the shot list, and a rebuild asks the image model the
+#: same questions again (97 and 100 on 29-sep-2026 came back with the same
+#: wrong dome and no Larimer flags).
+_RENDER_FAULT = re.compile(
+    r"(?i)caja\s+roja|recuadro|en\s+negro|pantalla\s+negra|negro\s+total"
+    r"|black\s+(?:frame|screen|box)|(?-i:\bNONE\b)|glitch|parpade|congel|froze"
+    r"|pixelad|pixelat|se\s+corta|cut\s+off|stutter"
+)
+
+
 def verify(
     piece: ContentPiece, category: str, reason: str | None = None
 ) -> dict[str, Any]:
@@ -222,6 +235,8 @@ def verify(
     An empty dict is an honest answer and it is load-bearing: `decide` reads it
     and sends the piece to a person instead of spending a render on a guess.
     """
+    if category == "visual" and reason is not None:
+        return {"render_fault": bool(_RENDER_FAULT.search(reason))}
     if category == "no_cta":
         from app.config import get_settings
         from app.services.publish_followup import caption_carries_link
@@ -318,6 +333,11 @@ def decide(
                 return "rewrite" if can_be_rewritten(piece) else "manual"
             return "rebuild"
         return "rematerialise"
+
+    if category == "visual" and finding.get("render_fault") is False:
+        # What the pictures SHOW was the complaint, so the shot list is what
+        # has to change; the correction keeps the words and the verified brief.
+        return "rewrite" if can_be_rewritten(piece) else "manual"
 
     if category in ("visual", "audio"):
         # The words were never the problem. New pictures, new voice, same text.

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.18";
+export const CURRENT_VERSION = "0.143.19";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.19",
+    date: "2026-09-30",
+    title: { en: "Rejecting a video for its pictures now changes the shots", es: "Rechazar un vídeo por sus imágenes ahora cambia los planos" },
+    changes: [{
+      en: "When you reject a video because of what the pictures show (\"Red Rocks never appears\", \"the buildings should look like the real ones\"), the system now rewrites the shot list, keeping the words and the checked facts, and asks for shots that show the place as it really looks. Before, it made the same video again from the same shots. A render fault (a black frame, a stray box) still just remakes the video.",
+      es: "Cuando rechazas un vídeo por lo que enseñan las imágenes («no sale Red Rocks», «los edificios deberían parecerse a los reales»), el sistema ahora reescribe los planos, conserva el texto y los datos comprobados, y pide planos que enseñen el sitio como es de verdad. Antes rehacía el mismo vídeo con los mismos planos. Un fallo de render (un fotograma en negro, una caja que sobra) sigue rehaciendo solo el vídeo.",
+    }],
+  },
   {
     version: "0.143.18",
     date: "2026-09-28",

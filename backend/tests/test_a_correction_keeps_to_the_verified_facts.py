@@ -243,6 +243,9 @@ async def test_the_brief_reaches_the_model_and_outranks_the_draft() -> None:
     assert sent, "the model was never asked"
     joined = "\n".join(str(m.get("content")) for m in sent[0])
     assert GOVERNOR in joined
+    # And the place it names has to be in the pictures, drawn as it is (103,
+    # 30-sep-2026: a Red Rocks video with no Red Rocks in it).
+    assert "must show the place" in joined
     brief_at = joined.index(GOVERNOR)
     draft_at = joined.index("He returned to Colorado a handful of times.")
     assert brief_at < draft_at
