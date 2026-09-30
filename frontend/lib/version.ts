@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.20";
+export const CURRENT_VERSION = "0.143.21";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.21",
+    date: "2026-09-30",
+    title: { en: "The website says the languages you really speak", es: "La web dice los idiomas que habláis de verdad" },
+    changes: [{
+      en: "The home page said \"In English or Spanish\" and the contact form said \"Se habla español\". Natalia speaks English, Russian and German, so the home page now says \"In English, Russian or German\" and the Spanish line under the form is gone. Robbie's languages will be added when he sends them.",
+      es: "La portada decía «En inglés o español» y el formulario decía «Se habla español». Natalia habla inglés, ruso y alemán, así que la portada dice ahora «En inglés, ruso o alemán» y la línea en español bajo el formulario ya no está. Los idiomas de Robbie se añadirán cuando los envíe.",
+    }],
+  },
   {
     version: "0.143.20",
     date: "2026-09-30",

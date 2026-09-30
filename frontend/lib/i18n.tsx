@@ -940,9 +940,9 @@ const EN: Record<string, string> = {
   "landing.hero.titleLine2": "to",
   "landing.hero.titleItalic": "the city",
   "landing.hero.body":
-    "Real estate advisors buying and selling across Colorado — Aspen, the Roaring Fork Valley, and the Denver metro. In English or Spanish.",
+    "Real estate advisors buying and selling across Colorado — Aspen, the Roaring Fork Valley, and the Denver metro. In English, Russian or German.",
   "landing.hero.bodyBranded":
-    "{brand} is {advisors} — real estate advisors working both sides of Colorado: the mountain towns and the Denver metro. In English or Spanish.",
+    "{brand} is {advisors} — real estate advisors working both sides of Colorado: the mountain towns and the Denver metro. In English, Russian or German.",
   "landing.hero.cta": "Tell us what you want",
   "landing.hero.callUs": "Or just call us",
   // Rendered beside the number itself, not as a button label: on desktop a
@@ -1053,7 +1053,7 @@ const EN: Record<string, string> = {
   "landing.form.wantsPrefixBuying": "What I'm looking for:",
   "landing.form.wantsPrefixHome": "The home:",
   "landing.form.sending": "Sending…",
-  "landing.form.reassure": "We'll get back to you within a few hours · Se habla español",
+  "landing.form.reassure": "We'll get back to you within a few hours",
   "landing.form.thanksTitle": "Got it — we're on it.",
   "landing.form.thanksBody":
     "We'll get back to you within a few hours. If it's urgent, call and you'll get a person.",
@@ -2093,9 +2093,9 @@ const ES: Record<string, string> = {
   "landing.hero.titleLine2": "a",
   "landing.hero.titleItalic": "la ciudad",
   "landing.hero.body":
-    "Asesores inmobiliarios comprando y vendiendo en todo Colorado — Aspen, el valle Roaring Fork y el área metropolitana de Denver. En inglés o español.",
+    "Asesores inmobiliarios comprando y vendiendo en todo Colorado — Aspen, el valle Roaring Fork y el área metropolitana de Denver. En inglés, ruso o alemán.",
   "landing.hero.bodyBranded":
-    "{brand} son {advisors} — asesores inmobiliarios en los dos lados de Colorado: los pueblos de montaña y el área metropolitana de Denver. En inglés o en español.",
+    "{brand} son {advisors} — asesores inmobiliarios en los dos lados de Colorado: los pueblos de montaña y el área metropolitana de Denver. En inglés, ruso o alemán.",
   "landing.hero.cta": "Cuéntanos qué buscas",
   "landing.hero.callUs": "O llámanos ahora",
   "landing.call.or": "O llámanos:",
@@ -2200,7 +2200,7 @@ const ES: Record<string, string> = {
   "landing.form.wantsPrefixBuying": "Lo que busco:",
   "landing.form.wantsPrefixHome": "La casa:",
   "landing.form.sending": "Enviando…",
-  "landing.form.reassure": "Te contestamos en las próximas horas · Se habla español",
+  "landing.form.reassure": "Te contestamos en las próximas horas",
   "landing.form.thanksTitle": "Recibido — nos ponemos con ello.",
   "landing.form.thanksBody":
     "Te contestamos en las próximas horas. Si es urgente, llama y te atiende una persona.",
