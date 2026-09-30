@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.21";
+export const CURRENT_VERSION = "0.143.22";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.22",
+    date: "2026-09-30",
+    title: { en: "Real photos where the drawings got the place wrong", es: "Fotos reales donde el dibujo se equivocaba de sitio" },
+    changes: [{
+      en: "In the Capitol video, two drawn shots showed a dome that is not Denver's. Every shot of a Capitol video is now one of the four real photos you approved, and the caption says \"The photos are real.\" Red Rocks and Larimer videos do not change. The story of Denver's name now opens on a real photo of Larimer Street instead of a drawn street that looked like New York. The number filter no longer rejects the approved real photos (100 was refused for a \"000\" the reader \"saw\" in the Larimer Square light bulbs).",
+      es: "En el vídeo del Capitolio, dos planos dibujados enseñaban una cúpula que no es la de Denver. Ahora todos los planos de un vídeo del Capitolio son una de las cuatro fotos reales que aprobaste, y el pie dice «The photos are real.». Los vídeos de Red Rocks y Larimer no cambian. La historia del nombre de Denver abre ahora con una foto real de Larimer Street en vez de una calle dibujada que parecía Nueva York. El filtro de números ya no rechaza las fotos reales aprobadas (la 100 se rechazó por un «000» que el lector «vio» en las bombillas de Larimer Square).",
+    }],
+  },
   {
     version: "0.143.21",
     date: "2026-09-30",

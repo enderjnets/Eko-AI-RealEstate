@@ -35,6 +35,7 @@ from app.services.place_photos import (
     PHOTOS,
     assign,
     credit_line,
+    disclosure,
     photos_for_topic,
     shown_in,
 )
@@ -55,7 +56,7 @@ def test_the_twelve_ender_approved_and_nothing_else() -> None:
     assert [p.id for p in photos_for_topic(RED_ROCKS)] == ["R3", "R9", "R7", "R5"]
     assert [p.id for p in photos_for_topic(CAPITOL)] == ["C8", "C15", "C9", "C3"]
     assert [p.id for p in photos_for_topic(LARIMER)] == ["L2", "L10", "L7", "L4"]
-    assert photos_for_topic(GOVERNOR) == ()
+    assert [p.id for p in photos_for_topic(GOVERNOR)] == ["L2"]
     assert photos_for_topic(None) == ()
 
 
@@ -70,6 +71,8 @@ def test_the_topics_are_the_places_the_briefs_name() -> None:
     assert "Red Rocks" in briefs[RED_ROCKS]
     assert "Capitol" in briefs[CAPITOL]
     assert "Larimer" in briefs[LARIMER]
+    # The governor story has no place of its own; its brief asks for Larimer.
+    assert "Show Larimer Street" in growth_topic(ContentSeries.DENVER_DECODED, 1).brief_en
 
 
 def test_no_share_alike_and_no_file_without_its_fingerprint() -> None:
@@ -105,6 +108,46 @@ def test_fewer_shots_than_photos_uses_one_per_shot() -> None:
     assert list(assign(1, photos)) == [0]
     assert assign(0, photos) == {}
     assert assign(6, ()) == {}
+
+
+def test_the_capitol_is_a_photo_in_every_shot() -> None:
+    """97 on 30-sep-2026: two of its drawn shots were a Capitol that is not
+    Denver's, a grey dome and a dome with a blank white disc, though the
+    prompt said "no building dome in frame". Ender: real photos there too."""
+    shown = assign(7, photos_for_topic(CAPITOL))
+    ids = [shown[i].id for i in range(7)]
+    assert ids[0] == "C8"
+    assert ids[-1] == "C15"
+    assert set(ids) == {"C8", "C15", "C9", "C3"}
+    # Four photos over seven shots repeat, but never on two shots in a row.
+    assert all(a != b for a, b in zip(ids, ids[1:], strict=False))
+    assert disclosure(ContentLanguage.EN, 7, shown) == (
+        "Narrated with a synthetic voice. The photos are real."
+    )
+    # The same four photos as when three shots were drawn: the credits of
+    # 97's caption do not change, only its disclosure line.
+    assert credit_line(ContentLanguage.EN, shown) == credit_line(
+        ContentLanguage.EN, {0: shown[0], 2: shown[2], 4: shown[4], 6: shown[6]}
+    )
+
+
+def test_red_rocks_and_larimer_keep_their_drawn_shots() -> None:
+    assert sorted(assign(7, photos_for_topic(RED_ROCKS))) == [0, 2, 4, 6]
+    assert sorted(assign(7, photos_for_topic(LARIMER))) == [0, 2, 4, 6]
+
+
+def test_the_governor_story_opens_on_the_real_larimer_street() -> None:
+    """98 on 30-sep-2026: its opening shot, captioned "Larimer Street,
+    Denver", was a drawn street with a spire out of New York."""
+    shown = assign(6, photos_for_topic(GOVERNOR))
+    assert {scene: photo.id for scene, photo in shown.items()} == {0: "L2"}
+    assert disclosure(ContentLanguage.EN, 6, shown) == (
+        "Narrated with a synthetic voice. The photos of Larimer Square are real; "
+        "the other images are AI-generated."
+    )
+    assert credit_line(ContentLanguage.EN, shown) == (
+        "Photos: thirdsphoto (CC BY 4.0), via Wikimedia Commons (cropped)."
+    )
 
 
 def test_every_author_credited_once_with_the_licence() -> None:
@@ -183,7 +226,7 @@ def test_spanish_says_it_in_spanish() -> None:
         series=ContentSeries.DENVER_DECODED, photos=photos_for_topic(CAPITOL),
     )
     assert capitol is not None
-    assert "Las fotos del Capitolio de Colorado son reales" in capitol.caption
+    assert "Narrado con una voz sintética. Las fotos son reales." in capitol.caption
 
 
 # ---- against Postgres: which photos a stored piece gets, and the render input
@@ -276,7 +319,10 @@ async def test_a_stored_red_rocks_piece_gets_red_rocks(database_url: str) -> Non
                 assert {s: p.id for s, p in shown.items()} == {
                     0: "R3", 2: "R7", 3: "R5", 5: "R9",
                 }
-                assert await shown_in(db, governor) == {}
+                # The governor story borrows Larimer's opening photo (98).
+                assert {s: p.id for s, p in (await shown_in(db, governor)).items()} == {
+                    0: "L2"
+                }
     finally:
         await _cleanup()
 
@@ -297,7 +343,9 @@ async def test_97_and_100_get_their_places_back_from_the_count(database_url: str
                     await db.commit()
                     pieces.append(piece)
                 assert (await shown_in(db, pieces[0]))[0].id == "C8"
-                assert await shown_in(db, pieces[1]) == {}
+                assert {s: p.id for s, p in (await shown_in(db, pieces[1])).items()} == {
+                    0: "L2"
+                }
                 assert (await shown_in(db, pieces[2]))[0].id == "L2"
     finally:
         await _cleanup()
