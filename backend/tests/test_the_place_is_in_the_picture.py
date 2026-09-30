@@ -209,7 +209,27 @@ async def _cleanup() -> None:
         await db.commit()
 
 
-def _decoded(created_at: datetime, source: dict | None = None, scenes: int = 6) -> ContentPiece:
+def _captioned(topic_index: int | None, scenes: int = 6) -> str:
+    """The caption `_with_cta` writes for a piece of this topic."""
+    photos = (
+        photos_for_topic(growth_topic(ContentSeries.DENVER_DECODED, topic_index).key)
+        if topic_index is not None
+        else ()
+    )
+    out = _with_cta(
+        _draft(scenes, caption="A caption."), ContentLanguage.EN,
+        series=ContentSeries.DENVER_DECODED, photos=photos,
+    )
+    assert out is not None
+    return out.caption
+
+
+def _decoded(
+    created_at: datetime,
+    source: dict | None = None,
+    scenes: int = 6,
+    caption: str = "A caption.",
+) -> ContentPiece:
     return ContentPiece(
         org_id=ORG,
         kind=ContentKind.GENERATED,
@@ -220,7 +240,7 @@ def _decoded(created_at: datetime, source: dict | None = None, scenes: int = 6) 
         source=source,
         hook="A Denver fact",
         script="A Denver fact, told in a few sentences.",
-        caption="A caption.",
+        caption=caption,
         scenes={
             "narration": "A Denver fact, told in a few sentences.",
             "scenes": [
@@ -237,10 +257,12 @@ async def test_a_stored_red_rocks_piece_gets_red_rocks(database_url: str) -> Non
         with org_scope(ORG):
             async with get_session_factory()() as db:
                 piece = _decoded(
-                    datetime.now(UTC), growth_source(ContentSeries.DENVER_DECODED, 4)
+                    datetime.now(UTC), growth_source(ContentSeries.DENVER_DECODED, 4),
+                    caption=_captioned(4),
                 )
                 governor = _decoded(
-                    datetime.now(UTC), growth_source(ContentSeries.DENVER_DECODED, 1)
+                    datetime.now(UTC), growth_source(ContentSeries.DENVER_DECODED, 1),
+                    caption=_captioned(1),
                 )
                 db.add_all([piece, governor])
                 await db.commit()
@@ -260,8 +282,11 @@ async def test_97_and_100_get_their_places_back_from_the_count(database_url: str
         with org_scope(ORG):
             async with get_session_factory()() as db:
                 pieces = []
-                for hours in (1, 2, 3):
-                    piece = _decoded(DECODED_TOPICS_SINCE + timedelta(hours=hours))
+                for hours, topic in ((1, 0), (2, 1), (3, 2)):
+                    piece = _decoded(
+                        DECODED_TOPICS_SINCE + timedelta(hours=hours),
+                        caption=_captioned(topic),
+                    )
                     db.add(piece)
                     await db.commit()
                     pieces.append(piece)
@@ -279,7 +304,8 @@ async def test_the_worker_is_told_which_shot_shows_which_file(
     try:
         async with get_bypass_session_factory()() as db:
             piece = _decoded(
-                datetime.now(UTC), growth_source(ContentSeries.DENVER_DECODED, 4)
+                datetime.now(UTC), growth_source(ContentSeries.DENVER_DECODED, 4),
+                caption=_captioned(4),
             )
             db.add(piece)
             await db.commit()
@@ -302,5 +328,32 @@ async def test_the_worker_is_told_which_shot_shows_which_file(
         # The shot list still travels whole: a photo replaces a drawing in
         # the engine, not a line of the plan.
         assert len(body["scenes"]["scenes"]) == 6
+    finally:
+        await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_piece_whose_caption_does_not_credit_them_gets_no_photos(
+    database_url: str,
+) -> None:
+    """103 as it stands: written before the photos, its caption says the
+    images are AI and credits nobody. Rendered again as it is, it must stay
+    drawn — a CC BY photo without its credit breaks the licence."""
+    try:
+        with org_scope(ORG):
+            async with get_session_factory()() as db:
+                old = _decoded(
+                    datetime.now(UTC), growth_source(ContentSeries.DENVER_DECODED, 4),
+                    caption=_captioned(None),
+                )
+                edited = _decoded(
+                    datetime.now(UTC), growth_source(ContentSeries.DENVER_DECODED, 4),
+                    caption=_captioned(4).replace("Maarten Heerlien (CC BY 2.0), ", ""),
+                )
+                db.add_all([old, edited])
+                await db.commit()
+                assert "Images are AI-generated." in old.caption
+                assert await shown_in(db, old) == {}
+                assert await shown_in(db, edited) == {}
     finally:
         await _cleanup()

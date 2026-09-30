@@ -279,5 +279,23 @@ def scene_count(piece: ContentPiece) -> int:
 
 
 async def shown_in(db: AsyncSession, piece: ContentPiece) -> dict[int, PlacePhoto]:
-    """Which shot of this piece shows which photo — the render's answer."""
-    return assign(scene_count(piece), await photos_for_piece(db, piece))
+    """Which shot of this piece shows which photo — the render's answer.
+
+    Nothing unless the caption already says so and credits them. A CC BY photo
+    shown without its credit breaks the licence, and a caption that says
+    "Images are AI-generated" over a real photo is false: both happen to any
+    piece written before the photos existed (97, 100, 103) if it is simply
+    rendered again. Such a piece gets its photos when it is rewritten, which
+    writes the lines, or when a person adds them.
+    """
+    language = piece.language
+    count = scene_count(piece)
+    shown = assign(count, await photos_for_piece(db, piece))
+    if not shown:
+        return {}
+    caption = piece.caption or ""
+    said = disclosure(language, count, shown)
+    credits = credit_line(language, shown)
+    if said not in caption or (credits is not None and credits not in caption):
+        return {}
+    return shown
