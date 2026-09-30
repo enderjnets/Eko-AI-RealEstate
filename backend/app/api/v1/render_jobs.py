@@ -59,6 +59,7 @@ from app.services.content_studio import advance
 from app.services.content_topics import CALCULATED_SOURCE
 from app.services.content_writer import carries_spoken_domain, social_cta
 from app.services.fair_housing import PEOPLE_IN_PICTURES
+from app.services.place_photos import shown_in
 
 log = logging.getLogger(__name__)
 
@@ -112,6 +113,13 @@ class FinishInput(BaseModel):
     contract: dict[str, str | int | float]
 
 
+class ScenePhoto(BaseModel):
+    scene: int
+    id: str
+    url: str
+    sha1: str
+
+
 class JobInput(BaseModel):
     """Everything the worker needs, and nothing it does not.
 
@@ -141,6 +149,10 @@ class JobInput(BaseModel):
     # may do the screening is the one the rest of the system already uses.
     people_words: list[str] = []
     finish: FinishInput | None = None
+    # Lane B only: the shots that show a real, approved photo of the place
+    # instead of a drawing (`place_photos.assign`). The worker fetches each
+    # file and refuses one whose SHA-1 is not this one.
+    photos: list[ScenePhoto] = []
 
 
 class FailIn(BaseModel):
@@ -390,6 +402,14 @@ async def job_input(job_id: int) -> JobInput:
                 _finish_input(piece, plan)
                 if job.kind is RenderJobKind.PRODUCE_B
                 else None
+            ),
+            photos=(
+                [
+                    ScenePhoto(scene=scene, id=photo.id, url=photo.url, sha1=photo.sha1)
+                    for scene, photo in sorted((await shown_in(db, piece)).items())
+                ]
+                if job.kind is RenderJobKind.PRODUCE_B
+                else []
             ),
         )
 

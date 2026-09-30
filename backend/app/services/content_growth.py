@@ -163,6 +163,9 @@ async def _decoded_index_at_write(db: AsyncSession, piece: ContentPiece) -> int 
             select(func.count())
             .select_from(ContentPiece)
             .where(
+                # Explicit, because the render queue asks from a session
+                # without row-level security.
+                ContentPiece.org_id == piece.org_id,
                 ContentPiece.kind == ContentKind.GENERATED,
                 ContentPiece.series == ContentSeries.DENVER_DECODED,
                 ContentPiece.created_at >= DECODED_TOPICS_SINCE,
@@ -195,8 +198,19 @@ async def brief_for(db: AsyncSession, piece: ContentPiece) -> str | None:
         except ValueError:
             return None
         return market_topic(report).brief_en
+    topic = await growth_topic_for(db, piece)
+    return topic.brief_en if topic is not None else None
+
+
+async def growth_topic_for(db: AsyncSession, piece: ContentPiece) -> Topic | None:
+    """The growth topic this piece was written from, or None.
+
+    The stored index when the writer recorded one, otherwise — for a Decoded
+    written before it did — the count it was given at the time.
+    """
     if piece.series not in (ContentSeries.DENVER_DECODED, ContentSeries.DENVER_WEEKEND):
         return None
+    source = piece.source if isinstance(piece.source, dict) else None
     index: int | None = None
     if source and source.get("kind") == GROWTH_SOURCE_KIND:
         stored = source.get("index")
@@ -205,7 +219,7 @@ async def brief_for(db: AsyncSession, piece: ContentPiece) -> str | None:
         index = await _decoded_index_at_write(db, piece)
     if index is None:
         return None
-    return growth_topic(piece.series, index).brief_en
+    return growth_topic(piece.series, index)
 
 
 def market_topic(source: MarketSource) -> Topic:

@@ -61,6 +61,10 @@ class Config:
         default_factory=lambda: Path.home() / ".openclaw" / "workspace" / "bittrader" / "agents"
     )
     bittrader_channel: str = field(default="denver_home_story")
+    # Approved photos of the places, kept under their SHA-1 (`place_photos`).
+    photo_cache: Path = field(
+        default_factory=lambda: Path.home() / "eko-render" / "places"
+    )
 
     @property
     def configured(self) -> str | None:
@@ -105,5 +109,9 @@ def load() -> Config:
         ),
         bittrader_channel=(
             os.environ.get("RENDER_BITTRADER_CHANNEL", "").strip() or "denver_home_story"
+        ),
+        photo_cache=Path(
+            os.environ.get("RENDER_PHOTO_CACHE", "").strip()
+            or str(Path.home() / "eko-render" / "places")
         ),
     )
