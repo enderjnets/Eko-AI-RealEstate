@@ -110,6 +110,35 @@ def test_a_landscape_photo_is_kept_whole_not_cropped_to_a_sliver(tmp_path: Path)
     assert frame.getpixel((540, 1880)) < (160, 160, 160)
 
 
+def test_a_nearly_portrait_photo_is_not_squared(tmp_path: Path) -> None:
+    """R3 is 3400x4310: wider than the cut-off, taller than wide. Squared, it
+    lost the top of the rocks; laid whole it keeps them."""
+    picture = Image.new("RGB", (340, 431), (250, 250, 250))
+    picture.paste((0, 0, 0), (0, 0, 340, 20))
+    buf = io.BytesIO()
+    picture.save(buf, "JPEG")
+    data = buf.getvalue()
+    (tmp_path / _sha1(data)).write_bytes(data)
+    out = place_photos.attach(
+        _spec([{"scene": 0, "id": "R3", "url": "u", "sha1": _sha1(data)}]), tmp_path
+    )
+    frame = Image.open(out["scenes"]["scenes"][0]["image"]).convert("RGB")
+    # The black strip at the very top of the photo is still in the frame.
+    top = (1920 - round(1080 * 431 / 340)) // 2
+    assert frame.getpixel((540, top + 5)) < (60, 60, 60)
+
+
+def test_a_cache_made_by_an_older_rule_is_not_served(tmp_path: Path) -> None:
+    data = _jpeg(1200, 1800)
+    (tmp_path / _sha1(data)).write_bytes(data)
+    stale = tmp_path / f"{_sha1(data)}-1080x1920.jpg"
+    stale.write_bytes(b"made by the first rule")
+    out = place_photos.attach(
+        _spec([{"scene": 0, "id": "R3", "url": "u", "sha1": _sha1(data)}]), tmp_path
+    )
+    assert Path(out["scenes"]["scenes"][0]["image"]) != stale
+
+
 def test_a_file_that_is_not_the_approved_one_is_refused(monkeypatch, tmp_path: Path) -> None:
     approved = _jpeg(1200, 1800)
     replaced = _jpeg(1200, 1800, colour=(0, 0, 255))

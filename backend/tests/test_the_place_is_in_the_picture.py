@@ -178,6 +178,12 @@ def test_spanish_says_it_in_spanish() -> None:
     assert out is not None
     assert "Las fotos de Red Rocks son reales" in out.caption
     assert "Carol M. Highsmith (dominio público)" in out.caption
+    capitol = _with_cta(
+        _draft(caption="El Capitolio."), ContentLanguage.ES,
+        series=ContentSeries.DENVER_DECODED, photos=photos_for_topic(CAPITOL),
+    )
+    assert capitol is not None
+    assert "Las fotos del Capitolio de Colorado son reales" in capitol.caption
 
 
 # ---- against Postgres: which photos a stored piece gets, and the render input

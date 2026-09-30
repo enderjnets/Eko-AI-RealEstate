@@ -218,7 +218,7 @@ _DISCLOSURE_MIXED = {
         "the other images are AI-generated."
     ),
     ContentLanguage.ES: (
-        "Narrado con una voz sintética. Las fotos de {place} son reales; "
+        "Narrado con una voz sintética. Las fotos {place} son reales; "
         "las demás imágenes están generadas con IA."
     ),
 }
@@ -230,6 +230,7 @@ _CREDITS = {
     ContentLanguage.EN: "Photos: {names}, via Wikimedia Commons (cropped).",
     ContentLanguage.ES: "Fotos: {names}, vía Wikimedia Commons (recortadas).",
 }
+_PLACE_ES = {"the Colorado State Capitol": "del Capitolio de Colorado"}
 _PUBLIC_DOMAIN = {ContentLanguage.EN: "public domain", ContentLanguage.ES: "dominio público"}
 
 
@@ -242,6 +243,8 @@ def disclosure(
     if len(shown) >= scene_count:
         return _DISCLOSURE_ALL_PHOTOS[language]
     place = next(iter(shown.values())).place
+    if language is ContentLanguage.ES:
+        place = _PLACE_ES.get(place, f"de {place}")
     return _DISCLOSURE_MIXED[language].format(place=place)
 
 

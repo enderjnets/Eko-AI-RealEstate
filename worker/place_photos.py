@@ -32,6 +32,10 @@ import httpx
 log = logging.getLogger("worker.place_photos")
 
 WIDTH, HEIGHT = 1080, 1920
+#: In the name of every prepared file, and bumped whenever `vertical` changes:
+#: a prepared file is never remade, so without it a cache made by an older
+#: rule would be served for ever.
+MADE = "v2"
 #: Wikimedia asks every client to name itself and a way to reach its owner.
 USER_AGENT = "DenverHomeStory-render/1.0 (https://www.denverhomestory.com/contact)"
 ATTEMPTS = 4
@@ -100,7 +104,7 @@ def vertical(source: Path, sha1: str, cache: Path) -> Path:
     # The largest approved original is 5304x7952; this refuses anything past
     # twice that rather than decoding it on a machine three projects share.
     Image.MAX_IMAGE_PIXELS = 90_000_000
-    target = cache / f"{sha1}-{WIDTH}x{HEIGHT}.jpg"
+    target = cache / f"{sha1}-{WIDTH}x{HEIGHT}-{MADE}.jpg"
     if target.is_file():
         return target
     with Image.open(source) as opened:
@@ -114,14 +118,15 @@ def vertical(source: Path, sha1: str, cache: Path) -> Path:
         # Squared from the centre first: laid whole, a 3:2 photo is a band a
         # third of the screen tall (seen on the twelve approved ones). Square,
         # it fills more than half and keeps its middle, where the place is.
-        side = min(picture.width, picture.height)
-        square = picture.crop((
-            (picture.width - side) // 2, (picture.height - side) // 2,
-            (picture.width + side) // 2, (picture.height + side) // 2,
-        ))
-        whole = ImageOps.contain(square, (WIDTH, HEIGHT), Image.Resampling.LANCZOS)
+        # Only a photo wider than it is tall: R3 (3400x4310) is nearly
+        # portrait, and squaring it cut the top of the rocks and the steps.
+        if picture.width > picture.height:
+            side = picture.height
+            left = (picture.width - side) // 2
+            picture = picture.crop((left, 0, left + side, side))
+        whole = ImageOps.contain(picture, (WIDTH, HEIGHT), Image.Resampling.LANCZOS)
         frame.paste(whole, ((WIDTH - whole.width) // 2, (HEIGHT - whole.height) // 2))
-    partial = cache / f"{sha1}-{WIDTH}x{HEIGHT}.part.jpg"
+    partial = cache / f"{sha1}-{WIDTH}x{HEIGHT}-{MADE}.part.jpg"
     frame.save(partial, "JPEG", quality=92)
     partial.replace(target)
     return target
