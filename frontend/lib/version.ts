@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.22";
+export const CURRENT_VERSION = "0.143.23";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.23",
+    date: "2026-10-01",
+    title: { en: "\"The two of us\" is your own profile", es: "«Nosotros dos» es vuestro propio perfil" },
+    changes: [{
+      en: "The \"The two of us\" section on the home page now carries the profile Natalia approved on 30-sep: one team at Engel & Völkers serving the Denver Metro area with the head office in Aspen, Natalia's story, languages and interests, and Robbie's years as a teacher and counselor. It replaces the two paragraphs we had written for you (\"fewer clients\" and \"in the car most weeks\"). Same text in Spanish.",
+      es: "La sección «Nosotros dos» de la portada lleva ya el perfil que Natalia aprobó el 30-sep: un solo equipo en Engel & Völkers que atiende el área metropolitana de Denver con la oficina principal en Aspen, la historia de Natalia, sus idiomas y aficiones, y los años de Robbie como profesor y consejero. Sustituye a los dos párrafos que habíamos escrito nosotros («menos clientes» y «en la carretera casi todas las semanas»). El mismo texto en español.",
+    }],
+  },
   {
     version: "0.143.22",
     date: "2026-09-30",

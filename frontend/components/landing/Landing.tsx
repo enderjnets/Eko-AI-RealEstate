@@ -494,10 +494,13 @@ function TwoOfUs() {
             <SplitTitle a={t("landing.two.titleA")} italic={t("landing.two.titleItalic")} />
           </div>
           <p className="mt-6 max-w-[460px] text-base leading-[1.8] text-ln-body">
-            {t("landing.two.p1")}
+            {t("landing.two.team")}
           </p>
           <p className="mt-5 max-w-[460px] text-base leading-[1.8] text-ln-body">
-            {t("landing.two.p2")}
+            {t("landing.two.natalia")}
+          </p>
+          <p className="mt-5 max-w-[460px] text-base leading-[1.8] text-ln-body">
+            {t("landing.two.robbie")}
           </p>
           <ol className="mt-10 border-t border-ln-hair">
             {credentials.map((line, i) => (

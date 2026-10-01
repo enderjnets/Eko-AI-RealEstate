@@ -962,10 +962,14 @@ const EN: Record<string, string> = {
   "landing.two.eyebrow": "The two of us",
   "landing.two.titleA": "A small practice,",
   "landing.two.titleItalic": "by design",
-  "landing.two.p1":
-    "We take on fewer clients than a team our size could. It's the only way the same two people can be at every showing, on every call, and across every line of your contract — in Aspen and in Denver.",
-  "landing.two.p2":
-    "Between Aspen and Denver we are in the car most weeks, which is how we keep a real read on both markets instead of quoting last quarter's numbers.",
+  // The profile Natalia approved on 30-sep ("I really liked the profile"),
+  // word for word. Robbie's paragraph is built from what she wrote about him.
+  "landing.two.team":
+    "Natalia and Robbie work together as one team at Engel & Völkers. They serve the Denver Metro area, with their head office in Aspen.",
+  "landing.two.natalia":
+    "Natalia came to the United States from Russia in 1998 and started in real estate in 2000. She has been licensed since 2007. Her approach is simple: understand what each client needs, then keep working until they reach their goal, with as little stress for them as possible. She knows Denver's neighborhoods inside and out, and the mountain areas too. She has worked on home sales, bank-owned homes, short sales and investment properties. Real estate is not just her job; it is her passion. She speaks English, Russian and German. Outside work, she enjoys her family and her two Yorkies, photography, cooking for friends, playing the piano and getting away to the mountains.",
+  "landing.two.robbie":
+    "Robbie spent 18 years as a teacher and 3 years as a counselor at Veterans Affairs. That background made him a clear communicator and a strong negotiator, and a real advocate for his clients when they buy or sell. He knows the Denver Metro area well and keeps up with the latest real estate technology.",
   "landing.two.item2": "Licensed across Colorado — mountain and metro",
   "landing.two.item3": "The same two advisors from first call to closing",
   "landing.stats.years": "Years combined in Colorado real estate",
@@ -2113,10 +2117,12 @@ const ES: Record<string, string> = {
   "landing.two.eyebrow": "Nosotros dos",
   "landing.two.titleA": "Una práctica pequeña,",
   "landing.two.titleItalic": "a propósito",
-  "landing.two.p1":
-    "Tomamos menos clientes de los que un equipo de nuestro tamaño podría. Es la única forma de que las mismas dos personas estén en cada visita, en cada llamada y en cada línea de tu contrato — en Aspen y en Denver.",
-  "landing.two.p2":
-    "Entre Aspen y Denver pasamos buena parte de la semana en la carretera, y así mantenemos una lectura real de los dos mercados en vez de citar los números del trimestre pasado.",
+  "landing.two.team":
+    "Natalia y Robbie trabajan juntos como un solo equipo en Engel & Völkers. Atienden el área metropolitana de Denver, con su oficina principal en Aspen.",
+  "landing.two.natalia":
+    "Natalia llegó a Estados Unidos desde Rusia en 1998 y empezó en el sector inmobiliario en 2000. Tiene licencia desde 2007. Su forma de trabajar es sencilla: entender lo que necesita cada cliente y seguir trabajando hasta que alcance su objetivo, con el menor estrés posible. Conoce a fondo los barrios de Denver, y también las zonas de montaña. Ha trabajado en ventas de viviendas, viviendas embargadas por bancos, ventas cortas e inmuebles de inversión. Para ella el sector inmobiliario no es solo su trabajo: es su pasión. Habla inglés, ruso y alemán. Fuera del trabajo disfruta de su familia y de sus dos yorkies, la fotografía, cocinar para sus amigos, tocar el piano y escaparse a la montaña.",
+  "landing.two.robbie":
+    "Robbie fue profesor durante 18 años y consejero durante 3 años en Veterans Affairs (Asuntos de Veteranos). Esa experiencia lo hizo un comunicador claro y un buen negociador, y un verdadero defensor de sus clientes cuando compran o venden. Conoce bien el área metropolitana de Denver y está al día con la tecnología inmobiliaria más reciente.",
   "landing.two.item2": "Con licencia en todo Colorado — montaña y metro",
   "landing.two.item3": "Los mismos dos asesores de la primera llamada al cierre",
   "landing.stats.years": "Años combinados en bienes raíces en Colorado",
