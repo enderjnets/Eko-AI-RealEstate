@@ -65,6 +65,7 @@ from app.models import (
     PublicationPlatform,
     PublicationStatus,
 )
+from app.services import buffer_watch
 from app.services.content_series import contract_for
 from app.services.content_studio import (
     NotIdentified,
@@ -804,6 +805,7 @@ async def _graphql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
                 "Content-Type": "application/json",
             },
         )
+    buffer_watch.record_answer(resp.status_code)
     remaining, refills_in = parse_rate_limit(resp.headers.get("ratelimit"))
     if remaining is not None:
         _quota_remaining = remaining

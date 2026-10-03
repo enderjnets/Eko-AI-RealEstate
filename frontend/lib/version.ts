@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.23";
+export const CURRENT_VERSION = "0.143.24";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.24",
+    date: "2026-10-03",
+    title: { en: "You hear about it when Buffer stops taking our key", es: "Te enteras cuando Buffer deja de aceptar nuestra clave" },
+    changes: [{
+      en: "From 26-sep to 3-oct Buffer refused our access key and nobody was told: the posts already queued in Buffer kept going out, so the accounts looked alive, while eight approved pieces were never sent. Now, if Buffer refuses the key for more than one pass of the publisher, you get an alert by email and Telegram with the one-line fix, again once a day while it lasts, and a second one when Buffer accepts the key again.",
+      es: "Del 26-sep al 3-oct Buffer rechazó nuestra clave y nadie se enteró: lo que ya estaba en la cola de Buffer siguió saliendo, así que las cuentas parecían vivas, mientras ocho piezas aprobadas nunca se enviaron. Ahora, si Buffer rechaza la clave durante más de una pasada del publicador, te llega un aviso por correo y Telegram con el arreglo en una línea, repetido una vez al día mientras dure, y otro cuando Buffer vuelve a aceptarla.",
+    }],
+  },
   {
     version: "0.143.23",
     date: "2026-10-01",
