@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.24] — 2026-10-03
+
+- Publishing: Buffer refusing the access token is an operator alert, not a log line. From 26-sep to 3-oct 2026 every Buffer call answered 401 "Access token is not valid"; the only trace was a WARNING every 15 minutes. Posts already queued inside Buffer kept publishing, so the accounts looked alive until the queue ran dry on 29-sep, while eight approved pieces were never sent. `_graphql` now reports each answer to `app/services/buffer_watch.py` (a 401 starts a streak, any accepted answer ends it; a 429 is the quota brake's business and changes nothing). The monitor loop's tick reports `refused` once the streak has outlived one publish pass (`REFUSED_FOR`, 15 min), through `send_operator_alert` (email + Telegram), with the mechanics of `render_watch`: a state change is reported, `alerted_state` advances only when the alert was accepted, `MAX_ALERTS_PER_DAY` per row. While still refused, the alert repeats every 24 h; recovery is reported too. The alert body carries the fix: a new key in Buffer, set on the VPS with `~/bin/dhs-buffer-token.sh` (reads it from stdin).
+
 ## [0.143.23] — 2026-10-01
 
 - Landing: "The two of us" (`TwoOfUs`) shows the profile Natalia approved by email on 30-sep ("I really liked the profile"), word for word: `landing.two.team`, `landing.two.natalia`, `landing.two.robbie`, in English and Spanish. They replace `landing.two.p1`/`p2` ("fewer clients than a team our size could", "in the car most weeks"), which were ours, not theirs. "Serving Denver Metro with a head office in Aspen" is the brokerage's one office (533 E. Hopkins Ave #101), as the footer already says. Natalia answers for both advisors.

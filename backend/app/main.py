@@ -481,6 +481,7 @@ async def _llm_monitor_loop() -> None:
     thing that has to stay rare is the email, and that rareness lives in
     `run_monitor_tick`, not in this interval.
     """
+    from app.services.buffer_watch import run_buffer_watch_tick
     from app.services.fair_housing_watch import run_fair_housing_tick
     from app.services.landing_analytics import (
         classify_datacenter_visits,
@@ -515,6 +516,17 @@ async def _llm_monitor_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001 — same reason as above
             logger.error("Fair Housing watch tick failed: %s", exc)
+
+        # Buffer refusing the token looked like a quiet week for five days
+        # (26-sep to 3-oct): the queue inside Buffer kept posting while nothing
+        # new reached it. The tick never raises; the try is for symmetry with
+        # the others, so a fault here is never logged under their names.
+        try:
+            await run_buffer_watch_tick()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — same reason as above
+            logger.error("Buffer watch tick failed: %s", exc)
 
         # Also rides this loop, and for the plainest of reasons: a DELETE of
         # rows older than a quarter, on an indexed column, in a table that a
