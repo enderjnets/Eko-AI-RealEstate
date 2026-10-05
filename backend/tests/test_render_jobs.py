@@ -924,7 +924,7 @@ async def test_calculated_job_input_carries_a_seeded_finishing_contract(
             "contract": {
                 "series": "conversion",
                 "duration_min": 18,
-                "duration_max": 35,
+                "duration_max": 40,
                 "word_max": 90,
                 "scene_min": 7,
                 "scene_max": 9,
@@ -957,7 +957,7 @@ async def test_ordinary_job_input_carries_a_neutral_finishing_contract(
             "contract": {
                 "series": "conversion",
                 "duration_min": 18,
-                "duration_max": 35,
+                "duration_max": 40,
                 "word_max": 90,
                 "scene_min": 7,
                 "scene_max": 9,
