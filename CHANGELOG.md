@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.25] — 2026-10-04
+
+- Content: render duration ceilings follow the new DHS voice. Ender chose MiniMax `English_Upbeat_Woman` at speed 1.0 (BitTrader 2.14.166) over `English_CalmWoman` at 1.3, after a blind tasting and the DIA prototype. Measured on four real DHS scripts (pieces 97, 99, 101, 103): 2.43-2.91 words a second, against 2.9-3.9 before, so 65-80 words plus the sign-off last 25-36 s. Ender preferred slightly longer videos to shorter scripts: word ranges are unchanged and `duration_max` goes from 32 to 38 for the short lines (87 narrated words at 2.3) and from 35 to 40 for conversion (90 at 2.3), so a take inside the measured spread is not refused after its narration and pictures are paid for.
+
 ## [0.143.24] — 2026-10-03
 
 - Publishing: Buffer refusing the access token is an operator alert, not a log line. From 26-sep to 3-oct 2026 every Buffer call answered 401 "Access token is not valid"; the only trace was a WARNING every 15 minutes. Posts already queued inside Buffer kept publishing, so the accounts looked alive until the queue ran dry on 29-sep, while eight approved pieces were never sent. `_graphql` now reports each answer to `app/services/buffer_watch.py` (a 401 starts a streak, any accepted answer ends it; a 429 is the quota brake's business and changes nothing). The monitor loop's tick reports `refused` once the streak has outlived one publish pass (`REFUSED_FOR`, 15 min), through `send_operator_alert` (email + Telegram), with the mechanics of `render_watch`: a state change is reported, `alerted_state` advances only when the alert was accepted, `MAX_ALERTS_PER_DAY` per row. While still refused, the alert repeats every 24 h; recovery is reported too. The alert body carries the fix: a new key in Buffer, set on the VPS with `~/bin/dhs-buffer-token.sh` (reads it from stdin).
