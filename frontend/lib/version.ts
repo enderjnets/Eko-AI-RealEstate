@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.24";
+export const CURRENT_VERSION = "0.143.25";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.25",
+    date: "2026-10-04",
+    title: { en: "Room for the new, more natural voice", es: "Espacio para la voz nueva, más natural" },
+    changes: [{
+      en: "You chose a new narrator for every Denver Home Story video: Upbeat Woman, at normal speed instead of 30% faster. Speaking naturally takes longer, so the same scripts now run about 25-36 seconds instead of 20-30. You preferred slightly longer videos to shorter scripts, so the scripts stay as they are and the longest a short line may run is now 38 seconds (40 for the calculator videos), so a finished video is not thrown away for running a few seconds over.",
+      es: "Elegiste una narradora nueva para todos los vídeos de Denver Home Story: Upbeat Woman, a velocidad normal en vez de un 30 % más rápida. Hablar natural lleva más tiempo, así que los mismos guiones duran unos 25-36 segundos en vez de 20-30. Preferiste vídeos algo más largos a guiones más cortos, así que los guiones no cambian y el máximo de las líneas cortas pasa a 38 segundos (40 en los de la calculadora), para que un vídeo terminado no se tire por pasarse unos segundos.",
+    }],
+  },
   {
     version: "0.143.24",
     date: "2026-10-03",

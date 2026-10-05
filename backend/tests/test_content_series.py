@@ -98,9 +98,12 @@ def test_growth_and_conversion_keep_separate_production_contracts() -> None:
     # refused twice against a floor of 20. Same voice, same measured spread as
     # the short lines: 60-80 words plus the 10-word sign-off (70-90 narrated)
     # last 18-31 s at 2.9-3.9 words a second, inside 18-35.
+    # 4-oct-2026: the voice became English_Upbeat_Woman at normal speed (Ender
+    # liked it in the DIA prototype), measured 2.43-2.91 words a second on four
+    # real DHS scripts. 90 narrated words at 2.3 is 39 s: the ceiling is 40.
     assert (conversion.word_min, conversion.word_max) == (60, 80)
     assert (conversion.scene_min, conversion.scene_max) == (7, 9)
-    assert (conversion.duration_min, conversion.duration_max) == (18, 35)
+    assert (conversion.duration_min, conversion.duration_max) == (18, 40)
     assert conversion.requires_site_link is True
 
     # 24-sep-2026: Ender rejected piece 88 (11 s) because at that length it
@@ -110,6 +113,10 @@ def test_growth_and_conversion_keep_separate_production_contracts() -> None:
     # words plus the 7-word spoken sign-off last 18.5-30 s. The render bounds
     # are 18-32, a little wider than the aim, so a slow or fast take inside
     # that measured spread is not thrown away after it has been paid for.
+    # 4-oct-2026: the slower voice (2.43-2.91 words a second, measured) makes
+    # the same scripts 25-36 s. Ender chose slightly longer videos over shorter
+    # scripts, so the words stay and the ceiling is 38 (87 narrated words at a
+    # 2.3 margin under the slowest measured take).
     for line in (
         decoded,
         weekend,
@@ -117,7 +124,7 @@ def test_growth_and_conversion_keep_separate_production_contracts() -> None:
     ):
         assert (line.word_min, line.word_max) == (65, 80)
         assert (line.scene_min, line.scene_max) == (6, 8)
-        assert (line.duration_min, line.duration_max) == (18, 32)
+        assert (line.duration_min, line.duration_max) == (18, 38)
     assert decoded.requires_site_link is False
     assert weekend.social_ctas == ("save", "share")
 
@@ -201,7 +208,7 @@ def test_growth_render_card_is_social_and_uses_the_short_bounds() -> None:
     assert finish.cta_display == "@denverhomestory"
     assert "denverhomestory.com" not in finish.cta_display
     assert finish.contract["duration_min"] == 18
-    assert finish.contract["duration_max"] == 32
+    assert finish.contract["duration_max"] == 38
 
 
 def test_market_render_card_carries_the_verified_source_date() -> None:
