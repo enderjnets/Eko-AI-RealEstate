@@ -110,6 +110,18 @@ describe("contentApi.upload", () => {
     expect(sent[1].url).not.toContain("finished");
   });
 
+  it("declares a clip made with AI only when told to", async () => {
+    // `kind` is what tells TikTok and YouTube the material is synthetic. The
+    // console never sent it, so every upload went in RECORDED: on 7-oct-2026
+    // the 3D airport video, narrated by a synthetic voice, went in that way
+    // three times (pieces 109-111) and had to be withdrawn each time.
+    const sent = stubXhr(201, JSON.stringify({ id: 7 }));
+    await contentApi.upload(clip(), "en", undefined, undefined, false, true);
+    await contentApi.upload(clip(), "en", undefined, undefined, true);
+    expect(sent[0].url).toContain("kind=generated");
+    expect(sent[1].url).not.toContain("kind");
+  });
+
   it("reports progress, which is the only reason this is not fetch", async () => {
     stubXhr(201, JSON.stringify({ id: 7 }));
     const seen: number[] = [];

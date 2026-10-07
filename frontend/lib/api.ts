@@ -793,6 +793,9 @@ export const contentApi = {
     onProgress?: (percent: number) => void,
     maxMb?: number,
     finished?: boolean,
+    // Made with AI — a synthetic voice or pictures. Sent as `kind=generated`,
+    // which is what tells TikTok and YouTube the material is synthetic.
+    generated?: boolean,
   ): Promise<ContentPiece> =>
     new Promise((resolve, reject) => {
       // Before the request exists, not after. A 4K phone clip is a few hundred
@@ -813,7 +816,8 @@ export const contentApi = {
         `/api/v1/content/upload?filename=${encodeURIComponent(file.name)}` +
         `&language=${language}` +
         // An already-edited clip: the server skips lane A's captions, mark and music.
-        (finished ? "&finished=true" : "");
+        (finished ? "&finished=true" : "") +
+        (generated ? "&kind=generated" : "");
       const xhr = new XMLHttpRequest();
       xhr.open("POST", url);
       if (onProgress) {
