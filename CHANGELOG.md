@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.26] — 2026-10-07
+
+- Content: Upload clip can declare a clip made with AI. A "Made with AI" box next to "Finished video" sends `kind=generated` to `/api/v1/content/upload`, which has accepted it since the autumn pieces but was never sent by the console, so every upload went in RECORDED. On 7-oct-2026 the 3D DIA video (USGS lidar model + MiniMax voice) went in that way three times (pieces 109-111): RECORDED tells TikTok and YouTube the material is not synthetic, and without "Finished video" lane A queued a second render over the finished film (job 61). All three were withdrawn. A GENERATED upload has `media_path` and no `scenes`, so neither lane A (RECORDED only) nor lane B (needs `scenes`, no `media_path`) claims it: it is published as uploaded.
+
 ## [0.143.25] — 2026-10-04
 
 - Content: render duration ceilings follow the new DHS voice. Ender chose MiniMax `English_Upbeat_Woman` at speed 1.0 (BitTrader 2.14.166) over `English_CalmWoman` at 1.3, after a blind tasting and the DIA prototype. Measured on four real DHS scripts (pieces 97, 99, 101, 103): 2.43-2.91 words a second, against 2.9-3.9 before, so 65-80 words plus the sign-off last 25-36 s. Ender preferred slightly longer videos to shorter scripts: word ranges are unchanged and `duration_max` goes from 32 to 38 for the short lines (87 narrated words at 2.3) and from 35 to 40 for conversion (90 at 2.3), so a take inside the measured spread is not refused after its narration and pictures are paid for.

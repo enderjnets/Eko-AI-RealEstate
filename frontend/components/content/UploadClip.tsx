@@ -32,6 +32,8 @@ export function UploadClip({
   const [language, setLanguage] = useState<"en" | "es">("en");
   // An edited video that must go out as it is — no captions, mark or music added.
   const [finished, setFinished] = useState(false);
+  // Made with AI (a synthetic voice or pictures): declared to the platforms.
+  const [generated, setGenerated] = useState(false);
   const [percent, setPercent] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,7 +43,7 @@ export function UploadClip({
     setError(null);
     setPercent(0);
     try {
-      await contentApi.upload(file, language, setPercent, maxMb, finished);
+      await contentApi.upload(file, language, setPercent, maxMb, finished, generated);
       onUploaded();
     } catch (err) {
       // The server's own words where there are any — 415 is "that is not a
@@ -119,6 +121,20 @@ export function UploadClip({
             className="accent-eko-violet"
           />
           {t("content.uploadFinished")}
+        </label>
+
+        <label
+          className="inline-flex items-center gap-1.5 text-xs text-gray-400 whitespace-nowrap"
+          title={t("content.uploadGeneratedHint")}
+        >
+          <input
+            type="checkbox"
+            checked={generated}
+            onChange={(e) => setGenerated(e.target.checked)}
+            disabled={busy}
+            className="accent-eko-violet"
+          />
+          {t("content.uploadGenerated")}
         </label>
 
         <button

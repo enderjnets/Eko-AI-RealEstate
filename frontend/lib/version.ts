@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.25";
+export const CURRENT_VERSION = "0.143.26";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.26",
+    date: "2026-10-07",
+    title: { en: "Upload a video made with AI", es: "Subir un vídeo hecho con IA" },
+    changes: [{
+      en: "Upload clip has a new box, Made with AI. Tick it for a finished video with a synthetic voice or AI images, like the 3D airport video: TikTok and YouTube are told it is AI-generated, and it is published as it is, with nothing added. Until now every upload went in as recorded on a phone.",
+      es: "«Upload clip» tiene una casilla nueva, «Hecho con IA». Márcala para un vídeo terminado con voz sintética o imágenes de IA, como el del aeropuerto en 3D: TikTok y YouTube reciben el aviso de contenido generado con IA, y se publica tal cual, sin añadirle nada. Hasta ahora todo lo que se subía entraba como grabado con el móvil.",
+    }],
+  },
   {
     version: "0.143.25",
     date: "2026-10-04",
