@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.29] — 2026-10-10
+
+- Landing: `/colfax` redirects (307) to `/start?utm_source=video&utm_medium=spoken&utm_campaign=legends&utm_content=colfax`, through a `legend(slug)` helper beside `fall(band)` in `next.config.js`. The funnel audit of 10-oct-2026 found the 3D pieces carrying all the growth (DIA: 3,270 views on Instagram, 970 on YouTube; Buffalo Bill: 1,615 on Instagram) and no visit at all to `/start`, where each of their captions points, from 21-sep to 10-oct. The caption link is the long tagged one: untappable and untypeable on Instagram, in a Shorts description whose links have not been clickable since August 2023 (checked on the DIA video, link present), and TikTok gives no bio link below 1,000 followers. The only Instagram arrivals the site has had came from the typed `/fall/1`-`/fall/4` paths. The Colfax video will end by saying the address; the landing page is the one the caption already names, so a visit can only be credited to the typed path. `utm_source=video` is counted as `other` by `source_of`, as `partner` is. `bioLinks.test.ts` checks the tags and that a legend path never hides an `app/` page (Next applies redirects before routing).
+
 ## [0.143.28] — 2026-10-10
 
 - Content: `buffer_publisher.recover_resent_failures`, on the daily Buffer tick, asks Buffer about FAILED publications from the last 21 days that Buffer still holds (an `external_id`, not marked deleted), six per read, and writes only when the answer is `sent`: PUBLISHED, `published_at` from `sentAt`, `external_url`, error cleared. Anything else leaves the row as it was, and a piece's own status is not touched. Buffalo Bill (piece 115) failed on YouTube on 8-oct-2026 ("Buffer has lost authorization to post on your behalf"); the owner fixes such posts inside Buffer, and `reconcile_scheduled` only ever asked about SCHEDULED rows, so the console would have shown the platform failed for ever and its views would never be counted.
