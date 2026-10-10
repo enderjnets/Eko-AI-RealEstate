@@ -737,16 +737,18 @@ async def _buffer_metrics_loop() -> None:
 
     The same daily tick asks Buffer about the FUTURE queued posts
     (`forget_deleted_future`), in its own guard: a metrics read that fails is no
-    reason to keep a day that somebody freed in Buffer looking taken.
+    reason to keep a day that somebody freed in Buffer looking taken. And about
+    the recent FAILED posts (`recover_resent_failures`), so one the owner sent
+    again from inside Buffer is recorded as published instead of failed for ever.
     """
-    from app.services.buffer_publisher import forget_deleted_future
+    from app.services.buffer_publisher import forget_deleted_future, recover_resent_failures
     from app.services.tenant_context import run_for_every_org
     from app.services.video_metrics import snapshot_buffer
 
     interval = max(3600, settings.CONTENT_BUFFER_METRICS_INTERVAL_SECONDS)
     for wait in _waits(interval):
         await asyncio.sleep(wait)
-        for job in (snapshot_buffer, forget_deleted_future):
+        for job in (snapshot_buffer, forget_deleted_future, recover_resent_failures):
             try:
                 await run_for_every_org(job)
             except asyncio.CancelledError:

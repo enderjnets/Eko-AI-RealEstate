@@ -53,8 +53,10 @@ async def test_the_buffer_pass_runs_minutes_after_boot(monkeypatch) -> None:
     assert slept == [main.FIRST_PASS_AFTER_BOOT_SECONDS, interval]
     # The deleted-post pass rides the same daily tick. Five minutes after a
     # deploy is before the writer's first hourly pass, so a day freed in
-    # Buffer is free by the time the writer looks for one.
-    assert ran == ["snapshot_buffer", "forget_deleted_future"]
+    # Buffer is free by the time the writer looks for one. The recent failures
+    # ride it too: a post the owner sent again from Buffer is recorded the
+    # same day (Buffalo Bill on YouTube, 10-oct-2026).
+    assert ran == ["snapshot_buffer", "forget_deleted_future", "recover_resent_failures"]
 
 
 @pytest.mark.asyncio
@@ -78,7 +80,7 @@ async def test_a_failed_metrics_read_does_not_skip_the_deleted_post_pass(
     monkeypatch.setattr(tenant_context, "run_for_every_org", fake_every_org)
     with pytest.raises(asyncio.CancelledError):
         await main._buffer_metrics_loop()
-    assert ran == ["snapshot_buffer", "forget_deleted_future"]
+    assert ran == ["snapshot_buffer", "forget_deleted_future", "recover_resent_failures"]
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.27";
+export const CURRENT_VERSION = "0.143.28";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.28",
+    date: "2026-10-10",
+    title: { en: "A post fixed in Buffer shows as published", es: "Un post arreglado en Buffer sale como publicado" },
+    changes: [{
+      en: "When a platform fails and you reschedule or retry the post inside Buffer, the console now notices once it goes out and shows it as published, with its link, instead of failed for ever. It asks Buffer once a day about failures from the last three weeks, and changes nothing unless Buffer says the post was sent.",
+      es: "Cuando una plataforma falla y reprogramas o reintentas el post dentro de Buffer, el panel ahora lo detecta cuando sale y lo muestra como publicado, con su enlace, en vez de fallido para siempre. Pregunta a Buffer una vez al día por los fallos de las últimas tres semanas y no cambia nada salvo que Buffer diga que el post se envió.",
+    }],
+  },
   {
     version: "0.143.27",
     date: "2026-10-10",

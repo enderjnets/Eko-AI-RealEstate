@@ -2960,3 +2960,92 @@ def test_the_seed_survives_the_link_the_text_chose() -> None:
     )
     assert chosen is not None
     assert "rent=2600" in chosen and "savings=60000" in chosen, chosen
+
+
+# ── A failed post somebody sent again from inside Buffer ─────────────────────
+
+
+async def _failed_row(
+    piece_id: int, platform: PublicationPlatform, external_id: str | None,
+    *, error: str = "It looks like Buffer has lost authorization to post on your behalf.",
+) -> None:
+    async with get_bypass_session_factory()() as db:
+        db.add(
+            ContentPublication(
+                org_id=ORG,
+                piece_id=piece_id,
+                platform=platform,
+                status=PublicationStatus.FAILED,
+                external_id=external_id,
+                scheduled_at=datetime.now(UTC) - timedelta(days=2),
+                last_error=error,
+            )
+        )
+        await db.commit()
+
+
+async def test_a_failed_post_resent_from_buffer_is_recorded_as_published(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Buffalo Bill (piece 115) failed on YouTube on 8-oct-2026: Buffer had lost
+    the channel's authorization for one night. The post stays in Buffer as
+    `error`, and the person fixes it THERE — reschedule or retry. Nothing on our
+    side ever asked about a FAILED row again, so the console would have shown
+    it failed for ever and its views would never be counted.
+
+    Only `sent` writes. `error` again, anything in flight, or no answer: the
+    row stays exactly as it was. Mutation: drop the status check → red.
+    """
+    await _cleanup()
+    await _brokerage()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    piece = await _approved_piece()
+    await _failed_row(piece, PublicationPlatform.YOUTUBE, "yt-fixed")
+    await _failed_row(piece, PublicationPlatform.TIKTOK, "tt-still-broken")
+    await _failed_row(piece, PublicationPlatform.INSTAGRAM, "ig-on-its-way")
+
+    recorder = _Recorder()
+    recorder.reads = {
+        "yt-fixed": {"status": "sent", "sentAt": "2026-10-11T02:30:00Z",
+                     "externalLink": "https://youtube.com/shorts/bb", "error": None},
+        "tt-still-broken": {"status": "error", "sentAt": None, "externalLink": None,
+                            "error": {"message": "still refused"}},
+        "ig-on-its-way": {"status": "scheduled", "sentAt": None, "externalLink": None,
+                          "error": None},
+    }
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            healed = await buffer_publisher.recover_resent_failures(db)
+
+    assert healed == 1
+    rows = await _sched(piece)
+    assert rows["youtube"][0] == "published"
+    assert rows["youtube"][2] == "https://youtube.com/shorts/bb"
+    assert rows["youtube"][3] is None
+    assert rows["tiktok"][0] == "failed" and "lost authorization" in rows["tiktok"][3]
+    assert rows["instagram"][0] == "failed"
+
+
+async def test_only_failures_that_buffer_still_holds_are_asked_about(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure with no Buffer id was refused before Buffer ever had it, and one
+    marked deleted in Buffer has nothing left to ask about. Neither costs a
+    request. Nothing to ask means no request at all."""
+    await _cleanup()
+    await _brokerage()
+    monkeypatch.setattr(get_settings(), "BUFFER_SIMULATED", False, raising=False)
+
+    piece = await _approved_piece()
+    await _failed_row(piece, PublicationPlatform.YOUTUBE, None)
+    await _failed_row(piece, PublicationPlatform.TIKTOK, "tt-gone",
+                      error=buffer_publisher._LOST_IN_BUFFER)
+
+    recorder = _Recorder()
+    monkeypatch.setattr(buffer_publisher, "_graphql", recorder)
+    with org_scope(ORG):
+        async with get_session_factory()() as db:
+            assert await buffer_publisher.recover_resent_failures(db) == 0
+    assert recorder.queries == []
