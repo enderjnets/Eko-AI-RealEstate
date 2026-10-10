@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.26";
+export const CURRENT_VERSION = "0.143.27";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.27",
+    date: "2026-10-10",
+    title: { en: "Better hooks, captions that survive the feed", es: "Mejores ganchos y captions que se leen en el feed" },
+    changes: [{
+      en: "Each written draft is now asked to open with one of 13 proven hook shapes (none that needs an invented number or a personal story), the caption's first sentence has to fit before Instagram's \"more\" (about 125 characters), and phrases that sound machine-written (\"delve into\", \"game-changer\", \"it's not just X, it's Y\"…) are flagged for a rewrite, in drafts and in uploaded clips alike.",
+      es: "Cada borrador se escribe ahora con una de 13 formas de gancho probadas (ninguna que pida un número inventado ni una historia personal), la primera frase del caption tiene que caber antes del «más» de Instagram (unos 125 caracteres), y las frases que suenan a IA («delve into», «game-changer», «no es solo X, es Y»…) se marcan para reescribirlas, tanto en borradores como en vídeos subidos.",
+    }],
+  },
   {
     version: "0.143.26",
     date: "2026-10-07",

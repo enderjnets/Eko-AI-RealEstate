@@ -42,6 +42,12 @@ from app.models import (
     ContentStatus,
 )
 from app.services.content_calculated import SAVINGS, Plan, plan_for, scene_fields
+from app.services.content_craft import (
+    caption_opening_finding,
+    hook_formula_for,
+    hook_message,
+    machine_phrase_findings,
+)
 from app.services.content_figures import claimed_text, unexplained_figures
 from app.services.content_series import (
     contract_for,
@@ -170,7 +176,8 @@ _SYSTEM = {
         "about people. Reply ONLY with JSON: "
         '{"hook": "...", "script": "...", "caption": "..."} — hook under 300 '
         "characters, script 45-65 words, caption 1-2 sentences with no "
-        "hashtags, plus \"scenes\": 7 to 9 objects with \"visual_prompt\" and "
+        "hashtags, the first one under 125 characters because Instagram hides "
+        "the rest of a caption behind \"more\", plus \"scenes\": 7 to 9 objects with \"visual_prompt\" and "
         "\"on_screen_text\". A visual_prompt describes a PLACE or an OBJECT — "
         "a house, a street, the Front Range, keys, an empty porch. "
         "NEVER describe people in it: no families, couples, children, "
@@ -202,7 +209,8 @@ _SYSTEM = {
         "Habla del proceso y de la mecánica del mercado, no de personas. "
         'Responde SOLO con JSON: {"hook": "...", "script": "...", '
         '"caption": "..."} — hook de menos de 300 caracteres, guion de 45-65 '
-        "palabras, caption de 1-2 frases sin hashtags, más \"scenes\": de 7 a 9 objetos "
+        "palabras, caption de 1-2 frases sin hashtags, la primera de menos de 125 caracteres porque "
+        "Instagram esconde el resto tras \"más\", más \"scenes\": de 7 a 9 objetos "
         "con \"visual_prompt\" y \"on_screen_text\". Un visual_prompt describe un "
         "LUGAR o un OBJETO — una casa, una calle, las montañas, unas llaves, un "
         "porche vacío. El visual_prompt va SIEMPRE EN "
@@ -390,7 +398,8 @@ async def _ask(topic: Topic, language: ContentLanguage,
                plan: Plan | None = None,
                lessons: Sequence[str] = (),
                brokerage: str = "",
-               series: ContentSeries = ContentSeries.CONVERSION) -> DraftPayload | None:
+               series: ContentSeries = ContentSeries.CONVERSION,
+               hook_index: int | None = None) -> DraftPayload | None:
     brief = topic.brief_en if language is ContentLanguage.EN else topic.brief_es
     messages: list[dict[str, Any]] = []
     # Before the brief: what not to do, then what to do.
@@ -398,6 +407,9 @@ async def _ask(topic: Topic, language: ContentLanguage,
     if standing is not None:
         messages.append(standing)
     messages.append({"role": "user", "content": brief})
+    formula = hook_formula_for(series, hook_index) if hook_index is not None else None
+    if formula is not None:
+        messages.append(hook_message(formula, language))
     if feedback:
         messages.append({
             "role": "user",
@@ -445,6 +457,7 @@ async def _ask(topic: Topic, language: ContentLanguage,
             lessons=lessons,
             brokerage=brokerage,
             series=series,
+            hook_index=hook_index,
         )
     if typed:
         log.warning("Content writer: the draft for %s still carried contact "
@@ -465,6 +478,7 @@ async def _ask(topic: Topic, language: ContentLanguage,
             lessons=lessons,
             brokerage=brokerage,
             series=series,
+            hook_index=hook_index,
         )
     if chosen:
         log.warning("Content writer: the draft still chose its own social CTA; dropping it")
@@ -1491,6 +1505,16 @@ def _all_violations(
     # becoming a 409 in a person's face at the moment they try to approve it.
     for amount in unexplained_figures(figure_text(draft), check):
         found.append({"phrase": f"${amount:,}", "category": "figure"})
+
+    # Instagram shows about 125 characters before "more", and machine-written
+    # phrasing is the first thing a viewer hears as fake. Both apply to an
+    # uploaded clip as much as to a written draft: the feed treats them alike.
+    opening = caption_opening_finding(draft.caption)
+    if opening is not None:
+        found.append(opening)
+    found.extend(
+        machine_phrase_findings(hook=draft.hook, script=draft.script, caption=draft.caption)
+    )
     return found
 
 
@@ -1741,8 +1765,10 @@ def _feedback(
     wording = [
         v["phrase"]
         for v in violations
-        if v.get("category") not in {"figure", "length", "scenes"}
+        if v.get("category") not in {"figure", "length", "scenes", "caption", "ai-phrase"}
     ]
+    opening = [v["phrase"] for v in violations if v.get("category") == "caption"]
+    machine = [v["phrase"] for v in violations if v.get("category") == "ai-phrase"]
     figures = [v["phrase"] for v in violations if v.get("category") == "figure"]
     if structural:
         contract = contract_for(series)
@@ -1770,6 +1796,17 @@ def _feedback(
             "are not. Use only the figures the brief handed you, exactly as "
             "it wrote them — and if the brief handed you none, write no "
             "dollar amounts anywhere."
+        )
+    if opening:
+        parts.append(
+            "The caption does not survive the feed: " + "; ".join(opening)
+            + ". Rewrite it so the first sentence carries the point in under "
+            "125 characters."
+        )
+    if machine:
+        parts.append(
+            "Some wording reads as machine-written: " + "; ".join(machine)
+            + ". Say each of those the plain way a person would."
         )
     parts.append("Reply with the same JSON shape.")
     return " ".join(parts)
@@ -1885,6 +1922,7 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
         lessons=lessons,
         brokerage=brokerage,
         series=series,
+        hook_index=cta_index,
     )
     if draft is None:
         return None
@@ -1916,6 +1954,7 @@ async def generate_draft(db: AsyncSession) -> ContentPiece | None:
             lessons=lessons,
             brokerage=brokerage,
             series=series,
+            hook_index=cta_index,
         )
         if rewritten is not None:
             draft = rewritten
