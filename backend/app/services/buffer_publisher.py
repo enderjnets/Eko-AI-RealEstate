@@ -1830,6 +1830,71 @@ async def forget_deleted_future(db: AsyncSession) -> int:
     return lost
 
 
+#: How far back a failed post is worth asking about again. A person who fixes a
+#: post inside Buffer does it within days; asking about older ones would spend
+#: the daily quota on posts nobody is going to touch.
+_RESENT_WINDOW = timedelta(days=21)
+
+#: Aliases per read, the batch size `reconcile_scheduled` already sends.
+_RESENT_BATCH = 6
+
+
+async def recover_resent_failures(db: AsyncSession) -> int:
+    """Find failed posts somebody sent again from inside Buffer.
+
+    Buffalo Bill (piece 115) failed on YouTube on 8-oct-2026 because Buffer had
+    lost the channel's authorization for one night. The post stays in Buffer as
+    `error`, and the fix happens there: the owner reschedules or retries it.
+    `reconcile_scheduled` only ever asks about SCHEDULED rows, so nothing here
+    would have noticed: the console would show the platform failed for ever and
+    the views would never be counted.
+
+    **Reads only, and writes only on `sent`.** Anything else — `error` again,
+    a state in flight, an error answer, no answer — leaves the row as it was,
+    because retiring or rewriting a failure on a guess is the opposite mistake.
+    A piece's own status is not touched: the one this exists for is already
+    PUBLISHED from its other platforms.
+    """
+    if get_settings().BUFFER_SIMULATED:
+        return 0
+    rows = (
+        (
+            await db.execute(
+                select(ContentPublication)
+                .where(
+                    ContentPublication.status == PublicationStatus.FAILED,
+                    ContentPublication.external_id.is_not(None),
+                    or_(
+                        ContentPublication.last_error.is_(None),
+                        ContentPublication.last_error != _LOST_IN_BUFFER,
+                    ),
+                    ContentPublication.updated_at >= datetime.now(UTC) - _RESENT_WINDOW,
+                )
+                .order_by(ContentPublication.id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    healed = 0
+    for start in range(0, len(rows), _RESENT_BATCH):
+        answers = await _post_states(rows[start:start + _RESENT_BATCH], "failed posts")
+        for _alias, row, post, err in answers or []:
+            if err is not None or post is None:
+                continue
+            if (post.get("status") or "").lower() != _BUFFER_SENT:
+                continue
+            row.status = PublicationStatus.PUBLISHED
+            row.published_at = _parse_dt(post.get("sentAt")) or datetime.now(UTC)
+            row.external_url = post.get("externalLink") or None
+            row.last_error = None
+            healed += 1
+    if healed:
+        await db.commit()
+        log.info("%s failed post(s) were sent again from Buffer; recorded as published", healed)
+    return healed
+
+
 async def _close_touched(db: AsyncSession, rows: list[ContentPublication]) -> None:
     """Give every piece the reconciler touched a chance to finish."""
     for piece_id in dict.fromkeys(row.piece_id for row in rows):
