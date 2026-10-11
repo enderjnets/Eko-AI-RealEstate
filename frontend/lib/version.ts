@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.28";
+export const CURRENT_VERSION = "0.143.29";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.29",
+    date: "2026-10-10",
+    title: { en: "A short address you can say in a video", es: "Una dirección corta que se puede decir en un vídeo" },
+    changes: [{
+      en: "denverhomestory.com/colfax now opens the Start page and is counted as its own source. The 3D videos are watched thousands of times and sent nobody to the site, because their caption link cannot be tapped on Instagram, TikTok or YouTube Shorts. The Colfax video will say this address out loud at the end, so we can see whether people type it.",
+      es: "denverhomestory.com/colfax abre ahora la página Start y se cuenta como fuente propia. Los vídeos 3D se ven miles de veces y no mandaban a nadie al sitio, porque el enlace del texto no se puede pulsar en Instagram, TikTok ni los Shorts de YouTube. El vídeo de Colfax dirá esta dirección en voz alta al final, para ver si la gente la teclea.",
+    }],
+  },
   {
     version: "0.143.28",
     date: "2026-10-10",

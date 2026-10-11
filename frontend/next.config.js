@@ -85,6 +85,32 @@ const nextConfig = {
       permanent: false,
     });
 
+    // One short path per 3D legend, said aloud at the end of the video.
+    //
+    // Measured on 10-oct-2026: the 3D pieces are the only thing growing
+    // (DIA 3,270 views on Instagram and 970 on YouTube; Buffalo Bill 1,615 on
+    // Instagram), and they sent nobody to the site — `/start`, where every one
+    // of their captions points, had no visit from 21-sep to 10-oct. Their link
+    // is the long tagged one: on Instagram it cannot be tapped or typed, on
+    // YouTube Shorts it sits in a description whose links stopped being
+    // clickable in August 2023, and TikTok gives no bio link below 1,000
+    // followers. A path a person can say back is the one door that opens on
+    // all three, and the `/fall/1` paths are the only thing that ever brought
+    // Instagram arrivals.
+    //
+    // It lands on `/start`, the page the caption already names, so the test
+    // changes one thing: a typed path instead of a tagged one. The network is
+    // unknowable for a typed URL, so the source says how it travelled
+    // (`video`, counted as `other` by `source_of`, like `partner`) and the
+    // campaign and content say which legend.
+    const legend = (slug) => ({
+      source: `/${slug}`,
+      destination:
+        `/start?utm_source=video&utm_medium=spoken` +
+        `&utm_campaign=legends&utm_content=${slug}`,
+      permanent: false,
+    });
+
     return [
       bio({ short: "yt", source: "youtube" }),
       bio({ short: "tt", source: "tiktok" }),
@@ -100,6 +126,7 @@ const nextConfig = {
       fall(2),
       fall(3),
       fall(4),
+      legend("colfax"),
     ];
   },
   async rewrites() {

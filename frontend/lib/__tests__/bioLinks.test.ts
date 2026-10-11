@@ -10,13 +10,19 @@
  * invisible — the visitor lands on the right page, the link "works", and the
  * report says `direct` for ever.
  */
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 // The Next config is CommonJS and stays that way: it is the file Next itself
 // loads. Read through createRequire rather than a bare require so the test is
 // an ES module like every other one here.
 const nextConfig = createRequire(import.meta.url)("../../next.config.js");
+
+// The 3D legends that end with a spoken short path. One per video, added when
+// the video is made.
+const LEGENDS = ["colfax"] as const;
 
 describe("bio short links", () => {
   it("every network has a short path that carries its own source", async () => {
@@ -138,8 +144,39 @@ describe("bio short links", () => {
     // `/n`, `/r` and `/e` are single letters in the same namespace as `/yt`
     // and `/ig`. A duplicated source is not an error Next reports: the first
     // rule wins and the second silently never fires.
-    const all = ["/yt", "/youtube", "/tt", "/tiktok", "/ig", "/instagram", "/n", "/r", "/e"];
+    const all = [
+      "/yt", "/youtube", "/tt", "/tiktok", "/ig", "/instagram", "/n", "/r", "/e",
+      ...LEGENDS.map((slug) => `/${slug}`),
+    ];
     expect(new Set(all).size).toBe(all.length);
+  });
+
+  it("each 3D legend has a spoken path that says which legend", async () => {
+    // Said aloud at the end of the video ("denverhomestory.com/colfax") because
+    // the tagged caption link cannot be tapped on Instagram, TikTok or YouTube
+    // Shorts. It lands on the page the caption already names, so a visit can
+    // be credited to the typed path and nothing else.
+    const redirects = await nextConfig.redirects();
+    for (const slug of LEGENDS) {
+      const rule = redirects.find((r: { source: string }) => r.source === `/${slug}`);
+      expect(rule, `/${slug} is missing`).toBeDefined();
+      const destination = new URL(rule.destination, "https://example.test");
+      expect(destination.pathname).toBe("/start");
+      expect(destination.searchParams.get("utm_source")).toBe("video");
+      expect(destination.searchParams.get("utm_medium")).toBe("spoken");
+      expect(destination.searchParams.get("utm_campaign")).toBe("legends");
+      expect(destination.searchParams.get("utm_content")).toBe(slug);
+    }
+  });
+
+  it("a legend path never hides a page", () => {
+    // A place name is exactly what a future page might be called. Next runs
+    // redirects before routing, so `/colfax` as both would never show the
+    // page, and nothing would report it.
+    const app = fileURLToPath(new URL("../../app/", import.meta.url));
+    for (const slug of LEGENDS) {
+      expect(existsSync(`${app}${slug}`), `app/${slug} exists`).toBe(false);
+    }
   });
 
   it("they are temporary, so the campaign can change later", async () => {
