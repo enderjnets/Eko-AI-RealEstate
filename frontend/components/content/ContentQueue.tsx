@@ -16,6 +16,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Archive,
+  CalendarDays,
   Check,
   Info,
   Loader2,
@@ -37,6 +38,12 @@ import type { Lang } from "@/lib/i18n";
 import { exactTime, relativeTime, timeUntil } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { latestWins } from "@/lib/latestWins";
+import {
+  canSetPublishDate,
+  formatPublishDate,
+  todayIn,
+  waitsForItsDate,
+} from "@/lib/publishDate";
 import { useSettingsAccess, useViewer } from "@/lib/useViewer";
 import { UploadClip } from "@/components/content/UploadClip";
 
@@ -197,6 +204,9 @@ export function ContentQueue() {
               onRetry={() => act(piece.id, () => contentApi.retry(piece.id))}
               onRebuild={() => act(piece.id, () => contentApi.rebuild(piece.id))}
               onEdit={(body) => act(piece.id, () => contentApi.edit(piece.id, body))}
+              onSetPublishDate={(day) =>
+                act(piece.id, () => contentApi.setPublishDate(piece.id, day))
+              }
             />
           ))}
         </ul>
@@ -406,6 +416,102 @@ const PLATFORM_LABEL: Record<string, string> = {
 };
 
 /**
+ * The day this piece goes out, and a way to change it.
+ *
+ * Outside the text editor on purpose. Editing the text costs the approval and
+ * is refused once the piece is queued; a date does neither, and a queued piece
+ * is where it matters most — the publisher moves the posts Buffer still holds.
+ * Cheesman Park (11-oct-2026) went out the evening it was approved because
+ * this did not exist.
+ */
+function PublishDate({
+  piece,
+  studio,
+  busy,
+  onSave,
+}: {
+  piece: ContentPiece;
+  studio: StudioStatus | null;
+  busy: boolean;
+  onSave: (day: string | null) => void;
+}) {
+  const { t, lang } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState(piece.publish_window_start ?? "");
+  const current = piece.publish_window_start ?? "";
+  const editable = canSetPublishDate(piece);
+
+  if (!editable && !current) return null;
+
+  if (!open) {
+    return (
+      <p className="mt-3 flex items-center gap-2 flex-wrap text-sm text-gray-400">
+        <CalendarDays className="w-4 h-4 text-gray-500" />
+        <span>
+          <span className="text-gray-500">{t("content.publishDate")}:</span>{" "}
+          {current ? formatPublishDate(current, lang) : t("content.publishDateNone")}
+        </span>
+        {editable && !busy && (
+          <button
+            onClick={() => {
+              setValue(current);
+              setOpen(true);
+            }}
+            className="text-eko-violet hover:underline"
+          >
+            {t("content.publishDateChange")}
+          </button>
+        )}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex gap-2 items-center flex-wrap">
+        <input
+          type="date"
+          value={value}
+          min={todayIn(studio?.timezone)}
+          max={piece.publish_window_end ?? undefined}
+          onChange={(e) => setValue(e.target.value)}
+          className="px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white focus:outline-none focus:border-eko-violet/50"
+        />
+        <button
+          onClick={() => {
+            onSave(value || null);
+            setOpen(false);
+          }}
+          disabled={busy || value === current}
+          className="px-3 py-1.5 rounded-lg bg-eko-violet text-white text-sm font-medium hover:bg-eko-violet-dark disabled:opacity-50"
+        >
+          {t("content.publishDateSave")}
+        </button>
+        {current && (
+          <button
+            onClick={() => {
+              onSave(null);
+              setOpen(false);
+            }}
+            disabled={busy}
+            className="px-3 py-1.5 rounded-lg border border-white/10 text-gray-300 text-sm hover:border-white/20 disabled:opacity-50"
+          >
+            {t("content.publishDateClear")}
+          </button>
+        )}
+        <button
+          onClick={() => setOpen(false)}
+          className="px-3 py-1.5 rounded-lg border border-white/10 text-gray-300 text-sm hover:border-white/20"
+        >
+          {t("content.cancel")}
+        </button>
+      </div>
+      <p className="text-xs text-gray-500">{t("content.publishDateHint")}</p>
+    </div>
+  );
+}
+
+/**
  * When each platform gets this video, and where to watch it once it has.
  *
  * This replaced a row of `platform · status` chips, which answered a question
@@ -430,6 +536,17 @@ function PublishSchedule({
     // minutes away, so say that rather than spin: a spinner with no end is the
     // fault this console already shipped once with the render queue.
     if (piece.status === "approved") {
+      // A dated piece is held until its day is close, so "in a few minutes"
+      // would be wrong for days and read as stuck.
+      if (waitsForItsDate(piece, todayIn(studio?.timezone))) {
+        return (
+          <p className="mt-3 text-sm text-gray-400">
+            {t("content.publishWaits", {
+              date: formatPublishDate(piece.publish_window_start ?? "", lang),
+            })}
+          </p>
+        );
+      }
       return (
         <p className="mt-3 text-sm text-gray-400">{t("content.publishSoon")}</p>
       );
@@ -565,6 +682,7 @@ function PieceCard({
   onRetry,
   onRebuild,
   onEdit,
+  onSetPublishDate,
 }: {
   piece: ContentPiece;
   /** Carries the agency timezone, so a scheduled date is shown in ITS hours. */
@@ -578,6 +696,7 @@ function PieceCard({
   onRetry: () => void;
   onRebuild: () => void;
   onEdit: (body: { hook?: string; script?: string; caption?: string }) => void;
+  onSetPublishDate: (day: string | null) => void;
 }) {
   const { t } = useI18n();
   const [editing, setEditing] = useState(false);
@@ -732,6 +851,8 @@ function PieceCard({
           {piece.render_error}
         </p>
       )}
+
+      <PublishDate piece={piece} studio={studio} busy={busy} onSave={onSetPublishDate} />
 
       <PublishSchedule piece={piece} studio={studio} />
 

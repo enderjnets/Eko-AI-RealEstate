@@ -258,3 +258,19 @@ async def test_null_clears_the_date(database_url: str) -> None:
         assert (await _stored(piece_id)).publish_window_start is None
     finally:
         await _cleanup()
+
+
+@pytest.mark.asyncio
+async def test_saving_a_window_that_already_opened_is_not_refused(
+    database_url: str,
+) -> None:
+    """The card shows the date the piece has. A fall piece whose window opened
+    two days ago, saved again unchanged, is not a request for the past."""
+    await _cleanup()
+    try:
+        piece_id = await _seeded(ContentStatus.APPROVED, opens=_in(-2), closes=_in(6))
+        resp = await _put(piece_id, _in(-2))
+        assert resp.status_code == 200, resp.text
+        assert (await _stored(piece_id)).publish_window_start == _in(-2)
+    finally:
+        await _cleanup()
