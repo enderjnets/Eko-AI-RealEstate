@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.30] — 2026-10-11
+
+- Landing: `/cheesman`, the second `legend(slug)` path, redirects (307) to `/start?utm_source=video&utm_medium=spoken&utm_campaign=legends&utm_content=cheesman`. The 3D Cheesman Park video (planned for Halloween week) ends by saying the address, as the Colfax one (piece 123, published 11-oct-2026) does; one slug per video keeps the two measurable apart inside the `legends` campaign. Added to `LEGENDS` in `bioLinks.test.ts`, which checks its tags, that it hides no `app/` page and that no short path is claimed twice.
+
 ## [0.143.29] — 2026-10-10
 
 - Landing: `/colfax` redirects (307) to `/start?utm_source=video&utm_medium=spoken&utm_campaign=legends&utm_content=colfax`, through a `legend(slug)` helper beside `fall(band)` in `next.config.js`. The funnel audit of 10-oct-2026 found the 3D pieces carrying all the growth (DIA: 3,270 views on Instagram, 970 on YouTube; Buffalo Bill: 1,615 on Instagram) and no visit at all to `/start`, where each of their captions points, from 21-sep to 10-oct. The caption link is the long tagged one: untappable and untypeable on Instagram, in a Shorts description whose links have not been clickable since August 2023 (checked on the DIA video, link present), and TikTok gives no bio link below 1,000 followers. The only Instagram arrivals the site has had came from the typed `/fall/1`-`/fall/4` paths. The Colfax video will end by saying the address; the landing page is the one the caption already names, so a visit can only be credited to the typed path. `utm_source=video` is counted as `other` by `source_of`, as `partner` is. `bioLinks.test.ts` checks the tags and that a legend path never hides an `app/` page (Next applies redirects before routing).

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.29";
+export const CURRENT_VERSION = "0.143.30";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.30",
+    date: "2026-10-11",
+    title: { en: "A second short address: /cheesman", es: "Una segunda dirección corta: /cheesman" },
+    changes: [{
+      en: "denverhomestory.com/cheesman opens the Start page and is counted as its own source, like /colfax. The 3D Cheesman Park video, planned for Halloween week, will say it out loud at the end, so each video can be measured on its own.",
+      es: "denverhomestory.com/cheesman abre la página Start y se cuenta como fuente propia, igual que /colfax. El vídeo 3D de Cheesman Park, previsto para la semana de Halloween, la dirá en voz alta al final, para poder medir cada vídeo por separado.",
+    }],
+  },
   {
     version: "0.143.29",
     date: "2026-10-10",

@@ -127,6 +127,7 @@ const nextConfig = {
       fall(3),
       fall(4),
       legend("colfax"),
+      legend("cheesman"),
     ];
   },
   async rewrites() {
