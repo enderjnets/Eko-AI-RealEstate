@@ -673,3 +673,48 @@ async def test_a_state_buffer_invented_is_loud(
         assert "parked" in errors[0].getMessage()
     finally:
         await _cleanup()
+
+
+# ──────────────────── a date set from the console, after queueing ──────────────
+
+
+@pytest.mark.asyncio
+async def test_a_date_set_from_the_console_moves_a_queued_post(
+    database_url: str,
+) -> None:
+    """Piece 124, 11-oct-2026: approved, queued for that same evening, and meant
+    for Halloween. The console now writes the window this file reads; this ties
+    the two ends together, through the route the owner actually uses, and with
+    no close date — the shape the console produces."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    await _cleanup()
+    try:
+        zone = ZoneInfo("America/Denver")
+        tonight = datetime.now(UTC) + timedelta(hours=5)
+        piece_id, row_id = await _queued(opens=None, closes=None, scheduled_at=tonight)
+        halloween_ish = datetime.now(zone).date() + timedelta(days=18)
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.put(
+                f"/api/v1/content/{piece_id}/publish-date",
+                json={"publish_date": halloween_ish.isoformat()},
+            )
+        assert resp.status_code == 200, resp.text
+
+        read, edit = _buffer_that_answers()
+        with patch("app.services.buffer_publisher.read_scheduled_post", new=read):
+            with patch("app.services.buffer_publisher.edit_scheduled_text", new=edit):
+                assert await _run() == 1
+
+        moved = await _scheduled_at(row_id)
+        assert moved is not None
+        assert moved.astimezone(zone).date() >= halloween_ish, (
+            f"still on {moved.astimezone(zone).date()}, before {halloween_ish}"
+        )
+    finally:
+        await _cleanup()

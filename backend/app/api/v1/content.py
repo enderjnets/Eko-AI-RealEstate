@@ -53,7 +53,7 @@ from app.models import (
     PublicationPlatform,
     PublicationStatus,
 )
-from app.services.buffer_publisher import undeliverable_reason
+from app.services.buffer_publisher import agency_zone, undeliverable_reason
 from app.services.content_figures import claimed_text, unexplained_figures
 from app.services.content_studio import (
     PUBLISHING_AVAILABLE,
@@ -155,6 +155,11 @@ class PieceOut(BaseModel):
     status: ContentStatus
     series: ContentSeries
     editorial_date: date | None = None
+    # The day the publisher starts looking for a slot (`_from_when`), and the
+    # day after which it stops moving a queued post (`realign_windows`). The
+    # card needs it to explain an approved piece with no posts yet.
+    publish_window_start: date | None = None
+    publish_window_end: date | None = None
     source: dict | None = None
     hook: str | None = None
     script: str | None = None
@@ -922,6 +927,92 @@ async def withdraw_piece(
         raise HTTPException(status_code=404, detail="No such piece") from exc
     except NotWithdrawable as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await db.refresh(piece)
+    return PieceOut.model_validate(piece)
+
+
+class PublishDateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    publish_date: date | None
+
+
+#: How far ahead a date may be set. `next_free_slot` stops looking after 370
+#: days, so a date past this would be stored and then never found.
+_PUBLISH_DATE_MAX_DAYS = 365
+
+
+@router.put("/{piece_id}/publish-date", response_model=PieceOut)
+async def set_publish_date(
+    piece_id: int, payload: PublishDateIn, db: AsyncSession = Depends(get_db)
+) -> PieceOut:
+    """The day a piece goes out, set by a person.
+
+    The publisher has honoured `publish_window_start` since September — it
+    starts the slot search there, holds the piece back until the date is
+    inside the horizon, and moves a queued post that sits outside it — but
+    only the writer ever set one. A piece made by hand had no way to say "not
+    before the 29th": Cheesman Park (piece 124), cut for Halloween, was
+    approved on 11-oct-2026 and queued for that same evening.
+
+    Its own route, not a field on PATCH, because a date is not content:
+
+    - it never revokes the approval. Nothing the person approved has changed,
+      and PATCH's "edited after approval" rule would make the date cost a
+      second review;
+    - it works on a PUBLISHING piece, which PATCH refuses. That is where a
+      date helps most: `realign_windows` moves the posts Buffer still holds.
+      Posts already sent stay sent.
+
+    It refuses what it cannot honour rather than storing a date nothing will
+    act on: a day already gone (`_from_when` would read it as "now"), a day
+    more than a year out, and a day past the window's close.
+    """
+    piece = await db.get(ContentPiece, piece_id)
+    if piece is None:
+        raise HTTPException(status_code=404, detail="No such piece")
+    if piece.status is ContentStatus.PUBLISHED:
+        raise HTTPException(
+            status_code=409,
+            detail="This piece is already published; a date cannot move it",
+        )
+
+    wanted = payload.publish_date
+    # Saving the date the piece already has is not a new decision. Judging it
+    # again would refuse a window that opened yesterday, which the card shows
+    # and a person may well press Save beside.
+    if wanted is not None and wanted != piece.publish_window_start:
+        # Same rule as the publisher: a date judged in the wrong zone is worse
+        # than none, because it looks right.
+        zone = await agency_zone(db)
+        if zone is None:
+            raise HTTPException(
+                status_code=409,
+                detail="The agency timezone is not set; set it in Settings first",
+            )
+        today = datetime.now(zone).date()
+        if wanted < today:
+            raise HTTPException(
+                status_code=422, detail=f"{wanted.isoformat()} has already passed"
+            )
+        if wanted > today + timedelta(days=_PUBLISH_DATE_MAX_DAYS):
+            raise HTTPException(
+                status_code=422, detail="Pick a day within the next year"
+            )
+        closes = piece.publish_window_end
+        if closes is not None and wanted > closes:
+            raise HTTPException(
+                status_code=422,
+                detail=f"This piece's window closes on {closes.isoformat()}; "
+                "pick a day up to then",
+            )
+
+    if wanted != piece.publish_window_start:
+        piece.publish_window_start = wanted
+        # The alert for the old window is not an alert for this one; left
+        # stamped, a re-dated piece would never be announced again.
+        piece.window_alerted_at = None
+    await db.commit()
     await db.refresh(piece)
     return PieceOut.model_validate(piece)
 

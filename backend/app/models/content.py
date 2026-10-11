@@ -189,10 +189,12 @@ class ContentPiece(Base):
     )
     rejected_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Cuando DEBERIA salir esta pieza. No lo usa el repartidor: `next_free_slot`
-    # sigue buscando el siguiente dia libre y el orden de publicacion sigue
-    # siendo el de `approved_at`. Esto existe para AVISAR de que una pieza
-    # entro en su ventana sin que nadie la aprobara.
+    # Cuando DEBERIA salir esta pieza. El repartidor SI lo usa (desde
+    # septiembre): `_from_when` busca hueco desde este dia, el horizonte retiene
+    # la pieza hasta que la fecha entra en el, y `realign_windows` mueve un post
+    # ya encolado que quede fuera. Ademas avisa de que una pieza entro en su
+    # ventana sin que nadie la aprobara. Lo escribe el redactor y, desde la
+    # 0.143.31, una persona desde el panel (`PUT /content/{id}/publish-date`).
     #
     # Se guarda por pieza en vez de copiar las cuatro bandas de altitud de
     # `frontend/lib/fallGuide.ts` a Python: dos fuentes de la misma verdad se

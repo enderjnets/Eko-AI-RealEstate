@@ -561,6 +561,11 @@ export interface ContentPiece {
     | "ask_denver_home_story";
   /** Denver-local publication day reserved after the existing Buffer queue. */
   editorial_date?: string | null;
+  /** The day the publisher starts looking for a slot (YYYY-MM-DD, agency
+   *  zone). Set by the writer or from the card; null means the next free slot. */
+  publish_window_start?: string | null;
+  /** The last day a queued post may sit on. Fall pieces have one. */
+  publish_window_end?: string | null;
   /** Deterministic provenance for sourced authority pieces. */
   source?: {
     publisher?: string;
@@ -727,6 +732,13 @@ export const contentApi = {
     api<ContentPiece>(`/v1/content/${id}/submit`, { method: "POST" }),
   approve: (id: number) =>
     api<ContentPiece>(`/v1/content/${id}/approve`, { method: "POST" }),
+  /** The day a piece goes out, or null for the next free slot. Keeps the
+   *  approval; posts already in Buffer are moved by the publisher. */
+  setPublishDate: (id: number, publishDate: string | null) =>
+    api<ContentPiece>(`/v1/content/${id}/publish-date`, {
+      method: "PUT",
+      body: JSON.stringify({ publish_date: publishDate }),
+    }),
   /** A piece that failed to publish, back in front of a person. */
   retry: (id: number) =>
     api<ContentPiece>(`/v1/content/${id}/retry`, { method: "POST" }),

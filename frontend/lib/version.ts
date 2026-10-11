@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.30";
+export const CURRENT_VERSION = "0.143.31";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.31",
+    date: "2026-10-11",
+    title: { en: "Choose the day a video goes out", es: "Elegir el día en que sale un vídeo" },
+    changes: [{
+      en: "Each piece now has a publish date on its card. Approving no longer means \"tonight\": a piece dated the 29th waits until then, and changing the date keeps the approval. It also works on a piece already queued: posts in Buffer for an earlier day are moved to the new one. The Cheesman Park video, made for Halloween, was approved on the 11th and queued for that same evening because this did not exist.",
+      es: "Cada pieza tiene ahora una fecha de publicación en su tarjeta. Aprobar ya no significa «esta noche»: una pieza con fecha del 29 espera hasta entonces, y cambiar la fecha no quita la aprobación. También sirve con una pieza ya en cola: los posts que estén en Buffer para un día anterior se mueven al nuevo. El vídeo de Cheesman Park, hecho para Halloween, se aprobó el día 11 y quedó programado para esa misma noche porque esto no existía.",
+    }],
+  },
   {
     version: "0.143.30",
     date: "2026-10-11",
