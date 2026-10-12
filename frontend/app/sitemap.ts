@@ -20,6 +20,9 @@ import { sitemapUrls } from "@/lib/sitemap";
  * read, so the two can never drift; there is no second list to keep.
  */
 export default function sitemap(): MetadataRoute.Sitemap {
-  const paths = PUBLIC_PATHS.filter((p) => p !== "/blog" || JOURNAL_INDEXED);
+  // `/legends` is public so its pages can be served, but it is a prefix with no
+  // page of its own, and each legend page says `index: false` while it is
+  // shown to Natalia and Robbie — same reasoning as the Journal above.
+  const paths = PUBLIC_PATHS.filter((p) => (p !== "/blog" || JOURNAL_INDEXED) && p !== "/legends");
   return sitemapUrls(BRAND_URL, paths);
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.33] — 2026-10-11
+
+- Landing: `/legends/<slug>`, one page per 3D legend (`lib/legends.ts`: Colfax, Cheesman Park, the Molly Brown House), rendered by `components/landing/Legend.tsx`. Asked for on 11-oct-2026: opening `/mollybrown` on his phone, the owner saw what a viewer sees — a story about Molly Brown, then "Buy / Sell / Talk now" — and said the video invites to something else. Each page continues the video: the legend, what the records say with a linked source for every line (checked against two sources when the video was scripted, or attributed in the text when one), public-domain or CC BY photographs credited with their licence, links to the published video, and then the three doors `/start` offers, with the same attribution (`landing_variant` = `legend-<slug>`; the visit keeps its `utm_*`, so the count per video carries on). `/legends` joins `PUBLIC_PATHS` and is filtered out of the sitemap; every page declares `robots: index:false` while Natalia and Robbie look at it. The short paths are unchanged: `legend(slug)` in `next.config.js` sends a slug to its page only once it is listed in `LEGEND_PAGES`, empty in this release. `legends.test.ts` checks a page per spoken path, a source per fact, licences and files, Fair Housing words (no neighbourhood, no "haunted"), the tags on the redirect, the sitemap with a brand domain set, and the noindex; `callLine.test.ts` now knows the route file.
+
 ## [0.143.32] — 2026-10-11
 
 - Landing: `/mollybrown`, the third `legend(slug)` path, redirects (307) to `/start?utm_source=video&utm_medium=spoken&utm_campaign=legends&utm_content=mollybrown`. The 3D Molly Brown House video (planned for Halloween week, after Cheesman Park on 29-oct) ends by saying "Denver Home Story dot com, slash Molly Brown" and shows the address for its last seconds, so the one-word spelling is the one on screen. Added to `LEGENDS` in `bioLinks.test.ts`.
