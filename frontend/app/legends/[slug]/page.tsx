@@ -19,9 +19,9 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
     description: legend.dek,
     openGraph: { type: "article", title, description: legend.dek, images: [legend.hero.src] },
     twitter: { card: "summary_large_image", title, description: legend.dek },
-    // Out of every index while Natalia and Robbie look at it (the Journal's
-    // rule: linking is reversible, indexing is not). The short paths still
-    // land on /start until `LEGEND_PAGES` in next.config.js names the slug.
+    // Out of every index for now (the Journal's rule: linking is reversible,
+    // indexing is not). The pages exist for the people who typed the address
+    // from a video; being found by search is a separate decision.
     robots: { index: false, follow: true },
     alternates: { canonical: `/legends/${legend.slug}` },
     ...(BRAND_URL ? { metadataBase: new URL(BRAND_URL) } : {}),

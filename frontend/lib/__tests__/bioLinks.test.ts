@@ -154,14 +154,15 @@ describe("bio short links", () => {
   it("each 3D legend has a spoken path that says which legend", async () => {
     // Said aloud at the end of the video ("denverhomestory.com/colfax") because
     // the tagged caption link cannot be tapped on Instagram, TikTok or YouTube
-    // Shorts. It lands on the page the caption already names, so a visit can
-    // be credited to the typed path and nothing else.
+    // Shorts. Since 0.143.33 it lands on the legend's own page, which continues
+    // the video (the owner, 11-oct-2026: on `/start` "the video invites to
+    // something else"); the tags are unchanged, so the count per video carries on.
     const redirects = await nextConfig.redirects();
     for (const slug of LEGENDS) {
       const rule = redirects.find((r: { source: string }) => r.source === `/${slug}`);
       expect(rule, `/${slug} is missing`).toBeDefined();
       const destination = new URL(rule.destination, "https://example.test");
-      expect(destination.pathname).toBe("/start");
+      expect(destination.pathname).toBe(`/legends/${slug}`);
       expect(destination.searchParams.get("utm_source")).toBe("video");
       expect(destination.searchParams.get("utm_medium")).toBe("spoken");
       expect(destination.searchParams.get("utm_campaign")).toBe("legends");

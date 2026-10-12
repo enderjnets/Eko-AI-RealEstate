@@ -19,8 +19,8 @@ export const CHANGELOG: VersionEntry[] = [
     date: "2026-10-11",
     title: { en: "A page for each 3D legend", es: "Una página para cada leyenda 3D" },
     changes: [{
-      en: "The addresses the 3D videos say out loud (/colfax, /cheesman, /mollybrown) can now open a page that continues the video: the legend, what the records say with a source for every line, the public-domain photographs, and then the same three ways in as the Start page. The pages are ready but kept out of search, and each address keeps opening the Start page until its page is approved.",
-      es: "Las direcciones que dicen en voz alta los vídeos 3D (/colfax, /cheesman, /mollybrown) ya pueden abrir una página que continúa el vídeo: la leyenda, lo que dicen los registros con una fuente para cada línea, las fotografías de dominio público y, después, las mismas tres entradas que la página Start. Las páginas están listas pero fuera de los buscadores, y cada dirección sigue abriendo Start hasta que se apruebe su página.",
+      en: "The addresses the 3D videos say out loud (/colfax, /cheesman, /mollybrown) can now open a page that continues the video: the legend, what the records say with a source for every line, the public-domain photographs, and then the same three ways in as the Start page. The three addresses open their page from this version on; the pages are kept out of search for now.",
+      es: "Las direcciones que dicen en voz alta los vídeos 3D (/colfax, /cheesman, /mollybrown) ya pueden abrir una página que continúa el vídeo: la leyenda, lo que dicen los registros con una fuente para cada línea, las fotografías de dominio público y, después, las mismas tres entradas que la página Start. Desde esta versión las tres direcciones abren su página; de momento quedan fuera de los buscadores.",
     }],
   },
   {
