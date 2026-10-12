@@ -108,6 +108,7 @@ export const PUBLIC_PATHS = [
   "/calculator",
   "/start",
   "/blog",
+  "/legends",
 ];
 
 /** `/contact` and `/contact/anything` both count; `/contactos` does not. */

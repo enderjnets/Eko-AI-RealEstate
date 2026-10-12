@@ -103,10 +103,15 @@ const nextConfig = {
     // unknowable for a typed URL, so the source says how it travelled
     // (`video`, counted as `other` by `source_of`, like `partner`) and the
     // campaign and content say which legend.
+    // A legend whose own page has been seen and approved lands there
+    // (`/legends/<slug>`, which continues the video); the others still land on
+    // `/start`. Moving a slug into this list is the whole switch, and the tags
+    // are the same either way, so the count of arrivals per video carries on.
+    const LEGEND_PAGES = new Set(["colfax", "cheesman", "mollybrown"]);   // switched with the owner's yes, 11-oct-2026
     const legend = (slug) => ({
       source: `/${slug}`,
       destination:
-        `/start?utm_source=video&utm_medium=spoken` +
+        `${LEGEND_PAGES.has(slug) ? `/legends/${slug}` : "/start"}?utm_source=video&utm_medium=spoken` +
         `&utm_campaign=legends&utm_content=${slug}`,
       permanent: false,
     });

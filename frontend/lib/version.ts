@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.32";
+export const CURRENT_VERSION = "0.143.33";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.33",
+    date: "2026-10-11",
+    title: { en: "A page for each 3D legend", es: "Una página para cada leyenda 3D" },
+    changes: [{
+      en: "The addresses the 3D videos say out loud (/colfax, /cheesman, /mollybrown) can now open a page that continues the video: the legend, what the records say with a source for every line, the public-domain photographs, and then the same three ways in as the Start page. The three addresses open their page from this version on; the pages are kept out of search for now.",
+      es: "Las direcciones que dicen en voz alta los vídeos 3D (/colfax, /cheesman, /mollybrown) ya pueden abrir una página que continúa el vídeo: la leyenda, lo que dicen los registros con una fuente para cada línea, las fotografías de dominio público y, después, las mismas tres entradas que la página Start. Desde esta versión las tres direcciones abren su página; de momento quedan fuera de los buscadores.",
+    }],
+  },
   {
     version: "0.143.32",
     date: "2026-10-11",

@@ -36,6 +36,8 @@ const PAGE_OF: Record<string, string[]> = {
   // The Journal: `isPublicPath` casa sub-rutas, asi que `/blog` abre
   // tambien el articulo. El indice es el que representa la ruta.
   "/blog": ["app", "blog", "page.tsx"],
+  // One route file for every legend (`/legends/<slug>`); it renders `Legend`.
+  "/legends": ["app", "legends", "[slug]", "page.tsx"],
 };
 
 describe("the call line", () => {

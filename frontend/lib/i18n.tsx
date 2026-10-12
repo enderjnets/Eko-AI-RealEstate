@@ -1184,6 +1184,17 @@ const EN: Record<string, string> = {
   "start.action": "Continue",
   "start.callAction": "Call now",
   "start.footer": "Real estate guidance across Colorado.",
+  // legend pages (/legends/<slug>): the chrome only. The story itself is data in
+  // lib/legends.ts, in English like the videos it continues.
+  "legend.legendLabel": "The legend",
+  "legend.recordLabel": "What the records say",
+  "legend.sources": "Sources",
+  "legend.photos": "Photographs",
+  "legend.watch": "Watch the video",
+  "legend.next.eyebrow": "Curious about Denver?",
+  "legend.next.title": "Start here",
+  "legend.next.intro": "Buy, sell, or talk with an advisor. No account, no sales pitch.",
+  "legend.more": "More Denver, decoded",
   "landing.footer.staffLogin": "Advisor sign-in",
   // The partner brief — the page we hand to the people we work with. Only the
   // chrome is translated: everything the brief actually says comes out of its
@@ -2326,6 +2337,15 @@ const ES: Record<string, string> = {
   "start.action": "Continuar",
   "start.callAction": "Llamar ahora",
   "start.footer": "Asesor\u00eda inmobiliaria en Colorado.",
+  "legend.legendLabel": "La leyenda",
+  "legend.recordLabel": "Lo que dicen los registros",
+  "legend.sources": "Fuentes",
+  "legend.photos": "Fotograf\u00edas",
+  "legend.watch": "Ver el v\u00eddeo",
+  "legend.next.eyebrow": "\u00bfTe interesa Denver?",
+  "legend.next.title": "Empieza aqu\u00ed",
+  "legend.next.intro": "Compra, vende o habla con un asesor. Sin cuenta y sin presi\u00f3n de venta.",
+  "legend.more": "M\u00e1s Denver, descifrado",
   // La hoja de socios. Solo se traduce el marco: lo que la hoja dice viene de
   // su propio payload, escrito por hoja en el idioma de quien la lee.
   "brief.private": "Enlace privado \u00b7 no lo reenv\u00edes",
