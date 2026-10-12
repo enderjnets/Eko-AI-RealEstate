@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.35] — 2026-10-12
+
+- Landing: `/georgetownloop`, the fifth spoken legend path, lands on its own page (`/legends/georgetownloop`, listed in `LEGEND_PAGES`) with the same `utm_campaign=legends` tags. `lib/legends.ts` gains the Georgetown Loop: two miles and about six hundred feet between Georgetown and Silver Plume, a six percent grade if laid straight, curled into about four and a half miles; the Devil's Gate High Bridge, 95 ft over Clear Creek, where the track crosses over itself; the Georgetown, Breckenridge and Leadville, built for silver ore and Leadville, against the legend that it was built as a scenic ride (one written instance found, so the page states the record, not how widely the legend runs); torn up by 1939, spared by Interstate 70, rebuilt in 1984. Two sources per line. Photos: W. H. Jackson / Detroit Photographic Co. (Beinecke, Yale) and a 1904 Detroit Photographic postcard (NYPL), public domain, the postcard cropped to its printed picture so the sender's handwriting is not published; Don O'Brien 2002, CC BY 2.0. The hero is a frame of our own 3D model. `bioLinks.test.ts` and `legends.test.ts` list the new path (red before the route existed).
+
 ## [0.143.34] — 2026-10-12
 
 - Landing: `/unionstation`, the fourth spoken legend path, lands on its own page (`/legends/unionstation`, listed in `LEGEND_PAGES`) with the same `utm_campaign=legends` tags. `lib/legends.ts` gains the Union Station legend: the 1881 wings, the 1894 fire, the 1914 hall, the 1906 Welcome/Mizpah Arch and the "Howdy, partner" story against the record (Hebrew, Genesis), the arch's removal in the early 1930s (sources say 1931 or 1933), the 1950s signs; two sources per line. Photos: Library of Congress 1908 and Highsmith 2016, Detroit Publishing via NYPL, all public domain; the hero is a frame of our own 3D model. `bioLinks.test.ts` and `legends.test.ts` list the new path (red before the route existed).

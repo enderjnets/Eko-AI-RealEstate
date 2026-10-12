@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.34";
+export const CURRENT_VERSION = "0.143.35";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.35",
+    date: "2026-10-12",
+    title: { en: "A fifth legend: /georgetownloop", es: "Una quinta leyenda: /georgetownloop" },
+    changes: [{
+      en: "denverhomestory.com/georgetownloop opens the page of the Georgetown Loop video: the railroad that crosses over itself, built for silver and Leadville and remembered as a scenic ride, with a source for every line and photographs of the Loop and its bridge, then the same three ways in as the Start page.",
+      es: "denverhomestory.com/georgetownloop abre la página del vídeo del Georgetown Loop: el ferrocarril que pasa por encima de sí mismo, construido para la plata y Leadville y recordado como paseo turístico, con una fuente para cada línea y fotografías del Loop y su puente, y después las mismas tres entradas que la página Start.",
+    }],
+  },
   {
     version: "0.143.34",
     date: "2026-10-12",
