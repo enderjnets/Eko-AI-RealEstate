@@ -1,6 +1,6 @@
 /**
  * The 3D legends: one page per video, opened by the short path the video says
- * out loud (`/colfax`, `/cheesman`, `/mollybrown` in `next.config.js`).
+ * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop` in `next.config.js`).
  *
  * Asked for on 11-oct-2026. Until then every short path landed on `/start` —
  * "Buy / Sell / Talk now" — and the owner, opening `/mollybrown` on his phone
@@ -365,6 +365,86 @@ export const LEGENDS: readonly Legend[] = [
     ],
     watch: [],
     visit: { label: "Denver Union Station", url: "https://www.denverunionstation.com/" },
+  },
+  {
+    slug: "georgetownloop",
+    eyebrow: "Denver, decoded · Clear Creek, west of Denver",
+    title: "The Georgetown Loop, the railroad to nowhere",
+    dek: "This railroad crosses over itself to go two miles. Its name promised two places it never reached.",
+    hero: {
+      src: "/landing/legends/georgetownloop/hero.jpg",
+      alt: "3D model of the Georgetown Loop with its route marked in gold, crossing over itself at the Devil's Gate High Bridge",
+    },
+    facts: [
+      {
+        record:
+          "Silver Plume sits two miles from Georgetown and about six hundred feet higher. Laid straight up the valley, the track would have climbed a six percent grade: too steep.",
+        sources: [
+          { name: "Colorado Encyclopedia, Georgetown Loop", url: "https://coloradoencyclopedia.org/article/georgetown-loop" },
+          { name: "Trains magazine, Colorado's Georgetown Loop", url: "https://www.trains.com/?p=18950" },
+        ],
+      },
+      {
+        record:
+          "Union Pacific engineers curled the line into about four and a half miles, roughly halving the grade. At the Devil's Gate High Bridge, ninety-five feet above Clear Creek, the track crosses over itself. Trains reached Silver Plume in 1884.",
+        sources: [
+          { name: "Wikipedia, Georgetown Loop Railroad", url: "https://en.wikipedia.org/wiki/Georgetown_Loop_Railroad" },
+          { name: "Georgetown Loop Railroad, Our History", url: "https://www.georgetownlooprr.com/our-history/" },
+        ],
+      },
+      {
+        legend: "It was built as a scenic ride.",
+        record:
+          "It was the Georgetown, Breckenridge and Leadville, built to haul silver ore and push over the mountains to Leadville. Other railroads got there first; the track stopped a few miles past Silver Plume and never reached Breckenridge either. One history calls it Colorado's railroad to nowhere.",
+        sources: [
+          { name: "National Register of Historic Places nomination, 1970", url: "https://npgallery.nps.gov/GetAsset/769d12ec-421c-4ee2-8290-a02e692013cd" },
+          { name: "Colorado Encyclopedia, Georgetown Loop", url: "https://coloradoencyclopedia.org/article/georgetown-loop" },
+        ],
+      },
+      {
+        record: "Instead of Leadville, it found tourists. The Loop became one of Colorado's first great attractions.",
+        sources: [
+          { name: "National Register of Historic Places nomination, 1970", url: "https://npgallery.nps.gov/GetAsset/769d12ec-421c-4ee2-8290-a02e692013cd" },
+          { name: "Wikipedia, Georgetown Loop Railroad", url: "https://en.wikipedia.org/wiki/Georgetown_Loop_Railroad" },
+        ],
+      },
+      {
+        record:
+          "By 1939 the line was torn up and the bridge sold off. Interstate 70 was later built higher up the mountain to spare the old grade, and in 1984 the Colorado Historical Society finished rebuilding the Loop, with a new bridge to the old design.",
+        sources: [
+          { name: "Colorado Encyclopedia, Georgetown Loop", url: "https://coloradoencyclopedia.org/article/georgetown-loop" },
+          { name: "History Colorado, National and State Register", url: "https://www.historycolorado.org/location/georgetown-loop-railroadr-georgetown-loop-historic-mining-railroad-parkr" },
+        ],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/georgetownloop/loop-photochrom.jpg",
+        alt: "Colour photochrom of the Georgetown Loop: a train on the high bridge and another on the track below",
+        caption: "The Loop with a train on the bridge and another below it.",
+        credit: "William Henry Jackson / Detroit Photographic Co., Beinecke Library, Yale",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Detroit_Photographic_Company_(0239).jpg",
+      },
+      {
+        src: "/landing/legends/georgetownloop/high-bridge-postcard-1904.jpg",
+        alt: "Postcard of the High Bridge with a passenger train crossing and another train on the track beneath it",
+        caption: "The High Bridge on a 1904 postcard: one train over another.",
+        credit: "Detroit Photographic Co., New York Public Library",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Loop_High_Bridge,_Georgetown,_Colo_(NYPL_b12647398-62949).tiff",
+      },
+      {
+        src: "/landing/legends/georgetownloop/rebuilt-bridge-2002.jpg",
+        alt: "A steam locomotive and red coaches crossing the rebuilt Devil's Gate High Bridge",
+        caption: "The rebuilt bridge, 2002.",
+        credit: "Don O'Brien",
+        licence: "CC BY 2.0",
+        page: "https://commons.wikimedia.org/wiki/File:Georgetown_Loop_RR.jpg",
+      },
+    ],
+    watch: [],
+    visit: { label: "Georgetown Loop Railroad", url: "https://www.georgetownlooprr.com/" },
   },
 ];
 
