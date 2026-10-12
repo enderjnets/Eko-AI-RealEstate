@@ -283,6 +283,89 @@ export const LEGENDS: readonly Legend[] = [
     watch: [],
     visit: { label: "Visit the Molly Brown House Museum", url: "https://mollybrown.org/" },
   },
+  {
+    slug: "unionstation",
+    eyebrow: "Denver, decoded · 17th & Wynkoop",
+    title: "Union Station and the Mizpah Arch",
+    dek: "Denver once greeted every train with a giant glowing arch. The word on its back still fools people.",
+    hero: { src: "/landing/legends/unionstation/hero.jpg", alt: "3D model of Denver Union Station and the rebuilt 1906 arch on 17th Street" },
+    facts: [
+      {
+        record: "Union Station opened in 1881. Its two wings, built of volcanic stone, are still the originals.",
+        sources: [
+          { name: "History Colorado", url: "https://www.historycolorado.org/story/classroom-resources/2019/04/05/6-things-you-didnt-know-about-union-station" },
+          { name: "Lower Downtown District", url: "https://lodo.org/union-station-history/" },
+        ],
+      },
+      {
+        record: "In 1894 a fire that started in the ladies' room destroyed the middle of the station. The grand hall you walk through today opened in 1914.",
+        sources: [
+          { name: "History Colorado", url: "https://www.historycolorado.org/story/classroom-resources/2019/04/05/6-things-you-didnt-know-about-union-station" },
+          { name: "Denver Union Station, Our History", url: "https://www.denverunionstation.com/about/our-history/" },
+        ],
+      },
+      {
+        record:
+          "In 1906 the city built an arch over 17th Street in front of the station: sixty-five feet tall, lit with more than two thousand bulbs. It said “Welcome,” and soon the side travelers saw on their way out got a new word: Mizpah.",
+        sources: [
+          { name: "Lower Downtown District", url: "https://lodo.org/union-station-history/" },
+          { name: "Wikipedia, Denver Union Station", url: "https://en.wikipedia.org/wiki/Denver_Union_Station" },
+        ],
+      },
+      {
+        legend: "Mizpah is a Native American word for “Howdy, partner.”",
+        record:
+          "It's Hebrew, for watchtower. In Genesis it's the pile of stones Jacob and Laban set up when they parted: a watchtower between two people who are apart.",
+        sources: [
+          { name: "Lower Downtown District", url: "https://lodo.org/union-station-history/" },
+          { name: "Wikipedia, Mizpah", url: "https://en.wikipedia.org/wiki/Mizpah_(emotional_bond)" },
+        ],
+      },
+      {
+        record: "In the early 1930s, with traffic growing, the arch came down.",
+        sources: [
+          { name: "Wikipedia, Denver Union Station", url: "https://en.wikipedia.org/wiki/Denver_Union_Station" },
+          { name: "History Colorado", url: "https://www.historycolorado.org/story/classroom-resources/2019/04/05/6-things-you-didnt-know-about-union-station" },
+        ],
+      },
+      {
+        record:
+          "In the 1950s, as travelers moved to cars and planes, the station put up its “Travel by Train” signs. Today the trains are back, and there's a hotel upstairs.",
+        sources: [
+          { name: "History Colorado", url: "https://www.historycolorado.org/story/classroom-resources/2019/04/05/6-things-you-didnt-know-about-union-station" },
+          { name: "Wikipedia, Denver Union Station", url: "https://en.wikipedia.org/wiki/Denver_Union_Station" },
+        ],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/unionstation/welcome-arch-1908.jpg",
+        alt: "The Welcome Arch over 17th Street in 1908",
+        caption: "The arch in 1908, its Welcome side towards the station.",
+        credit: "Library of Congress",
+        licence: "Public domain",
+        page: "https://www.loc.gov/item/93505882/",
+      },
+      {
+        src: "/landing/legends/unionstation/union-depot-postcard.jpg",
+        alt: "Postcard of Union Depot with its clock tower and the train yard",
+        caption: "Union Depot before the 1914 hall, with its clock tower.",
+        credit: "Detroit Publishing Co., New York Public Library",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Union_Depot,_Denver,_Colo_(NYPL_b12647398-68814).tiff",
+      },
+      {
+        src: "/landing/legends/unionstation/union-station-2016.jpg",
+        alt: "Union Station at dusk with its Union Station and Travel by Train signs lit",
+        caption: "The station at dusk, 2016.",
+        credit: "Carol M. Highsmith, Library of Congress",
+        licence: "Public domain",
+        page: "https://www.loc.gov/item/2017885046/",
+      },
+    ],
+    watch: [],
+    visit: { label: "Denver Union Station", url: "https://www.denverunionstation.com/" },
+  },
 ];
 
 export function legendBySlug(slug: string): Legend | undefined {
