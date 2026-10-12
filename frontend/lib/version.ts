@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.33";
+export const CURRENT_VERSION = "0.143.34";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.34",
+    date: "2026-10-12",
+    title: { en: "A fourth legend: /unionstation", es: "Una cuarta leyenda: /unionstation" },
+    changes: [{
+      en: "denverhomestory.com/unionstation opens the page of the Union Station video: the station, the 1906 Welcome Arch and the word on its other side, Mizpah, with a source for every line and public-domain photographs, then the same three ways in as the Start page.",
+      es: "denverhomestory.com/unionstation abre la página del vídeo de Union Station: la estación, el arco Welcome de 1906 y la palabra de su otra cara, Mizpah, con una fuente para cada línea y fotografías de dominio público, y después las mismas tres entradas que la página Start.",
+    }],
+  },
   {
     version: "0.143.33",
     date: "2026-10-11",
