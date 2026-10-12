@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.31";
+export const CURRENT_VERSION = "0.143.32";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.32",
+    date: "2026-10-11",
+    title: { en: "A third short address: /mollybrown", es: "Una tercera dirección corta: /mollybrown" },
+    changes: [{
+      en: "denverhomestory.com/mollybrown opens the Start page and is counted as its own source, like /colfax and /cheesman. The 3D Molly Brown House video, planned for Halloween week, will say it out loud at the end.",
+      es: "denverhomestory.com/mollybrown abre la página Start y se cuenta como fuente propia, igual que /colfax y /cheesman. El vídeo 3D de la casa de Molly Brown, previsto para la semana de Halloween, la dirá en voz alta al final.",
+    }],
+  },
   {
     version: "0.143.31",
     date: "2026-10-11",
