@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.36";
+export const CURRENT_VERSION = "0.143.37";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.37",
+    date: "2026-10-12",
+    title: { en: "A seventh legend: /redrocks", es: "Una séptima leyenda: /redrocks" },
+    changes: [{
+      en: "denverhomestory.com/redrocks opens the page of the Red Rocks video: the legend that the Beatles couldn't sell out Red Rocks, against what the records show (about 7,000 tickets for about 9,000 seats, an Associated Press caption of nearly 10,000, fans over the rocks, and Kansas City also short), with a source for every line and three public-domain photographs.",
+      es: "denverhomestory.com/redrocks abre la página del vídeo de Red Rocks: la leyenda de que los Beatles no llenaron Red Rocks, frente a lo que muestran los registros (unas 7.000 entradas para unas 9.000 butacas, un pie de foto de Associated Press de casi 10.000, fans entrando por las rocas, y Kansas City también por debajo), con una fuente para cada línea y tres fotografías de dominio público.",
+    }],
+  },
   {
     version: "0.143.36",
     date: "2026-10-12",

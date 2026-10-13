@@ -1,6 +1,6 @@
 /**
  * The 3D legends: one page per video, opened by the short path the video says
- * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark` in `next.config.js`).
+ * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks` in `next.config.js`).
  *
  * Asked for on 11-oct-2026. Until then every short path landed on `/start` —
  * "Buy / Sell / Talk now" — and the owner, opening `/mollybrown` on his phone
@@ -533,6 +533,86 @@ export const LEGENDS: readonly Legend[] = [
       },
     ],
     watch: [],
+  },
+  {
+    slug: "redrocks",
+    eyebrow: "Denver, decoded · Red Rocks Park, a Denver Mountain Park",
+    title: "Red Rocks, and the Beatles show that didn't sell out",
+    dek: "They say the Beatles couldn't sell out Red Rocks. Seven thousand tickets sold; nearly ten thousand fans, by one estimate.",
+    hero: {
+      src: "/landing/legends/redrocks/hero.jpg",
+      alt: "3D model of Red Rocks Amphitheatre between Ship Rock and Creation Rock, with the rock faces shown in red",
+    },
+    facts: [
+      {
+        record:
+          "Red Rocks Amphitheatre sits between two sandstone monoliths: Ship Rock to the south and Creation Rock to the north. Denver bought the park by 1928.",
+        sources: [
+          { name: "Red Rocks Amphitheatre, history", url: "https://www.redrocksonline.com/our-story/history/" },
+          { name: "History Colorado, Red Rocks Park and Mount Morrison CCC Camp", url: "https://www.historycolorado.org/location/red-rocks-park-and-mount-morrison-civilian-conservation-corps-camp-national-historic" },
+        ],
+      },
+      {
+        record:
+          "From 1936 the Civilian Conservation Corps built the amphitheatre to a design by Denver architect Burnham Hoyt. It opened in June 1941.",
+        sources: [
+          { name: "Colorado Encyclopedia, Red Rocks Park and Amphitheatre", url: "https://coloradoencyclopedia.org/article/red-rocks-park-and-amphitheatre" },
+          { name: "The Cultural Landscape Foundation, Red Rocks Amphitheatre", url: "https://tclf.org/landscapes/red-rocks-amphitheatre" },
+        ],
+      },
+      {
+        legend: "The Beatles couldn't sell out Red Rocks: the one show of their American tour that didn't.",
+        record:
+          "On August 26, 1964, the Beatles played here. About 7,000 tickets were sold, at $6.60, for about 9,000 seats. That is a ticket count, and the press at the time blamed the location: no public transportation for teenagers.",
+        sources: [
+          { name: "Red Rocks Amphitheatre, notable performances", url: "https://www.redrocksonline.com/our-story/notable-performances/" },
+          { name: "CPR, The Beatles at Red Rocks, 50 years on (2014)", url: "https://www.cpr.org/2014/08/25/the-beatles-at-red-rocks-50-years-on-still-a-big-deal/" },
+        ],
+      },
+      {
+        record:
+          "An Associated Press photo caption said they played to nearly 10,000. There were hardly any ticket takers, fans came in over the rocks, and photos from that night show it packed. The tickets were reported; every crowd figure we found is an estimate.",
+        sources: [
+          { name: "Colorado Music Experience, The Beatles' Colorado connection", url: "https://colomusic.org/blog/the-beatles-colorado-connection/" },
+          { name: "Broadcast Pioneers of Colorado, The Beatles in Denver", url: "https://broadcastpioneersofcolorado.com/the-beatles-in-denver/" },
+        ],
+      },
+      {
+        record: "Nor was it the only show of the tour that fell short: Kansas City, an extra date, drew well below its stadium's capacity.",
+        sources: [
+          { name: "The Beatles Bible, Municipal Stadium, Kansas City", url: "https://www.beatlesbible.com/1964/09/17/live-municipal-stadium-kansas-city/" },
+          { name: "Wikipedia, The Beatles' 1964 North American tour", url: "https://en.wikipedia.org/wiki/The_Beatles%27_1964_North_American_tour" },
+        ],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/redrocks/aerial-1938.jpg",
+        alt: "Black-and-white aerial photograph of the amphitheatre under construction between the rocks, April 1938",
+        caption: "The amphitheatre half built, April 1938.",
+        credit: "U.S. Army Air Corps, National Archives",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Colorado_-_Rocky_Mountains_through_Red_Rocks_-_NARA_-_23936001.jpg",
+      },
+      {
+        src: "/landing/legends/redrocks/aerial-1941.jpg",
+        alt: "Black-and-white aerial photograph of the finished amphitheatre between the two monoliths, June 1941",
+        caption: "Finished, a week before the June 1941 dedication.",
+        credit: "Air Corps Technical School, Lowry Field, National Archives",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Colorado_-_Rocky_Mountains_through_Red_Rocks_-_NARA_-_23935999.jpg",
+      },
+      {
+        src: "/landing/legends/redrocks/postcard-c1941.jpg",
+        alt: "Colour linen postcard of the amphitheatre's rows of seats below a red sandstone monolith",
+        caption: "\u201cRed Rocks Theatre\u201d on a postcard of the early 1940s.",
+        credit: "Tichnor Bros. for Sanborn Souvenir Co.",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Red_Rock_Theatre,_Park_of_the_Red_Rocks,_Denver_Mountain_Parks,_Colorado_(7725170254).jpg",
+      },
+    ],
+    watch: [],
+    visit: { label: "Red Rocks Park & Amphitheatre", url: "https://www.redrocksonline.com/" },
   },
 ];
 
