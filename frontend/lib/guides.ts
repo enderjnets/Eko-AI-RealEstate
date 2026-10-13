@@ -48,4 +48,8 @@ export interface GuideEntry {
 export const GUIDES: readonly GuideEntry[] = [
   { key: "calculator", href: "/calculator", kind: "tool", topic: "buying" },
   { key: "fall", href: "/fall", kind: "guide", topic: "colorado", lang: "en" },
+  // The legend pages, one per 3D video (13-oct-2026). Until this row the home
+  // linked none of them: they were reachable only by typing the address a
+  // video ends on. English, like the pages.
+  { key: "legends", href: "/legends", kind: "guide", topic: "colorado", lang: "en" },
 ];

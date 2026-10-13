@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Calculator, House, Phone } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Calculator, House, Phone } from "lucide-react";
 import Link from "next/link";
 
 import { LandingTracker } from "@/components/landing/LandingTracker";
@@ -51,6 +51,10 @@ export function Legend({ legend, searchParams = {} }: { legend: LegendData; sear
       </header>
 
       <main className="mx-auto w-full max-w-3xl flex-1 px-5 pb-12 pt-6 sm:px-8 sm:pt-10">
+        <Link href="/legends" data-track="legend-all" className="mb-5 inline-flex min-h-[44px] items-center gap-1.5 text-[11px] uppercase tracking-[0.18em] text-ln-body hover:text-ln-gold">
+          <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={1.5} />
+          {t("legend.all")}
+        </Link>
         <p className="text-[10px] font-medium uppercase tracking-[0.3em] text-ln-bronze">{legend.eyebrow}</p>
         <h1 className="mt-3 font-ln-serif text-[40px] font-light leading-[0.98] tracking-[-0.02em] sm:text-[56px]">{legend.title}</h1>
         <p className="mt-4 text-[17px] leading-7 text-ln-body sm:text-[19px]">{legend.dek}</p>
@@ -187,7 +191,7 @@ export function Legend({ legend, searchParams = {} }: { legend: LegendData; sear
       </main>
 
       <footer className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-between gap-2 border-t border-ln-line px-5 py-6 text-[10px] uppercase tracking-[0.16em] text-ln-body sm:px-8">
-        <span>{t("legend.more")}</span>
+        <Link href="/legends" data-track="legend-more" className="underline underline-offset-4 hover:text-ln-gold">{t("legend.more")}</Link>
         {(LANDING.brokerage || LANDING.address) && <span>{[LANDING.brokerage, LANDING.address].filter(Boolean).join(" · ")}</span>}
       </footer>
     </div>

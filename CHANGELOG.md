@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.38] — 2026-10-13
+
+- Landing: `/legends`, an index of every legend page (`app/legends/page.tsx`, `components/landing/LegendsIndex.tsx`): photograph, place, title and dek per legend, in `LEGENDS` order. Asked for on 13-oct-2026: the home linked none of the seven pages, so they existed only for whoever typed the address a video ends on. The home now links the index from the desktop nav, the phone menu and, as a `GUIDES` row (`legends`, English only like the pages), the guides section and the footer; each legend page links back ("All the legends" above the eyebrow, "More Denver, decoded" in the footer). The index keeps the legend pages' rule: `robots: index:false`, canonical `/legends`, not in the sitemap. `legends.test.ts` checks the index iterates `LEGENDS`, the two home lists and the guide row, the link back, and the index's noindex.
+
 ## [0.143.37] — 2026-10-12
 
 - Landing: `/redrocks`, the seventh spoken legend path, lands on its own page (`/legends/redrocks`, listed in `LEGEND_PAGES`) with the same `utm_campaign=legends` tags. `lib/legends.ts` gains Red Rocks: the amphitheatre between Ship Rock and Creation Rock, in a park Denver bought by 1928; built by the Civilian Conservation Corps from 1936 to Burnham Hoyt's design, opened in June 1941; the legend that the Beatles couldn't sell it out (26 August 1964) against the record: about 7,000 tickets at $6.60 for about 9,000 seats, the press blaming the location, an Associated Press caption of nearly 10,000, fans over the rocks, and every crowd figure an estimate; Kansas City, an extra date, also well below capacity. Two sources per line. Photos: U.S. Army Air Corps aerials of April 1938 and June 1941 (National Archives) cropped to the print, and a Tichnor Bros. postcard of c. 1941 cropped to the picture (the archive's handwritten number left out), all public domain. The hero is a frame of our own 3D model. `bioLinks.test.ts` and `legends.test.ts` list the new path.
