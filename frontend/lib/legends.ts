@@ -1,6 +1,6 @@
 /**
  * The 3D legends: one page per video, opened by the short path the video says
- * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop` in `next.config.js`).
+ * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark` in `next.config.js`).
  *
  * Asked for on 11-oct-2026. Until then every short path landed on `/start` —
  * "Buy / Sell / Talk now" — and the owner, opening `/mollybrown` on his phone
@@ -63,7 +63,8 @@ export interface Legend {
 
 const MODEL_NOTE =
   "The flyover in the video is a 3D model, not drone footage: USGS 3DEP lidar, USDA NAIP aerial imagery and " +
-  "building footprints from OpenStreetMap (© OpenStreetMap contributors, ODbL). Narrated with a synthetic voice.";
+  "building footprints from OpenStreetMap (© OpenStreetMap contributors, ODbL) or the DRCOG Regional Data Catalog " +
+  "(CC BY 3.0). Narrated with a synthetic voice.";
 
 export const LEGEND_MODEL_NOTE = MODEL_NOTE;
 
@@ -445,6 +446,93 @@ export const LEGENDS: readonly Legend[] = [
     ],
     watch: [],
     visit: { label: "Georgetown Loop Railroad", url: "https://www.georgetownlooprr.com/" },
+  },
+  {
+    slug: "confluencepark",
+    eyebrow: "Denver, decoded · Where Cherry Creek meets the South Platte",
+    title: "Confluence Park, and the barrel of whiskey",
+    dek: "They say Denver was bought with a barrel of whiskey. The records tell it differently.",
+    hero: {
+      src: "/landing/legends/confluencepark/hero.jpg",
+      alt: "3D model of Confluence Park with Cherry Creek marked in gold and the South Platte in blue where they meet",
+    },
+    facts: [
+      {
+        record:
+          "Cherry Creek meets the South Platte here, and Denver started here. Under the 1851 Fort Laramie Treaty, this was Cheyenne and Arapaho land.",
+        sources: [
+          { name: "The Cultural Landscape Foundation, Confluence Park", url: "https://www.tclf.org/landscapes/confluence-park" },
+          { name: "National Park Service, Sand Creek Massacre NHS timeline", url: "https://home.nps.gov/sand/learn/timeline.htm" },
+        ],
+      },
+      {
+        record:
+          "In 1858 Georgia prospectors found gold up the river. That fall, Kansas men staked a town on the east bank of Cherry Creek, St. Charles, and most of them went home for the winter. Across the creek, miners laid out Auraria.",
+        sources: [
+          { name: "Colorado Encyclopedia, William Larimer Jr.", url: "https://coloradoencyclopedia.org/article/william-larimer-jr" },
+          { name: "Jerome C. Smiley, Semi-Centennial History of the State of Colorado (1913)", url: "https://archive.org/details/semicentennialhi01smil" },
+        ],
+      },
+      {
+        legend: "Larimer's men won the claim with a barrel of whiskey and the threat of a hanging.",
+        record:
+          "In November 1858, William Larimer's party moved in. Charles Nichols, for the St. Charles men, protested and was warned: next time, a rope. Then he made a deal, and the St. Charles men got shares in the Denver City company. Jumped, then bought off.",
+        sources: [
+          { name: "Jerome C. Smiley, Semi-Centennial History of the State of Colorado (1913)", url: "https://archive.org/details/semicentennialhi01smil" },
+          { name: "Reminiscences of General William Larimer (1918)", url: "https://archive.org/details/reminiscencesofg00lari" },
+        ],
+      },
+      {
+        record:
+          "Barrels of whiskey did come, at Christmas 1858. Uncle Dick Wootton rolled in with Taos Lightning, opened one, and invited the whole camp to help themselves.",
+        sources: [
+          { name: "Jerome C. Smiley, History of Denver (1901), chapter 23", url: "https://cogenweb.org/denver/1901_History/chap23.html" },
+          { name: "Reminiscences of General William Larimer (1918)", url: "https://archive.org/details/reminiscencesofg00lari" },
+        ],
+      },
+      {
+        record:
+          "In April 1860 the two towns voted to merge, and celebrated by moonlight on the Larimer Street bridge.",
+        sources: [
+          { name: "History of the City of Denver (1880)", url: "https://archive.org/details/historyofcityofd00inolba" },
+          { name: "Jerome C. Smiley, Semi-Centennial History of the State of Colorado (1913)", url: "https://archive.org/details/semicentennialhi01smil" },
+        ],
+      },
+      {
+        record: "After the South Platte flood of 1965, the old dumping ground at the confluence became a park.",
+        sources: [
+          { name: "The Cultural Landscape Foundation, Confluence Park", url: "https://www.tclf.org/landscapes/confluence-park" },
+          { name: "The Greenway Foundation, history", url: "https://thegreenwayfoundation.org/about/history/" },
+        ],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/confluencepark/denver-city-leslies-1859.jpg",
+        alt: "Wood engraving of Denver City in 1859: a row of log cabins and a wagon on the open plain",
+        caption: "\u201cDenver City, K.T.\u201d in Frank Leslie\u2019s Illustrated Newspaper, August 1859.",
+        credit: "Frank Leslie\u2019s Illustrated Newspaper, Library of Congress",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Three_illustrations-_Denver_City,_K.T.;_The_Rocky_Mountain_News_Office,_Aurabia,_K.T.;_View_at_Pike's_Peak_LCCN98505273.tif",
+      },
+      {
+        src: "/landing/legends/confluencepark/denver-1859-lithograph-1891.jpg",
+        alt: "Colour lithograph of the camps where Cherry Creek runs into the South Platte, with wagons, tents and the mountains behind",
+        caption: "Denver in 1859, as an 1891 lithograph imagined it.",
+        credit: "Collier & Cleveland Litho Co., Library of Congress",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Denver_in_1859_LCCN2003674703.jpg",
+      },
+      {
+        src: "/landing/legends/confluencepark/confluence-2005.jpg",
+        alt: "The sand spit and boulders where Cherry Creek and the South Platte meet, with a bridge behind",
+        caption: "Where the two rivers meet, 2005.",
+        credit: "Robin DeGrassi",
+        licence: "CC BY 2.0",
+        page: "https://commons.wikimedia.org/wiki/File:Platte-Cherry.jpg",
+      },
+    ],
+    watch: [],
   },
 ];
 
