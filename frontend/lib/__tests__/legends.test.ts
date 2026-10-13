@@ -11,7 +11,7 @@ const PUBLIC = resolve(__dirname, "../../public");
 
 // The short paths the videos say. A video that ends with an address and has no
 // page would send the viewer to the menu the owner already called wrong.
-const SPOKEN = ["colfax", "cheesman", "mollybrown", "unionstation", "georgetownloop"] as const;
+const SPOKEN = ["colfax", "cheesman", "mollybrown", "unionstation", "georgetownloop", "confluencepark"] as const;
 
 function everyString(value: unknown): string[] {
   if (typeof value === "string") return [value];

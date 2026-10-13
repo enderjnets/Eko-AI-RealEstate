@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.35";
+export const CURRENT_VERSION = "0.143.36";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.36",
+    date: "2026-10-12",
+    title: { en: "A sixth legend: /confluencepark", es: "Una sexta leyenda: /confluencepark" },
+    changes: [{
+      en: "denverhomestory.com/confluencepark opens the page of the Confluence Park video: the legend that Denver was bought with a barrel of whiskey, against what the records show (a threat, a deal and shares in the Denver City company; the whiskey came at Christmas), with a source for every line and three photographs. The note on the 3D model now also credits the DRCOG Regional Data Catalog.",
+      es: "denverhomestory.com/confluencepark abre la página del vídeo de Confluence Park: la leyenda de que Denver se compró con un barril de whisky, frente a lo que muestran los registros (una amenaza, un trato y acciones de la compañía de Denver City; el whisky llegó en Navidad), con una fuente para cada línea y tres fotografías. La nota sobre el modelo 3D acredita también al DRCOG Regional Data Catalog.",
+    }],
+  },
   {
     version: "0.143.35",
     date: "2026-10-12",
