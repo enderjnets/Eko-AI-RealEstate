@@ -134,6 +134,12 @@ function LandingNav({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: (
           <a href="#guides" className={link}>
             {t("landing.nav.guides")}
           </a>
+          {/* Las paginas de las leyendas (13-oct-2026): hasta aqui la portada no
+              enlazaba ninguna. `hrefLang` por lo mismo que el Journal: estan en
+              ingles. */}
+          <a href="/legends" hrefLang="en" className={link}>
+            {t("landing.nav.legends")}
+          </a>
           {/* `hrefLang` porque The Journal esta en ingles y esta cabecera la lee
               tambien un visitante en espanol: es la misma honestidad que lleva
               la guia de otono en `GUIDES`, y no cuesta una traduccion a medias. */}
@@ -240,6 +246,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
     { href: "#how", label: t("landing.menu.how"), italic: false },
     { href: "#markets", label: t("landing.menu.markets"), italic: false },
     { href: "#guides", label: t("landing.menu.guides"), italic: false },
+    { href: "/legends", label: t("landing.menu.legends"), italic: false, lang: "en" },
     // The Journal va justo antes de la llamada a la accion, como en el diseno.
     // `lang` marca que lo que hay al otro lado esta en ingles; es el unico
     // destino del menu que sale de la portada.

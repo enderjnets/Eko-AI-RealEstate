@@ -934,6 +934,7 @@ const EN: Record<string, string> = {
   "landing.nav.markets": "Markets",
   "landing.nav.journal": "Journal",
   "landing.nav.guides": "Guides",
+  "landing.nav.legends": "Legends",
   "landing.menu.title": "Menu",
   "landing.menu.open": "Open menu",
   "landing.menu.close": "Close menu",
@@ -942,6 +943,7 @@ const EN: Record<string, string> = {
   "landing.menu.markets": "Where we work",
   "landing.menu.journal": "Journal",
   "landing.menu.guides": "Guides & tools",
+  "landing.menu.legends": "Denver legends",
   "landing.menu.call": "Call {who}",
   "landing.menu.callPlain": "Call us",
   "landing.hero.kicker": "Aspen · Roaring Fork Valley · Denver Metro",
@@ -1028,6 +1030,10 @@ const EN: Record<string, string> = {
   "landing.guides.fall.body":
     "A season-long guide to Colorado's aspens by elevation — where to go in mid-September, in October, and when the color finally reaches Denver itself.",
   "landing.guides.fall.cta": "Read the guide",
+  "landing.guides.legends.title": "Denver, decoded: the legends from our videos",
+  "landing.guides.legends.body":
+    "The Denver stories everyone repeats — Colfax, Union Station, Red Rocks and more — checked against the records, each with its sources, its archive photographs and the 3D flyover from its video.",
+  "landing.guides.legends.cta": "See the legends",
   "landing.reach.eyebrow": "Reach us",
   "landing.reach.title": "Call, text, or email — the same two people answer.",
   "landing.reach.body":
@@ -1195,6 +1201,12 @@ const EN: Record<string, string> = {
   "legend.next.title": "Start here",
   "legend.next.intro": "Buy, sell, or talk with an advisor. No account, no sales pitch.",
   "legend.more": "More Denver, decoded",
+  "legend.all": "All the legends",
+  "legends.eyebrow": "Denver, decoded",
+  "legends.title": "The legends, and what the records say",
+  "legends.intro": "Every video in the series takes a story Denver repeats and checks it against the records. Here is each one, with its sources, its archive photographs and the 3D flyover from the video.",
+  "legends.read": "Read the record",
+  "legends.home": "Home",
   "landing.footer.staffLogin": "Advisor sign-in",
   // The partner brief — the page we hand to the people we work with. Only the
   // chrome is translated: everything the brief actually says comes out of its
@@ -2111,6 +2123,7 @@ const ES: Record<string, string> = {
   "landing.nav.markets": "Mercados",
   "landing.nav.journal": "Journal",
   "landing.nav.guides": "Guías",
+  "landing.nav.legends": "Leyendas",
   "landing.menu.title": "Menú",
   "landing.menu.open": "Abrir menú",
   "landing.menu.close": "Cerrar menú",
@@ -2119,6 +2132,7 @@ const ES: Record<string, string> = {
   "landing.menu.markets": "Dónde trabajamos",
   "landing.menu.journal": "Journal",
   "landing.menu.guides": "Guías y herramientas",
+  "landing.menu.legends": "Leyendas de Denver",
   "landing.menu.call": "Llama a {who}",
   "landing.menu.callPlain": "Llámanos",
   "landing.hero.kicker": "Aspen · Valle Roaring Fork · Denver Metro",
@@ -2201,6 +2215,10 @@ const ES: Record<string, string> = {
   "landing.guides.fall.body":
     "Una guía para toda la temporada de los álamos de Colorado por altitud: adónde ir a mediados de septiembre, en octubre, y cuándo llega por fin el color a Denver.",
   "landing.guides.fall.cta": "Leer la guía (en inglés)",
+  "landing.guides.legends.title": "Denver, decoded: las leyendas de nuestros vídeos",
+  "landing.guides.legends.body":
+    "Las historias de Denver que todo el mundo repite (Colfax, Union Station, Red Rocks y más), comprobadas contra los registros: cada una con sus fuentes, sus fotos de archivo y el vuelo 3D de su vídeo.",
+  "landing.guides.legends.cta": "Ver las leyendas (en inglés)",
   "landing.reach.eyebrow": "Contáctanos",
   "landing.reach.title": "Llamada, mensaje o correo: contestan las mismas dos personas.",
   "landing.reach.body":
@@ -2346,6 +2364,12 @@ const ES: Record<string, string> = {
   "legend.next.title": "Empieza aqu\u00ed",
   "legend.next.intro": "Compra, vende o habla con un asesor. Sin cuenta y sin presi\u00f3n de venta.",
   "legend.more": "M\u00e1s Denver, descifrado",
+  "legend.all": "Todas las leyendas",
+  "legends.eyebrow": "Denver, decoded",
+  "legends.title": "Las leyendas, y lo que dicen los registros",
+  "legends.intro": "Cada vídeo de la serie toma una historia que Denver repite y la contrasta con los registros. Aquí está cada una, con sus fuentes, sus fotos de archivo y el vuelo 3D del vídeo. Las páginas están en inglés.",
+  "legends.read": "Leer la historia",
+  "legends.home": "Inicio",
   // La hoja de socios. Solo se traduce el marco: lo que la hoja dice viene de
   // su propio payload, escrito por hoja en el idioma de quien la lee.
   "brief.private": "Enlace privado \u00b7 no lo reenv\u00edes",

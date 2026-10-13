@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.37";
+export const CURRENT_VERSION = "0.143.38";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.38",
+    date: "2026-10-13",
+    title: { en: "The legends, linked from the home", es: "Las leyendas, enlazadas desde la portada" },
+    changes: [{
+      en: "A new page, denverhomestory.com/legends (\"Denver, decoded\"), lists every legend page with its photograph and its first line. The home links it from the menu, the phone menu, the guides section and the footer, and each legend page links back to it. Like the legend pages, it stays out of search results.",
+      es: "Una página nueva, denverhomestory.com/legends («Denver, decoded»), reúne todas las páginas de las leyendas con su foto y su primera línea. La portada la enlaza desde el menú, el menú del móvil, la sección de guías y el pie, y cada leyenda enlaza de vuelta. Como las páginas de las leyendas, queda fuera de los buscadores.",
+    }],
+  },
   {
     version: "0.143.37",
     date: "2026-10-12",

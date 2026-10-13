@@ -1,8 +1,9 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
+import { GUIDES } from "../guides";
 import { LEGEND_MODEL_NOTE, LEGENDS, legendBySlug } from "../legends";
 
 // Same reading of the config as `bioLinks.test.ts`: the file Next loads.
@@ -97,6 +98,22 @@ describe("legend pages", () => {
     }
   });
 
+  it("has an index that links every page, and the home links the index", () => {
+    // Asked for on 13-oct-2026: the home page linked none of the legend pages,
+    // so they existed only for whoever typed the address from a video.
+    const index = readFileSync(resolve(__dirname, "../../components/landing/LegendsIndex.tsx"), "utf8");
+    expect(index).toContain("LEGENDS.map(");
+    expect(index).toContain("href={`/legends/${legend.slug}`}");
+    expect(GUIDES.map((g) => g.href)).toContain("/legends");
+    const landing = readFileSync(resolve(__dirname, "../../components/landing/Landing.tsx"), "utf8");
+    // The desktop nav and the phone menu are separate lists; the footer reads GUIDES.
+    expect(landing).toContain('<a href="/legends" hrefLang="en"');
+    expect(landing).toContain('{ href: "/legends", label: t("landing.menu.legends")');
+    // Every page links back to the index.
+    const page = readFileSync(resolve(__dirname, "../../components/landing/Legend.tsx"), "utf8");
+    expect(page).toContain('href="/legends"');
+  });
+
   it("each page stays out of search while it is being looked at", async () => {
     const { generateMetadata, generateStaticParams } = await import("../../app/legends/[slug]/page");
     expect(generateStaticParams().map((p: { slug: string }) => p.slug).sort()).toEqual(
@@ -107,5 +124,9 @@ describe("legend pages", () => {
       expect(meta.robots, legend.slug).toMatchObject({ index: false });
       expect(meta.alternates?.canonical).toBe(`/legends/${legend.slug}`);
     }
+    // The index too: linking is reversible, indexing is not.
+    const { metadata } = await import("../../app/legends/page");
+    expect(metadata.robots).toMatchObject({ index: false });
+    expect(metadata.alternates?.canonical).toBe("/legends");
   });
 });
