@@ -141,6 +141,12 @@ const nextConfig = {
       legend("mint"),
     ];
   },
+  async headers() {
+    // Browsers that have seen the site over https keep to https for a year.
+    // No includeSubDomains (the zone has other names) and no preload list:
+    // both are hard to take back.
+    return [{ source: "/:path*", headers: [{ key: "Strict-Transport-Security", value: "max-age=31536000" }] }];
+  },
   async rewrites() {
     return [
       {

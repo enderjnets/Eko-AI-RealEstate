@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { GUIDES } from "../guides";
-import { LEGEND_MODEL_NOTE, LEGENDS, legendBySlug } from "../legends";
+import { LEGEND_MODEL_NOTE, LEGENDS, LEGENDS_INDEXED, legendBySlug } from "../legends";
 
 // Same reading of the config as `bioLinks.test.ts`: the file Next loads.
 const nextConfig = createRequire(import.meta.url)("../../next.config.js");
@@ -80,7 +80,7 @@ describe("legend pages", () => {
     }
   });
 
-  it("is served on the brand domain and kept out of the sitemap", async () => {
+  it("is served on the brand domain, and in the sitemap only while the switch is on", async () => {
     const hosts = await import("../hosts");
     for (const slug of SPOKEN) expect(hosts.isPublicPath(`/legends/${slug}`), slug).toBe(true);
     // With a brand domain set, or the sitemap is empty and this would pass for
@@ -90,8 +90,14 @@ describe("legend pages", () => {
     try {
       const sitemap = (await import("../../app/sitemap")).default;
       const urls = sitemap().map((e) => e.url);
-      expect(urls).toContain("https://www.example.test/start");
-      expect(urls.join(" ")).not.toContain("/legends");
+      expect(urls).toContain("https://www.example.test/");
+      // `/start` says index:false; listing it asked Google to come and index it.
+      expect(urls).not.toContain("https://www.example.test/start");
+      if (LEGENDS_INDEXED) {
+        for (const l of LEGENDS) expect(urls).toContain(`https://www.example.test/legends/${l.slug}`);
+      } else {
+        expect(urls.join(" ")).not.toContain("/legends");
+      }
     } finally {
       delete process.env.NEXT_PUBLIC_BRAND_URL;
       vi.resetModules();
@@ -114,19 +120,21 @@ describe("legend pages", () => {
     expect(page).toContain('href="/legends"');
   });
 
-  it("each page stays out of search while it is being looked at", async () => {
+  it("each page follows the one indexing switch, LEGENDS_INDEXED", async () => {
     const { generateMetadata, generateStaticParams } = await import("../../app/legends/[slug]/page");
     expect(generateStaticParams().map((p: { slug: string }) => p.slug).sort()).toEqual(
       LEGENDS.map((l) => l.slug).sort(),
     );
     for (const legend of LEGENDS) {
       const meta = generateMetadata({ params: { slug: legend.slug } });
-      expect(meta.robots, legend.slug).toMatchObject({ index: false });
+      expect(meta.robots, legend.slug).toMatchObject({ index: LEGENDS_INDEXED });
       expect(meta.alternates?.canonical).toBe(`/legends/${legend.slug}`);
     }
     // The index too: linking is reversible, indexing is not.
     const { metadata } = await import("../../app/legends/page");
-    expect(metadata.robots).toMatchObject({ index: false });
+    expect(metadata.robots).toMatchObject({ index: LEGENDS_INDEXED });
+    // And off is the shipped state until the owner says otherwise (13-oct-2026).
+    expect(LEGENDS_INDEXED).toBe(false);
     expect(metadata.alternates?.canonical).toBe("/legends");
   });
 });

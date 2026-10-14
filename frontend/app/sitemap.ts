@@ -3,6 +3,7 @@ import type { MetadataRoute } from "next";
 import { BRAND_URL, PUBLIC_PATHS } from "@/lib/hosts";
 import { INDEXED as JOURNAL_INDEXED } from "@/lib/journal/publication";
 import { sitemapUrls } from "@/lib/sitemap";
+import { LEGENDS, LEGENDS_INDEXED } from "@/lib/legends";
 
 /**
  * `/sitemap.xml`, which answered 404 until now.
@@ -23,6 +24,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
   // `/legends` is public so its pages can be served, but it is a prefix with no
   // page of its own, and each legend page says `index: false` while it is
   // shown to Natalia and Robbie — same reasoning as the Journal above.
-  const paths = PUBLIC_PATHS.filter((p) => (p !== "/blog" || JOURNAL_INDEXED) && p !== "/legends");
-  return sitemapUrls(BRAND_URL, paths);
+  // `/start` too: it says `index: false` (it is the bio-link landing, a copy of
+  // what the home offers), and listing it asked Google to come and index it.
+  const paths = PUBLIC_PATHS.filter((p) => (p !== "/blog" || JOURNAL_INDEXED) && p !== "/legends" && p !== "/start");
+  // With the legends' switch on, the index and every page are listed; the
+  // pages are not in PUBLIC_PATHS one by one, `/legends` is their prefix.
+  const legends = LEGENDS_INDEXED ? ["/legends", ...LEGENDS.map((l) => `/legends/${l.slug}`)] : [];
+  return sitemapUrls(BRAND_URL, [...paths, ...legends]);
 }
