@@ -72,10 +72,11 @@ export const LEGEND_MODEL_NOTE = MODEL_NOTE;
  * Whether search engines and AI assistants are invited to index the legend
  * pages and their index. ONE switch, read by the pages' `robots`, by the
  * sitemap and by `/llms.txt`, so the three can never disagree (the Journal's
- * `INDEXED` rule). Off: linking is reversible in a deploy, an index entry is
- * not — Google's removal tool hides a page for about six months.
+ * `INDEXED` rule). On since 13-oct-2026, with the owner's yes, knowing the
+ * cost: linking is reversible in a deploy, an index entry is not — Google's
+ * removal tool hides a page for about six months.
  */
-export const LEGENDS_INDEXED = false;
+export const LEGENDS_INDEXED = true;
 
 export const LEGENDS: readonly Legend[] = [
   {

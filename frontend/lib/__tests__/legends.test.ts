@@ -133,8 +133,9 @@ describe("legend pages", () => {
     // The index too: linking is reversible, indexing is not.
     const { metadata } = await import("../../app/legends/page");
     expect(metadata.robots).toMatchObject({ index: LEGENDS_INDEXED });
-    // And off is the shipped state until the owner says otherwise (13-oct-2026).
-    expect(LEGENDS_INDEXED).toBe(false);
+    // Switched on with the owner's yes (13-oct-2026). Turning it off again is
+    // one line, but the pages already indexed stay in Google's results for months.
+    expect(LEGENDS_INDEXED).toBe(true);
     expect(metadata.alternates?.canonical).toBe("/legends");
   });
 });
