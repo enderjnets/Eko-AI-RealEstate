@@ -1,6 +1,6 @@
 /**
  * The 3D legends: one page per video, opened by the short path the video says
- * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks` in `next.config.js`).
+ * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint` in `next.config.js`).
  *
  * Asked for on 11-oct-2026. Until then every short path landed on `/start` —
  * "Buy / Sell / Talk now" — and the owner, opening `/mollybrown` on his phone
@@ -613,6 +613,96 @@ export const LEGENDS: readonly Legend[] = [
     ],
     watch: [],
     visit: { label: "Red Rocks Park & Amphitheatre", url: "https://www.redrocksonline.com/" },
+  },
+  {
+    slug: "mint",
+    eyebrow: "Denver, decoded · The U.S. Mint at Denver, West Colfax Avenue",
+    title: "The Denver Mint, and a quarter of the nation's gold",
+    dek: "They say a quarter of the nation's gold is in Denver. The Treasury's monthly report lists about one ounce in six.",
+    hero: {
+      src: "/landing/legends/mint/hero.jpg",
+      alt: "3D model of the Denver Mint at Colfax and Cherokee: rusticated granite, arched windows and a red tile roof",
+    },
+    facts: [
+      {
+        record:
+          "The U.S. Mint on West Colfax is faced with rusticated Colorado granite on its ground story and smoother ashlar above. It is modeled on the Palazzo Medici Riccardi in Florence, and it opened in 1904.",
+        sources: [
+          { name: "Colorado Encyclopedia, Denver Mint", url: "https://coloradoencyclopedia.org/article/denver-mint" },
+          { name: "National Register of Historic Places nomination, Denver Mint (1971)", url: "https://npgallery.nps.gov/NRHP/GetAsset/NRHP/72000270_text" },
+          { name: "History Colorado, Denver Mint", url: "https://www.historycolorado.org/location/denver-mint" },
+        ],
+      },
+      {
+        record:
+          "Congress created a branch mint in Denver in 1862, to coin gold, and the government bought the private mint of Clark, Gruber & Co. to house it. For more than forty years it only tested gold and silver. The new building's machinery was first shown at the 1904 World's Fair in St. Louis, and the first coins came in February 1906.",
+        sources: [
+          { name: "Director of the Mint, Annual Report 1906 (FRASER)", url: "https://fraser.stlouisfed.org/files/docs/publications/usmint/usmint_1906_annual-report.pdf" },
+          { name: "Colorado Encyclopedia, Denver Mint", url: "https://coloradoencyclopedia.org/article/denver-mint" },
+        ],
+      },
+      {
+        legend: "A quarter of the nation's gold is behind these walls.",
+        record:
+          "Stories about the Mint tour printed it in 2005 and in 2014, the second quoting the Mint's own press office, and a travel guide still does.",
+        sources: [
+          { name: "Westword, Child's Play: It's two for the money at the Denver Mint (2014)", url: "https://www.westword.com/?p=40648217" },
+          { name: "The E-Sylum, excerpt of the Longmont Daily Times-Call (2005)", url: "https://coinbooks.org/esylum_v08n22a14.html" },
+          { name: "Michelin Guide, Denver Mint (2026)", url: "https://www.viamichelin.com/maps/tourist-attractions/poi/denver-80202-bc095a2723e3" },
+        ],
+      },
+      {
+        record:
+          "In 1934 the government moved gold inland, from San Francisco to Denver. The Mint calls it a third of the country's gold; the Director of the Mint's ledger for June 1935 shows Denver holding about four in ten of the ounces in the mints' hands.",
+        sources: [
+          { name: "Colorado Encyclopedia, Denver Mint", url: "https://coloradoencyclopedia.org/article/denver-mint" },
+          { name: "Director of the Mint, Annual Report 1935 (FRASER)", url: "https://fraser.stlouisfed.org/files/docs/publications/usmint/usmint_1935_annual-report.pdf" },
+        ],
+      },
+      {
+        record:
+          "Today the Treasury reports its gold every month, by location. Denver holds about 43.9 million fine troy ounces of 261.5 million, about one ounce in six. It is the same figure in every report we opened, back to May 2005, including the months those stories ran.",
+        sources: [
+          { name: "U.S. Treasury, Fiscal Data: Status Report of U.S. Government Gold Reserve", url: "https://fiscaldata.treasury.gov/datasets/status-report-government-gold-reserve/" },
+          { name: "Bureau of the Fiscal Service, gold reports", url: "https://fiscal.treasury.gov/resources/gold-report/" },
+        ],
+      },
+      {
+        record: "And the coins in your change: Denver and Philadelphia make the ones for general circulation.",
+        sources: [
+          { name: "Colorado Encyclopedia, Denver Mint", url: "https://coloradoencyclopedia.org/article/denver-mint" },
+          { name: "U.S. Mint, production and sales figures", url: "https://www.usmint.gov/about/production-sales-figures" },
+        ],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/mint/palazzo-medici-riccardi.jpg",
+        alt: "Sepia photograph of the corner of the Palazzo Medici Riccardi in Florence: rusticated stone, arched paired windows and a deep cornice",
+        caption: "The Palazzo Medici Riccardi in Florence, the building the Mint is modeled on.",
+        credit: "Fratelli Alinari, c. 1865\u20131900, Rijksmuseum",
+        licence: "CC0",
+        page: "https://commons.wikimedia.org/wiki/File:Gezicht_op_het_Palazzo_Riccardi_te_Florence,_RP-F-2006-18-39.jpg",
+      },
+      {
+        src: "/landing/legends/mint/mint-c1906.jpg",
+        alt: "Black-and-white photograph of the new Denver Mint at a dirt street corner, about 1906",
+        caption: "The new Mint at Colfax and Cherokee, about 1906, the year its first coins came.",
+        credit: "Detroit Publishing Co., Library of Congress",
+        licence: "Public domain",
+        page: "https://www.loc.gov/pictures/item/2016805898/",
+      },
+      {
+        src: "/landing/legends/mint/branch-mint-c1865.jpg",
+        alt: "Sepia stereograph view of the old brick branch mint with a square tower, 1865 to 1870",
+        caption: "The old branch mint, once Clark, Gruber & Co.'s, in the years it made no coins.",
+        credit: "Stereograph, 1865\u201370, Library of Congress",
+        licence: "Public domain",
+        page: "https://www.loc.gov/pictures/item/2017651960/",
+      },
+    ],
+    watch: [],
+    visit: { label: "U.S. Mint at Denver, tours", url: "https://www.usmint.gov/about/tours-and-locations/denver" },
   },
 ];
 

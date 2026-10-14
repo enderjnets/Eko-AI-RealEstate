@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.39] — 2026-10-13
+
+- Landing: `/mint`, the eighth spoken legend path, lands on its own page (`/legends/mint`, listed in `LEGEND_PAGES`) with the same `utm_campaign=legends` tags. `lib/legends.ts` gains the Denver Mint: rusticated Colorado granite modeled on the Palazzo Medici Riccardi, opened 1904; created in 1862 to coin gold, it only assayed until February 1906; the legend that a quarter of the nation's gold is in Denver (tour stories of 2005 and 2014, the second quoting the Mint's press office, and the Michelin Guide) against the record: a third by the Mint's count in 1934, and 43.9 of 261.5 million fine troy ounces (about one in six) in the Treasury's monthly gold report, unchanged in every report read back to May 2005. Two or three sources per line; three photographs (Alinari, CC0; Detroit Publishing and a stereograph, public domain, Library of Congress) cropped to the picture; a frame of our own 3D model as the hero.
+
 ## [0.143.38] — 2026-10-13
 
 - Landing: `/legends`, an index of every legend page (`app/legends/page.tsx`, `components/landing/LegendsIndex.tsx`): photograph, place, title and dek per legend, in `LEGENDS` order. Asked for on 13-oct-2026: the home linked none of the seven pages, so they existed only for whoever typed the address a video ends on. The home now links the index from the desktop nav, the phone menu and, as a `GUIDES` row (`legends`, English only like the pages), the guides section and the footer; each legend page links back ("All the legends" above the eyebrow, "More Denver, decoded" in the footer). The index keeps the legend pages' rule: `robots: index:false`, canonical `/legends`, not in the sitemap. `legends.test.ts` checks the index iterates `LEGENDS`, the two home lists and the guide row, the link back, and the index's noindex.

@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.38";
+export const CURRENT_VERSION = "0.143.39";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.39",
+    date: "2026-10-13",
+    title: { en: "An eighth legend: /mint", es: "Una octava leyenda: /mint" },
+    changes: [{
+      en: "denverhomestory.com/mint opens the page of the Denver Mint video: the legend that a quarter of the nation's gold is in Denver, against what the records show (a third by the Mint's count in 1934, about one ounce in six in the Treasury's monthly report today, the same figure back to 2005), with the Florentine palace it is modeled on and two photographs of the old mints. It is listed on /legends like the others.",
+      es: "denverhomestory.com/mint abre la página del vídeo de la Casa de la Moneda: la leyenda de que una cuarta parte del oro del país está en Denver, frente a lo que muestran los registros (un tercio según la propia Moneda en 1934, cerca de una onza de cada seis en el informe mensual del Tesoro hoy, la misma cifra desde 2005), con el palacio florentino en el que se inspira y dos fotos de las casas de la moneda antiguas. Aparece en /legends como las demás.",
+    }],
+  },
   {
     version: "0.143.38",
     date: "2026-10-13",
