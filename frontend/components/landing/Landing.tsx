@@ -36,7 +36,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowRight, Building2, CalendarCheck, Clock, Menu, Phone, Ruler, Users, X } from "lucide-react";
-import { LANDING, dialable } from "@/lib/landing";
+import { LANDING, brokerageLines, dialable } from "@/lib/landing";
 import { STAFF_LOGIN_HREF } from "@/lib/hosts";
 import { GUIDES } from "@/lib/guides";
 import { ENTRY_HREF as JOURNAL_HREF, LINKED as JOURNAL_LINKED } from "@/lib/journal/publication";
@@ -803,26 +803,14 @@ const SOCIAL_NAME: Record<string, string> = {
 
 function LandingFooter() {
   const { t } = useI18n();
-  // "Licensed in Colorado" is a claim about a specific licence: it appears
-  // only where the operator has said which brokerage this is.
-  const legal = [
-    LANDING.address,
-    LANDING.brokerage ? t("landing.footer.licensed") : "",
-    LANDING.brokerage ? t("landing.footer.equalHousing") : "",
-  ].filter(Boolean);
 
   return (
     <footer className="border-t border-ln-hair bg-ln-canvas">
       <div className="flex flex-col gap-6 px-5 py-11 sm:flex-row sm:items-start sm:justify-between sm:gap-12 sm:px-10 lg:px-14">
         <div className="text-[11px] leading-[1.75] tracking-[0.04em] text-ln-muted">
-          {(LANDING.brand || LANDING.advisors || LANDING.brokerage) && (
-            <p>
-              {[LANDING.brand, LANDING.advisors, t("landing.footer.role"), LANDING.brokerage]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-          )}
-          {legal.length > 0 && <p>{legal.join(" · ")}</p>}
+          {brokerageLines(t).map((line) => (
+            <p key={line}>{line}</p>
+          ))}
         </div>
         {/* The guides, again, where a visitor who scrolled past the section
             looks for them last. Same list as the section, so the footer can

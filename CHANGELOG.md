@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.41] — 2026-10-14
+
+- Landing: `/contact` names the brokerage in the served HTML. `brokerageLines(t)` (`lib/landing.ts`) is now the one derivation of "who is advertising" (brand · advisors · role · brokerage; address · licensed · Equal Housing, the licence claims only when a brokerage is configured, nothing at all when nothing is), used by the landing's footer and by a new footer on `/contact` rendered after the `Suspense` boundary, like the call line, so it is in the static page. Measured before: the served `/contact` text was 96 characters and named Engel & Völkers only in its `<title>` (Rule 6.10 D.1 asks for the brokerage on every page of the broker's own site).
+
 ## [0.143.40] — 2026-10-13
 
 - SEO and AI assistants. `lib/structuredData.ts` + `components/landing/JsonLd.tsx`: JSON-LD built only from `LANDING` and `LEGENDS` (nothing typed twice, unset values left out): a `RealEstateAgent` (brand, brokerage as `parentOrganization`, the printed office address parsed or omitted, phone, `sameAs` profiles) and a `WebSite` on the home; an `Article` per legend page whose `citation` lists every printed source once, plus its `BreadcrumbList`; a `CollectionPage` for `/legends`. No dates (none are recorded). `og:image` for the home and `/calculator` (the hero still). `/llms.txt` derived like the sitemap. `/start` (noindex) out of the sitemap. http on the brand domain → 308 to https, keyed on Cloudflare's `cf-visitor` (no header, no redirect: cannot loop), and `Strict-Transport-Security: max-age=31536000` (no includeSubDomains, no preload). `LEGENDS_INDEXED` is the one switch the legend pages' `robots`, the sitemap and `/llms.txt` all read, and it is ON (owner's yes, 13-oct-2026): the eight legend pages and `/legends` are indexable, in the sitemap and in `/llms.txt`. Measured before: no JSON-LD anywhere, `http://www.` answered 200, `/start` listed while noindex.

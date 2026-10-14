@@ -25,6 +25,7 @@ import { Loader2 } from "lucide-react";
 
 import { submitPublicLead, type CaptureOutcome } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { brokerageLines } from "@/lib/landing";
 import { LandingTracker } from "@/components/landing/LandingTracker";
 import { getTracker, trackingContext } from "@/lib/track";
 import { NAME_FIELD_MAX, fullName } from "@/lib/leadName";
@@ -410,6 +411,24 @@ export default function ContactPage() {
       <CallLine where="contact" tone="page" />
 
       <LanguageSwitcher />
+
+      {/* Who is advertising, outside the boundary for the same reason as the
+          number: inside it, the brokerage existed only after hydration, and
+          the served page named it nowhere but its <title>. */}
+      <ContactBrokerage />
     </main>
+  );
+}
+
+function ContactBrokerage() {
+  const { t } = useI18n();
+  const lines = brokerageLines(t);
+  if (lines.length === 0) return null;
+  return (
+    <footer className="max-w-md text-center text-[11px] leading-relaxed text-gray-500 dark:text-gray-500">
+      {lines.map((line) => (
+        <p key={line}>{line}</p>
+      ))}
+    </footer>
   );
 }
