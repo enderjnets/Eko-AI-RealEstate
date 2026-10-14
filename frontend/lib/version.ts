@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.40";
+export const CURRENT_VERSION = "0.143.41";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.41",
+    date: "2026-10-14",
+    title: { en: "The contact page names the brokerage", es: "La página de contacto nombra la correduría" },
+    changes: [{
+      en: "/contact now prints who is advertising at its foot, the same lines as the home page (brand, advisors, brokerage, office, licensed in Colorado, Equal Housing Opportunity), in the page the server sends. Until now the brokerage appeared there only in the browser tab, because the rest of the page is drawn after the form loads.",
+      es: "/contact ahora imprime al pie quién se anuncia, las mismas líneas que la portada (marca, asesores, correduría, oficina, licencia en Colorado, igualdad de oportunidad en vivienda), en la página que envía el servidor. Hasta ahora la correduría solo salía en la pestaña del navegador, porque el resto de la página se dibuja cuando carga el formulario.",
+    }],
+  },
   {
     version: "0.143.40",
     date: "2026-10-13",

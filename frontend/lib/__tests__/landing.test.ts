@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dialable, parseTestimonials } from "../landing";
+import { brokerageLines, dialable, parseTestimonials } from "../landing";
 
 describe("dialable", () => {
   it("strips the punctuation a human number is written with", () => {
@@ -148,5 +148,36 @@ describe("the public name", () => {
     expect(m.publicName).toBe("");
     expect(m.publicTitle).toBe("Colorado real estate");
     expect(m.homeScreenName).toBe("Colorado real estate");
+  });
+});
+
+describe("brokerageLines", () => {
+  // The keys come back as themselves, so the test reads which claim was made.
+  const t = (key: string) => key;
+  const none = { brand: "", advisors: "", brokerage: "", address: "" };
+
+  it("names the brand, the advisors and the brokerage, then the licence", () => {
+    expect(
+      brokerageLines(t, {
+        brand: "Denver Home Story",
+        advisors: "Natalia & Robbie",
+        brokerage: "Engel & Völkers",
+        address: "533 E. Hopkins Ave #101, Aspen, CO",
+      }),
+    ).toEqual([
+      "Denver Home Story · Natalia & Robbie · landing.footer.role · Engel & Völkers",
+      "533 E. Hopkins Ave #101, Aspen, CO · landing.footer.licensed · landing.footer.equalHousing",
+    ]);
+  });
+
+  it("claims no licence where no brokerage is configured", () => {
+    const lines = brokerageLines(t, { ...none, advisors: "Natalia & Robbie" });
+    expect(lines).toEqual(["Natalia & Robbie · landing.footer.role"]);
+    expect(lines.join(" ")).not.toContain("licensed");
+  });
+
+  it("prints nothing at all when nothing is configured", () => {
+    // Not a lone "Real estate advisors" line under a page that names nobody.
+    expect(brokerageLines(t, none)).toEqual([]);
   });
 });

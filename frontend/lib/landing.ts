@@ -90,6 +90,38 @@ export const LANDING = {
 } as const;
 
 /**
+ * Who is advertising, as the lines a public page prints at its foot.
+ *
+ * Colorado's Rule 6.10 asks for the brokerage's name on every page of a
+ * broker's own site (D.1), not only on the home page. The landing's footer was
+ * the only place that built these lines, so `/contact` — the page a stranger
+ * reaches to hand over a phone number — never named the brokerage outside its
+ * <title>. One derivation, used by both, so the two can never say different
+ * things.
+ *
+ * "Licensed in Colorado" is a claim about a specific licence: it appears only
+ * where the operator has said which brokerage this is. With nothing configured
+ * the list is empty and the caller prints nothing.
+ */
+export function brokerageLines(
+  t: (key: string) => string,
+  who: Pick<typeof LANDING, "brand" | "advisors" | "brokerage" | "address"> = LANDING,
+): string[] {
+  const names =
+    who.brand || who.advisors || who.brokerage
+      ? [who.brand, who.advisors, t("landing.footer.role"), who.brokerage].filter(Boolean).join(" \u00b7 ")
+      : "";
+  const legal = [
+    who.address,
+    who.brokerage ? t("landing.footer.licensed") : "",
+    who.brokerage ? t("landing.footer.equalHousing") : "",
+  ]
+    .filter(Boolean)
+    .join(" \u00b7 ");
+  return [names, legal].filter(Boolean);
+}
+
+/**
  * How this site names itself in public — the browser tab, the card someone
  * sees when the link is pasted into a chat, the label on an iPhone home
  * screen. ONE derivation, imported by both public pages.

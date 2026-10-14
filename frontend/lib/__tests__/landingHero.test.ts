@@ -28,6 +28,9 @@ const stripComments = (s: string) =>
     .replace(/^\s*\/\/.*$/gm, "");
 
 const landing = stripComments(readFileSync(join(here, "Landing.tsx"), "utf8"));
+const landingLib = stripComments(
+  readFileSync(join(here, "..", "..", "lib", "landing.ts"), "utf8"),
+);
 const effects = stripComments(readFileSync(join(here, "LandingEffects.tsx"), "utf8"));
 
 describe("the hero video is the engine's to drive", () => {
@@ -207,7 +210,10 @@ describe("the brand is on the page", () => {
   });
 
   it("names the brand in the footer line too", () => {
-    expect(landing).toMatch(/\[LANDING\.brand, LANDING\.advisors, t\("landing\.footer\.role"\)/);
+    // The line is built by `brokerageLines` since 0.143.41, so `/contact`
+    // prints the same one; the brand still leads it.
+    expect(landing).toMatch(/brokerageLines\(t\)/);
+    expect(landingLib).toMatch(/\[who\.brand, who\.advisors, t\("landing\.footer\.role"\)/);
   });
 
   it("offers a hero sentence that names it, with a fallback that does not", () => {
