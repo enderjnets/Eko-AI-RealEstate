@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.39";
+export const CURRENT_VERSION = "0.143.40";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.40",
+    date: "2026-10-13",
+    title: { en: "Readable by search engines and AI assistants", es: "Legible para buscadores y asistentes de IA" },
+    changes: [{
+      en: "The site now tells search engines and AI assistants who it is and where each claim comes from: structured data for the business (name, brokerage, office address and phone, the three profiles, all read from what the pages print), an article with every source cited for each legend page, a share image for the home and the calculator, an /llms.txt map of the site, plain http sent to https, and /start (not meant for search) out of the sitemap. The legend pages and their index are now open to search engines and assistants, behind one switch.",
+      es: "El sitio ahora les dice a los buscadores y a los asistentes de IA quién es y de dónde sale cada dato: datos estructurados del negocio (nombre, correduría, dirección y teléfono de la oficina, los tres perfiles, todo leído de lo que las páginas imprimen), un artículo con todas sus fuentes citadas por cada leyenda, imagen al compartir la portada y la calculadora, un mapa /llms.txt del sitio, http llevado a https, y /start (que no es para buscadores) fuera del sitemap. Las páginas de las leyendas y su índice quedan abiertas a buscadores y asistentes, tras un único interruptor.",
+    }],
+  },
   {
     version: "0.143.39",
     date: "2026-10-13",

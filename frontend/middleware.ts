@@ -66,6 +66,20 @@ export function middleware(req: NextRequest) {
     .replace(/\.+$/, "");
   const { pathname, search } = req.nextUrl;
 
+  // Plain http on the brand domain goes to https. Measured 13-oct-2026:
+  // `http://www.denverhomestory.com/` answered 200 with the page itself, so
+  // every page had a second, insecure address. Cloudflare reports the scheme
+  // the visitor used in `cf-visitor`; with no such header (a local run, the
+  // container's own checks) nothing changes, which is also why this cannot
+  // loop: the https request it sends people to says "https".
+  if (
+    host === BRAND_HOST &&
+    BRAND_URL.startsWith("https://") &&
+    /"scheme"\s*:\s*"http"/.test(req.headers.get("cf-visitor") || "")
+  ) {
+    return NextResponse.redirect(`${BRAND_URL}${pathname}${search}`, 308);
+  }
+
   // The brand domain serves the brand site only. Anything else on it is the
   // panel, and belongs on the panel's hostname — carrying the path and query
   // so a bookmarked deep link still arrives where it meant to go.

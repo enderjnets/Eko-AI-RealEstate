@@ -54,6 +54,25 @@ describe("host routing", () => {
     delete process.env.NEXT_PUBLIC_PANEL_URL;
   });
 
+  it("sends plain http on the brand domain to https, and only when Cloudflare says it was http", async () => {
+    const { middleware } = await load(BRAND, PANEL);
+    const viaCf = (scheme: string | null) =>
+      ({
+        headers: {
+          get: (k: string) =>
+            k.toLowerCase() === "host" ? "www.denverhomestory.com" : k.toLowerCase() === "cf-visitor" && scheme ? `{"scheme":"${scheme}"}` : null,
+        },
+        nextUrl: { pathname: "/fall", search: "?utm_source=video" },
+      }) as never;
+    const res = middleware(viaCf("http"));
+    expect(res.status).toBe(308);
+    expect(location(res)).toBe(`${BRAND}/fall?utm_source=video`);
+    // The https request it sends people to must not redirect again (no loop),
+    // and with no header at all (a local run, a health check) nothing changes.
+    expect(location(middleware(viaCf("https")))).toBeNull();
+    expect(location(middleware(viaCf(null)))).toBeNull();
+  });
+
   it("does nothing at all while the hostnames are unconfigured", async () => {
     const { middleware } = await load("", "");
     // A panel path on the hostname production actually uses today.

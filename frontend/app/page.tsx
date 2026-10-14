@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { LANDING, homeScreenName, publicTitle } from "@/lib/landing";
 import { BRAND_URL } from "@/lib/hosts";
 import { Landing } from "@/components/landing/Landing";
+import { JsonLd } from "@/components/landing/JsonLd";
+import { agentJsonLd } from "@/lib/structuredData";
 
 /**
  * Root is the public marketing landing, not the dashboard. Its own metadata
@@ -29,7 +31,11 @@ export const metadata: Metadata = {
     type: "website",
     title: publicTitle,
     description: DESCRIPTION,
+    // The hero's own still: shared without an image, the card was a bare
+    // title, the same spam-looking preview the tags above exist to avoid.
+    images: ["/landing/hero-poster.jpg"],
   },
+  twitter: { card: "summary_large_image", title: publicTitle, description: DESCRIPTION, images: ["/landing/hero-poster.jpg"] },
   robots: { index: true, follow: true },
   /**
    * The home-screen name, overridden because the root layout's is "Eko AI
@@ -60,5 +66,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { themeColor: "#0F0E0C" };
 
 export default function HomePage() {
-  return <Landing />;
+  return (
+    <>
+      <JsonLd data={agentJsonLd()} />
+      <Landing />
+    </>
+  );
 }
