@@ -51,7 +51,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
 import httpx
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -186,6 +186,31 @@ def configured_channels() -> dict[PublicationPlatform, str]:
     return {platform: cid for platform, cid in pairs.items() if cid}
 
 
+def generated_platforms() -> set[PublicationPlatform]:
+    """Where a piece WE generated may go: `CONTENT_GENERATED_PLATFORMS`.
+
+    Denver Home Story sets `instagram` (15-oct-2026, the owner's yes): its
+    generated pieces (the template ones — autumn, calculators) drew 5 to 200
+    views on YouTube against ~1,000 for the 3D legends he uploads, and held
+    places in Buffer's ten while the legends waited. Uploaded pieces
+    (`RECORDED`) are never touched by this. Empty — the default — means every
+    configured platform, which is how it always was.
+    """
+    raw = (get_settings().CONTENT_GENERATED_PLATFORMS or "").strip()
+    if not raw:
+        return set(PublicationPlatform)
+    return {PublicationPlatform(v.strip().lower()) for v in raw.split(",") if v.strip()}
+
+
+def channels_for(piece: ContentPiece) -> dict[PublicationPlatform, str]:
+    """The configured platforms THIS piece goes to."""
+    channels = configured_channels()
+    if piece.kind is ContentKind.GENERATED:
+        allowed = generated_platforms()
+        channels = {p: cid for p, cid in channels.items() if p in allowed}
+    return channels
+
+
 def undeliverable_reason() -> str | None:
     """Why no post could ever go out, or None if publishing is usable.
 
@@ -213,11 +238,13 @@ def public_media_url(piece_id: int) -> str:
     return f"{base}/api/v1/public/content/{piece_id}/media"
 
 
-# YouTube will not take a video without a category. 26 is "Howto & Style",
-# which is what a channel that explains how pricing and selling work actually
-# is; the alternative default, 22 "People & Blogs", says nothing and is the
-# reason so much of that category is never recommended to anybody.
-YOUTUBE_CATEGORY_ID = "26"
+# YouTube will not take a video without a category. 26 "Howto & Style" is the
+# default (`CONTENT_YOUTUBE_CATEGORY_ID`): a channel that explains how pricing
+# and selling work. Denver Home Story sets 19 "Travel & Events" since only its
+# legends — places and their history — go to YouTube. 22 "People & Blogs" says
+# nothing and is the reason so much of that category is never recommended.
+def youtube_category_id() -> str:
+    return (get_settings().CONTENT_YOUTUBE_CATEGORY_ID or "26").strip() or "26"
 # YouTube truncates past 100 characters and TikTok past 90. The hook is written
 # to be read in a second, so this cuts almost nothing — but it cuts it here
 # rather than letting a platform do it mid-word.
@@ -467,7 +494,7 @@ def build_post_input(
         inp["metadata"] = {
             "youtube": {
                 "title": _title_for(platform, title, text),
-                "categoryId": YOUTUBE_CATEGORY_ID,
+                "categoryId": youtube_category_id(),
                 "isAiGenerated": ai,
             }
         }
@@ -1166,7 +1193,6 @@ async def _close_piece(db: AsyncSession, piece: ContentPiece) -> None:
     A row still in PUBLISHING blocks the close on purpose: that state means a
     human has to look, and closing over it would erase the question.
     """
-    wanted = set(configured_channels())
     rows = (
         (
             await db.execute(
@@ -1178,6 +1204,15 @@ async def _close_piece(db: AsyncSession, piece: ContentPiece) -> None:
         .scalars()
         .all()
     )
+    # A platform this piece no longer goes to still counts while Buffer holds
+    # its post: the piece stays in PUBLISHING until that post is out, which is
+    # what keeps its media URL served (see SCHEDULED in the model).
+    wanted = set(channels_for(piece)) | {
+        row.platform
+        for row in rows
+        if row.status
+        in (PublicationStatus.SCHEDULED, PublicationStatus.PUBLISHING, PublicationStatus.PUBLISHED)
+    }
     terminal = {
         row.platform: row.status
         for row in rows
@@ -1189,6 +1224,12 @@ async def _close_piece(db: AsyncSession, piece: ContentPiece) -> None:
         # pick it up. Closing over either would erase a question nobody
         # answered.
         return
+
+    # A PENDING row on a platform the piece no longer goes to booked nothing
+    # anywhere; left behind it would read "on its way out" in the panel forever.
+    for row in rows:
+        if row.platform not in wanted and row.status is PublicationStatus.PENDING:
+            await db.delete(row)
 
     published = any(s is PublicationStatus.PUBLISHED for s in terminal.values())
     advance(
@@ -1315,7 +1356,7 @@ async def publish_piece(db: AsyncSession, piece_id: int) -> None:
         if rows:
             await db.commit()
 
-    for platform, channel_id in configured_channels().items():
+    for platform, channel_id in channels_for(piece).items():
         existing = rows.get(platform)
         # PUBLISHED is done. SCHEDULED is done too — Buffer already has the
         # post and will publish it; the piece stays in PUBLISHING until then,
@@ -1999,6 +2040,55 @@ def _days_outside_window(
     return 0
 
 
+async def release_platforms_not_owed(db: AsyncSession) -> int:
+    """Drop the PENDING rows a generated piece is no longer owed, and close it.
+
+    Before `CONTENT_GENERATED_PLATFORMS` a generated piece went everywhere, so
+    the ones in flight when it is set can hold a YouTube or TikTok row that a
+    full queue left PENDING. Nothing will ever send it now, and the selection
+    in `publish_approved` no longer picks the piece for it — so without this
+    the piece sits in PUBLISHING for good and the panel says "on its way out"
+    about a post that is not coming. PENDING booked nothing at Buffer;
+    SCHEDULED rows are left alone and go out as booked. Returns rows dropped.
+    """
+    excluded = set(configured_channels()) - generated_platforms()
+    if not excluded:
+        return 0
+    rows = (
+        (
+            await db.execute(
+                select(ContentPublication)
+                .join(ContentPiece, ContentPiece.id == ContentPublication.piece_id)
+                .where(
+                    ContentPiece.kind == ContentKind.GENERATED,
+                    ContentPiece.status.in_((ContentStatus.APPROVED, ContentStatus.PUBLISHING)),
+                    ContentPublication.platform.in_(excluded),
+                    ContentPublication.status == PublicationStatus.PENDING,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        return 0
+    touched = list(dict.fromkeys(row.piece_id for row in rows))
+    for row in rows:
+        await db.delete(row)
+    await db.commit()
+    log.info(
+        "Generated pieces %s: dropped %d pending post(s) on %s (CONTENT_GENERATED_PLATFORMS)",
+        touched,
+        len(rows),
+        sorted(p.value for p in excluded),
+    )
+    for piece_id in touched:
+        piece = await db.get(ContentPiece, piece_id)
+        if piece is not None and piece.status is ContentStatus.PUBLISHING:
+            await _close_piece(db, piece)
+    return len(rows)
+
+
 async def realign_windows(db: AsyncSession) -> int:
     """Move a queued post that no longer falls inside its piece's window.
 
@@ -2231,6 +2321,10 @@ async def publish_approved(db: AsyncSession) -> int:
     # because the quota is per API client, not per tenant — every agency in
     # the sweep brakes on the same tick, and N identical lines with no
     # discriminator is worse than the one count this replaced.
+    # No Buffer call, so ahead of the quota guard — and first, so the
+    # selection below never meets a row it would not act on.
+    await release_platforms_not_owed(db)
+
     try:
         # Before anything is queued, find out what already went out. A scheduled
         # post is one Buffer holds, so the only way to learn it published — or
@@ -2261,7 +2355,7 @@ async def publish_approved(db: AsyncSession) -> int:
         return 0
 
     # A date, not an instant: the horizon is counted in days and a few hours
-    # either side of midnight cannot change which side of ten days a window
+    # either side of midnight cannot change which side of the horizon a window
     # falls on, so the agency's zone is not worth a query here.
     horizon = datetime.now(UTC).date() + timedelta(
         days=settings.CONTENT_SCHEDULE_HORIZON_DAYS
@@ -2295,21 +2389,31 @@ async def publish_approved(db: AsyncSession) -> int:
                     # Filter before LIMIT or a scheduled backlog starves approvals.
                     or_(
                         *(
-                            or_(
-                                ~ContentPiece.publications.any(
-                                    ContentPublication.platform == platform
-                                ),
-                                ContentPiece.publications.any(
-                                    and_(
-                                        ContentPublication.platform == platform,
-                                        or_(
-                                            ContentPublication.status == PublicationStatus.PENDING,
-                                            and_(
-                                                ContentPiece.status == ContentStatus.APPROVED,
-                                                ContentPublication.status == PublicationStatus.FAILED,
+                            and_(
+                                # Without this, a generated piece still PENDING on
+                                # YouTube from before would be picked on every tick
+                                # and take a place under the LIMIT from a legend.
+                                true()
+                                if platform in generated_platforms()
+                                else ContentPiece.kind != ContentKind.GENERATED,
+                                or_(
+                                    ~ContentPiece.publications.any(
+                                        ContentPublication.platform == platform
+                                    ),
+                                    ContentPiece.publications.any(
+                                        and_(
+                                            ContentPublication.platform == platform,
+                                            or_(
+                                                ContentPublication.status
+                                                == PublicationStatus.PENDING,
+                                                and_(
+                                                    ContentPiece.status == ContentStatus.APPROVED,
+                                                    ContentPublication.status
+                                                    == PublicationStatus.FAILED,
+                                                ),
                                             ),
-                                        ),
-                                    )
+                                        )
+                                    ),
                                 ),
                             )
                             for platform in configured_channels()
