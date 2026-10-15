@@ -1,6 +1,6 @@
 /**
  * The 3D legends: one page per video, opened by the short path the video says
- * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin` in `next.config.js`).
+ * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal` in `next.config.js`).
  *
  * Asked for on 11-oct-2026. Until then every short path landed on `/start` —
  * "Buy / Sell / Talk now" — and the owner, opening `/mollybrown` on his phone
@@ -913,6 +913,111 @@ export const LEGENDS: readonly Legend[] = [
     ],
     watch: [],
     visit: { label: "Arapahoe Basin", url: "https://www.arapahoebasin.com/" },
+  },
+  {
+    slug: "arsenal",
+    eyebrow: "Denver, decoded · Rocky Mountain Arsenal",
+    title: "Did a well make Denver shake?",
+    dek: "They say a hole the Army drilled made Denver shake. The records say the legend holds, with a twist.",
+    hero: {
+      src: "/landing/legends/arsenal/hero.jpg",
+      alt: "3D diagram of the ground under the Rocky Mountain Arsenal: the well drawn in gold down to 12,045 feet, and orange dots for the earthquakes located in 1967 and 1968",
+    },
+    facts: [
+      {
+        record:
+          "The Rocky Mountain Arsenal is about 10 miles northeast of downtown Denver. In 1961 a deep disposal well was completed there for the U.S. Army: 12,045 feet, through the layered rock of the Denver Basin and into Precambrian crystalline rock, to get rid of liquid waste from chemical manufacturing at the Arsenal.",
+        sources: [
+          { name: "Healy, Rubey, Griggs & Raleigh, The Denver Earthquakes, Science (1968)", url: "https://earthquake.usgs.gov/static/lfs/research/induced/Healy-et-al-1968-Science-(New-York-NY).pdf" },
+          { name: "USGS Circular 631 (Piper, 1969)", url: "https://pubs.usgs.gov/circ/1969/0631/report.pdf" },
+          { name: "U.S. Army, Deep Injection Well fact sheet", url: "https://home.army.mil/carson/download_file/view/947ae991-39d6-41f7-8bc5-3e48ac632168/1916" },
+        ],
+      },
+      {
+        legend: "In the 1960s, a well at the Arsenal set off earthquakes in the Denver area.",
+        record:
+          "Injection began on March 8, 1962. Seven weeks later, on April 24, 1962, a newly installed seismograph recorded a magnitude 1.5 earthquake from the area northeast of Denver. Through August 1967, more than 1,500 were recorded.",
+        sources: [
+          { name: "USGS Open-File Report 66-60 (Healy and others, 1966)", url: "https://pubs.usgs.gov/of/1966/0060/report.pdf" },
+          { name: "USGS Circular 631 (Piper, 1969)", url: "https://pubs.usgs.gov/circ/1969/0631/report.pdf" },
+          { name: "Hsieh & Bredehoeft, Journal of Geophysical Research (1981)", url: "https://earthquake.usgs.gov/static/lfs/research/induced/Hsieh-Bredehoeft-1981-Journal-of-Geophysical-Research.pdf" },
+        ],
+      },
+      {
+        record:
+          "In November 1965, Denver consulting geologist David Evans showed that the number of earthquakes tracked the volume of fluid injected into the well. The USGS began studies the next month, and injection stopped on February 20, 1966, after about 165 million gallons.",
+        sources: [
+          { name: "Healy, Rubey, Griggs & Raleigh, The Denver Earthquakes, Science (1968)", url: "https://earthquake.usgs.gov/static/lfs/research/induced/Healy-et-al-1968-Science-(New-York-NY).pdf" },
+          { name: "USGS Open-File Report 66-60 (Healy and others, 1966)", url: "https://pubs.usgs.gov/of/1966/0060/report.pdf" },
+          { name: "USGS Circular 631 (Piper, 1969)", url: "https://pubs.usgs.gov/circ/1969/0631/report.pdf" },
+          { name: "Evans, The Denver Area Earthquakes and the Rocky Mountain Arsenal Disposal Well, The Mountain Geologist (1966), record", url: "https://www.osti.gov/biblio/6805542" },
+        ],
+      },
+      {
+        record:
+          "The three largest earthquakes came more than a year later: April 10, August 9 and November 26, 1967. The strongest, on August 9, was about magnitude 5 (reported between 4.8 and 5.5 depending on the method) and was felt over at least 15,000 square miles. USGS scientists explained it: after injection stopped, the pressure kept spreading outward through the fractured rock, to cracks farther from the well.",
+        sources: [
+          { name: "USGS Open-File Report 82-64 (Spence, 1982)", url: "https://pubs.usgs.gov/of/1982/0064/report.pdf" },
+          { name: "USGS Open-File Report 84-967, United States Earthquakes, 1967", url: "https://pubs.usgs.gov/of/1984/0967/report.pdf" },
+          { name: "Healy, Rubey, Griggs & Raleigh, The Denver Earthquakes, Science (1968)", url: "https://earthquake.usgs.gov/static/lfs/research/induced/Healy-et-al-1968-Science-(New-York-NY).pdf" },
+          { name: "Hsieh & Bredehoeft, Journal of Geophysical Research (1981)", url: "https://earthquake.usgs.gov/static/lfs/research/induced/Hsieh-Bredehoeft-1981-Journal-of-Geophysical-Research.pdf" },
+        ],
+      },
+      {
+        record:
+          "The National Research Council calls it \u201cthe earliest and probably most familiar documented example of an induced seismic event related to fluid injection.\u201d It led to a USGS experiment at the Rangely oil field in western Colorado (1969\u201373): lowering the fluid pressure stopped the small earthquakes near the wells, and raising it brought them back.",
+        sources: [
+          { name: "National Research Council, Induced Seismicity Potential in Energy Technologies (2013)", url: "https://www.nationalacademies.org/read/13355/chapter/4" },
+          { name: "Raleigh, Healy & Bredehoeft, An Experiment in Earthquake Control at Rangely, Colorado, Science (1976)", url: "https://earthquake.usgs.gov/static/lfs/research/induced/Raleigh-Healy-Bredehoeft-1976-Science-(New-York-NY).pdf" },
+          { name: "USGS Open-File Report 82-64 (Spence, 1982)", url: "https://pubs.usgs.gov/of/1982/0064/report.pdf" },
+        ],
+      },
+      {
+        record:
+          "The Army sealed the well in 1985. The Arsenal is now the Rocky Mountain Arsenal National Wildlife Refuge: 15,000 acres, established in 2004, with bison since 2007.",
+        sources: [
+          { name: "U.S. Army, Deep Injection Well fact sheet", url: "https://home.army.mil/carson/download_file/view/947ae991-39d6-41f7-8bc5-3e48ac632168/1916" },
+          { name: "U.S. Fish and Wildlife Service, Rocky Mountain Arsenal National Wildlife Refuge, about us", url: "https://www.fws.gov/locations/rocky-mountain-arsenal-national-wildlife-refuge/about-us" },
+          { name: "U.S. Fish and Wildlife Service, wild bison reintroduced to the Rocky Mountain Arsenal (2007)", url: "https://fws.gov/story/2007-03/us-fish-and-wildlife-service-and-partners-reintroduce-wild-bison-rocky-mountain" },
+        ],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/arsenal/bison-downtown.jpg",
+        alt: "A bison standing in dry prairie grass, with more of the herd and the downtown Denver skyline and the mountains behind",
+        caption: "Bison on the Rocky Mountain Arsenal refuge, with downtown Denver behind.",
+        credit: "Linda Broeren, 2010, U.S. Fish and Wildlife Service, via Wikimedia Commons",
+        licence: "CC BY 2.0",
+        page: "https://commons.wikimedia.org/wiki/File:Bison_Framed_by_Downtown_(14900019530).jpg",
+      },
+      {
+        src: "/landing/legends/arsenal/south-entrance-1960.jpg",
+        alt: "Black-and-white photograph of a guard booth under a sign reading U.S. Army Chemical Arsenal, Rocky Mountain Arsenal, around 1960",
+        caption: "The Arsenal's south entrance, around 1960.",
+        credit: "U.S. Army, Library of Congress (Historic American Engineering Record), via Wikimedia Commons",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Rocky_Mountain_Arsenal_south_entrance.jpg",
+      },
+      {
+        src: "/landing/legends/arsenal/usgs-cross-section-1966.jpg",
+        alt: "USGS cross section from 1966: dots for earthquake hypocenters plotted below the Rocky Mountain Arsenal well, in Precambrian rock",
+        caption: "The quakes under the well, as the USGS drew them in 1966.",
+        credit: "U.S. Geological Survey, Open-File Report 66-60",
+        licence: "Public domain",
+        page: "https://pubs.usgs.gov/publication/ofr6660",
+      },
+      {
+        src: "/landing/legends/arsenal/bison-front-range.jpg",
+        alt: "A small herd of bison on the prairie with the Front Range in the haze behind",
+        caption: "The refuge's bison herd, below the Front Range.",
+        credit: "Cindy Souders, U.S. Fish and Wildlife Service, via Wikimedia Commons",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Bison_in_Front_of_the_Rocky_Mountains_(14833740068).jpg",
+      },
+    ],
+    watch: [],
+    visit: { label: "Rocky Mountain Arsenal National Wildlife Refuge", url: "https://www.fws.gov/refuge/rocky-mountain-arsenal" },
   },
 ];
 
