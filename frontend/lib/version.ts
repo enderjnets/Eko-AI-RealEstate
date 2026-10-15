@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.43";
+export const CURRENT_VERSION = "0.143.44";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.44",
+    date: "2026-10-15",
+    title: { en: "An eleventh legend: /arsenal", es: "Una undécima leyenda: /arsenal" },
+    changes: [{
+      en: "denverhomestory.com/arsenal opens the page of the Rocky Mountain Arsenal video: the legend that a hole the Army drilled made Denver shake, against the record. The 12,045-foot disposal well drilled in 1961, the first quake seven weeks after injection began in 1962, more than 1,500 recorded through August 1967, David Evans's link in 1965, the stop in February 1966, and the twist: the three largest quakes came in 1967, after the pumping stopped. It is listed on /legends like the others.",
+      es: "denverhomestory.com/arsenal abre la página del vídeo del Rocky Mountain Arsenal: la leyenda de que un pozo del Ejército hizo temblar Denver, frente a lo que muestran los registros. El pozo de 12.045 pies perforado en 1961, el primer temblor siete semanas después de empezar la inyección en 1962, más de 1.500 registrados hasta agosto de 1967, el vínculo que señaló David Evans en 1965, la parada de febrero de 1966 y el giro: los tres mayores llegaron en 1967, con la inyección ya parada. Aparece en /legends como las demás.",
+    }],
+  },
   {
     version: "0.143.43",
     date: "2026-10-15",
