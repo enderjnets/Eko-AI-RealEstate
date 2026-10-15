@@ -747,6 +747,7 @@ export const LEGENDS: readonly Legend[] = [
         record:
           "The hotel is real. John Hendricks, who founded the Discovery Channel in 1985, first came to Gateway in 1995 and opened Gateway Canyons Resort in 2005. Noble House Hotels & Resorts has managed it since 2011.",
         sources: [
+          { name: "Gateway Canyons Resort, about the resort (founded 2005, first visit 1995)", url: "https://www.gatewaycanyons.com/llm-info/" },
           { name: "Gateway Canyons Resort, history and location", url: "https://www.gatewaycanyons.com/history-location/" },
           { name: "CNBC, Discovery Channel founder's Colorado ranch (2019)", url: "https://www.cnbc.com/2019/06/11/photos-discovery-channel-founders-multimillion-dollar-colorado-ranch.html" },
           { name: "Leisure Opportunities, Noble House takes over Gateway Canyons (2011)", url: "https://leisureopportunities.co.uk/news/Noble-House-takes-over-Gateway-Canyons/274893" },
