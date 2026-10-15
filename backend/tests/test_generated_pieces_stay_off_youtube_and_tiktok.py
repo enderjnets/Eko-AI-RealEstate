@@ -120,9 +120,15 @@ def database_url() -> str:
 
 
 async def _cleanup() -> None:
+    """As in test_the_queue_does_not_outrun_buffer.py: the brokerage line is
+    reset too, because the caption gate refuses a piece whose line differs from
+    the agency's and another test may have changed it."""
     async with get_bypass_session_factory()() as db:
         await db.execute(text("DELETE FROM content_publications"))
         await db.execute(text("DELETE FROM content_pieces"))
+        await db.execute(
+            text("UPDATE agent_settings SET brokerage_line='Engel & Völkers' WHERE org_id=1")
+        )
         await db.commit()
 
 
@@ -206,10 +212,13 @@ async def test_a_youtube_row_left_pending_by_a_full_queue_is_released(database_u
         await _row(piece, PublicationPlatform.YOUTUBE, PublicationStatus.PENDING,
                    last_error="[LimitReachedError] Scheduled posts limit reached.")
         await _row(piece, PublicationPlatform.TIKTOK, PublicationStatus.PENDING)
-        send = AsyncMock(return_value="never")
+        legend = await _piece(ContentKind.RECORDED)
+        send = AsyncMock(return_value="post-1")
         await _tick(send)
 
-        assert send.await_count == 0, "nothing is owed to YouTube or TikTok any more"
+        sent = {(c.args[0].id, c.args[1]) for c in send.await_args_list}
+        assert (legend, PublicationPlatform.YOUTUBE) in sent, "the tick did not run at all"
+        assert not any(pid == piece for pid, _ in sent), "nothing is owed to YouTube or TikTok any more"
         status, rows = await _state(piece)
         assert rows == {"instagram": "published"}
         assert status == ContentStatus.PUBLISHED.value
@@ -228,10 +237,13 @@ async def test_a_post_buffer_already_holds_keeps_the_piece_open(database_url: st
                    external_id="ig-1", published_at=datetime.now(UTC))
         await _row(piece, PublicationPlatform.YOUTUBE, PublicationStatus.SCHEDULED,
                    external_id="yt-1", scheduled_at=datetime.now(UTC) + timedelta(days=3))
-        send = AsyncMock(return_value="never")
+        legend = await _piece(ContentKind.RECORDED)
+        send = AsyncMock(return_value="post-1")
         await _tick(send)
 
-        assert send.await_count == 0
+        sent = {(c.args[0].id, c.args[1]) for c in send.await_args_list}
+        assert (legend, PublicationPlatform.YOUTUBE) in sent, "the tick did not run at all"
+        assert not any(pid == piece for pid, _ in sent)
         status, rows = await _state(piece)
         assert rows == {"instagram": "published", "youtube": "scheduled"}
         assert status == ContentStatus.PUBLISHING.value
