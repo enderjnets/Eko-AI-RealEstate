@@ -22,7 +22,7 @@ const nextConfig = createRequire(import.meta.url)("../../next.config.js");
 
 // The 3D legends that end with a spoken short path. One per video, added when
 // the video is made.
-const LEGENDS = ["colfax", "cheesman", "mollybrown", "unionstation", "georgetownloop", "confluencepark", "redrocks", "mint", "gateway"] as const;
+const LEGENDS = ["colfax", "cheesman", "mollybrown", "unionstation", "georgetownloop", "confluencepark", "redrocks", "mint", "gateway", "abasin"] as const;
 
 describe("bio short links", () => {
   it("every network has a short path that carries its own source", async () => {

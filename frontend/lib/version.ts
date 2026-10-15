@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.42";
+export const CURRENT_VERSION = "0.143.43";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.43",
+    date: "2026-10-15",
+    title: { en: "A tenth legend: /abasin", es: "Una décima leyenda: /abasin" },
+    changes: [{
+      en: "denverhomestory.com/abasin (or /a-basin) opens the page of the ski video: the legend that Arapahoe Basin is the highest ski area in North America, against the record. A-Basin itself now says \u201csome of the highest terrain in North America\u201d, and its lifts top out at 12,470 feet; the highest chairlift is Breckenridge's Imperial Express at 12,840 feet; Loveland's Lift 9 held the title before it; and Silverton Mountain is the one that calls itself the highest, for its 13,487-foot peak. It is listed on /legends like the others.",
+      es: "denverhomestory.com/abasin (o /a-basin) abre la página del vídeo de esquí: la leyenda de que Arapahoe Basin es la estación más alta de Norteamérica, frente a lo que muestran los registros. A-Basin dice hoy «some of the highest terrain in North America» y sus remontes llegan a 12.470 pies; el telesilla más alto es el Imperial Express de Breckenridge, a 12.840 pies; antes lo fue el Lift 9 de Loveland; y quien se llama a sí misma la más alta es Silverton Mountain, por su cima de 13.487 pies. Aparece en /legends como las demás.",
+    }],
+  },
   {
     version: "0.143.42",
     date: "2026-10-14",
