@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.44";
+export const CURRENT_VERSION = "0.143.45";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.45",
+    date: "2026-10-15",
+    title: { en: "Room in the queue for today's video", es: "Hueco en la cola para el vídeo del día" },
+    changes: [{
+      en: "Three publishing settings, each off by default. How many days ahead a video is handed to Buffer (this install: 4 instead of 10, so a video due today is not left waiting behind posts booked a week out); which platforms the generated pieces go to (this install: Instagram only — the uploaded videos still go everywhere); and the YouTube category (this install: Travel & Events). A generated piece that was still waiting for YouTube or TikTok is released and closes on the platforms it went out on.",
+      es: "Tres ajustes de publicación, cada uno apagado por defecto. Con cuántos días de antelación se entrega un vídeo a Buffer (aquí: 4 en vez de 10, para que un vídeo del día no se quede esperando detrás de publicaciones reservadas a una semana); a qué redes van las piezas generadas (aquí: solo Instagram; los vídeos que se suben siguen yendo a todas); y la categoría de YouTube (aquí: Viajes y eventos). Una pieza generada que seguía esperando YouTube o TikTok se libera y se cierra con las redes en las que salió.",
+    }],
+  },
   {
     version: "0.143.44",
     date: "2026-10-15",

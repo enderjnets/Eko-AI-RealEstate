@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.143.44"
+    APP_VERSION: str = "0.143.45"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -661,10 +661,37 @@ class Settings(BaseSettings):
     # today. Holding the far end of the queue here costs nothing and leaves
     # Buffer's slots for the pieces that are actually due. A piece with no
     # window at all — the calculator ones are permanent — is unaffected.
+    #
+    # Ten can still fill it. With two slots a day per channel, ten days ahead is
+    # twenty slots: on 15-oct-2026 the queue sat at ten of ten with posts eight
+    # and nine days out, and a legend approved for that day could not get in
+    # (piece 136 waited on YouTube and TikTok). Production sets 4 in `.env` —
+    # eight slots, so there is always room for today.
     CONTENT_SCHEDULE_HORIZON_DAYS: int = 10
+
+    # Where the pieces we GENERATE go: comma-separated platforms, empty = every
+    # configured one (the default, and how it always was). The uploaded pieces
+    # (RECORDED: the 3D legends) always go everywhere. Production sets
+    # `instagram` — see `buffer_publisher.generated_platforms` for why.
+    CONTENT_GENERATED_PLATFORMS: str = ""
+
+    # YouTube's category for every post: 26 "Howto & Style" by default; this
+    # production sets 19 "Travel & Events", since only the legends go there.
+    CONTENT_YOUTUBE_CATEGORY_ID: str = "26"
 
     # ─── CORS ───────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3004"
+
+    @field_validator("CONTENT_GENERATED_PLATFORMS")
+    @classmethod
+    def _known_platforms(cls, v: str) -> str:
+        """A mistyped platform must fail at startup: read at publish time it
+        would raise on every tick, inside a loop nobody is watching."""
+        known = {"youtube", "tiktok", "instagram"}
+        bad = [c.strip() for c in (v or "").split(",") if c.strip() and c.strip().lower() not in known]
+        if bad:
+            raise ValueError(f"unknown platform(s) {bad}; expected some of {sorted(known)}")
+        return v
 
     @field_validator(
         "CONTENT_SLOT_YOUTUBE", "CONTENT_SLOT_INSTAGRAM", "CONTENT_SLOT_TIKTOK"
