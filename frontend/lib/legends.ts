@@ -1,6 +1,6 @@
 /**
  * The 3D legends: one page per video, opened by the short path the video says
- * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway` in `next.config.js`).
+ * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin` in `next.config.js`).
  *
  * Asked for on 11-oct-2026. Until then every short path landed on `/start` —
  * "Buy / Sell / Talk now" — and the owner, opening `/mollybrown` on his phone
@@ -819,6 +819,100 @@ export const LEGENDS: readonly Legend[] = [
     ],
     watch: [],
     visit: { label: "CDOT, Unaweep Tabeguache Scenic and Historic Byway", url: "https://www.codot.gov/travel/colorado-byways/southwest/unaweep-tabeguache" },
+  },
+  {
+    slug: "abasin",
+    eyebrow: "Colorado, decoded · Arapahoe Basin, Loveland Pass",
+    title: "The highest ski area in North America?",
+    dek: "They say Arapahoe Basin is the highest ski area in North America. A-Basin's own website says something more modest.",
+    hero: {
+      src: "/landing/legends/abasin/hero.jpg",
+      alt: "3D model of Arapahoe Basin in winter: a snow-covered bowl below the Continental Divide ridge, with two chairlifts drawn in gold climbing to the top",
+    },
+    facts: [
+      {
+        record:
+          "Arapahoe Basin sits off Loveland Pass, west of Denver, on the White River National Forest under a Forest Service special use permit. Larry Jump and Sandy Schauffler started it after World War II, and it opened in December 1946.",
+        sources: [
+          { name: "Arapahoe Basin, 2025 Master Development Plan", url: "https://www.arapahoebasin.com/uploaded/trailmaps/arapahoe%20basin%20final%202025%20master%20development%20planx.pdf" },
+          { name: "U.S. Forest Service, White River National Forest, ski area prohibitions", url: "https://www.fs.usda.gov/r02/whiteriver/alerts/ski-area-prohibitions" },
+          { name: "Arapahoe Basin, our history", url: "https://www.arapahoebasin.com/our-history/" },
+        ],
+      },
+      {
+        legend: "Arapahoe Basin is the highest ski area in North America.",
+        record:
+          "In 2007 NBC reported that A-Basin claims the highest skiable terrain in North America. Its website today says \u201csome of the highest terrain in North America.\u201d The 13,050 feet it advertises are above the lifts: its 2025 master plan says lift-serviced terrain extends to 12,470 feet, and USGS elevation data at the tops of its lifts reads 12,465 to 12,479 feet.",
+        sources: [
+          { name: "NBC News, America's highest lifts (Dec. 13, 2007)", url: "https://www.nbcnews.com/id/wbna22245326" },
+          { name: "Arapahoe Basin, about", url: "https://www.arapahoebasin.com/about/" },
+          { name: "Arapahoe Basin, 2025 Master Development Plan", url: "https://www.arapahoebasin.com/uploaded/trailmaps/arapahoe%20basin%20final%202025%20master%20development%20planx.pdf" },
+          { name: "USGS, Elevation Point Query Service (3DEP)", url: "https://epqs.nationalmap.gov/v1/docs" },
+        ],
+      },
+      {
+        record:
+          "The highest chairlift in North America is at Breckenridge Ski Resort, about sixteen miles southwest: the Imperial Express SuperChair, opened in 2005. Its top station is at 12,840 feet, and USGS elevation data gives the same figure for that spot.",
+        sources: [
+          { name: "Vail Resorts newsroom, North America's highest chairlift opens at Breckenridge (2016)", url: "https://news.vailresorts.com/2016-12-21-North-Americas-Highest-Chairlift-Opens-at-Breckenridge-Ski-Resort-Today" },
+          { name: "Summit Daily, Imperial Express SuperChair opens (2021)", url: "https://www.summitdaily.com/news/breckenridge-ski-resort-opens-imperial-express-superchair/" },
+          { name: "USGS, Elevation Point Query Service (3DEP)", url: "https://epqs.nationalmap.gov/v1/docs" },
+        ],
+      },
+      {
+        record:
+          "Before it, Loveland's Lift 9, across Loveland Pass from A-Basin, reached 12,700 feet when it went in for the 1998\u201399 season; Loveland says it was the highest chair lift in the world at the time. USGS data reads 12,684 feet at its top.",
+        sources: [
+          { name: "Loveland Ski Area, history", url: "https://skiloveland.com/history/" },
+          { name: "Loveland Ski Area, mountain stats", url: "https://skiloveland.com/the-mountain/trail-map-mountain-stats/" },
+          { name: "USGS, Elevation Point Query Service (3DEP)", url: "https://epqs.nationalmap.gov/v1/docs" },
+        ],
+      },
+      {
+        record:
+          "The ski area that does call itself the highest in North America is Silverton Mountain, in southwest Colorado, for a peak of 13,487 feet. Its one chairlift tops out at 12,300 feet by its own figure, lower than A-Basin's lifts.",
+        sources: [
+          { name: "Silverton Mountain, mountain stats", url: "https://silvertonmountain.com/mountain/stats/" },
+        ],
+      },
+      {
+        record:
+          "So it depends on what you measure. The highest chairlift is Breckenridge's, the highest advertised peak is Silverton's, and A-Basin has, in its own words, some of the highest terrain in North America.",
+        sources: [
+          { name: "Arapahoe Basin, about", url: "https://www.arapahoebasin.com/about/" },
+          { name: "Vail Resorts newsroom (2016)", url: "https://news.vailresorts.com/2016-12-21-North-Americas-Highest-Chairlift-Opens-at-Breckenridge-Ski-Resort-Today" },
+          { name: "Silverton Mountain, mountain stats", url: "https://silvertonmountain.com/mountain/stats/" },
+        ],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/abasin/east-wall.jpg",
+        alt: "Arapahoe Basin's East Wall and the ridge toward Lenawee Mountain under snow, with a chairlift line below",
+        caption: "The East Wall at Arapahoe Basin, above the lifts.",
+        credit: "Adam Ginsburg, 2005, Wikimedia Commons",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Eastwall.jpg",
+      },
+      {
+        src: "/landing/legends/abasin/abasin-1961.jpg",
+        alt: "Black-and-white photograph of two skiers seen from behind, looking up a snowy slope at Arapahoe Basin, 1961",
+        caption: "Arapahoe Basin in February 1961, photographed for the U.S. Forest Service.",
+        credit: "Charles E. Grover, U.S. Forest Service, National Archives",
+        licence: "Public domain",
+        page: "https://catalog.archives.gov/id/7016002",
+      },
+      {
+        src: "/landing/legends/abasin/loveland-pass-sign.jpg",
+        alt: "Brown sign reading Loveland Pass, elevation 11,990 feet, Continental Divide, against snowy peaks",
+        caption: "Loveland Pass, between Loveland and Arapahoe Basin.",
+        credit: "vxla, 2011, Flickr via Wikimedia Commons",
+        licence: "CC BY 2.0",
+        page: "https://commons.wikimedia.org/wiki/File:Loveland_Pass,_Elevation_11,990-feet.jpg",
+      },
+    ],
+    watch: [],
+    visit: { label: "Arapahoe Basin", url: "https://www.arapahoebasin.com/" },
   },
 ];
 
