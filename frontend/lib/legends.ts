@@ -1,6 +1,6 @@
 /**
  * The 3D legends: one page per video, opened by the short path the video says
- * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint` in `next.config.js`).
+ * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway` in `next.config.js`).
  *
  * Asked for on 11-oct-2026. Until then every short path landed on `/start` —
  * "Buy / Sell / Talk now" — and the owner, opening `/mollybrown` on his phone
@@ -713,6 +713,111 @@ export const LEGENDS: readonly Legend[] = [
     ],
     watch: [],
     visit: { label: "U.S. Mint at Denver, tours", url: "https://www.usmint.gov/about/tours-and-locations/denver" },
+  },
+  {
+    slug: "gateway",
+    eyebrow: "Colorado, decoded · Highway 141 and Unaweep Canyon, Mesa County",
+    title: "The road that only leads to one hotel",
+    dek: "They say the best road on the planet only leads to one hotel. The highway runs on for 130 miles, and the canyon it climbs is the real story.",
+    hero: {
+      src: "/landing/legends/gateway/hero.jpg",
+      alt: "3D model of Gateway, Colorado: Gateway Canyons Resort in the green valley of the Dolores River below the red sandstone butte of The Palisade",
+    },
+    facts: [
+      {
+        record:
+          "Colorado Highway 141 leaves US 50 at Whitewater, southeast of Grand Junction, and climbs through Unaweep Canyon to Gateway, about 43 miles. With Highway 145 on to Placerville it is the Unaweep-Tabeguache Scenic and Historic Byway, one of Colorado's 26 state byways.",
+        sources: [
+          { name: "Bureau of Land Management, Unaweep/Tabeguache Scenic and Historic Byway", url: "https://www.blm.gov/visit/unaweep-tabeguache-2" },
+          { name: "CDOT, Unaweep Tabeguache Scenic and Historic Byway", url: "https://www.codot.gov/travel/colorado-byways/southwest/unaweep-tabeguache" },
+          { name: "CDOT, Online Transportation Information System (highway reference points)", url: "https://dtdapps.codot.gov/otis/HighwayData" },
+        ],
+      },
+      {
+        legend: "The best road on the planet: about 130 miles, state-maintained, and it only goes to one hotel.",
+        record:
+          "About 130 miles is right: measured along the two highways the byway is 130 miles, and BLM and CDOT publish 133. It does not stop at a hotel. It runs from Whitewater through Gateway, Naturita and Norwood to Placerville, and Highway 141 itself goes on south to US 491.",
+        sources: [
+          { name: "Bureau of Land Management, Unaweep/Tabeguache Scenic and Historic Byway", url: "https://www.blm.gov/visit/unaweep-tabeguache-2" },
+          { name: "CDOT, Unaweep Tabeguache Scenic and Historic Byway", url: "https://www.codot.gov/travel/colorado-byways/southwest/unaweep-tabeguache" },
+          { name: "FHWA, America's Byways record for the Unaweep/Tabeguache byway", url: "https://fhwaapps.fhwa.dot.gov/bywaysp/byway/2121" },
+        ],
+      },
+      {
+        record:
+          "The hotel is real. John Hendricks, who founded the Discovery Channel in 1985, first came to Gateway in 1995 and opened Gateway Canyons Resort in 2005. Noble House Hotels & Resorts has managed it since 2011.",
+        sources: [
+          { name: "Gateway Canyons Resort, history and location", url: "https://www.gatewaycanyons.com/history-location/" },
+          { name: "CNBC, Discovery Channel founder's Colorado ranch (2019)", url: "https://www.cnbc.com/2019/06/11/photos-discovery-channel-founders-multimillion-dollar-colorado-ranch.html" },
+          { name: "Leisure Opportunities, Noble House takes over Gateway Canyons (2011)", url: "https://leisureopportunities.co.uk/news/Noble-House-takes-over-Gateway-Canyons/274893" },
+        ],
+      },
+      {
+        record:
+          "In May 2019 the resort and West Creek Ranch were listed for $279 million, and in 2020 the listing was pulled while a buyer negotiated. That sale was never completed, The Daily Sentinel reported in July 2025, and the resort stayed with Western Sky Investments, which the paper says is owned by Hendricks. The Mesa County Assessor lists Western Sky Investments LLC as the owner of record.",
+        sources: [
+          { name: "The Daily Sentinel, Gateway Canyons for sale at $279 million (2019)", url: "https://www.gjsentinel.com/news/business/gateway-canyons-for-sale-at-279-million/article_08bd2476-7d19-11e9-acab-20677ce06c14.html" },
+          { name: "The Daily Sentinel, Gateway Canyons Resort may have found a buyer (2020)", url: "https://www.gjsentinel.com/news/western_colorado/gateway-canyons-resort-may-have-found-a-buyer/article_c528811e-e942-11ea-bfc8-1f0969cfc696.html" },
+          { name: "The Daily Sentinel, Discovery Channel founder's Gateway ranches for sale (2025)", url: "https://www.gjsentinel.com/news/discovery-channel-founders-gateway-ranches-for-sale/article_12011a44-cda9-48f7-bdfb-a49a8b703af5.html" },
+          { name: "Mesa County Assessor, parcel report R098230", url: "https://emap.mesacounty.us/Assessor_Lookup/Assessor_Parcel_Report.aspx?Account=R098230" },
+        ],
+      },
+      {
+        legend: "No cars on it.",
+        record:
+          "CDOT estimates about 580 vehicles a day on Highway 141 through Unaweep Canyon, between Whitewater and Gateway (its 2025 estimate, last counted in 2018), and about 370 a day south of Gateway. Its byway page asks drivers to obey posted speed limit signs, and reminds them that livestock has the right-of-way.",
+        sources: [
+          { name: "CDOT, Online Transportation Information System, traffic data", url: "https://dtdapps.codot.gov/otis/TrafficData" },
+          { name: "CDOT, Unaweep Tabeguache Scenic and Historic Byway", url: "https://www.codot.gov/travel/colorado-byways/southwest/unaweep-tabeguache" },
+        ],
+      },
+      {
+        record:
+          "The canyon is the story. From the Unaweep Divide, about 7,000 feet up, East Creek flows northeast toward the Gunnison and West Creek southwest to the Dolores. The name is often translated as \u201ccanyon with two mouths.\u201d Surveying it in 1875 for the Hayden Survey, the geologist A. C. Peale wrote that some large stream must once have occupied it.",
+        sources: [
+          { name: "Hayden, Ninth Annual Report of the U.S. Geological and Geographical Survey, for 1875 (1877)", url: "https://archive.org/details/ninthannualrepor1875geol" },
+          { name: "Henry Gannett, The Unaweep Ca\u00f1on, Popular Science Monthly (1882)", url: "https://en.wikisource.org/wiki/Popular_Science_Monthly/Volume_20/April_1882/The_Unaweep_Ca%C3%B1on" },
+          { name: "Gateway Canyons Resort, history and location", url: "https://www.gatewaycanyons.com/history-location/" },
+        ],
+      },
+      {
+        record:
+          "Geologists still argue how it formed. In one reading the ancestral Gunnison River cut it and abandoned it between 1.4 and 0.8 million years ago. In another, its inner gorge is a glacial valley about 300 million years old, buried and later dug out again.",
+        sources: [
+          { name: "Aslan et al., Abandonment of Unaweep Canyon, Geosphere (2014)", url: "https://pure.psu.edu/en/publications/abandonment-of-unaweep-canyon-14-08-ma-western-colorado-effects-o/" },
+          { name: "Soreghan et al., Journal of Geology (2007), USGS record", url: "https://pubs.usgs.gov/publication/70031077" },
+          { name: "Patterson et al., Geophysical Research Letters (2021)", url: "https://experts.umn.edu/en/publications/seismic-reflection-and-electrical-resistivity-imaging-support-pre/" },
+        ],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/gateway/palisade-dolores.jpg",
+        alt: "The Dolores River curving past a gravel bar below The Palisade, a red sandstone butte, in winter",
+        caption: "The Dolores River and The Palisade at Gateway, where West Creek comes out of Unaweep Canyon.",
+        credit: "Jeffrey Beall, 2020, Wikimedia Commons",
+        licence: "CC BY 4.0",
+        page: "https://commons.wikimedia.org/wiki/File:Dolores_River_at_Gateway_Colorado.JPG",
+      },
+      {
+        src: "/landing/legends/gateway/unaweep-divide-sign.jpg",
+        alt: "Green highway sign reading Unaweep Divide, elevation 7048 feet, with arrows for West Creek and East Creek",
+        caption: "The Unaweep Divide on Highway 141: West Creek one way, East Creek the other.",
+        credit: "Jeffrey Beall, 2020, Wikimedia Commons",
+        licence: "CC BY 4.0",
+        page: "https://commons.wikimedia.org/wiki/File:Unaweep_Divide_sign.JPG",
+      },
+      {
+        src: "/landing/legends/gateway/unaweep-canyon-1925.jpg",
+        alt: "Black-and-white photograph of layered cliffs above brush at the east end of Unaweep Canyon, 1925",
+        caption: "The east end of Unaweep Canyon in 1925, photographed for the U.S. Geological Survey.",
+        credit: "W. T. Lee, 1925, USGS Photographic Library",
+        licence: "Public domain",
+        page: "https://www.sciencebase.gov/catalog/item/51dd76eae4b0f72b4471aa9c",
+      },
+    ],
+    watch: [],
+    visit: { label: "CDOT, Unaweep Tabeguache Scenic and Historic Byway", url: "https://www.codot.gov/travel/colorado-byways/southwest/unaweep-tabeguache" },
   },
 ];
 

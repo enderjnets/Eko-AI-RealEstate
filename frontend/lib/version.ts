@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.41";
+export const CURRENT_VERSION = "0.143.42";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.42",
+    date: "2026-10-14",
+    title: { en: "A ninth legend, the first outside Denver: /gateway", es: "Una novena leyenda, la primera fuera de Denver: /gateway" },
+    changes: [{
+      en: "denverhomestory.com/gateway opens the page of the Gateway video: the legend that the best road on the planet only leads to one hotel, against the record (Highway 141 and 145 run 130 miles, 133 by BLM and CDOT, from Whitewater to Placerville; the resort was listed for $279 million in 2019 and the sale never closed; CDOT estimates about 580 vehicles a day through Unaweep Canyon), and the canyon with two mouths that geologists still argue about. It is listed on /legends like the others.",
+      es: "denverhomestory.com/gateway abre la página del vídeo de Gateway: la leyenda de que la mejor carretera del planeta solo lleva a un hotel, frente a lo que muestran los registros (las carreteras 141 y 145 suman 130 millas, 133 según BLM y CDOT, de Whitewater a Placerville; el resort salió a la venta por 279 millones en 2019 y la venta nunca se cerró; CDOT calcula unos 580 vehículos al día por el cañón de Unaweep), y el cañón de las dos bocas que los geólogos aún discuten. Aparece en /legends como las demás.",
+    }],
+  },
   {
     version: "0.143.41",
     date: "2026-10-14",
