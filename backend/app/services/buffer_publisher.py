@@ -189,12 +189,15 @@ def configured_channels() -> dict[PublicationPlatform, str]:
 def generated_platforms() -> set[PublicationPlatform]:
     """Where a piece WE generated may go: `CONTENT_GENERATED_PLATFORMS`.
 
-    Denver Home Story sets `instagram` (15-oct-2026, the owner's yes): its
-    generated pieces (the template ones — autumn, calculators) drew 5 to 200
-    views on YouTube against ~1,000 for the 3D legends he uploads, and held
-    places in Buffer's ten while the legends waited. Uploaded pieces
-    (`RECORDED`) are never touched by this. Empty — the default — means every
-    configured platform, which is how it always was.
+    Measured for Denver Home Story on 15-oct-2026: its template pieces (autumn,
+    calculators) drew 5 to 200 views on YouTube against ~1,000 for the 3D
+    legends the owner uploads. It was set to `instagram` that day and emptied
+    again within the hour, because an uploaded video is stored as GENERATED too
+    (`RECORDED` is a phone clip, unused there): the setting took YouTube and
+    TikTok from the legends as well, and closed piece 136 on Instagram alone —
+    see `_COMPLETE_LOOKBACK`. Telling a template from a legend needs something
+    other than `kind`. Empty — the default — means every configured platform,
+    which is how it always was.
     """
     raw = (get_settings().CONTENT_GENERATED_PLATFORMS or "").strip()
     if not raw:
@@ -1193,6 +1196,11 @@ async def _close_piece(db: AsyncSession, piece: ContentPiece) -> None:
     A row still in PUBLISHING blocks the close on purpose: that state means a
     human has to look, and closing over it would erase the question.
     """
+    if piece.status is not ContentStatus.PUBLISHING:
+        # A PUBLISHED piece being completed on a platform it never reached (see
+        # `_COMPLETE_LOOKBACK`) was closed already, and PUBLISHED is terminal:
+        # its new posts are rows on it, nothing more.
+        return
     rows = (
         (
             await db.execute(
@@ -1256,7 +1264,7 @@ async def _close_piece(db: AsyncSession, piece: ContentPiece) -> None:
         )
 
 
-async def publish_piece(db: AsyncSession, piece_id: int) -> None:
+async def publish_piece(db: AsyncSession, piece_id: int, *, completing: bool = False) -> None:
     """Publish one approved piece to every configured platform.
 
     The order is load-bearing: the gate first, then the claim, then the wire.
@@ -1265,7 +1273,13 @@ async def publish_piece(db: AsyncSession, piece_id: int) -> None:
     piece is already PUBLISHING because this function put it there. Every
     other check runs again regardless.
     """
-    piece = await ensure_publishable(db, piece_id, resuming=True)
+    piece = await ensure_publishable(db, piece_id, resuming=True, completing=completing)
+    if piece.status is ContentStatus.PUBLISHED:
+        log.info(
+            "Piece %s is published and never reached a platform it goes to; "
+            "posting it there (the posts already out are not touched)",
+            piece.id,
+        )
 
     # The second half of the gate, and the reason it is here rather than in
     # `ensure_publishable`: that function lives in `content_studio`, which this
@@ -1952,6 +1966,23 @@ _BACKFILL_BATCH = 20
 # chased automatically.
 _BACKFILL_LOOKBACK = timedelta(days=60)
 
+# How long after a piece went out on one platform it may still be sent to a
+# platform it never reached.
+#
+# A piece closes as PUBLISHED once every platform it goes to has answered, and
+# nothing reopened it. So when the set of platforms grows after the close, the
+# missing ones were lost for good. That is what happened to piece 136 (the ski
+# legend) on 15-oct-2026: `CONTENT_GENERATED_PLATFORMS=instagram` dropped its
+# YouTube and TikTok rows, waiting on full queues, and closed it on Instagram
+# alone; the setting was emptied again within the hour, and YouTube and TikTok
+# never came back. Now the publisher sends a published piece to the platforms
+# with no row at all (or a PENDING one), and to nothing else.
+#
+# Bounded on purpose. A channel connected months after the fact must not pull a
+# backlog of old videos onto it, and a week is still news to a platform that
+# has never shown the piece. FAILED is a verdict and stays one.
+_COMPLETE_LOOKBACK = timedelta(days=7)
+
 
 async def backfill_links(db: AsyncSession) -> int:
     """Give a published post the address Buffer never told us about.
@@ -2363,14 +2394,38 @@ async def publish_approved(db: AsyncSession) -> int:
 
     # Pieces a person approved that have a rendered file, plus pieces already
     # claimed and half-finished (a quota pause leaves those, and they have to
-    # be resumed or the piece never closes).
+    # be resumed or the piece never closes), plus pieces published lately that
+    # never reached a platform they go to (`_COMPLETE_LOOKBACK`). For those the
+    # platform clause below matches only a platform with no row or a PENDING
+    # one: FAILED counts only for an APPROVED piece, so a refusal on a
+    # published piece is never sent again.
+    now = datetime.now(UTC)
     pending = (
         (
             await db.execute(
                 select(ContentPiece)
                 .where(
-                    ContentPiece.status.in_(
-                        (ContentStatus.APPROVED, ContentStatus.PUBLISHING)
+                    or_(
+                        ContentPiece.status.in_(
+                            (ContentStatus.APPROVED, ContentStatus.PUBLISHING)
+                        ),
+                        and_(
+                            ContentPiece.status == ContentStatus.PUBLISHED,
+                            ContentPiece.publications.any(
+                                and_(
+                                    ContentPublication.status == PublicationStatus.PUBLISHED,
+                                    ContentPublication.published_at >= now - _COMPLETE_LOOKBACK,
+                                )
+                            ),
+                            # A window that has closed is left alone, as in
+                            # `realign_windows`: the perishable pieces are the
+                            # ones with an end date. UTC's date, like the
+                            # horizon: a few hours either side cannot matter.
+                            or_(
+                                ContentPiece.publish_window_end.is_(None),
+                                ContentPiece.publish_window_end >= now.date(),
+                            ),
+                        ),
                     ),
                     ContentPiece.media_path.is_not(None),
                     # Buffer holds ten scheduled posts per channel and no
@@ -2435,6 +2490,8 @@ async def publish_approved(db: AsyncSession) -> int:
     )
     if not pending:
         return 0
+    # Read now, before the first commit below can expire these objects.
+    completing = {piece.id for piece in pending if piece.status is ContentStatus.PUBLISHED}
 
     if not settings.BUFFER_SIMULATED:
         # Once per tick, not once per post: the answer cannot change between
@@ -2453,7 +2510,7 @@ async def publish_approved(db: AsyncSession) -> int:
     attempted = 0
     for piece in pending:
         try:
-            await publish_piece(db, piece.id)
+            await publish_piece(db, piece.id, completing=piece.id in completing)
             attempted += 1
         except QuotaReached as exc:
             log.warning("Stopping this publish tick: %s", exc)
