@@ -33,8 +33,11 @@ ORG = 1
 
 #: 22:00:18.941004 and 22:00:18.965470 on 15-sep-2026, New York City and
 #: Denver, both on `piece-10`. Twenty-four milliseconds apart.
-REAL_NY = datetime(2026, 9, 15, 22, 0, 18, 941004, tzinfo=UTC)
-REAL_DENVER = datetime(2026, 9, 15, 22, 0, 18, 965470, tzinfo=UTC)
+# The real pair was 2026-09-15 22:00:18.941004 and .965470 UTC. The sweep only looks back
+# PAIRED_CHECK_LOOKBACK_DAYS (30), so pinned to that date the pair aged out of the window on
+# 16-oct-2026 and these tests went red on every branch. Same 24.466 ms gap, two days ago.
+REAL_NY = (datetime.now(UTC) - timedelta(days=2)).replace(hour=22, minute=0, second=18, microsecond=941004)
+REAL_DENVER = REAL_NY + timedelta(microseconds=965470 - 941004)
 
 
 @pytest.fixture

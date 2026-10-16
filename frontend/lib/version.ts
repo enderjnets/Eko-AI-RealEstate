@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.45";
+export const CURRENT_VERSION = "0.143.46";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.46",
+    date: "2026-10-16",
+    title: { en: "A twelfth legend: /hotels", es: "Una duodécima leyenda: /hotels" },
+    changes: [{
+      en: "denverhomestory.com/hotels opens the page of the hotels video: is there a five-star hotel in Denver? Forbes Travel Guide lists none in 2026 (Colorado's two are in Aspen and Colorado Springs); AAA gives its Five Diamonds to the Ritz-Carlton and the Four Seasons; the MICHELIN Guide gives One Key to four Denver hotels; and the two oldest, The Oxford (1891) and The Brown Palace (1892), predate every rating. It is listed on /legends like the others.",
+      es: "denverhomestory.com/hotels abre la página del vídeo de hoteles: ¿hay un hotel de cinco estrellas en Denver? Forbes Travel Guide no registra ninguno en 2026 (los dos de Colorado están en Aspen y Colorado Springs); AAA da sus cinco diamantes al Ritz-Carlton y al Four Seasons; la Guía MICHELIN da una Key a cuatro hoteles de Denver; y los dos más antiguos, The Oxford (1891) y The Brown Palace (1892), son anteriores a cualquier calificación. Aparece en /legends como las demás.",
+    }],
+  },
   {
     version: "0.143.45",
     date: "2026-10-15",
