@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.47";
+export const CURRENT_VERSION = "0.143.48";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.48",
+    date: "2026-10-16",
+    title: { en: "A fourteenth legend: /cheyenne", es: "Una decimocuarta leyenda: /cheyenne" },
+    changes: [{
+      en: "denverhomestory.com/cheyenne opens the page of the video about the city inside a mountain south of Denver: the springs under its 15 buildings, the blast doors, the direct-hit claim and what it does today, each against its source. It is listed on /legends like the others.",
+      es: "denverhomestory.com/cheyenne abre la página del vídeo sobre la ciudad dentro de una montaña al sur de Denver: los muelles bajo sus 15 edificios, las puertas blindadas, lo del impacto directo y lo que hace hoy, cada uno frente a su fuente. Aparece en /legends como las demás.",
+    }],
+  },
   {
     version: "0.143.47",
     date: "2026-10-16",
