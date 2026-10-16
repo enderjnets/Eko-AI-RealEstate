@@ -1,6 +1,6 @@
 /**
  * The 3D legends: one page per video, opened by the short path the video says
- * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal` in `next.config.js`).
+ * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal`, `/hotels` in `next.config.js`).
  *
  * Asked for on 11-oct-2026. Until then every short path landed on `/start` —
  * "Buy / Sell / Talk now" — and the owner, opening `/mollybrown` on his phone
@@ -1018,6 +1018,114 @@ export const LEGENDS: readonly Legend[] = [
     ],
     watch: [],
     visit: { label: "Rocky Mountain Arsenal National Wildlife Refuge", url: "https://www.fws.gov/refuge/rocky-mountain-arsenal" },
+  },
+  {
+    slug: "hotels",
+    eyebrow: "Denver, decoded · Downtown hotels",
+    title: "Is there a five-star hotel in Denver?",
+    dek: "Depends on who's counting: no Five-Star by Forbes, two Five Diamonds by AAA, four MICHELIN Keys.",
+    hero: {
+      src: "/landing/legends/hotels/hero.jpg",
+      alt: "3D model of downtown Denver from the air, its towers and streets seen from the northwest",
+    },
+    facts: [
+      {
+        legend: "Is there a five-star hotel in Denver?",
+        record:
+          "Forbes Travel Guide's 2026 Star Awards list no Five-Star hotel in Denver. Colorado's only two are The Little Nell, in Aspen, and The Broadmoor, in Colorado Springs. Denver's two rated hotels are Four-Star: Four Seasons Hotel Denver and The Ritz-Carlton, Denver.",
+        sources: [
+          { name: "Forbes Travel Guide, 2026 Star Award winners", url: "https://www.forbestravelguide.com/award-winners.json" },
+          { name: "Forbes Travel Guide, Denver", url: "https://www.forbestravelguide.com/destinations/denver-colorado" },
+        ],
+      },
+      {
+        record:
+          "The Four Seasons opened in October 2010 in a 45-story tower that also holds private residences; the Ritz-Carlton opened on January 11, 2008.",
+        sources: [
+          { name: "Four Seasons Hotel Denver, hotel facts", url: "https://press.fourseasons.com/denver/hotel-facts" },
+          { name: "The Ritz-Carlton, Denver, opening release (2008)", url: "https://journaldespalaces.com/pressrelease-10994-the-january-11-2008-opening-of-the-ritz-carlton-denver-offers-the-mile-high-city-a-new-level-of-luxury.html" },
+        ],
+      },
+      {
+        record:
+          "AAA gives those same two its highest rating, Five Diamonds: the Ritz-Carlton since 2010 and the Four Seasons since 2014. Its 2026 Four Diamond list includes The Brown Palace, The Crawford, The Oxford, Halcyon and Hotel Clio.",
+        sources: [
+          { name: "AAA, Five Diamond hotels 2026", url: "https://newsroom.aaa.com/wp-content/uploads/2024/04/AAA-Five-Diamond-Hotels-2026-4.pdf" },
+          { name: "AAA, Four Diamond hotels 2026", url: "https://newsroom.aaa.com/wp-content/uploads/2024/04/AAA-Four-Diamond-Hotels-2026-12.pdf" },
+        ],
+      },
+      {
+        record:
+          "The 2026 MICHELIN Guide gives One Key each to four Denver hotels: Four Seasons Hotel Denver, the Clayton, The Crawford, inside Denver Union Station, and Populus. No Denver hotel has two or three Keys.",
+        sources: [
+          { name: "MICHELIN Guide, all the Key hotels in the United States (2026)", url: "https://guide.michelin.com/us/en/article/travel/all-the-key-hotels-united-states" },
+          { name: "MICHELIN Guide, Populus", url: "https://guide.michelin.com/us/en/hotels-stays/denver/populus-14929" },
+          { name: "The Crawford Hotel, history", url: "https://www.thecrawfordhotel.com/our-story/history/" },
+          { name: "History Colorado, Denver Union Station", url: "https://historycolorado.org/node/6303" },
+        ],
+      },
+      {
+        record:
+          "Populus, the newest, opened on October 15, 2024: 13 stories and 265 rooms, designed by Studio Gang, with windows that Studio Gang says evoke the dark, eye-shaped marks on aspen bark.",
+        sources: [
+          { name: "Studio Gang, Populus", url: "https://studiogang.com/project/populus" },
+          { name: "Studio Gang, Populus completes", url: "https://studiogang.com/now/studio-gang-completes-populus-a-new-hotel-and-social-hub-in-downtown-denver/" },
+          { name: "Westword, Populus opening date (2024)", url: "https://www.westword.com/news/populus-hotel-in-downtown-denver-postpones-opening-date-to-october-15-21989031" },
+        ],
+      },
+      {
+        record:
+          "The oldest predate every rating. The Oxford opened in 1891; a year later the same architect, Frank E. Edbrooke, finished The Brown Palace, listed on the National Register of Historic Places in 1970.",
+        sources: [
+          { name: "National Register of Historic Places, The Oxford Hotel", url: "https://npgallery.nps.gov/NRHP/GetAsset/NRHP/79000590_text" },
+          { name: "The Oxford Hotel, history", url: "https://www.theoxfordhotel.com/our-hotel/history" },
+          { name: "National Register of Historic Places, Brown Palace Hotel", url: "https://npgallery.nps.gov/NRHP/GetAsset/NRHP/70000157_text" },
+          { name: "History Colorado, Brown Palace Hotel", url: "https://historycolorado.org/node/5702" },
+        ],
+      },
+      {
+        record:
+          "Sun Yat-sen arrived at The Brown Palace on October 10, 1911. Resting in room 321, he read in the Rocky Mountain News of the overthrow of China's Qing dynasty, according to the hotel's National Register documentation.",
+        sources: [
+          { name: "National Register of Historic Places, Brown Palace Hotel", url: "https://npgallery.nps.gov/NRHP/GetAsset/NRHP/70000157_text" },
+        ],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/hotels/populus.jpg",
+        alt: "The white facade of the Populus hotel in Denver, covered in eye-shaped windows of different sizes, against a blue sky",
+        caption: "Populus, opened in 2024 and designed by Studio Gang.",
+        credit: "Daniel Hartwig, 2025, Wikimedia Commons",
+        licence: "CC BY 4.0",
+        page: "https://commons.wikimedia.org/wiki/File:Populus_Hotel_Denver_(54940682635).jpg",
+      },
+      {
+        src: "/landing/legends/hotels/brown-palace.jpg",
+        alt: "The red sandstone corner of the Brown Palace Hotel in downtown Denver, with an American flag on the roof",
+        caption: "The Brown Palace, finished in 1892 by Frank E. Edbrooke.",
+        credit: "Carol M. Highsmith, Library of Congress, via Wikimedia Commons",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:The_historic_Brown_Palace_Hotel_in_Denver,_one_of_the_first_to_employ_an_%22atrium_style%22_with_entire_floors_exposed_to_the_lobby_LCCN2017885320.tif",
+      },
+      {
+        src: "/landing/legends/hotels/oxford.jpg",
+        alt: "The red brick Oxford Hotel on a downtown Denver street corner, with green awnings at street level",
+        caption: "The Oxford, opened in 1891.",
+        credit: "Trueshow111, Wikimedia Commons",
+        licence: "CC0",
+        page: "https://commons.wikimedia.org/wiki/File:OxfordHotelDenver.jpg",
+      },
+      {
+        src: "/landing/legends/hotels/sun-yat-sen-1911.jpg",
+        alt: "Black-and-white portrait of Sun Yat-sen seated, holding papers, 1911",
+        caption: "Sun Yat-sen in 1911, the year he stayed at the Brown Palace.",
+        credit: "Agence Rol, Bibliothèque nationale de France, via Wikimedia Commons",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Dr_Sun-Yat-Sen_-_btv1b6917598r.jpg",
+      },
+    ],
+    watch: [],
   },
 ];
 
