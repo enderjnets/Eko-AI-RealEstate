@@ -107,7 +107,7 @@ const nextConfig = {
     // (`/legends/<slug>`, which continues the video); the others still land on
     // `/start`. Moving a slug into this list is the whole switch, and the tags
     // are the same either way, so the count of arrivals per video carries on.
-    const LEGEND_PAGES = new Set(["colfax", "cheesman", "mollybrown", "unionstation", "georgetownloop", "confluencepark", "redrocks", "mint", "gateway", "abasin", "arsenal", "hotels"]);   // switched with the owner's yes, 11-oct-2026
+    const LEGEND_PAGES = new Set(["colfax", "cheesman", "mollybrown", "unionstation", "georgetownloop", "confluencepark", "redrocks", "mint", "gateway", "abasin", "arsenal", "hotels", "adx"]);   // switched with the owner's yes, 11-oct-2026
     const legend = (slug) => ({
       source: `/${slug}`,
       destination:
@@ -145,6 +145,7 @@ const nextConfig = {
       { ...legend("abasin"), source: "/a-basin" },
       legend("arsenal"),
       legend("hotels"),
+      legend("adx"),
     ];
   },
   async headers() {
