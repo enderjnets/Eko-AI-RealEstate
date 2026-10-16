@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.48";
+export const CURRENT_VERSION = "0.143.49";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.49",
+    date: "2026-10-16",
+    title: { en: "A published video reaches the networks it missed", es: "Un vídeo publicado llega a las redes que le faltaron" },
+    changes: [{
+      en: "A video that went out on one network and never reached another it was meant for is now sent there on the next round, if it went out within the last week. Until now a video closed as published was never looked at again, so a network it lost was lost for good — the ski video reached Instagram only. Nothing already published is sent twice, a network that refused the video is not retried, and a video whose dates have passed is left alone.",
+      es: "Un vídeo que salió en una red y nunca llegó a otra a la que iba se envía ahora allí en la siguiente vuelta, si salió en la última semana. Hasta ahora un vídeo cerrado como publicado no se volvía a mirar, así que una red que perdía se perdía para siempre: el vídeo de esquí solo llegó a Instagram. Nada ya publicado se envía dos veces, una red que rechazó el vídeo no se reintenta y un vídeo con las fechas pasadas se deja como está.",
+    }],
+  },
   {
     version: "0.143.48",
     date: "2026-10-16",

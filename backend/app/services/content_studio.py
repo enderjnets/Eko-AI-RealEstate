@@ -294,7 +294,7 @@ def _folded(text: str) -> str:
 
 
 async def ensure_publishable(
-    db: AsyncSession, piece_id: int, *, resuming: bool = False
+    db: AsyncSession, piece_id: int, *, resuming: bool = False, completing: bool = False
 ) -> ContentPiece:
     """Re-read the piece under a lock and re-check everything. Or raise.
 
@@ -310,6 +310,12 @@ async def ensure_publishable(
     would never be reached and the piece would sit in PUBLISHING forever. The
     brokerage line and the Fair Housing filter are re-checked either way, which
     is what actually protects the text.
+
+    `completing` additionally accepts a PUBLISHED piece, for the one case
+    `buffer_publisher.publish_approved` selects it: out on one platform within
+    the last week and never reached on another one it goes to. The piece stays
+    PUBLISHED — that is a statement about the posts already out, and none of
+    them is touched — and the new posts pass every check below like any other.
     """
     piece = (
         await db.execute(
@@ -325,6 +331,8 @@ async def ensure_publishable(
     allowed = {ContentStatus.APPROVED}
     if resuming:
         allowed.add(ContentStatus.PUBLISHING)
+    if completing:
+        allowed.add(ContentStatus.PUBLISHED)
     if piece.status not in allowed:
         raise NotPublishable(
             f"piece {piece_id} is {piece.status.value}, and only a piece a "
