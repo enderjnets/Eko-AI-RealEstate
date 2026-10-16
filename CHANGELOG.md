@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.47] — 2026-10-16
+
+- Landing: `/adx`, the thirteenth spoken legend path, lands on its own page (`/legends/adx`, listed in `LEGEND_PAGES`) with the same `utm_campaign=legends` tags. `lib/legends.ts` gains the first video in the shorter format: the federal supermax about 96 miles south of Denver, decoded against the record — the most restrictive prison in the federal system and the Bureau of Prisons' only supermax (10th Circuit 2012; DOJ 2016), about 23 hours a day in the most restrictive units (GAO 2013) with 5 to 10.5 hours a week minimum outside the cell (DOJ), the 5-by-38-inch window and 75–87 sq ft cells, no escape found on record, Range 13 (DOJ OIG 2017; 10th Circuit 2014), in use since November 1994 and 404 people on 15-oct-2026 (BOP). No names of people held there and nothing about the town. Photographs: Federal Bureau of Prisons (public domain); a frame of our own 3D model as the hero.
+
 ## [0.143.46] — 2026-10-16
 
 - Landing: `/hotels`, the twelfth spoken legend path, lands on its own page (`/legends/hotels`, listed in `LEGEND_PAGES`) with the same `utm_campaign=legends` tags. `lib/legends.ts` gains the hotels video: is there a five-star hotel in Denver? Forbes Travel Guide's 2026 Star Awards list none (Colorado's two: The Little Nell, Aspen; The Broadmoor, Colorado Springs) and two Denver Four-Star hotels, the Four Seasons (2010, in a 45-story tower) and the Ritz-Carlton (2008); AAA gives both its Five Diamonds (2010, 2014); the 2026 MICHELIN Guide gives One Key to the Four Seasons, the Clayton, The Crawford and Populus (Studio Gang, 2024); The Oxford (1891) and The Brown Palace (1892, Frank E. Edbrooke), where Sun Yat-sen read of the overthrow of the Qing dynasty in room 321 in October 1911 (National Register documentation). No prices, no claim about Populus's carbon accounting. Photographs: public domain and CC BY; a frame of our own 3D model as the hero.

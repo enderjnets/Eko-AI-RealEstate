@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.46";
+export const CURRENT_VERSION = "0.143.47";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.47",
+    date: "2026-10-16",
+    title: { en: "A thirteenth legend: /adx", es: "Una decimotercera leyenda: /adx" },
+    changes: [{
+      en: "denverhomestory.com/adx opens the page of the video about the federal supermax south of Denver: the press calls it America's highest-security prison; the records say the most restrictive in the federal system and its only supermax. Twenty-three hours a day, the window, the cell, the escape claim and Range 13, each against its source. It is listed on /legends like the others.",
+      es: "denverhomestory.com/adx abre la página del vídeo sobre la supermax federal al sur de Denver: la prensa la llama la prisión de máxima seguridad de EE. UU.; los registros dicen la más restrictiva del sistema federal y su única supermax. Las 23 horas al día, la ventana, la celda, lo de las fugas y Range 13, cada uno frente a su fuente. Aparece en /legends como las demás.",
+    }],
+  },
   {
     version: "0.143.46",
     date: "2026-10-16",

@@ -1,6 +1,6 @@
 /**
  * The 3D legends: one page per video, opened by the short path the video says
- * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal`, `/hotels` in `next.config.js`).
+ * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal`, `/hotels`, `/adx` in `next.config.js`).
  *
  * Asked for on 11-oct-2026. Until then every short path landed on `/start` —
  * "Buy / Sell / Talk now" — and the owner, opening `/mollybrown` on his phone
@@ -1123,6 +1123,90 @@ export const LEGENDS: readonly Legend[] = [
         credit: "Agence Rol, Bibliothèque nationale de France, via Wikimedia Commons",
         licence: "Public domain",
         page: "https://commons.wikimedia.org/wiki/File:Dr_Sun-Yat-Sen_-_btv1b6917598r.jpg",
+      },
+    ],
+    watch: [],
+  },
+  {
+    slug: "adx",
+    eyebrow: "Colorado, decoded · The federal supermax",
+    title: "America's highest-security prison?",
+    dek: "The press calls it that. The records say something narrower: the federal system's most restrictive prison, and its only supermax.",
+    hero: {
+      src: "/landing/legends/adx/hero.jpg",
+      alt: "3D model from the air of a fenced federal prison complex on dry high plains, its outline drawn in gold, with mountains on the horizon",
+    },
+    facts: [
+      {
+        legend: "America's highest-security prison.",
+        record:
+          "The federal supermax sits about 96 miles south of downtown Denver. The records describe something narrower than the nickname: the most restrictive prison in the federal system, and the Bureau of Prisons' only supermax. By 1999, more than 30 states ran supermax facilities of their own.",
+        sources: [
+          { name: "U.S. Court of Appeals for the 10th Circuit, No. 11-1069 (2012)", url: "https://www.ca10.uscourts.gov/sites/ca10/files/opinions/01018831331.pdf" },
+          { name: "U.S. Department of Justice, Report and Recommendations Concerning the Use of Restrictive Housing (2016)", url: "https://www.justice.gov/dag/file/815551/download" },
+          { name: "U.S. Senate Judiciary subcommittee hearing (2012)", url: "https://www.govinfo.gov/content/pkg/CHRG-112shrg87630/html/CHRG-112shrg87630.htm" },
+        ],
+      },
+      {
+        legend: "Twenty-three hours a day in a cell.",
+        record:
+          "In the most restrictive units, about 23 hours a day are spent in the cell, according to the GAO. The Justice Department's minimum time outside the cell ranges from 5 hours a week in some units to 10.5 in general population.",
+        sources: [
+          { name: "GAO-13-429, Bureau of Prisons segregated housing (2013)", url: "https://www.gao.gov/assets/gao-13-429.pdf" },
+          { name: "U.S. Department of Justice, Report and Recommendations Concerning the Use of Restrictive Housing (2016)", url: "https://www.justice.gov/dag/file/815551/download" },
+        ],
+      },
+      {
+        record:
+          "The outside window measures 5 by 38 inches. Cells are about 75 to 87 square feet, behind a solid outer door and an inner grille.",
+        sources: [
+          { name: "U.S. Department of Justice, Report and Recommendations Concerning the Use of Restrictive Housing (2016)", url: "https://www.justice.gov/dag/file/815551/download" },
+        ],
+      },
+      {
+        legend: "Nobody has ever escaped.",
+        record:
+          "That claim comes from press reports. In the records we checked, we found no escape.",
+        sources: [
+          { name: "5280 magazine (2025)", url: "https://5280.com/adx-florence-facts-supermax/" },
+          { name: "DOJ Office of the Inspector General, Restrictive Housing (2017)", url: "https://oig.justice.gov/sites/default/files/reports/e1705.pdf" },
+        ],
+      },
+      {
+        legend: "The secret Range 13.",
+        record:
+          "Range 13 is real. The Justice Department's Inspector General found two prisoners held there, each in his own cell more than 22 hours a day, and a federal appeals court opinion describes it too.",
+        sources: [
+          { name: "DOJ Office of the Inspector General, Restrictive Housing (2017)", url: "https://oig.justice.gov/sites/default/files/reports/e1705.pdf" },
+          { name: "U.S. Court of Appeals for the 10th Circuit, No. 12-1450 (2014)", url: "https://www.ca10.uscourts.gov/sites/ca10/files/opinions/01019253486.pdf" },
+        ],
+      },
+      {
+        record:
+          "Its name is ADX Florence, part of the Federal Correctional Complex, Florence. It has been in use since November 1994; the Bureau of Prisons listed 404 people there on October 15, 2026.",
+        sources: [
+          { name: "DOJ Office of the Inspector General, Restrictive Housing (2017)", url: "https://oig.justice.gov/sites/default/files/reports/e1705.pdf" },
+          { name: "Federal Bureau of Prisons, USP Florence ADMAX", url: "https://www.bop.gov/locations/institutions/flm/" },
+          { name: "Federal Bureau of Prisons, facility data", url: "https://www.bop.gov/PublicInfo/execute/phyloc?todo=query&output=json&code=FLM" },
+        ],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/adx/entrance.jpg",
+        alt: "The brick entrance building of the federal supermax with a guard tower behind it, on dry grassland",
+        caption: "The entrance, photographed by the Federal Bureau of Prisons.",
+        credit: "Federal Bureau of Prisons, via Wikimedia Commons",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Florence_ADMAX.jpg",
+      },
+      {
+        src: "/landing/legends/adx/range-13-cell.jpg",
+        alt: "An empty cell with a concrete bed and stool, a steel sink and toilet, a narrow window and a solid door",
+        caption: "A cell on Range 13, as the Bureau of Prisons photographed it for the GAO.",
+        credit: "Federal Bureau of Prisons, published in GAO-13-429 (2013)",
+        licence: "Public domain",
+        page: "https://www.gao.gov/products/gao-13-429",
       },
     ],
     watch: [],
