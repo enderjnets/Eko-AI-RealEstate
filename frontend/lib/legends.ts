@@ -1,6 +1,6 @@
 /**
  * The 3D legends: one page per video, opened by the short path the video says
- * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal`, `/hotels`, `/adx` in `next.config.js`).
+ * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal`, `/hotels`, `/adx`, `/cheyenne` in `next.config.js`).
  *
  * Asked for on 11-oct-2026. Until then every short path landed on `/start` —
  * "Buy / Sell / Talk now" — and the owner, opening `/mollybrown` on his phone
@@ -1207,6 +1207,91 @@ export const LEGENDS: readonly Legend[] = [
         credit: "Federal Bureau of Prisons, published in GAO-13-429 (2013)",
         licence: "Public domain",
         page: "https://www.gao.gov/products/gao-13-429",
+      },
+    ],
+    watch: [],
+  },
+  {
+    slug: "cheyenne",
+    eyebrow: "Colorado, decoded · The city inside a mountain",
+    title: "Built to withstand a nuclear strike?",
+    dek: "A city inside a mountain, on giant springs, behind blast doors. Each claim, against the record.",
+    hero: {
+      src: "/landing/legends/cheyenne/hero.jpg",
+      alt: "3D model of a block of mountain cut open, with a long tunnel leading to a chamber of buildings inside the rock",
+    },
+    facts: [
+      {
+        legend: "A city inside a mountain.",
+        record:
+          "The complex sits about 70 miles south of downtown Denver. Excavation began on May 18, 1961, and the Defense Department built it in the early 1960s to withstand a multimegaton-yield-weapon strike, according to the GAO. Inside the granite stand 15 steel buildings.",
+        sources: [
+          { name: "NORAD Office of History, A Brief History of NORAD (2012)", url: "https://web.archive.org/web/20150420161330/http://www.norad.mil/Portals/29/Documents/History/A%20Brief%20History%20of%20NORAD.pdf" },
+          { name: "GAO-07-803R, Cheyenne Mountain realignment (2007)", url: "https://www.gao.gov/products/gao-07-803r" },
+          { name: "U.S. Space Command, Cheyenne Mountain information booklet (archived 2000)", url: "https://web.archive.org/web/20001025233012/http://www.spacecom.af.mil/usspace/fbcmas.htm" },
+          { name: "USGS Geographic Names Information System, Cheyenne Mountain and Denver", url: "https://edits.nationalmap.gov/apps/gaz-domestic/public/summary/203681" },
+        ],
+      },
+      {
+        legend: "The buildings sit on giant springs.",
+        record:
+          "True. The Space Force says the 15 buildings rest on more than 1,300 springs, 18 inches from the rock walls, so they could move independently in the event of a nuclear blast or an earthquake.",
+        sources: [
+          { name: "U.S. Space Force, Beyond the blast doors (2016)", url: "https://www.petersonschriever.spaceforce.mil/Newsroom/News/Display/Article/733431/beyond-the-blast-doors-50-years-later-cheyenne-mountain-remains-the-dragon-that/" },
+        ],
+      },
+      {
+        legend: "Blast doors weighing 25 tons.",
+        record:
+          "Air Force figures for the main blast doors range from 20 to 25 tons each; a 2014 Air Force article lists two 25-ton doors and a 17-ton one. In 2012 the Air Force said the doors were closed and opened once a week.",
+        sources: [
+          { name: "U.S. Air Force photo 121025-F-ZZ000-001 and caption (2012)", url: "https://commons.wikimedia.org/wiki/File:121025-F-ZZ000-001_Cheyenne_Mountain_20-ton_blast_door_closing.jpg" },
+          { name: "U.S. Space Force, Beyond the blast doors (2016)", url: "https://www.petersonschriever.spaceforce.mil/Newsroom/News/Display/Article/733431/beyond-the-blast-doors-50-years-later-cheyenne-mountain-remains-the-dragon-that/" },
+          { name: "U.S. Air Force, Airmen operate America's fortress (2014)", url: "https://www.af.mil/News/Features/Article/497017/airmen-operate-americas-fortress/" },
+        ],
+      },
+      {
+        legend: "It would survive a direct nuclear hit.",
+        record:
+          "Not quite. The GAO says it was built to withstand a multimegaton-yield-weapon strike, but a U.S. Space Command booklet said it would probably not survive a direct hit from today's accurate and high-yield nuclear weapons.",
+        sources: [
+          { name: "GAO-07-803R, Cheyenne Mountain realignment (2007)", url: "https://www.gao.gov/products/gao-07-803r" },
+          { name: "U.S. Space Command, The Cheyenne Mountain Story (archived 2000)", url: "https://web.archive.org/web/20001204224500/http://www.spacecom.af.mil/usspace/cmocfb.htm" },
+        ],
+      },
+      {
+        legend: "It was abandoned.",
+        record:
+          "No. On May 12, 2008, its command center was re-designated the NORAD and USNORTHCOM Alternate Command Center, and it remains a training site for crew qualification. It was renamed Cheyenne Mountain Space Force Station on July 26, 2021.",
+        sources: [
+          { name: "U.S. Northern Command, Cheyenne Mountain", url: "https://www.northcom.mil/CheyenneMountain/" },
+          { name: "U.S. Space Force, CMSFS updates base sign (2021)", url: "https://www.petersonschriever.spaceforce.mil/Newsroom/News/Display/Article/2816876/cmsfs-updates-base-sign-to-reflect-space-force/" },
+        ],
+      },
+      {
+        record:
+          "Its name is Cheyenne Mountain. NORAD moved its Combat Operations Center there from Ent Air Force Base on April 20, 1966. The figures in our animations are illustrations: the interior layout is not published.",
+        sources: [
+          { name: "NORAD Office of History, A Brief History of NORAD (2012)", url: "https://web.archive.org/web/20150420161330/http://www.norad.mil/Portals/29/Documents/History/A%20Brief%20History%20of%20NORAD.pdf" },
+        ],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/cheyenne/springs.jpg",
+        alt: "A worker in a hard hat crouches among large steel coil springs under a building inside the mountain",
+        caption: "The coil springs under the steel buildings, photographed in 1984.",
+        credit: "Bob Simons, U.S. Air Force (National Archives)",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:NORADSprings1.jpg",
+      },
+      {
+        src: "/landing/legends/cheyenne/blast-door.jpg",
+        alt: "People watch a massive ribbed steel blast door close in a white-walled tunnel",
+        caption: "One of the blast doors closing during an exercise, October 2012.",
+        credit: "Joann Missey, U.S. Air Force",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:121025-F-ZZ000-001_Cheyenne_Mountain_20-ton_blast_door_closing.jpg",
       },
     ],
     watch: [],
