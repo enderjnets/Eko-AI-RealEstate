@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.49";
+export const CURRENT_VERSION = "0.143.50";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.50",
+    date: "2026-10-17",
+    title: { en: "A fifteenth legend: /brownpalace", es: "Una decimoquinta leyenda: /brownpalace" },
+    changes: [{
+      en: "denverhomestory.com/brownpalace opens the page of the video about the tunnel under Tremont Place: what the 1977 National Register form says it was, what historians say about the secret-passage story, and the other tunnel the newspapers reported in 1957, each against its source. It is listed on /legends like the others.",
+      es: "denverhomestory.com/brownpalace abre la página del vídeo sobre el túnel bajo Tremont Place: qué dice el formulario del National Register de 1977 que era, qué dicen los historiadores de la historia del pasadizo secreto y el otro túnel que la prensa contó en 1957, cada uno frente a su fuente. Aparece en /legends como las demás.",
+    }],
+  },
   {
     version: "0.143.49",
     date: "2026-10-16",

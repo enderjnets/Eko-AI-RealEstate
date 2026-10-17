@@ -1,6 +1,6 @@
 /**
  * The 3D legends: one page per video, opened by the short path the video says
- * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal`, `/hotels`, `/adx`, `/cheyenne` in `next.config.js`).
+ * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal`, `/hotels`, `/adx`, `/cheyenne`, `/brownpalace` in `next.config.js`).
  *
  * Asked for on 11-oct-2026. Until then every short path landed on `/start` —
  * "Buy / Sell / Talk now" — and the owner, opening `/mollybrown` on his phone
@@ -1292,6 +1292,79 @@ export const LEGENDS: readonly Legend[] = [
         credit: "Joann Missey, U.S. Air Force",
         licence: "Public domain",
         page: "https://commons.wikimedia.org/wiki/File:121025-F-ZZ000-001_Cheyenne_Mountain_20-ton_blast_door_closing.jpg",
+      },
+    ],
+    watch: [],
+  },
+  {
+    slug: "brownpalace",
+    eyebrow: "Denver, decoded · The tunnel under Tremont Place",
+    title: "A secret tunnel to a gambling house?",
+    dek: "Across Tremont Place from a grand hotel stood a gambling house. Was there a tunnel between them, and what was it for?",
+    hero: {
+      src: "/landing/legends/brownpalace/hero.jpg",
+      alt: "3D model of a downtown block cut open at dusk, with a lit tunnel under the street joining the basements of two buildings",
+    },
+    facts: [
+      {
+        legend: "Across the street from a grand hotel stood a gambling house.",
+        record:
+          "The Brown Palace has been open since August 12, 1892. Across Tremont Place, a brick building from 1880 began as the Brinker Collegiate Institute, reopened in 1889 as the Richelieu Hotel, run by gambling operators, and was later renamed the Navarre.",
+        sources: [
+          { name: "The Brown Palace, hotel history (2019)", url: "https://web.archive.org/web/20190701/https://www.brownpalace.com/our-hotel/history/" },
+          { name: "National Register of Historic Places nomination, Navarre Building (1977)", url: "https://npgallery.nps.gov/GetAsset/61b2ae42-2ca4-4e28-a3b8-ddb88963ef07" },
+        ],
+      },
+      {
+        legend: "A tunnel ran under the street.",
+        record:
+          "On paper, yes. The Navarre's 1977 National Register nomination describes a rail passageway emerging from a tunnel under Tremont Place from the Brown Palace Hotel, now sealed off, leading to the building's steam heating plant. The same form says it carried coal.",
+        sources: [
+          { name: "National Register of Historic Places nomination, Navarre Building (1977)", url: "https://npgallery.nps.gov/GetAsset/61b2ae42-2ca4-4e28-a3b8-ddb88963ef07" },
+        ],
+      },
+      {
+        legend: "Hotel guests used it to reach the gambling house unseen.",
+        record:
+          "No record shows it. The same 1977 form says the tunnel allowed \u201cunseen passage\u201d but gives no evidence, and historian Thomas J. Noel calls it in fact a utility tunnel, too tiny to allow any substantial hotel guest patronage of the Navarre. The hotel's own history pages never mention the Navarre.",
+        sources: [
+          { name: "Thomas J. Noel, Museum of Western Art (The Navarre), SAH Archipedia", url: "https://sah-archipedia.org/buildings/CO-01-DV026" },
+          { name: "National Register of Historic Places nomination, Navarre Building (1977)", url: "https://npgallery.nps.gov/GetAsset/61b2ae42-2ca4-4e28-a3b8-ddb88963ef07" },
+        ],
+      },
+      {
+        legend: "The hotel has a tunnel under Tremont Place.",
+        record:
+          "A different one. On December 15, 1957, the Denver Post reported a tunnel finished between the hotel and its new addition across the same street, the tower that opened as Brown Palace West and is also joined to the hotel by a bridge over Tremont Place.",
+        sources: [
+          { name: "Denver Public Library, Western History subject index (Denver Post, Dec. 15, 1957)", url: "https://digital.denverlibrary.org/nodes/view/1298707" },
+          { name: "Historic Hotels of America, The Brown Palace history", url: "https://www.historichotels.org/us/hotels-resorts/the-brown-palace-hotel-and-spa-autograph-collection/history" },
+        ],
+      },
+      {
+        record:
+          "The hotel is The Brown Palace. In our animation the street and the buildings come from OpenStreetMap; the tunnel's route and size, the basements and the boiler are illustrations, because no published plan gives them.",
+        sources: [
+          { name: "National Register of Historic Places nomination, Navarre Building (1977)", url: "https://npgallery.nps.gov/GetAsset/61b2ae42-2ca4-4e28-a3b8-ddb88963ef07" },
+        ],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/brownpalace/1898.jpg",
+        alt: "A tall red stone hotel with rows of arched windows rises over low buildings and trees, seen from above",
+        caption: "The Brown Palace around 1898, six years after it opened.",
+        credit: "William Henry Jackson (Library of Congress)",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Brown_Palace_Hotel,_1898.JPG",
+      },
+      {
+        src: "/landing/legends/brownpalace/exterior-2016.jpg",
+        alt: "The rounded corner of a red sandstone hotel on a sunny street, with glass towers behind it",
+        caption: "The hotel's corner at 17th Street and Tremont Place, 2016.",
+        credit: "Carol M. Highsmith (Library of Congress)",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:The_historic_Brown_Palace_Hotel_in_Denver,_one_of_the_first_to_employ_an_%22atrium_style%22_with_entire_floors_exposed_to_the_lobby_LCCN2017885320.tif",
       },
     ],
     watch: [],
