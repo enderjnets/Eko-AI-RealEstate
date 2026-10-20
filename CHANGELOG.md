@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.51] — 2026-10-20
+
+- Landing: `/build`, the spoken path at the end of the exploded-house video ("Home, in six pieces"), lands on `/start` with the same video tags (`utm_source=video`, `utm_medium=spoken`, `utm_campaign=legends`, `utm_content=build`). It is not a legend page, so it is not in `LEGEND_PAGES`; a test pins its destination and tags and checks that `app/build` does not exist (the redirect would hide it).
+
 ## [0.143.50] — 2026-10-17
 
 - Landing: `/brownpalace`, the fifteenth spoken legend path, lands on its own page (`/legends/brownpalace`, listed in `LEGEND_PAGES`) with the same `utm_campaign=legends` tags. `lib/legends.ts` gains the third video in the shorter format: the tunnel under Tremont Place between The Brown Palace (open since August 12, 1892) and the Navarre (built 1880; the Brinker Collegiate Institute, the Richelieu from 1889). The Navarre's 1977 National Register nomination describes a sealed rail passageway from the hotel to its steam heating plant, for coal; the "unseen passage" in the same form has no evidence, and Thomas J. Noel (SAH Archipedia) calls it a utility tunnel too tiny for hotel guests; the hotel's own history pages never mention the Navarre. The tunnel the Denver Post reported on December 15, 1957 went to the hotel's new addition (Denver Public Library index; Historic Hotels of America). Nothing about ghosts or the form's "ladies of the evening". Photographs: William Henry Jackson c.1898 and Carol M. Highsmith 2016 (Library of Congress, public domain); a frame of our own 3D model as the hero.
