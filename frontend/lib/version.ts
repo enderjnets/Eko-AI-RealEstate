@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.50";
+export const CURRENT_VERSION = "0.143.51";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.51",
+    date: "2026-10-20",
+    title: { en: "A spoken path for the exploded-house video: /build", es: "Una ruta hablada para el vídeo de la casa desarmada: /build" },
+    changes: [{
+      en: "denverhomestory.com/build, said at the end of the video about buying a home in six pieces, now opens the Start page with the same video tags (utm_campaign=legends, utm_content=build), so the visits it brings can be counted apart from the other videos.",
+      es: "denverhomestory.com/build, que se dice al final del vídeo sobre comprar una casa en seis piezas, abre ahora la página de inicio con las mismas etiquetas de vídeo (utm_campaign=legends, utm_content=build), para contar sus visitas aparte de las de los demás vídeos.",
+    }],
+  },
   {
     version: "0.143.50",
     date: "2026-10-17",

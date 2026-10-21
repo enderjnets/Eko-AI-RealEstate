@@ -145,7 +145,7 @@ describe("bio short links", () => {
     // and `/ig`. A duplicated source is not an error Next reports: the first
     // rule wins and the second silently never fires.
     const all = [
-      "/yt", "/youtube", "/tt", "/tiktok", "/ig", "/instagram", "/n", "/r", "/e",
+      "/yt", "/youtube", "/tt", "/tiktok", "/ig", "/instagram", "/n", "/r", "/e", "/build",
       ...LEGENDS.map((slug) => `/${slug}`),
     ];
     expect(new Set(all).size).toBe(all.length);
@@ -168,6 +168,22 @@ describe("bio short links", () => {
       expect(destination.searchParams.get("utm_campaign")).toBe("legends");
       expect(destination.searchParams.get("utm_content")).toBe(slug);
     }
+  });
+
+  it("the \"home in six pieces\" video has a spoken /build path that lands on /start", async () => {
+    // Said aloud at the end of the exploded-house video. It is not a legend, so it goes where the caption already
+    // points (`/start`), carrying the video tags and its own utm_content so the arrivals can be counted per video.
+    const redirects = await nextConfig.redirects();
+    const rule = redirects.find((r: { source: string }) => r.source === "/build");
+    expect(rule, "/build is missing").toBeDefined();
+    const destination = new URL(rule.destination, "https://example.test");
+    expect(destination.pathname).toBe("/start");
+    expect(destination.searchParams.get("utm_source")).toBe("video");
+    expect(destination.searchParams.get("utm_medium")).toBe("spoken");
+    expect(destination.searchParams.get("utm_campaign")).toBe("legends");
+    expect(destination.searchParams.get("utm_content")).toBe("build");
+    const app = fileURLToPath(new URL("../../app/", import.meta.url));
+    expect(existsSync(`${app}build`), "app/build exists and would be hidden by the redirect").toBe(false);
   });
 
   it("a legend path never hides a page", () => {

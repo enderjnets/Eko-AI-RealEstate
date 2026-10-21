@@ -148,6 +148,9 @@ const nextConfig = {
       legend("adx"),
       legend("cheyenne"),
       legend("brownpalace"),
+      // "Home, in six pieces" (the exploded-house video) ends with "denverhomestory.com/build". It is not a legend, so it is
+      // not in LEGEND_PAGES: it lands on `/start` (speak with an advisor) with the same video tags, utm_content=build.
+      legend("build"),
     ];
   },
   async headers() {
