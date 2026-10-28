@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.52";
+export const CURRENT_VERSION = "0.143.53";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.53",
+    date: "2026-10-28",
+    title: { en: "The website says who answers the phone", es: "La web dice quién contesta el teléfono" },
+    changes: [{
+      en: "The number on the website is answered by Clara, the team's AI assistant, who takes the caller's details so Natalia can call back. The Start page promised \"a real person\" and the home page \"no assistant screening you\". Both now say it plainly: Clara, an AI assistant, answers at any hour, and Natalia or Robbie gets back to you personally within a few hours. A test keeps the old promises from coming back.",
+      es: "El número de la web lo contesta Clara, la asistente con IA del equipo, que toma los datos para que Natalia devuelva la llamada. La página de inicio rápido prometía «una persona real» y la portada «sin asistente que te filtre». Ahora las dos lo dicen claro: Clara, una asistente con IA, contesta a cualquier hora, y Natalia o Robbie te responden en persona en unas horas. Una prueba impide que vuelvan las promesas antiguas.",
+    }],
+  },
   {
     version: "0.143.52",
     date: "2026-10-28",
