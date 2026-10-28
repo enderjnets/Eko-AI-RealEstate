@@ -1,6 +1,6 @@
 /**
  * The 3D legends: one page per video, opened by the short path the video says
- * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal`, `/hotels`, `/adx`, `/cheyenne`, `/brownpalace` in `next.config.js`).
+ * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal`, `/hotels`, `/adx`, `/cheyenne`, `/brownpalace`, `/sloanslake`, `/dia`, `/lookout` in `next.config.js`).
  *
  * Asked for on 11-oct-2026. Until then every short path landed on `/start` —
  * "Buy / Sell / Talk now" — and the owner, opening `/mollybrown` on his phone
@@ -1368,6 +1368,227 @@ export const LEGENDS: readonly Legend[] = [
       },
     ],
     watch: [],
+  },
+  {
+    slug: "sloanslake",
+    eyebrow: "Denver, decoded · Sloan's Lake",
+    title: "The lake that wasn't there, and the elephant that wasn't buried",
+    dek: "Denver's biggest lake has two legends, and one of them is an elephant. Here is what the records say.",
+    hero: {
+      src: "/landing/legends/sloanslake/hero.jpg",
+      alt: "3D model of Denver from the west, with Sloan's Lake in the foreground and the downtown towers behind it",
+    },
+    facts: [
+      {
+        legend: "In 1861 a farmer named Thomas Sloan dug a well, hit water, and woke up to a lake on his farm.",
+        record:
+          "Nobody knows for sure how the lake formed. A gold-rush stagecoach driver, Bill Turner, said it was not there when he left for Kansas in June 1861 and was there when he came back in early 1863. Thomas M. Sloan received his land patent in December 1866, and it is unlikely he would have patented farmland that was already under water.",
+        sources: [{ name: "Sloan's Lake Park Foundation, Lake History", url: "https://sloanslakeparkfoundation.org/lake-history" }],
+      },
+      {
+        record:
+          "Since 1859 the road from Denver to Golden had crossed the spot. The water flooded it, and the road that replaced it is now Colfax Avenue.",
+        sources: [{ name: "Sloan's Lake Park Foundation, Lake History", url: "https://sloanslakeparkfoundation.org/lake-history" }],
+      },
+      {
+        record:
+          "On the north shore stood Manhattan Beach, an amusement park with a roller coaster, boats and a zoo. Its biggest draw was Roger, an elephant who gave children rides.",
+        sources: [
+          { name: "Denver7, The history of Sloan's Lake and Roger the Elephant", url: "https://www.denver7.com/news/local-news/why-is-there-an-elephant-buried-in-edgewater-the-history-of-sloans-lake-and-roger-the-elephant" },
+          { name: "Sloan's Lake Park Foundation, Lake History", url: "https://sloanslakeparkfoundation.org/lake-history" },
+        ],
+      },
+      {
+        record:
+          "On July 5, 1891, a balloon went up beside the zoo. Roger panicked and a six-year-old boy riding him, George W. Eaton, was killed, as the Rocky Mountain News reported the next day.",
+        sources: [
+          { name: "Denver7, quoting the Rocky Mountain News (July 1891)", url: "https://www.denver7.com/news/local-news/why-is-there-an-elephant-buried-in-edgewater-the-history-of-sloans-lake-and-roger-the-elephant" },
+          { name: "Colorado Public Radio, interview with historian David Forsyth (2024)", url: "https://www.cpr.org/2024/03/16/the-lost-history-of-denvers-manhattan-beach-amusement-park/" },
+        ],
+      },
+      {
+        legend: "Roger was put down and buried by the park, under what is now a supermarket parking lot.",
+        record:
+          "Historian David Forsyth, who wrote the book on the park, says it never happened: Roger was on loan from the Central Park Zoo in New York, so the park could not have put him down, and in 1892 he was still there, still getting his bath in the lake. Where he went after that, the records do not say.",
+        sources: [{ name: "Colorado Public Radio, interview with historian David Forsyth (2024)", url: "https://www.cpr.org/2024/03/16/the-lost-history-of-denvers-manhattan-beach-amusement-park/" }],
+      },
+      {
+        record: "The park burned in 1908, reopened that year as Luna Park and closed for good in 1914. The lake stayed.",
+        sources: [{ name: "Sloan's Lake Park Foundation, Lake History", url: "https://sloanslakeparkfoundation.org/lake-history" }],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/sloanslake/frolic.jpg",
+        alt: "A postcard of a white two-deck steamboat full of passengers, flags strung along its roof, on calm water",
+        caption: "The steamboat Frolic at Luna Park, the park's last name, between 1908 and 1914.",
+        credit: "Unknown photographer, postcard",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Luna_Park_steamboat_Denver.jpg",
+      },
+      {
+        src: "/landing/legends/sloanslake/east-2008.jpg",
+        alt: "A wide lake under a blue sky, with the downtown Denver skyline small on the far shore",
+        caption: "Looking east across the lake toward downtown, 2008.",
+        credit: "coulderbolorado",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Looking_east_from_Sloan%27s_Lake_towards_Downtown_Denver_(1_July_2008).jpg",
+      },
+    ],
+    watch: [
+      { network: "YouTube", url: "https://www.youtube.com/shorts/XfEFxF4VNlU" },
+      { network: "Instagram", url: "https://www.instagram.com/reel/DeVX_rvEvnn/" },
+      { network: "TikTok", url: "https://tiktok.com/@denverhomestory/video/7695185516861410573" },
+    ],
+  },
+  {
+    slug: "dia",
+    eyebrow: "Denver, decoded · Denver International Airport",
+    title: "The airport's “cursed” horse",
+    dek: "Most people fly through Denver's airport without ever really seeing it. Here is what the records say about the roof, the price and the blue horse.",
+    hero: {
+      src: "/landing/legends/dia/hero.jpg",
+      alt: "3D model of Denver International Airport from above: the white peaked terminal roof, the parking lots and the runways on the open plains",
+    },
+    facts: [
+      {
+        record:
+          "The airport sits on a 52.4-square-mile site 25 miles northeast of the city: the largest airport in North America by land area, and the second largest in the world.",
+        sources: [
+          { name: "Colorado Encyclopedia, Denver International Airport", url: "https://coloradoencyclopedia.org/article/denver-international-airport" },
+          { name: "Wikipedia, Denver International Airport", url: "https://en.wikipedia.org/wiki/Denver_International_Airport" },
+        ],
+      },
+      {
+        record:
+          "It opened on February 28, 1995, sixteen months behind schedule, after its automated baggage system kept failing.",
+        sources: [{ name: "Wikipedia, Denver International Airport", url: "https://en.wikipedia.org/wiki/Denver_International_Airport" }],
+      },
+      {
+        record:
+          "The Colorado Encyclopedia calls it a $2.3 billion airport that has wound up costing more than $6 billion with everything added since. Wikipedia puts the cost on opening day at $4.8 billion.",
+        sources: [
+          { name: "Colorado Encyclopedia, Denver International Airport", url: "https://coloradoencyclopedia.org/article/denver-international-airport" },
+          { name: "Wikipedia, Denver International Airport", url: "https://en.wikipedia.org/wiki/Denver_International_Airport" },
+        ],
+      },
+      {
+        legend: "The white roof is a circus tent.",
+        record:
+          "It is a fabric roof designed by the architects Curt Fentress and James Bradburn after the snow-capped peaks of the Rockies.",
+        sources: [
+          { name: "Colorado Encyclopedia, Denver International Airport", url: "https://coloradoencyclopedia.org/article/denver-international-airport" },
+          { name: "Wikipedia, Denver International Airport", url: "https://en.wikipedia.org/wiki/Denver_International_Airport" },
+        ],
+      },
+      {
+        legend: "The blue horse with the glowing red eyes, “Blucifer”, is cursed.",
+        record:
+          "Its name is Mustang, a 32-foot fiberglass horse by the sculptor Luis Jiménez. Jiménez was killed in 2006 when a section of it came loose and severed an artery in his leg. The red eyes are a tribute to his father, who ran a neon sign shop.",
+        sources: [
+          { name: "Denver Public Library, A local's guide to DIA conspiracy theories", url: "https://history.denverlibrary.org/news/denver/locals-guide-dia-conspiracy-theories" },
+          { name: "Wikipedia, Blue Mustang", url: "https://en.wikipedia.org/wiki/Blue_Mustang" },
+        ],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/dia/roof.jpg",
+        alt: "White fabric peaks of the airport terminal roof against a blue sky with clouds",
+        caption: "The terminal roof up close.",
+        credit: "Carol M. Highsmith (Library of Congress)",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Roof_detail,_Denver_International_Airport,_Denver,_Colorado_LCCN2011630369.tif",
+      },
+    ],
+    watch: [
+      { network: "YouTube", url: "https://www.youtube.com/shorts/W31VwxOl09c" },
+      { network: "Instagram", url: "https://www.instagram.com/reel/DeQOaLQjs1o/" },
+      { network: "TikTok", url: "https://tiktok.com/@denverhomestory/video/7694814497701104910" },
+    ],
+  },
+  {
+    slug: "lookout",
+    eyebrow: "Denver, decoded · Lookout Mountain",
+    title: "Who is buried on Lookout Mountain?",
+    dek: "Two states have argued for a century about who is really in Buffalo Bill's grave. Here is what the records say.",
+    hero: {
+      src: "/landing/legends/lookout/hero.jpg",
+      alt: "3D model of Lookout Mountain above Golden: forested ridges and dry slopes, with the plains beyond",
+    },
+    facts: [
+      {
+        record:
+          "Buffalo Bill Cody died on January 10, 1917, at his sister's home in Denver.",
+        sources: [
+          { name: "Buffalo Bill Center of the West, Points West (2015)", url: "https://centerofthewest.org/2015/05/31/points-west-buffalo-bill-last-stand/" },
+          { name: "Buffalo Bill Museum and Grave, History", url: "https://www.buffalobill.org/history/" },
+        ],
+      },
+      {
+        legend: "He wanted to be buried in Cody, Wyoming, the town he founded, and friends from Cody swapped his body for a ranch hand's and took him home.",
+        record:
+          "His wife, Louisa, said he chose Lookout Mountain. His friends Goldie Griffith and Johnny Baker, and the priest who gave him last rites, said the same. An earlier will had named Cedar Mountain above Cody; an updated one named Lookout Mountain. The swap story is still told in Cody; the records place him on Lookout Mountain.",
+        sources: [
+          { name: "Buffalo Bill Museum and Grave, History", url: "https://www.buffalobill.org/history/" },
+          { name: "Denver Public Library, Is Buffalo Bill Cody really buried on Lookout Mountain? (2016)", url: "https://history.denverlibrary.org/news/western-history/buffalo-bill-cody-really-buried-lookout-mountain" },
+          { name: "Cody Yellowstone, The mystery of Buffalo Bill Cody's two graves", url: "https://www.codyyellowstone.org/blog/the-mystery-of-buffalo-bill-codys-two-graves/" },
+        ],
+      },
+      {
+        record:
+          "Winter had closed the road up the mountain, so his body was kept at a Denver mortuary until June 3, 1917, when thousands filed past the casket and he was buried on the mountain.",
+        sources: [
+          { name: "Denver Public Library, Is Buffalo Bill Cody really buried on Lookout Mountain? (2016)", url: "https://history.denverlibrary.org/news/western-history/buffalo-bill-cody-really-buried-lookout-mountain" },
+          { name: "Buffalo Bill Center of the West, Points West (2015)", url: "https://centerofthewest.org/2015/05/31/points-west-buffalo-bill-last-stand/" },
+        ],
+      },
+      {
+        record:
+          "The grave was put under concrete to deter a raid from Wyoming. In 1948, members of an American Legion post in Cody offered $10,000 to anyone who brought the body back, and the Colorado National Guard stationed troops around the grave. The Center of the West places that 1948 plan with a post in Cheyenne.",
+        sources: [
+          { name: "Denver Public Library, Is Buffalo Bill Cody really buried on Lookout Mountain? (2016)", url: "https://history.denverlibrary.org/news/western-history/buffalo-bill-cody-really-buried-lookout-mountain" },
+          { name: "Buffalo Bill Center of the West, Points West (2015)", url: "https://centerofthewest.org/2015/05/31/points-west-buffalo-bill-last-stand/" },
+        ],
+      },
+      {
+        record:
+          "Louisa was buried beside him in 1921. That same year Johnny Baker, his unofficial foster son, opened the museum next to the grave; it moved into its current building in 1977.",
+        sources: [{ name: "Buffalo Bill Museum and Grave, History", url: "https://www.buffalobill.org/history/" }],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/lookout/cody-1911.jpg",
+        alt: "Black-and-white portrait of an older man with a white moustache and goatee in a wide-brimmed hat",
+        caption: "William F. Cody in 1911.",
+        credit: "Moffett Studio, Chicago (Library of Congress)",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Cody-Buffalo-Bill-LOC.jpg",
+      },
+      {
+        src: "/landing/legends/lookout/funeral-1917.jpg",
+        alt: "A crowd and a marching band fill a downtown street in black and white, with soldiers in the procession",
+        caption: "Buffalo Bill's funeral parade in Denver, 1917.",
+        credit: "Unknown photographer (Library of Congress)",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Buffalo_Bill%27s_funeral_cph.3b14503.jpg",
+      },
+      {
+        src: "/landing/legends/lookout/grave.jpg",
+        alt: "A stone monument with a bronze plaque behind an iron fence, flowers at its base, under pine trees",
+        caption: "The grave on Lookout Mountain.",
+        credit: "Carol M. Highsmith (Library of Congress)",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:William_%27Buffalo_Bill%27_Cody_gravesite_on_Lookout_Mountain_outside_Denver,_Colorado_LCCN2011631818.tif",
+      },
+    ],
+    watch: [
+      { network: "YouTube", url: "https://www.youtube.com/shorts/RpIZt-MlQQc" },
+      { network: "Instagram", url: "https://www.instagram.com/reel/DeNptpDkXkb/" },
+      { network: "TikTok", url: "https://tiktok.com/@denverhomestory/video/7694443366729239821" },
+    ],
+    visit: { label: "Visit the Buffalo Bill Museum and Grave", url: "https://www.buffalobill.org/" },
   },
 ];
 
