@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.51";
+export const CURRENT_VERSION = "0.143.52";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.52",
+    date: "2026-10-28",
+    title: { en: "Three more legend pages: /sloanslake, /dia, /lookout", es: "Tres páginas de leyenda más: /sloanslake, /dia, /lookout" },
+    changes: [{
+      en: "The three most-watched videos had no page of their own. denverhomestory.com/sloanslake, /dia and /lookout now open theirs: Sloan's Lake and Roger the elephant, the airport and its blue horse, and Buffalo Bill's grave on Lookout Mountain, each with what the records say against its source, public-domain photographs and the links to the video. They are listed on /legends like the others.",
+      es: "Los tres vídeos más vistos no tenían página propia. denverhomestory.com/sloanslake, /dia y /lookout abren ahora la suya: Sloan's Lake y el elefante Roger, el aeropuerto y su caballo azul, y la tumba de Buffalo Bill en Lookout Mountain, cada una con lo que dicen los registros frente a su fuente, fotos de dominio público y los enlaces al vídeo. Aparecen en /legends como las demás.",
+    }],
+  },
   {
     version: "0.143.51",
     date: "2026-10-20",
