@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.53";
+export const CURRENT_VERSION = "0.143.54";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.54",
+    date: "2026-10-29",
+    title: { en: "A legend page for Mount Falcon: /mountfalcon", es: "Página de leyenda para Mount Falcon: /mountfalcon" },
+    changes: [{
+      en: "The new video about the summer home for the presidents that John Brisben Walker never finished above Red Rocks ends by saying denverhomestory.com/mountfalcon. That path now opens its own legend page: the story, what the records say with a source for every line, three photographs and a link to plan the hike in Mount Falcon Park.",
+      es: "El nuevo vídeo sobre la casa de verano para los presidentes que John Brisben Walker nunca terminó sobre Red Rocks termina diciendo denverhomestory.com/mountfalcon. Esa ruta abre ahora su propia página de leyenda: la historia, lo que dicen los registros con una fuente por línea, tres fotografías y un enlace para planear la excursión al parque Mount Falcon.",
+    }],
+  },
   {
     version: "0.143.53",
     date: "2026-10-28",

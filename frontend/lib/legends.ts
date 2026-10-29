@@ -1,6 +1,6 @@
 /**
  * The 3D legends: one page per video, opened by the short path the video says
- * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal`, `/hotels`, `/adx`, `/cheyenne`, `/brownpalace`, `/sloanslake`, `/dia`, `/lookout` in `next.config.js`).
+ * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal`, `/hotels`, `/adx`, `/cheyenne`, `/brownpalace`, `/sloanslake`, `/dia`, `/lookout`, `/mountfalcon` in `next.config.js`).
  *
  * Asked for on 11-oct-2026. Until then every short path landed on `/start` —
  * "Buy / Sell / Talk now" — and the owner, opening `/mollybrown` on his phone
@@ -1589,6 +1589,92 @@ export const LEGENDS: readonly Legend[] = [
       { network: "TikTok", url: "https://tiktok.com/@denverhomestory/video/7694443366729239821" },
     ],
     visit: { label: "Visit the Buffalo Bill Museum and Grave", url: "https://www.buffalobill.org/" },
+  },  {
+    slug: "mountfalcon",
+    eyebrow: "Denver, decoded · Mount Falcon",
+    title: "Why is there a White House cornerstone above Red Rocks?",
+    dek: "A magazine millionaire promised the presidents a summer home on the mountain above Morrison. Here is what the records say about the house that was never built.",
+    hero: {
+      src: "/landing/legends/mountfalcon/hero.jpg",
+      alt: "3D model of Mount Falcon: forested ridges above the red rock formations, with the plains beyond",
+    },
+    facts: [
+      {
+        record:
+          "John Brisben Walker bought Cosmopolitan magazine in 1889 and sold it to William Randolph Hearst in 1905.",
+        sources: [
+          { name: "Morrison History, John Brisben Walker", url: "https://morrisonhistory.org/john-brisben-walker/" },
+          { name: "Wikipedia, John Brisben Walker", url: "https://en.wikipedia.org/wiki/John_Brisben_Walker" },
+        ],
+      },
+      {
+        record:
+          "From 1905 he bought up Red Rocks and the land around it, called it the Garden of the Titans and opened it with a concert on May 31, 1906. Denver bought the park in 1927.",
+        sources: [
+          { name: "Red Rocks Park and Amphitheatre, History", url: "https://www.redrocksonline.com/?p=6966" },
+          { name: "Wikipedia, John Brisben Walker", url: "https://en.wikipedia.org/wiki/John_Brisben_Walker" },
+        ],
+      },
+      {
+        legend: "A president was coming to spend his summers on Mount Falcon.",
+        record:
+          "Walker conceived a summer home for the presidents in 1910 and had the Denver architect J. B. Benedict draw it. In October 1911 he showed the cornerstone, a block of Colorado Yule marble, in Denver. President Taft said no better location could be found. In July 1914 the Rocky Mountain News announced that President Wilson would lay the cornerstone on August 15; the trip was put off until October, and October passed. A plaque at the site says the stone was laid on July 4, 1914.",
+        sources: [
+          { name: "Francis Russell, The Summer White House in the Clouds, American Heritage (1973)", url: "https://www.americanheritage.com/summer-white-house-clouds" },
+          { name: "Read the Plaque, Summer White House that was never built", url: "https://readtheplaque.com/plaque/summer-white-house-that-was-never-built" },
+        ],
+      },
+      {
+        record:
+          "The stone reads: Summer Home for the Presidents of the United States, the gift of the people of Colorado, 1911. Walker asked every schoolchild in the country for ten cents, and some of them paid, but the three hundred thousand dollars he hoped to raise never came. World War I and his shrinking fortune ended the project with only the foundation built.",
+        sources: [
+          { name: "Francis Russell, The Summer White House in the Clouds, American Heritage (1973)", url: "https://www.americanheritage.com/summer-white-house-clouds" },
+          { name: "Wikipedia, John Brisben Walker", url: "https://en.wikipedia.org/wiki/John_Brisben_Walker" },
+        ],
+      },
+      {
+        legend: "Lightning burned the castle.",
+        record:
+          "Walker built a stone house on the mountain for his family. His wife, Ethel, died in 1916, and in 1918 the house burned. Most accounts say lightning; Morrison's history walking tour adds that others suggested a more sinister cause. Walker died in Brooklyn in 1931.",
+        sources: [
+          { name: "Morrison History, John Brisben Walker", url: "https://morrisonhistory.org/john-brisben-walker/" },
+          { name: "Wikipedia, John Brisben Walker", url: "https://en.wikipedia.org/wiki/John_Brisben_Walker" },
+        ],
+      },
+      {
+        record:
+          "Mount Falcon Park is free and part of Jefferson County Open Space. Its trails lead to the ruins of Walker's house and to the cornerstone of the summer home.",
+        sources: [{ name: "Jefferson County Open Space, Mount Falcon Park", url: "https://www.jeffco.us/1332/Mount-Falcon-Park" }],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/mountfalcon/walker-1890.jpg",
+        alt: "Black-and-white oval portrait of a man with a moustache resting his head on his hand",
+        caption: "John Brisben Walker, around 1890.",
+        credit: "Unknown photographer",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:John_Brisben_Walker_ca_1890.jpg",
+      },
+      {
+        src: "/landing/legends/mountfalcon/ruins.jpg",
+        alt: "Stone chimneys and broken walls of a ruined house among pine trees under a blue sky",
+        caption: "The ruins of Walker's house on Mount Falcon.",
+        credit: "Nicolas Raymond",
+        licence: "CC BY 2.0",
+        page: "https://commons.wikimedia.org/wiki/File:Walker_Home_Ruins_(53015080957).jpg",
+      },
+      {
+        src: "/landing/legends/mountfalcon/ruins-pano.jpg",
+        alt: "Panorama of stone walls with empty window openings behind a wooden fence",
+        caption: "The house ruins from the inside, 2009.",
+        credit: "Fitchhollister",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Walker_home_pano.jpg",
+      },
+    ],
+    watch: [],
+    visit: { label: "Plan a hike: Mount Falcon Park", url: "https://www.jeffco.us/1332/Mount-Falcon-Park" },
   },
 ];
 
