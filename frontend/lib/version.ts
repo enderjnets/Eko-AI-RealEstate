@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.54";
+export const CURRENT_VERSION = "0.143.55";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,15 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.55",
+    date: "2026-10-31",
+    title: { en: "A legend page for the Daniels & Fisher Tower: /clocktower", es: "Página de leyenda para la Daniels & Fisher Tower: /clocktower" },
+    changes: [{
+      en: "The new video about the downtown clock tower modeled on Venice's bell tower ends with Clara saying denverhomestory.com/clocktower. That path now opens its own legend page: the tower, the Venice collapse of 1902, the store that was demolished around 1971, and the sources for each fact.",
+      es: "El nuevo vídeo sobre la torre del reloj del centro, inspirada en el campanario de Venecia, termina con Clara diciendo denverhomestory.com/clocktower. Esa ruta abre ahora su propia página de leyenda: la torre, el derrumbe de Venecia en 1902, la tienda derribada hacia 1971 y las fuentes de cada dato.",
+    }],
+  },
   {
     version: "0.143.54",
     date: "2026-10-29",
