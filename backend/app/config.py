@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Reported by / and /api/v1/health and printed at startup. Kept in step
     # with frontend/lib/version.ts: it was left at 0.0.1 for eleven releases,
     # so the API could not tell an operator which build was live.
-    APP_VERSION: str = "0.143.55"
+    APP_VERSION: str = "0.143.56"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -641,7 +641,10 @@ class Settings(BaseSettings):
     # A single value is still valid and still means one slot.
     CONTENT_SLOT_YOUTUBE: str = "12:30,20:30"
     CONTENT_SLOT_INSTAGRAM: str = "11:30,18:30"
-    CONTENT_SLOT_TIKTOK: str = "08:30,17:30"
+    # TikTok: afternoon only (31-oct-2026). Since 16-oct, 12 of 13 posts at 08:30 were
+    # refused as "potential spam" while 4 of 5 at 17:30 went out, and the same video
+    # that failed at 08:30 went out at 17:30 days later (pieces 133/145, 132/147).
+    CONTENT_SLOT_TIKTOK: str = "17:30,19:30"
     # How much warning Buffer needs. A slot closer than this is not used today;
     # the piece goes to tomorrow's. Buffer fetches the video when the post goes
     # out, and a fetch that starts after the hour has passed is a post that

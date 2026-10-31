@@ -426,6 +426,47 @@ def _first_site_link(text: str, cta_url: str) -> tuple[int, int, Any, str, Any] 
     return None
 
 
+#: TikTok refuses a post whose text is longer than this. Piece 142 (19-oct-2026) went
+#: out everywhere else and was refused there: "[InvalidInputError] Invalid post:
+#: TikTok posts cannot exceed 2200 characters."
+TIKTOK_TEXT_LIMIT = 2200
+
+#: Lines the cut never touches: the brokerage disclosure (Colorado Rule 6.10) and
+#: the AI disclosure (the platforms' synthetic-media rules).
+_KEEP_MARKERS = ("independently owned and operated", "ai-generated", "synthetic voice", "3d model")
+#: What goes first when a caption is too long for TikTok. The photo credits are
+#: also burned into the video next to each photo, so the attribution survives.
+_DROP_FIRST = ("sources:", "photos:", "music:")
+
+
+def fit_tiktok_text(text: str, limit: int = TIKTOK_TEXT_LIMIT) -> str:
+    """The caption cut to TikTok's limit without losing what the law asks for.
+
+    Drops whole credit lines first (sources, then photos, then music), and only
+    if that is not enough shortens the story itself — never a line that carries
+    the brokerage or the AI disclosure. Text that already fits is returned as is.
+    """
+    if len(text) <= limit:
+        return text
+    lines = text.split("\n")
+    for prefix in _DROP_FIRST:
+        lines = [x for x in lines if not x.strip().lower().startswith(prefix)]
+        cand = "\n".join(lines)
+        if len(cand) <= limit:
+            return cand
+    keep = [any(m in x.lower() for m in _KEEP_MARKERS) for x in lines]
+    over = len("\n".join(lines)) - limit
+    # shorten the longest line that is not protected, from its end, until it fits
+    while over > 0:
+        idx = max((i for i, k in enumerate(keep) if not k and len(lines[i]) > 1), key=lambda i: len(lines[i]), default=None)
+        if idx is None:
+            break
+        cut = min(over + 1, len(lines[idx]) - 1)
+        lines[idx] = lines[idx][: len(lines[idx]) - cut].rstrip() + "…"
+        over = len("\n".join(lines)) - limit
+    return "\n".join(lines)[:limit]
+
+
 def build_post_input(
     channel_id: str,
     platform: PublicationPlatform,
@@ -467,6 +508,8 @@ def build_post_input(
     Natalia filmed in front of a house is not AI-generated, and declaring it so
     would be a false statement on the agency's own channel.
     """
+    if platform is PublicationPlatform.TIKTOK:
+        text = fit_tiktok_text(text)
     inp: dict[str, Any] = {
         "channelId": channel_id,
         "text": text,

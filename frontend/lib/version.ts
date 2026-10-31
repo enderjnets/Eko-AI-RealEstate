@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.55";
+export const CURRENT_VERSION = "0.143.56";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,25 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.56",
+    date: "2026-10-31",
+    title: { en: "TikTok in the afternoon, captions that fit, and approval from the chat", es: "TikTok por la tarde, descripciones que caben y aprobación desde el chat" },
+    changes: [
+      {
+        en: "TikTok posts now go out at 17:30 and 19:30 instead of 08:30 and 17:30. Since October 16, twelve of thirteen morning posts were refused as \"potential spam\" while the afternoon ones went out, and the same video that failed in the morning went out in the afternoon days later.",
+        es: "TikTok publica ahora a las 17:30 y 19:30 en vez de a las 08:30 y 17:30. Desde el 16 de octubre, doce de trece publicaciones de la mañana fueron rechazadas como «posible spam» mientras las de la tarde salían, y el mismo vídeo que falló por la mañana salió por la tarde días después.",
+      },
+      {
+        en: "A caption longer than TikTok's 2,200 characters is shortened for TikTok only: sources and credits go first; the brokerage line and the AI disclosure are never cut.",
+        es: "Una descripción de más de 2.200 caracteres, el límite de TikTok, se acorta solo para TikTok: primero salen las fuentes y los créditos; la línea de la correduría y el aviso de IA no se cortan nunca.",
+      },
+      {
+        en: "A finished video can be uploaded, dated and approved from the server when the owner approves it in writing from his phone. It goes through the same checks as the panel, refuses a file different from the one he watched, and records his words as the approval.",
+        es: "Un vídeo terminado se puede subir, fechar y aprobar desde el servidor cuando el dueño lo aprueba por escrito desde el móvil. Pasa por los mismos controles que el panel, rechaza un archivo distinto del que vio y guarda sus palabras como aprobación.",
+      },
+    ],
+  },
   {
     version: "0.143.55",
     date: "2026-10-31",
