@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.143.56] — 2026-10-31
+
+- Publishing: `CONTENT_SLOT_TIKTOK` default `17:30,19:30` (was `08:30,17:30`), in `config.py`, `docker-compose.yml` and `.env.example`. Evidence (`content_publications`, 26 days): since 16-oct 12 of 13 TikTok posts at 08:30 failed with "TikTok flagged this post as potential spam", 4 of 5 at 17:30 went out; pieces 133→145 and 132→147 are the same video failing at 08:30 and publishing at 17:30. YouTube and Instagram slots unchanged.
+- Publishing: `fit_tiktok_text` cuts a caption to TikTok's 2,200 characters (piece 142, 19-oct: `InvalidInputError`), dropping `Sources:`, `Photos:`, `Music:` lines first and never a line with the brokerage or AI disclosure.
+- Ops: `backend/scripts/publicar_pieza.py` — upload + caption + publish date + submit (+ approve with `--approved-by`, the owner's written words) through the same HTTP routes as the console, with a one-hour session token minted in the container. Refuses a file whose sha256 differs from the copy the owner watched, a caption without the brokerage line or the AI disclosure, and a past date.
+
 ## [0.143.55] — 2026-10-31
 
 - Landing: `/clocktower`, the spoken path of the new Daniels & Fisher Tower video (the first one opened and closed by Clara, the AI host), lands on its own legend page (`LEGEND_PAGES`) with the same `utm_campaign=legends` tags. Facts checked against two sources each (Denver Public Library, Historic Denver, NPS NRIS 69000040, Wikipedia, Basilica di San Marco); the height (325 vs 330+ ft) and the completion year (1911 vs 1912) disagree between sources and are given as such. Photos: public domain and CC BY 2.0 only.
