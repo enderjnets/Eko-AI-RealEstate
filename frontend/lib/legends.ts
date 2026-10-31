@@ -1,6 +1,6 @@
 /**
  * The 3D legends: one page per video, opened by the short path the video says
- * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal`, `/hotels`, `/adx`, `/cheyenne`, `/brownpalace`, `/sloanslake`, `/dia`, `/lookout`, `/mountfalcon` in `next.config.js`).
+ * out loud (`/colfax`, `/cheesman`, `/mollybrown`, `/unionstation`, `/georgetownloop`, `/confluencepark`, `/redrocks`, `/mint`, `/gateway`, `/abasin`, `/arsenal`, `/hotels`, `/adx`, `/cheyenne`, `/brownpalace`, `/sloanslake`, `/dia`, `/lookout`, `/mountfalcon`, `/clocktower` in `next.config.js`).
  *
  * Asked for on 11-oct-2026. Until then every short path landed on `/start` —
  * "Buy / Sell / Talk now" — and the owner, opening `/mollybrown` on his phone
@@ -1675,6 +1675,93 @@ export const LEGENDS: readonly Legend[] = [
     ],
     watch: [],
     visit: { label: "Plan a hike: Mount Falcon Park", url: "https://www.jeffco.us/1332/Mount-Falcon-Park" },
+  },
+  {
+    slug: "clocktower",
+    eyebrow: "Denver, decoded · Daniels & Fisher Tower",
+    title: "Why does downtown Denver have a bell tower modeled on Venice's?",
+    dek: "A Denver department store built its own version of St. Mark's Campanile while Venice was still rebuilding the original. Here is what the records say about the tower, and about the store that did not survive.",
+    hero: {
+      src: "/landing/legends/clocktower/hero.jpg",
+      alt: "3D model of the Daniels & Fisher Tower: a slender tan clock tower with a pyramid roof among taller downtown buildings",
+    },
+    facts: [
+      {
+        record:
+          "The Daniels & Fisher dry goods store built the tower on Sixteenth Street as part of its new building. The architects, Frederick J. Sterner and George H. Williamson, modeled it on the Campanile of St. Mark's in Venice. Construction began in 1910; sources give 1911 or 1912 for its completion.",
+        sources: [
+          { name: "Denver Public Library, Daniels and Fisher's Clock Tower", url: "https://history.denverlibrary.org/daniels-and-fishers-clock-tower" },
+          { name: "Historic Denver, Daniels and Fisher Clock Tower", url: "https://historicdenver.org/daniels-and-fisher-clock-tower/" },
+        ],
+      },
+      {
+        legend: "It was the tallest building west of the Mississippi.",
+        record:
+          "Historic Denver says the tower prided itself on being the highest structure west of the Mississippi River at the time, and Wikipedia, citing a 1929 Rocky Mountain News article, calls it the tallest building between the Mississippi and California. Its height is usually given as 325 feet, though some accounts give more.",
+        sources: [
+          { name: "Historic Denver, Daniels and Fisher Clock Tower", url: "https://historicdenver.org/daniels-and-fisher-clock-tower/" },
+          { name: "Wikipedia, Daniels & Fisher Tower", url: "https://en.wikipedia.org/wiki/Daniels_%26_Fisher_Tower" },
+        ],
+      },
+      {
+        record:
+          "Venice's original bell tower collapsed on July 14, 1902. The city rebuilt it where it was and as it was, and reopened it on April 25, 1912, while Denver's version was going up on Sixteenth Street.",
+        sources: [
+          { name: "Basilica di San Marco, The bell tower", url: "https://www.basilicasanmarco.it/en/campanile/" },
+          { name: "Wikipedia, St Mark's Campanile", url: "https://en.wikipedia.org/wiki/St_Mark%27s_Campanile" },
+        ],
+      },
+      {
+        record:
+          "A bell weighing more than two tons hangs in the top floors, and the clock has faces on all four sides of the tower.",
+        sources: [
+          { name: "Denver Public Library, Daniels and Fisher's Clock Tower", url: "https://history.denverlibrary.org/daniels-and-fishers-clock-tower" },
+          { name: "Historic Denver, Daniels and Fisher Clock Tower", url: "https://historicdenver.org/daniels-and-fisher-clock-tower/" },
+        ],
+      },
+      {
+        record:
+          "The May Company bought Daniels & Fisher in 1958 and the store left the tower. The tower was listed on the National Register of Historic Places on December 3, 1969. The store building was demolished around 1971, during the Skyline Urban Renewal Project, and only the tower remains.",
+        sources: [
+          { name: "National Park Service, National Register of Historic Places (69000040)", url: "https://npgallery.nps.gov/AssetDetail/NRIS/69000040" },
+          { name: "Historic Denver, Daniels and Fisher Clock Tower", url: "https://historicdenver.org/daniels-and-fisher-clock-tower/" },
+          { name: "Wikipedia, Daniels & Fisher Tower", url: "https://en.wikipedia.org/wiki/Daniels_%26_Fisher_Tower" },
+        ],
+      },
+      {
+        record:
+          "Part of the tower is offices today, and Historic Denver offers self-guided tours of its top floors. On the west side you can still see the marks where the store once joined the tower.",
+        sources: [{ name: "Historic Denver, Daniels and Fisher Clock Tower", url: "https://historicdenver.org/daniels-and-fisher-clock-tower/" }],
+      },
+    ],
+    photos: [
+      {
+        src: "/landing/legends/clocktower/ruins-1902.jpg",
+        alt: "Two men in hats stand in front of a large pile of rubble beside an arched building",
+        caption: "The ruins of St. Mark's Campanile in Venice, July 14, 1902.",
+        credit: "Unknown photographer",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:Ruins_of_St_Mark%27s_Campanile.jpg",
+      },
+      {
+        src: "/landing/legends/clocktower/tower-2008.jpg",
+        alt: "A tall brown clock tower with a pyramid roof rising behind green trees",
+        caption: "The Daniels & Fisher Tower, 2008.",
+        credit: "Doodah67",
+        licence: "Public domain",
+        page: "https://commons.wikimedia.org/wiki/File:D%26F_Tower.JPG",
+      },
+      {
+        src: "/landing/legends/clocktower/clock.jpg",
+        alt: "The top of the tower: a clock face, an arched belfry and a pyramid roof with a flag",
+        caption: "The clock and the belfry.",
+        credit: "Paul Sableman",
+        licence: "CC BY 2.0",
+        page: "https://commons.wikimedia.org/wiki/File:Colorado_Clocktower_(23481079653).jpg",
+      },
+    ],
+    watch: [],
+    visit: { label: "Tour the top floors: Historic Denver", url: "https://historicdenver.org/daniels-and-fisher-clock-tower/" },
   },
 ];
 

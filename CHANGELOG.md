@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.55] — 2026-10-31
+
+- Landing: `/clocktower`, the spoken path of the new Daniels & Fisher Tower video (the first one opened and closed by Clara, the AI host), lands on its own legend page (`LEGEND_PAGES`) with the same `utm_campaign=legends` tags. Facts checked against two sources each (Denver Public Library, Historic Denver, NPS NRIS 69000040, Wikipedia, Basilica di San Marco); the height (325 vs 330+ ft) and the completion year (1911 vs 1912) disagree between sources and are given as such. Photos: public domain and CC BY 2.0 only.
+
 ## [0.143.54] — 2026-10-29
 
 - Landing: `/mountfalcon`, the spoken path of the new Mount Falcon video, lands on its own legend page (`LEGEND_PAGES`) with the same `utm_campaign=legends` tags. Facts checked against two sources each: Walker sold Cosmopolitan to Hearst in 1905 (Morrison History, Wikipedia); Red Rocks bought from 1905, the Garden of the Titans opened May 31, 1906, Denver bought the park in 1927 (Red Rocks' own history, Wikipedia); the summer home for the presidents, J. B. Benedict, the Yule marble cornerstone shown in Denver in October 1911, Taft's remark, Wilson's trip announced for August 15, 1914, put off until October and October passed, ten cents per schoolchild (Francis Russell, American Heritage, 1973). The cornerstone's laying date conflicts (a plaque says July 4, 1914; American Heritage says it was still unlaid that October); the page gives both. The 1918 fire: lightning per most accounts, a "more sinister" cause per Morrison History's walking tour, attributed. Sale price of Cosmopolitan left out (reported as $400,000 and $1,000,000). Photographs: Walker c.1890 and a 2009 panorama of the ruins (public domain), the ruins by Nicolas Raymond (CC BY 2.0); the cornerstone's only Commons photo is CC BY-SA and is not used. Hero is a frame of our own 3D model.
