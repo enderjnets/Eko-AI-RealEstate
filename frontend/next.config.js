@@ -21,21 +21,17 @@ const nextConfig = {
     // `to` exists because a bio link is a bet on which page suits the person
     // arriving from that network, and the bet is not the same all year.
     //
-    // Instagram's points at the autumn guide as of 18-sep-2026, measured:
-    // `/fall` is the best-read page on the site — 63% average scroll against
-    // 31% for the home page — while the three sessions that did reach `/start`
-    // from Instagram left at 0%. The tagging does not change, and that is the
-    // point: `utm_medium=bio` is what tells a profile click from a caption
-    // link, so the two stay countable apart even though they now land together.
-    //
-    // EXPIRES 1-nov-2026. `/fall` is twelve places sorted by the elevation
-    // their aspens turn at; in November it is a guide to something that already
-    // happened, and a visitor who followed a profile link would land on last
-    // month. On that date Instagram goes back to `/start`. Deliberately NOT
-    // automated on a date check: a redirect that changes by itself is a
-    // redirect nobody re-reads, and this one deserves a person deciding
-    // whether the next season has a page of its own. The reminder lives in
-    // PROJECT_STATUS, and the test below fails if the date passes unattended.
+    // Instagram's points at `/legends` as of 2-nov-2026, the owner's decision.
+    // It went to the autumn guide from 18-sep (`/fall` read best: 63% average
+    // scroll against 31% for the home page) until that guide expired with the
+    // season. Measured on 2-nov: 1,613 profile visits in 30 days and 16 link
+    // taps, from an audience the videos built — 87% of followers are 35+, 41%
+    // in Denver, Lakewood, Arvada, Centennial and Federal Heights. People tap
+    // the profile after a legend video, so the link continues the legends, and
+    // `/legends` now opens with the Start-here block, Sell first, because that
+    // audience is mostly people who already own a home here. The tagging does
+    // not change: `utm_medium=bio` still tells a profile click from a caption
+    // link.
     const bio = (network) => ({
       source: `/${network.short}`,
       destination:
@@ -119,11 +115,11 @@ const nextConfig = {
     return [
       bio({ short: "yt", source: "youtube" }),
       bio({ short: "tt", source: "tiktok" }),
-      bio({ short: "ig", source: "instagram", to: "/fall" }),
+      bio({ short: "ig", source: "instagram", to: "/legends" }),
       // Spelled-out aliases, for anywhere the two letters look like a typo.
       bio({ short: "youtube", source: "youtube" }),
       bio({ short: "tiktok", source: "tiktok" }),
-      bio({ short: "instagram", source: "instagram", to: "/fall" }),
+      bio({ short: "instagram", source: "instagram", to: "/legends" }),
       partner({ short: "n", name: "natalia" }),
       partner({ short: "r", name: "robbie" }),
       partner({ short: "e", name: "ender" }),

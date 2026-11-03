@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 
 import { LegendsIndex } from "@/components/landing/LegendsIndex";
+import type { StartActionsSearchParams } from "@/components/landing/StartActions";
 import { BRAND_URL } from "@/lib/hosts";
 import { publicTitle } from "@/lib/landing";
 import { LEGENDS, LEGENDS_INDEXED } from "@/lib/legends";
@@ -25,11 +26,11 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: "#F4F1EA" };
 
-export default function LegendsIndexPage() {
+export default function LegendsIndexPage({ searchParams = {} }: { searchParams?: StartActionsSearchParams }) {
   return (
     <>
       <JsonLd data={legendsIndexJsonLd(LEGENDS)} />
-      <LegendsIndex />
+      <LegendsIndex searchParams={searchParams} />
     </>
   );
 }

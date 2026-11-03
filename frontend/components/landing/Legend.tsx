@@ -1,39 +1,19 @@
 "use client";
 
-import { ArrowLeft, ArrowUpRight, Calculator, House, Phone } from "lucide-react";
+import { ArrowLeft, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 
 import { LandingTracker } from "@/components/landing/LandingTracker";
-import { collectAttribution, withAttribution } from "@/lib/capture";
+import { StartActions, attributedStartLinks, type StartActionsSearchParams } from "@/components/landing/StartActions";
 import { useI18n } from "@/lib/i18n";
-import { LANDING, dialable, readableUsPhone } from "@/lib/landing";
+import { LANDING } from "@/lib/landing";
 import { LEGEND_MODEL_NOTE, type Legend as LegendData } from "@/lib/legends";
 
-type SearchValue = string | string[] | undefined;
-export type LegendSearchParams = Record<string, SearchValue>;
-
-/** Same attribution as `/start`: the UTM the short path put on the URL travels
- *  into the calculator and the consult form, so a lead from a legend video is
- *  still credited to it. Only the variant differs. */
-function attributedLinks(searchParams: LegendSearchParams, slug: string) {
-  const attribution = collectAttribution({
-    get(key) {
-      const value = searchParams[key];
-      return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
-    },
-  });
-  if (!attribution.landing_variant) attribution.landing_variant = `legend-${slug}`;
-  return {
-    calculator: withAttribution("/calculator", attribution),
-    consult: withAttribution("/#consult", attribution),
-  };
-}
+export type LegendSearchParams = StartActionsSearchParams;
 
 export function Legend({ legend, searchParams = {} }: { legend: LegendData; searchParams?: LegendSearchParams }) {
   const { t } = useI18n();
-  const links = attributedLinks(searchParams, legend.slug);
-  const phone = dialable(LANDING.phone);
-  const cell = "flex min-h-[132px] flex-col border-r border-t border-ln-line-strong p-5 transition-colors sm:p-6";
+  const links = attributedStartLinks(searchParams, `legend-${legend.slug}`);
 
   return (
     <div className="eko-landing flex min-h-[100svh] flex-col bg-ln-canvas font-ln-sans text-ln-ink" lang="en">
@@ -154,37 +134,7 @@ export function Legend({ legend, searchParams = {} }: { legend: LegendData; sear
           <p className="text-[10px] font-medium uppercase tracking-[0.3em] text-ln-bronze">{t("legend.next.eyebrow")}</p>
           <h2 className="mt-2 font-ln-serif text-[34px] font-light leading-none sm:text-[44px]">{t("legend.next.title")}</h2>
           <p className="mt-3 text-[15px] leading-6 text-ln-body">{t("legend.next.intro")}</p>
-          <nav aria-label={t("start.actions.label")} className="mt-6 grid border-b border-l border-ln-line-strong sm:grid-cols-3">
-            <Link href={links.calculator} data-track="legend-calculator" aria-label={t("start.buy.aria")} className={`${cell} bg-ln-paper hover:bg-ln-cream`}>
-              <span className="flex items-start justify-between text-[10px] font-medium uppercase tracking-[0.24em] text-ln-bronze">
-                {t("start.buy.number")}
-                <Calculator aria-hidden="true" className="h-5 w-5 text-ln-gold" strokeWidth={1.5} />
-              </span>
-              <span className="mt-3 font-ln-serif text-[24px] font-light leading-[1.05] text-ln-dark">{t("start.buy.title")}</span>
-            </Link>
-            <Link href={links.consult} data-track="legend-sell-value" aria-label={t("start.sell.aria")} className={`${cell} bg-ln-stone hover:bg-ln-tint`}>
-              <span className="flex items-start justify-between text-[10px] font-medium uppercase tracking-[0.24em] text-ln-dark">
-                {t("start.sell.number")}
-                <House aria-hidden="true" className="h-5 w-5 text-ln-gold" strokeWidth={1.5} />
-              </span>
-              <span className="mt-3 font-ln-serif text-[24px] font-light leading-[1.05] text-ln-dark">{t("start.sell.title")}</span>
-            </Link>
-            {phone ? (
-              <a href={`tel:${phone}`} data-track="legend-call" aria-label={t("start.talk.callAria")} className={`${cell} bg-ln-dark text-ln-cream hover:bg-ln-night`}>
-                <span className="flex items-start justify-between text-[10px] font-medium uppercase tracking-[0.24em] text-ln-canvas/65">
-                  {t("start.talk.number")}
-                  <Phone aria-hidden="true" className="h-5 w-5 text-ln-canvas/75" strokeWidth={1.5} />
-                </span>
-                <span className="mt-3 font-ln-serif text-[24px] font-light leading-[1.05]">{t("start.talk.title")}</span>
-                <span className="mt-2 text-[14px] tracking-[0.08em] text-ln-canvas/85">{readableUsPhone(LANDING.phone)}</span>
-              </a>
-            ) : (
-              <Link href={links.consult} data-track="legend-contact" aria-label={t("start.talk.contactAria")} className={`${cell} bg-ln-dark text-ln-cream hover:bg-ln-night`}>
-                <span className="text-[10px] font-medium uppercase tracking-[0.24em] text-ln-canvas/65">{t("start.talk.number")}</span>
-                <span className="mt-3 font-ln-serif text-[24px] font-light leading-[1.05]">{t("start.talk.title")}</span>
-              </Link>
-            )}
-          </nav>
+          <StartActions links={links} track="legend" />
         </section>
 
         <p className="mt-10 text-[11px] leading-5 text-ln-body">{LEGEND_MODEL_NOTE}</p>

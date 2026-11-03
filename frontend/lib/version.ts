@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.56";
+export const CURRENT_VERSION = "0.143.57";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,25 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.57",
+    date: "2026-11-02",
+    title: { en: "The Instagram link leads to the legends, with selling first", es: "El enlace de Instagram lleva a las leyendas, con vender primero" },
+    changes: [
+      {
+        en: "The Instagram profile link now opens the legends page instead of the autumn guide, which ended with the season. In 30 days 1,613 people visited the profile and 16 tapped the link.",
+        es: "El enlace del perfil de Instagram abre ahora la página de las leyendas en vez de la guía de otoño, que terminó con la temporada. En 30 días 1.613 personas visitaron el perfil y 16 tocaron el enlace.",
+      },
+      {
+        en: "The legends page opens with \"Start here\": sell, buy or talk to Natalia and Robbie, before the list of legends.",
+        es: "La página de las leyendas empieza con «Empieza aquí»: vender, comprar o hablar con Natalia y Robbie, antes de la lista.",
+      },
+      {
+        en: "Selling now comes first everywhere (\"What is your home worth today?\"): most of the audience the videos built already owns a home in the Denver area.",
+        es: "Vender va ahora primero en todas partes («¿Cuánto vale hoy tu casa?»): la mayoría del público que han creado los vídeos ya tiene casa en el área de Denver.",
+      },
+    ],
+  },
   {
     version: "0.143.56",
     date: "2026-10-31",

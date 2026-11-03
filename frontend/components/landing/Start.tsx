@@ -107,34 +107,6 @@ export function Start({ searchParams = {} }: { searchParams?: StartSearchParams 
           className="mt-7 grid border-b border-l border-ln-line-strong [@media(max-height:700px)]:mt-4 sm:mt-10 lg:mt-14 lg:grid-cols-3"
         >
           <Link
-            href={links.calculator}
-            data-track="start-calculator"
-            aria-label={t("start.buy.aria")}
-            className="group flex min-h-[160px] flex-col border-r border-t border-ln-line-strong bg-ln-paper p-5 transition-colors hover:bg-ln-cream focus-visible:z-10 [@media(max-height:700px)]:min-h-[112px] [@media(max-height:700px)]:p-3 sm:p-6 lg:min-h-[290px] lg:p-8"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-[10px] font-medium uppercase tracking-[0.24em] text-ln-bronze">
-                {t("start.buy.number")}
-              </span>
-              <Calculator aria-hidden="true" className="h-5 w-5 text-ln-gold" strokeWidth={1.5} />
-            </div>
-            <div className="mt-4 grid flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-4 [@media(max-height:700px)]:mt-2 lg:mt-9 lg:flex lg:flex-col">
-              <h2 className="max-w-xs font-ln-serif text-[27px] font-light leading-[1.02] text-ln-dark [@media(max-height:700px)]:text-[22px] sm:text-[31px] lg:text-[34px]">
-                {t("start.buy.title")}
-              </h2>
-              <div className="flex min-w-0 flex-col">
-                <p className="max-w-sm text-[13px] leading-5 text-ln-body [@media(max-height:700px)]:hidden sm:text-[14px] sm:leading-6 lg:mt-4">
-                  {t("start.buy.body")}
-                </p>
-                <span className="mt-3 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-ln-bronze [@media(max-height:700px)]:mt-1 lg:mt-auto lg:pt-7">
-                  {t("start.action")}
-                  <ArrowUpRight aria-hidden="true" className="h-4 w-4" strokeWidth={1.5} />
-                </span>
-              </div>
-            </div>
-          </Link>
-
-          <Link
             href={links.consult}
             data-track="start-sell-value"
             aria-label={t("start.sell.aria")}
@@ -155,6 +127,34 @@ export function Start({ searchParams = {} }: { searchParams?: StartSearchParams 
                   {t("start.sell.body")}
                 </p>
                 <span className="mt-3 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-ln-dark [@media(max-height:700px)]:mt-1 lg:mt-auto lg:pt-7">
+                  {t("start.action")}
+                  <ArrowUpRight aria-hidden="true" className="h-4 w-4" strokeWidth={1.5} />
+                </span>
+              </div>
+            </div>
+          </Link>
+
+          <Link
+            href={links.calculator}
+            data-track="start-calculator"
+            aria-label={t("start.buy.aria")}
+            className="group flex min-h-[160px] flex-col border-r border-t border-ln-line-strong bg-ln-paper p-5 transition-colors hover:bg-ln-cream focus-visible:z-10 [@media(max-height:700px)]:min-h-[112px] [@media(max-height:700px)]:p-3 sm:p-6 lg:min-h-[290px] lg:p-8"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-[10px] font-medium uppercase tracking-[0.24em] text-ln-bronze">
+                {t("start.buy.number")}
+              </span>
+              <Calculator aria-hidden="true" className="h-5 w-5 text-ln-gold" strokeWidth={1.5} />
+            </div>
+            <div className="mt-4 grid flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-4 [@media(max-height:700px)]:mt-2 lg:mt-9 lg:flex lg:flex-col">
+              <h2 className="max-w-xs font-ln-serif text-[27px] font-light leading-[1.02] text-ln-dark [@media(max-height:700px)]:text-[22px] sm:text-[31px] lg:text-[34px]">
+                {t("start.buy.title")}
+              </h2>
+              <div className="flex min-w-0 flex-col">
+                <p className="max-w-sm text-[13px] leading-5 text-ln-body [@media(max-height:700px)]:hidden sm:text-[14px] sm:leading-6 lg:mt-4">
+                  {t("start.buy.body")}
+                </p>
+                <span className="mt-3 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-ln-bronze [@media(max-height:700px)]:mt-1 lg:mt-auto lg:pt-7">
                   {t("start.action")}
                   <ArrowUpRight aria-hidden="true" className="h-4 w-4" strokeWidth={1.5} />
                 </span>

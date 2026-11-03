@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import Link from "next/link";
 
 import { LandingTracker } from "@/components/landing/LandingTracker";
+import { StartActions, attributedStartLinks, type StartActionsSearchParams } from "@/components/landing/StartActions";
 import { useI18n } from "@/lib/i18n";
 import { LANDING } from "@/lib/landing";
 import { LEGEND_MODEL_NOTE, LEGENDS } from "@/lib/legends";
@@ -25,8 +26,9 @@ function place(eyebrow: string): string {
  * footer. Same chrome as `Legend.tsx`, so arriving from one page to the other
  * reads as the same publication.
  */
-export function LegendsIndex() {
+export function LegendsIndex({ searchParams = {} }: { searchParams?: StartActionsSearchParams }) {
   const { t } = useI18n();
+  const links = attributedStartLinks(searchParams, "legends");
 
   return (
     <div className="eko-landing flex min-h-[100svh] flex-col bg-ln-canvas font-ln-sans text-ln-ink" lang="en">
@@ -51,6 +53,17 @@ export function LegendsIndex() {
         <p className="text-[10px] font-medium uppercase tracking-[0.3em] text-ln-bronze">{t("legends.eyebrow")}</p>
         <h1 className="mt-3 max-w-3xl font-ln-serif text-[40px] font-light leading-[0.98] tracking-[-0.02em] sm:text-[56px]">{t("legends.title")}</h1>
         <p className="mt-4 max-w-2xl text-[17px] leading-7 text-ln-body sm:text-[19px]">{t("legends.intro")}</p>
+
+        {/* Start here, above the list (2-nov-2026): the Instagram bio lands
+            here now, and 1,613 profile visits in 30 days gave 16 taps on the
+            old link. Whoever arrives from a legend video sees the three ways
+            to reach Natalia and Robbie before scrolling, then the legends. */}
+        <section aria-labelledby="legends-start" className="mt-8 max-w-3xl">
+          <p className="text-[10px] font-medium uppercase tracking-[0.3em] text-ln-bronze">{t("legend.next.eyebrow")}</p>
+          <h2 id="legends-start" className="mt-2 font-ln-serif text-[30px] font-light leading-none sm:text-[38px]">{t("legend.next.title")}</h2>
+          <p className="mt-3 text-[15px] leading-6 text-ln-body">{t("legend.next.intro")}</p>
+          <StartActions links={links} track="legends" />
+        </section>
 
         <ul className="mt-10 grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
           {LEGENDS.map((legend) => (
