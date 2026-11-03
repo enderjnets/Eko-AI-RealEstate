@@ -54,9 +54,14 @@ describe("sell comes first (2-nov-2026)", () => {
     expect(actions.indexOf("-sell-value`}")).toBeLessThan(actions.indexOf("-calculator`}"));
     expect(read("components", "landing", "Legend.tsx")).toContain('<StartActions links={links} track="legend" />');
     const index = read("components", "landing", "LegendsIndex.tsx");
-    expect(index).toContain('<StartActions links={links} track="legends" />');
-    // Above the list, not under it: the bio lands here.
-    expect(index.indexOf("<StartActions")).toBeLessThan(index.indexOf("LEGENDS.map("));
+    expect(index).toContain('<StartActions links={links} track="legends" variant="band" />');
+    // v2 (2-nov-2026, approved from the design canvas): the full block goes
+    // after the list, where an editorial page puts its pitch; the top keeps a
+    // quiet sell line and the list a "your house" card.
+    expect(index.indexOf("<StartActions")).toBeGreaterThan(index.indexOf("list.flatMap("));
+    expect(index.indexOf('data-track="legends-quiet-sell"')).toBeLessThan(index.indexOf("list.flatMap("));
+    expect(index).toContain('data-track="legends-yours"');
+    expect(read("components", "landing", "StartActions.tsx").match(/-sell-value`\}/g)).toHaveLength(2);
   });
 
   it("the numbers on the cards follow the new order", () => {

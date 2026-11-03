@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.58] — 2026-11-02
+
+- Landing: `/legends` v2, approved by the owner from the design canvas after a look at series pages (The Pudding, 99% Invisible, Retro Report) and real-estate brands that publish (The Agency, Sotheby's). Every legend numbered in the series (`legendNumber`, the order of `LEGENDS`) with its distinct sources and archive photographs counted from the data (`legendStats`); series totals under the title (`seriesStats`: 20 · 162 · 56 today); Sloan's Lake featured as most watched (`LEGEND_FEATURED`); a filter by place (`LEGEND_AREA`: downtown 8, mountains 6, off limits 4, parks and lakes 2; places only, Fair Housing test on the labels); newest first; on a phone a compact list (page ~2,970 px against ~15,900). The sell offer moves to a quiet line on top, a "No. 21 · Your address" card after five legends and the full Start-here band after the list (`StartActions variant="band"`); event names unchanged, new ones `legends-quiet-sell`, `legends-yours`, `legends-header-sell`, `legends-filter-*`. Archives named as text (each cited at least once). Header with the site nav and a "What's my home worth?" button from 768 px.
+
 ## [0.143.57] — 2026-11-02
 
 - Landing: `/ig` and `/instagram` land on `/legends` (were `/fall`, the autumn guide that expired on 1-nov; `bioLinks.test.ts` had been red since that date by design). Measured that day in Instagram's own insights: 1,613 profile visits in 30 days, 16 link taps; followers 87% aged 35+, 41% in Denver, Lakewood, Arvada, Centennial and Federal Heights. The expiry test becomes a guard that the bio never points at `/fall` again.

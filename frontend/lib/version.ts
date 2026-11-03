@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.57";
+export const CURRENT_VERSION = "0.143.58";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,25 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.58",
+    date: "2026-11-02",
+    title: { en: "The legends page, redesigned for phone, tablet and desktop", es: "La página de las leyendas, rediseñada para móvil, tableta y escritorio" },
+    changes: [
+      {
+        en: "Each legend now shows its number in the series and the size of its record: sources cited and archive photographs. The series totals sit under the title.",
+        es: "Cada leyenda muestra ahora su número en la serie y el tamaño de su registro: fuentes citadas y fotos de archivo. Los totales de la serie van bajo el título.",
+      },
+      {
+        en: "The most watched legend, Sloan's Lake, opens the page; the rest can be filtered by place: downtown, mountains, off limits, parks and lakes.",
+        es: "La leyenda más vista, Sloan's Lake, abre la página; el resto se puede filtrar por lugar: centro, montañas, acceso restringido, parques y lagos.",
+      },
+      {
+        en: "On a phone the list is compact, a third of the old length. The offer to value your home is a quiet line at the top, a card in the list and the full Start-here block after it.",
+        es: "En el móvil la lista es compacta, un tercio de lo que medía. La oferta de valorar tu casa es una línea discreta arriba, una tarjeta dentro de la lista y el bloque completo «Empieza aquí» al final.",
+      },
+    ],
+  },
   {
     version: "0.143.57",
     date: "2026-11-02",

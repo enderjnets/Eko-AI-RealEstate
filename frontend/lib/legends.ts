@@ -1768,3 +1768,67 @@ export const LEGENDS: readonly Legend[] = [
 export function legendBySlug(slug: string): Legend | undefined {
   return LEGENDS.find((l) => l.slug === slug);
 }
+
+/**
+ * Where each legend happens, for the filter on `/legends` (2-nov-2026).
+ *
+ * Places only. A filter here must describe the place in the story, never the
+ * area as somewhere to live: no "family-friendly", "safe", "best", schools or
+ * who lives there (Fair Housing). `legends.test.ts` checks that every legend has
+ * exactly one and that no area is left empty.
+ */
+export type LegendArea = "downtown" | "mountains" | "offlimits" | "parks";
+
+export const LEGEND_AREAS: readonly LegendArea[] = ["downtown", "mountains", "offlimits", "parks"];
+
+export const LEGEND_AREA: Record<string, LegendArea> = {
+  colfax: "downtown",
+  cheesman: "parks",
+  mollybrown: "downtown",
+  unionstation: "downtown",
+  georgetownloop: "mountains",
+  confluencepark: "downtown",
+  redrocks: "mountains",
+  mint: "downtown",
+  gateway: "mountains",
+  abasin: "mountains",
+  arsenal: "offlimits",
+  hotels: "downtown",
+  adx: "offlimits",
+  cheyenne: "offlimits",
+  brownpalace: "downtown",
+  sloanslake: "parks",
+  dia: "offlimits",
+  lookout: "mountains",
+  mountfalcon: "mountains",
+  clocktower: "downtown",
+};
+
+/** The legend the index opens with. Sloan's Lake: the most watched of the
+ *  series (about 123,000 views on Instagram alone, 2-nov-2026). */
+export const LEGEND_FEATURED = "sloanslake";
+
+/** Its number in the series: the order of `LEGENDS`, which is the order they
+ *  were made. Stable as long as legends are only ever appended. */
+export function legendNumber(slug: string): number {
+  return LEGENDS.findIndex((l) => l.slug === slug) + 1;
+}
+
+/** What the index card can say about the record behind a legend, counted from
+ *  the data rather than typed: distinct sources cited and archive photographs. */
+export function legendStats(legend: Legend): { sources: number; photos: number } {
+  const names = new Set(legend.facts.flatMap((f) => f.sources.map((s) => s.name)));
+  return { sources: names.size, photos: legend.photos.length };
+}
+
+/** The same counts for the whole series, for the line under the index title. */
+export function seriesStats(): { legends: number; sources: number; photos: number } {
+  let sources = 0;
+  let photos = 0;
+  for (const l of LEGENDS) {
+    const s = legendStats(l);
+    sources += s.sources;
+    photos += s.photos;
+  }
+  return { legends: LEGENDS.length, sources, photos };
+}

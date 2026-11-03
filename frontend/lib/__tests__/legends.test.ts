@@ -108,8 +108,11 @@ describe("legend pages", () => {
     // Asked for on 13-oct-2026: the home page linked none of the legend pages,
     // so they existed only for whoever typed the address from a video.
     const index = readFileSync(resolve(__dirname, "../../components/landing/LegendsIndex.tsx"), "utf8");
-    expect(index).toContain("LEGENDS.map(");
+    // v2 (2-nov-2026): the list is LEGENDS newest first, filtered by place;
+    // "all" shows every legend (the featured one above the list).
+    expect(index).toContain("[...LEGENDS].reverse()");
     expect(index).toContain("href={`/legends/${legend.slug}`}");
+    expect(index).toContain("href={`/legends/${featured.slug}`}");
     expect(GUIDES.map((g) => g.href)).toContain("/legends");
     const landing = readFileSync(resolve(__dirname, "../../components/landing/Landing.tsx"), "utf8");
     // The desktop nav and the phone menu are separate lists; the footer reads GUIDES.
@@ -137,5 +140,33 @@ describe("legend pages", () => {
     // one line, but the pages already indexed stay in Google's results for months.
     expect(LEGENDS_INDEXED).toBe(true);
     expect(metadata.alternates?.canonical).toBe("/legends");
+  });
+
+  it("every legend has one place for the filter, and every place has a legend", async () => {
+    const { LEGEND_AREA, LEGEND_AREAS, LEGEND_FEATURED, legendNumber } = await import("../legends");
+    for (const l of LEGENDS) expect(LEGEND_AREAS, `${l.slug} has no place`).toContain(LEGEND_AREA[l.slug]);
+    expect(Object.keys(LEGEND_AREA).sort()).toEqual(LEGENDS.map((l) => l.slug).sort());
+    for (const area of LEGEND_AREAS) expect(LEGENDS.some((l) => LEGEND_AREA[l.slug] === area), `${area} is empty`).toBe(true);
+    expect(LEGENDS.some((l) => l.slug === LEGEND_FEATURED)).toBe(true);
+    expect(legendNumber(LEGENDS[0].slug)).toBe(1);
+  });
+
+  it("the counts on the index come from the data", async () => {
+    const { legendStats, seriesStats } = await import("../legends");
+    const total = seriesStats();
+    expect(total.legends).toBe(LEGENDS.length);
+    expect(total.photos).toBe(LEGENDS.reduce((n, l) => n + l.photos.length, 0));
+    expect(total.sources).toBe(LEGENDS.reduce((n, l) => n + legendStats(l).sources, 0));
+    for (const l of LEGENDS) expect(legendStats(l).sources, `${l.slug} cites nothing`).toBeGreaterThan(0);
+  });
+
+  it("the place names describe places, never who lives there", () => {
+    // Fair Housing: a filter on a brokerage's site is advertising.
+    const i18n = readFileSync(resolve(__dirname, "../i18n.tsx"), "utf8");
+    const names = [...i18n.matchAll(/"legends\.area\.\w+": "([^"]+)"/g)].map((m) => m[1].toLowerCase());
+    expect(names.length).toBeGreaterThanOrEqual(10);
+    for (const banned of ["family", "safe", "best", "school", "quiet", "exclusive", "familia", "segur", "mejor", "escuela"]) {
+      for (const n of names) expect(n, `"${n}" says something about residents`).not.toContain(banned);
+    }
   });
 });
