@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.143.57] — 2026-11-02
+
+- Landing: `/ig` and `/instagram` land on `/legends` (were `/fall`, the autumn guide that expired on 1-nov; `bioLinks.test.ts` had been red since that date by design). Measured that day in Instagram's own insights: 1,613 profile visits in 30 days, 16 link taps; followers 87% aged 35+, 41% in Denver, Lakewood, Arvada, Centennial and Federal Heights. The expiry test becomes a guard that the bio never points at `/fall` again.
+- Landing: `/legends` opens with the Start-here block (sell, buy, talk) above the list, with the URL's attribution carried into the calculator and the consult form (`landing_variant=legends` when the URL has none). The block is now one component, `StartActions`, shared with every legend page.
+- Landing copy: selling comes first on `/start`, the legend pages and the index (`01 · Sell`, `02 · Buy`), titled "What is your home worth today?" / "¿Cuánto vale hoy tu casa?". Event names (`data-track`) are unchanged.
+- Tests: the "every public page offers the number" check follows landing components down any number of levels, since the phone now lives in `StartActions`.
+
 ## [0.143.56] — 2026-10-31
 
 - Publishing: `CONTENT_SLOT_TIKTOK` default `17:30,19:30` (was `08:30,17:30`), in `config.py`, `docker-compose.yml` and `.env.example`. Evidence (`content_publications`, 26 days): since 16-oct 12 of 13 TikTok posts at 08:30 failed with "TikTok flagged this post as potential spam", 4 of 5 at 17:30 went out; pieces 133→145 and 132→147 are the same video failing at 08:30 and publishing at 17:30. YouTube and Instagram slots unchanged.

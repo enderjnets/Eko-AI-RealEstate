@@ -113,13 +113,22 @@ describe("the call line", () => {
     for (const path of PUBLIC_PATHS) {
       const parts = PAGE_OF[path];
       expect(parts, `${path} is public and this test does not know its file`).toBeTruthy();
+      // Followed down as many levels as it takes (2-nov-2026): the legend
+      // pages now hand their three ways out to the shared `StartActions`, so
+      // the number sits two files below the route.
       let source = read(...parts);
-      for (const spec of source.match(/@\/components\/landing\/\w+/g) ?? []) {
-        const name = spec.split("/").pop() as string;
-        // Only if it is actually rendered: an import left behind by a deleted
-        // line would otherwise vouch for a page that shows nothing.
-        if (new RegExp(`<${name}[\\s/>]`).test(source)) {
-          source += read("components", "landing", `${name}.tsx`);
+      const seen = new Set<string>();
+      for (let grew = true; grew; ) {
+        grew = false;
+        for (const spec of source.match(/@\/components\/landing\/\w+/g) ?? []) {
+          const name = spec.split("/").pop() as string;
+          // Only if it is actually rendered: an import left behind by a deleted
+          // line would otherwise vouch for a page that shows nothing.
+          if (!seen.has(name) && new RegExp(`<${name}[\\s/>]`).test(source)) {
+            seen.add(name);
+            source += read("components", "landing", `${name}.tsx`);
+            grew = true;
+          }
         }
       }
       expect(source, `${path} gives a visitor no number to call`).toMatch(
