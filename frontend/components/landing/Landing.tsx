@@ -34,7 +34,8 @@
  * hear about two markets instead of three.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ArrowDown, ArrowRight, Building2, CalendarCheck, Clock, Menu, Phone, Ruler, Users, X } from "lucide-react";
 import { LANDING, brokerageLines, dialable } from "@/lib/landing";
 import { STAFF_LOGIN_HREF } from "@/lib/hosts";
@@ -45,6 +46,7 @@ import { LandingTracker } from "@/components/landing/LandingTracker";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { ConsultForm } from "@/components/landing/ConsultForm";
+import { consultIntent } from "@/lib/capture";
 
 function Eyebrow({ children, tone = "dark" }: { children: React.ReactNode; tone?: "dark" | "light" }) {
   return (
@@ -725,6 +727,27 @@ function Guides() {
   );
 }
 
+function ConsultHeadingFromUrl() {
+  return <ConsultHeading value={consultIntent(useSearchParams()) === "value"} />;
+}
+
+function ConsultHeading({ value }: { value: boolean }) {
+  const { t } = useI18n();
+  return (
+    <div>
+      <h2 className="font-ln-serif text-[44px] font-light leading-none tracking-[-0.02em] text-ln-cream sm:text-[60px] lg:text-[76px]">
+        {t(value ? "landing.consult.valueTitleA" : "landing.consult.titleA")}
+        <br />
+        <span className="italic">{t(value ? "landing.consult.valueTitleItalic" : "landing.consult.titleItalic")}</span>
+        {value ? "?" : "."}
+      </h2>
+      <p className="mt-6 max-w-[430px] text-base leading-[1.8] text-ln-canvas/80">
+        {t(value ? "landing.consult.valueBody" : "landing.consult.body")}
+      </p>
+    </div>
+  );
+}
+
 function Consult() {
   const { t } = useI18n();
   return (
@@ -741,16 +764,9 @@ function Consult() {
       </div>
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(20,18,14,0.88)_0%,rgba(20,18,14,0.76)_46%,rgba(20,18,14,0.6)_100%)]" />
       <div data-reveal="up" data-drift="30" className="relative grid items-center gap-14 px-5 py-20 sm:px-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:gap-24 lg:px-14 lg:py-32">
-        <div>
-          <h2 className="font-ln-serif text-[44px] font-light leading-none tracking-[-0.02em] text-ln-cream sm:text-[60px] lg:text-[76px]">
-            {t("landing.consult.titleA")}
-            <br />
-            <span className="italic">{t("landing.consult.titleItalic")}</span>.
-          </h2>
-          <p className="mt-6 max-w-[430px] text-base leading-[1.8] text-ln-canvas/80">
-            {t("landing.consult.body")}
-          </p>
-        </div>
+        <Suspense fallback={<ConsultHeading value={false} />}>
+          <ConsultHeadingFromUrl />
+        </Suspense>
         <ConsultForm />
       </div>
     </section>

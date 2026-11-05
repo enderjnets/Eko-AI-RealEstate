@@ -87,7 +87,7 @@ export function LegendsIndex({ searchParams = {} }: { searchParams?: StartAction
 
   const yours = (
     <li key="yours" className="border-t border-ln-line sm:border-t-0">
-      <Link href={links.consult} data-track="legends-yours" className="-mx-3 my-1.5 grid grid-cols-[92px_minmax(0,1fr)] gap-3.5 rounded bg-ln-tint px-3 py-4 sm:mx-0 sm:my-0 sm:flex sm:flex-col sm:gap-2 sm:bg-transparent sm:p-0">
+      <Link href={links.value} data-track="legends-yours" className="-mx-3 my-1.5 grid grid-cols-[92px_minmax(0,1fr)] gap-3.5 rounded bg-ln-tint px-3 py-4 sm:mx-0 sm:my-0 sm:flex sm:flex-col sm:gap-2 sm:bg-transparent sm:p-0">
         <span className="flex h-[115px] w-[92px] flex-col items-center justify-center rounded-sm border border-dashed border-ln-bronze font-ln-serif lining-nums text-[30px] text-ln-bronze sm:aspect-[4/5] sm:h-auto sm:w-full sm:items-start sm:justify-end sm:gap-2 sm:bg-ln-tint sm:p-5">
           <span className="sm:text-[64px] sm:leading-none lg:text-[80px]">{LEGENDS.length + 1}</span>
           <span className="hidden text-[22px] leading-[1.1] text-ln-ink sm:block">{t("legends.yours.lead")}</span>
@@ -130,7 +130,7 @@ export function LegendsIndex({ searchParams = {} }: { searchParams?: StartAction
             {phone && (
               <a href={`tel:${phone}`} data-track="legends-header-call" className="hidden text-ln-body hover:text-ln-ink xl:inline">{readableUsPhone(LANDING.phone)}</a>
             )}
-            <Link href={links.consult} data-track="legends-header-sell" className="hidden min-h-[44px] items-center rounded-sm bg-ln-ink px-4 text-ln-cream hover:bg-ln-dark md:inline-flex">
+            <Link href={links.value} data-track="legends-header-sell" className="hidden min-h-[44px] items-center rounded-sm bg-ln-ink px-4 text-ln-cream hover:bg-ln-dark md:inline-flex">
               {t("legends.nav.cta")}
             </Link>
           </nav>
@@ -151,7 +151,7 @@ export function LegendsIndex({ searchParams = {} }: { searchParams?: StartAction
                 </div>
               ))}
             </dl>
-            <Link href={links.consult} data-track="legends-quiet-sell" className="mt-2 flex min-h-[48px] items-center justify-between gap-3 rounded-sm bg-ln-dark px-4 text-[14px] text-ln-cream hover:bg-ln-night md:hidden">
+            <Link href={links.value} data-track="legends-quiet-sell" className="mt-2 flex min-h-[48px] items-center justify-between gap-3 rounded-sm bg-ln-dark px-4 text-[14px] text-ln-cream hover:bg-ln-night md:hidden">
               <span>{t("legends.quiet.lead")} <b className="font-semibold">{t("legends.quiet.action")}</b></span>
               <ArrowRight aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.6} />
             </Link>

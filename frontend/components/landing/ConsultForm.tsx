@@ -17,6 +17,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { submitPublicLead, type CalculatorPayload, type CaptureOutcome } from "@/lib/api";
+import { consultIntent } from "@/lib/capture";
 import { getTracker, trackingContext } from "@/lib/track";
 import { useI18n } from "@/lib/i18n";
 import { NAME_FIELD_MAX, fullName } from "@/lib/leadName";
@@ -103,6 +104,12 @@ function ConsultFormInner({
     });
     setSessionId(context.session);
   }, [params, variant]);
+
+  // Arriving from a "what is my home worth" button, the visitor has already
+  // said what they want; picking the chip for them also shows the address line.
+  useEffect(() => {
+    if (consultIntent(params) === "value") setGoal((g) => g ?? "valuing");
+  }, [params]);
 
   // The moment somebody starts filling this in — once, on the first field they
   // touch. It is the funnel step between "read the page" and "sent it", and

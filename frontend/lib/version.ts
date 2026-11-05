@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.58";
+export const CURRENT_VERSION = "0.143.59";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.59",
+    date: "2026-11-05",
+    title: { en: "\"What's my home worth?\" now opens a valuation", es: "«¿Cuánto vale mi casa?» abre ahora una valoración" },
+    changes: [
+      {
+        en: "Every sell button on /start, /legends and the legend pages opens the form titled \"What's your home worth today?\", with Valuing already picked and the address line showing. Before, it opened the buyer's form, \"Your search, our shortlist\".",
+        es: "Cada botón de vender en /start, /legends y las páginas de leyenda abre el formulario titulado «¿Cuánto vale hoy tu casa?», con «Valorar» ya marcado y la línea de la dirección a la vista. Antes abría el formulario de compradores, «Tu búsqueda, nuestra selección».",
+      },
+    ],
+  },
   {
     version: "0.143.58",
     date: "2026-11-02",

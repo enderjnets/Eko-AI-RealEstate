@@ -3,7 +3,7 @@
 import { Calculator, House, Phone } from "lucide-react";
 import Link from "next/link";
 
-import { collectAttribution, withAttribution } from "@/lib/capture";
+import { VALUE_HREF, collectAttribution, withAttribution } from "@/lib/capture";
 import { useI18n } from "@/lib/i18n";
 import { LANDING, dialable, readableUsPhone } from "@/lib/landing";
 
@@ -24,6 +24,7 @@ export function attributedStartLinks(searchParams: StartActionsSearchParams, var
   return {
     calculator: withAttribution("/calculator", attribution),
     consult: withAttribution("/#consult", attribution),
+    value: withAttribution(VALUE_HREF, attribution),
   };
 }
 
@@ -41,7 +42,7 @@ export function StartActions({
   track,
   variant = "grid",
 }: {
-  links: { calculator: string; consult: string };
+  links: { calculator: string; consult: string; value: string };
   track: string;
   /** `band`: the dark block at the end of `/legends` (v2, 2-nov-2026) — sell as
    *  the one light card with a button, buy and talk outlined beside it. */
@@ -54,7 +55,7 @@ export function StartActions({
 
   return (
     <nav aria-label={t("start.actions.label")} className="mt-6 grid border-b border-l border-ln-line-strong sm:grid-cols-3">
-      <Link href={links.consult} data-track={`${track}-sell-value`} aria-label={t("start.sell.aria")} className={`${cell} bg-ln-stone hover:bg-ln-tint`}>
+      <Link href={links.value} data-track={`${track}-sell-value`} aria-label={t("start.sell.aria")} className={`${cell} bg-ln-stone hover:bg-ln-tint`}>
         <span className="flex items-start justify-between text-[10px] font-medium uppercase tracking-[0.24em] text-ln-dark">
           {t("start.sell.number")}
           <House aria-hidden="true" className="h-5 w-5 text-ln-gold" strokeWidth={1.5} />
@@ -87,13 +88,13 @@ export function StartActions({
   );
 }
 
-function StartBand({ links, track, phone }: { links: { calculator: string; consult: string }; track: string; phone: string }) {
+function StartBand({ links, track, phone }: { links: { calculator: string; consult: string; value: string }; track: string; phone: string }) {
   const { t } = useI18n();
   const label = "text-[10px] font-semibold uppercase tracking-[0.22em]";
   const outline = "flex min-h-[92px] flex-col gap-2 rounded border border-ln-body p-3 text-ln-cream transition-colors hover:bg-ln-night sm:p-5";
   return (
     <nav aria-label={t("start.actions.label")} className="grid grid-cols-2 gap-2 sm:grid-cols-[1.4fr_1fr_1fr] sm:gap-3">
-      <Link href={links.consult} data-track={`${track}-sell-value`} aria-label={t("start.sell.aria")} className="col-span-2 flex flex-col gap-2 rounded bg-ln-cream p-4 text-ln-ink transition-colors hover:bg-ln-paper sm:col-span-1 sm:p-5">
+      <Link href={links.value} data-track={`${track}-sell-value`} aria-label={t("start.sell.aria")} className="col-span-2 flex flex-col gap-2 rounded bg-ln-cream p-4 text-ln-ink transition-colors hover:bg-ln-paper sm:col-span-1 sm:p-5">
         <span className={`flex items-center justify-between ${label} text-ln-bronze`}>
           {t("start.sell.number")}
           <House aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={1.5} />
