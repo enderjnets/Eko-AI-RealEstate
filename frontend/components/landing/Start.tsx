@@ -5,7 +5,7 @@ import Link from "next/link";
 
 import { LandingTracker } from "@/components/landing/LandingTracker";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
-import { collectAttribution, withAttribution } from "@/lib/capture";
+import { VALUE_HREF, collectAttribution, withAttribution } from "@/lib/capture";
 import { useI18n } from "@/lib/i18n";
 import { LANDING, dialable, readableUsPhone } from "@/lib/landing";
 
@@ -23,6 +23,7 @@ function attributedLinks(searchParams: StartSearchParams) {
   return {
     calculator: withAttribution("/calculator", attribution),
     consult: withAttribution("/#consult", attribution),
+    value: withAttribution(VALUE_HREF, attribution),
   };
 }
 
@@ -107,7 +108,7 @@ export function Start({ searchParams = {} }: { searchParams?: StartSearchParams 
           className="mt-7 grid border-b border-l border-ln-line-strong [@media(max-height:700px)]:mt-4 sm:mt-10 lg:mt-14 lg:grid-cols-3"
         >
           <Link
-            href={links.consult}
+            href={links.value}
             data-track="start-sell-value"
             aria-label={t("start.sell.aria")}
             className="group flex min-h-[160px] flex-col border-r border-t border-ln-line-strong bg-ln-stone p-5 transition-colors hover:bg-ln-tint focus-visible:z-10 [@media(max-height:700px)]:min-h-[112px] [@media(max-height:700px)]:p-3 sm:p-6 lg:min-h-[290px] lg:p-8"

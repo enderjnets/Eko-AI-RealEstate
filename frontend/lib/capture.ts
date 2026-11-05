@@ -21,6 +21,14 @@ export const UTM_KEYS = [
   "tier",
 ] as const;
 
+/** Where every "what is my home worth" button points: the consult form, opened
+ *  as a valuation instead of the buyer's shortlist it shows by default. */
+export const VALUE_HREF = "/?intent=value#consult";
+
+export function consultIntent(params: { get(key: string): string | null }): "value" | null {
+  return params.get("intent") === "value" ? "value" : null;
+}
+
 export function withAttribution(
   href: string,
   attribution: Record<string, string>,

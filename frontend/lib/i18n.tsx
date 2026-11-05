@@ -1051,6 +1051,10 @@ const EN: Record<string, string> = {
   // {price}" and the options circuit (0.140.0) is what delivers it.
   "landing.consult.titleA": "Your search,",
   "landing.consult.titleItalic": "our shortlist",
+  "landing.consult.valueTitleA": "What's your home",
+  "landing.consult.valueTitleItalic": "worth today",
+  "landing.consult.valueBody":
+    "Tell us where it is, and Natalia & Robbie will tell you what it's worth today.",
   "landing.consult.body":
     "Buying: the area, the budget, what you need — we send homes that fit, and why each one made the list. Selling: what your home is worth today.",
   "landing.form.name": "First name",
@@ -2260,6 +2264,10 @@ const ES: Record<string, string> = {
   "landing.voices.eyebrow": "En sus palabras",
   "landing.consult.titleA": "Tu búsqueda,",
   "landing.consult.titleItalic": "nuestra selección",
+  "landing.consult.valueTitleA": "¿Cuánto vale",
+  "landing.consult.valueTitleItalic": "hoy tu casa",
+  "landing.consult.valueBody":
+    "Dinos dónde está y Natalia y Robbie te dirán cuánto vale hoy.",
   "landing.consult.body":
     "Si compras: la zona, el presupuesto, lo que necesitas — te mandamos casas que encajan y por qué entró cada una. Si vendes: cuánto vale hoy tu casa.",
   "landing.form.name": "Nombre",

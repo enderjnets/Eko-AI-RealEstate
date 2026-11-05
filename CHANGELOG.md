@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.59] — 2026-11-05
+
+- Landing: every "what is your home worth" button (`start-sell-value`, `legend(s)-sell-value`, `legends-header-sell`, `legends-quiet-sell`, `legends-yours`) points at `/?intent=value#consult` (`VALUE_HREF`, attribution carried as before). With `intent=value` the consult section reads "What's your home worth today?" and the form starts on the Valuing chip, which shows the existing address line. "Talk" links keep the plain `/#consult`. Measured over the 30 days before: 89 human sessions, the one visitor who pressed a sell button landed under "Your search, our shortlist" with no chip picked and left in ten seconds; 0 leads. Event names unchanged.
+
 ## [0.143.58] — 2026-11-02
 
 - Landing: `/legends` v2, approved by the owner from the design canvas after a look at series pages (The Pudding, 99% Invisible, Retro Report) and real-estate brands that publish (The Agency, Sotheby's). Every legend numbered in the series (`legendNumber`, the order of `LEGENDS`) with its distinct sources and archive photographs counted from the data (`legendStats`); series totals under the title (`seriesStats`: 20 · 162 · 56 today); Sloan's Lake featured as most watched (`LEGEND_FEATURED`); a filter by place (`LEGEND_AREA`: downtown 8, mountains 6, off limits 4, parks and lakes 2; places only, Fair Housing test on the labels); newest first; on a phone a compact list (page ~2,970 px against ~15,900). The sell offer moves to a quiet line on top, a "No. 21 · Your address" card after five legends and the full Start-here band after the list (`StartActions variant="band"`); event names unchanged, new ones `legends-quiet-sell`, `legends-yours`, `legends-header-sell`, `legends-filter-*`. Archives named as text (each cited at least once). Header with the site nav and a "What's my home worth?" button from 768 px.
