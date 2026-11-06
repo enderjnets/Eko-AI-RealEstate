@@ -120,6 +120,28 @@ describe("only the opening caption is visible before the engine runs", () => {
 });
 
 /**
+ * 40 of 89 human visits in the 30 days to 5-nov-2026 landed on the home page,
+ * and its only buttons waited at the end of four screens of film.
+ */
+describe("the opening has a way out before any scroll", () => {
+  const opening = landing.slice(landing.indexOf('data-cap="0,0.22"'), landing.indexOf('data-cap="0.27,0.49"'));
+
+  it("offers the valuation and the phone inside the opening caption", () => {
+    expect(opening).toContain("<HeroValueLinkFromUrl />");
+    expect(opening).toContain('data-track="hero-open-call"');
+  });
+
+  it("keeps the visitor's attribution on the valuation link", () => {
+    expect(landing).toMatch(/withAttribution\(VALUE_HREF, attribution\)/);
+  });
+
+  it("shows the scroll hint on a phone too", () => {
+    const hint = landing.match(/data-cap="0,0\.14"\s+className="([^"]+)"/)?.[1] ?? "";
+    expect(hint.split(/\s+/)).not.toContain("hidden");
+  });
+});
+
+/**
  * deploy-v6's engine is the specification, and three of its mechanisms were
  * quietly replaced by v4 constants or by inventions of mine when the file was
  * converted to React. Each is cheap to undo by accident and none of them shows

@@ -542,7 +542,7 @@ describe("wiring", () => {
     // Without `data-track` every tap reads as "somebody clicked call", and
     // which control works is the question this page exists to answer.
     const src = read("components/landing/Landing.tsx");
-    const anchors = src.match(/<a\b[^>]*?(?:href="#consult"|href=\{`tel:)/gs) ?? [];
+    const anchors = src.match(/<a\b[^>]*?(?:href="#consult"|href=\{`tel:|href=\{href\} data-track="hero-open-value")/gs) ?? [];
     expect(anchors.length).toBeGreaterThanOrEqual(5);
     const labelled = src.match(/data-track="/g) ?? [];
     expect(labelled.length).toBe(anchors.length);
