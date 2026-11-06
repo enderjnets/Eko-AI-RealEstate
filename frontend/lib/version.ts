@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = "0.143.59";
+export const CURRENT_VERSION = "0.143.60";
 
 /** A string available in both UI languages. Rendered per the active language. */
 export interface LocalizedText {
@@ -14,6 +14,17 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.143.60",
+    date: "2026-11-05",
+    title: { en: "The home page opens with its buttons", es: "La portada abre con sus botones" },
+    changes: [
+      {
+        en: "The first screen of the home page now offers \"What's your home worth?\" and the phone, the text reads over the photo, and phones see the scroll hint. Before, the only buttons came after four screens of scrolling.",
+        es: "La primera pantalla de la portada ofrece ya «¿Cuánto vale tu casa?» y el teléfono, el texto se lee sobre la foto y los móviles ven el aviso de desplazarse. Antes los únicos botones llegaban tras cuatro pantallas de scroll.",
+      },
+    ],
+  },
   {
     version: "0.143.59",
     date: "2026-11-05",

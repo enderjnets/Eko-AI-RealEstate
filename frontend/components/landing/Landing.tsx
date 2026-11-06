@@ -36,7 +36,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowDown, ArrowRight, Building2, CalendarCheck, Clock, Menu, Phone, Ruler, Users, X } from "lucide-react";
+import { ArrowDown, ArrowRight, Building2, CalendarCheck, Clock, House, Menu, Phone, Ruler, Users, X } from "lucide-react";
 import { LANDING, brokerageLines, dialable } from "@/lib/landing";
 import { STAFF_LOGIN_HREF } from "@/lib/hosts";
 import { GUIDES } from "@/lib/guides";
@@ -46,7 +46,7 @@ import { LandingTracker } from "@/components/landing/LandingTracker";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { ConsultForm } from "@/components/landing/ConsultForm";
-import { consultIntent } from "@/lib/capture";
+import { VALUE_HREF, collectAttribution, consultIntent, withAttribution } from "@/lib/capture";
 
 function Eyebrow({ children, tone = "dark" }: { children: React.ReactNode; tone?: "dark" | "light" }) {
   return (
@@ -343,6 +343,30 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
 /** Portrait screens get the 9:16 flight: the 16:9 one shows a quarter of its width there. */
 const PORTRAIT = "(max-aspect-ratio: 4/5)";
 
+const heroMainButton =
+  "inline-flex min-h-[52px] items-center justify-center gap-3 rounded-full bg-ln-canvas px-8 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-[#242219] hover:opacity-90";
+const heroCallButton =
+  "inline-flex min-h-[52px] items-center justify-center gap-3 rounded-full border border-ln-canvas/45 bg-ln-night/35 px-8 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-ln-canvas backdrop-blur hover:border-ln-canvas";
+
+/** The opening's way out (5-nov-2026): 40 of 89 human visits in 30 days landed
+ *  here and the only buttons sat at the end of four screens of film. */
+function HeroValueLink({ href }: { href: string }) {
+  const { t } = useI18n();
+  return (
+    <a href={href} data-track="hero-open-value" className={heroMainButton}>
+      <House className="h-3.5 w-3.5" />
+      {t("landing.hero.valueCta")}
+    </a>
+  );
+}
+
+/** Keeps the video's UTM: the link changes the query, which would drop it. */
+function HeroValueLinkFromUrl() {
+  const attribution = collectAttribution(useSearchParams());
+  if (!attribution.landing_variant) attribution.landing_variant = "home-hero";
+  return <HeroValueLink href={withAttribution(VALUE_HREF, attribution)} />;
+}
+
 function Hero({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => void }) {
   const { t } = useI18n();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -391,6 +415,9 @@ function Hero({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => v
           data-cap="0,0.22"
           className="absolute inset-0 z-[3] flex flex-col items-center justify-center px-5 text-center will-change-[opacity,transform] md:px-14"
         >
+          {/* Inside the caption so it fades with it: the film plays clean after
+              the opening. White on the lit room did not read without it. */}
+          <div aria-hidden="true" className="pointer-events-none absolute -inset-y-24 inset-x-0 -z-10 bg-ln-night/50" />
           <p className={`${eyebrow} md:mb-[30px]`}>{t("landing.hero.kicker")}</p>
           <h1
             className={`${title} mb-4 text-[50px] leading-[0.96] tracking-[-0.02em] [text-shadow:0_2px_40px_rgba(0,0,0,0.35)] sm:text-[80px] md:mb-[22px] md:leading-[0.92] md:tracking-[-0.025em] lg:text-[96px] xl:text-[118px]`}
@@ -402,11 +429,22 @@ function Hero({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => v
           {/* The sentence a visitor from Instagram reads first. Two keys and
               not a {brand} hole in one: an install with no brand configured
               would render " is Natalia & Robbie — …". */}
-          <p className={`${body} max-w-[310px] md:max-w-[600px]`}>
+          <p className={`${body} max-w-[310px] [text-shadow:0_1px_12px_rgba(0,0,0,0.75)] md:max-w-[600px]`}>
             {LANDING.brand && LANDING.advisors
               ? t("landing.hero.bodyBranded", { brand: LANDING.brand, advisors: LANDING.advisors })
               : t("landing.hero.body")}
           </p>
+          <div className="mt-[26px] flex w-full max-w-[360px] flex-col gap-2.5 md:mt-9 md:w-auto md:max-w-none md:flex-row md:gap-3.5">
+            <Suspense fallback={<HeroValueLink href={VALUE_HREF} />}>
+              <HeroValueLinkFromUrl />
+            </Suspense>
+            {LANDING.phone && (
+              <a href={`tel:${dialable(LANDING.phone)}`} data-track="hero-open-call" className={heroCallButton}>
+                <Phone className="h-3.5 w-3.5" />
+                {t("landing.hero.callUs")}
+              </a>
+            )}
+          </div>
         </div>
 
         <div data-cap="0.27,0.49" className={`${aside} md:left-14`}>
@@ -448,7 +486,7 @@ function Hero({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => v
             <a
               href="#consult"
               data-track="hero"
-              className="inline-flex min-h-[52px] items-center justify-center gap-3 rounded-full bg-ln-canvas px-8 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-[#242219] hover:opacity-90"
+              className={heroMainButton}
             >
               <CalendarCheck className="h-3.5 w-3.5" />
               {t("landing.hero.cta")}
@@ -457,7 +495,7 @@ function Hero({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => v
               <a
                 href={`tel:${dialable(LANDING.phone)}`}
                 data-track="hero"
-                className="inline-flex min-h-[52px] items-center justify-center gap-3 rounded-full border border-ln-canvas/45 bg-ln-night/35 px-8 py-4 text-[11px] font-medium uppercase tracking-[0.16em] text-ln-canvas backdrop-blur hover:border-ln-canvas"
+                className={heroCallButton}
               >
                 <Phone className="h-3.5 w-3.5" />
                 {t("landing.hero.callUs")}
@@ -468,7 +506,7 @@ function Hero({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu: () => v
 
         <div
           data-cap="0,0.14"
-          className="absolute bottom-[30px] left-14 z-[4] hidden items-center gap-2.5 text-[10px] uppercase tracking-[0.22em] text-ln-canvas/60 md:flex"
+          className="absolute bottom-[30px] left-5 z-[4] flex items-center gap-2.5 text-[10px] uppercase tracking-[0.22em] text-ln-canvas/60 md:left-14"
         >
           <ArrowDown className="h-[13px] w-[13px]" />
           {t("landing.hero.scroll")}

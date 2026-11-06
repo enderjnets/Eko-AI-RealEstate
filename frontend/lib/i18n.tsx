@@ -955,6 +955,7 @@ const EN: Record<string, string> = {
   "landing.hero.bodyBranded":
     "{brand} is {advisors} — real estate advisors working both sides of Colorado: the mountain towns and the Denver metro. In English, Russian or German.",
   "landing.hero.cta": "Tell us what you want",
+  "landing.hero.valueCta": "What's your home worth?",
   "landing.hero.callUs": "Or just call us",
   // Rendered beside the number itself, not as a button label: on desktop a
   // `tel:` link does nothing and the digits are the only usable thing.
@@ -2176,6 +2177,7 @@ const ES: Record<string, string> = {
   "landing.hero.bodyBranded":
     "{brand} son {advisors} — asesores inmobiliarios en los dos lados de Colorado: los pueblos de montaña y el área metropolitana de Denver. En inglés, ruso o alemán.",
   "landing.hero.cta": "Cuéntanos qué buscas",
+  "landing.hero.valueCta": "¿Cuánto vale tu casa?",
   "landing.hero.callUs": "O llámanos ahora",
   "landing.call.or": "O llámanos:",
   "landing.hero.scroll": "Desplázate para verlo",

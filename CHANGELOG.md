@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.143.60] — 2026-11-05
+
+- Landing home: the opening of the film now carries the two ways out, "What's your home worth?" (`hero-open-value`, to the valuation form, attribution kept, `landing_variant=home-hero` when the URL has none) and the phone (`hero-open-call`), plus a dark scrim that fades with the caption so the text reads over the lit room, and the scroll hint on phones. Before, the only buttons sat at 79 % of four screens of scroll. Measured over 30 days: 40 of 89 human sessions landed on the home page.
+
 ## [0.143.59] — 2026-11-05
 
 - Landing: every "what is your home worth" button (`start-sell-value`, `legend(s)-sell-value`, `legends-header-sell`, `legends-quiet-sell`, `legends-yours`) points at `/?intent=value#consult` (`VALUE_HREF`, attribution carried as before). With `intent=value` the consult section reads "What's your home worth today?" and the form starts on the Valuing chip, which shows the existing address line. "Talk" links keep the plain `/#consult`. Measured over the 30 days before: 89 human sessions, the one visitor who pressed a sell button landed under "Your search, our shortlist" with no chip picked and left in ten seconds; 0 leads. Event names unchanged.
